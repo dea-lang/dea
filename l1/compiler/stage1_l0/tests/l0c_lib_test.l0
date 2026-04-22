@@ -513,6 +513,21 @@ func test_run_nullable_identity_build_and_keep_c() {
 }
 
 /**
+ * Tests optional wrapper typedef ordering for user-defined value payloads.
+ */
+func test_run_optional_struct_field_order_builds() {
+    with (let argv = vs_create(8) => vs_free(argv)) {
+        vs_push(argv, "--run");
+        vs_push(argv, "-P");
+        vs_push(argv, fixture_root());
+        vs_push(argv, "optional_struct_field_order_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "optional struct wrapper typedef should be emitted before dependent type definitions");
+    }
+}
+
+/**
  * Tests string relational execution in `--run --keep-c` mode.
  */
 func test_run_string_relational_build_and_keep_c() {
@@ -919,6 +934,7 @@ func main() {
     test_run_string_equality_build_and_keep_c();
     test_run_pointer_identity_build_and_keep_c();
     test_run_nullable_identity_build_and_keep_c();
+    test_run_optional_struct_field_order_builds();
     test_run_string_relational_build_and_keep_c();
     test_run_const_build_and_keep_c();
     test_run_nonconstant_top_level_let_build_and_keep_c();

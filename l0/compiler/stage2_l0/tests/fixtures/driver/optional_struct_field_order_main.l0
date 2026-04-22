@@ -1,0 +1,24 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module optional_struct_field_order_main;
+
+struct Token {}
+
+enum Wrapped {
+    Some(value: Token?);
+}
+
+func main() -> int {
+    let wrapped = Some(Token() as Token?);
+    match (wrapped) {
+        Some(value) => {
+            if (value == null) {
+                return 1;
+            }
+            return 0;
+        }
+    }
+}

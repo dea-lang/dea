@@ -1080,6 +1080,43 @@ func cem_is_early_inner(inner: Type*) -> bool {
 }
 
 /**
+ * Emit one collected optional-wrapper typedef.
+ *
+ * @param self Emitter to update.
+ * @param name Wrapper typedef name.
+ * @param inner Inner wrapped type.
+ */
+func cem_emit_optional_wrapper(self: CEmitter*, name: string, inner: Type*) {
+    if (ss_has(self.opt_emitted, name)) {
+        return;
+    }
+
+    let guard = concat_s(cem_upper_ascii(name), "_DEFINED");
+    let c_inner = cem_emit_type(inner);
+    ccb_emit(self.out, concat_s("#ifndef ", guard));
+    ccb_emit(self.out, concat_s("#define ", guard));
+    ccb_emit(self.out, concat4_s("typedef struct { l0_bool has_value; ", c_inner, " value; } ", concat_s(name, ";")));
+    ccb_emit(self.out, concat3_s("#endif /* ", guard, " */"));
+    ccb_emit(self.out, "");
+    ss_add(self.opt_emitted, name);
+}
+
+/**
+ * Emit the collected optional wrapper for a just-defined user type.
+ *
+ * @param self Emitter to update.
+ * @param inner Just-defined struct or enum type.
+ */
+func cem_emit_optional_wrapper_for_defined_type(self: CEmitter*, inner: Type*) {
+    let name = cem_opt_wrapper_name_for_inner(inner);
+    let stored = spm_get(self.opt_wrappers, name);
+    if (stored == null) {
+        return;
+    }
+    cem_emit_optional_wrapper(self, name, stored as Type*);
+}
+
+/**
  * Scan analysis metadata and collect every needed optional wrapper.
  *
  * @param self Emitter to update.
@@ -1141,23 +1178,11 @@ func cem_emit_optional_wrappers(self: CEmitter*, early: bool) {
         vs_sort(names);
         for (let i = 0; i < vs_size(names); i = i + 1) {
             let name = vs_get(names, i);
-            if (ss_has(self.opt_emitted, name)) {
-                continue;
-            }
-
             let inner = spm_get(self.opt_wrappers, name) as Type*;
             if (cem_is_early_inner(inner) != early) {
                 continue;
             }
-
-            let guard = concat_s(cem_upper_ascii(name), "_DEFINED");
-            let c_inner = cem_emit_type(inner);
-            ccb_emit(self.out, concat_s("#ifndef ", guard));
-            ccb_emit(self.out, concat_s("#define ", guard));
-            ccb_emit(self.out, concat4_s("typedef struct { l0_bool has_value; ", c_inner, " value; } ", concat_s(name, ";")));
-            ccb_emit(self.out, concat3_s("#endif /* ", guard, " */"));
-            ccb_emit(self.out, "");
-            ss_add(self.opt_emitted, name);
+            cem_emit_optional_wrapper(self, name, inner);
         }
     }
 }

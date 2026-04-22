@@ -215,8 +215,8 @@ def test_pointer_breaks_dependency(codegen_single):
 # ============================================================================
 
 
-def test_value_optional_creates_dependency(codegen_single):
-    """Test that value-optional fields (T?) create dependencies."""
+def test_value_optional_creates_dependency(codegen_single, compile_and_run, tmp_path):
+    """Test that value-optional fields (T?) create dependencies and early wrappers."""
     c_code, _ = codegen_single(
         "main",
         """
@@ -238,12 +238,20 @@ def test_value_optional_creates_dependency(codegen_single):
     )
     assert c_code is not None
 
-    # Verify Point is defined before Container
+    # Verify Point and its optional wrapper are defined before Container.
     point_pos = c_code.find("struct l0_main_Point {")
+    wrapper_pos = c_code.find(
+        "typedef struct { l0_bool has_value; struct l0_main_Point value; } l0_opt_s_l0_main_Point;"
+    )
     container_pos = c_code.find("struct l0_main_Container {")
 
-    assert point_pos > 0 and container_pos > 0, "Both struct definitions should exist"
-    assert point_pos < container_pos, "Point should be defined before Container"
+    assert point_pos > 0 and wrapper_pos > 0 and container_pos > 0, \
+        "Point, optional wrapper, and Container definitions should exist"
+    assert point_pos < wrapper_pos < container_pos, \
+        "Point optional wrapper should be emitted before dependent type definitions"
+
+    success, _stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"generated C should compile, stderr:\n{stderr}"
 
 
 # ============================================================================

@@ -850,6 +850,38 @@ class CEmitter:
             return self._is_early_inner(inner.inner)
         return False
 
+    def _emit_optional_wrapper(self, name: str, inner: Type) -> None:
+        """Emit one collected optional wrapper typedef.
+
+        Args:
+            name: Wrapper typedef name.
+            inner: Inner wrapped type.
+        """
+        if name in self._opt_emitted:
+            return
+
+        c_inner = self.emit_type(inner)  # may itself be another l0_opt_...
+
+        # Emit #ifndef guard so generated wrappers do not conflict.
+        self.out.emit(f"#ifndef {name.upper()}_DEFINED")
+        self.out.emit(f"#define {name.upper()}_DEFINED")
+        self.out.emit(f"typedef struct {{ l0_bool has_value; {c_inner} value; }} {name};")
+        self.out.emit(f"#endif /* {name.upper()}_DEFINED */")
+        self.out.emit()
+        self._opt_emitted.add(name)
+
+    def emit_optional_wrapper_for_defined_type(self, inner: Type) -> None:
+        """Emit the collected optional wrapper for a just-defined user type.
+
+        Args:
+            inner: Just-defined struct or enum type.
+        """
+        name = self._opt_wrapper_name_for_inner(inner)
+        stored = self._opt_wrappers.get(name)
+        if stored is None:
+            return
+        self._emit_optional_wrapper(name, stored)
+
     def prepare_optional_wrappers(self) -> None:
         """Scan all compilation unit types and collect required optional wrappers."""
         self._opt_wrappers.clear()
@@ -883,20 +915,9 @@ class CEmitter:
         # Emit typedefs for all needed wrappers whose inner types are ready at this phase.
         items = sorted(self._opt_wrappers.items(), key=lambda kv: kv[0])
         for name, inner in items:
-            if name in self._opt_emitted:
-                continue
             if self._is_early_inner(inner) != early:
                 continue
-
-            c_inner = self.emit_type(inner)  # may itself be another l0_opt_...
-
-            # Emit #ifndef guard (so builtins won't conflict, and user-type wrappers still work).
-            self.out.emit(f"#ifndef {name.upper()}_DEFINED")
-            self.out.emit(f"#define {name.upper()}_DEFINED")
-            self.out.emit(f"typedef struct {{ l0_bool has_value; {c_inner} value; }} {name};")
-            self.out.emit(f"#endif /* {name.upper()}_DEFINED */")
-            self.out.emit()
-            self._opt_emitted.add(name)
+            self._emit_optional_wrapper(name, inner)
 
     # ============================================================================
     # Cleanup Emission (HOW to emit cleanup code)

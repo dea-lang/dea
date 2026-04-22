@@ -1152,6 +1152,9 @@ func be_emit_type_definitions(self: Backend*) {
                 }
                 self.current_module = module_name;
                 cem_emit_struct(self.emitter, module_name, decl as StructDecl*, struct_info as StructInfo*);
+                with (let emitted_ty = type_new_struct(module_name, type_name) => type_free(emitted_ty)) {
+                    cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty);
+                }
             } else {
                 let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, module_name, type_name);
                 let enum_decl = be_find_enum_decl(self, module_name, type_name);
@@ -1160,6 +1163,9 @@ func be_emit_type_definitions(self: Backend*) {
                 }
                 self.current_module = module_name;
                 cem_emit_enum(self.emitter, module_name, enum_decl as EnumDecl*, enum_info as EnumInfo*);
+                with (let emitted_ty2 = type_new_enum(module_name, type_name) => type_free(emitted_ty2)) {
+                    cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty2);
+                }
             }
         }
     }

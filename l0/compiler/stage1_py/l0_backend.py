@@ -598,6 +598,7 @@ class Backend:
                     self.current_module = module_name
                     self.emitter.current_module = module_name
                     self.emitter.emit_struct(module_name, struct_decl, struct_info)
+                    self.emitter.emit_optional_wrapper_for_defined_type(StructType(module_name, type_name))
             elif (module_name, type_name) in self.analysis.enum_infos:
                 enum_decl = self._find_enum_decl(module_name, type_name)
                 enum_info = self.analysis.enum_infos[(module_name, type_name)]
@@ -605,6 +606,7 @@ class Backend:
                     self.current_module = module_name
                     self.emitter.current_module = module_name
                     self.emitter.emit_enum(module_name, enum_decl, enum_info)
+                    self.emitter.emit_optional_wrapper_for_defined_type(EnumType(module_name, type_name))
 
         # Value-optionals of user-defined structs/enums (if any)
         self.emitter.emit_section_comment("Optional wrapper types (late)")
