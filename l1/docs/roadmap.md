@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-04-21
+Version: 2026-04-22
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -116,8 +116,21 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Tool
   [2026-04-02-l1-bootstrap-productization-noref](../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md)
   defines the first L1 bootstrap install/dist/product workflow.
+- Tool
+  [2026-04-17-l1-child-process-trace-support-noref](../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md)
+  adds child-process trace capture support for Stage 1 runtime fixtures.
 - Feature [2026-04-20-is-intrinsic-noref](../work/plans/features/2026-04-20-is-intrinsic-noref.md) introduces the
   `is(x, Variant)` intrinsic for payload-ignoring enum tag comparison.
+- Feature
+  [2026-04-22-string-concatenation-operator-noref](../work/plans/features/2026-04-22-string-concatenation-operator-noref.md)
+  adds the first `string + string` concatenation plan and ARC result-ownership contract.
+- Feature [2026-04-22-variadic-functions-noref](../work/plans/features/2026-04-22-variadic-functions-noref.md) scopes
+  variadic support to L1-defined functions and leaves C variadic FFI under Initiative `0001`.
+- Feature [2026-04-22-named-arguments-noref](../work/plans/features/2026-04-22-named-arguments-noref.md) adds
+  `name: value` call-site arguments for functions and constructors.
+- Feature
+  [2026-04-22-anonymous-embedded-struct-members-noref](../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md)
+  defines `_ : StructType` as a single first-position anonymous embedded struct member with promoted field access.
 
 ## Backlog
 
@@ -131,8 +144,13 @@ surface.
   by Initiative [0001-separate-compilation-and-c-ffi](../work/initiatives/0001-separate-compilation-and-c-ffi.md).
 - String operators: `==`, `!=`, `<`, `<=`, `>`, and `>=` now compare `string` values by content bytes through
   `rt_string_equals` and `rt_string_compare`, consistent with `case`-over-string lowering, `std.string::eq_s`, and
-  `std.string::cmp_s`. String concatenation via `+` remains backlog-only pending ARC result-ownership design.
-- Varargs, with an explicit split between L1 variadic functions and C variadic FFI support.
+  `std.string::cmp_s`. String concatenation via `+` is tracked by Feature
+  [2026-04-22-string-concatenation-operator-noref](../work/plans/features/2026-04-22-string-concatenation-operator-noref.md),
+  which is intended to settle the ARC result-ownership design.
+- Varargs are split explicitly: L1-defined variadic functions are tracked by Feature
+  [2026-04-22-variadic-functions-noref](../work/plans/features/2026-04-22-variadic-functions-noref.md), while C variadic
+  FFI remains part of Initiative
+  [0001-separate-compilation-and-c-ffi](../work/initiatives/0001-separate-compilation-and-c-ffi.md).
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
 - Typed arrays, buffers, shared buffers, and slices as general language features. The current `std.array` / `std.vector`
@@ -140,9 +158,12 @@ surface.
 - Unsafe module boundaries and raw pointer operations, including address-of (`&`) semantics and pointer indexing /
   addressing gates. Current `sys.unsafe` is a low-level runtime binding only. Same-type non-null pointer identity
   equality is implemented; ordered pointer comparisons remain rejected.
-- `_` struct-member semantics: whether placeholder/discard fields are allowed and how they affect construction, field
-  access, layout, and ABI.
-- Named arguments for functions and constructors.
+- `_` struct-member semantics are tracked by Feature
+  [2026-04-22-anonymous-embedded-struct-members-noref](../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md),
+  which fixes `_ : StructType` as a single first-position anonymous embedded struct member and defines its construction,
+  field-access, layout, and ABI rules.
+- Named arguments for functions and constructors are tracked by Feature
+  [2026-04-22-named-arguments-noref](../work/plans/features/2026-04-22-named-arguments-noref.md).
 - Literal struct/enum syntax using `{}` and named fields. Constructor-call syntax exists today; literal syntax does not.
 - Compiler-generated `hash(T)` for struct and enum values, including its relationship to `sys.hash`, `std.hashmap`, and
   ABI stability.

@@ -325,6 +325,10 @@ Add the following declaration forms (each lexed as a contextual `extern` keyword
 - `extern func` already exists; gains an optional link-name override (`extern("foo_v2") func bind_foo(...)`) for cases
   where the L1 identifier and the C symbol must differ (mangled C++, versioned symbols, prefix conventions).
 
+C variadic FFI remains part of this phase. The standalone feature plan
+`l1/work/plans/features/2026-04-22-variadic-functions-noref.md` is limited to L1-defined variadic functions and does not
+settle `extern func` variadic semantics.
+
 All extern declarations participate in the visibility model from Phase 0.2: an extern declaration in a `pub` position
 re-exports the C binding through L1's normal import path; otherwise it is file-local.
 
