@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-04-21
+Version: 2026-04-23
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -183,21 +183,25 @@ Current contents:
 
 - `dea::sizeof`
 - `dea::ord`
+- `dea::is`
 
 Current policy:
 
 - `dea` is a virtual module owned by the compiler, not a source file loaded from disk
 - `dea` is opened into every module automatically
 - `dea` has the lowest import precedence, so user locals and explicit imports shadow it normally
-- `dea::sizeof` and `dea::ord` remain the stable qualified escape hatch when user code intentionally reuses those names
+- `dea::sizeof`, `dea::ord`, and `dea::is` remain the stable qualified escape hatch when user code intentionally reuses
+  those names
 - this behavior does not change the surface grammar: `dea` is a semantic prelude mechanism, not a special import syntax
-- qualified `dea::sizeof` and `dea::ord` are always available even when unqualified `sizeof` or `ord` are shadowed
+- qualified `dea::sizeof`, `dea::ord`, and `dea::is` are always available even when unqualified `sizeof`, `ord`, or `is`
+  are shadowed
 - shadowing uses the normal name-resolution rules and warning behavior rather than bespoke intrinsic-specific fallback
+- `dea::is(value, Variant)` compares enum tags only and does not evaluate or synthesize payload values for `Variant`
 
 Rationale:
 
 - keep intrinsics in the normal symbol/module system instead of hard-coding bare names
-- avoid hijacking user-defined functions named `sizeof` or `ord`
+- avoid hijacking user-defined functions named `sizeof`, `ord`, or `is`
 - preserve ergonomic unqualified use for bootstrap-stage code while keeping an explicit disambiguation path
 - leave room for future compiler-owned type aliases and other prelude-level symbols without introducing a synthetic
   source file
@@ -342,8 +346,8 @@ Qualified references (`module.path::Name`) are the current cross-module disambig
 
 The compiler also synthesizes one implicit module, `dea`, for language-level primitives. Its exports are opened into
 every module at the lowest precedence, so user locals and explicit imports shadow `dea` with the normal `RES-0021`
-warning. `dea::sizeof` and `dea::ord` remain the stable qualified escape hatch when user code intentionally reuses those
-names.
+warning. `dea::sizeof`, `dea::ord`, and `dea::is` remain the stable qualified escape hatch when user code intentionally
+reuses those names.
 
 Rationale:
 

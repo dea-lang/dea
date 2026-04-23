@@ -475,6 +475,18 @@ func cem_emit_ord(c_enum_expr: string) -> string {
 }
 
 /**
+ * Emit C code for `is(enum_expr, Variant)`.
+ *
+ * @param c_enum_expr C expression producing an enum value.
+ * @param enum_type Enum type of `c_enum_expr`.
+ * @param variant_name Variant tag to compare against.
+ * @return Boolean tag-comparison expression.
+ */
+func cem_emit_is(c_enum_expr: string, enum_type: Type*, variant_name: string) -> string {
+    return concat_s(concat3_s("(((", c_enum_expr, ").tag) == "), concat_s(cem_emit_enum_tag(enum_type, variant_name), ")"));
+}
+
+/**
  * Emit a pointer type from a base type.
  *
  * @param base_type Base type to wrap.

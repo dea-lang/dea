@@ -918,7 +918,7 @@ func test_typing_dea_local_shadow_ok() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_dea_local_shadow", cfg);
         assert(!analysis_has_errors(result), "expected no typing errors for typing_dea_local_shadow");
-        assert(count_diag_code(result, "RES-0021") == 2, "expected local shadow warnings for sizeof and ord");
+        assert(count_diag_code(result, "RES-0021") == 3, "expected local shadow warnings for sizeof, ord, and is");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -955,7 +955,50 @@ func test_typing_dea_intrinsic_ref_err() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_dea_intrinsic_ref_err", cfg);
         assert(analysis_has_errors(result), "expected typing errors for typing_dea_intrinsic_ref_err");
-        assert(count_diag_code(result, "TYP-0244") == 2, "expected both intrinsic references to report TYP-0244");
+        assert(count_diag_code(result, "TYP-0244") == 3, "expected all intrinsic references to report TYP-0244");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for the `is` enum-tag intrinsic.
+ */
+func test_typing_is_intrinsic_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_intrinsic_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_is_intrinsic_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for `is` with an enum-returning call and qualified variant name.
+ */
+func test_typing_is_intrinsic_qualified_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_intrinsic_qualified_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_is_intrinsic_qualified_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests diagnostic reporting for invalid `is` intrinsic usage.
+ */
+func test_typing_is_intrinsic_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_intrinsic_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_is_intrinsic_err");
+        assert(count_diag_code(result, "TYP-0245") == 1, "expected one `is` arity diagnostic");
+        assert(count_diag_code(result, "TYP-0246") == 1, "expected one `is` first-argument diagnostic");
+        assert(count_diag_code(result, "TYP-0247") == 2, "expected two `is` variant-reference diagnostics");
+        assert(count_diag_code(result, "TYP-0248") == 1, "expected one `is` enum-mismatch diagnostic");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -1052,5 +1095,8 @@ func main() {
     test_typing_dea_local_shadow_ok();
     test_typing_dea_import_shadow_ok();
     test_typing_dea_intrinsic_ref_err();
+    test_typing_is_intrinsic_ok();
+    test_typing_is_intrinsic_qualified_ok();
+    test_typing_is_intrinsic_err();
     printl_s("expr_types_test: all tests passed");
 }

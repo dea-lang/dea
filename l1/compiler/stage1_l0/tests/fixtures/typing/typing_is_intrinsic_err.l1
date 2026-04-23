@@ -1,0 +1,20 @@
+module typing_is_intrinsic_err;
+
+enum Color {
+    Red;
+    RGB(r: int, g: int, b: int);
+}
+
+enum Flag {
+    Off;
+    On;
+}
+
+func main(c: Color) -> bool {
+    let arity = is(c);
+    let bad_value = is(1, Red);
+    let bad_variant = is(c, Color);
+    let bad_owner = is(c, On);
+    let bad_call = is(c, RGB(0, 0, 0));
+    return arity || bad_value || bad_variant || bad_owner || bad_call;
+}

@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-04-22
+Version: 2026-04-23
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -99,6 +99,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature
   [2026-04-19-pointer-identity-equality-noref](../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md)
   added `==` and `!=` over same-type non-nullable `T*` operands using reference identity.
+- Feature [2026-04-20-is-intrinsic-noref](../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md) introduced the
+  `is(x, Variant)` intrinsic for payload-ignoring enum tag comparison, including qualified variant references and
+  enum-returning call expressions in first position.
 - Feature
   [2026-04-18-l1-function-pointer-types-noref](../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md)
   added first-class `func(...) -> T` function pointer types, indirect calls, nullable function pointers, and
@@ -119,8 +122,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Tool
   [2026-04-17-l1-child-process-trace-support-noref](../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md)
   adds child-process trace capture support for Stage 1 runtime fixtures.
-- Feature [2026-04-20-is-intrinsic-noref](../work/plans/features/2026-04-20-is-intrinsic-noref.md) introduces the
-  `is(x, Variant)` intrinsic for payload-ignoring enum tag comparison.
 - Feature
   [2026-04-22-string-concatenation-operator-noref](../work/plans/features/2026-04-22-string-concatenation-operator-noref.md)
   adds the first `string + string` concatenation plan and ARC result-ownership contract.

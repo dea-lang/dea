@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-04-21
+Version: 2026-04-23
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -36,8 +36,8 @@ C generation, and host build/run integration for `.l1` inputs.
 The implementation sources remain `.l0`, while user-facing L1 source inputs, examples, and stdlib modules use `.l1`.
 
 The current compiler also synthesizes the implicit `dea` prelude module for language intrinsics. Unqualified
-`sizeof(...)` and `ord(...)` remain ergonomic bootstrap-stage spellings, while `dea::sizeof(...)` and `dea::ord(...)`
-are always available as the stable qualified forms.
+`sizeof(...)`, `ord(...)`, and `is(...)` remain ergonomic bootstrap-stage spellings, while `dea::sizeof(...)`,
+`dea::ord(...)`, and `dea::is(...)` are always available as the stable qualified forms.
 
 ### Runtime and Standard Library
 

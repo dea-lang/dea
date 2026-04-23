@@ -458,6 +458,69 @@ func test_function_pointer_type_syntax_ok() {
 }
 
 /**
+ * Tests that `is(value, Variant)` parses as an ordinary call with a bare variant argument.
+ */
+func test_is_intrinsic_payload_variant_arg_shape() {
+    let src = "module main; enum Color { Red; RGB(r: int, g: int, b: int); } func main(c: Color) -> bool { return is(c, RGB); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let stmts = body.ids as VectorBase*;
+    let return_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let call = expr_arena_get(result.expr_arena, return_stmt.expr_a);
+    assert(ord(call.kind) == ord(EX_CALL), "Expected `is` call expression");
+
+    let callee = expr_arena_get(result.expr_arena, call.expr_a);
+    assert(ord(callee.kind) == ord(EX_VAR_REF), "Expected `is` callee to be a plain identifier");
+    assert(callee.text_value == "is", "Expected `is` callee name");
+    assert(call.ids != null && vec_size(call.ids as VectorBase*) == 2, "Expected two `is` arguments");
+
+    let variant_arg = expr_arena_get(result.expr_arena, id_vec_get(call.ids as VectorBase*, 1));
+    assert(ord(variant_arg.kind) == ord(EX_VAR_REF), "Expected payload variant argument to stay a bare var-ref");
+    assert(variant_arg.text_value == "RGB", "Expected payload variant argument name");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests that `is(call_expr, module::Variant)` preserves both call and qualified-variant shape.
+ */
+func test_is_intrinsic_call_and_qualified_variant_shape() {
+    let src = "module main; import config.types; func main() -> bool { return is(config.types::get_key(), config.types::String); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let stmts = body.ids as VectorBase*;
+    let return_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let call = expr_arena_get(result.expr_arena, return_stmt.expr_a);
+    assert(ord(call.kind) == ord(EX_CALL), "Expected outer `is` call expression");
+    assert(call.ids != null && vec_size(call.ids as VectorBase*) == 2, "Expected two `is` arguments");
+
+    let first_arg = expr_arena_get(result.expr_arena, id_vec_get(call.ids as VectorBase*, 0));
+    assert(ord(first_arg.kind) == ord(EX_CALL), "Expected first `is` argument to remain a call expression");
+
+    let second_arg = expr_arena_get(result.expr_arena, id_vec_get(call.ids as VectorBase*, 1));
+    assert(ord(second_arg.kind) == ord(EX_VAR_REF), "Expected second `is` argument to remain a var-ref");
+    assert(second_arg.module_path != null, "Expected qualified variant module path");
+    assert(vs_size(second_arg.module_path as VectorString*) == 2, "Expected two module-path segments");
+    assert(vs_get(second_arg.module_path as VectorString*, 0) == "config", "Expected first module-path segment");
+    assert(vs_get(second_arg.module_path as VectorString*, 1) == "types", "Expected second module-path segment");
+    assert(second_arg.text_value == "String", "Expected qualified variant name");
+
+    parse_result_free(result);
+}
+
+/**
  * Tests test_top_level_multi_error_collection.
  */
 func test_top_level_multi_error_collection() {
@@ -499,6 +562,8 @@ func main() {
     test_enum_variant_field_error();
     test_new_expr_bitwise_arg_ok();
     test_function_pointer_type_syntax_ok();
+    test_is_intrinsic_payload_variant_arg_shape();
+    test_is_intrinsic_call_and_qualified_variant_shape();
     test_top_level_multi_error_collection();
     printl_s("parser_test: all tests passed");
 }

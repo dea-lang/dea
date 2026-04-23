@@ -906,6 +906,24 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
 }
 
 /**
+ * Try to resolve one expression as an enum variant symbol for `is`.
+ *
+ * @param self Expression checker state.
+ * @param expr Expression to interpret as a variant reference.
+ * @return Resolved enum variant symbol, or `null`.
+ */
+func etc_try_resolve_enum_variant_symbol(self: ExpressionTypeChecker*, expr: ExprNode*) -> Symbol*? {
+    if (ord(expr.kind) != ord(EX_VAR_REF)) {
+        return null;
+    }
+    let sym = etc_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_ENUM_VARIANT)) {
+        return null;
+    }
+    return sym as Symbol*;
+}
+
+/**
  * Infer the type of one `sizeof` intrinsic call.
  *
  * @param self Expression checker state.
@@ -997,6 +1015,67 @@ func etc_infer_ord_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> T
     }
     type_free(arg_ty as Type*);
     return type_builtin_int();
+}
+
+/**
+ * Infer the type of one `is` intrinsic call.
+ *
+ * @param self Expression checker state.
+ * @param expr Call expression node.
+ * @return `bool`, or `bool` after reporting an error.
+ */
+func etc_infer_is_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type* {
+    let args = expr.ids as VectorBase*;
+    let arg_count = 0;
+    if (args != null) arg_count = vec_size(args);
+    if (arg_count != 2) {
+        etc_diag_error(self, "TYP-0245", "is expects exactly 2 arguments",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return type_builtin_bool();
+    }
+
+    let value_ty = etc_infer_expr(self, id_vec_get(args, 0));
+    let variant_expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, id_vec_get(args, 1));
+    let variant_sym = etc_try_resolve_enum_variant_symbol(self, variant_expr);
+
+    if (value_ty == null) {
+        if (variant_sym == null) {
+            etc_diag_error(self, "TYP-0247", "is expects an enum variant reference as its second argument",
+                (self.current_unit as DriverUnit*).path, variant_expr.span);
+        }
+        return type_builtin_bool();
+    }
+
+    if (ord((value_ty as Type*).kind) != ord(TY_ENUM)) {
+        etc_diag_error(self, "TYP-0246",
+            concat_s("is expects an enum value as its first argument, got '",
+                concat_s(type_format(value_ty as Type*), "'")),
+            (self.current_unit as DriverUnit*).path, expr.span);
+        if (variant_sym == null) {
+            etc_diag_error(self, "TYP-0247", "is expects an enum variant reference as its second argument",
+                (self.current_unit as DriverUnit*).path, variant_expr.span);
+        }
+        type_free(value_ty as Type*);
+        return type_builtin_bool();
+    }
+
+    if (variant_sym == null) {
+        etc_diag_error(self, "TYP-0247", "is expects an enum variant reference as its second argument",
+            (self.current_unit as DriverUnit*).path, variant_expr.span);
+        type_free(value_ty as Type*);
+        return type_builtin_bool();
+    }
+
+    let value_enum_ty = value_ty as Type*;
+    let variant = variant_sym as Symbol*;
+    if (variant.module_name != value_enum_ty.module_name || variant.owner_name != value_enum_ty.name) {
+        etc_diag_error(self, "TYP-0248",
+            concat_s("is expects a variant of enum '", concat_s(type_format(value_enum_ty), "'")),
+            (self.current_unit as DriverUnit*).path, variant_expr.span);
+    }
+
+    type_free(value_enum_ty);
+    return type_builtin_bool();
 }
 
 /**
@@ -2712,6 +2791,9 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
         }
         if (dea_is_intrinsic_symbol(callee_sym, "ord")) {
             return etc_infer_ord_intrinsic(self, expr);
+        }
+        if (dea_is_intrinsic_symbol(callee_sym, "is")) {
+            return etc_infer_is_intrinsic(self, expr);
         }
         with (let local_callee_ty = etc_lookup_local(self, callee.text_value) => etc_type_free_opt(local_callee_ty)) {
             if (local_callee_ty == null && callee_sym == null &&

@@ -3,5 +3,6 @@ module typing_dea_intrinsic_ref_err;
 func main() -> int {
     let a = sizeof;
     let b = dea::ord;
+    let c = dea::is;
     return 0;
 }

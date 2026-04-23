@@ -670,7 +670,7 @@ func test_backend_generate_new_and_try_lowering() {
 func test_backend_generate_intrinsics_use_analyzed_target_types() {
     with (let filenames = vs_create(1) => vs_free(filenames),
           let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(16) => vs_free(lines),
+          let lines = vs_create(24) => vs_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
@@ -680,6 +680,10 @@ func test_backend_generate_intrinsics_use_analyzed_target_types() {
         vs_push(lines, "    Off;");
         vs_push(lines, "    On;");
         vs_push(lines, "}");
+        vs_push(lines, "enum Color {");
+        vs_push(lines, "    Red;");
+        vs_push(lines, "    RGB(r: int, g: int, b: int);");
+        vs_push(lines, "}");
         vs_push(lines, "struct Pair {");
         vs_push(lines, "    left: int;");
         vs_push(lines, "    right: int;");
@@ -687,17 +691,23 @@ func test_backend_generate_intrinsics_use_analyzed_target_types() {
         vs_push(lines, "func main() -> int {");
         vs_push(lines, "    let p = Pair(1, sizeof(Pair));");
         vs_push(lines, "    let f = On;");
-        vs_push(lines, "    return p.right + ord(f);");
+        vs_push(lines, "    let c = RGB(1, 2, 3);");
+        vs_push(lines, "    if (is(c, RGB)) {");
+        vs_push(lines, "        return p.right + ord(f);");
+        vs_push(lines, "    }");
+        vs_push(lines, "    return 0;");
         vs_push(lines, "}");
         vs_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
-        assert(!analysis_has_errors(result), "analysis should succeed for sizeof/ord fixture");
+        assert(!analysis_has_errors(result), "analysis should succeed for sizeof/ord/is fixture");
 
         let generated = backend_generate(result, opts, cfg);
         assert(contains_s(generated, "((dea_int)sizeof(struct dea_demo_main_Pair))"),
             "sizeof should lower through the analyzed target type");
         assert(contains_s(generated, "((dea_int)((f).tag))"), "ord should lower to the enum tag");
+        assert(contains_s(generated, "(((c).tag) == dea_demo_main_Color_RGB)"),
+            "is should lower to a direct enum-tag comparison");
 
         analysis_result_free(result);
     }
@@ -709,7 +719,7 @@ func test_backend_generate_intrinsics_use_analyzed_target_types() {
 func test_backend_generate_dea_intrinsics_respect_symbol_origin() {
     with (let filenames = vs_create(1) => vs_free(filenames),
           let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(24) => vs_free(lines),
+          let lines = vs_create(32) => vs_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
@@ -725,12 +735,19 @@ func test_backend_generate_dea_intrinsics_respect_symbol_origin() {
         vs_push(lines, "func ord(x: int) -> int {");
         vs_push(lines, "    return x + 9;");
         vs_push(lines, "}");
+        vs_push(lines, "func is(x: int, y: int) -> int {");
+        vs_push(lines, "    return x + y + 11;");
+        vs_push(lines, "}");
         vs_push(lines, "func main() -> int {");
         vs_push(lines, "    let a = sizeof(4);");
         vs_push(lines, "    let b = ord(5);");
-        vs_push(lines, "    let c = dea::sizeof(Flag);");
-        vs_push(lines, "    let d = dea::ord(On);");
-        vs_push(lines, "    return a + b + c + d;");
+        vs_push(lines, "    let c = is(6, 7);");
+        vs_push(lines, "    let d = dea::sizeof(Flag);");
+        vs_push(lines, "    let e = dea::ord(On);");
+        vs_push(lines, "    if (dea::is(On, On)) {");
+        vs_push(lines, "        return a + b + c + d + e;");
+        vs_push(lines, "    }");
+        vs_push(lines, "    return 0;");
         vs_push(lines, "}");
         vs_push(sources, bt_source(lines));
 
@@ -742,10 +759,59 @@ func test_backend_generate_dea_intrinsics_respect_symbol_origin() {
             "local sizeof should lower as a normal function call");
         assert(contains_s(generated, "dea_demo_main_ord(5)"),
             "local ord should lower as a normal function call");
+        assert(contains_s(generated, "dea_demo_main_is(6, 7)"),
+            "local is should lower as a normal function call");
         assert(contains_s(generated, "((dea_int)sizeof(struct dea_demo_main_Flag))"),
             "dea::sizeof should lower through intrinsic emission");
         assert(contains_s(generated, "((dea_int)(((struct dea_demo_main_Flag){ .tag = dea_demo_main_Flag_On }).tag))"),
             "dea::ord should lower through intrinsic emission");
+        assert(contains_s(generated, "((((struct dea_demo_main_Flag){ .tag = dea_demo_main_Flag_On }).tag) == dea_demo_main_Flag_On)"),
+            "dea::is should lower through intrinsic emission");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests `is` lowering for an imported enum-returning call and qualified variant name.
+ */
+func test_backend_generate_is_with_call_expr_and_qualified_variant() {
+    with (let filenames = vs_create(2) => vs_free(filenames),
+          let sources = vs_create(2) => vs_free(sources),
+          let dep_lines = vs_create(16) => vs_free(dep_lines),
+          let main_lines = vs_create(16) => vs_free(main_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+
+        vs_push(filenames, "config/types.l1");
+        vs_push(dep_lines, "module config.types;");
+        vs_push(dep_lines, "enum Key {");
+        vs_push(dep_lines, "    String;");
+        vs_push(dep_lines, "    Number;");
+        vs_push(dep_lines, "}");
+        vs_push(dep_lines, "func get_key() -> Key {");
+        vs_push(dep_lines, "    return String;");
+        vs_push(dep_lines, "}");
+        vs_push(sources, bt_source(dep_lines));
+
+        vs_push(filenames, "demo/main.l1");
+        vs_push(main_lines, "module demo.main;");
+        vs_push(main_lines, "import config.types;");
+        vs_push(main_lines, "func main() -> int {");
+        vs_push(main_lines, "    if (is(config.types::get_key(), config.types::String)) {");
+        vs_push(main_lines, "        return 1;");
+        vs_push(main_lines, "    }");
+        vs_push(main_lines, "    return 0;");
+        vs_push(main_lines, "}");
+        vs_push(sources, bt_source(main_lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for qualified `is` fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "(((dea_config_types_get_key()).tag) == dea_config_types_Key_String)"),
+            "qualified `is` should lower call result and qualified variant to a direct tag comparison");
 
         analysis_result_free(result);
     }
@@ -1215,6 +1281,7 @@ func main() {
     test_backend_generate_new_and_try_lowering();
     test_backend_generate_intrinsics_use_analyzed_target_types();
     test_backend_generate_dea_intrinsics_respect_symbol_origin();
+    test_backend_generate_is_with_call_expr_and_qualified_variant();
     test_backend_generate_string_copy_retains();
     test_backend_generate_string_equality_ops();
     test_backend_generate_small_integer_builtins();

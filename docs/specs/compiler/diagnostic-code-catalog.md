@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-04-21
+Version: 2026-04-23
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -337,6 +337,10 @@ and reuse supplement for applying this registry within L0.
 | `TYP-0242` | All   | `ord` expects exactly 1 argument                                                                       |
 | `TYP-0243` | All   | `ord` expects an enum value                                                                            |
 | `TYP-0244` | L1+   | Intrinsic reference may only be used in call position                                                  |
+| `TYP-0245` | L1+   | `is` expects exactly 2 arguments                                                                       |
+| `TYP-0246` | L1+   | `is` expects an enum value as its first argument                                                       |
+| `TYP-0247` | L1+   | `is` expects an enum variant reference as its second argument                                          |
+| `TYP-0248` | L1+   | `is` expects a variant of the first argument's enum type                                               |
 | `TYP-0250` | All   | Cannot apply '?' to non-nullable type                                                                  |
 | `TYP-0251` | All   | Cannot use '?' in a function that does not return a nullable type (T?)                                 |
 | `TYP-0260` | All   | Return statement outside of function                                                                   |

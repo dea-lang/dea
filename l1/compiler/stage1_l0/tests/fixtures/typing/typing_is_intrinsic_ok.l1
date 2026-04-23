@@ -1,0 +1,12 @@
+module typing_is_intrinsic_ok;
+
+enum Color {
+    Red;
+    RGB(r: int, g: int, b: int);
+}
+
+func main(c: Color) -> bool {
+    let match_red = is(c, Red);
+    let match_rgb = is(c, RGB);
+    return match_red || match_rgb;
+}

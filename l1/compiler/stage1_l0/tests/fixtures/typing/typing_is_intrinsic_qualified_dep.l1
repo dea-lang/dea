@@ -1,0 +1,10 @@
+module typing_is_intrinsic_qualified_dep;
+
+enum ConfigKey {
+    String;
+    Number;
+}
+
+func get_config_key(name: string) -> ConfigKey {
+    return String;
+}

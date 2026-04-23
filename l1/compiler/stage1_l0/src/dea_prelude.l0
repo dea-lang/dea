@@ -99,11 +99,17 @@ func dea_put_local_symbol(locals: StringPtrMap*, all: StringPtrMap*, sym: Symbol
  * @param all Prelude visible-symbol map.
  * @param name Intrinsic function name.
  * @param param_name Pseudo-type name used in the intrinsic signature display.
+ * @param param_name2 Optional second pseudo-type name.
+ * @param result_type Result type to expose for the intrinsic symbol.
  */
-func dea_add_intrinsic(locals: StringPtrMap*, all: StringPtrMap*, name: string, param_name: string) {
+func dea_add_intrinsic(locals: StringPtrMap*, all: StringPtrMap*, name: string, param_name: string, param_name2: string?,
+    result_type: Type*) {
     let params = ptr_vec_create(1);
     ptr_vec_push(params, type_new_builtin(param_name) as void*);
-    let func_type = type_new_func(params, type_builtin_int());
+    if (param_name2 != null) {
+        ptr_vec_push(params, type_new_builtin(param_name2 as string) as void*);
+    }
+    let func_type = type_new_func(params, result_type);
     let sym = symbol_create(name, SYM_FUNC, dea_module_name(), "", null, dea_zero_span());
     symbol_set_type_clone(sym, func_type);
     dea_put_local_symbol(locals, all, sym);
@@ -131,6 +137,7 @@ func dea_add_type_alias(locals: StringPtrMap*, all: StringPtrMap*, alias_name: s
  * @param all Prelude visible-symbol map to populate.
  */
 func dea_populate_locals(locals: StringPtrMap*, all: StringPtrMap*) {
-    dea_add_intrinsic(locals, all, "sizeof", "type");
-    dea_add_intrinsic(locals, all, "ord", "enum");
+    dea_add_intrinsic(locals, all, "sizeof", "type", null, type_builtin_int());
+    dea_add_intrinsic(locals, all, "ord", "enum", null, type_builtin_int());
+    dea_add_intrinsic(locals, all, "is", "enum", "variant", type_builtin_bool());
 }

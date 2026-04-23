@@ -435,5 +435,5 @@ Notes:
   followed by `*` or `?` suffixes that end at an argument boundary (`,` or `)`).
 - Plain identifiers like `sizeof(Point)` parse as `Expr`; the type checker resolves whether `Point` refers to a type or
   variable.
-- Calls to `sizeof` and `ord` are parsed as ordinary function calls. Semantic analysis then resolves whether the callee
-  is one of the implicit `dea` prelude symbols or an ordinary user-defined function.
+- Calls to `sizeof`, `ord`, and `is` are parsed as ordinary function calls. Semantic analysis then resolves whether the
+  callee is one of the implicit `dea` prelude symbols or an ordinary user-defined function.

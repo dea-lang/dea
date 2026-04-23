@@ -1,0 +1,7 @@
+module typing_is_intrinsic_qualified_ok;
+
+import typing_is_intrinsic_qualified_dep;
+
+func main() -> bool {
+    return is(typing_is_intrinsic_qualified_dep::get_config_key("mykey"), typing_is_intrinsic_qualified_dep::String);
+}

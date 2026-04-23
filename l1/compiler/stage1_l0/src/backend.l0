@@ -2192,6 +2192,38 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
 }
 
 /**
+ * Emit one `is` intrinsic call.
+ *
+ * @param self Backend state to inspect.
+ * @param expr Call expression node.
+ * @return Lowered enum-tag comparison.
+ */
+func be_emit_is_intrinsic(self: Backend*, expr: ExprNode*) -> string {
+    let args = expr.ids as VectorBase*;
+    let value_id = id_vec_get(args, 0);
+    let variant_expr = expr_arena_get(be_current_expr_arena(self), id_vec_get(args, 1));
+    if (ord(variant_expr.kind) != ord(EX_VAR_REF)) {
+        return be_ice_string("[ICE-2270] `is` variant argument must be a var-ref expression");
+    }
+
+    let variant_sym = be_lookup_symbol(self, variant_expr.text_value, variant_expr.module_path, variant_expr.name_qualifier);
+    if (variant_sym == null || ord((variant_sym as Symbol*).kind) != ord(SYM_ENUM_VARIANT)) {
+        return be_ice_string("[ICE-2271] `is` variant argument did not resolve to an enum variant");
+    }
+
+    with (let enum_ty = be_expr_type(self, value_id) => type_free_opt(enum_ty)) {
+        if (enum_ty == null || ord((enum_ty as Type*).kind) != ord(TY_ENUM)) {
+            return be_ice_string("[ICE-2272] `is` value argument is missing enum type information");
+        }
+        let variant = variant_sym as Symbol*;
+        if (variant.module_name != (enum_ty as Type*).module_name || variant.owner_name != (enum_ty as Type*).name) {
+            return be_ice_string("[ICE-2273] `is` variant argument does not belong to the enum value type");
+        }
+        return cem_emit_is(be_emit_expr(self, value_id), enum_ty as Type*, variant.name);
+    }
+}
+
+/**
  * Emit one call expression.
  *
  * @param self Backend state to inspect.
@@ -2227,6 +2259,10 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
 
         if (dea_is_intrinsic_symbol(callee_sym, "ord") && expr.ids != null && vec_size(expr.ids as VectorBase*) == 1) {
             return cem_emit_ord(be_emit_expr(self, id_vec_get(expr.ids as VectorBase*, 0)));
+        }
+
+        if (dea_is_intrinsic_symbol(callee_sym, "is") && expr.ids != null && vec_size(expr.ids as VectorBase*) == 2) {
+            return be_emit_is_intrinsic(self, expr);
         }
 
         if (dea_is_symbol(callee_sym)) {
