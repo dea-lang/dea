@@ -1,0 +1,374 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module std.types;
+
+/**
+ * The Value enum represents a value of any of the built-in value types in the Dea/L1 language.
+ * Useful for type-erased representations of values, such as for function arguments or return values of unknown type.
+ * It includes variants for each primitive type, as well as optional variants for each type.
+ */
+enum Value {
+    Bool(b: bool);
+    Tiny(t: tiny);
+    Byte(b: byte);
+    Short(sh: short);
+    UShort(us: ushort);
+    Int(i: int);
+    UInt(ui: uint);
+    Long(l: long);
+    ULong(ul: ulong);
+    Float(f: float);
+    Double(d: double);
+    String(s: string);
+    OptBool(b: bool?);
+    OptTiny(t: tiny?);
+    OptByte(b: byte?);
+    OptShort(sh: short?);
+    OptUShort(us: ushort?);
+    OptInt(i: int?);
+    OptUInt(ui: uint?);
+    OptLong(l: long?);
+    OptULong(ul: ulong?);
+    OptFloat(f: float?);
+    OptDouble(d: double?);
+    OptString(s: string?);
+}
+
+/**
+ * Checks if the given Value is an optional type.
+ * @returns true if the given Value is an optional type, false otherwise.
+ */
+func is_optional(v: Value) -> bool {
+    match (v) {
+        OptBool(x) => { return true; }
+        OptTiny(x) => { return true; }
+        OptByte(x) => { return true; }
+        OptShort(x) => { return true; }
+        OptUShort(x) => { return true; }
+        OptInt(x) => { return true; }
+        OptUInt(x) => { return true; }
+        OptLong(x) => { return true; }
+        OptULong(x) => { return true; }
+        OptFloat(x) => { return true; }
+        OptDouble(x) => { return true; }
+        OptString(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is null (i.e., an optional type with no value).
+ * @returns true if the given Value is null, false otherwise.
+ */
+func is_null(v: Value) -> bool {
+    match (v) {
+        OptBool(x) => { return x == null; }
+        OptTiny(x) => { return x == null; }
+        OptByte(x) => { return x == null; }
+        OptShort(x) => { return x == null; }
+        OptUShort(x) => { return x == null; }
+        OptInt(x) => { return x == null; }
+        OptUInt(x) => { return x == null; }
+        OptLong(x) => { return x == null; }
+        OptULong(x) => { return x == null; }
+        OptFloat(x) => { return x == null; }
+        OptDouble(x) => { return x == null; }
+        OptString(x) => { return x == null; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Converts an optional Value to its equivalent non-optional Value, or `null` if the optional has no value.
+ * For example, an OptInt(5) would return Int(5), while an OptInt(null) would
+ * return null. If the given Value is not an optional type, it is returned
+ * unchanged. For example, an Int(5) would return Int(5).
+ *
+ * @returns the non-optional Value if the given Value is an optional type with a value;
+ *          `null` if the given Value is an optional type with no value; or the original
+ *          Value if it is not an optional type.
+ */
+func get_opt_value(v: Value) -> Value? {
+    match (v) {
+        OptBool(x) => { if (x == null) { return null; } else { return Bool(x as bool); }}
+        OptTiny(x) => { if (x == null) { return null; } else { return Tiny(x as tiny); }}
+        OptByte(x) => { if (x == null) { return null; } else { return Byte(x as byte); }}
+        OptShort(x) => { if (x == null) { return null; } else { return Short(x as short); }}
+        OptUShort(x) => { if (x == null) { return null; } else { return UShort(x as ushort); }}
+        OptInt(x) => { if (x == null) { return null; } else { return Int(x as int); }}
+        OptUInt(x) => { if (x == null) { return null; } else { return UInt(x as uint); }}
+        OptLong(x) => { if (x == null) { return null; } else { return Long(x as long); }}
+        OptULong(x) => { if (x == null) { return null; } else { return ULong(x as ulong); }}
+        OptFloat(x) => { if (x == null) { return null; } else { return Float(x as float); }}
+        OptDouble(x) => { if (x == null) { return null; } else { return Double(x as double); }}
+        OptString(x) => { if (x == null) { return null; } else { return String(x as string); }}
+        _ => { return v; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type bool.
+ * @returns true if the given Value is of type bool, false otherwise.
+ */
+func is_bool(v: Value) -> bool {
+    match (v) {
+        Bool(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type tiny.
+ * @returns true if the given Value is of type tiny, false otherwise.
+ */
+func is_tiny(v: Value) -> bool {
+    match (v) {
+        Tiny(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type byte.
+ * @returns true if the given Value is of type byte, false otherwise.
+ */
+func is_byte(v: Value) -> bool {
+    match (v) {
+        Byte(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type short.
+ * @returns true if the given Value is of type short, false otherwise.
+ */
+func is_short(v: Value) -> bool {
+    match (v) {
+        Short(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type ushort.
+ * @returns true if the given Value is of type ushort, false otherwise.
+ */
+func is_ushort(v: Value) -> bool {
+    match (v) {
+        UShort(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type int.
+ * @returns true if the given Value is of type int, false otherwise.
+ */
+func is_int(v: Value) -> bool {
+    match (v) {
+        Int(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type uint.
+ * @returns true if the given Value is of type uint, false otherwise.
+ */
+func is_uint(v: Value) -> bool {
+    match (v) {
+        UInt(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type long.
+ * @returns true if the given Value is of type long, false otherwise.
+ */
+func is_long(v: Value) -> bool {
+    match (v) {
+        Long(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type ulong.
+ * @returns true if the given Value is of type ulong, false otherwise.
+ */
+func is_ulong(v: Value) -> bool {
+    match (v) {
+        ULong(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type float.
+ * @returns true if the given Value is of type float, false otherwise.
+ */
+func is_float(v: Value) -> bool {
+    match (v) {
+        Float(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type double.
+ * @returns true if the given Value is of type double, false otherwise.
+ */
+func is_double(v: Value) -> bool {
+    match (v) {
+        Double(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is of type string.
+ * @returns true if the given Value is of type string, false otherwise.
+ */
+func is_string(v: Value) -> bool {
+    match (v) {
+        String(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional bool type.
+ * @returns true if the given Value is an optional bool type, false otherwise.
+ */
+func is_opt_bool(v: Value) -> bool {
+    match (v) {
+        OptBool(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional tiny type.
+ * @returns true if the given Value is an optional tiny type, false otherwise.
+ */
+func is_opt_tiny(v: Value) -> bool {
+    match (v) {
+        OptTiny(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional byte type.
+ * @returns true if the given Value is an optional byte type, false otherwise.
+ */
+func is_opt_byte(v: Value) -> bool {
+    match (v) {
+        OptByte(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional short type.
+ * @returns true if the given Value is an optional short type, false otherwise.
+ */
+func is_opt_short(v: Value) -> bool {
+    match (v) {
+        OptShort(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional ushort type.
+ * @returns true if the given Value is an optional ushort type, false otherwise.
+ */
+func is_opt_ushort(v: Value) -> bool {
+    match (v) {
+        OptUShort(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional int type.
+ * @returns true if the given Value is an optional int type, false otherwise.
+ */
+func is_opt_int(v: Value) -> bool {
+    match (v) {
+        OptInt(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional uint type.
+ * @returns true if the given Value is an optional uint type, false otherwise.
+ */
+func is_opt_uint(v: Value) -> bool {
+    match (v) {
+        OptUInt(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional long type.
+ * @returns true if the given Value is an optional long type, false otherwise.
+ */
+func is_opt_long(v: Value) -> bool {
+    match (v) {
+        OptLong(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional ulong type.
+ * @returns true if the given Value is an optional ulong type, false otherwise.
+ */
+func is_opt_ulong(v: Value) -> bool {
+    match (v) {
+        OptULong(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional float type.
+ * @returns true if the given Value is an optional float type, false otherwise.
+ */
+func is_opt_float(v: Value) -> bool {
+    match (v) {
+        OptFloat(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional double type.
+ * @returns true if the given Value is an optional double type, false otherwise.
+ */
+func is_opt_double(v: Value) -> bool {
+    match (v) {
+        OptDouble(x) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Checks if the given Value is an optional string type.
+ * @returns true if the given Value is an optional string type, false otherwise.
+ */
+func is_opt_string(v: Value) -> bool {
+    match (v) {
+        OptString(x) => { return true; }
+        _ => { return false; }
+    }
+}
