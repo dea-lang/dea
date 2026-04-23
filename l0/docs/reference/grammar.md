@@ -1,6 +1,6 @@
 # Dea/L<sub>0</sub> Grammar
 
-Version: 2026-04-04
+Version: 2026-04-23
 
 The following is the formal grammar for the Dea/L<sub>0</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -261,7 +261,7 @@ Patterns (L<sub>0</sub> subset):
 ```ebnf
 Pattern             ::=     VariantPattern | WildcardPattern
 
-VariantPattern      ::=     QualifiedIdent "(" ( PatternVarList )? ")"
+VariantPattern      ::=     QualifiedIdent ( "(" ( PatternVarList )? ")" )?
 PatternVarList      ::=     Ident ( "," Ident )*
 
 WildcardPattern     ::=     "_"
