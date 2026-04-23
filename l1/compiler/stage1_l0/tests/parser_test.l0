@@ -521,6 +521,51 @@ func test_is_intrinsic_call_and_qualified_variant_shape() {
 }
 
 /**
+ * Tests single-statement loop bodies, match arms, and the existing `case` arm precedent.
+ */
+func test_single_statement_loop_and_match_bodies_ok() {
+    let src = "module main; enum Color { Red; Green; } func main(x: int, c: Color) -> int { while (x < 3) x = x + 1; for (; x < 4; x = x + 1) x = x + 2; match (c) { Red => return 1; _ => return 2; } case (x) { 0 => return 3; else return 4; } }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let stmts = body.ids as VectorBase*;
+    assert(vec_size(stmts) == 4, "Expected four top-level statements in function body");
+
+    let while_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    assert(ord(while_stmt.kind) == ord(ST_WHILE), "Expected while statement");
+    let while_body = stmt_arena_get(result.stmt_arena, while_stmt.stmt_a);
+    assert(ord(while_body.kind) == ord(ST_ASSIGN), "Expected single assignment while body");
+
+    let for_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 1));
+    assert(ord(for_stmt.kind) == ord(ST_FOR), "Expected for statement");
+    let for_body = stmt_arena_get(result.stmt_arena, for_stmt.stmt_c);
+    assert(ord(for_body.kind) == ord(ST_ASSIGN), "Expected single assignment for body");
+
+    let match_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 2));
+    assert(ord(match_stmt.kind) == ord(ST_MATCH), "Expected match statement");
+    let match_arms = match_stmt.match_arms as VectorBase*;
+    assert(vec_size(match_arms) == 2, "Expected two match arms");
+    assert(ord(stmt_arena_get(result.stmt_arena, (ptr_vec_get(match_arms, 0) as MatchArm*).body).kind) == ord(ST_RETURN),
+        "Expected single return in first match arm");
+    assert(ord(stmt_arena_get(result.stmt_arena, (ptr_vec_get(match_arms, 1) as MatchArm*).body).kind) == ord(ST_RETURN),
+        "Expected single return in wildcard match arm");
+
+    let case_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 3));
+    assert(ord(case_stmt.kind) == ord(ST_CASE), "Expected case statement");
+    assert(ord(stmt_arena_get(result.stmt_arena, (ptr_vec_get(case_stmt.case_arms as VectorBase*, 0) as CaseArm*).body).kind) ==
+        ord(ST_RETURN), "Expected single return in case arm");
+    assert(ord(stmt_arena_get(result.stmt_arena, (case_stmt.case_else as CaseElse*).body).kind) == ord(ST_RETURN),
+        "Expected single return in case else arm");
+
+    parse_result_free(result);
+}
+
+/**
  * Tests test_top_level_multi_error_collection.
  */
 func test_top_level_multi_error_collection() {
@@ -564,6 +609,7 @@ func main() {
     test_function_pointer_type_syntax_ok();
     test_is_intrinsic_payload_variant_arg_shape();
     test_is_intrinsic_call_and_qualified_variant_shape();
+    test_single_statement_loop_and_match_bodies_ok();
     test_top_level_multi_error_collection();
     printl_s("parser_test: all tests passed");
 }

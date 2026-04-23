@@ -527,6 +527,54 @@ func test_backend_generate_match_and_with_cleanup_block() {
 }
 
 /**
+ * Tests lowering for single-statement loop bodies and match arms.
+ */
+func test_backend_generate_single_statement_loop_and_match_bodies() {
+    with (let filenames = vs_create(1) => vs_free(filenames),
+          let sources = vs_create(1) => vs_free(sources),
+          let lines = vs_create(18) => vs_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        vs_push(filenames, "demo/main.l1");
+        vs_push(lines, "module demo.main;");
+        vs_push(lines, "enum MaybeInt {");
+        vs_push(lines, "    None;");
+        vs_push(lines, "    Some(value: int);");
+        vs_push(lines, "}");
+        vs_push(lines, "func main() -> int {");
+        vs_push(lines, "    let total = 0;");
+        vs_push(lines, "    while (total < 2) total = total + 1;");
+        vs_push(lines, "    for (let i = 0; i < 2; i = i + 1) total = total + i;");
+        vs_push(lines, "    match (Some(total)) {");
+        vs_push(lines, "        Some(v) => total = v + 1;");
+        vs_push(lines, "        _ => total = 0;");
+        vs_push(lines, "    }");
+        vs_push(lines, "    return total;");
+        vs_push(lines, "}");
+        vs_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for single-statement loop/match fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "while (1)"), "while lowering mismatch for single-statement body");
+        assert(contains_s(generated, "total = (_rt_iadd(total, 1));"),
+            "single-statement while body assignment lowering mismatch");
+        assert(contains_s(generated, "// for loop"), "for-loop lowering mismatch for single-statement body");
+        assert(contains_s(generated, "total = (_rt_iadd(total, i));"),
+            "single-statement for body assignment lowering mismatch");
+        assert(contains_s(generated, "switch ((_scrutinee).tag) {"), "match lowering mismatch for single-statement arm");
+        assert(contains_s(generated, "dea_int v = (_scrutinee).data.Some.value;"),
+            "pattern binding lowering mismatch for single-statement match arm");
+        assert(contains_s(generated, "total = (_rt_iadd(v, 1));"),
+            "single-statement match arm assignment lowering mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets.
  */
 func test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets() {
@@ -1276,6 +1324,7 @@ func main() {
     test_backend_generate_basic_control_flow();
     test_backend_generate_loop_exit_case_lowering();
     test_backend_generate_match_and_with_cleanup_block();
+    test_backend_generate_single_statement_loop_and_match_bodies();
     test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets();
     test_backend_generate_drop_statement();
     test_backend_generate_new_and_try_lowering();

@@ -242,7 +242,7 @@ func ps_parse_while_stmt(self: ParserState*) -> StmtId? {
     let cond = ps_parse_expr(self)?;
     ps_expect(self, ord(TT_RPAREN), "PAR-0132", "[PAR-0132] expected ')'")?;
 
-    let body = ps_parse_block(self)?;
+    let body = ps_parse_stmt(self)?;
 
     let node = stmt_node_create(ST_WHILE, ps_extend_span(self, start));
     node.expr_a = cond;
@@ -277,7 +277,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
                 post_value = ps_parse_simple_stmt(self)?;
             }
             ps_expect(self, ord(TT_RPAREN), "PAR-0144", "[PAR-0144] expected ')' after for loop clauses")?;
-            let body = ps_parse_block(self)?;
+            let body = ps_parse_stmt(self)?;
 
             let node = stmt_node_create(ST_FOR, ps_extend_span(self, start));
             node.stmt_a = i;
@@ -293,7 +293,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
             post_value2 = ps_parse_simple_stmt(self)?;
         }
         ps_expect(self, ord(TT_RPAREN), "PAR-0144", "[PAR-0144] expected ')' after for loop clauses")?;
-        let body2 = ps_parse_block(self)?;
+        let body2 = ps_parse_stmt(self)?;
 
         let node2 = stmt_node_create(ST_FOR, ps_extend_span(self, start));
         node2.stmt_a = i;
@@ -316,7 +316,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
             post3 = ps_parse_simple_stmt(self)?;
         }
         ps_expect(self, ord(TT_RPAREN), "PAR-0144", "[PAR-0144] expected ')' after for loop clauses")?;
-        let body3 = ps_parse_block(self)?;
+        let body3 = ps_parse_stmt(self)?;
 
         let node3 = stmt_node_create(ST_FOR, ps_extend_span(self, start));
         node3.stmt_a = init;
@@ -334,7 +334,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
     }
 
     ps_expect(self, ord(TT_RPAREN), "PAR-0144", "[PAR-0144] expected ')' after for loop clauses")?;
-    let body4 = ps_parse_block(self)?;
+    let body4 = ps_parse_stmt(self)?;
 
     let node4 = stmt_node_create(ST_FOR, ps_extend_span(self, start));
     node4.stmt_a = init;
@@ -363,7 +363,7 @@ func ps_parse_match_stmt(self: ParserState*) -> StmtId? {
             let arm_start = ps_span_start(self);
             let pattern = ps_parse_pattern(self)?;
             ps_expect(self, ord(TT_ARROW_MATCH), "PAR-0174", "[PAR-0174] expected '=>' in match arm")?;
-            let body = ps_parse_block(self)?;
+            let body = ps_parse_stmt(self)?;
             let arm = new MatchArm(pattern, body, ps_extend_span(self, arm_start));
             ptr_vec_push(arms as VectorBase*, arm as void*);
         }

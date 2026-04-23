@@ -2942,7 +2942,7 @@ func be_emit_match_stmt(self: Backend*, stmt: StmtNode*) {
             if (ord(pattern.kind) == ord(PT_VARIANT) && ord((scrutinee_ty as Type*).kind) == ord(TY_ENUM)) {
                 be_emit_pattern_bindings(self, arm.pattern, scrutinee_ty as Type*, arm_scope);
             }
-            be_emit_block_sequence(self, arm.body);
+            be_emit_scoped_stmt_body(self, arm.body);
             if (!self.next_stmt_unreachable) {
                 be_emit_cleanup_at_scope_exit(self, arm_scope);
                 cem_emit_exit_switch(self.emitter);
@@ -3185,6 +3185,21 @@ func be_emit_block_stmt(self: Backend*, stmt_id: StmtId) {
 }
 
 /**
+ * Emit a statement body inside an already-created lexical scope.
+ *
+ * @param self Backend state to update.
+ * @param stmt_id Body statement id.
+ */
+func be_emit_scoped_stmt_body(self: Backend*, stmt_id: StmtId) {
+    let stmt = stmt_arena_get(be_current_stmt_arena(self), stmt_id);
+    if (ord(stmt.kind) == ord(ST_BLOCK)) {
+        be_emit_block_sequence(self, stmt_id);
+    } else {
+        be_emit_stmt(self, stmt_id);
+    }
+}
+
+/**
  * Emit control flow for one statement condition with short-circuit semantics.
  *
  * ARC temps produced while lowering condition leaves stay inside the emitted
@@ -3398,7 +3413,7 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
             cem_emit_block_end(self.emitter);
             let loop_scope = be_push_scope(self);
             be_push_loop_cleanup_scopes(self, loop_scope, loop_scope);
-            be_emit_block_sequence(self, stmt.stmt_a);
+            be_emit_scoped_stmt_body(self, stmt.stmt_a);
             if (!self.next_stmt_unreachable) {
                 be_emit_cleanup_at_scope_exit(self, loop_scope);
             }
@@ -3432,7 +3447,7 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
             cem_emit_block_start(self.emitter);
             let loop_scope2 = be_push_scope(self);
             be_push_loop_cleanup_scopes(self, loop_scope2, outer_scope);
-            be_emit_block_sequence(self, stmt.stmt_c);
+            be_emit_scoped_stmt_body(self, stmt.stmt_c);
             let body_falls_through = !self.next_stmt_unreachable;
             if (body_falls_through) {
                 be_emit_cleanup_at_scope_exit(self, loop_scope2);

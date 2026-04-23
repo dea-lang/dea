@@ -1,0 +1,28 @@
+module single_stmt_bodies_main;
+
+enum MaybeInt {
+    None;
+    Some(value: int);
+}
+
+func make(value: int) -> MaybeInt {
+    return Some(value);
+}
+
+func main() -> int {
+    let total: int = 0;
+
+    while (total < 2) total = total + 1;
+
+    for (let i: int = 0; i < 2; i = i + 1) total = total + 10;
+
+    match (make(total)) {
+        Some(v) => total = v + 1;
+        None => total = 0;
+    }
+
+    case (total) {
+        23 => return total;
+        else return 0;
+    }
+}

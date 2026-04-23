@@ -81,6 +81,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   [2026-04-18-string-relational-operators-noref](../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md)
   wired `<`, `<=`, `>`, and `>=` over `string` operands through typing and the C backend via `rt_string_compare`.
 - Feature
+  [2026-04-23-single-statement-loop-and-match-bodies-noref](../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md)
+  relaxed `while`, `for`, and `match` arm bodies from `Block` to `Stmt` while preserving body-local scope and cleanup.
+- Feature
   [2026-04-18-l1-const-declarations-noref](../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md)
   added top-level `const` declarations with explicit types, compile-time-constant initializers, and `static const` C
   emission.

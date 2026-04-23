@@ -261,9 +261,9 @@ LValue          ::=     PrimaryExpr ( PostfixOp )*
 ```ebnf
 IfStmt          ::=     "if" "(" Expr ")" Stmt ( "else" Stmt )?
 
-WhileStmt       ::=     "while" "(" Expr ")" Block
+WhileStmt       ::=     "while" "(" Expr ")" Stmt
 
-ForStmt         ::=     "for" "(" ( SimpleStmt )? ";" ( Expr )? ";" ( SimpleStmt )? ")" Block
+ForStmt         ::=     "for" "(" ( SimpleStmt )? ";" ( Expr )? ";" ( SimpleStmt )? ")" Stmt
 
 BreakStmt       ::=     "break" 
 
@@ -281,7 +281,7 @@ ReturnStmt      ::=     "return" ( Expr )?
 ```ebnf
 MatchStmt       ::=     "match" "(" Expr ")" "{" ( MatchArm )+ "}"
 
-MatchArm        ::=     Pattern "=>" Block
+MatchArm        ::=     Pattern "=>" Stmt
 ```
 
 ### 5.6 Case (scalar/string dispatch)

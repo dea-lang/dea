@@ -543,6 +543,21 @@ func test_run_std_types_opt_string_builds() {
 }
 
 /**
+ * Tests single-statement `while`, `for`, `match`, and `case` execution in `--run` mode.
+ */
+func test_run_single_statement_bodies() {
+    with (let argv = vs_create(8) => vs_free(argv)) {
+        vs_push(argv, "--run");
+        vs_push(argv, "-P");
+        vs_push(argv, fixture_root());
+        vs_push(argv, "single_stmt_bodies_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "single_stmt_bodies_main should execute successfully");
+    }
+}
+
+/**
  * Tests string relational execution in `--run --keep-c` mode.
  */
 func test_run_string_relational_build_and_keep_c() {
@@ -951,6 +966,7 @@ func main() {
     test_run_nullable_identity_build_and_keep_c();
     test_run_optional_struct_field_order_builds();
     test_run_std_types_opt_string_builds();
+    test_run_single_statement_bodies();
     test_run_string_relational_build_and_keep_c();
     test_run_const_build_and_keep_c();
     test_run_nonconstant_top_level_let_build_and_keep_c();

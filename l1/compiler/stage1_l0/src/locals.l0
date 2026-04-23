@@ -314,6 +314,23 @@ func lc_visit_block(env: FunctionEnv*, block_id: StmtId, scope: Scope*) {
 }
 
 /**
+ * Visits a statement body under an already-created scope.
+ *
+ * @param env The current module environment.
+ * @param stmt_id The body statement id.
+ * @param scope The body scope.
+ */
+func lc_visit_scoped_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
+    let stmt = stmt_arena_get(env.stmt_arena, stmt_id);
+    lc_scope_set_block(env, stmt_id, scope);
+    if (ord(stmt.kind) == ord(ST_BLOCK)) {
+        lc_visit_block(env, stmt_id, scope);
+    } else {
+        lc_visit_stmt(env, stmt_id, scope);
+    }
+}
+
+/**
  * Visits a arm during AST traversal.
  *
  * @param env The current module environment.
@@ -324,9 +341,8 @@ func lc_visit_match_arm(env: FunctionEnv*, arm: MatchArm*, parent_scope: Scope*)
     let scope = lc_scope_create(parent_scope);
     lc_scope_track(env, scope);
     ptr_vec_push(env.arm_scopes, new MatchArmScopeEntry(arm, scope) as void*);
-    lc_scope_set_block(env, arm.body, scope);
     lc_bind_pattern(env, arm.pattern, scope);
-    lc_visit_block(env, arm.body, scope);
+    lc_visit_scoped_stmt(env, arm.body, scope);
 }
 
 /**
@@ -339,13 +355,7 @@ func lc_visit_match_arm(env: FunctionEnv*, arm: MatchArm*, parent_scope: Scope*)
 func lc_visit_case_arm(env: FunctionEnv*, arm: CaseArm*, parent_scope: Scope*) {
     let scope = lc_scope_create(parent_scope);
     lc_scope_track(env, scope);
-    let body = stmt_arena_get(env.stmt_arena, arm.body);
-    if (ord(body.kind) == ord(ST_BLOCK)) {
-        lc_scope_set_block(env, arm.body, scope);
-        lc_visit_block(env, arm.body, scope);
-    } else {
-        lc_visit_stmt(env, arm.body, scope);
-    }
+    lc_visit_scoped_stmt(env, arm.body, scope);
 }
 
 /**
@@ -358,13 +368,7 @@ func lc_visit_case_arm(env: FunctionEnv*, arm: CaseArm*, parent_scope: Scope*) {
 func lc_visit_case_else(env: FunctionEnv*, arm: CaseElse*, parent_scope: Scope*) {
     let scope = lc_scope_create(parent_scope);
     lc_scope_track(env, scope);
-    let body = stmt_arena_get(env.stmt_arena, arm.body);
-    if (ord(body.kind) == ord(ST_BLOCK)) {
-        lc_scope_set_block(env, arm.body, scope);
-        lc_visit_block(env, arm.body, scope);
-    } else {
-        lc_visit_stmt(env, arm.body, scope);
-    }
+    lc_visit_scoped_stmt(env, arm.body, scope);
 }
 
 /**
@@ -423,16 +427,14 @@ func lc_visit_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
         ST_WHILE => {
             let body_scope = lc_scope_create(scope);
             lc_scope_track(env, body_scope);
-            lc_scope_set_block(env, stmt.stmt_a, body_scope);
-            lc_visit_block(env, stmt.stmt_a, body_scope);
+            lc_visit_scoped_stmt(env, stmt.stmt_a, body_scope);
         }
         ST_FOR => {
             lc_visit_stmt(env, stmt.stmt_a, scope);
             lc_visit_stmt(env, stmt.stmt_b, scope);
             let body_scope = lc_scope_create(scope);
             lc_scope_track(env, body_scope);
-            lc_scope_set_block(env, stmt.stmt_c, body_scope);
-            lc_visit_block(env, stmt.stmt_c, body_scope);
+            lc_visit_scoped_stmt(env, stmt.stmt_c, body_scope);
         }
         ST_MATCH => {
             let arms = stmt.match_arms as VectorBase*;
