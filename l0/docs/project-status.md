@@ -1,6 +1,6 @@
 # L0 Project Status
 
-Version: 2026-04-21
+Version: 2026-04-24
 
 This document summarizes what is implemented in this repository today and what defines the current Dea/L0 `1.0.0.dev0`
 development branch after the `l0-v0.9.2` release. L0 now lives as one language subtree inside the Dea monorepo; monorepo
@@ -51,7 +51,8 @@ At a high level, it provides:
 - embedded provenance in artifact-producing Stage 2 binaries via `--version`,
 - release packaging plus docs/PDF publishing automation through the repository workflows,
 - current parity fixes for Stage 2 diagnostics, drop-liveness checks, string comparisons, bare enum variants in
-  top-level bindings, ARC borrowed-parameter reassignment, and Windows trace-runner behavior.
+  top-level bindings, ARC borrowed-parameter reassignment, unwrap-cast ARC cleanup, optional-wrapper typedef ordering,
+  and Windows trace-runner behavior.
 
 Stage 1 remains the behavioral oracle for equivalent Stage 2 paths.
 
@@ -114,7 +115,8 @@ The current `1.0.0.dev0` branch starts from the `l0-v0.9.2` release baseline:
 2. Keep the existing validation gates (`make test-all`, `make triple-test`, workflow/distribution checks, and strict
    docs generation) as the default bar for release-readiness.
 3. Carry forward the recent Windows/MSYS2 fixes, trace-runner hardening, string comparison work, ARC cleanup fixes, and
-   Stage 2 diagnostic-parity work as part of the normal development baseline.
+   Stage 2 diagnostic-parity work, including the current optional-wrapper typedef-ordering and unwrap-cast ARC fixes, as
+   part of the normal development baseline.
 4. Treat the limitations listed above as explicit L0 scope boundaries unless a narrowly-scoped `1.0.0` blocker demands
    otherwise.
 

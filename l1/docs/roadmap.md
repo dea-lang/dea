@@ -41,9 +41,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 - Feature [2026-04-03-dea-virtual-module-noref](../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md)
   introduced the compiler-synthesized `dea` prelude module that contains `sizeof` and `ord` intrinsics.
-- Bugfix
-  [2026-04-03-l1-stage1-pointer-cast-parity-noref](../work/plans/bug-fixes/closed/2026-04-03-l1-stage1-pointer-cast-parity-noref.md)
-  restored L1 Stage 1 explicit-cast validation and mismatch diagnostic parity.
 - Feature
   [2026-04-04-l1-dea-c-abi-prefix-migration-noref](../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md)
   moved L1 public generated/runtime C ABI names to `dea_*` / `DEA_*`.
@@ -91,10 +88,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   [2026-04-17-l1-let-non-constant-initializers-noref](../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md)
   added deferred module-init lowering for non-constant top-level `let` initializers and restored `std.real` NaN/infinity
   constants.
-- Bugfix
-  [2026-04-17-l1-diagnostic-tab-caret-alignment-noref](../work/plans/bug-fixes/closed/2026-04-17-l1-diagnostic-tab-caret-alignment-noref.md)
-  aligned stored diagnostic spans and printed carets for source lines that contain ASCII tabs under a logical-source
-  column contract.
 - Feature
   [2026-04-19-nullable-identity-equality-noref](../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md)
   added strict `T? == T?` equality with same-inner-type payload comparison and explicit-cast requirement for cross-form

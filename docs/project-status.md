@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-04-21
+Version: 2026-04-24
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -15,6 +15,7 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 - [MONOREPO.md](../MONOREPO.md) for monorepo layout and root workflow.
 - [work/plans/](../work/plans/) for active and closed Dea-wide plans.
 - [l0/docs/project-status.md](../l0/docs/project-status.md) for the current L0 implementation and release status.
+- [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 bootstrap implementation status.
 - [l1/README.md](../l1/README.md) for the current L1 bootstrap subtree entry point.
 
 ## Current Repository Shape
@@ -59,7 +60,10 @@ Its repository status today is:
 - validated through copied Stage 1 implementation tests written in `.l0` and run through the upstream L0 compiler,
 - using `.l1` as the current L1 source surface for the copied L1 stdlib, example programs, and bootstrap test fixtures,
 - carrying implemented post-L0 language work such as wider numeric types, real literals, bitwise operators, top-level
-  `const`, string value comparisons, nullable/pointer identity equality, and function pointer types,
+  `const`, string value comparisons, nullable/pointer identity equality, the `is(...)` enum tag intrinsic, function
+  pointer types, and single-statement `while` / `for` / `match` bodies,
+- shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
+  value-type helper surface,
 - not yet an install/dist/release-bearing product.
 
 ## Release Model

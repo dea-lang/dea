@@ -41,6 +41,10 @@ multiple plans across categories, when decisions made now constrain plans that w
 sequencing and dependency structure between phases is itself the artifact worth recording. Reach for a plan directly
 otherwise (even a large one).
 
+When editing the roadmap, keep it directional rather than release-note-like: routine bug-fix history belongs in closed
+plans and, when needed, `project-status.md`. Use roadmap completed sections for shipped work that materially changes the
+L1 baseline, direction, or future planning constraints.
+
 ### Roadmap link legibility rules
 
 For legibility, the visible link text format in `roadmap.md` is specially abbreviated as follows:

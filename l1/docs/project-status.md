@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-04-23
+Version: 2026-04-24
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -37,7 +37,9 @@ The implementation sources remain `.l0`, while user-facing L1 source inputs, exa
 
 The current compiler also synthesizes the implicit `dea` prelude module for language intrinsics. Unqualified
 `sizeof(...)`, `ord(...)`, and `is(...)` remain ergonomic bootstrap-stage spellings, while `dea::sizeof(...)`,
-`dea::ord(...)`, and `dea::is(...)` are always available as the stable qualified forms.
+`dea::ord(...)`, and `dea::is(...)` are always available as the stable qualified forms. The current `is(x, Variant)`
+intrinsic supports payload-ignoring enum tag comparison, including qualified variant references and enum-returning call
+expressions in first position.
 
 ### Runtime and Standard Library
 
@@ -57,7 +59,8 @@ checks, including:
 - functions, structs, enums, type aliases, top-level `let`, top-level `const`, and deferred module-init lowering for
   non-constant top-level `let` initializers before user `main`
 - modules/imports with qualified-name disambiguation
-- structured control flow including `if`, `while`, `for`, `match`, `case`, and `with` / `cleanup`
+- structured control flow including `if`, `while`, `for`, `match`, `case`, and `with` / `cleanup`, with single-statement
+  `while`, `for`, and `match` bodies accepted under the current body-local scope/cleanup rules
 - function pointer types, indirect calls, same-signature function pointer identity comparisons, and nullable function
   pointers
 - fixed-width integer builtins `tiny`, `short`, `ushort`, `int`, `uint`, `long`, and `ulong`, with contextual wide
@@ -66,15 +69,15 @@ checks, including:
 - builtin `float` and `double`, real literals, the current narrow numeric conversion rules, and backend-validated
   floating-point lowering
 - explicit nullability, `T` to `T?` wrapping, integer casts to nullable integer targets, `new` / `drop`, ARC-managed
-  `string`, casts, postfix `expr?`, string value comparisons, same-type `T?` equality, and same-type pointer identity
-  equality
+  `string`, casts, postfix `expr?`, string value comparisons, same-type `T?` equality, same-type pointer identity
+  equality, and `is(x, Variant)` enum tag checks
 
 The stdlib currently includes the core bootstrap modules for I/O, strings, text, paths, filesystem access, time,
 randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.math`, L1-only
 `_ui` / `_l` / `_ul` `std.math` families for `uint`, `long`, and `ulong`, wide integer string conversions in `std.text`,
 `std.real` for floating-point classification, module-level real constants (`PI`, `E`, `NAN`, `INFINITY`, and `_F`
-variants), and basic math functions, and `std.io` numeric print plus integer token-read helpers for the implemented
-fixed-width integer family.
+variants), basic math functions, `std.io` numeric print plus integer token-read helpers for the implemented fixed-width
+integer family, and the `std.types` `Value` enum plus optionality/type-query helpers for built-in value types.
 
 ## Delivery and Validation
 
