@@ -2249,7 +2249,11 @@ func be_emit_match_stmt(self: Backend*, stmt: StmtNode*) {
 
         cem_emit_block_start(self.emitter);
         let outer_scope = be_push_scope(self);
-        cem_emit_match_scrutinee_decl(self.emitter, cem_emit_type(scrutinee_ty as Type*), be_emit_expr(self, stmt.expr_a));
+        let c_scrutinee_expr = be_emit_expr(self, stmt.expr_a);
+        cem_emit_match_scrutinee_decl(self.emitter, cem_emit_type(scrutinee_ty as Type*), c_scrutinee_expr);
+        if (be_is_unwrap_cast_from_place(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
+            be_emit_retain_for_copied_value(self, "_scrutinee", scrutinee_ty as Type*);
+        }
         if (!be_is_place_expr(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
             sc_add_owned(outer_scope, "_scrutinee", scrutinee_ty as Type*);
         }
@@ -2310,7 +2314,11 @@ func be_emit_case_stmt(self: Backend*, stmt: StmtNode*) {
 
         cem_emit_block_start(self.emitter);
         let outer_scope = be_push_scope(self);
-        cem_emit_match_scrutinee_decl(self.emitter, cem_emit_type(scrutinee_ty as Type*), be_emit_expr(self, stmt.expr_a));
+        let c_scrutinee_expr = be_emit_expr(self, stmt.expr_a);
+        cem_emit_match_scrutinee_decl(self.emitter, cem_emit_type(scrutinee_ty as Type*), c_scrutinee_expr);
+        if (be_is_unwrap_cast_from_place(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
+            be_emit_retain_for_copied_value(self, "_scrutinee", scrutinee_ty as Type*);
+        }
         if (!be_is_place_expr(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
             sc_add_owned(outer_scope, "_scrutinee", scrutinee_ty as Type*);
         }

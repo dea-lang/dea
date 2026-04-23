@@ -1948,6 +1948,8 @@ class Backend:
         self.emitter.emit_block_start()
         outer_scope = self._push_scope()
         self.emitter.emit_match_scrutinee_decl(c_scrutinee_type, c_scrutinee_expr)
+        if self._is_unwrap_cast_from_place(stmt.expr) and self.analysis.has_arc_data(scrutinee_expr_type):
+            self._emit_retain_for_copied_value("_scrutinee", scrutinee_expr_type)
 
         # Track _scrutinee for cleanup only for rvalue expressions with owned types
         if not self._is_place_expr(stmt.expr):
@@ -2034,6 +2036,8 @@ class Backend:
         self.emitter.emit_block_start()
         outer_scope = self._push_scope()
         self.emitter.emit_match_scrutinee_decl(c_scrutinee_type, c_scrutinee_expr)
+        if self._is_unwrap_cast_from_place(stmt.expr) and self.analysis.has_arc_data(scrutinee_expr_type):
+            self._emit_retain_for_copied_value("_scrutinee", scrutinee_expr_type)
 
         # Track _scrutinee for cleanup only for rvalue expressions with owned types
         if not self._is_place_expr(stmt.expr):

@@ -447,6 +447,94 @@ def test_optional_string_cleanup(artifact_dir: Path) -> None:
     assert_true(len(heap_frees(arc)) >= 1, f"expected heap free for optional string, got {arc!r}", artifact_dir)
 
 
+def test_case_scrutinee_unwrap_retains(artifact_dir: Path) -> None:
+    """`case (opt as string)` must retain `_scrutinee` before later cleanup."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "case_scrutinee_unwrap_retains",
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            let opt: string? = concat_s("o", "k") as string?;
+            case (opt as string) {
+                "ok" => { return 0; }
+                else { return 1; }
+            }
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [
+            ("retain", "retain", "1", "2"),
+            ("release", "keep", "2", "1"),
+            ("release", "free", "1", "0"),
+        ],
+        "case scrutinee ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_match_scrutinee_enum_unwrap_retains(artifact_dir: Path) -> None:
+    """`match (value? as Value)` must retain the string-bearing scrutinee copy."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "match_scrutinee_enum_unwrap_retains",
+        """
+        module main;
+        import std.string;
+
+        enum Value {
+            String(s: string);
+            OptString(s: string?);
+        }
+
+        func get_opt_value(v: Value) -> Value? {
+            match (v) {
+                OptString(x) => {
+                    if (x == null) {
+                        return null;
+                    }
+                    return String(x as string);
+                }
+                _ => { return v; }
+            }
+        }
+
+        func main() -> int {
+            let unwrapped = get_opt_value(OptString(concat_s("o", "k") as string?));
+            if (unwrapped == null) {
+                return 1;
+            }
+            match (unwrapped as Value) {
+                String(s) => { return 0; }
+                _ => { return 2; }
+            }
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [
+            ("retain", "retain", "1", "2"),
+            ("retain", "retain", "2", "3"),
+            ("release", "keep", "3", "2"),
+            ("release", "keep", "2", "1"),
+            ("release", "free", "1", "0"),
+        ],
+        "enum scrutinee ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
 def test_null_optional_no_heap_release(artifact_dir: Path) -> None:
     """A null optional string must not emit heap release events."""
 
@@ -1297,6 +1385,8 @@ def main() -> int:
         test_struct_heap_string_field_drop,
         test_enum_string_variant_cleanup,
         test_optional_string_cleanup,
+        test_case_scrutinee_unwrap_retains,
+        test_match_scrutinee_enum_unwrap_retains,
         test_null_optional_no_heap_release,
         test_borrowed_param_return_retains,
         test_borrowed_param_return_with_cleanup_retains,

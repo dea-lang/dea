@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module std_types_opt_string_main;
+
+import std.string;
+import std.types;
+
+func main() -> int {
+    let unwrapped = get_opt_value(OptString(concat_s("o", "k") as string?));
+    if (unwrapped == null) {
+        return 1;
+    }
+
+    match (unwrapped as Value) {
+        String(s) => {
+            if (s == "ok") {
+                return 0;
+            }
+            return 2;
+        }
+        _ => { return 3; }
+    }
+}

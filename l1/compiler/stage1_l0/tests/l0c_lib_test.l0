@@ -528,6 +528,21 @@ func test_run_optional_struct_field_order_builds() {
 }
 
 /**
+ * Tests `std.types` optional-string unwrap through a value-match scrutinee.
+ */
+func test_run_std_types_opt_string_builds() {
+    with (let argv = vs_create(8) => vs_free(argv)) {
+        vs_push(argv, "--run");
+        vs_push(argv, "-P");
+        vs_push(argv, fixture_root());
+        vs_push(argv, "std_types_opt_string_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "std.types optional-string unwrap should retain the match scrutinee correctly");
+    }
+}
+
+/**
  * Tests string relational execution in `--run --keep-c` mode.
  */
 func test_run_string_relational_build_and_keep_c() {
@@ -935,6 +950,7 @@ func main() {
     test_run_pointer_identity_build_and_keep_c();
     test_run_nullable_identity_build_and_keep_c();
     test_run_optional_struct_field_order_builds();
+    test_run_std_types_opt_string_builds();
     test_run_string_relational_build_and_keep_c();
     test_run_const_build_and_keep_c();
     test_run_nonconstant_top_level_let_build_and_keep_c();

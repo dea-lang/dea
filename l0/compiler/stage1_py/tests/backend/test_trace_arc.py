@@ -247,7 +247,96 @@ def test_trace_arc_discarded_concat_freed(
 
 
 # ---------------------------------------------------------------------------
-# F – Struct with static string field drop
+# F – Unwrap-cast scrutinee copies retain correctly
+# ---------------------------------------------------------------------------
+
+
+def test_trace_arc_case_scrutinee_unwrap_retains(
+    analyze_single, compile_and_run, tmp_path
+):
+    """`case (opt as string)` must retain `_scrutinee` before later cleanup."""
+    ok, _stdout, _stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            let opt: string? = concat_s("o", "k") as string?;
+            case (opt as string) {
+                "ok" => { return 0; }
+                else { return 1; }
+            }
+        }
+        """,
+    )
+    assert ok, _stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("retain", "retain", "1", "2"),
+        ("release", "keep", "2", "1"),
+        ("release", "free", "1", "0"),
+    ], f"unexpected case scrutinee ARC sequence: {heap!r}"
+
+
+def test_trace_arc_match_scrutinee_enum_unwrap_retains(
+    analyze_single, compile_and_run, tmp_path
+):
+    """`match (value? as Value)` must retain the string-bearing scrutinee copy."""
+    ok, _stdout, _stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        enum Value {
+            String(s: string);
+            OptString(s: string?);
+        }
+
+        func get_opt_value(v: Value) -> Value? {
+            match (v) {
+                OptString(x) => {
+                    if (x == null) {
+                        return null;
+                    }
+                    return String(x as string);
+                }
+                _ => { return v; }
+            }
+        }
+
+        func main() -> int {
+            let unwrapped = get_opt_value(OptString(concat_s("o", "k") as string?));
+            if (unwrapped == null) {
+                return 1;
+            }
+            match (unwrapped as Value) {
+                String(s) => { return 0; }
+                _ => { return 2; }
+            }
+        }
+        """,
+    )
+    assert ok, _stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("retain", "retain", "1", "2"),
+        ("retain", "retain", "2", "3"),
+        ("release", "keep", "3", "2"),
+        ("release", "keep", "2", "1"),
+        ("release", "free", "1", "0"),
+    ], f"unexpected enum scrutinee ARC sequence: {heap!r}"
+
+
+# ---------------------------------------------------------------------------
+# G – Struct with static string field drop
 # ---------------------------------------------------------------------------
 
 
