@@ -36,11 +36,12 @@ initiatives/NNNN-short-slug.md
 ```
 
 Numbers are assigned sequentially in commit order; gaps are tolerated and never reused. Slugs should identify the
-initiative from the filename alone (`0001-separate-compilation-and-c-ffi.md`, not `0001-compiler.md`).
+initiative from the filename alone (`0001-separate-compilation-and-linking.md`, not `0001-compiler.md`).
 
-Each initiative document carries the standard work-document metadata block (Date, Status, Kind: Initiative) consistent
-with the plan-template convention. As phases become actionable, link the spawned `plans/<kind>/<slug>.md` entries from
-the relevant phase section in the initiative, and link back from each plan to its parent initiative.
+Each initiative document carries the standard work-document metadata block (`Version`, `Status`, `Kind: Initiative`).
+For initiatives, `Version: YYYY-MM-DD` is the last substantive edit date, not the creation date. As phases become
+actionable, link the spawned `plans/<kind>/<slug>.md` entries from the relevant phase section in the initiative, and
+link back from each plan to its parent initiative.
 
 When an initiative is opened, link it from the "Active initiatives" section of
 [`l1/docs/roadmap.md`](../docs/roadmap.md). When it is closed, move the file into `initiatives/closed/` and move its

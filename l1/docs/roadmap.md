@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-04-23
+Version: 2026-04-24
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -107,8 +107,12 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active initiatives
 
-- Initiative [0001-separate-compilation-and-c-ffi](../work/initiatives/0001-separate-compilation-and-c-ffi.md) sequences
-  separate compilation, a real runtime library, external linking, and full C FFI.
+- Initiative [0001-separate-compilation-and-linking](../work/initiatives/0001-separate-compilation-and-linking.md)
+  covers separate compilation, interface verification, and external-library linking.
+- Initiative [0002-runtime-static-library](../work/initiatives/0002-runtime-static-library.md) moves the copied L1
+  runtime from header-only inclusion to real runtime archives plus a public header surface.
+- Initiative [0003-c-ffi](../work/initiatives/0003-c-ffi.md) adds the typed C boundary: `extern "C"` declarations,
+  `cstr`, and the closed FFI-safe surface.
 
 ## Active standalone plans
 
@@ -122,12 +126,38 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   [2026-04-22-string-concatenation-operator-noref](../work/plans/features/2026-04-22-string-concatenation-operator-noref.md)
   adds the first `string + string` concatenation plan and ARC result-ownership contract.
 - Feature [2026-04-22-variadic-functions-noref](../work/plans/features/2026-04-22-variadic-functions-noref.md) scopes
-  variadic support to L1-defined functions and leaves C variadic FFI under Initiative `0001`.
+  variadic support to L1-defined functions and leaves C variadic FFI under Initiative `0003`.
 - Feature [2026-04-22-named-arguments-noref](../work/plans/features/2026-04-22-named-arguments-noref.md) adds
   `name: value` call-site arguments for functions and constructors.
 - Feature
   [2026-04-22-anonymous-embedded-struct-members-noref](../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md)
   defines `_ : StructType` as a single first-position anonymous embedded struct member with promoted field access.
+- Feature
+  [2026-04-24-export-manifests-and-aliased-imports-noref](../work/plans/features/2026-04-24-export-manifests-and-aliased-imports-noref.md)
+  adds module-level export manifests plus aliased/selective import resolution for the separate-compilation initiative.
+- Feature
+  [2026-04-24-lbi-symbol-mangling-and-linkage-noref](../work/plans/features/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md)
+  adopts `__dea...` LBI emitted names and export-driven backend linkage.
+- Feature
+  [2026-04-24-module-interface-emission-noref](../work/plans/features/2026-04-24-module-interface-emission-noref.md)
+  introduces deterministic textual `.l1m` interface emission and loading.
+- Refactor
+  [2026-04-24-runtime-static-library-split-noref](../work/plans/refactors/2026-04-24-runtime-static-library-split-noref.md)
+  moves the copied L1 runtime from header-only inclusion to real runtime archives.
+- Feature
+  [2026-04-24-separate-compilation-driver-surface-noref](../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md)
+  adds `-c`, `-I`, and the compile-orchestration driver surface for separate compilation.
+- Feature
+  [2026-04-24-interface-fingerprints-and-object-metadata-noref](../work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md)
+  adds `.l1m` fingerprints, consumer verification, and provider-object metadata checks.
+- Feature
+  [2026-04-24-multi-cu-initialization-and-link-order-noref](../work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md)
+  adapts `_dea_init` ordering and executable-wrapper initialization to the multi-CU build model.
+- Feature
+  [2026-04-24-external-library-linking-cli-noref](../work/plans/features/2026-04-24-external-library-linking-cli-noref.md)
+  adds `-l`, `-L`, `--rpath`, and `--link-arg` as the external-library linking surface.
+- Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref](../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md)
+  adds `extern "C"` declarations, `cstr`, and the typed non-variadic C boundary.
 
 ## Backlog
 
@@ -137,8 +167,12 @@ surface.
 
 ### Language core
 
-- Separate compilation, runtime-library split, external linking, and C FFI, including C boundary string design, tracked
-  by Initiative [0001-separate-compilation-and-c-ffi](../work/initiatives/0001-separate-compilation-and-c-ffi.md).
+- Separate compilation, interface verification, and external-library linking are tracked by Initiative
+  [0001-separate-compilation-and-linking](../work/initiatives/0001-separate-compilation-and-linking.md).
+- Runtime-library split from header-only inclusion to real archives is tracked by Initiative
+  [0002-runtime-static-library](../work/initiatives/0002-runtime-static-library.md).
+- Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative
+  [0003-c-ffi](../work/initiatives/0003-c-ffi.md).
 - String operators: `==`, `!=`, `<`, `<=`, `>`, and `>=` now compare `string` values by content bytes through
   `rt_string_equals` and `rt_string_compare`, consistent with `case`-over-string lowering, `std.string::eq_s`, and
   `std.string::cmp_s`. String concatenation via `+` is tracked by Feature
@@ -146,8 +180,7 @@ surface.
   which is intended to settle the ARC result-ownership design.
 - Varargs are split explicitly: L1-defined variadic functions are tracked by Feature
   [2026-04-22-variadic-functions-noref](../work/plans/features/2026-04-22-variadic-functions-noref.md), while C variadic
-  FFI remains part of Initiative
-  [0001-separate-compilation-and-c-ffi](../work/initiatives/0001-separate-compilation-and-c-ffi.md).
+  FFI remains part of Initiative [0003-c-ffi](../work/initiatives/0003-c-ffi.md).
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
 - Typed arrays, buffers, shared buffers, and slices as general language features. The current `std.array` / `std.vector`

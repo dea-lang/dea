@@ -27,7 +27,7 @@
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-c-ffi.md`
+  - `l1/work/initiatives/0003-c-ffi.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="parser_test expr_types_test"`
 
@@ -35,7 +35,7 @@
 
 This completed plan introduced first-class function pointer type syntax, typing, C typedef emission, indirect calls, and
 runtime coverage. Functions can now be stored, passed, compared by identity when signatures match, and called
-indirectly, giving Initiative 0001 a typed callback surface for later C FFI work.
+indirectly, giving Initiative 0003 a typed callback surface for later C FFI work.
 
 ## Completion Notes
 
@@ -55,7 +55,7 @@ indirectly, giving Initiative 0001 a typed callback surface for later C FFI work
    pointer.
 3. The C emitter generates direct calls to named C functions; there is no indirect-call codegen path.
 4. `sys.unsafe` and the existing `dea_*` ABI do not currently surface any function-pointer types at the ABI boundary.
-5. Initiative 0001 expects a typed function pointer surface for C callback interop; this plan is the dedicated
+5. Initiative 0003 expects a typed function pointer surface for C callback interop; this plan is the dedicated
    language-core feature that the initiative's FFI phases can rely on.
 
 ## Defaults Chosen
@@ -82,7 +82,7 @@ indirectly, giving Initiative 0001 a typed callback surface for later C FFI work
 1. Parse and represent function pointer types in the type system.
 2. Type-check function-pointer values, calls, and equality/nullability.
 3. Emit function pointer values, indirect calls, and type aliases/typedefs in the C backend.
-4. Provide a clean handoff to Initiative 0001 so C FFI can expose and consume callback types without further language
+4. Provide a clean handoff to Initiative 0003 so C FFI can expose and consume callback types without further language
    changes.
 
 ## Implementation Phases
@@ -124,8 +124,8 @@ In `backend.l0` / `c_emitter.l0`:
 
 ### Phase 5: FFI handoff
 
-Coordinate with `l1/work/initiatives/0001-separate-compilation-and-c-ffi.md` on which phase of the initiative will first
-consume this surface. Do not implement FFI-specific plumbing in this plan; only leave a clean landing surface.
+Coordinate with Initiative `0003-c-ffi` on which phase of the initiative will first consume this surface. Do not
+implement FFI-specific plumbing in this plan; only leave a clean landing surface.
 
 ### Phase 6: Regression coverage
 
@@ -143,7 +143,7 @@ Add tests in:
 - variance or subtyping between function pointer types
 - typed method pointers, bound receivers, or trait-object-style dispatch
 - C variadic function pointers (tracked under the varargs backlog item)
-- full FFI surface (owned by Initiative 0001)
+- full FFI surface (owned by Initiative 0003)
 
 ## Verification Criteria
 

@@ -26,7 +26,7 @@
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-c-ffi.md`
+  - `l1/work/initiatives/0003-c-ffi.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: None
 
@@ -34,8 +34,7 @@
 
 The roadmap currently groups two different concerns under "Varargs": language-level variadic functions written in L1,
 and C variadic FFI at the `extern func` boundary. This plan intentionally covers only the first half: defining, calling,
-and lowering L1 variadic functions. C variadic FFI remains part of Initiative
-`l1/work/initiatives/0001-separate-compilation-and-c-ffi.md`.
+and lowering L1 variadic functions. C variadic FFI remains part of Initiative `0003-c-ffi`.
 
 This split keeps the language-core work reviewable and avoids entangling pack semantics with FFI-safe type rules,
 calling-convention edge cases, and `va_list`-style C interop. The standalone plan should leave a clean handoff to the
@@ -104,7 +103,7 @@ if the chosen pack contract makes it straightforward; otherwise it should be def
 
 1. Update `l1/docs/reference/design-decisions.md` with the final variadic syntax and pack rules.
 2. Update `l1/docs/roadmap.md` so the backlog distinguishes this standalone plan from the still-open C variadic FFI work
-   under Initiative `0001-separate-compilation-and-c-ffi`.
+   under Initiative `0003-c-ffi`.
 
 ## Diagnostics
 
