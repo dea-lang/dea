@@ -53,8 +53,9 @@ external-library work.
 1. The public runtime header becomes a declaration surface, not an implementation body dump.
 2. Runtime code moves into one normal archive and one traced archive: `libdea_rt.a` and `libdea_rt_traced.a`.
 3. Trace flag names remain user-facing as today, but archive selection moves into the build driver.
-4. `dea_rt.h` and `dea_siphash.h` are the target public include names unless the implementation phase proves a short
-   compatibility bridge is necessary.
+4. `dea_rt.h` is the public include name and replaces `l1_runtime.h` immediately; no compatibility bridge.
+   `dea_siphash.h` stays as a distinct internal-only vendored helper, included only by runtime `.c` translation units
+   and not copied to `build/dea/include/`. Anchored in Initiative 0002 §Resolved decisions.
 5. This is a behavior-preserving refactor; it does not expand the L1 language surface.
 
 ## Goal
@@ -74,16 +75,18 @@ Refactor the copied runtime tree into:
 - subsystem `.c` files,
 - internal-only helpers that stay `static` inside implementation files.
 
-This phase should also settle whether `dea_siphash.h` remains distinct or folds into the same public/private split.
+`dea_siphash.h` stays as a distinct internal-only vendored helper, per the closed answer in Initiative 0002 §Resolved
+decisions. It is included only by runtime `.c` translation units and is not part of the public install layout.
 
-Proposed layout sketch (final names and subsystem decomposition are the scope of this plan's Phase 1 work; shown here so
-reviewers can picture the split):
+Proposed layout sketch (final subsystem decomposition is the scope of this plan's Phase 1 work; shown here so reviewers
+can picture the split):
 
 ```
 compiler/shared/runtime/
     include/
         dea_rt.h          (public prototypes + type definitions + macros)
-        dea_siphash.h     (internal helper header, retained or folded per Phase 1 decision)
+    internal/
+        dea_siphash.h     (internal-only vendored helper, included only by runtime .c)
     src/
         dea_rt_string.c
         dea_rt_io.c
@@ -99,7 +102,6 @@ build/dea/lib/
 
 build/dea/include/
     dea_rt.h
-    dea_siphash.h
 ```
 
 Truly internal helpers stay `static` inside their respective `.c` file and are not surfaced through the public header.

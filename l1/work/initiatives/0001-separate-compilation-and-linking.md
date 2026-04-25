@@ -137,6 +137,37 @@ the `string -> cstr` reinterpretation contract.
 Moved to [Initiative 0002 - L1 Runtime Library](0002-runtime-static-library.md). Anchors the `extern func rt_foo`
 resolution model after the runtime split, the trace-archive selection, and the public header layout.
 
+### 0.6 Fingerprint algorithm and object metadata embedding
+
+The `.l1m` fingerprint and the matching provider/consumer object-embedded fingerprint records share a single algorithm
+and a single embedding strategy:
+
+- **Algorithm:** SipHash-1-3 from the shared runtime
+  ([`l1/compiler/shared/runtime/dea_siphash.h`](../../compiler/shared/runtime/dea_siphash.h)). The runtime already
+  exposes `siphash13(...)` with a 64-bit tag and is also the L0 oracle, so Stage 2 inherits the same symbol when it is
+  built on top of the shared runtime.
+- **Keying discipline:** a fixed, compile-time-constant 16-byte fingerprint key, distinct from the runtime's randomized
+  hash-flooding key. The constant is part of the LBI ABI and is stable across stages. The exact key bytes are an
+  implementation detail of the spawned fingerprint plan and are recorded in
+  [`l1/docs/specs/compiler/abi.md`](../../docs/specs/compiler/abi.md) once chosen.
+- **Digest size and encoding:** 64-bit digest. Encoded as 16 lowercase hex digits in `.l1m` (`fingerprint "<hash>";`)
+  and embedded as 8 raw bytes in object metadata.
+- **Object embedding:** every per-module object file emits two portable C99 `const uint8_t` arrays with mangled names
+  (one for the producer's exported fingerprint, one for the consumer's
+  `(imported module, expected dependency fingerprint)` records). Both arrays are referenced from the module's
+  `_dea_init` so the platform linker's dead-strip pass cannot remove them. The driver discovers the records via
+  symbol-table lookup, which is the same mechanism every supported object format already exposes (ELF, Mach-O, PE/COFF)
+  and is also `tcc`-compatible.
+
+The threat model is build-time staleness and corruption, not adversaries; cryptographic strength (BLAKE3, SHA-256) is
+not required and would only add bootstrap-vendoring cost. Custom object sections were rejected because they require
+per-format emitter and reader paths plus quirky compiler attributes that `tcc` does not fully support.
+
+Sub-choices that remain implementation details, owned by
+[`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`](../plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md):
+the exact 16-byte key constant, the on-disk record layout (small magic + version prefix + flat little-endian fields is
+the expected default), the exact symbol-name mangling, and the canonicalization rules over the public surface.
+
 ## Phase 2 - Separate compilation of L1 CUs (Goal 1)
 
 > Phase numbers are kept aligned with the original four-phase numbering in the spawned plans (Phase 2.a/2.b/2.c, Phase
@@ -224,6 +255,10 @@ export manifest itself). Verification is explicitly tiered:
    verifies that every consumer's recorded dependency fingerprint matches the provider object's embedded fingerprint
    before invoking the platform linker.
 
+The fingerprint algorithm and the object-embedding strategy are anchored in §0.6. In short: SipHash-1-3 with a fixed
+key, 64-bit digest, embedded in each `.o` as portable C99 `const uint8_t` arrays with mangled names, anchored against
+dead-strip from the module's `_dea_init`, and discovered by the driver via symbol-table lookup.
+
 This replaces any per-symbol ABI hash scheme. The diagnostic goal is a clean stale-interface or stale-object failure
 instead of undefined-symbol noise from the platform linker.
 
@@ -243,10 +278,13 @@ This is stricter than a whole-program identity check and a real diagnostic win: 
 
 ### 2e. Diagnostic surface
 
-Module/interface and link-driver failures should first be mapped onto the existing shared diagnostic families where they
-fit: `PAR-*` for interface-file syntax, `SIG-*` / `TYP-*` for semantic incompatibilities, `DRV-*` for source/module
-discovery, and `L1C-*` for build/link-driver execution errors. New `MOD-*` or `LNK-*` families should be introduced only
-if a phase plan proves that the existing family split would make user diagnostics or parity policy materially worse.
+Module/interface and link-driver failures map onto the existing shared diagnostic families: `PAR-*` for interface-file
+syntax, `RES-*` for export-manifest and selective-import name resolution, `SIG-*` / `TYP-*` for semantic
+incompatibilities (including fingerprint and public-surface mismatches), `DRV-*` for source/module discovery, and
+`L1C-*` for build/link-driver execution errors (including provider-object metadata and link-time verification failures).
+New `MOD-*` or `LNK-*` families are introduced only if a phase plan proves that the existing family split would make
+user diagnostics or Stage 1 / Stage 2 parity policy materially worse. This is the closed answer to the diagnostic-family
+open question; the catalog's organizing axis stays "what compiler phase noticed it" rather than mixing in a topic axis.
 
 Concrete codes are registered in
 [`docs/specs/compiler/diagnostic-code-catalog.md`](../../../docs/specs/compiler/diagnostic-code-catalog.md) in the same
@@ -284,8 +322,13 @@ FFI workflow, so the core compiler does not need a raw C-header include-path fla
 
 ### Manifest support
 
-Deferred. A per-module or per-package manifest file declaring required libraries is a natural fit once a
-package-management story exists. Until then, CLI flags are sufficient.
+Deferred to the future package-management story. External library link information is user-side via CLI flags or
+build-tool configuration (Makefile, IDE task, shell wrapper). No per-module `[link]` sidecar, no `Dea.toml`, and no
+other in-tree manifest format is introduced by this initiative. `--link-arg=<flag>` is the universal escape hatch for
+any platform-specific oddity without committing to a schema.
+
+[Initiative 0003 - C FFI](0003-c-ffi.md) may revisit this if a binding-module-local hint mechanism turns out to be
+necessary there; even then, prefer extending CLI ergonomics over introducing a new file format.
 
 ### Documentation
 
@@ -369,15 +412,18 @@ Phases land with corresponding doc updates in the same change:
 The shared diagnostic catalog is concrete-code based; it does not currently carry placeholder reservations. This
 initiative therefore does not reserve fake `MOD-####` or `LNK-####` rows up front.
 
-Each phase plan must classify new diagnostics against the existing families first:
+Each phase plan classifies new diagnostics against the existing phase-based families:
 
 - `PAR-*` for interface-file syntax.
-- `SIG-*` / `TYP-*` for interface and ABI type/signature failures.
+- `RES-*` for export-manifest and selective-import name resolution.
+- `SIG-*` / `TYP-*` for interface and ABI type/signature failures, including fingerprint and public-surface
+  compatibility mismatches.
 - `DRV-*` for module/interface discovery.
-- `L1C-*` for build/link-driver execution failures.
+- `L1C-*` for build/link-driver execution failures, including provider-object metadata and link-time verification
+  failures.
 
-New `MOD-*` or `LNK-*` families remain available if a concrete implementation phase proves a family boundary is needed.
-In that case, register concrete codes in
+This is the closed answer to the diagnostic-family open question. New `MOD-*` or `LNK-*` families remain available only
+if a concrete implementation phase proves a family boundary is needed; in that case, register concrete codes in
 [`docs/specs/compiler/diagnostic-code-catalog.md`](../../../docs/specs/compiler/diagnostic-code-catalog.md) in the same
 change that implements their diagnostics.
 
@@ -386,21 +432,33 @@ change that implements their diagnostics.
 L0 is unaffected by this initiative. All changes land in `l1/`; L0's header-only runtime and single-CU model stay as-is
 per the `1.0.0` scope boundary.
 
-## Open questions
+## Resolved decisions
 
-These remain open after the decisions above and should be resolved in the phase plans:
+The four originally-open questions are closed. Each decision is anchored elsewhere in this initiative; this section
+summarizes the chosen answer and points at the owning section.
 
-1. **Fingerprint hash algorithm.** SipHash-1-3 (already in the runtime), BLAKE3 (cryptographic, larger dependency), or a
-   deterministic content hash over the canonicalized interface text?
-2. **Object metadata format.** Use a custom section everywhere possible, a generated const symbol everywhere for
-   portability, or a platform-specific hybrid for embedded fingerprints in provider `.o` files?
-3. **Diagnostic family split.** Keep module/link diagnostics in existing families, or introduce concrete `MOD-*` or
-   `LNK-*` families once implementation pressure proves they are clearer?
-4. **Manifest format for external libraries.** Defer entirely until package management exists, or accept a minimal
-   `[link]` section in a per-module sidecar file early?
+1. **Fingerprint hash algorithm:** SipHash-1-3 from the shared runtime, keyed with a fixed compile-time-constant 16-byte
+   fingerprint key, 64-bit digest, encoded as 16 lowercase hex digits in `.l1m` and 8 raw bytes in object metadata.
+   Cryptographic strength is not required for the build-time staleness threat model. Anchored in §0.6; sub-choices
+   (exact key constant, encoding details, canonicalization rules) are owned by
+   [`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`](../plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md).
+2. **Object metadata format:** portable C99 `const uint8_t` arrays with mangled names, anchored against linker
+   dead-strip from each module's `_dea_init`. Driver-side discovery uses symbol-table lookup, which works uniformly
+   across ELF, Mach-O, and PE/COFF and stays compatible with `tcc`. Custom object sections were rejected because they
+   force per-format emitter and reader paths plus quirky compiler attributes. Anchored in §0.6 and §2c; record layout
+   and naming details are owned by the same spawned phase plan.
+3. **Diagnostic family split:** keep the existing phase-based families (`PAR-*`, `RES-*`, `SIG-*`, `TYP-*`, `DRV-*`,
+   `L1C-*`). New `MOD-*` or `LNK-*` families are introduced only if a concrete phase plan demonstrates the existing
+   split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. The provisional reservations recorded
+   in the spawned fingerprint plan (`SIG-0240`–`SIG-0259`, `L1C-2050`–`L1C-2069`) stand and must be re-checked against
+   the live catalog at implementation time. Anchored in §2e and §Diagnostic-code registration.
+4. **External-library manifest format:** deferred to the future package-management story. Phase 3 ships with CLI flags
+   only (`-l`, `-L`, `--rpath`, `--link-arg`, plus `-I` for interface search). No per-module `[link]` sidecar, no
+   `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit this if FFI bindings prove a
+   binding-module-local hint mechanism is necessary, in which case extending CLI ergonomics is preferred over a new file
+   format. Anchored in §Phase 3 / Manifest support.
 
-Each open question gets a short design note under `l1/docs/specs/compiler/` once decided. FFI-specific open questions
-live in [Initiative 0003](0003-c-ffi.md); runtime-delivery open questions live in
+FFI-specific open questions live in [Initiative 0003](0003-c-ffi.md); runtime-delivery open questions live in
 [Initiative 0002](0002-runtime-static-library.md).
 
 ## Spawned plans

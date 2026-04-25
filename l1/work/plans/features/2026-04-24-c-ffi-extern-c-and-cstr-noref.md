@@ -71,8 +71,12 @@ strings.
 6. The conversion entrypoint lives as a boundary-level builtin or `sys.*` surface; `std.string` is user-facing and is
    not the right home for a runtime-lowering helper.
 7. Ordinary `string` does not cross the C boundary unwrapped.
-8. This plan focuses on the non-variadic typed core. If C variadic interop proves too coupled to land cleanly here, it
-   may follow as a dedicated follow-up under Initiative `0003`.
+8. This plan focuses on the non-variadic typed core. C variadic FFI is a separate sibling tranche under Initiative
+   `0003` per its §Resolved decisions; it does not land here regardless of how cleanly it would couple, so the main
+   `extern "C"` surface ships independently of platform-specific variadic ABI work.
+9. Declarations inside `extern "C"` blocks support an optional per-symbol link-name override. The exact syntax (trailing
+   `= "..."`, attribute-style, or prefix annotation) is settled in Phase 1 of this plan; the closed answer at the
+   initiative level (Initiative 0003 §Resolved decisions) is that the override exists in v1.
 
 ## Goal
 
@@ -92,6 +96,10 @@ Extend parsing and AST representation for `extern "C"` blocks and the declaratio
 - opaque types,
 - enums,
 - extern globals.
+
+Phase 1 also pins the syntax for the optional per-symbol link-name override (closed at the initiative level; see
+Initiative 0003 §Resolved decisions). Validation must reject overrides that are not valid C identifiers and overrides
+that collide with another link-visible symbol in the same link set.
 
 ### Phase 2: Signature and type rules
 

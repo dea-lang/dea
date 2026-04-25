@@ -46,16 +46,22 @@ This plan owns that contract end to end.
 ## Defaults Chosen
 
 1. The hash input is the canonicalized public surface described by Initiative `0001`, not a per-symbol ABI hash scheme.
-2. The `.l1m` file carries the module fingerprint text directly as `fingerprint "<hash>";`.
-3. Consumers re-hash parsed interface declarations and reject mismatches immediately.
-4. Provider objects embed their own exported fingerprint so the driver can verify importers against the actual object it
+2. The hash algorithm is SipHash-1-3 from the shared runtime (`l1/compiler/shared/runtime/dea_siphash.h`,
+   `siphash13(...)`), keyed with a fixed compile-time-constant 16-byte fingerprint key distinct from the runtime's
+   randomized hash-flooding key. 64-bit digest. This decision is closed at the initiative level (Initiative 0001 §0.6).
+3. The `.l1m` file carries the module fingerprint text directly as `fingerprint "<hash>";`, encoded as 16 lowercase hex
+   digits.
+4. Consumers re-hash parsed interface declarations and reject mismatches immediately.
+5. Provider objects embed their own exported fingerprint so the driver can verify importers against the actual object it
    is about to link.
-5. Each consumer object embeds, alongside its own exported fingerprint, a list of
+6. Each consumer object embeds, alongside its own exported fingerprint, a list of
    `(imported module, expected dependency fingerprint)` records computed at compile time from the `.l1m` files the
    consumer read. Driver-facing verification reads from object files only; in-memory driver state is not the source of
    truth, so verification is robust across separate `--build` and `--link` invocations.
-6. The metadata representation may be platform-specific internally, but the driver-facing verification behavior must be
-   deterministic and portable.
+7. The object-embedded metadata is emitted as portable C99 `const uint8_t` arrays with mangled names, anchored against
+   linker dead-strip by being referenced from the module's `_dea_init`. Driver-side discovery uses symbol-table lookup
+   on ELF / Mach-O / PE-COFF, which is also `tcc`-compatible. Custom object sections and platform-specific hybrids were
+   rejected at the initiative level (Initiative 0001 §0.6).
 
 ## Goal
 
@@ -66,11 +72,19 @@ This plan owns that contract end to end.
 
 ## Implementation Phases
 
-### Phase 1: Canonical hash input and algorithm choice
+### Phase 1: Canonical hash input and key selection
 
-Settle the exact canonical hash input and pick the concrete fingerprint algorithm for Stage 1. The implementation should
-make the canonicalization boundary explicit so later Stage 2 parity can validate the same surface without copying
-incidental Stage 1 data structures.
+Settle the exact canonical hash input and the fixed 16-byte fingerprint key constant. The algorithm itself is closed
+(SipHash-1-3, see Initiative 0001 §0.6); Phase 1 work is therefore:
+
+- Define the canonicalization rules over the public surface (sorted symbol order, normalized whitespace, struct/enum
+  layout serialization, exported `const` literal encoding, exported top-level `let` type encoding) and make the
+  canonicalization boundary explicit so Stage 2 parity can validate the same surface without copying incidental Stage 1
+  data structures.
+- Choose the fixed fingerprint key constant and record it in
+  [`l1/docs/specs/compiler/abi.md`](../../../docs/specs/compiler/abi.md) once stable.
+- Choose the on-disk record layout for the object-embedded metadata (small magic + version prefix + flat little-endian
+  fields is the expected default).
 
 ### Phase 2: Producer and consumer verification
 

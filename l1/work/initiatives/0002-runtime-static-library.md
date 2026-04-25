@@ -57,18 +57,19 @@ external. That changes how `extern func rt_foo(...)` resolves:
 
 - **Today:** the L1 declaration matches an inline `static` definition pulled in via `#include`.
 - **After Phase 1:** the L1 declaration matches an `extern` declaration in a slim public header, backed by a runtime
-  archive. The proposed target names are `dea_rt.h`, `dea_siphash.h`, `libdea_rt.a`, and `libdea_rt_traced.a`, but the
-  Phase 1 plan must verify whether those names should replace or coexist temporarily with the current `l1_runtime.h`
-  header name and any temporary artifact-name compatibility bridge.
+  archive. The canonical names are `dea_rt.h` (public header), `libdea_rt.a` (runtime archive), and `libdea_rt_traced.a`
+  (traced runtime archive). `dea_rt.h` replaces `l1_runtime.h` immediately; no compatibility bridge. See §Resolved
+  decisions for the closed answer covering all three facets (rename, `dea_siphash.h` fate, and archive naming).
 
 This is a header-vs.-prototype split with no language semantics change. Trace builds ship as a separate archive
 (`libdea_rt_traced.a`) rather than through runtime-toggleable tracing so the current behavior stays intact.
 
 **Aside - `dea_siphash.h`:** this helper is a vendored header-only SipHash implementation. An earlier (retracted)
-direction considered hosting it in a shared runtime library between L0 and L1. With the Phase 1 runtime split, a more
-natural future evolution is exposing SipHash through a dedicated module that produces its own shared object and
-participates in the C FFI surface defined in [Initiative 0003](0003-c-ffi.md). Not urgent, but worth flagging so this
-initiative does not lock SipHash into a shape that later FFI work would have to reopen.
+direction considered hosting it in a shared runtime library between L0 and L1. The closed answer for this initiative
+keeps `dea_siphash.h` as a distinct, internal-only header (not folded into `dea_rt.h`, not surfaced through
+`build/dea/include/`). A more natural future evolution is exposing SipHash through a dedicated module that produces its
+own shared object and participates in the C FFI surface defined in [Initiative 0003](0003-c-ffi.md); keeping the header
+distinct now preserves that option.
 
 ## Phase 1 - Runtime as a static library
 
@@ -81,15 +82,17 @@ link-driver pieces in miniature without language semantics moving.
   public macros) plus one or more `.c` files grouped by subsystem: `dea_rt_string.c`, `dea_rt_io.c`, `dea_rt_alloc.c`,
   `dea_rt_hash.c`, `dea_rt_time.c`, `dea_rt_panic.c`, `dea_rt_math.c`. Truly internal helpers stay `static` inside their
   `.c`.
-- Decide whether `dea_siphash.h` stays as a distinct internal helper include or folds into the same runtime-archive
-  split, so L1 does not freeze a new public runtime layout around an unnecessary helper-header boundary.
+- `dea_siphash.h` stays as a distinct internal-only vendored helper after the split: included only by the runtime's own
+  `.c` translation units, not folded into `dea_rt.h`, and not copied to `build/dea/include/`. See §Resolved decisions
+  for the rationale.
 - Trace builds are a second archive, `libdea_rt_traced.a`, compiled with `DEA_TRACE_ARC` and `DEA_TRACE_MEMORY`. The
   user-CU build no longer needs the trace toggles at compile time; the build driver picks the archive. (Trace flag
   *names* on the CLI stay as today.)
 - `make runtime` produces `build/dea/lib/libdea_rt.a`, `build/dea/lib/libdea_rt_traced.a`, and copies headers under
   `build/dea/include/`.
 - Once the L1 install workflow exists, `make install` lays out `$(PREFIX)/lib/libdea_rt*.a`,
-  `$(PREFIX)/include/dea_rt.h`, `$(PREFIX)/include/dea_siphash.h`, plus any other public headers.
+  `$(PREFIX)/include/dea_rt.h`, plus any other public headers. `dea_siphash.h` is not part of the public install
+  surface; it remains internal to the runtime sources.
 - The build driver appends `-I$(L1_HOME)/include -L$(L1_HOME)/lib -ldea_rt` (or `-ldea_rt_traced` when tracing) instead
   of relying on `#include` to inline the runtime. This is a migration of the current `--runtime-include` /
   `L1_RUNTIME_INCLUDE` and `--runtime-lib` / `L1_RUNTIME_LIB` directory plumbing into explicit `libdea_rt*` linkage once
@@ -138,16 +141,30 @@ checked-in manifest) is stable across builds and platforms.
 L0 is unaffected. The runtime split lands in `l1/`'s copy of the runtime tree; L0's header-only runtime stays as-is per
 the `1.0.0` scope boundary.
 
-## Open questions
+## Resolved decisions
 
-These remain open after the decisions above and should be resolved in the phase plan:
+The runtime-artifact-transition open question is closed. The closed answer has three parts:
 
-1. **Runtime artifact transition.** Replace `l1_runtime.h` immediately, decide whether `dea_siphash.h` remains a
-   separate helper header or folds into the same transition, and retire the inherited `libl0runtime.*` placeholder
-   naming at the same time, or carry a short compatibility bridge while the build driver and docs move to `dea_rt.h`,
-   `dea_siphash.h`, and `libdea_rt.*`?
+1. **Header rename: replace immediately.** `l1/compiler/shared/runtime/l1_runtime.h` is renamed to `dea_rt.h` in one
+   coordinated change. There is no `l1_runtime.h` shim; the emitter, tests, docs, and Makefile flip atomically with the
+   rename. L1 is bootstrap-only with no external runtime consumers, so a compatibility bridge would protect no one and
+   would risk lingering as a permanent fixture.
+2. **`dea_siphash.h` stays distinct and internal-only.** It remains a separate vendored helper header, included only by
+   the runtime's own `.c` translation units after the split. It is not folded into `dea_rt.h` and is not copied to
+   `build/dea/include/`. This matches the §0.5 aside's caution against locking SipHash into a shape that
+   [Initiative 0003 - C FFI](0003-c-ffi.md) would have to reopen, and keeps L1's source layout in line with L0's (which
+   also carries `dea_siphash.h` as a distinct file).
+3. **Archive names: `libdea_rt.a` and `libdea_rt_traced.a` are introduced fresh.** No `libl0runtime.*` retirement is
+   needed because no such artifact lives in the L1 tree today; the open question's "inherited placeholder" framing was
+   documentary. Future readers should not look for an artifact that never existed in L1.
 
-Each open question gets a short design note under `l1/docs/specs/compiler/` once decided.
+CLI-flag migration (`--runtime-include` / `--runtime-lib`, `L1_RUNTIME_INCLUDE` / `L1_RUNTIME_LIB`, the `-I` / `-L`
+short aliases) is **out of scope** for this initiative. It is owned by
+[Initiative 0001 - Separate Compilation and External Linking](0001-separate-compilation-and-linking.md) §Phase 3, which
+already commits to retiring the short aliases when `-I` and `-L` are reclaimed for interface and library search.
+
+The implementation of the runtime split itself remains owned by
+[`l1/work/plans/refactors/2026-04-24-runtime-static-library-split-noref.md`](../plans/refactors/2026-04-24-runtime-static-library-split-noref.md).
 
 ## Spawned plans
 
