@@ -59,6 +59,7 @@ PIP_DEPS_CMD = import tomllib,pathlib;\
 	docs \
 	docs-pdf \
 	clean \
+	clean-all \
 	clean-dea-build
 
 help:
@@ -101,6 +102,7 @@ help:
 		'  help               Show this help text.' \
 		'  clean              Remove all repo-local build artifacts under `build/*` (including temporary `dist` trees and archives), temporary test files, and default executables.' \
 		'  clean-dea-build    Remove the repo-local Dea build tree (override with `DEA_BUILD_DIR`, see below).' \
+		'  clean-all          Remove both repo-local build artifacts and the Dea build tree.' \
 		'' \
 		'Variables:' \
 		'  PREFIX=<required>  Install prefix for `install`.' \
@@ -252,6 +254,8 @@ clean:
 
 clean-dea-build:
 	$(PYTHON) ./scripts/gen_dist_tools.py clean-dea-build --dea-build-dir "$(DEA_BUILD_DIR)"
+
+clean-all: clean clean-dea-build
 
 docker:
 	@if [ -z "$(CMD)" ]; then \
