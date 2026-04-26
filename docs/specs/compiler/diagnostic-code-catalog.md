@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-04-23
+Version: 2026-04-26
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -206,6 +206,7 @@ and reuse supplement for applying this registry within L0.
 | `L0C-0016` | `L1C-0016` | All     | Missing type information for the entry `main` function                                                |
 | `L0C-0017` | `L1C-0017` | All     | '--output' is ignored in '--run' mode unless '--keep-c' is set; the executable path remains temporary |
 |            | `L1C-0018` | L1 only | Explicit C compiler option violates the L1 floating-point backend contract                            |
+|            | `L1C-0019` | L1 only | Trace flags under '--gen' require the caller to link or compile against the traced runtime surface    |
 | `L0C-0020` |            | L0 only | Analysis or AST command failed with an exception                                                      |
 | `L0C-0030` |            | L0 only | Entry module not found in compilation unit                                                            |
 | `L0C-0040` | `L1C-0040` | All     | Cannot read an input source file during token dump                                                    |

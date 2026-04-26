@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-04-23
+Version: 2026-04-26
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -30,7 +30,8 @@ The current stack is intentionally layered:
 
 1. L1 language and compiler
 2. L1 stdlib modules under `compiler/shared/l1/stdlib/`
-3. C runtime boundary in `compiler/shared/runtime/l1_runtime.h`
+3. C runtime boundary through the public `compiler/shared/runtime/include/dea_rt.h` surface and the delivered runtime
+   archives under `build/dea/lib/`
 
 This keeps platform-specific behavior concentrated at the runtime boundary instead of leaking into core language
 semantics.

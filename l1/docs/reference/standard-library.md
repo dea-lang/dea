@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-04-19
+Version: 2026-04-26
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -29,9 +29,9 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 +---------------------------------------------------------+
                              |
                              v
-+---------------------------------------------------------+
-|                 C Runtime (l1_runtime.h)                |
-+---------------------------------------------------------+
++------------------------------------------------------------------+
+|          C Runtime (`dea_rt.h` + `libdea_rt*.a`)                 |
++------------------------------------------------------------------+
 ```
 
 ## Module Reference

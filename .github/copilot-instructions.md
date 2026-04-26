@@ -12,6 +12,7 @@ The root `Makefile` is monorepo maintenance only:
 make help
 make venv
 make clean
+make clean-all
 ```
 
 Do not use the root `Makefile` as a dispatcher for level-specific build or test commands. `cd` into the relevant level

@@ -707,9 +707,17 @@ func bd_runtime_include_dir(opts: CliOptions*) -> string? {
         return from_env as string;
     }
 
+    let build_dir = env_get("L1_BUILD_DIR");
+    if (build_dir != null) {
+        return join(build_dir as string, "include");
+    }
+
     let home = env_get("L1_HOME");
     if (home != null) {
-        return join(home as string, "shared/runtime");
+        let prefix_include = join(home as string, "include");
+        if (bd_is_dir(prefix_include)) {
+            return prefix_include;
+        }
     }
     return null;
 }
@@ -724,7 +732,26 @@ func bd_runtime_lib_dir(opts: CliOptions*) -> string? {
     if (opts.runtime_lib != null) {
         return opts.runtime_lib as string;
     }
-    return env_get("L1_RUNTIME_LIB");
+
+    let from_env = env_get("L1_RUNTIME_LIB");
+    if (from_env != null) {
+        return from_env as string;
+    }
+
+    let build_dir = env_get("L1_BUILD_DIR");
+    if (build_dir != null) {
+        return join(build_dir as string, "lib");
+    }
+
+    let home = env_get("L1_HOME");
+    if (home != null) {
+        let prefix_lib = join(home as string, "lib");
+        if (bd_is_dir(prefix_lib)) {
+            return prefix_lib;
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -742,6 +769,134 @@ func bd_validate_runtime_lib(runtime_lib_path: string, diags: DiagCollector*) ->
             "l1c",
             "L1C-0014",
             concat3_s("runtime library path '", runtime_lib_path, "' does not exist or is not a directory"),
+            "",
+            0,
+            0,
+            0,
+            0
+        );
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Return the runtime archive filename selected by the trace flags.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime archive filename.
+ */
+func bd_runtime_archive_filename(opts: CliOptions*) -> string {
+    if (opts.trace_arc || opts.trace_memory) {
+        return "libdea_rt_traced.a";
+    }
+    return "libdea_rt.a";
+}
+
+/**
+ * Return the linker `-l` name selected by the trace flags.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime linker name without `lib` prefix or archive suffix.
+ */
+func bd_runtime_archive_link_name(opts: CliOptions*) -> string {
+    if (opts.trace_arc || opts.trace_memory) {
+        return "dea_rt_traced";
+    }
+    return "dea_rt";
+}
+
+/**
+ * Return the repo-local runtime object paths when they are available.
+ *
+ * TinyCC gets a direct-object link path instead of the official runtime archive.
+ * Initiative 0002 keeps the public archives (`libdea_rt.a` and
+ * `libdea_rt_traced.a`) owned by the platform toolchain. On Darwin, local tcc
+ * 0.9.28rc emits ELF objects while clang/cc emit Mach-O, so either object
+ * format becomes unusable across the toolchain boundary. The repo-local tcc
+ * objects under `$L1_BUILD_DIR/runtime/tcc/{default,traced}/` are therefore the
+ * dedicated tcc link path. On Windows/MSYS2 the carve-out is functionally
+ * redundant because tcc and mingw both emit PE/COFF, but it is harmless and
+ * keeps the cross-platform tcc path simple; do not add a host-OS guard for it.
+ *
+ * @param opts Parsed CLI options.
+ * @param build_dir Repo-local L1 build directory, or `null` when unavailable.
+ * @return Runtime object paths, or `null` when no repo-local build dir is known.
+ */
+func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?) -> VectorString*? {
+    if (build_dir == null) {
+        return null;
+    }
+
+    let variant = "default";
+    if (opts.trace_arc || opts.trace_memory) {
+        variant = "traced";
+    }
+    let object_dir = join(join(join(build_dir as string, "runtime"), "tcc"), variant);
+    let paths = vs_create(8);
+    vs_push(paths, join(object_dir, "dea_rt_panic.o"));
+    vs_push(paths, join(object_dir, "dea_rt_math.o"));
+    vs_push(paths, join(object_dir, "dea_rt_string.o"));
+    vs_push(paths, join(object_dir, "dea_rt_alloc.o"));
+    vs_push(paths, join(object_dir, "dea_rt_io.o"));
+    vs_push(paths, join(object_dir, "dea_rt_hash.o"));
+    vs_push(paths, join(object_dir, "dea_rt_time.o"));
+    return paths;
+}
+
+/**
+ * Return the repo-local runtime object paths from `$L1_BUILD_DIR`.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime object paths, or `null` when no repo-local build dir is known.
+ */
+func bd_runtime_object_paths(opts: CliOptions*) -> VectorString*? {
+    return bd_runtime_object_paths_for_build_dir(opts, env_get("L1_BUILD_DIR"));
+}
+
+/**
+ * Free optional repo-local runtime object paths.
+ *
+ * @param paths Optional vector returned by `bd_runtime_object_paths`.
+ */
+func bd_runtime_object_paths_free(paths: VectorString*?) {
+    if (paths != null) {
+        vs_free(paths as VectorString*);
+    }
+}
+
+/**
+ * Return whether every runtime object path exists.
+ *
+ * @param paths Runtime object paths.
+ * @return `true` when every path exists.
+ */
+func bd_runtime_object_paths_exist(paths: VectorString*) -> bool {
+    for (let i = 0; i < vs_size(paths); i = i + 1) {
+        if (!exists(vs_get(paths, i))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Validate that the selected runtime archive exists.
+ *
+ * @param runtime_lib_path Runtime library directory.
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector for failures.
+ * @return `true` on success.
+ */
+func bd_validate_runtime_archive(runtime_lib_path: string, opts: CliOptions*, diags: DiagCollector*) -> bool {
+    let archive_path = join(runtime_lib_path, bd_runtime_archive_filename(opts));
+    let info = rt_file_info(archive_path);
+    if (!info.exists || !info.is_file) {
+        diag_error(
+            diags,
+            "l1c",
+            "L1C-0015",
+            concat3_s("runtime archive '", archive_path, "' does not exist or is not a file"),
             "",
             0,
             0,
@@ -904,9 +1059,10 @@ func bd_push_output_flags(words: VectorString*, family: string, exe_path: string
  * @param words Command words to extend.
  * @param runtime_lib Runtime library search directory.
  */
-func bd_push_runtime_lib_flags(words: VectorString*, runtime_lib: string) {
+func bd_push_runtime_lib_flags(words: VectorString*, runtime_lib: string, opts: CliOptions*) {
     vs_push(words, "-L");
     vs_push(words, runtime_lib);
+    vs_push(words, concat_s("-l", bd_runtime_archive_link_name(opts)));
 }
 
 /**
@@ -1100,6 +1256,17 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 return 1;
             }
 
+            if (runtime_lib != null && !bd_validate_runtime_archive(runtime_lib as string, opts, cmd_diags)) {
+                dp_print_collector(cmd_diags);
+                analysis_result_free(result);
+                bd_delete_if_present(stdout_path);
+                bd_delete_if_present(stderr_path);
+                if (keep_c_path == null) {
+                    bd_delete_if_present(c_path as string);
+                }
+                return 1;
+            }
+
             vs_push(command_words, compiler as string);
             vs_push(command_words, c_path as string);
             bd_push_output_flags(command_words, family, exe_path);
@@ -1130,7 +1297,20 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             }
 
             if (runtime_lib != null) {
-                bd_push_runtime_lib_flags(command_words, runtime_lib as string);
+                let runtime_objects = bd_runtime_object_paths(opts);
+                if (family == "tcc" && runtime_objects != null &&
+                    bd_runtime_object_paths_exist(runtime_objects as VectorString*)) {
+                    /* See `bd_runtime_object_paths_for_build_dir` for the tcc object-format carve-out. */
+                    log_info(cfg, "Linking repo-local runtime objects for tcc compatibility:");
+                    for (let runtime_i = 0; runtime_i < vs_size(runtime_objects as VectorString*); runtime_i = runtime_i + 1) {
+                        let runtime_object = vs_get(runtime_objects as VectorString*, runtime_i);
+                        log_info(cfg, concat_s("  ", runtime_object));
+                        vs_push(command_words, runtime_object);
+                    }
+                } else {
+                    bd_push_runtime_lib_flags(command_words, runtime_lib as string, opts);
+                }
+                bd_runtime_object_paths_free(runtime_objects);
             }
             log_info(cfg, "Compiling:");
             log_info(cfg, bd_join_display_words(command_words));

@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-04-21
+Version: 2026-04-26
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -58,11 +58,14 @@ Current backend target is a single C translation unit. Top-level `const` and con
 into C storage initializers; non-constant top-level `let` initializers lower as zero/default-initialized storage plus
 hidden per-module init assignments.
 
+For `--build` / `--run`, that generated unit now compiles against `dea_rt.h` and links `libdea_rt.a` or
+`libdea_rt_traced.a` instead of inlining the runtime bodies into the user translation unit.
+
 ## Type Lowering
 
 ### Builtins
 
-- `int` lowers through the runtime integer typedefs in `compiler/shared/runtime/l1_runtime.h`
+- `int` lowers through the runtime integer typedefs in `compiler/shared/runtime/include/dea_rt.h`
 - `byte`, `bool`, and `string` likewise lower through runtime-defined C-facing types
 - `float` lowers to C `float` only when the enforced L1 floating-point contract is satisfied
 - `double` lowers to C `double` only when the enforced L1 floating-point contract is satisfied
@@ -79,8 +82,13 @@ Current L1 prefix policy is:
 The emitter actively mangles user/source names that start with reserved generated/runtime prefixes, including both the
 legacy `l0` families and the current `dea` families, to avoid collisions in generated C.
 
-Generated output now includes the level-local internal helper header `dea_siphash.h`, which is treated as an internal
-implementation detail rather than part of the public L1 ABI.
+Generated output now includes the public runtime header `dea_rt.h`. The internal helper `dea_siphash.h` lives only in
+the compiled runtime implementation and is not part of the generated-C surface or the public L1 ABI.
+
+Runtime artifacts are produced per toolchain: the official archives (`libdea_rt.a` and `libdea_rt_traced.a`) match the
+platform compiler's object format, while tcc additionally builds raw `.o` objects under
+`build/dea/runtime/tcc/{default,traced}/`. When the active C compiler family is tcc, the build driver links those
+objects directly to avoid object-format mismatches such as Darwin tcc ELF objects versus platform Mach-O archives.
 
 ### Floating-point backend contract
 

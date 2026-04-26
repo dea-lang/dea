@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-04-14
+Version: 2026-04-26
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -150,4 +150,4 @@ Primary implementation references:
 - `compiler/shared/l1/stdlib/std/hashmap.l1`
 - `compiler/shared/l1/stdlib/std/hashset.l1`
 - `compiler/shared/l1/stdlib/std/linear_map.l1`
-- `compiler/shared/runtime/l1_runtime.h`
+- `compiler/shared/runtime/include/dea_rt.h`

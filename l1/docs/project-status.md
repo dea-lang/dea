@@ -1,13 +1,14 @@
 # L1 Project Status
 
-Version: 2026-04-24
+Version: 2026-04-26
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
 Dea/L1 is currently in bootstrap status:
 
 - the runnable compiler is `compiler/stage1_l0/`, implemented in Dea/L0
-- the current shared assets are `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/l1_runtime.h`
+- the current shared assets are `compiler/shared/l1/stdlib/` plus the copied runtime sources under
+  `compiler/shared/runtime/`
 - `compiler/stage2_l1/` exists only as a placeholder for a future self-hosted compiler
 
 L0 remains the active release line. The L1 subtree is the current home for bootstrap compiler work, library surface, and
@@ -46,7 +47,9 @@ expressions in first position.
 The current L1 tree includes:
 
 - L1 stdlib modules under `compiler/shared/l1/stdlib/`
-- runtime headers under `compiler/shared/runtime/`
+- runtime sources under `compiler/shared/runtime/`
+- repo-local runtime deliverables under `build/dea/include/dea_rt.h`, `build/dea/include/l1_real.h`,
+  `build/dea/lib/libdea_rt.a`, and `build/dea/lib/libdea_rt_traced.a`
 - the current bootstrap test suite under `compiler/stage1_l0/tests/`
 
 This gives the subtree a complete bootstrap environment without claiming a self-hosted L1 compiler yet.
@@ -87,16 +90,25 @@ The practical local workflow today is:
 make use-dev-stage1
 source build/dea/bin/l1-env.sh
 l1c --version
+make runtime
 make test-stage1
 make test-stage1-trace
 make test-stage1-trace-all
 ```
 
 `make use-dev-stage1` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
-`make test-stage1-trace` runs the default ARC/memory trace suite and skips intentionally slow trace cases such as
-`math_runtime_compile_test`; pass the test name explicitly or use `make test-stage1-trace-all` when that slow trace
-coverage is needed. `make check-examples` adds warning-free latest-stage `--check` coverage for `examples/*.l1`, while
-`make test-all` combines the implementation tests, default ARC/memory trace checks, and example checks.
+`make runtime` rebuilds the repo-local runtime archives and public headers used by `--build` / `--run`. The runtime
+archive compiler is controlled by `L1_RUNTIME_CC` (defaulting to `L1_CC`, then `clang` / `gcc` / `cc`, then `CC` as a
+last resort); run `make clean-runtime runtime L1_RUNTIME_CC=<compiler>` when switching runtime compiler families so
+cached runtime objects are rebuilt, or `make clean-all` for the broader repo-local cleanup. The additional repo-local
+tcc object set used by the build driver for tcc links is controlled by `L1_TCC_OBJ_CC` (defaulting to `tcc`, then
+`TCC`). If no `tcc` is available and no explicit `L1_TCC_OBJ_CC` override is set, `make runtime` prints a notice and
+skips the specialized tcc object build. `make test-stage1-trace` runs the default ARC/memory trace suite and skips
+intentionally slow trace cases such as `math_runtime_compile_test`; pass the test name explicitly or use
+`make test-stage1-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
+latest-stage `--check` coverage for `examples/*.l1`, while `make test-all` combines the implementation tests, default
+ARC/memory trace checks, and example checks. Linux portability is exercised via `make test-docker`, which runs
+`test-all` inside the repo-owned Docker image; run it after runtime, Makefile, or build-driver changes.
 
 Validation is currently centered on:
 
@@ -106,6 +118,7 @@ Validation is currently centered on:
   `math_runtime_compile_test`
 - `make check-examples` for warning-free latest-stage `--check` coverage across `examples/*.l1`
 - `make test-all` as the combined local Stage 1 validation entry point
+- `make test-docker` as the Linux container reference path for runtime/build-driver portability
 - keeping the stdlib/runtime tree usable by the bootstrap compiler
 
 Current Stage 1 validation does not include an end-to-end exact generated-C golden-file diff suite.

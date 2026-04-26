@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-04-18
+Version: 2026-04-26
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -8,8 +8,10 @@ Today there is one implemented compiler pipeline:
 
 - `compiler/stage1_l0/` contains the runnable L1 compiler implemented in Dea/L0.
 - `compiler/stage2_l1/` is reserved for the future self-hosted compiler and is not implemented yet.
-- `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/l1_runtime.h` are the current shared library/runtime inputs
+- `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/` are the current copied stdlib/runtime source inputs
   consumed by the bootstrap toolchain.
+- `build/dea/include/` and `build/dea/lib/` are the repo-local runtime delivery outputs consumed by Stage 1 `--build` /
+  `--run`.
 
 Related canonical docs:
 

@@ -1035,6 +1035,28 @@ func be_convert_expr_with_expected_type(c_expr: string, natural_ty: Type*?, expe
 }
 
 /**
+ * Emit a direct function call, redirecting trace-wrapped runtime APIs to their
+ * caller-location-preserving implementation entry points when trace mode is on.
+ *
+ * @param self Backend state to inspect.
+ * @param c_func_name Lowered C function name.
+ * @param c_args Comma-separated lowered arguments.
+ * @return Function-call expression.
+ */
+func be_emit_direct_function_call(self: Backend*, c_func_name: string, c_args: string) -> string {
+    if (self.opts.trace_memory && c_func_name == "rt_string_concat") {
+        return concat4_s("_rt_string_concat_impl(", c_args, ", __FILE__, __LINE__)", "");
+    }
+    if (self.opts.trace_arc && c_func_name == "rt_string_retain") {
+        return concat4_s("_rt_string_retain_impl(", c_args, ", __FILE__, __LINE__)", "");
+    }
+    if (self.opts.trace_arc && c_func_name == "rt_string_release") {
+        return concat4_s("_rt_string_release_impl(", c_args, ", __FILE__, __LINE__)", "");
+    }
+    return cem_emit_function_call(c_func_name, c_args);
+}
+
+/**
  * Emit one expression with implicit conversion to an expected type.
  *
  * @param self Backend state to inspect.
@@ -2322,7 +2344,7 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                             }
                         }
                     }
-                    return cem_emit_function_call(c_func_name, sb_to_string(sb));
+                    return be_emit_direct_function_call(self, c_func_name, sb_to_string(sb));
                 }
             }
         }

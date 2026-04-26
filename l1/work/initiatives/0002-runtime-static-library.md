@@ -1,7 +1,7 @@
 # L1 Initiative 0002 - L1 Runtime Library
 
-- Version: 2026-04-25
-- Status: Active
+- Version: 2026-04-27
+- Status: Completed
 - Kind: Initiative
 
 ## Summary
@@ -12,6 +12,20 @@ FFI surface expands, no source-level export rules change. The contribution is a 
 the rest of the L1 toolchain can build on.
 
 This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`](../../docs/roadmap.md)).
+
+## Completion
+
+Initiative 0002 is complete. L1 now ships the copied runtime as public headers plus compiled runtime artifacts under
+`compiler/shared/runtime/`, `make runtime` produces `build/dea/include/dea_rt.h`, `build/dea/lib/libdea_rt.a`, and
+`build/dea/lib/libdea_rt_traced.a`, and Stage 1 build/run now links the runtime through the selected archive or the
+documented repo-local tcc object path.
+
+Validation:
+
+```bash
+cd l1
+make test-all
+```
 
 ## Related initiatives
 
@@ -121,7 +135,7 @@ This is a single-phase initiative. It is independently shippable and does not de
 
 Recorded near-term tranche checkpoint:
 
-- [ ] Phase 1: runtime split into `libdea_rt.a` and `libdea_rt_traced.a`.
+- [x] Phase 1: runtime split into `libdea_rt.a` and `libdea_rt_traced.a`.
 
 ## Cross-cutting concerns
 
@@ -164,12 +178,12 @@ short aliases) is **out of scope** for this initiative. It is owned by
 already commits to retiring the short aliases when `-I` and `-L` are reclaimed for interface and library search.
 
 The implementation of the runtime split itself remains owned by
-[`l1/work/plans/refactors/2026-04-24-runtime-static-library-split-noref.md`](../plans/refactors/2026-04-24-runtime-static-library-split-noref.md).
+[`l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md`](../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md).
 
 ## Spawned plans
 
 - Phase 1: runtime split into `libdea_rt.a` and traced runtime delivery under
-  [`l1/work/plans/refactors/2026-04-24-runtime-static-library-split-noref.md`](../plans/refactors/2026-04-24-runtime-static-library-split-noref.md)
+  [`l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md`](../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md)
 
 ## Glossary
 

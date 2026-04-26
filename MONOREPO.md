@@ -10,6 +10,7 @@ The monorepo root owns a minimal maintenance `Makefile`:
 make help   # show root-only monorepo targets
 make venv   # create or sync the shared .venv
 make clean  # clean each registered level plus root caches/artifacts
+make clean-all  # run each level's full cleanup entrypoint plus root caches/artifacts
 ```
 
 The root `Makefile` is not a dispatcher for level-specific targets. Build, test, docs, and compiler workflows should be

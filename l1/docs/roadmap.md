@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-04-24
+Version: 2026-04-27
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -102,6 +102,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   [2026-04-18-l1-function-pointer-types-noref](../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md)
   added first-class `func(...) -> T` function pointer types, indirect calls, nullable function pointers, and
   same-signature identity comparisons.
+- Refactor
+  [2026-04-24-runtime-static-library-split-noref](../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md)
+  moved the copied L1 runtime from header-only inclusion to public headers plus normal/traced runtime archives and
+  completed Initiative [0002-runtime-static-library](../work/initiatives/0002-runtime-static-library.md).
 
 </details>
 
@@ -109,8 +113,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 - Initiative [0001-separate-compilation-and-linking](../work/initiatives/0001-separate-compilation-and-linking.md)
   covers separate compilation, interface verification, and external-library linking.
-- Initiative [0002-runtime-static-library](../work/initiatives/0002-runtime-static-library.md) moves the copied L1
-  runtime from header-only inclusion to real runtime archives plus a public header surface.
 - Initiative [0003-c-ffi](../work/initiatives/0003-c-ffi.md) adds the typed C boundary: `extern "C"` declarations,
   `cstr`, and the closed FFI-safe surface.
 
@@ -141,9 +143,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature
   [2026-04-24-module-interface-emission-noref](../work/plans/features/2026-04-24-module-interface-emission-noref.md)
   introduces deterministic textual `.l1m` interface emission and loading.
-- Refactor
-  [2026-04-24-runtime-static-library-split-noref](../work/plans/refactors/2026-04-24-runtime-static-library-split-noref.md)
-  moves the copied L1 runtime from header-only inclusion to real runtime archives.
 - Feature
   [2026-04-24-separate-compilation-driver-surface-noref](../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md)
   adds `-c`, `-I`, and the compile-orchestration driver surface for separate compilation.

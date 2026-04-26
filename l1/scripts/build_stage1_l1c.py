@@ -108,12 +108,16 @@ def write_stage1_wrapper(layout: L1BuildLayout) -> Path:
     """Write the repo-local L1 Stage 1 wrapper pair."""
 
     path = layout.bin_dir / "l1c-stage1"
+    runtime_build_dir = layout.build_relative_from_repo
     write_executable(
         path,
         render_repo_native_wrapper(
             repo_relative_from_bin=layout.repo_relative_from_bin,
             home_var_name="L1_HOME",
             native_name="l1c-stage1.native",
+        ).replace(
+            'export L1_HOME="${repo_root}/compiler"\n\nexec',
+            f'export L1_HOME="${{repo_root}}/compiler"\nexport L1_BUILD_DIR="${{repo_root}}/{runtime_build_dir}"\n\nexec',
         ),
     )
     if is_windows_host():
@@ -122,6 +126,9 @@ def write_stage1_wrapper(layout: L1BuildLayout) -> Path:
                 repo_relative_from_bin=layout.repo_relative_from_bin,
                 home_var_name="L1_HOME",
                 native_name="l1c-stage1.native",
+            ).replace(
+                'set "L1_HOME=%REPO_ROOT%\\compiler"\n',
+                f'set "L1_HOME=%REPO_ROOT%\\\\compiler"\nset "L1_BUILD_DIR=%REPO_ROOT%\\\\{runtime_build_dir.replace("/", "\\\\")}"\n',
             ),
             encoding="utf-8",
         )
@@ -132,6 +139,7 @@ def write_env_script(layout: L1BuildLayout) -> Path:
     """Write the repo-local L1 environment script pair."""
 
     path = layout.bin_dir / "l1-env.sh"
+    runtime_build_dir = layout.build_relative_from_repo
     write_executable(
         path,
         render_repo_env_script(
@@ -141,6 +149,9 @@ def write_env_script(layout: L1BuildLayout) -> Path:
             env_script_label="l1-env",
             home_var_name="L1_HOME",
             compiler_env_var="L1_CC",
+        ).replace(
+            'export L1_HOME="${REPO_ROOT}/compiler"\n',
+            f'export L1_HOME="${{REPO_ROOT}}/compiler"\nexport L1_BUILD_DIR="${{REPO_ROOT}}/{runtime_build_dir}"\n',
         ),
     )
     if is_windows_host():
@@ -149,6 +160,9 @@ def write_env_script(layout: L1BuildLayout) -> Path:
                 repo_relative_from_bin=layout.repo_relative_from_bin,
                 env_script_label="l1-env",
                 home_var_name="L1_HOME",
+            ).replace(
+                'set "L1_HOME=%REPO_ROOT%\\compiler"\n',
+                f'set "L1_HOME=%REPO_ROOT%\\\\compiler"\nset "L1_BUILD_DIR=%REPO_ROOT%\\\\{runtime_build_dir.replace("/", "\\\\")}"\n',
             ),
             encoding="utf-8",
         )

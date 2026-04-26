@@ -159,6 +159,17 @@ func cli_emit_error(diags: DiagCollector*, code: string, message: string) {
 }
 
 /**
+ * Emit a command-line warning without source coordinates.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ */
+func cli_emit_warning(diags: DiagCollector*, code: string, message: string) {
+    diag_warn(diags, "l1c", code, message, "", 0, 0, 0, 0);
+}
+
+/**
  * Return the user-facing compiler identity/version text.
  *
  * @return Stable compiler identity text for help and `--version`.
@@ -370,19 +381,22 @@ func cli_print_help() {
     cli_print_line(false, "                        appended after env options; e.g. -C=\"-Og -DDEBUG\";");
     cli_print_line(false, "                        valid in: '--build', '--run')");
     cli_print_line(false, "  --runtime-include, -I RUNTIME_INCLUDE");
-    cli_print_line(false, "                        Path to Dea runtime headers (default:");
-    cli_print_line(false, "                        $L1_RUNTIME_INCLUDE; valid in: '--build', '--run')");
+    cli_print_line(false, "                        Path to Dea runtime headers such as `dea_rt.h`");
+    cli_print_line(false, "                        (default: $L1_RUNTIME_INCLUDE or");
+    cli_print_line(false, "                        $L1_BUILD_DIR/include; valid in: '--build', '--run')");
     cli_print_line(false, "  --runtime-lib, -L RUNTIME_LIB");
-    cli_print_line(false, "                        Path to Dea runtime library search directory (default:");
-    cli_print_line(false, "                        $L1_RUNTIME_LIB; valid in: '--build', '--run')");
+    cli_print_line(false, "                        Path to Dea runtime library search directory");
+    cli_print_line(false, "                        (default: $L1_RUNTIME_LIB or");
+    cli_print_line(false, "                        $L1_BUILD_DIR/lib; valid in: '--build', '--run')");
     cli_print_line(false, "  --no-line-directives, -NLD");
     cli_print_line(false, "                        Disable #line directives in generated C code (valid");
     cli_print_line(false, "                        in: '--build', '--run', '--gen')");
-    cli_print_line(false, "  --trace-arc           Enable ARC runtime tracing in generated C code (emits");
-    cli_print_line(false, "                        DEA_TRACE_ARC; valid in: '--build', '--run', '--gen')");
-    cli_print_line(false, "  --trace-memory        Enable memory runtime tracing in generated C code");
-    cli_print_line(false, "                        (emits DEA_TRACE_MEMORY; valid in: '--build', '--run',");
-    cli_print_line(false, "                        '--gen')");
+    cli_print_line(false, "  --trace-arc           Use the traced runtime archive for ARC diagnostics;");
+    cli_print_line(false, "                        with '--gen', generated C calls traced runtime");
+    cli_print_line(false, "                        entrypoints directly (link libdea_rt_traced.a)");
+    cli_print_line(false, "  --trace-memory        Use the traced runtime archive for memory diagnostics;");
+    cli_print_line(false, "                        with '--gen', generated C calls traced runtime");
+    cli_print_line(false, "                        entrypoints directly (link libdea_rt_traced.a)");
     cli_print_line(false, "  --keep-c              Keep generated C file (valid in: '--build', '--run';");
     cli_print_line(false, "                        use with '--output' to specify C file path");
     cli_print_line(false, "  --all-modules, -a     Process all modules in the compilation unit (valid in:");
@@ -499,6 +513,14 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
 
     if (opts.trace_memory && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
         cli_emit_error(diags, "L1C-2018", "option '--trace-memory' is valid only with modes: --build, --gen, --run");
+    }
+
+    if (ord(mode) == ord(CM_GEN) && (opts.trace_arc || opts.trace_memory)) {
+        cli_emit_warning(
+            diags,
+            "L1C-0019",
+            "'--trace-arc'/'--trace-memory' under '--gen' produces traced-archive-compatible C; the caller must link against 'libdea_rt_traced.a' (or compile with -DDEA_TRACE_ARC / -DDEA_TRACE_MEMORY if linking the runtime sources directly)"
+        );
     }
 
     if (opts.all_modules &&

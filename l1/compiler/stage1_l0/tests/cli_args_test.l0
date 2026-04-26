@@ -189,6 +189,27 @@ func test_ast_all_modules_accepted() {
 }
 
 /**
+ * Tests trace flags under `--gen` remain warning-only.
+ */
+func test_gen_trace_flags_emit_warning() {
+    with (let argv = vs_create(4) => vs_free(argv)) {
+        vs_push(argv, "--gen");
+        vs_push(argv, "--trace-arc");
+        vs_push(argv, "app.main");
+
+        let parsed = cli_parse(argv);
+        assert(!diag_has_errors(parsed.diags), "trace flags under --gen should remain warning-only");
+        assert(parsed.options != null, "expected parsed options for --gen trace flags");
+        assert(diag_count(parsed.diags) == 1, "expected one warning for --gen trace flags");
+        let diag = diag_get(parsed.diags, 0);
+        assert(ord(diag.severity) == ord(Warning), "expected trace diagnostic to be a warning");
+        assert(diag.code == "L1C-0019", "expected --gen trace warning code");
+
+        cli_parse_result_free(parsed);
+    }
+}
+
+/**
  * Tests test_no_legacy_command_rewrite.
  */
 func test_no_legacy_command_rewrite() {
@@ -216,5 +237,6 @@ func main() {
     test_no_legacy_command_rewrite();
     test_ast_mode_accepted();
     test_ast_all_modules_accepted();
+    test_gen_trace_flags_emit_warning();
     printl_s("cli_args_test: all tests passed");
 }

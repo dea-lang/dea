@@ -18,7 +18,7 @@
   - `l1/compiler/stage1_l0/src/expr_types.l0`
   - `l1/compiler/stage1_l0/src/backend.l0`
   - `l1/compiler/stage1_l0/src/c_emitter.l0`
-  - `l1/compiler/shared/runtime/l1_runtime.h`
+  - `l1/compiler/shared/runtime/include/dea_rt.h`
   - `l1/docs/reference/design-decisions.md`
   - `l1/docs/reference/grammar.md`
   - `l1/docs/roadmap.md`

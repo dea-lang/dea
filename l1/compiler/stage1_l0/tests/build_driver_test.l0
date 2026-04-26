@@ -7,10 +7,12 @@ module build_driver_test;
 
 import std.assert;
 import std.io;
+import std.path;
 import std.string;
 import std.vector;
 
 import build_driver;
+import cli_args;
 
 /**
  * Tests test_with_c_suffix_rewrites_existing_extension.
@@ -167,6 +169,84 @@ func test_exe_name_helpers_are_consistent() {
 }
 
 /**
+ * Tests traced runtime archive filename selection.
+ */
+func test_runtime_archive_filename_selects_traced_when_either_trace_flag_set() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        opts.trace_arc = false;
+        opts.trace_memory = false;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt.a", "untraced archive filename mismatch");
+
+        opts.trace_arc = true;
+        opts.trace_memory = false;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_traced.a", "trace-arc archive filename mismatch");
+
+        opts.trace_arc = false;
+        opts.trace_memory = true;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_traced.a", "trace-memory archive filename mismatch");
+
+        opts.trace_arc = true;
+        opts.trace_memory = true;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_traced.a", "combined trace archive filename mismatch");
+    }
+}
+
+/**
+ * Tests traced runtime archive linker-name selection.
+ */
+func test_runtime_archive_link_name_selects_traced_when_either_trace_flag_set() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        opts.trace_arc = false;
+        opts.trace_memory = false;
+        assert(bd_runtime_archive_link_name(opts) == "dea_rt", "untraced archive link name mismatch");
+
+        opts.trace_arc = true;
+        opts.trace_memory = false;
+        assert(bd_runtime_archive_link_name(opts) == "dea_rt_traced", "trace-arc archive link name mismatch");
+
+        opts.trace_arc = false;
+        opts.trace_memory = true;
+        assert(bd_runtime_archive_link_name(opts) == "dea_rt_traced", "trace-memory archive link name mismatch");
+
+        opts.trace_arc = true;
+        opts.trace_memory = true;
+        assert(bd_runtime_archive_link_name(opts) == "dea_rt_traced", "combined trace archive link name mismatch");
+    }
+}
+
+/**
+ * Tests runtime object paths require an L1 build directory.
+ */
+func test_runtime_object_paths_return_null_without_l1_build_dir() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        let paths = bd_runtime_object_paths_for_build_dir(opts, null);
+        assert(paths == null, "runtime object paths should be null without a build dir");
+    }
+}
+
+/**
+ * Tests runtime object path variant and subsystem ordering.
+ */
+func test_runtime_object_paths_return_default_or_traced_dirs() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        let default_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as VectorString*;
+        let default_dir = join(join(join("build-root", "runtime"), "tcc"), "default");
+        assert(vs_size(default_paths) == 7, "default runtime object count mismatch");
+        assert(vs_get(default_paths, 0) == join(default_dir, "dea_rt_panic.o"), "default panic object path mismatch");
+        assert(vs_get(default_paths, 6) == join(default_dir, "dea_rt_time.o"), "default time object path mismatch");
+        vs_free(default_paths);
+
+        opts.trace_memory = true;
+        let traced_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as VectorString*;
+        let traced_dir = join(join(join("build-root", "runtime"), "tcc"), "traced");
+        assert(vs_size(traced_paths) == 7, "traced runtime object count mismatch");
+        assert(vs_get(traced_paths, 0) == join(traced_dir, "dea_rt_panic.o"), "traced panic object path mismatch");
+        assert(vs_get(traced_paths, 6) == join(traced_dir, "dea_rt_time.o"), "traced time object path mismatch");
+        vs_free(traced_paths);
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -181,5 +261,9 @@ func main() {
     test_get_optimize_flag_defaults_and_overrides();
     test_output_flag_selection_matches_compiler_family();
     test_exe_name_helpers_are_consistent();
+    test_runtime_archive_filename_selects_traced_when_either_trace_flag_set();
+    test_runtime_archive_link_name_selects_traced_when_either_trace_flag_set();
+    test_runtime_object_paths_return_null_without_l1_build_dir();
+    test_runtime_object_paths_return_default_or_traced_dirs();
     printl_s("build_driver_test: all tests passed");
 }

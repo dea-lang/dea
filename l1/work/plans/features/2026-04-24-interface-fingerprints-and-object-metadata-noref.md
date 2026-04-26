@@ -46,7 +46,7 @@ This plan owns that contract end to end.
 ## Defaults Chosen
 
 1. The hash input is the canonicalized public surface described by Initiative `0001`, not a per-symbol ABI hash scheme.
-2. The hash algorithm is SipHash-1-3 from the shared runtime (`l1/compiler/shared/runtime/dea_siphash.h`,
+2. The hash algorithm is SipHash-1-3 from the shared runtime (`l1/compiler/shared/runtime/internal/dea_siphash.h`,
    `siphash13(...)`), keyed with a fixed compile-time-constant 16-byte fingerprint key distinct from the runtime's
    randomized hash-flooding key. 64-bit digest. This decision is closed at the initiative level (Initiative 0001 §0.6).
 3. The `.l1m` file carries the module fingerprint text directly as `fingerprint "<hash>";`, encoded as 16 lowercase hex

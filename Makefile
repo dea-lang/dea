@@ -3,7 +3,7 @@
 DEA_LEVEL_DIRS ?= l0 l1
 ROOT_CLEAN_PATHS := build .pytest_cache __pycache__ pytest-of-*
 
-.PHONY: help venv clean test-all _check-level-dirs
+.PHONY: help venv clean clean-all test-all _check-level-dirs _clean-root-paths
 
 help:
 	@printf '%s\n' \
@@ -12,8 +12,9 @@ help:
 		'Targets:' \
 		'  help               Show this help text.' \
 		'  venv               Create or sync the shared monorepo `.venv` by delegating to each registered level.' \
-		'  clean              Run `make clean` in each registered level, then remove root caches/artifacts.' \
 		'  test-all           Run `make test-all` in each registered level.' \
+		'  clean              Run `make clean` in each registered level, then remove root caches/artifacts.' \
+		'  clean-all          Run `make clean-all` in each registered level, then remove root caches/artifacts.' \
 		'' \
 		'Registered levels:' \
 		'  DEA_LEVEL_DIRS=$(DEA_LEVEL_DIRS)' \
@@ -44,6 +45,16 @@ clean: _check-level-dirs
 		printf '==> %s: make clean\n' "$$level"; \
 		$(MAKE) -C "$$level" clean || exit $$?; \
 	done
+	@$(MAKE) _clean-root-paths
+
+clean-all: _check-level-dirs
+	@for level in $(DEA_LEVEL_DIRS); do \
+		printf '==> %s: make clean-all\n' "$$level"; \
+		$(MAKE) -C "$$level" clean-all || exit $$?; \
+	done
+	@$(MAKE) _clean-root-paths
+
+_clean-root-paths:
 	@for pattern in $(ROOT_CLEAN_PATHS); do \
 		for path in $$pattern; do \
 			if [ -e "$$path" ]; then \

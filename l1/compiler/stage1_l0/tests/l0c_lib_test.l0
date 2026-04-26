@@ -207,8 +207,9 @@ func test_gen_trace_defines() {
 
     let c_text = read_file(out_path);
     assert(c_text != null, "generated C output file should exist for trace test");
-    assert(contains_s(c_text as string, "#define DEA_TRACE_ARC 1"), "trace ARC define missing");
-    assert(contains_s(c_text as string, "#define DEA_TRACE_MEMORY 1"), "trace memory define missing");
+    assert(!contains_s(c_text as string, "#define DEA_TRACE_ARC 1"), "trace ARC define should not be emitted");
+    assert(!contains_s(c_text as string, "#define DEA_TRACE_MEMORY 1"), "trace memory define should not be emitted");
+    assert(contains_s(c_text as string, "#include \"dea_rt.h\""), "public runtime include missing");
 
     rt_delete_file(out_path);
 }

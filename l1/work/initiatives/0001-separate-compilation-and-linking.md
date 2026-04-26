@@ -143,9 +143,9 @@ The `.l1m` fingerprint and the matching provider/consumer object-embedded finger
 and a single embedding strategy:
 
 - **Algorithm:** SipHash-1-3 from the shared runtime
-  ([`l1/compiler/shared/runtime/dea_siphash.h`](../../compiler/shared/runtime/dea_siphash.h)). The runtime already
-  exposes `siphash13(...)` with a 64-bit tag and is also the L0 oracle, so Stage 2 inherits the same symbol when it is
-  built on top of the shared runtime.
+  ([`l1/compiler/shared/runtime/internal/dea_siphash.h`](../../compiler/shared/runtime/internal/dea_siphash.h)). The
+  runtime already exposes `siphash13(...)` with a 64-bit tag and is also the L0 oracle, so Stage 2 inherits the same
+  symbol when it is built on top of the shared runtime.
 - **Keying discipline:** a fixed, compile-time-constant 16-byte fingerprint key, distinct from the runtime's randomized
   hash-flooding key. The constant is part of the LBI ABI and is stable across stages. The exact key bytes are an
   implementation detail of the spawned fingerprint plan and are recorded in

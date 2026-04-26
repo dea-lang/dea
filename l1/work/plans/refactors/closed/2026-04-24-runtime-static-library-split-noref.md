@@ -3,7 +3,7 @@
 ## Split the L1 runtime into a real static library
 
 - Date: 2026-04-24
-- Status: Draft
+- Status: Completed
 - Title: Split the L1 runtime into a real static library
 - Kind: Refactor
 - Severity: High
@@ -136,3 +136,28 @@ so the install layout reflects the new archive/header split.
 2. The build driver links a concrete runtime archive rather than inlining runtime implementation bodies into user C.
 3. Trace and non-trace builds select the expected runtime archive deterministically.
 4. Runtime archive symbols are covered by an explicit manifest or equivalent deterministic validation.
+
+## Resolved decisions
+
+1. Darwin tcc is not archive-compatible with the local platform toolchain in the tested setup: local tcc 0.9.28rc emits
+   ELF objects while clang/cc emit Mach-O. A single official archive cannot safely serve both object formats.
+2. The official runtime archives (`libdea_rt.a` and `libdea_rt_traced.a`) follow the platform compiler's object format.
+   tcc consumes a parallel raw object set under `build/dea/runtime/tcc/{normal,traced}/`, linked directly by the build
+   driver when the active C compiler family is tcc.
+3. This preserves both goals of Initiative `0002`: the public runtime contract is real archives plus public headers, and
+   the tcc carve-out does not roll generated C back to header-only runtime inclusion.
+4. The traced archive keeps the stable wrapper ABI (`rt_*` / `_rt_*` wrappers forwarding to
+   `_impl(..., "<runtime>", 0)`) for non-emitter consumers. Generated C in trace mode now calls
+   `_rt_*_impl(..., __FILE__, __LINE__)` directly at caller sites to preserve source trace fidelity.
+5. `--trace-arc` and `--trace-memory` remain allowed with `--gen`; the compiler emits a warning that callers must link
+   against `libdea_rt_traced.a` or compile runtime sources with the trace defines. TODO: revisit warning versus error
+   policy after a usage cycle.
+6. Windows/MSYS2 does not need a host guard for the tcc object path. On that platform tcc and mingw both emit PE/COFF,
+   so the direct-object path is redundant but harmless.
+
+## Follow-ups
+
+1. Thread `L1_BUILD_DIR` cleanly through `l1/scripts/build_stage1_l1c.py` wrapper rendering instead of relying on the
+   current targeted replacement.
+2. Add a Windows CI lane before claiming Windows tcc end-to-end coverage; confirm `nm` underscore normalization there.
+3. Consider `DOCKER_RUNTIME_CC` only if Docker runtime-compiler override ergonomics become necessary.

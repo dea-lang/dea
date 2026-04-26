@@ -765,6 +765,10 @@ func run_with_argv(argv: VectorString*) -> int {
         return 2;
     }
 
+    if (diag_count(parsed.diags) > 0) {
+        dp_print_collector(parsed.diags);
+    }
+
     let opts = parsed.options as CliOptions*;
     parsed.options = null;
 
