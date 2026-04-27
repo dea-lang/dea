@@ -174,13 +174,21 @@ and reuse supplement for applying this registry within L0.
 | `PAR-0321` | All     | Expected ';' after import                                                  |
 | `PAR-0400` | All     | Expected type name                                                         |
 | `PAR-0401` | All     | Expected identifier after '::' in qualified name                           |
-| `PAR-9401` | All     | Array types not yet supported: use pointers and [] indexing in expressions |
 | `PAR-0500` | All     | Expected 'with'                                                            |
 | `PAR-0501` | All     | Expected '(' after 'with'                                                  |
 | `PAR-0502` | All     | Expected ')' after with items                                              |
 | `PAR-0503` | All     | 'with': all items must use '=>' or none                                    |
 | `PAR-0504` | All     | 'with': cannot have both '=>' and cleanup block                            |
 | `PAR-0505` | All     | 'with': cleanup block required when '=>' is not used                       |
+| `PAR-0540` | L1+     | Expected exported name or '\*' in export manifest                          |
+| `PAR-0541` | L1+     | Expected ';' after export manifest                                         |
+| `PAR-0542` | L1+     | Export manifest is not allowed after imports or declarations               |
+| `PAR-0543` | L1+     | Duplicate export manifest                                                  |
+| `PAR-0544` | L1+     | Expected imported symbol name after ',' in selective import                |
+| `PAR-0545` | L1+     | Expected 'from' after selective import list                                |
+| `PAR-0546` | L1+     | Expected imported module name after 'from'                                 |
+| `PAR-0547` | L1+     | Expected import alias after 'as'                                           |
+| `PAR-9401` | All     | Array types not yet supported: use pointers and [] indexing in expressions |
 
 ## Driver and Environment
 
@@ -244,6 +252,13 @@ and reuse supplement for applying this registry within L0.
 | `RES-0021` | All   | Imported symbol is shadowed by a local definition                                    |
 | `RES-0022` | All   | Ambiguous unqualified import: the same symbol name is imported from multiple modules |
 | `RES-0029` | All   | Import refers to an unknown module                                                   |
+| `RES-0030` | L1+   | Duplicate name in explicit export manifest                                           |
+| `RES-0031` | L1+   | Explicit export manifest names an unknown top-level symbol                           |
+| `RES-0032` | L1+   | Selective import names a symbol that the imported module does not export             |
+| `RES-0033` | L1+   | Duplicate import alias in the same module                                            |
+| `RES-0034` | L1+   | Name is used both as an import alias and as a visible symbol in the same module      |
+| `RES-0035` | L1+   | Redundant selective import names symbols already imported from the same module       |
+| `RES-0036` | L1+   | Duplicate open import declaration for the same module                                |
 
 ## Signature Analysis and Type Resolution for Type Declarations, Type Aliases, and Type References
 
