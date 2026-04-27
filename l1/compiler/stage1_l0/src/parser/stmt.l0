@@ -58,14 +58,14 @@ func ps_parse_pattern(self: ParserState*) -> PatternId? {
             with (let vars: VectorString*? = vs_create(2) => vs_free_opt(vars)) {
                 if (!ps_check(self, ord(TT_RPAREN))) {
                     while (true) {
-                        let var_tok = ps_expect_variable_name(self, "PAR-0180", "[PAR-0180] expected pattern variable name")?;
+                        let var_tok = ps_expect_variable_name(self, "PAR-0180", "expected pattern variable name")?;
                         vs_push(vars as VectorString*, token_ident_text(var_tok) as string);
                         if (!ps_match(self, ord(TT_COMMA))) {
                             break;
                         }
                     }
                 }
-                ps_expect(self, ord(TT_RPAREN), "PAR-0181", "[PAR-0181] expected ')' in pattern")?;
+                ps_expect(self, ord(TT_RPAREN), "PAR-0181", "expected ')' in pattern")?;
                 node.vars = vars;
                 vars = null;
             }
@@ -76,7 +76,7 @@ func ps_parse_pattern(self: ParserState*) -> PatternId? {
         return pattern_arena_add(self.pattern_arena, node);
     }
 
-    ps_emit_error(self, "PAR-0182", concat3_s("[PAR-0182] unexpected token in pattern: ", token_to_string(ps_peek(self)), ""), ps_peek(self));
+    ps_emit_error(self, "PAR-0182", concat3_s("unexpected token in pattern: ", token_to_string(ps_peek(self)), ""), ps_peek(self));
     return null;
 }
 
@@ -92,7 +92,7 @@ func ps_parse_pattern(self: ParserState*) -> PatternId? {
  */
 func ps_parse_block(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_LBRACE), "PAR-0090", "[PAR-0090] expected '{' to start block")?;
+    ps_expect(self, ord(TT_LBRACE), "PAR-0090", "expected '{' to start block")?;
 
     with (let stmts: VectorBase*? = id_vec_create(8) => id_vec_free(stmts)) {
         while (!ps_check(self, ord(TT_RBRACE))) {
@@ -100,7 +100,7 @@ func ps_parse_block(self: ParserState*) -> StmtId? {
             id_vec_push(stmts as VectorBase*, stmt);
         }
 
-        ps_expect(self, ord(TT_RBRACE), "PAR-0091", "[PAR-0091] expected '}' after block")?;
+        ps_expect(self, ord(TT_RBRACE), "PAR-0091", "expected '}' after block")?;
 
         let node = stmt_node_create(ST_BLOCK, ps_extend_span(self, start));
         node.ids = stmts as VectorBase*;
@@ -117,7 +117,7 @@ func ps_parse_block(self: ParserState*) -> StmtId? {
  */
 func ps_parse_break_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_BREAK), "PAR-0190", "[PAR-0190] expected 'break'")?;
+    ps_expect(self, ord(TT_BREAK), "PAR-0190", "expected 'break'")?;
     let node = stmt_node_create(ST_BREAK, ps_extend_span(self, start));
     return stmt_arena_add(self.stmt_arena, node);
 }
@@ -130,7 +130,7 @@ func ps_parse_break_stmt(self: ParserState*) -> StmtId? {
  */
 func ps_parse_continue_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_CONTINUE), "PAR-0200", "[PAR-0200] expected 'continue'")?;
+    ps_expect(self, ord(TT_CONTINUE), "PAR-0200", "expected 'continue'")?;
     let node = stmt_node_create(ST_CONTINUE, ps_extend_span(self, start));
     return stmt_arena_add(self.stmt_arena, node);
 }
@@ -143,7 +143,7 @@ func ps_parse_continue_stmt(self: ParserState*) -> StmtId? {
  */
 func ps_parse_return_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_RETURN), "PAR-0150", "[PAR-0150] expected 'return'")?;
+    ps_expect(self, ord(TT_RETURN), "PAR-0150", "expected 'return'")?;
 
     let node = stmt_node_create(ST_RETURN, ps_extend_span(self, start));
     if (!ps_check(self, ord(TT_SEMI))) {
@@ -161,8 +161,8 @@ func ps_parse_return_stmt(self: ParserState*) -> StmtId? {
  */
 func ps_parse_drop_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_DROP), "PAR-0160", "[PAR-0160] expected 'drop'")?;
-    let name_tok = ps_expect_variable_name(self, "PAR-0161", "[PAR-0161] expected variable name after 'drop'")?;
+    ps_expect(self, ord(TT_DROP), "PAR-0160", "expected 'drop'")?;
+    let name_tok = ps_expect_variable_name(self, "PAR-0161", "expected variable name after 'drop'")?;
 
     let node = stmt_node_create(ST_DROP, ps_extend_span(self, start));
     node.name = token_ident_text(name_tok) as string;
@@ -177,15 +177,15 @@ func ps_parse_drop_stmt(self: ParserState*) -> StmtId? {
  */
 func ps_parse_let_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_LET), "PAR-0110", "[PAR-0110] expected 'let'")?;
-    let name_tok = ps_expect_variable_name(self, "PAR-0111", "[PAR-0111] expected variable name")?;
+    ps_expect(self, ord(TT_LET), "PAR-0110", "expected 'let'")?;
+    let name_tok = ps_expect_variable_name(self, "PAR-0111", "expected variable name")?;
 
     with (let type_ref: TypeRef*? = null => type_ref_free(type_ref)) {
         if (ps_match(self, ord(TT_COLON))) {
             type_ref = ps_parse_type(self)?;
         }
 
-        ps_expect(self, ord(TT_EQ), "PAR-0112", "[PAR-0112] expected '=' in let binding")?;
+        ps_expect(self, ord(TT_EQ), "PAR-0112", "expected '=' in let binding")?;
         let value = ps_parse_expr(self)?;
 
         let node = stmt_node_create(ST_LET, ps_extend_span(self, start));
@@ -205,10 +205,10 @@ func ps_parse_let_stmt(self: ParserState*) -> StmtId? {
  */
 func ps_parse_if_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_IF), "PAR-0120", "[PAR-0120] expected 'if'")?;
-    ps_expect(self, ord(TT_LPAREN), "PAR-0121", "[PAR-0121] expected '(' after 'if'")?;
+    ps_expect(self, ord(TT_IF), "PAR-0120", "expected 'if'")?;
+    ps_expect(self, ord(TT_LPAREN), "PAR-0121", "expected '(' after 'if'")?;
     let cond = ps_parse_expr(self)?;
-    ps_expect(self, ord(TT_RPAREN), "PAR-0122", "[PAR-0122] expected ')' after condition")?;
+    ps_expect(self, ord(TT_RPAREN), "PAR-0122", "expected ')' after condition")?;
 
     let then_stmt = ps_parse_stmt(self)?;
 
@@ -237,10 +237,10 @@ func ps_parse_if_stmt(self: ParserState*) -> StmtId? {
  */
 func ps_parse_while_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_WHILE), "PAR-0130", "[PAR-0130] expected 'while'")?;
-    ps_expect(self, ord(TT_LPAREN), "PAR-0131", "[PAR-0131] expected '('")?;
+    ps_expect(self, ord(TT_WHILE), "PAR-0130", "expected 'while'")?;
+    ps_expect(self, ord(TT_LPAREN), "PAR-0131", "expected '('")?;
     let cond = ps_parse_expr(self)?;
-    ps_expect(self, ord(TT_RPAREN), "PAR-0132", "[PAR-0132] expected ')'")?;
+    ps_expect(self, ord(TT_RPAREN), "PAR-0132", "expected ')'")?;
 
     let body = ps_parse_stmt(self)?;
 
@@ -258,25 +258,25 @@ func ps_parse_while_stmt(self: ParserState*) -> StmtId? {
  */
 func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_FOR), "PAR-0140", "[PAR-0140] expected 'for'")?;
-    ps_expect(self, ord(TT_LPAREN), "PAR-0141", "[PAR-0141] expected '(' after 'for'")?;
+    ps_expect(self, ord(TT_FOR), "PAR-0140", "expected 'for'")?;
+    ps_expect(self, ord(TT_LPAREN), "PAR-0141", "expected '(' after 'for'")?;
 
     let init = invalid_stmt_id();
     if (!ps_check(self, ord(TT_SEMI))) {
         let i = ps_parse_simple_stmt(self)?;
-        ps_expect(self, ord(TT_SEMI), "PAR-0142", "[PAR-0142] expected ';' after for loop initialization")?;
+        ps_expect(self, ord(TT_SEMI), "PAR-0142", "expected ';' after for loop initialization")?;
         let cond = invalid_expr_id();
         let post = invalid_stmt_id();
 
         let cond_value = cond;
         if (!ps_check(self, ord(TT_SEMI))) {
             let c = ps_parse_expr(self)?;
-            ps_expect(self, ord(TT_SEMI), "PAR-0143", "[PAR-0143] expected ';' after for loop condition")?;
+            ps_expect(self, ord(TT_SEMI), "PAR-0143", "expected ';' after for loop condition")?;
             let post_value = post;
             if (!ps_check(self, ord(TT_RPAREN))) {
                 post_value = ps_parse_simple_stmt(self)?;
             }
-            ps_expect(self, ord(TT_RPAREN), "PAR-0144", "[PAR-0144] expected ')' after for loop clauses")?;
+            ps_expect(self, ord(TT_RPAREN), "PAR-0144", "expected ')' after for loop clauses")?;
             let body = ps_parse_stmt(self)?;
 
             let node = stmt_node_create(ST_FOR, ps_extend_span(self, start));
@@ -287,12 +287,12 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
             return stmt_arena_add(self.stmt_arena, node);
         }
 
-        ps_expect(self, ord(TT_SEMI), "PAR-0143", "[PAR-0143] expected ';' after for loop condition")?;
+        ps_expect(self, ord(TT_SEMI), "PAR-0143", "expected ';' after for loop condition")?;
         let post_value2 = post;
         if (!ps_check(self, ord(TT_RPAREN))) {
             post_value2 = ps_parse_simple_stmt(self)?;
         }
-        ps_expect(self, ord(TT_RPAREN), "PAR-0144", "[PAR-0144] expected ')' after for loop clauses")?;
+        ps_expect(self, ord(TT_RPAREN), "PAR-0144", "expected ')' after for loop clauses")?;
         let body2 = ps_parse_stmt(self)?;
 
         let node2 = stmt_node_create(ST_FOR, ps_extend_span(self, start));
@@ -309,13 +309,13 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
     let cond3 = invalid_expr_id();
     if (!ps_check(self, ord(TT_SEMI))) {
         let c3 = ps_parse_expr(self)?;
-        ps_expect(self, ord(TT_SEMI), "PAR-0143", "[PAR-0143] expected ';' after for loop condition")?;
+        ps_expect(self, ord(TT_SEMI), "PAR-0143", "expected ';' after for loop condition")?;
 
         let post3 = invalid_stmt_id();
         if (!ps_check(self, ord(TT_RPAREN))) {
             post3 = ps_parse_simple_stmt(self)?;
         }
-        ps_expect(self, ord(TT_RPAREN), "PAR-0144", "[PAR-0144] expected ')' after for loop clauses")?;
+        ps_expect(self, ord(TT_RPAREN), "PAR-0144", "expected ')' after for loop clauses")?;
         let body3 = ps_parse_stmt(self)?;
 
         let node3 = stmt_node_create(ST_FOR, ps_extend_span(self, start));
@@ -333,7 +333,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
         post4 = ps_parse_simple_stmt(self)?;
     }
 
-    ps_expect(self, ord(TT_RPAREN), "PAR-0144", "[PAR-0144] expected ')' after for loop clauses")?;
+    ps_expect(self, ord(TT_RPAREN), "PAR-0144", "expected ')' after for loop clauses")?;
     let body4 = ps_parse_stmt(self)?;
 
     let node4 = stmt_node_create(ST_FOR, ps_extend_span(self, start));
@@ -352,26 +352,26 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
  */
 func ps_parse_match_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_MATCH), "PAR-0170", "[PAR-0170] expected 'match'")?;
-    ps_expect(self, ord(TT_LPAREN), "PAR-0171", "[PAR-0171] expected '('")?;
+    ps_expect(self, ord(TT_MATCH), "PAR-0170", "expected 'match'")?;
+    ps_expect(self, ord(TT_LPAREN), "PAR-0171", "expected '('")?;
     let expr = ps_parse_expr(self)?;
-    ps_expect(self, ord(TT_RPAREN), "PAR-0172", "[PAR-0172] expected ')'")?;
-    ps_expect(self, ord(TT_LBRACE), "PAR-0173", "[PAR-0173] expected '{' after match expression")?;
+    ps_expect(self, ord(TT_RPAREN), "PAR-0172", "expected ')'")?;
+    ps_expect(self, ord(TT_LBRACE), "PAR-0173", "expected '{' after match expression")?;
 
     with (let arms: VectorBase*? = ptr_vec_create(4) => match_arm_vec_free(arms)) {
         while (!ps_check(self, ord(TT_RBRACE))) {
             let arm_start = ps_span_start(self);
             let pattern = ps_parse_pattern(self)?;
-            ps_expect(self, ord(TT_ARROW_MATCH), "PAR-0174", "[PAR-0174] expected '=>' in match arm")?;
+            ps_expect(self, ord(TT_ARROW_MATCH), "PAR-0174", "expected '=>' in match arm")?;
             let body = ps_parse_stmt(self)?;
             let arm = new MatchArm(pattern, body, ps_extend_span(self, arm_start));
             ptr_vec_push(arms as VectorBase*, arm as void*);
         }
 
-        ps_expect(self, ord(TT_RBRACE), "PAR-0175", "[PAR-0175] expected '}' after match")?;
+        ps_expect(self, ord(TT_RBRACE), "PAR-0175", "expected '}' after match")?;
 
         if (vec_size(arms as VectorBase*) == 0) {
-            ps_emit_error(self, "PAR-0177", "[PAR-0177] match statement must have at least one arm", ps_peek(self));
+            ps_emit_error(self, "PAR-0177", "match statement must have at least one arm", ps_peek(self));
             return null;
         }
 
@@ -385,12 +385,12 @@ func ps_parse_match_stmt(self: ParserState*) -> StmtId? {
                 let pj = pattern_arena_get(self.pattern_arena, aj.pattern);
 
                 if (ord(pi.kind) == ord(PT_WILDCARD) && ord(pj.kind) == ord(PT_WILDCARD)) {
-                    ps_emit_error(self, "PAR-0176", "[PAR-0176] duplicate variant patterns in match statement", ps_peek(self));
+                    ps_emit_error(self, "PAR-0176", "duplicate variant patterns in match statement", ps_peek(self));
                     return null;
                 }
 
                 if (ord(pi.kind) == ord(PT_VARIANT) && ord(pj.kind) == ord(PT_VARIANT) && pi.name == pj.name) {
-                    ps_emit_error(self, "PAR-0176", "[PAR-0176] duplicate variant patterns in match statement", ps_peek(self));
+                    ps_emit_error(self, "PAR-0176", "duplicate variant patterns in match statement", ps_peek(self));
                     return null;
                 }
             }
@@ -433,8 +433,8 @@ func ps_parse_with_item(self: ParserState*) -> WithItem*? {
  */
 func ps_parse_with_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_WITH), "PAR-0500", "[PAR-0500] expected 'with'")?;
-    ps_expect(self, ord(TT_LPAREN), "PAR-0501", "[PAR-0501] expected '(' after 'with'")?;
+    ps_expect(self, ord(TT_WITH), "PAR-0500", "expected 'with'")?;
+    ps_expect(self, ord(TT_LPAREN), "PAR-0501", "expected '(' after 'with'")?;
 
     with (let items: VectorBase*? = ptr_vec_create(4) => with_item_vec_free(items)) {
         while (true) {
@@ -445,7 +445,7 @@ func ps_parse_with_stmt(self: ParserState*) -> StmtId? {
             }
         }
 
-        ps_expect(self, ord(TT_RPAREN), "PAR-0502", "[PAR-0502] expected ')' after with items")?;
+        ps_expect(self, ord(TT_RPAREN), "PAR-0502", "expected ')' after with items")?;
 
         let body = ps_parse_block(self)?;
 
@@ -468,17 +468,17 @@ func ps_parse_with_stmt(self: ParserState*) -> StmtId? {
         }
 
         if (has_arrows && has_bare) {
-            ps_emit_error(self, "PAR-0503", "[PAR-0503] 'with': all items must use '=>' or none", ps_peek(self));
+            ps_emit_error(self, "PAR-0503", "'with': all items must use '=>' or none", ps_peek(self));
             return null;
         }
 
         if (has_arrows && has_cleanup_body) {
-            ps_emit_error(self, "PAR-0504", "[PAR-0504] 'with': cannot have both '=>' and cleanup block", ps_peek(self));
+            ps_emit_error(self, "PAR-0504", "'with': cannot have both '=>' and cleanup block", ps_peek(self));
             return null;
         }
 
         if (!has_arrows && !has_cleanup_body) {
-            ps_emit_error(self, "PAR-0505", "[PAR-0505] 'with': cleanup block required when '=>' is not used", ps_peek(self));
+            ps_emit_error(self, "PAR-0505", "'with': cleanup block required when '=>' is not used", ps_peek(self));
             return null;
         }
 
@@ -542,7 +542,7 @@ func ps_parse_case_literal(self: ParserState*) -> ExprId? {
         return expr_arena_add(self.expr_arena, node);
     }
 
-    ps_emit_error(self, "PAR-0241", "[PAR-0241] expected literal in 'case' arm", tok);
+    ps_emit_error(self, "PAR-0241", "expected literal in 'case' arm", tok);
     return null;
 }
 
@@ -554,11 +554,11 @@ func ps_parse_case_literal(self: ParserState*) -> ExprId? {
  */
 func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
-    ps_expect(self, ord(TT_CASE), "PAR-0230", "[PAR-0230] expected 'case'")?;
-    ps_expect(self, ord(TT_LPAREN), "PAR-0231", "[PAR-0231] expected '('")?;
+    ps_expect(self, ord(TT_CASE), "PAR-0230", "expected 'case'")?;
+    ps_expect(self, ord(TT_LPAREN), "PAR-0231", "expected '('")?;
     let expr = ps_parse_expr(self)?;
-    ps_expect(self, ord(TT_RPAREN), "PAR-0232", "[PAR-0232] expected ')'")?;
-    ps_expect(self, ord(TT_LBRACE), "PAR-0233", "[PAR-0233] expected '{' after 'case' expression")?;
+    ps_expect(self, ord(TT_RPAREN), "PAR-0232", "expected ')'")?;
+    ps_expect(self, ord(TT_LBRACE), "PAR-0233", "expected '{' after 'case' expression")?;
 
     with (let arms: VectorBase*? = ptr_vec_create(4) => case_arm_vec_free(arms),
           let else_arm: CaseElse*? = null => drop else_arm) {
@@ -567,13 +567,13 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
         while (!ps_check(self, ord(TT_RBRACE))) {
             if (ps_match(self, ord(TT_ELSE))) {
                 if (seen_else) {
-                    ps_emit_error(self, "PAR-0236", "[PAR-0236] duplicate 'else' arm in 'case' statement", ps_peek(self));
+                    ps_emit_error(self, "PAR-0236", "duplicate 'else' arm in 'case' statement", ps_peek(self));
                     return null;
                 }
 
                 let else_start = ps_span_start(self);
                 if (ps_match(self, ord(TT_ARROW_MATCH))) {
-                    ps_emit_error(self, "PAR-0237", "[PAR-0237] '=>' not allowed in 'else' arm", ps_peek(self));
+                    ps_emit_error(self, "PAR-0237", "'=>' not allowed in 'else' arm", ps_peek(self));
                     return null;
                 }
 
@@ -584,22 +584,22 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
             }
 
             if (seen_else) {
-                ps_emit_error(self, "PAR-0234", "[PAR-0234] value arm cannot appear after 'else' in 'case' statement", ps_peek(self));
+                ps_emit_error(self, "PAR-0234", "value arm cannot appear after 'else' in 'case' statement", ps_peek(self));
                 return null;
             }
 
             let arm_start = ps_span_start(self);
             let literal = ps_parse_case_literal(self)?;
-            ps_expect(self, ord(TT_ARROW_MATCH), "PAR-0235", "[PAR-0235] expected '=>' in 'case' arm")?;
+            ps_expect(self, ord(TT_ARROW_MATCH), "PAR-0235", "expected '=>' in 'case' arm")?;
             let body = ps_parse_stmt(self)?;
             let arm = new CaseArm(literal, body, ps_extend_span(self, arm_start));
             ptr_vec_push(arms as VectorBase*, arm as void*);
         }
 
-        ps_expect(self, ord(TT_RBRACE), "PAR-0239", "[PAR-0239] expected '}' after 'case' statement")?;
+        ps_expect(self, ord(TT_RBRACE), "PAR-0239", "expected '}' after 'case' statement")?;
 
         if (vec_size(arms as VectorBase*) == 0 && else_arm == null) {
-            ps_emit_error(self, "PAR-0240", "[PAR-0240] 'case' statement must have at least one arm", ps_peek(self));
+            ps_emit_error(self, "PAR-0240", "'case' statement must have at least one arm", ps_peek(self));
             return null;
         }
 
@@ -627,7 +627,7 @@ func ps_parse_simple_stmt(self: ParserState*) -> StmtId? {
     }
     if (ps_check(self, ord(TT_CONST))) {
         let tok = ps_advance(self);
-        ps_emit_error(self, "PAR-0263", "[PAR-0263] const declarations are only supported at top level", tok);
+        ps_emit_error(self, "PAR-0263", "const declarations are only supported at top level", tok);
         return null;
     }
     if (ps_check(self, ord(TT_BREAK))) {
@@ -687,6 +687,6 @@ func ps_parse_stmt(self: ParserState*) -> StmtId? {
     }
 
     let simple_stmt = ps_parse_simple_stmt(self)?;
-    ps_expect(self, ord(TT_SEMI), "PAR-0100", "[PAR-0100] expected ';' after statement")?;
+    ps_expect(self, ord(TT_SEMI), "PAR-0100", "expected ';' after statement")?;
     return simple_stmt;
 }

@@ -800,7 +800,7 @@ func ps_expect_variable_name(self: ParserState*, code: string, msg: string) -> T
 func parse_dotted_name_rest(self: ParserState*, first: string) -> string? {
     let name = first;
     while (ps_match(self, ord(TT_DOT))) {
-        let ident = ps_expect_ident(self, "PAR-0300", "[PAR-0300] expected identifier after '.' in module name")?;
+        let ident = ps_expect_ident(self, "PAR-0300", "expected identifier after '.' in module name")?;
         let ident_text = token_ident_text(ident) as string;
         name = concat3_s(name, ".", ident_text);
     }
@@ -856,19 +856,19 @@ func ps_try_parse_qualified_name(self: ParserState*) -> QualifiedNameResult*? {
     }
 
     // Commit parse and build vectors.
-    let first = ps_expect_ident(self, "PAR-0401", "[PAR-0401] expected identifier before '::'")?;
+    let first = ps_expect_ident(self, "PAR-0401", "expected identifier before '::'")?;
 
     with (let parts: VectorString*? = vs_create(4) => vs_free_opt(parts),
           let qualifier: VectorString*? = null => vs_free_opt(qualifier)) {
         vs_push(parts as VectorString*, token_ident_text(first) as string);
 
         while (ps_match(self, ord(TT_DOT))) {
-            let part = ps_expect_ident(self, "PAR-0300", "[PAR-0300] expected identifier after '.' in module name")?;
+            let part = ps_expect_ident(self, "PAR-0300", "expected identifier after '.' in module name")?;
             vs_push(parts as VectorString*, token_ident_text(part) as string);
         }
 
-        ps_expect(self, ord(TT_DOUBLE_COLON), "PAR-0401", "[PAR-0401] expected '::' in qualified name")?;
-        let name_tok = ps_expect_ident(self, "PAR-0401", "[PAR-0401] expected identifier after '::'")?;
+        ps_expect(self, ord(TT_DOUBLE_COLON), "PAR-0401", "expected '::' in qualified name")?;
+        let name_tok = ps_expect_ident(self, "PAR-0401", "expected identifier after '::'")?;
 
         let current_name_tok = name_tok;
 
@@ -877,7 +877,7 @@ func ps_try_parse_qualified_name(self: ParserState*) -> QualifiedNameResult*? {
                 qualifier = vs_create(2);
             }
             vs_push(qualifier as VectorString*, token_ident_text(current_name_tok) as string);
-            current_name_tok = ps_expect_ident(self, "PAR-0401", "[PAR-0401] expected identifier after '::'")?;
+            current_name_tok = ps_expect_ident(self, "PAR-0401", "expected identifier after '::'")?;
         }
 
         let result = new QualifiedNameResult(parts as VectorString*, qualifier, current_name_tok);
@@ -916,7 +916,7 @@ func type_ref_vec_free(items: VectorBase*?) {
  */
 func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
     if (ps_match(self, ord(TT_FUNC))) {
-        ps_expect(self, ord(TT_LPAREN), "PAR-0402", "[PAR-0402] expected '(' after 'func' in function type")?;
+        ps_expect(self, ord(TT_LPAREN), "PAR-0402", "expected '(' after 'func' in function type")?;
         with (let params: VectorBase*? = ptr_vec_create(4) => type_ref_vec_free(params),
               let result: TypeRef*? = null => type_ref_free(result)) {
             if (!ps_check(self, ord(TT_RPAREN))) {
@@ -928,8 +928,8 @@ func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
                     }
                 }
             }
-            ps_expect(self, ord(TT_RPAREN), "PAR-0403", "[PAR-0403] expected ')' after function type parameters")?;
-            ps_expect(self, ord(TT_ARROW_FUNC), "PAR-0404", "[PAR-0404] expected '->' in function type")?;
+            ps_expect(self, ord(TT_RPAREN), "PAR-0403", "expected ')' after function type parameters")?;
+            ps_expect(self, ord(TT_ARROW_FUNC), "PAR-0404", "expected '->' in function type")?;
             result = ps_parse_type(self)?;
 
             let tref = new TypeRef("func", 0, false, null, null, params as VectorBase*, result as TypeRef*,
@@ -942,7 +942,7 @@ func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
 
     if (ps_match(self, ord(TT_LPAREN))) {
         let inner = ps_parse_type(self)?;
-        ps_expect(self, ord(TT_RPAREN), "PAR-0405", "[PAR-0405] expected ')' after parenthesized type")?;
+        ps_expect(self, ord(TT_RPAREN), "PAR-0405", "expected ')' after parenthesized type")?;
         return inner;
     }
 
@@ -960,7 +960,7 @@ func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
         name_tok = q.name_tok;
         drop q;
     } else {
-        name_tok = ps_expect_ident(self, "PAR-0400", "[PAR-0400] expected type name")?;
+        name_tok = ps_expect_ident(self, "PAR-0400", "expected type name")?;
     }
 
     let type_name = token_ident_text(name_tok) as string;
@@ -986,7 +986,7 @@ func ps_parse_type(self: ParserState*) -> TypeRef*? {
     }
 
     if (ps_check(self, ord(TT_LBRACKET))) {
-        ps_emit_error(self, "PAR-9401", "[PAR-9401] array types not yet supported: use pointers and [] indexing in expressions", ps_peek(self));
+        ps_emit_error(self, "PAR-9401", "array types not yet supported: use pointers and [] indexing in expressions", ps_peek(self));
         type_ref_free(result);
         return null;
     }
