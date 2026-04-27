@@ -581,7 +581,7 @@ func cem_opt_wrapper_name_for_inner(inner: Type*) -> string {
 }
 
 /**
- * Emit an L0 type as a C type spelling.
+ * Emit a Dea type as a C type spelling.
  *
  * @param typ Type to lower.
  * @return C spelling for `typ`.

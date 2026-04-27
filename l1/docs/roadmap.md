@@ -158,6 +158,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   adds `-l`, `-L`, `--rpath`, and `--link-arg` as the external-library linking surface.
 - Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref](../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md)
   adds `extern "C"` declarations, `cstr`, and the typed non-variadic C boundary.
+- Refactor [2026-04-27-runtime-cu-resplit-noref](../work/plans/refactors/2026-04-27-runtime-cu-resplit-noref.md) carves
+  OS/process helpers and RNG out of `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c`
+  CUs.
 
 ## Backlog
 

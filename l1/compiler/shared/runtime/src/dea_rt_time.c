@@ -5,6 +5,10 @@
 
 #include "../include/dea_rt.h"
 
+/* =========================================================================
+ * Runtime support for wall clock and monotonic time, and local time metadata.
+ * ========================================================================= */
+
 dea_bool _rt_time_to_dea_int_sec(time_t value, dea_int *out) {
     long long sec = (long long)value;
     if (sec < INT32_MIN || sec > INT32_MAX) {
@@ -44,7 +48,7 @@ dea_bool _rt_time_write_parts(struct dea_sys_rt_RtTimeParts *out, dea_int sec, d
  * @param out Pointer to RtTimeParts.
  * @return 1 on success, 0 on failure.
  *
- * L0 signature: `extern func rt_time_unix(out: RtTimeParts*) -> bool;`
+ * Dea signature: `extern func rt_time_unix(out: RtTimeParts*) -> bool;`
  */
 dea_bool rt_time_unix(struct dea_sys_rt_RtTimeParts *out) {
     if (out == NULL) {
@@ -84,7 +88,7 @@ dea_bool rt_time_unix(struct dea_sys_rt_RtTimeParts *out) {
  * @param out Pointer to RtTimeParts.
  * @return 1 on success, 0 on failure.
  *
- * L0 signature: `extern func rt_time_monotonic(out: RtTimeParts*) -> bool;`
+ * Dea signature: `extern func rt_time_monotonic(out: RtTimeParts*) -> bool;`
  */
 dea_bool rt_time_monotonic(struct dea_sys_rt_RtTimeParts *out) {
     if (out == NULL) {
@@ -117,7 +121,7 @@ dea_bool rt_time_monotonic(struct dea_sys_rt_RtTimeParts *out) {
  *
  * @return 1 if supported, 0 otherwise.
  *
- * L0 signature: `extern func rt_time_monotonic_supported() -> bool;`
+ * Dea signature: `extern func rt_time_monotonic_supported() -> bool;`
  */
 dea_bool rt_time_monotonic_supported(void) {
 #if defined(CLOCK_MONOTONIC)
@@ -136,7 +140,7 @@ dea_bool rt_time_monotonic_supported(void) {
  * @param unix_sec Unix timestamp.
  * @return Optional integer offset.
  *
- * L0 signature: `extern func rt_time_local_offset_sec(unix_sec: int) -> int?;`
+ * Dea signature: `extern func rt_time_local_offset_sec(unix_sec: int) -> int?;`
  */
 dea_opt_int rt_time_local_offset_sec(dea_int unix_sec) {
     time_t t = (time_t)unix_sec;
@@ -183,7 +187,7 @@ dea_opt_int rt_time_local_offset_sec(dea_int unix_sec) {
  * @param unix_sec Unix timestamp.
  * @return Optional boolean.
  *
- * L0 signature: `extern func rt_time_local_is_dst(unix_sec: int) -> bool?;`
+ * Dea signature: `extern func rt_time_local_is_dst(unix_sec: int) -> bool?;`
  */
 dea_opt_bool rt_time_local_is_dst(dea_int unix_sec) {
     time_t t = (time_t)unix_sec;

@@ -5,6 +5,22 @@
 
 #include "../include/dea_rt.h"
 
+/* =========================================================================
+ * Runtime support for the dea_string type: heap allocation and lifecycle,
+ * reference counting, and content operations (length, indexing, equality,
+ * comparison, concatenation, slicing, byte conversions).
+ * ========================================================================= */
+
+/**
+ * Create a Dea string from a constant C string.
+ * Returns a string with len=0 if c_str is NULL.
+ *
+ * Note: Does NOT allocate or copy - just wraps the existing C string.
+ * Use only for string literals or static const data.
+ *
+ * @param c_str Constant C string.
+ * @return Dea string.
+ */
 dea_string _rt_dea_string_from_const_literal(const char *c_str) {
     dea_string s;
     if (c_str == NULL) {
@@ -22,7 +38,7 @@ dea_string _rt_dea_string_from_const_literal(const char *c_str) {
 }
 
 /**
- * Initialize a heap-allocated DEA_string in the given memory.
+ * Initialize a heap-allocated dea_string in the given memory.
  * Character data (bytes[]) is uninitialized; caller must fill it in.
  * Length is assumed to be already validated by the caller.
  * Size of mem MUST be at least sizeof(_dea_h_string) + s_len + 1.
@@ -32,7 +48,7 @@ dea_string _rt_dea_string_from_const_literal(const char *c_str) {
  *
  * @param mem Allocated memory block.
  * @param s_len Length of the string.
- * @return Initialized L0 string.
+ * @return Initialized Dea string.
  */
 dea_string _rt_init_heap_string(void *mem, dea_int s_len) {
     dea_string s;
@@ -47,7 +63,7 @@ dea_string _rt_init_heap_string(void *mem, dea_int s_len) {
 }
 
 /**
- * Allocate a new reference counted DEA_string of the given length.
+ * Allocate a new reference counted dea_string of the given length.
  * Character data (bytes[]) is uninitialized; caller must fill it in.
  * Panics on allocation failure or negative length.
  * Size of allocated memory is: string header + len + 1 for null terminator.
@@ -56,7 +72,7 @@ dea_string _rt_init_heap_string(void *mem, dea_int s_len) {
  * its data is null-terminated in advance.
  *
  * @param len Length of the string.
- * @return Allocated L0 string.
+ * @return Allocated Dea string.
  */
 #ifdef DEA_TRACE_MEMORY
 dea_string _rt_alloc_string_impl(dea_int len, const char *_loc_file, int _loc_line) {
@@ -91,7 +107,7 @@ dea_string _rt_alloc_string(dea_int len) {
  * Free a string's allocated data, if applicable.
  * If reference counted, decrements reference count and frees when it reaches zero.
  *
- * @param str L0 string to free.
+ * @param str Dea string to free.
  */
 #if defined(DEA_TRACE_ARC) || defined(DEA_TRACE_MEMORY)
 void _rt_free_string_impl(dea_string str, const char *_loc_file, int _loc_line) {
@@ -220,9 +236,9 @@ void _rt_free_string(dea_string str) {
 /**
  * Reallocate a heap string to a new length.
  *
- * @param s Current L0 string.
+ * @param s Current Dea string.
  * @param new_len New length.
- * @return Updated L0 string.
+ * @return Updated Dea string.
  */
 dea_string _rt_realloc_string(dea_string s, dea_int new_len) {
     if (new_len < 0) {
@@ -262,11 +278,11 @@ dea_string _rt_realloc_string(dea_string s, dea_int new_len) {
 }
 
 /**
- * Create a new reference counted DEA_string from a null-terminated C string.
+ * Create a new reference counted dea_string from a null-terminated C string.
  * Allocates new memory and copies data.
  *
  * @param c_str Null-terminated C string.
- * @return L0 string.
+ * @return Dea string.
  */
 dea_string _rt_new_dea_string(const char *c_str) {
     if (c_str == NULL) {
@@ -284,13 +300,13 @@ dea_string _rt_new_dea_string(const char *c_str) {
 }
 
 /**
- * Gets the null-terminated C string underlying an L0 string.
+ * Gets the null-terminated C string underlying a Dea string.
  * or NULL if not available, e.g. for static empty strings.
  * Useful when interfacing with C APIs that require null-terminated strings.
  *
- * Note: This is an internal helper, not exposed to L0 code.
+ * Note: This is an internal helper, not exposed to Dea code.
  *
- * @param s L0 string.
+ * @param s Dea string.
  * @return Pointer to character data.
  */
 char *_rt_string_bytes(dea_string s) {
@@ -315,10 +331,10 @@ char *_rt_string_bytes(dea_string s) {
 /**
  * Get the length of a string.
  *
- * @param str L0 string.
+ * @param str Dea string.
  * @return Length in bytes.
  *
- * L0 signature: `extern func rt_strlen(str: string) -> int;`
+ * Dea signature: `extern func rt_strlen(str: string) -> int;`
  */
 dea_int rt_strlen(dea_string str) {
     switch(str.kind) {
@@ -340,11 +356,11 @@ dea_int rt_strlen(dea_string str) {
  * Bounds-checked character access.
  * Returns the character at the given index, or panics if out of bounds.
  *
- * @param a L0 string.
+ * @param a Dea string.
  * @param index Index.
  * @return Byte value.
  *
- * L0 signature: `extern func rt_string_get(s: string, index: int) -> byte;`
+ * Dea signature: `extern func rt_string_get(s: string, index: int) -> byte;`
  */
 dea_byte rt_string_get(dea_string a, dea_int index) {
     dea_int a_len = rt_strlen(a);
@@ -362,10 +378,10 @@ dea_byte rt_string_get(dea_string a, dea_int index) {
 /**
  * Return a pointer to the raw byte data of a string.
  *
- * @param s L0 string.
+ * @param s Dea string.
  * @return Pointer to the first byte.
  *
- * L0 signature: `extern func rt_string_bytes_ptr(s: string) -> byte*;`
+ * Dea signature: `extern func rt_string_bytes_ptr(s: string) -> byte*;`
  */
 dea_byte *rt_string_bytes_ptr(dea_string s) {
     return (dea_byte*)_rt_string_bytes(s);
@@ -378,7 +394,7 @@ dea_byte *rt_string_bytes_ptr(dea_string s) {
  * @param b Second string.
  * @return 1 if equal, 0 otherwise.
  *
- * L0 signature: `extern func rt_string_equals(a: string, b: string) -> bool;`
+ * Dea signature: `extern func rt_string_equals(a: string, b: string) -> bool;`
  */
 dea_bool rt_string_equals(dea_string a, dea_string b) {
     dea_int a_len = rt_strlen(a);
@@ -405,7 +421,7 @@ dea_bool rt_string_equals(dea_string a, dea_string b) {
  * @param b Second string.
  * @return Comparison result.
  *
- * L0 signature: `extern func rt_string_compare(a: string, b: string) -> int;`
+ * Dea signature: `extern func rt_string_compare(a: string, b: string) -> int;`
  */
 dea_int rt_string_compare(dea_string a, dea_string b) {
     dea_int a_len = rt_strlen(a);
@@ -449,7 +465,7 @@ dea_int rt_string_compare(dea_string a, dea_string b) {
  * @param b Second string.
  * @return Concatenated string.
  *
- * L0 signature: `extern func rt_string_concat(a: string, b: string) -> string;`
+ * Dea signature: `extern func rt_string_concat(a: string, b: string) -> string;`
  */
 #ifdef DEA_TRACE_MEMORY
 dea_string _rt_string_concat_impl(dea_string a, dea_string b, const char *_loc_file, int _loc_line) {
@@ -527,7 +543,7 @@ dea_string rt_string_concat(dea_string a, dea_string b) {
  * @param end End index.
  * @return Slice string.
  *
- * L0 signature: `extern func rt_string_slice(s: string, start: int, end: int) -> string;`
+ * Dea signature: `extern func rt_string_slice(s: string, start: int, end: int) -> string;`
  */
 dea_string rt_string_slice(dea_string s, dea_int start, dea_int end) {
     dea_int s_len = rt_strlen(s);
@@ -556,14 +572,14 @@ dea_string rt_string_slice(dea_string s, dea_int start, dea_int end) {
 }
 
 /**
- * Create an L0 string from a single character (byte).
+ * Create a Dea string from a single character (byte).
  * Allocates a new heap string of length 1.
  * Note: Caller must free the returned string using _rt_free_string.
  *
  * @param b Character.
- * @return L0 string.
+ * @return Dea string.
  *
- * L0 signature: `extern func rt_string_from_byte(b: byte) -> string;`
+ * Dea signature: `extern func rt_string_from_byte(b: byte) -> string;`
  */
 dea_string rt_string_from_byte(dea_byte b) {
     dea_string s = _rt_alloc_string(1);
@@ -574,7 +590,7 @@ dea_string rt_string_from_byte(dea_byte b) {
 }
 
 /**
- * Create an L0 string from a byte array and a length.
+ * Create a Dea string from a byte array and a length.
  * Allocates a new heap string of the given length and copies data.
  * The array does not need to be a null-terminated C string: all bytes are copied and a null
  * terminator is added for C interoperability.
@@ -582,9 +598,9 @@ dea_string rt_string_from_byte(dea_byte b) {
  *
  * @param bytes Pointer to bytes.
  * @param len Length.
- * @return L0 string.
+ * @return Dea string.
  *
- * L0 signature: `extern func rt_string_from_byte_array(bytes: byte*, len: int) -> string;`
+ * Dea signature: `extern func rt_string_from_byte_array(bytes: byte*, len: int) -> string;`
  */
 dea_string rt_string_from_byte_array(dea_byte* bytes, dea_int len) {
     if (len < 0) {
@@ -600,9 +616,9 @@ dea_string rt_string_from_byte_array(dea_byte* bytes, dea_int len) {
  * Increment reference count for heap strings (no-op for static).
  * Panics if the string is heap-allocated but has an invalid refcount state (e.g. double free detected).
  *
- * @param s L0 string.
+ * @param s Dea string.
  *
- * L0 signature: `extern func rt_string_retain(s: string) -> void;`
+ * Dea signature: `extern func rt_string_retain(s: string) -> void;`
  */
 #ifdef DEA_TRACE_ARC
 void _rt_string_retain_impl(dea_string s, const char *_loc_file, int _loc_line) {
@@ -700,9 +716,9 @@ void rt_string_retain(dea_string s) {
 /**
  * Decrement reference count, freeing if zero.
  *
- * @param s L0 string.
+ * @param s Dea string.
  *
- * L0 signature: `extern func rt_string_release(s: string) -> void;`
+ * Dea signature: `extern func rt_string_release(s: string) -> void;`
  */
 #ifdef DEA_TRACE_ARC
 void _rt_string_release_impl(dea_string s, const char *_loc_file, int _loc_line) {

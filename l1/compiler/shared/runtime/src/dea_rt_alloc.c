@@ -6,7 +6,10 @@
 #include "../include/dea_rt.h"
 
 /* =========================================================================
- * Memory allocation and manipulation functions.
+ * Runtime support for memory allocation (alloc, realloc, free, calloc), raw
+ * memory operations (memset, memcpy, memcmp, array element addressing),
+ * managed object lifecycle (alloc_obj, drop), and the internal allocation
+ * tracking table.
  * ========================================================================= */
 
 /**
@@ -17,7 +20,7 @@
  * @param bytes Size in bytes.
  * @return Pointer to allocated memory or NULL.
  *
- * L0 signature: `extern func rt_alloc(bytes: int) -> void*?;`
+ * Dea signature: `extern func rt_alloc(bytes: int) -> void*?;`
  */
 #ifdef DEA_TRACE_MEMORY
 void *_rt_alloc_impl(dea_int bytes, const char *_loc_file, int _loc_line) {
@@ -80,7 +83,7 @@ void *rt_alloc(dea_int bytes) {
  * @param new_bytes New size.
  * @return Pointer to reallocated memory or NULL.
  *
- * L0 signature: `extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;`
+ * Dea signature: `extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;`
  */
 #ifdef DEA_TRACE_MEMORY
 void *_rt_realloc_impl(void *ptr, dea_int new_bytes, const char *_loc_file, int _loc_line) {
@@ -138,7 +141,7 @@ void *rt_realloc(void *ptr, dea_int new_bytes) {
  *
  * @param ptr Pointer to free.
  *
- * L0 signature: `extern func rt_free(ptr: void*?) -> void;`
+ * Dea signature: `extern func rt_free(ptr: void*?) -> void;`
  */
 #ifdef DEA_TRACE_MEMORY
 void _rt_free_impl(void *ptr, const char *_loc_file, int _loc_line) {
@@ -163,7 +166,7 @@ void rt_free(void *ptr) {
  * @param elem_size Element size.
  * @return Pointer to zeroed memory or NULL.
  *
- * L0 signature: `extern func rt_calloc(count: int, elem_size: int) -> void*?;`
+ * Dea signature: `extern func rt_calloc(count: int, elem_size: int) -> void*?;`
  */
 #ifdef DEA_TRACE_MEMORY
 void *_rt_calloc_impl(dea_int count, dea_int elem_size, const char *_loc_file, int _loc_line) {
@@ -221,7 +224,7 @@ void *rt_calloc(dea_int count, dea_int elem_size) {
  * @param bytes Number of bytes.
  * @return dest.
  *
- * L0 signature: `extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;`
+ * Dea signature: `extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;`
  */
 void *rt_memset(void *dest, dea_int value, dea_int bytes) {
     if (bytes < 0) {
@@ -246,7 +249,7 @@ void *rt_memset(void *dest, dea_int value, dea_int bytes) {
  * @param bytes Number of bytes.
  * @return dest.
  *
- * L0 signature: `extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;`
+ * Dea signature: `extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;`
  */
 void *rt_memcpy(void *dest, void *src, dea_int bytes) {
     if (bytes < 0) {
@@ -270,7 +273,7 @@ void *rt_memcpy(void *dest, void *src, dea_int bytes) {
  * @param bytes Number of bytes.
  * @return Comparison result.
  *
- * L0 signature: `extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;`
+ * Dea signature: `extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;`
  */
 dea_int rt_memcmp(void *a, void *b, dea_int bytes) {
     if (bytes < 0) {
@@ -301,7 +304,7 @@ dea_int rt_memcmp(void *a, void *b, dea_int bytes) {
  * @param index Element index.
  * @return Pointer to the element.
  *
- * L0 signature: `extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;`
+ * Dea signature: `extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;`
  */
 void *rt_array_element(void *array_data, dea_int element_size, dea_int index) {
     if (array_data == NULL) {

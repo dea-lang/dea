@@ -86,7 +86,7 @@ func sc_free(self: ScopeContext*) {
  *
  * @param self Scope to update.
  * @param name Mangled C variable name.
- * @param var_type Resolved L0 type.
+ * @param var_type Resolved Dea type.
  */
 func sc_add_declared(self: ScopeContext*, name: string, var_type: Type*) {
     ptr_vec_push(self.declared_vars, new ScopeVar(name, type_clone(var_type)) as void*);
@@ -97,7 +97,7 @@ func sc_add_declared(self: ScopeContext*, name: string, var_type: Type*) {
  *
  * @param self Scope to update.
  * @param name Mangled C variable name.
- * @param var_type Resolved L0 type.
+ * @param var_type Resolved Dea type.
  */
 func sc_add_owned(self: ScopeContext*, name: string, var_type: Type*) {
     ptr_vec_push(self.owned_vars, new ScopeVar(name, type_clone(var_type)) as void*);

@@ -6,7 +6,9 @@
 #include "../include/dea_rt.h"
 
 /* =========================================================================
- * UB-free integer helpers
+ * Runtime support for safe integer arithmetic, narrowing, and checked casts.
+ * All operations panic on overflow, division by zero, or out-of-range
+ * conversion.
  * ========================================================================= */
 
 /**
@@ -458,28 +460,4 @@ dea_ulong _rt_cast_dea_ulong_from_signed(dea_long value) {
 /** Checked cast from unsigned 64-bit to dea_ulong. */
 dea_ulong _rt_cast_dea_ulong_from_unsigned(dea_ulong value) {
     return value;
-}
-
-void rt_srand(dea_int seed) {
-    if (seed == 0) {
-        srand((unsigned int)time(NULL));
-    } else {
-        srand((unsigned int)seed);
-    }
-}
-
-/**
- * Generate a random integer in the range [0, max).
- * Returns 0 if max <= 0.
- *
- * @param max Upper bound (exclusive).
- * @return Random value.
- *
- * L0 signature: `extern func rt_rand(max: int) -> int;`
- */
-dea_int rt_rand(dea_int max) {
-    if (max <= 0) {
-        return 0;
-    }
-    return (dea_int)(rand() % max);
 }

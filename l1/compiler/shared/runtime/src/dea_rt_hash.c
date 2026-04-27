@@ -9,7 +9,7 @@
 #include "dea_siphash.h"
 
 /* =========================================================================
- * Runtime support for hashing (using SipHash-1-3)
+ * Runtime support for hashing (using SipHash-1-3).
  * ========================================================================= */
 
 /**
@@ -152,7 +152,7 @@ dea_int _rt_hash_data(void *data, dea_int size, const uint8_t flags) {
  * @param value Boolean value.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_bool(value: bool) -> int;`
+ * Dea signature: `extern func rt_hash_bool(value: bool) -> int;`
  */
 dea_int rt_hash_bool(dea_bool value) {
     return _rt_hash_bool(value, 0);
@@ -164,7 +164,7 @@ dea_int rt_hash_bool(dea_bool value) {
  * @param value Byte value.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_byte(value: byte) -> int;`
+ * Dea signature: `extern func rt_hash_byte(value: byte) -> int;`
  */
 dea_int rt_hash_byte(dea_byte value) {
     return _rt_hash_byte(value, 0);
@@ -176,7 +176,7 @@ dea_int rt_hash_byte(dea_byte value) {
  * @param value Integer value.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_int(value: int) -> int;`
+ * Dea signature: `extern func rt_hash_int(value: int) -> int;`
  */
 dea_int rt_hash_int(dea_int value) {
     return _rt_hash_int(value, 0);
@@ -188,7 +188,7 @@ dea_int rt_hash_int(dea_int value) {
  * @param value L0 string.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_string(value: string) -> int;`
+ * Dea signature: `extern func rt_hash_string(value: string) -> int;`
  */
 dea_int rt_hash_string(dea_string value) {
     return _rt_hash_string(value, 0);
@@ -202,7 +202,7 @@ dea_int rt_hash_string(dea_string value) {
  * @param size Data size.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_data(data: void*, size: int) -> int;`
+ * Dea signature: `extern func rt_hash_data(data: void*, size: int) -> int;`
  */
 dea_int rt_hash_data(void *data, dea_int size) {
     if (size < 0) {
@@ -220,7 +220,7 @@ dea_int rt_hash_data(void *data, dea_int size) {
  * @param opt Optional bool.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_bool(opt: bool?) -> int;`
+ * Dea signature: `extern func rt_hash_opt_bool(opt: bool?) -> int;`
  */
 dea_int rt_hash_opt_bool(dea_opt_bool opt) {
     uint8_t flags = _DEA_TAG_OPT;
@@ -233,7 +233,7 @@ dea_int rt_hash_opt_bool(dea_opt_bool opt) {
  * @param opt Optional byte.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_byte(opt: byte?) -> int;`
+ * Dea signature: `extern func rt_hash_opt_byte(opt: byte?) -> int;`
  */
 dea_int rt_hash_opt_byte(dea_opt_byte opt) {
     uint8_t flags = _DEA_TAG_OPT;
@@ -246,7 +246,7 @@ dea_int rt_hash_opt_byte(dea_opt_byte opt) {
  * @param opt Optional int.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_int(opt: int?) -> int;`
+ * Dea signature: `extern func rt_hash_opt_int(opt: int?) -> int;`
  */
 dea_int rt_hash_opt_int(dea_opt_int opt) {
     uint8_t flags = _DEA_TAG_OPT;
@@ -260,7 +260,7 @@ dea_int rt_hash_opt_int(dea_opt_int opt) {
  * @param opt Optional string.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_string(opt: string?) -> int;`
+ * Dea signature: `extern func rt_hash_opt_string(opt: string?) -> int;`
  */
 dea_int rt_hash_opt_string(dea_opt_string opt) {
     uint8_t flags = _DEA_TAG_OPT;
@@ -279,7 +279,7 @@ dea_int rt_hash_opt_string(dea_opt_string opt) {
  * @param ptr Pointer.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_ptr(ptr: void*) -> int;`
+ * Dea signature: `extern func rt_hash_ptr(ptr: void*) -> int;`
  */
 dea_int rt_hash_ptr(void *ptr) {
     if (ptr == NULL) {
@@ -297,7 +297,7 @@ dea_int rt_hash_ptr(void *ptr) {
  * @param opt Pointer.
  * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_ptr(opt: void*?) -> int;`
+ * Dea signature: `extern func rt_hash_opt_ptr(opt: void*?) -> int;`
  */
 dea_int rt_hash_opt_ptr(void *opt) {
     if (opt == NULL) {

@@ -231,17 +231,21 @@ func test_runtime_object_paths_return_default_or_traced_dirs() {
     with (let opts = cli_options_create() => cli_options_free(opts)) {
         let default_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as VectorString*;
         let default_dir = join(join(join("build-root", "runtime"), "tcc"), "default");
-        assert(vs_size(default_paths) == 7, "default runtime object count mismatch");
+        assert(vs_size(default_paths) == 9, "default runtime object count mismatch");
         assert(vs_get(default_paths, 0) == join(default_dir, "dea_rt_panic.o"), "default panic object path mismatch");
-        assert(vs_get(default_paths, 6) == join(default_dir, "dea_rt_time.o"), "default time object path mismatch");
+        assert(vs_get(default_paths, 1) == join(default_dir, "dea_rt_sys.o"), "default sys object path mismatch");
+        assert(vs_get(default_paths, 3) == join(default_dir, "dea_rt_rand.o"), "default rand object path mismatch");
+        assert(vs_get(default_paths, 8) == join(default_dir, "dea_rt_time.o"), "default time object path mismatch");
         vs_free(default_paths);
 
         opts.trace_memory = true;
         let traced_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as VectorString*;
         let traced_dir = join(join(join("build-root", "runtime"), "tcc"), "traced");
-        assert(vs_size(traced_paths) == 7, "traced runtime object count mismatch");
+        assert(vs_size(traced_paths) == 9, "traced runtime object count mismatch");
         assert(vs_get(traced_paths, 0) == join(traced_dir, "dea_rt_panic.o"), "traced panic object path mismatch");
-        assert(vs_get(traced_paths, 6) == join(traced_dir, "dea_rt_time.o"), "traced time object path mismatch");
+        assert(vs_get(traced_paths, 1) == join(traced_dir, "dea_rt_sys.o"), "traced sys object path mismatch");
+        assert(vs_get(traced_paths, 3) == join(traced_dir, "dea_rt_rand.o"), "traced rand object path mismatch");
+        assert(vs_get(traced_paths, 8) == join(traced_dir, "dea_rt_time.o"), "traced time object path mismatch");
         vs_free(traced_paths);
     }
 }

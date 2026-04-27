@@ -833,9 +833,11 @@ func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?
         variant = "traced";
     }
     let object_dir = join(join(join(build_dir as string, "runtime"), "tcc"), variant);
-    let paths = vs_create(8);
+    let paths = vs_create(16);
     vs_push(paths, join(object_dir, "dea_rt_panic.o"));
+    vs_push(paths, join(object_dir, "dea_rt_sys.o"));
     vs_push(paths, join(object_dir, "dea_rt_math.o"));
+    vs_push(paths, join(object_dir, "dea_rt_rand.o"));
     vs_push(paths, join(object_dir, "dea_rt_string.o"));
     vs_push(paths, join(object_dir, "dea_rt_alloc.o"));
     vs_push(paths, join(object_dir, "dea_rt_io.o"));

@@ -20,7 +20,7 @@ func test_basic() {
     printl_si("Current capacity:", vs_capacity(vs));
     printl_s("Pushing strings into vector...");
     let s1 = "Hello, World!";
-    let s2 = "L0 Programming Language";
+    let s2 = "Dea Programming Language";
     let s3 = "VectorString Test";
     let s4 = "Goodbye!";
     let s5 = "Still more strings...";
