@@ -77,7 +77,7 @@ func dea_is_intrinsic_symbol(sym: Symbol*?, name: string) -> bool {
  * @return New empty module node for `dea`.
  */
 func dea_make_virtual_module() -> Module* {
-    return new Module(dea_module_name(), ptr_vec_create(0), ptr_vec_create(0), dea_zero_span(), dea_module_filename());
+    return new Module(dea_module_name(), null, ptr_vec_create(0), ptr_vec_create(0), dea_zero_span(), dea_module_filename());
 }
 
 /**

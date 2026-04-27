@@ -3,7 +3,7 @@
 ## Add export manifests and aliased/selective imports
 
 - Date: 2026-04-24
-- Status: Draft
+- Status: Completed
 - Title: Add export manifests and aliased/selective imports
 - Kind: Feature
 - Severity: High
@@ -15,6 +15,7 @@
   - `l1/compiler/stage1_l0/src/parser/decl.l0`
   - `l1/compiler/stage1_l0/src/name_resolver.l0`
   - `l1/compiler/stage1_l0/src/analysis.l0`
+  - `l1/compiler/stage1_l0/src/build_driver.l0`
   - `l1/compiler/stage1_l0/src/symbols.l0`
   - `l1/docs/reference/grammar.md`
   - `l1/docs/roadmap.md`
@@ -26,7 +27,13 @@
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
-- Repro: None
+- Repro: `make -C l1 test-stage1 TESTS="parser_test name_resolver_test analysis_test"`
+- Final validation:
+  - `make -C l1 test-stage1 TESTS="name_resolver_test analysis_test"`
+  - `make -C l1 test-stage1 TESTS="build_driver_test name_resolver_test"`
+  - `make -C l1 test-stage1`
+  - `make -C l1 test-stage1-trace`
+  - `make clean test-all`
 
 ## Summary
 
@@ -140,3 +147,10 @@ Update the grammar/reference text and add fixtures covering:
 3. Alias-qualified access works through `alias::name` and does not leak unqualified bindings accidentally.
 4. Selective import resolution and ambiguity behavior are covered by parser and semantic tests.
 5. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+
+## Completion Notes
+
+Implemented in L1 Stage 1. The parser now accepts export manifests, aliased imports, and selective imports; the resolver
+computes explicit and implicit export surfaces, resolves alias-qualified references, and keeps redundant same-module
+imports idempotent while warning for redundant selective imports and duplicate open imports. The CLI build/run path now
+prints non-fatal analysis diagnostics before executing generated programs.

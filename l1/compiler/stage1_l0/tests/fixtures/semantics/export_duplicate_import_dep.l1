@@ -1,0 +1,15 @@
+module export_duplicate_import_dep;
+
+export one, two, three;
+
+func one() -> int {
+    return 1;
+}
+
+func two() -> int {
+    return 2;
+}
+
+func three() -> int {
+    return 3;
+}

@@ -1,0 +1,11 @@
+module export_list_dep;
+
+export chosen;
+
+func chosen() -> int {
+    return 17;
+}
+
+func internal() -> int {
+    return 19;
+}

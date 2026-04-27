@@ -87,10 +87,30 @@ func test_analysis_semantic_failure() {
 }
 
 /**
+ * Tests alias-qualified imports and alias-only unqualified failure.
+ */
+func test_analysis_alias_imports() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "export_alias_main", cfg);
+        assert(!analysis_has_errors(result), "expected alias-qualified import to analyze");
+        analysis_result_free(result);
+    }
+
+    with (let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2) {
+        let result2 = analysis_analyze_entry(sp, "export_alias_unqualified_err", cfg2);
+        assert(analysis_has_errors(result2), "expected alias-only unqualified reference to fail");
+        analysis_result_free(result2);
+    }
+    sp_free(sp);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
     test_analysis_ok_main();
     test_analysis_semantic_failure();
+    test_analysis_alias_imports();
     printl_s("analysis_test: all tests passed");
 }

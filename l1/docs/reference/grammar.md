@@ -56,7 +56,7 @@ Note: ambiguity between `-` as a unary operator and as part of a negative litera
 Reserved words (not valid as identifiers):
 
 ```text
-module import func struct enum type extern let const
+module export import from func struct enum type extern let const
 return match case if else while for break continue in with cleanup
 true false null as new drop void bool string
 byte tiny short int long ushort uint ulong float double
@@ -95,20 +95,34 @@ Line comments: `// ...` until end of line. Whitespace: spaces, tabs, newlines, c
 One file corresponds to one module, path names are dot-separated.
 
 ```ebnf
-CompilationUnit     ::=     ModuleDecl ImportDecl* TopLevelDecl*
+CompilationUnit     ::=     ModuleDecl ExportDecl? ImportDecl* TopLevelDecl*
 
 ModuleDecl          ::=     "module" ModulePath ";"
 
+ExportDecl          ::=     "export" "*" ";"
+                      |     "export" IdentList ";"
+
 ImportDecl          ::=     "import" ModulePath ";"
+                      |     "import" ModulePath "as" Ident ";"
+                      |     "import" IdentList "from" ModulePath ";"
 
 ModulePath          ::=     Ident ("." Ident)*
+
+IdentList           ::=     Ident ("," Ident)*
 ```
 
 `Ident` here is the module name component (no hierarchical packages in L<sub>1</sub> beyond dot-separated modules). This
 implies each module path component must be a valid identifier; hyphens and leading digits are not valid.
 
-Semantic note: intrinsic availability and the implicit `dea` prelude are semantic behavior, not grammar extensions. See
-`design-decisions.md` for the current prelude/import rules.
+Semantic notes:
+
+- `export *;` exports every top-level symbol, including names beginning with `_`. `export a, b;` exports only the named
+  top-level symbols. If no export manifest is present, all top-level names except `_`-prefixed names are exported.
+- Plain `import module.path;` opens the imported module's export set into the current module and permits
+  `module.path::name` lookup. `import module.path as alias;` binds only the `alias::name` namespace.
+  `import a, b from module.path;` binds only the named exports as unqualified imports.
+- Intrinsic availability and the implicit `dea` prelude are semantic behavior, not grammar extensions. See
+  `design-decisions.md` for the current prelude/import rules.
 
 ## 3. Top-level declarations
 

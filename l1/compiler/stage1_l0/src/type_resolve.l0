@@ -220,15 +220,28 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
     }
 
     let target_module = tr_module_from_path(module_path as VectorString*);
-    if (target_module != env.module_name && !nr_module_env_imports_module(env, target_module)) {
+    let target_env: ModuleEnv*? = null;
+    let use_exports = false;
+    let alias_env = nr_module_env_alias_target(env, target_module);
+    if (alias_env != null) {
+        target_env = alias_env as ModuleEnv*;
+        use_exports = true;
+    } else if (target_module == env.module_name) {
+        target_env = env;
+    } else if (nr_module_env_qualifies_module(env, target_module)) {
+        target_env = nr_env_find(nr, target_module);
+        use_exports = true;
+    } else {
         return null;
     }
-    let target_env = nr_env_find(nr, target_module);
     if (target_env == null) {
         return null;
     }
 
     if (name_qualifier == null) {
+        if (use_exports) {
+            return nr_map_symbol_get((target_env as ModuleEnv*).exports, name);
+        }
         return nr_module_env_local(target_env as ModuleEnv*, name);
     }
 
@@ -236,7 +249,12 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
         return null;
     }
 
-    let sym2 = nr_module_env_local(target_env as ModuleEnv*, name);
+    let sym2: Symbol*? = null;
+    if (use_exports) {
+        sym2 = nr_map_symbol_get((target_env as ModuleEnv*).exports, name);
+    } else {
+        sym2 = nr_module_env_local(target_env as ModuleEnv*, name);
+    }
     if (sym2 == null) {
         return null;
     }

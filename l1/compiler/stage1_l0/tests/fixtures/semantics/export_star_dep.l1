@@ -1,0 +1,11 @@
+module export_star_dep;
+
+export *;
+
+func public_value() -> int {
+    return 11;
+}
+
+func _hidden_value() -> int {
+    return 13;
+}

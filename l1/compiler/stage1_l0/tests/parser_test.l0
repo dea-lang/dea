@@ -98,6 +98,54 @@ func test_valid_module() {
 }
 
 /**
+ * Tests export manifests and new import forms.
+ */
+func test_export_and_new_import_forms_ok() {
+    let src = "module main; export foo, Bar; import math as m; import abs, pi from math; func foo() -> int { return 0; } struct Bar { x: int; }";
+    let result = parse_module_source(src, "<test>");
+    if (parse_has_errors(result)) {
+        let diag = parse_diag_get(result, 0);
+        printl_ss("unexpected parse error code:", diag.code);
+        printl_ss("unexpected parse error message:", diag.message);
+        assert(false, "Expected parse to succeed");
+    }
+    assert(result.root_module != null, "Expected parsed module");
+    let root = result.root_module as Module*;
+    assert(root.export_manifest != null, "Expected explicit export manifest");
+    let manifest = root.export_manifest as ExportManifest*;
+    assert(!manifest.export_all, "Expected export allowlist");
+    assert(vs_size(manifest.names) == 2, "Expected two exported names");
+    assert(vs_get(manifest.names, 0) == "foo", "Expected first exported name");
+    assert(vs_get(manifest.names, 1) == "Bar", "Expected second exported name");
+    assert(vec_size(root.imports) == 2, "Expected two imports");
+    let alias_imp = ptr_vec_get(root.imports, 0) as Import*;
+    assert(ord(alias_imp.kind) == ord(IMPORT_ALIAS), "Expected alias import");
+    assert(alias_imp.name == "math", "Expected alias import module name");
+    assert(alias_imp.alias == "m", "Expected import alias");
+    let selective_imp = ptr_vec_get(root.imports, 1) as Import*;
+    assert(ord(selective_imp.kind) == ord(IMPORT_SELECTIVE), "Expected selective import");
+    assert(selective_imp.names != null, "Expected selective import names");
+    assert(vs_size(selective_imp.names as VectorString*) == 2, "Expected two selective imports");
+    assert(vs_get(selective_imp.names as VectorString*, 0) == "abs", "Expected first selective import");
+    assert(vs_get(selective_imp.names as VectorString*, 1) == "pi", "Expected second selective import");
+    parse_result_free(result);
+}
+
+/**
+ * Tests star export syntax.
+ */
+func test_export_star_ok() {
+    let src = "module main; export *; func foo() -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected export star parse success");
+    assert(result.root_module != null, "Expected parsed module");
+    let root = result.root_module as Module*;
+    assert(root.export_manifest != null, "Expected explicit export manifest");
+    assert((root.export_manifest as ExportManifest*).export_all, "Expected star export manifest");
+    parse_result_free(result);
+}
+
+/**
  * Tests test_module_decl_error.
  */
 func test_module_decl_error() {
@@ -591,6 +639,8 @@ func test_top_level_multi_error_collection() {
 func main() {
     test_parser_message_omits_embedded_code();
     test_valid_module();
+    test_export_and_new_import_forms_ok();
+    test_export_star_ok();
     test_module_decl_error();
     test_reserved_variable_name_error();
     test_top_level_const_ok();

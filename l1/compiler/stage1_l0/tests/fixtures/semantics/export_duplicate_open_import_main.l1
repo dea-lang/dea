@@ -1,0 +1,9 @@
+module export_duplicate_open_import_main;
+
+import export_duplicate_import_dep;
+import export_list_dep;
+import export_duplicate_import_dep;
+
+func main() -> int {
+    return one();
+}

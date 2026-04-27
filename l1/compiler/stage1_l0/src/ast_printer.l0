@@ -212,8 +212,26 @@ func ap_print_type_ref(tr: TypeRef*, indent: int) {
 }
 
 /* ---------------------------------
-   Import, Param, FieldDecl, EnumVariant printers
+   Export, Import, Param, FieldDecl, EnumVariant printers
    --------------------------------- */
+
+/**
+ * Print an export manifest node.
+ *
+ * @param manifest Export manifest to print.
+ * @param indent Indent level.
+ */
+func ap_print_export_manifest(manifest: ExportManifest*, indent: int) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "ExportManifest(all=");
+        sb_append(sb, ap_bool_str(manifest.export_all));
+        sb_append(sb, ", names=");
+        sb_append(sb, ap_quote_string(join_s(manifest.names, ",")));
+        sb_append(sb, ")");
+        sb_append(sb, ap_span_suffix(manifest.span));
+        ap_print_line(indent, sb_to_string(sb));
+    }
+}
 
 /**
  * Print an import node.
@@ -222,7 +240,27 @@ func ap_print_type_ref(tr: TypeRef*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_import(imp: Import*, indent: int) {
-    ap_print_line(indent, concat3_s("Import(name=", ap_quote_string(imp.name), ")"));
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "Import(name=");
+        sb_append(sb, ap_quote_string(imp.name));
+        sb_append(sb, ", kind=");
+        match (imp.kind) {
+            IMPORT_OPEN => { sb_append(sb, "open"); }
+            IMPORT_ALIAS => { sb_append(sb, "alias"); }
+            IMPORT_SELECTIVE => { sb_append(sb, "selective"); }
+        }
+        if (imp.alias != "") {
+            sb_append(sb, ", alias=");
+            sb_append(sb, ap_quote_string(imp.alias));
+        }
+        if (imp.names != null) {
+            sb_append(sb, ", names=");
+            sb_append(sb, ap_quote_string(join_s(imp.names as VectorString*, ",")));
+        }
+        sb_append(sb, ")");
+        sb_append(sb, ap_span_suffix(imp.span));
+        ap_print_line(indent, sb_to_string(sb));
+    }
 }
 
 /**
@@ -848,6 +886,10 @@ func ap_print_module(mod: Module*, pr: ParseResult*) {
         sb_append(sb, ")");
         sb_append(sb, ap_span_suffix(mod.span));
         ap_print_line(0, sb_to_string(sb));
+    }
+    if (mod.export_manifest != null) {
+        ap_print_label(0, "export_manifest");
+        ap_print_export_manifest(mod.export_manifest as ExportManifest*, 2);
     }
     if (vec_size(mod.imports) > 0) {
         ap_print_label(0, "imports");

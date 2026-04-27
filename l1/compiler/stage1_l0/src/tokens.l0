@@ -31,6 +31,7 @@ enum TokenType {
 
     // Keywords
     TT_MODULE;
+    TT_EXPORT;
     TT_IMPORT;
     TT_FUNC;
     TT_STRUCT;
@@ -52,6 +53,7 @@ enum TokenType {
     TT_FALSE;
     TT_NULL;
     TT_AS;
+    TT_FROM;
 
     TT_NEW;
     TT_DROP;
@@ -129,6 +131,7 @@ func token_to_string(token: Token) -> string {
 
         // Keywords
         TT_MODULE => { return "module"; }
+        TT_EXPORT => { return "export"; }
         TT_IMPORT => { return "import"; }
         TT_FUNC => { return "func"; }
         TT_STRUCT => { return "struct"; }
@@ -150,6 +153,7 @@ func token_to_string(token: Token) -> string {
         TT_FALSE => { return "false"; }
         TT_NULL => { return "null"; }
         TT_AS => { return "as"; }
+        TT_FROM => { return "from"; }
         TT_NEW => { return "new"; }
         TT_DROP => { return "drop"; }
         TT_WITH => { return "with"; }
@@ -221,6 +225,7 @@ func is_reserved_ident_word(word: string) -> bool {
 func is_reserved_keyword(token: Token) -> bool {
     match (token.token_type) {
         TT_MODULE => { return true; }
+        TT_EXPORT => { return true; }
         TT_IMPORT => { return true; }
         TT_FUNC => { return true; }
         TT_STRUCT => { return true; }
@@ -242,6 +247,7 @@ func is_reserved_keyword(token: Token) -> bool {
         TT_FALSE => { return true; }
         TT_NULL => { return true; }
         TT_AS => { return true; }
+        TT_FROM => { return true; }
         TT_NEW => { return true; }
         TT_DROP => { return true; }
         TT_WITH => { return true; }
@@ -264,6 +270,7 @@ func is_reserved_keyword(token: Token) -> bool {
 func ident_to_token(ident: string, index: int, line: int, col: int) -> Token {
     case (ident) {
          "module" => return Token(TT_MODULE, index, line, col);
+         "export" => return Token(TT_EXPORT, index, line, col);
          "import" => return Token(TT_IMPORT, index, line, col);
          "func" => return Token(TT_FUNC, index, line, col);
          "struct" => return Token(TT_STRUCT, index, line, col);
@@ -285,6 +292,7 @@ func ident_to_token(ident: string, index: int, line: int, col: int) -> Token {
          "false" => return Token(TT_FALSE, index, line, col);
          "null" => return Token(TT_NULL, index, line, col);
          "as" => return Token(TT_AS, index, line, col);
+         "from" => return Token(TT_FROM, index, line, col);
          "new" => return Token(TT_NEW, index, line, col);
          "drop" => return Token(TT_DROP, index, line, col);
          "with" => return Token(TT_WITH, index, line, col);

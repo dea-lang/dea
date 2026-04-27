@@ -1,0 +1,7 @@
+module export_bad_manifest;
+
+export chosen, chosen, missing;
+
+func chosen() -> int {
+    return 23;
+}

@@ -1,0 +1,7 @@
+module export_alias_unqualified_err;
+
+import export_list_dep as dep;
+
+func main() -> int {
+    return chosen();
+}

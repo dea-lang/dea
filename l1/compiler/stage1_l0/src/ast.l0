@@ -150,10 +150,32 @@ struct TypeRef {
 }
 
 /**
+ * Represents the ExportManifest structure.
+ */
+struct ExportManifest {
+    export_all: bool;
+    names: VectorString*;
+    span: Span;
+}
+
+/**
+ * Defines the ImportKind enumeration.
+ */
+enum ImportKind {
+    IMPORT_OPEN;
+    IMPORT_ALIAS;
+    IMPORT_SELECTIVE;
+}
+
+/**
  * Represents the Import structure.
  */
 struct Import {
     name: string;
+    kind: ImportKind;
+    alias: string;
+    names: VectorString*?;
+    span: Span;
 }
 
 /**
@@ -254,6 +276,7 @@ struct TopLevelDecl {
  */
 struct Module {
     name: string;
+    export_manifest: ExportManifest*?;
     imports: VectorBase*; // Import*
     decls: VectorBase*;   // TopLevelDecl*
     span: Span;
@@ -794,14 +817,39 @@ func top_level_decl_free(self: TopLevelDecl*) {
 }
 
 /**
+ * Free an optional export manifest.
+ *
+ * @param self Optional export manifest to free.
+ */
+func export_manifest_free(self: ExportManifest*?) {
+    if (self != null) {
+        let manifest = self as ExportManifest*;
+        vs_free(manifest.names);
+        drop manifest;
+    }
+}
+
+/**
+ * Free an import declaration.
+ *
+ * @param self Import declaration to free.
+ */
+func import_free(self: Import*) {
+    vs_free_opt(self.names);
+    drop self;
+}
+
+/**
  * Free a parsed module and its owned declarations.
  *
  * @param self Module to free.
  */
 func module_free(self: Module*) {
+    export_manifest_free(self.export_manifest);
+
     for (let i = 0; i < vec_size(self.imports); i = i + 1) {
         let imp = ptr_vec_get(self.imports, i) as Import*;
-        drop imp;
+        import_free(imp);
     }
     vec_free(self.imports);
 
@@ -835,7 +883,7 @@ func import_vec_free(v: VectorBase*?) {
         let vec = v as VectorBase*;
         for (let i = 0; i < vec_size(vec); i = i + 1) {
             let imp = ptr_vec_get(vec, i) as Import*;
-            drop imp;
+            import_free(imp);
         }
         vec_free(vec);
     }

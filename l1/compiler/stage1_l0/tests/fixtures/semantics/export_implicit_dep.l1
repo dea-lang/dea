@@ -1,0 +1,9 @@
+module export_implicit_dep;
+
+func public_value() -> int {
+    return 7;
+}
+
+func _hidden_value() -> int {
+    return 9;
+}

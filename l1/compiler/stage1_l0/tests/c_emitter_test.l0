@@ -71,7 +71,7 @@ func cet_wrap_decl(kind: TopLevelDeclKind, data: void*) -> TopLevelDecl* {
  * @return New module node.
  */
 func cet_module(name: string, filename: string, decls: VectorBase*) -> Module* {
-    return new Module(name, ptr_vec_create(0), decls, span_here(1, 1), filename);
+    return new Module(name, null, ptr_vec_create(0), decls, span_here(1, 1), filename);
 }
 
 /**

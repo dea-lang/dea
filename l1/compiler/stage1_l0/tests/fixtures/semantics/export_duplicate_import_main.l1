@@ -1,0 +1,8 @@
+module export_duplicate_import_main;
+
+import export_duplicate_import_dep;
+import one, two, three from export_duplicate_import_dep;
+
+func main() -> int {
+    return one() + two() + three();
+}

@@ -1,0 +1,8 @@
+module export_alias_collision_imported;
+
+import export_list_dep as public_value;
+import export_implicit_dep;
+
+func main() -> int {
+    return 0;
+}

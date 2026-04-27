@@ -106,6 +106,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   [2026-04-24-runtime-static-library-split-noref](../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md)
   moved the copied L1 runtime from header-only inclusion to public headers plus normal/traced runtime archives and
   completed Initiative [0002-runtime-static-library](../work/initiatives/0002-runtime-static-library.md).
+- Feature
+  [2026-04-24-export-manifests-and-aliased-imports-noref](../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md)
+  added module-level export manifests plus alias and selective import resolution for the separate-compilation
+  initiative.
 
 </details>
 
@@ -134,9 +138,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature
   [2026-04-22-anonymous-embedded-struct-members-noref](../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md)
   defines `_ : StructType` as a single first-position anonymous embedded struct member with promoted field access.
-- Feature
-  [2026-04-24-export-manifests-and-aliased-imports-noref](../work/plans/features/2026-04-24-export-manifests-and-aliased-imports-noref.md)
-  adds module-level export manifests plus aliased/selective import resolution for the separate-compilation initiative.
 - Feature
   [2026-04-24-lbi-symbol-mangling-and-linkage-noref](../work/plans/features/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md)
   adopts `__dea...` LBI emitted names and export-driven backend linkage.

@@ -1,0 +1,7 @@
+module export_bad_selective_main;
+
+import internal from export_list_dep;
+
+func main() -> int {
+    return 0;
+}

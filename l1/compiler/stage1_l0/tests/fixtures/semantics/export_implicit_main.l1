@@ -1,0 +1,7 @@
+module export_implicit_main;
+
+import export_implicit_dep;
+
+func main() -> int {
+    return public_value();
+}

@@ -1,0 +1,7 @@
+module export_alias_collision_local;
+
+import export_list_dep as chosen;
+
+func chosen() -> int {
+    return 29;
+}
