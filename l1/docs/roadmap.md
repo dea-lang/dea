@@ -27,7 +27,7 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Closed plans document shipped L1 baseline decisions. Draft plans and active initiatives describe intended work, not
   implemented behavior.
 - Any future `stage2_l1` implementation should preserve the L1 language/runtime decisions documented in
-  [design-decisions](reference/design-decisions.md) unless the reference set is deliberately updated.
+  [design-decisions] unless the reference set is deliberately updated.
 - L1-defined source symbols use the tagged-section `__deaM...S...` LBI spelling, compiler-generated module lifecycle
   helpers use `__deaM...I...`, and runtime/public helper families retain their documented `dea_*`, `DEA_*`, `rt_*`, and
   `_rt_*` roles. Historical `l0_*` names are not part of the current L1 ABI.
@@ -40,128 +40,91 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 <summary>These are the major completed milestones that shape the current L1 baseline (click to expand).
 </summary>
 
-- Feature [2026-04-03-dea-virtual-module-noref](../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md)
-  introduced the compiler-synthesized `dea` prelude module that contains `sizeof` and `ord` intrinsics.
-- Feature
-  [2026-04-04-l1-dea-c-abi-prefix-migration-noref](../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md)
-  moved L1 public generated/runtime C ABI names to `dea_*` / `DEA_*`.
-- Feature
-  [2026-04-04-l1-prefixed-int-literals-noref](../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md)
-  added hexadecimal, binary, and octal integer literals for L1.
-- Feature
-  [2026-04-04-l1-small-int-builtins-on-dea-abi-noref](../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md)
-  added `tiny`, `short`, and `ushort` builtin integer types.
-- Feature
-  [2026-04-10-l1-numeric-literal-lexer-groundwork-noref](../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md)
-  established the broader numeric-literal lexer/token groundwork.
-- Feature
-  [2026-04-04-l1-float-double-literals-noref](../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md)
-  added builtin `float` and `double` types plus real literals.
-- Feature
-  [2026-04-13-l1-float-backend-contract-followup-noref](../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md)
-  defined the L1 floating-point semantic and C backend contract.
-- Feature [2026-04-14-l1-std-real-module-noref](../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md)
-  added the `std.real` / `sys.real` floating-point library surface, scoped runtime helper inclusion, and math-library
-  linkage gating.
-- Feature
-  [2026-04-13-l1-uint-long-ulong-bigint-builtins-noref](../work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md)
-  added `uint`, `long`, and `ulong` through contextual bigint literals.
-- Feature
-  [2026-04-14-l1-std-math-wide-integer-followup-noref](../work/plans/features/closed/2026-04-14-l1-std-math-wide-integer-followup-noref.md)
-  added L1-only `std.math` helper families for `uint`, `long`, and `ulong`.
-- Feature
-  [2026-04-18-l1-bitwise-operators-noref](../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md) added
-  `&`, `|`, `^`, `~`, `<<`, and `>>` with parser precedence, integer typing, and direct C lowering.
-- Feature
-  [2026-04-18-string-equality-operators-noref](../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md)
-  wired `==` and `!=` over `string` operands through typing and the C backend via `rt_string_equals`.
-- Feature
-  [2026-04-18-string-relational-operators-noref](../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md)
-  wired `<`, `<=`, `>`, and `>=` over `string` operands through typing and the C backend via `rt_string_compare`.
-- Feature
-  [2026-04-23-single-statement-loop-and-match-bodies-noref](../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md)
-  relaxed `while`, `for`, and `match` arm bodies from `Block` to `Stmt` while preserving body-local scope and cleanup.
-- Feature
-  [2026-04-18-l1-const-declarations-noref](../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md)
-  added top-level `const` declarations with explicit types, compile-time-constant initializers, and `static const` C
-  emission.
-- Feature
-  [2026-04-17-l1-let-non-constant-initializers-noref](../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md)
-  added deferred module-init lowering for non-constant top-level `let` initializers and restored `std.real` NaN/infinity
-  constants.
-- Feature
-  [2026-04-19-nullable-identity-equality-noref](../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md)
-  added strict `T? == T?` equality with same-inner-type payload comparison and explicit-cast requirement for cross-form
-  `T? vs T` compares.
-- Feature
-  [2026-04-19-pointer-identity-equality-noref](../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md)
-  added `==` and `!=` over same-type non-nullable `T*` operands using reference identity.
-- Feature [2026-04-20-is-intrinsic-noref](../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md) introduced the
-  `is(x, Variant)` intrinsic for payload-ignoring enum tag comparison, including qualified variant references and
-  enum-returning call expressions in first position.
-- Feature
-  [2026-04-18-l1-function-pointer-types-noref](../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md)
-  added first-class `func(...) -> T` function pointer types, indirect calls, nullable function pointers, and
-  same-signature identity comparisons.
-- Refactor
-  [2026-04-24-runtime-static-library-split-noref](../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md)
-  moved the copied L1 runtime from header-only inclusion to public headers plus normal/traced runtime archives and
-  completed Initiative [0002-runtime-static-library](../work/initiatives/0002-runtime-static-library.md).
-- Feature
-  [2026-04-24-export-manifests-and-aliased-imports-noref](../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md)
-  added module-level export manifests plus alias and selective import resolution for the separate-compilation
-  initiative.
-- Feature
-  [2026-04-24-lbi-symbol-mangling-and-linkage-noref](../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md)
-  adopted tagged-section LBI names for source symbols and module lifecycle helpers plus export-driven backend linkage.
+- Feature [2026-04-03-dea-virtual-module-noref][virtual-module] introduced the compiler-synthesized `dea` prelude module
+  that contains `sizeof` and `ord` intrinsics.
+- Feature [2026-04-04-l1-dea-c-abi-prefix-migration-noref][abi-prefix] moved L1 public generated/runtime C ABI names to
+  `dea_*` / `DEA_*`.
+- Feature [2026-04-04-l1-prefixed-int-literals-noref][prefixed-literals] added hexadecimal, binary, and octal integer
+  literals for L1.
+- Feature [2026-04-04-l1-small-int-builtins-on-dea-abi-noref][small-int] added `tiny`, `short`, and `ushort` builtin
+  integer types.
+- Feature [2026-04-10-l1-numeric-literal-lexer-groundwork-noref][numeric-lexer] established the broader numeric-literal
+  lexer/token groundwork.
+- Feature [2026-04-04-l1-float-double-literals-noref][float-literals] added builtin `float` and `double` types plus real
+  literals.
+- Feature [2026-04-13-l1-float-backend-contract-followup-noref][float-backend] defined the L1 floating-point semantic
+  and C backend contract.
+- Feature [2026-04-14-l1-std-real-module-noref][real-module] added the `std.real` / `sys.real` floating-point library
+  surface, scoped runtime helper inclusion, and math-library linkage gating.
+- Feature [2026-04-13-l1-uint-long-ulong-bigint-builtins-noref][wide-int] added `uint`, `long`, and `ulong` through
+  contextual bigint literals.
+- Feature [2026-04-14-l1-std-math-wide-integer-followup-noref][wide-math] added L1-only `std.math` helper families for
+  `uint`, `long`, and `ulong`.
+- Feature [2026-04-18-l1-bitwise-operators-noref][bitwise-operators] added `&`, `|`, `^`, `~`, `<<`, and `>>` with
+  parser precedence, integer typing, and direct C lowering.
+- Feature [2026-04-18-string-equality-operators-noref][string-equality] wired `==` and `!=` over `string` operands
+  through typing and the C backend via `rt_string_equals`.
+- Feature [2026-04-18-string-relational-operators-noref][string-relational] wired `<`, `<=`, `>`, and `>=` over `string`
+  operands through typing and the C backend via `rt_string_compare`.
+- Feature [2026-04-23-single-statement-loop-and-match-bodies-noref][single-statements] relaxed `while`, `for`, and
+  `match` arm bodies from `Block` to `Stmt` while preserving body-local scope and cleanup.
+- Feature [2026-04-18-l1-const-declarations-noref][const-declarations] added top-level `const` declarations with
+  explicit types, compile-time-constant initializers, and `static const` C emission.
+- Feature [2026-04-17-l1-let-non-constant-initializers-noref][let-initializers] added deferred module-init lowering for
+  non-constant top-level `let` initializers and restored `std.real` NaN/infinity constants.
+- Feature [2026-04-19-nullable-identity-equality-noref][nullable-equality] added strict `T? == T?` equality with
+  same-inner-type payload comparison and explicit-cast requirement for cross-form `T? vs T` compares.
+- Feature [2026-04-19-pointer-identity-equality-noref][pointer-equality] added `==` and `!=` over same-type non-nullable
+  `T*` operands using reference identity.
+- Feature [2026-04-20-is-intrinsic-noref][is-intrinsic] introduced the `is(x, Variant)` intrinsic for payload-ignoring
+  enum tag comparison, including qualified variant references and enum-returning call expressions in first position.
+- Feature [2026-04-18-l1-function-pointer-types-noref][function-pointers] added first-class `func(...) -> T` function
+  pointer types, indirect calls, nullable function pointers, and same-signature identity comparisons.
+- Refactor [2026-04-24-runtime-static-library-split-noref][runtime-split] moved the copied L1 runtime from header-only
+  inclusion to public headers plus normal/traced runtime archives and completed Initiative
+  [0002-runtime-static-library][runtime-library].
+- Feature [2026-04-24-export-manifests-and-aliased-imports-noref][export-imports] added module-level export manifests
+  plus alias and selective import resolution for the separate-compilation initiative.
+- Feature [2026-04-24-lbi-symbol-mangling-and-linkage-noref][symbol-linkage] adopted tagged-section LBI names for source
+  symbols and module lifecycle helpers plus export-driven backend linkage.
 
 </details>
 
 ## Active initiatives
 
-- Initiative [0001-separate-compilation-and-linking](../work/initiatives/0001-separate-compilation-and-linking.md)
-  covers separate compilation, interface verification, and external-library linking.
-- Initiative [0003-c-ffi](../work/initiatives/0003-c-ffi.md) adds the typed C boundary: `extern "C"` declarations,
-  `cstr`, and the closed FFI-safe surface.
+- Initiative [0001-separate-compilation-and-linking][separate-compilation] covers separate compilation, interface
+  verification, and external-library linking.
+- Initiative [0003-c-ffi][c-ffi] adds the typed C boundary: `extern "C"` declarations, `cstr`, and the closed FFI-safe
+  surface.
 
 ## Active standalone plans
 
-- Tool
-  [2026-04-02-l1-bootstrap-productization-noref](../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md)
-  defines the first L1 bootstrap install/dist/product workflow.
-- Tool
-  [2026-04-17-l1-child-process-trace-support-noref](../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md)
-  adds child-process trace capture support for Stage 1 runtime fixtures.
-- Feature
-  [2026-04-22-string-concatenation-operator-noref](../work/plans/features/2026-04-22-string-concatenation-operator-noref.md)
-  adds the first `string + string` concatenation plan and ARC result-ownership contract.
-- Feature [2026-04-22-variadic-functions-noref](../work/plans/features/2026-04-22-variadic-functions-noref.md) scopes
-  variadic support to L1-defined functions and leaves C variadic FFI under Initiative `0003`.
-- Feature [2026-04-22-named-arguments-noref](../work/plans/features/2026-04-22-named-arguments-noref.md) adds
-  `name: value` call-site arguments for functions and constructors.
-- Feature
-  [2026-04-22-anonymous-embedded-struct-members-noref](../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md)
-  defines `_ : StructType` as a single first-position anonymous embedded struct member with promoted field access.
-- Feature
-  [2026-04-24-module-interface-emission-noref](../work/plans/features/2026-04-24-module-interface-emission-noref.md)
-  introduces deterministic textual `.l1m` interface emission and loading.
-- Feature
-  [2026-04-24-separate-compilation-driver-surface-noref](../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md)
-  adds `-c`, `-I`, and the compile-orchestration driver surface for separate compilation.
-- Feature
-  [2026-04-24-interface-fingerprints-and-object-metadata-noref](../work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md)
-  adds `.l1m` fingerprints, consumer verification, and provider-object metadata checks.
-- Feature
-  [2026-04-24-multi-cu-initialization-and-link-order-noref](../work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md)
-  adapts `I4init` module lifecycle ordering and executable-wrapper initialization to the multi-CU build model.
-- Feature
-  [2026-04-24-external-library-linking-cli-noref](../work/plans/features/2026-04-24-external-library-linking-cli-noref.md)
-  adds `-l`, `-L`, `--rpath`, and `--link-arg` as the external-library linking surface.
-- Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref](../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md)
-  adds `extern "C"` declarations, `cstr`, and the typed non-variadic C boundary.
-- Refactor [2026-04-27-runtime-cu-resplit-noref](../work/plans/refactors/2026-04-27-runtime-cu-resplit-noref.md) carves
-  OS/process helpers and RNG out of `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c`
-  CUs.
+- Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
+  install/dist/product workflow.
+- Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
+  1 runtime fixtures.
+- Feature [2026-04-22-string-concatenation-operator-noref][string-concat] adds the first `string + string` concatenation
+  plan and ARC result-ownership contract.
+- Feature [2026-04-22-variadic-functions-noref][variadic-functions] scopes variadic support to L1-defined functions and
+  leaves C variadic FFI under Initiative `0003`.
+- Feature [2026-04-22-named-arguments-noref][named-arguments] adds `name: value` call-site arguments for functions and
+  constructors.
+- Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
+  first-position anonymous embedded struct member with promoted field access.
+- Feature [2026-04-24-module-interface-emission-noref][interface-emission] introduces deterministic textual `.l1m`
+  interface emission and loading.
+- Feature [2026-04-24-separate-compilation-driver-surface-noref][compile-driver] adds `-c`, `-I`, and the
+  compile-orchestration driver surface for separate compilation.
+- Feature [2026-04-24-interface-fingerprints-and-object-metadata-noref][interface-fingerprints] adds `.l1m`
+  fingerprints, consumer verification, and provider-object metadata checks.
+- Feature [2026-04-24-multi-cu-initialization-and-link-order-noref][module-init] adapts `I4init` module lifecycle
+  ordering and executable-wrapper initialization to the multi-CU build model.
+- Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `--rpath`, and `--link-arg`
+  as the external-library linking surface.
+- Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
+  non-variadic C boundary.
+- Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] carves OS/process helpers and RNG out of
+  `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c` CUs.
 
 ## Backlog
 
@@ -172,19 +135,18 @@ surface.
 ### Language core
 
 - Separate compilation, interface verification, and external-library linking are tracked by Initiative
-  [0001-separate-compilation-and-linking](../work/initiatives/0001-separate-compilation-and-linking.md).
+  [0001-separate-compilation-and-linking][separate-compilation].
 - Runtime-library split from header-only inclusion to real archives is tracked by Initiative
-  [0002-runtime-static-library](../work/initiatives/0002-runtime-static-library.md).
-- Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative
-  [0003-c-ffi](../work/initiatives/0003-c-ffi.md).
+  [0002-runtime-static-library][runtime-library].
+- Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative [0003-c-ffi][c-ffi].
 - String operators: `==`, `!=`, `<`, `<=`, `>`, and `>=` now compare `string` values by content bytes through
   `rt_string_equals` and `rt_string_compare`, consistent with `case`-over-string lowering, `std.string::eq_s`, and
   `std.string::cmp_s`. String concatenation via `+` is tracked by Feature
-  [2026-04-22-string-concatenation-operator-noref](../work/plans/features/2026-04-22-string-concatenation-operator-noref.md),
-  which is intended to settle the ARC result-ownership design.
+  [2026-04-22-string-concatenation-operator-noref][string-concat], which is intended to settle the ARC result-ownership
+  design.
 - Varargs are split explicitly: L1-defined variadic functions are tracked by Feature
-  [2026-04-22-variadic-functions-noref](../work/plans/features/2026-04-22-variadic-functions-noref.md), while C variadic
-  FFI remains part of Initiative [0003-c-ffi](../work/initiatives/0003-c-ffi.md).
+  [2026-04-22-variadic-functions-noref][variadic-functions], while C variadic FFI remains part of Initiative
+  [0003-c-ffi][c-ffi].
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
 - Typed arrays, buffers, shared buffers, and slices as general language features. The current `std.array` / `std.vector`
@@ -193,11 +155,10 @@ surface.
   addressing gates. Current `sys.unsafe` is a low-level runtime binding only. Same-type non-null pointer identity
   equality is implemented; ordered pointer comparisons remain rejected.
 - `_` struct-member semantics are tracked by Feature
-  [2026-04-22-anonymous-embedded-struct-members-noref](../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md),
-  which fixes `_ : StructType` as a single first-position anonymous embedded struct member and defines its construction,
-  field-access, layout, and ABI rules.
+  [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members], which fixes `_ : StructType` as a single
+  first-position anonymous embedded struct member and defines its construction, field-access, layout, and ABI rules.
 - Named arguments for functions and constructors are tracked by Feature
-  [2026-04-22-named-arguments-noref](../work/plans/features/2026-04-22-named-arguments-noref.md).
+  [2026-04-22-named-arguments-noref][named-arguments].
 - Literal struct/enum syntax using `{}` and named fields. Constructor-call syntax exists today; literal syntax does not.
 - Compiler-generated `hash(T)` for struct and enum values, including its relationship to `sys.hash`, `std.hashmap`, and
   ABI stability.
@@ -240,3 +201,44 @@ update to be promoted to an initiative or plan:
 - Macros.
 - Alternate non-C backends such as LLVM, WASM/JS, JVM, or Go.
 - Package management, manifests, and dependency resolution.
+
+[abi-prefix]: ../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md
+[bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
+[bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[c-ffi]: ../work/initiatives/0003-c-ffi.md
+[child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
+[compile-driver]: ../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
+[const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
+[design-decisions]: reference/design-decisions.md
+[embedded-members]: ../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md
+[export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
+[ffi-cstr]: ../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
+[float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
+[float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
+[function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
+[interface-emission]: ../work/plans/features/2026-04-24-module-interface-emission-noref.md
+[interface-fingerprints]: ../work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
+[is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
+[let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
+[library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md
+[module-init]: ../work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md
+[named-arguments]: ../work/plans/features/2026-04-22-named-arguments-noref.md
+[nullable-equality]: ../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md
+[numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
+[pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
+[prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
+[real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
+[runtime-library]: ../work/initiatives/0002-runtime-static-library.md
+[runtime-resplit]: ../work/plans/refactors/closed/2026-04-27-runtime-cu-resplit-noref.md
+[runtime-split]: ../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
+[separate-compilation]: ../work/initiatives/0001-separate-compilation-and-linking.md
+[single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
+[small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
+[string-concat]: ../work/plans/features/2026-04-22-string-concatenation-operator-noref.md
+[string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
+[string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
+[symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
+[variadic-functions]: ../work/plans/features/2026-04-22-variadic-functions-noref.md
+[virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
+[wide-int]: ../work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md
+[wide-math]: ../work/plans/features/closed/2026-04-14-l1-std-math-wide-integer-followup-noref.md

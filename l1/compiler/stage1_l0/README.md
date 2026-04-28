@@ -12,7 +12,7 @@ programs and copied L1 stdlib modules that those tests compile as L1-language in
 Stage 1 validation here is limited to those `.l0` implementation tests and their focused backend/emitter assertions.
 Committed full-file generated-C golden checks are intentionally out of scope for the current Stage 1 bootstrap contract.
 
-Run the local bootstrap workflow from [`l1/`](../../README.md):
+Run the local bootstrap workflow from [`l1/`][l1-root]:
 
 ```bash
 make use-dev-stage1
@@ -27,3 +27,5 @@ repo-local `../../l0` bootstrap layout.
 
 For a non-default upstream bootstrap compiler, set `L1_BOOTSTRAP_L0C=/path/to/l0c-stage2` when running
 `make build-stage1`.
+
+[l1-root]: ../../README.md

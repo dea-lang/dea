@@ -11,7 +11,7 @@ surface and a separate traced variant. It is a behavior-preserving infrastructur
 FFI surface expands, no source-level export rules change. The contribution is a proper link model for the runtime that
 the rest of the L1 toolchain can build on.
 
-This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`](../../docs/roadmap.md)).
+This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
 
 ## Completion
 
@@ -30,12 +30,12 @@ make test-all
 ## Related initiatives
 
 - **Initiative 0001 - Separate Compilation and External Linking**
-  ([`0001-separate-compilation-and-linking.md`](0001-separate-compilation-and-linking.md)) is a soft consumer of this
-  work. Separate compilation can land independently, but its link model is cleaner once a real runtime archive exists to
-  anchor archive linkage and trace-variant selection.
-- **Initiative 0003 - C FFI** ([`0003-c-ffi.md`](0003-c-ffi.md)) is a future downstream consumer for the `dea_siphash.h`
-  aside below: once the runtime has been split, surfacing SipHash through the C FFI as its own shared object becomes a
-  natural follow-up.
+  ([`0001-separate-compilation-and-linking.md`][separate-compilation]) is a soft consumer of this work. Separate
+  compilation can land independently, but its link model is cleaner once a real runtime archive exists to anchor archive
+  linkage and trace-variant selection.
+- **Initiative 0003 - C FFI** ([`0003-c-ffi.md`][c-ffi]) is a future downstream consumer for the `dea_siphash.h` aside
+  below: once the runtime has been split, surfacing SipHash through the C FFI as its own shared object becomes a natural
+  follow-up.
 
 ## Non-goals
 
@@ -43,7 +43,7 @@ make test-all
 - **Runtime-toggleable tracing.** Trace and non-trace builds ship as distinct archives; switching tracing on at runtime
   through function pointers is explicitly out of scope.
 - **Release-bearing L1 distribution policy** beyond the bootstrap packaging tracked under
-  [`l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md`](../plans/tools/2026-04-02-l1-bootstrap-productization-noref.md).
+  [`l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md`][bootstrap-productization].
 - **Backporting to L0.** L0 keeps its header-only runtime per the `1.0.0` scope boundary. Everything in this initiative
   lands in `l1/`'s copy of the runtime tree.
 
@@ -82,8 +82,8 @@ This is a header-vs.-prototype split with no language semantics change. Trace bu
 direction considered hosting it in a shared runtime library between L0 and L1. The closed answer for this initiative
 keeps `dea_siphash.h` as a distinct, internal-only header (not folded into `dea_rt.h`, not surfaced through
 `build/dea/include/`). A more natural future evolution is exposing SipHash through a dedicated module that produces its
-own shared object and participates in the C FFI surface defined in [Initiative 0003](0003-c-ffi.md); keeping the header
-distinct now preserves that option.
+own shared object and participates in the C FFI surface defined in [Initiative 0003][c-ffi]; keeping the header distinct
+now preserves that option.
 
 ## Phase 1 - Runtime as a static library
 
@@ -166,27 +166,33 @@ The runtime-artifact-transition open question is closed. The closed answer has t
 2. **`dea_siphash.h` stays distinct and internal-only.** It remains a separate vendored helper header, included only by
    the runtime's own `.c` translation units after the split. It is not folded into `dea_rt.h` and is not copied to
    `build/dea/include/`. This matches the §0.5 aside's caution against locking SipHash into a shape that
-   [Initiative 0003 - C FFI](0003-c-ffi.md) would have to reopen, and keeps L1's source layout in line with L0's (which
-   also carries `dea_siphash.h` as a distinct file).
+   [Initiative 0003 - C FFI][c-ffi] would have to reopen, and keeps L1's source layout in line with L0's (which also
+   carries `dea_siphash.h` as a distinct file).
 3. **Archive names: `libdea_rt.a` and `libdea_rt_traced.a` are introduced fresh.** No `libl0runtime.*` retirement is
    needed because no such artifact lives in the L1 tree today; the open question's "inherited placeholder" framing was
    documentary. Future readers should not look for an artifact that never existed in L1.
 
 CLI-flag migration (`--runtime-include` / `--runtime-lib`, `L1_RUNTIME_INCLUDE` / `L1_RUNTIME_LIB`, the `-I` / `-L`
 short aliases) is **out of scope** for this initiative. It is owned by
-[Initiative 0001 - Separate Compilation and External Linking](0001-separate-compilation-and-linking.md) §Phase 3, which
-already commits to retiring the short aliases when `-I` and `-L` are reclaimed for interface and library search.
+[Initiative 0001 - Separate Compilation and External Linking][separate-compilation] §Phase 3, which already commits to
+retiring the short aliases when `-I` and `-L` are reclaimed for interface and library search.
 
 The implementation of the runtime split itself remains owned by
-[`l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md`](../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md).
+[`l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md`][runtime-split].
 
 ## Spawned plans
 
 - Phase 1: runtime split into `libdea_rt.a` and traced runtime delivery under
-  [`l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md`](../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md)
+  [`l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md`][runtime-split]
 
 ## Glossary
 
 - **CU**: compilation unit. In this initiative, the user-side `.c` file generated by the L1 compiler.
 - **Trace archive**: `libdea_rt_traced.a`, the variant compiled with `DEA_TRACE_ARC` and `DEA_TRACE_MEMORY` defined.
 - **Symbol manifest**: a checked-in list of symbols exported by `libdea_rt.a` used as a validation contract.
+
+[bootstrap-productization]: ../plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[c-ffi]: 0003-c-ffi.md
+[roadmap]: ../../docs/roadmap.md
+[runtime-split]: ../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
+[separate-compilation]: 0001-separate-compilation-and-linking.md

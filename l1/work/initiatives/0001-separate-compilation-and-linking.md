@@ -16,17 +16,17 @@ The two goals share design surface around the C ABI and link-time identity, so t
 decisions, the phasing, and the dependencies. Individual phases will spawn entries under `l1/work/plans/features/` and
 `l1/work/plans/refactors/` as they become actionable.
 
-This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`](../../docs/roadmap.md)).
+This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
 
 ## Related initiatives
 
-- **Initiative 0002 - L1 Runtime Library** ([`0002-runtime-static-library.md`](0002-runtime-static-library.md)) is a
-  soft prerequisite. It moves the runtime from header-only inclusion to a real static archive, which de-risks the link
-  mechanics that this initiative depends on. Separate compilation can land independently, but the link model is cleaner
-  once 0002 has settled archive linkage and the trace-variant story.
-- **Initiative 0003 - C FFI** ([`0003-c-ffi.md`](0003-c-ffi.md)) is a downstream consumer. C FFI requires the LBI
-  mangling defined here, the separate-compilation driver surface, and the external-library linking CLI before it can
-  express `extern "C"` declarations and the closed FFI-safe boundary.
+- **Initiative 0002 - L1 Runtime Library** ([`0002-runtime-static-library.md`][runtime-library]) is a soft prerequisite.
+  It moves the runtime from header-only inclusion to a real static archive, which de-risks the link mechanics that this
+  initiative depends on. Separate compilation can land independently, but the link model is cleaner once 0002 has
+  settled archive linkage and the trace-variant story.
+- **Initiative 0003 - C FFI** ([`0003-c-ffi.md`][c-ffi]) is a downstream consumer. C FFI requires the LBI mangling
+  defined here, the separate-compilation driver surface, and the external-library linking CLI before it can express
+  `extern "C"` declarations and the closed FFI-safe boundary.
 
 ## Non-goals
 
@@ -50,8 +50,8 @@ Relevant facts that constrain the plan at the time of writing:
 
 - The L1 compiler emits **one generated C99 compilation unit per program**. The whole import closure is concatenated
   into a single `.c` and compiled in one `cc` invocation.
-- The L1 backend reference ([`l1/docs/reference/c-backend-design.md`](../../docs/reference/c-backend-design.md)) is the
-  current source of truth for L1 generated C behavior.
+- The L1 backend reference ([`l1/docs/reference/c-backend-design.md`][backend-design]) is the current source of truth
+  for L1 generated C behavior.
 - Modules support explicit export manifests plus alias and selective import forms. Exported top-level declarations keep
   external C linkage; non-exported top-level functions and storage use `static` where the current single-CU backend can
   do so without changing semantics.
@@ -88,7 +88,7 @@ can still inline and dead-strip internal helpers.
 ### 0.2 C ABI identity and link-symbol mangling
 
 With separate compilation the mangled name is the link-time identity. L1 adopts the tagged-section, length-prefixed LBI
-scheme specified in [`l1/docs/specs/compiler/abi.md`](../../docs/specs/compiler/abi.md):
+scheme specified in [`l1/docs/specs/compiler/abi.md`][abi]:
 
 - Source symbols use `__deaM<seg_len><seg>...S<sym_len><sym>`.
 - Compiler-generated module lifecycle symbols use `__deaM<seg_len><seg>...I<life_len><life>`.
@@ -107,7 +107,7 @@ scheme specified in [`l1/docs/specs/compiler/abi.md`](../../docs/specs/compiler/
 - Declarations inside an `extern "C"` block bypass mangling and are emitted with their declared C spelling.
 
 Phase 0.2 is completed by
-[`l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`](../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md).
+[`l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`][symbol-linkage].
 
 ### 0.3 Module artifact format (`.l1m`)
 
@@ -134,27 +134,26 @@ encoding remains out of scope unless profiling later proves interface parsing is
 
 ### 0.4 Boundary between L1 types and C types
 
-Moved to [Initiative 0003 - C FFI](0003-c-ffi.md). Anchors the closed FFI-safe type set, the `cstr` boundary type, and
-the `string -> cstr` reinterpretation contract.
+Moved to [Initiative 0003 - C FFI][c-ffi]. Anchors the closed FFI-safe type set, the `cstr` boundary type, and the
+`string -> cstr` reinterpretation contract.
 
 ### 0.5 Where runtime symbols live
 
-Moved to [Initiative 0002 - L1 Runtime Library](0002-runtime-static-library.md). Anchors the `extern func rt_foo`
-resolution model after the runtime split, the trace-archive selection, and the public header layout.
+Moved to [Initiative 0002 - L1 Runtime Library][runtime-library]. Anchors the `extern func rt_foo` resolution model
+after the runtime split, the trace-archive selection, and the public header layout.
 
 ### 0.6 Fingerprint algorithm and object metadata embedding
 
 The `.l1m` fingerprint and the matching provider/consumer object-embedded fingerprint records share a single algorithm
 and a single embedding strategy:
 
-- **Algorithm:** SipHash-1-3 from the shared runtime
-  ([`l1/compiler/shared/runtime/internal/dea_siphash.h`](../../compiler/shared/runtime/internal/dea_siphash.h)). The
-  runtime already exposes `siphash13(...)` with a 64-bit tag and is also the L0 oracle, so Stage 2 inherits the same
+- **Algorithm:** SipHash-1-3 from the shared runtime ([`l1/compiler/shared/runtime/internal/dea_siphash.h`][siphash]).
+  The runtime already exposes `siphash13(...)` with a 64-bit tag and is also the L0 oracle, so Stage 2 inherits the same
   symbol when it is built on top of the shared runtime.
 - **Keying discipline:** a fixed, compile-time-constant 16-byte fingerprint key, distinct from the runtime's randomized
   hash-flooding key. The constant is part of the LBI ABI and is stable across stages. The exact key bytes are an
-  implementation detail of the spawned fingerprint plan and are recorded in
-  [`l1/docs/specs/compiler/abi.md`](../../docs/specs/compiler/abi.md) once chosen.
+  implementation detail of the spawned fingerprint plan and are recorded in [`l1/docs/specs/compiler/abi.md`][abi] once
+  chosen.
 - **Digest size and encoding:** 64-bit digest. Encoded as 16 lowercase hex digits in `.l1m` (`fingerprint "<hash>";`)
   and embedded as 8 raw bytes in object metadata.
 - **Object embedding:** every per-module object file emits two portable C99 `const uint8_t` arrays with mangled names
@@ -169,9 +168,9 @@ not required and would only add bootstrap-vendoring cost. Custom object sections
 per-format emitter and reader paths plus quirky compiler attributes that `tcc` does not fully support.
 
 Sub-choices that remain implementation details, owned by
-[`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`](../plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md):
-the exact 16-byte key constant, the on-disk record layout (small magic + version prefix + flat little-endian fields is
-the expected default), the exact symbol-name mangling, and the canonicalization rules over the public surface.
+[`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][interface-fingerprints]: the
+exact 16-byte key constant, the on-disk record layout (small magic + version prefix + flat little-endian fields is the
+expected default), the exact symbol-name mangling, and the canonicalization rules over the public surface.
 
 ## Phase 2 - Separate compilation of L1 CUs (Goal 1)
 
@@ -291,8 +290,7 @@ New `MOD-*` or `LNK-*` families are introduced only if a phase plan proves that 
 user diagnostics or Stage 1 / Stage 2 parity policy materially worse. This is the closed answer to the diagnostic-family
 open question; the catalog's organizing axis stays "what compiler phase noticed it" rather than mixing in a topic axis.
 
-Concrete codes are registered in
-[`docs/specs/compiler/diagnostic-code-catalog.md`](../../../docs/specs/compiler/diagnostic-code-catalog.md) in the same
+Concrete codes are registered in [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog] in the same
 change that implements the diagnostic. Do not add placeholder `MOD-####` or `LNK-####` rows before concrete diagnostics
 exist.
 
@@ -332,18 +330,18 @@ build-tool configuration (Makefile, IDE task, shell wrapper). No per-module `[li
 other in-tree manifest format is introduced by this initiative. `--link-arg=<flag>` is the universal escape hatch for
 any platform-specific oddity without committing to a schema.
 
-[Initiative 0003 - C FFI](0003-c-ffi.md) may revisit this if a binding-module-local hint mechanism turns out to be
-necessary there; even then, prefer extending CLI ergonomics over introducing a new file format.
+[Initiative 0003 - C FFI][c-ffi] may revisit this if a binding-module-local hint mechanism turns out to be necessary
+there; even then, prefer extending CLI ergonomics over introducing a new file format.
 
 ### Documentation
 
-Add a short user-facing page at [`l1/docs/user/linking.md`](../../docs/user/linking.md) covering the platform-specific
-expectations (`.a`/`.so`/`.dylib`/`.lib`/`.dll`), the `tcc` caveats, and the recommended pattern for binding a C library
-(FFI binding module + linker flags).
+Add a short user-facing page at [`l1/docs/user/linking.md`][linking] covering the platform-specific expectations (`.a`/
+`.so`/`.dylib`/`.lib`/`.dll`), the `tcc` caveats, and the recommended pattern for binding a C library (FFI binding
+module + linker flags).
 
 ## Phase 4 - Full C FFI
 
-Moved to [Initiative 0003 - C FFI](0003-c-ffi.md).
+Moved to [Initiative 0003 - C FFI][c-ffi].
 
 ## Sequencing and dependencies
 
@@ -401,16 +399,14 @@ tables in the analyzer must be canonicalized at every emission point.
 
 Phases land with corresponding doc updates in the same change:
 
-- New
-  [`l1/docs/specs/compiler/module-visibility-and-imports.md`](../../docs/specs/compiler/module-visibility-and-imports.md)
-  capturing export manifests, aliasing, and selective import.
-- New [`l1/docs/specs/compiler/abi.md`](../../docs/specs/compiler/abi.md) (Phase 0.2, finalized in Phase 2).
-- New [`l1/docs/specs/compiler/module-interface-format.md`](../../docs/specs/compiler/module-interface-format.md) (Phase
-  0.3, expanded in Phase 2).
-- New [`l1/docs/reference/separate-compilation.md`](../../docs/reference/separate-compilation.md) (Phase 2).
+- New [`l1/docs/specs/compiler/module-visibility-and-imports.md`][module-visibility] capturing export manifests,
+  aliasing, and selective import.
+- New [`l1/docs/specs/compiler/abi.md`][abi] (Phase 0.2, finalized in Phase 2).
+- New [`l1/docs/specs/compiler/module-interface-format.md`][module-interface] (Phase 0.3, expanded in Phase 2).
+- New [`l1/docs/reference/separate-compilation.md`][separate-compilation] (Phase 2).
 - Substantial revision of the L1 backend-design reference (Phase 2 invalidates the "single generated C compilation unit"
   assertion).
-- New [`l1/docs/user/linking.md`](../../docs/user/linking.md) (Phase 3).
+- New [`l1/docs/user/linking.md`][linking] (Phase 3).
 
 ### Diagnostic-code registration
 
@@ -429,8 +425,8 @@ Each phase plan classifies new diagnostics against the existing phase-based fami
 
 This is the closed answer to the diagnostic-family open question. New `MOD-*` or `LNK-*` families remain available only
 if a concrete implementation phase proves a family boundary is needed; in that case, register concrete codes in
-[`docs/specs/compiler/diagnostic-code-catalog.md`](../../../docs/specs/compiler/diagnostic-code-catalog.md) in the same
-change that implements their diagnostics.
+[`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog] in the same change that implements their
+diagnostics.
 
 ### L0 isolation
 
@@ -446,7 +442,7 @@ summarizes the chosen answer and points at the owning section.
    fingerprint key, 64-bit digest, encoded as 16 lowercase hex digits in `.l1m` and 8 raw bytes in object metadata.
    Cryptographic strength is not required for the build-time staleness threat model. Anchored in §0.6; sub-choices
    (exact key constant, encoding details, canonicalization rules) are owned by
-   [`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`](../plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md).
+   [`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][interface-fingerprints].
 2. **Object metadata format:** portable C99 `const uint8_t` arrays with mangled names, anchored against linker
    dead-strip from each module's `I4init` lifecycle entry point. Driver-side discovery uses symbol-table lookup, which
    works uniformly across ELF, Mach-O, and PE/COFF and stays compatible with `tcc`. Custom object sections were rejected
@@ -463,8 +459,8 @@ summarizes the chosen answer and points at the owning section.
    binding-module-local hint mechanism is necessary, in which case extending CLI ergonomics is preferred over a new file
    format. Anchored in §Phase 3 / Manifest support.
 
-FFI-specific open questions live in [Initiative 0003](0003-c-ffi.md); runtime-delivery open questions live in
-[Initiative 0002](0002-runtime-static-library.md).
+FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery open questions live in
+[Initiative 0002][runtime-library].
 
 ## Spawned plans
 
@@ -475,19 +471,19 @@ Phase 0 decisions are now recorded directly in this initiative. They do not need
 implementation tranche proves that one decision area needs additional design work.
 
 - Phase 0.1: parser/analyzer support for export manifests and aliased/selective imports under
-  [`l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`](../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md)
+  [`l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`][export-imports]
 - Phase 0.2: LBI symbol mangling plus exported-vs-internal linkage emission under
-  [`l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`](../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md)
+  [`l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`][symbol-linkage]
 - Phase 0.3: `.l1m` interface emission, canonicalization, and parsing contract under
-  [`l1/work/plans/features/2026-04-24-module-interface-emission-noref.md`](../plans/features/2026-04-24-module-interface-emission-noref.md)
+  [`l1/work/plans/features/2026-04-24-module-interface-emission-noref.md`][interface-emission]
 - Phase 2.a: compile-only and interface-path driver surface under
-  [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`](../plans/features/2026-04-24-separate-compilation-driver-surface-noref.md)
+  [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
 - Phase 2.b: multi-CU init ordering and executable wrapper behavior under
-  [`l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`](../plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md)
+  [`l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`][module-init]
 - Phase 2.c: fingerprint hashing, object metadata embedding, and link-time verification under
-  [`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`](../plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md)
+  [`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][interface-fingerprints]
 - Phase 3: external-library linking CLI under
-  [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`](../plans/features/2026-04-24-external-library-linking-cli-noref.md)
+  [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][library-linking]
 
 ## Glossary
 
@@ -498,3 +494,22 @@ implementation tranche proves that one decision area needs additional design wor
 - **Fingerprint**: deterministic content hash over a module's canonicalized public surface, written to `.l1m` and
   embedded in the provider object metadata.
 - **Link set**: the set of `.o` files plus libraries presented to the linker to produce one executable or library.
+
+[abi]: ../../docs/specs/compiler/abi.md
+[backend-design]: ../../docs/reference/c-backend-design.md
+[c-ffi]: 0003-c-ffi.md
+[compile-driver]: ../plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
+[diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
+[export-imports]: ../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
+[interface-emission]: ../plans/features/2026-04-24-module-interface-emission-noref.md
+[interface-fingerprints]: ../plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
+[library-linking]: ../plans/features/2026-04-24-external-library-linking-cli-noref.md
+[linking]: ../../docs/user/linking.md
+[module-init]: ../plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md
+[module-interface]: ../../docs/specs/compiler/module-interface-format.md
+[module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
+[roadmap]: ../../docs/roadmap.md
+[runtime-library]: 0002-runtime-static-library.md
+[separate-compilation]: ../../docs/reference/separate-compilation.md
+[siphash]: ../../compiler/shared/runtime/internal/dea_siphash.h
+[symbol-linkage]: ../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md

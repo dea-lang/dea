@@ -48,3 +48,16 @@ explicitly with `TESTS="math_runtime_compile_test"` when investigating it.
 - There is no L1 install/dist/release/docs-publish workflow yet.
 - Keep root `README.md` and existing L0 user-facing docs unchanged unless the task explicitly requires a minimal
   consistency fix.
+
+## Documentation Link Style
+
+- This guidance is L1-only. Do not apply it to `l0/` or to monorepo-root docs by default.
+- For new Markdown documents under `l1/docs/` and `l1/work/`, prefer CommonMark/GFM reference-style links over inline
+  `[text](path)` links when linking repository files.
+- Keep reference ids short and readable, typically one or two words joined with hyphens, such as
+  `[interface-fingerprints]` or `[runtime-library]`.
+- Do not include dates, numeric plan/initiative prefixes, `noref`, or file extensions in reference ids unless a real
+  uniqueness conflict leaves no cleaner option.
+- Reuse one reference id per target within a file, and place the reference definitions at the end of the document.
+- This is a preferred style for new L1 docs and work docs. It is not a blanket backfill requirement for existing closed
+  plans, and it does not require rewriting existing initiative documents unless the task explicitly asks for it.

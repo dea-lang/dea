@@ -43,6 +43,8 @@ For initiatives, `Version: YYYY-MM-DD` is the last substantive edit date, not th
 actionable, link the spawned `plans/<kind>/<slug>.md` entries from the relevant phase section in the initiative, and
 link back from each plan to its parent initiative.
 
-When an initiative is opened, link it from the "Active initiatives" section of
-[`l1/docs/roadmap.md`](../docs/roadmap.md). When it is closed, move the file into `initiatives/closed/` and move its
-roadmap entry from "Active initiatives" to "Completed initiatives".
+When an initiative is opened, link it from the "Active initiatives" section of [`l1/docs/roadmap.md`][roadmap]. When it
+is closed, move the file into `initiatives/closed/` and move its roadmap entry from "Active initiatives" to "Completed
+initiatives".
+
+[roadmap]: ../docs/roadmap.md

@@ -23,13 +23,13 @@ root-owned plan under `work/plans/` instead of opening an L1-only follow-up plan
 
 ## Roadmap
 
-The L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md). It is the live direction document for L1 and is not
+The L1 roadmap lives at [l1/docs/roadmap.md][roadmap]. It is the live direction document for L1 and is not
 lifecycle-bound. Active initiatives under `l1/work/` execute the direction recorded there.
 
 The roadmap, initiatives, and plans form a strict hierarchy by scope and lifetime:
 
-- **Roadmap** ([l1/docs/roadmap.md](roadmap.md)): high level entry point. Captures L1's overall direction, lists active
-  and completed initiatives, and records backlog ideas not yet promoted to initiatives. Edited in place; not closed.
+- **Roadmap** ([l1/docs/roadmap.md][roadmap]): high level entry point. Captures L1's overall direction, lists active and
+  completed initiatives, and records backlog ideas not yet promoted to initiatives. Edited in place; not closed.
 - **Initiative** (`l1/work/initiatives/NNNN-*.md`): a coordinated, multiphase body of work with a defined scope and an
   end state. Records cross-cutting design decisions, sequences phases, and spawns one or more plans as phases become
   actionable. There can be many initiatives over L1's lifetime; each is opened, worked on, and eventually closed.
@@ -47,7 +47,14 @@ L1 baseline, direction, or future planning constraints.
 
 ### Roadmap link legibility rules
 
-For legibility, the visible link text format in `roadmap.md` is specially abbreviated as follows:
-` [NNNN-initiative-slug](../work/initiatives/NNNN-initiative-slug.md)` for initiatives, and
-`[plan-slug](../work/plans/<kind>/plan-slug.md)` for plans. For other documents, the visible link text is just the
-filename without extension, for example `[project-status](project-status.md)`.
+For legibility, prefer reference-style file links with short, readable ids and end-of-file definitions.
+
+Use initiative and plan filenames as the visible link text where that is the clearest reader-facing label, for example
+`[0001-separate-compilation-and-linking][separate-compilation]` or
+`[2026-04-24-interface-fingerprints-and-object-metadata-noref][interface-fingerprints]`.
+
+Keep reference ids short and readable, usually one or two words joined with hyphens. Avoid dates, numeric prefixes,
+`noref`, and file extensions in the reference id unless a real uniqueness conflict leaves no cleaner option. For other
+documents, a short document name such as `[project-status][project-status]` is preferred.
+
+[roadmap]: roadmap.md
