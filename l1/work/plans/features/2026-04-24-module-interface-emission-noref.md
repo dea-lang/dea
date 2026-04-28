@@ -33,7 +33,9 @@ module in deterministic, L1-source-like form. This plan adds the interface artif
 is ordered, and how Stage 1 reads it back for import replay.
 
 Fingerprint hashing and provider-object verification are tracked separately. This plan owns the interface file shape,
-canonical ordering rules, and parse/load contract.
+canonical ordering rules, and parse/load contract. It does not make `.l1m` files normal inputs to ordinary `--build` or
+`--run`; those user-facing driver flows continue to resolve imports from source modules until the separate-compilation
+driver-surface plan wires interface search paths into compile/build/run.
 
 ## Current State
 
@@ -41,6 +43,7 @@ canonical ordering rules, and parse/load contract.
 2. There is no serializer for the public semantic surface of a module.
 3. There is no constrained parser mode for `module interface ...;` files.
 4. The backend and driver do not know where emitted interface files live or how they are named.
+5. Ordinary `--build` and `--run` still use source-based monolithic import analysis.
 
 ## Defaults Chosen
 
@@ -90,13 +93,17 @@ the imported-module structures used by signatures/type resolution.
 
 ### Phase 4: Driver integration and tests
 
-Integrate interface-file path discovery, writing, and round-tripping into the driver/library surface and add regression
-tests for:
+Integrate artifact write/read discovery, explicit/internal interface-emission workflows, and round-tripping into the
+driver/library surface and add regression tests for:
 
 - deterministic emission,
 - structural type replay,
 - `const` literal replay,
 - malformed or incomplete interface files.
+
+Any `.l1m` files emitted in this phase are produced only through explicit or internal interface-emission workflows. They
+are not automatic side effects of ordinary monolithic `--build` or `--run`, and ordinary import resolution remains
+source-based.
 
 ## Diagnostics
 
@@ -112,6 +119,7 @@ tests for:
 2. Link-time verification against provider objects.
 3. External-library linking CLI.
 4. Runtime static-library packaging.
+5. Switching ordinary import resolution from source modules to `.l1m` interfaces.
 
 ## Verification Criteria
 
@@ -120,3 +128,4 @@ tests for:
 3. Malformed interface files are rejected with dedicated parser/driver diagnostics rather than generic failures.
 4. The roadmap and initiative links point to this plan as the `.l1m` serialization tranche.
 5. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+6. Ordinary `--build` and `--run` behavior remains source-based and does not require pre-existing `.l1m` files.

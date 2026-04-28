@@ -196,7 +196,7 @@ update to be promoted to an initiative or plan:
 - File-watch APIs.
 - Networking APIs.
 - Concurrency runtime primitives, shared concurrent data structures, and CSP-style threads.
-- General RTTI/reflection beyond a narrow `is` predicate.
+- General RTTI/reflection.
 - Traits, interfaces, or mixins.
 - Macros.
 - Alternate non-C backends such as LLVM, WASM/JS, JVM, or Go.

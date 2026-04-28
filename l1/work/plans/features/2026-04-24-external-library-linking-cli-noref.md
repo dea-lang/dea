@@ -53,7 +53,7 @@ It also completes the cleanup that frees `-I` for interface-path lookup rather t
 3. The compiler forwards external-linking options to the host toolchain rather than abstracting static vs dynamic
    linkage.
 4. Manual `extern "C"` binding modules remain the intended workflow; package manifests and automatic dependency metadata
-   stay out of scope.
+   remain undecided and stay out of scope unless and until Dea adopts a package-management direction.
 
 ## Goal
 

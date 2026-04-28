@@ -145,7 +145,7 @@ Update grammar/design-decision docs and add regression coverage for:
 
 1. Automatic bindgen or C-header parsing.
 2. New calling conventions beyond the platform C default.
-3. Full package/dependency metadata for external libraries.
+3. Any package/dependency metadata for external libraries unless and until Dea adopts a package-management direction.
 4. Any backport to L0.
 
 ## Verification Criteria

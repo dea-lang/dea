@@ -34,7 +34,8 @@ This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
   `import math as m;` and `import abs, pi from math;`, but it does not introduce packages, a registry, a dependency
   resolver, or a new manifest format.
 - **Package management.** No registry, lock files, dependency resolver, or `Dea.toml` schema. External libraries are
-  reached through CLI flags; package management is a later concern.
+  reached through CLI flags; any package-management direction is deferred indefinitely unless and until Dea decides to
+  adopt one.
 - **Dynamic loading at runtime.** The runtime gets no `dlopen`/`LoadLibrary` shim. Dynamic linking here means classic
   load-time linking against a `.so`/`.dylib`/`.dll`.
 - **Runtime-library refactor.** Moving `l1_runtime.h` from header-only inclusion to a real static archive lives in
@@ -131,6 +132,16 @@ explicit allowlist, or the implicit default.
 
 Symbols are emitted in sorted, deterministic order so the fingerprint is stable regardless of source ordering. A binary
 encoding remains out of scope unless profiling later proves interface parsing is a material bottleneck.
+
+Phase 0.3 establishes the `.l1m` artifact groundwork only. It defines and implements the writer/reader contract:
+projection from analyzed source to a deterministic interface file, constrained parsing of that file, and replay into the
+internal structures needed by compiler tests and later import plumbing. It does not switch ordinary `--build` or `--run`
+flows to consume `.l1m` files, and any emission or round-trip surface exposed during this phase is internal or
+testing-oriented rather than the stable separate-compilation UX.
+
+Phase 2.a is the first phase where `.l1m` files become normal driver inputs. That later phase owns `-c`,
+interface-search paths, and the point where source-based monolithic import analysis is replaced by interface loading for
+user-facing compile/build/run flows.
 
 ### 0.4 Boundary between L1 types and C types
 
@@ -325,10 +336,10 @@ FFI workflow, so the core compiler does not need a raw C-header include-path fla
 
 ### Manifest support
 
-Deferred to the future package-management story. External library link information is user-side via CLI flags or
-build-tool configuration (Makefile, IDE task, shell wrapper). No per-module `[link]` sidecar, no `Dea.toml`, and no
-other in-tree manifest format is introduced by this initiative. `--link-arg=<flag>` is the universal escape hatch for
-any platform-specific oddity without committing to a schema.
+Deferred indefinitely unless and until Dea decides to adopt package management. External library link information is
+user-side via CLI flags or build-tool configuration (Makefile, IDE task, shell wrapper). No per-module `[link]` sidecar,
+no `Dea.toml`, and no other in-tree manifest format is introduced by this initiative. `--link-arg=<flag>` is the
+universal escape hatch for any platform-specific oddity without committing to a schema.
 
 [Initiative 0003 - C FFI][c-ffi] may revisit this if a binding-module-local hint mechanism turns out to be necessary
 there; even then, prefer extending CLI ergonomics over introducing a new file format.
@@ -453,11 +464,11 @@ summarizes the chosen answer and points at the owning section.
    split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. The provisional reservations recorded
    in the spawned fingerprint plan (`SIG-0240`–`SIG-0259`, `L1C-2050`–`L1C-2069`) stand and must be re-checked against
    the live catalog at implementation time. Anchored in §2e and §Diagnostic-code registration.
-4. **External-library manifest format:** deferred to the future package-management story. Phase 3 ships with CLI flags
-   only (`-l`, `-L`, `--rpath`, `--link-arg`, plus `-I` for interface search). No per-module `[link]` sidecar, no
-   `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit this if FFI bindings prove a
-   binding-module-local hint mechanism is necessary, in which case extending CLI ergonomics is preferred over a new file
-   format. Anchored in §Phase 3 / Manifest support.
+4. **External-library manifest format:** deferred indefinitely unless and until Dea decides to adopt package management.
+   Phase 3 ships with CLI flags only (`-l`, `-L`, `--rpath`, `--link-arg`, plus `-I` for interface search). No
+   per-module `[link]` sidecar, no `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit this if FFI
+   bindings prove a binding-module-local hint mechanism is necessary, in which case extending CLI ergonomics is
+   preferred over a new file format. Anchored in §Phase 3 / Manifest support.
 
 FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery open questions live in
 [Initiative 0002][runtime-library].
