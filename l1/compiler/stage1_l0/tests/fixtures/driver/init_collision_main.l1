@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module init_collision_main;
+
+import init.collision as dotted;
+import init_collision as underscored;
+
+func main() -> int {
+    return dotted::value() + underscored::value();
+}

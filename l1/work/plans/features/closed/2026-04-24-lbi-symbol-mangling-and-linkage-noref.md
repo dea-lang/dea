@@ -3,7 +3,7 @@
 ## Adopt LBI symbol mangling and export-driven linkage
 
 - Date: 2026-04-24
-- Status: Draft
+- Status: Completed
 - Title: Adopt LBI symbol mangling and export-driven linkage
 - Kind: Feature
 - Severity: High
@@ -24,16 +24,28 @@
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
   - `l1/work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md`
 - Repro: `make -C l1 test-stage1 TESTS="c_emitter_test backend_test l0c_lib_test"`
+- Final validation:
+  - `make -C l1 test-stage1 TESTS="c_emitter_test backend_test l0c_lib_test"`
+  - `make -C l1 test-stage1`
+  - `make -C l1 test-stage1-trace`
+  - `make -C l1 check-examples`
+  - `make clean test-all`
 
 ## Summary
 
-The initiative now fixes the L1 Binary Interface around a length-prefixed mangling scheme:
+The initiative now fixes the L1 Binary Interface around a tagged-section, length-prefixed mangling scheme:
 
-`__dea<module_len><module_name><symbol_len><symbol_name>`
+`__dea M <seg_len><seg> ... S <sym_len><sym>`
+
+(no spaces in the actual encoding, e.g. `std.math::abs` → `__deaM3std4mathS3abs`).
 
 This replaces the current `dea_{module}_{name}` nominal-mangling style and couples linkage visibility to the module's
 export manifest: exported symbols remain externally visible while non-exported top-level symbols are emitted as `static`
 in generated C.
+
+The encoding uses only the ISO C99 identifier alphabet `[A-Za-z0-9_]`. The full uppercase alphabet is reserved by the
+LBI for category sigils; this tranche defines `M` (module path), `S` (source symbol name), and `I` (compiler-generated
+module lifecycle symbol). The full normative spec lives in `l1/docs/specs/compiler/abi.md`.
 
 This plan is the backend tranche that makes those emitted names and linkage rules real.
 
@@ -48,15 +60,23 @@ This plan is the backend tranche that makes those emitted names and linkage rule
 
 ## Defaults Chosen
 
-1. The emitted link identity uses `__dea<module_len><module_name><symbol_len><symbol_name>`.
-2. Module-path normalization in the mangled `<module_name>` component follows the initiative rule: the canonical source
-   form is the module's dotted path (for example `std.math`), not its filesystem path; the only character substitution
-   is `.` -> `$` between path components (`std.math` -> `std$math`); Dea identifiers cannot contain `$`, so the
-   substitution is unambiguous; and the rule is part of the LBI ABI and stable across stages.
-3. Exported top-level declarations keep external linkage in generated C.
+1. The emitted source-symbol link identity uses the tagged-section encoding `__deaM<seg_len><seg>...S<sym_len><sym>`,
+   with each module-path segment and the symbol name length-prefixed; see `l1/docs/specs/compiler/abi.md` for the
+   normative format.
+2. The canonical source form for the module path is the module's dotted path (for example `std.math`), not its
+   filesystem path; each dotted segment becomes one length-prefixed component inside the `M` section. The encoding uses
+   only ISO C99 identifier characters, so generated C compiles under `-std=c99 -pedantic-errors` without relying on the
+   GCC/Clang/MSVC `$`-in-identifier extension. Uppercase ASCII letters are reserved as LBI category sigils; only `M`,
+   `S`, and `I` are defined in this tranche.
+3. Exported top-level declarations (including `let` and `const` bindings) keep external linkage in generated C. This
+   explicitly overrules the earlier `const` plan which defaulted to `static const`: an exported `const` is emitted as
+   `const T __dea...;` (global linkage) to satisfy ABI linking, while an internal `const` remains `static const`.
 4. Non-exported top-level declarations are emitted as `static` where the backend can do so without altering runtime
    semantics.
-5. `extern "C"` declarations bypass LBI mangling entirely; the full surface for those declarations is deferred to the
+5. Compiler-generated module lifecycle helpers use `__deaM<seg_len><seg>...I<life_len><life>`. This tranche emits only
+   `I4init` for deferred top-level `let` initialization, while reserving the section for future lifecycle entries such
+   as `at_exit`.
+6. `extern "C"` declarations bypass LBI mangling entirely; the full surface for those declarations is deferred to the
    FFI plan.
 
 ## Goal
@@ -73,9 +93,10 @@ This plan is the backend tranche that makes those emitted names and linkage rule
 Replace ad hoc name construction in the C emitter/backend with one canonical helper that emits:
 
 - functions,
-- top-level lets,
+- top-level lets and consts,
 - structs,
 - enums,
+- module lifecycle helpers,
 - enum variants/tags as needed by the current backend layout.
 
 The helper must be the only path that constructs emitted user/module symbol names so later overload/generic expansion
@@ -89,7 +110,7 @@ symbol stays externally visible or becomes `static`.
 This phase should cover:
 
 - top-level functions,
-- top-level storage,
+- top-level storage (both `let` and `const` bindings, ensuring exported `const`s drop the `static` specifier),
 - forward declarations that must match the chosen linkage,
 - imported declarations that should always remain references to the provider's exported symbol spelling.
 
@@ -118,3 +139,11 @@ describe the export-driven linkage model.
 2. Exported and internal top-level declarations emit with the intended external vs `static` linkage.
 3. Imported declarations reference provider-owned mangled names instead of re-deriving local aliases.
 4. Backend/emitter tests and kept-C fixtures assert the new ABI spellings directly.
+
+## Completion Notes
+
+Implemented in L1 Stage 1. Source-level structs, enums, functions, and top-level bindings now use `M...S...` LBI names;
+compiler-generated module lifecycle helpers use `M...I...` names, with `I4init` covering deferred top-level `let`
+initialization. Export manifests now drive generated C linkage for functions, lets, and consts. Runtime helper struct
+declarations, backend/reference docs, ABI docs, and kept-C regression fixtures were refreshed to the finalized ABI
+spelling.

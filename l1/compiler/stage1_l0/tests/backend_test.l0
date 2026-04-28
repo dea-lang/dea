@@ -277,13 +277,13 @@ func test_backend_generate_types_and_top_level_lets() {
         assert(contains_s(generated, "/* Type definitions (dependency-ordered) */"),
             "type-definition section comment missing");
         assert(contains_s(generated,
-            "struct dea_demo_main_Point {\n    dea_int x;\n    dea_int y;\n};\n#endif\n\n#ifndef DEA_DEFINED_dea_demo_main_MaybePoint"),
+            "struct __deaM4demo4mainS5Point {\n    dea_int x;\n    dea_int y;\n};\n#endif\n\n#ifndef DEA_DEFINED___deaM4demo4mainS10MaybePoint"),
             "struct should be emitted before dependent enum");
-        assert(contains_s(generated, "static struct dea_demo_main_Point dea_demo_main_origin = { .x = 0, .y = 0 };"),
+        assert(contains_s(generated, "struct __deaM4demo4mainS5Point __deaM4demo4mainS6origin = { .x = 0, .y = 0 };"),
             "top-level alias-backed struct constructor let mismatch");
-        assert(contains_s(generated, "struct dea_demo_main_Point p = (struct dea_demo_main_Point){ .x = (dea_demo_main_origin).x, .y = (dea_demo_main_origin).y };"),
+        assert(contains_s(generated, "struct __deaM4demo4mainS5Point p = (struct __deaM4demo4mainS5Point){ .x = (__deaM4demo4mainS6origin).x, .y = (__deaM4demo4mainS6origin).y };"),
             "local alias-backed struct constructor lowering mismatch");
-        assert(contains_s(generated, "static struct dea_demo_main_MaybePoint dea_demo_main_empty = { .tag = dea_demo_main_MaybePoint_None };"),
+        assert(contains_s(generated, "struct __deaM4demo4mainS10MaybePoint __deaM4demo4mainS5empty = { .tag = __deaM4demo4mainS10MaybePoint_None };"),
             "top-level bare variant let mismatch");
         assert(contains_s(generated, "(p).x"), "field access lowering mismatch");
 
@@ -322,11 +322,11 @@ func test_backend_generate_top_level_consts() {
         assert(!analysis_has_errors(result), "analysis should succeed for top-level const fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "static const struct dea_demo_main_Point dea_demo_main_origin = { .x = 0, .y = 0 };"),
+        assert(contains_s(generated, "const struct __deaM4demo4mainS5Point __deaM4demo4mainS6origin = { .x = 0, .y = 0 };"),
             "top-level const alias-backed struct lowering mismatch");
-        assert(contains_s(generated, "static const dea_int dea_demo_main_answer = 42;"),
+        assert(contains_s(generated, "const dea_int __deaM4demo4mainS6answer = 42;"),
             "top-level const scalar lowering mismatch");
-        assert(contains_s(generated, "static const struct dea_demo_main_Color dea_demo_main_color = { .tag = dea_demo_main_Color_Red };"),
+        assert(contains_s(generated, "const struct __deaM4demo4mainS5Color __deaM4demo4mainS5color = { .tag = __deaM4demo4mainS5Color_Red };"),
             "top-level const bare variant lowering mismatch");
 
         analysis_result_free(result);
@@ -363,24 +363,24 @@ func test_backend_generate_nonconstant_top_level_lets() {
         assert(!analysis_has_errors(result), "analysis should succeed for deferred top-level lets");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "static dea_int dea_demo_dep_base = 0;"),
+        assert(contains_s(generated, "dea_int __deaM4demo3depS4base = 0;"),
             "deferred dep binding should be zero-initialized");
-        assert(contains_s(generated, "static dea_int dea_demo_main_answer = 0;"),
+        assert(contains_s(generated, "dea_int __deaM4demo4mainS6answer = 0;"),
             "deferred main binding should be zero-initialized");
-        assert(contains_s(generated, "static void _dea_init_demo_dep(void)"),
+        assert(contains_s(generated, "static void __deaM4demo3depI4init(void)"),
             "dep init function missing");
-        assert(contains_s(generated, "dea_demo_dep_base = dea_demo_dep_seed();"),
+        assert(contains_s(generated, "__deaM4demo3depS4base = __deaM4demo3depS4seed();"),
             "dep init assignment mismatch");
-        assert(contains_s(generated, "static void _dea_init_demo_main(void)"),
+        assert(contains_s(generated, "static void __deaM4demo4mainI4init(void)"),
             "main init function missing");
-        assert(contains_s(generated, "dea_demo_main_answer = _rt_iadd(dea_demo_main_bump(dea_demo_dep_get_base()), 0);") ||
-            contains_s(generated, "dea_demo_main_answer = dea_demo_main_bump(dea_demo_dep_get_base());"),
+        assert(contains_s(generated, "__deaM4demo4mainS6answer = _rt_iadd(__deaM4demo4mainS4bump(__deaM4demo3depS8get_base()), 0);") ||
+            contains_s(generated, "__deaM4demo4mainS6answer = __deaM4demo4mainS4bump(__deaM4demo3depS8get_base());"),
             "main init assignment mismatch");
         assert(contains_s(generated,
-            "static void _dea_init_modules(void)\n{\n    _dea_init_demo_dep();\n    _dea_init_demo_main();\n}\n"),
+            "static void _dea_init_modules(void)\n{\n    __deaM4demo3depI4init();\n    __deaM4demo4mainI4init();\n}\n"),
             "global init chain order mismatch");
         assert(contains_s(generated,
-            "_rt_init_args(argc, argv);\n    _dea_init_modules();\n    int dea_exit_code = (int) dea_demo_main_main();\n    return dea_exit_code;"),
+            "_rt_init_args(argc, argv);\n    _dea_init_modules();\n    int dea_exit_code = (int) __deaM4demo4mainS4main();\n    return dea_exit_code;"),
             "main wrapper should call global init chain");
 
         analysis_result_free(result);
@@ -420,14 +420,14 @@ func test_backend_generate_basic_control_flow() {
         assert(!analysis_has_errors(result), "analysis should succeed for control-flow fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "dea_int dea_demo_main_add(dea_int a, dea_int b);"),
+        assert(contains_s(generated, "dea_int __deaM4demo4mainS3add(dea_int a, dea_int b);"),
             "function declaration mismatch");
         assert(contains_s(generated, "return (_rt_iadd(a, b));"), "checked integer add lowering mismatch");
         assert(contains_s(generated, "// for loop"), "for-loop wrapper comment mismatch");
         assert(contains_s(generated, "dea_int i = 0;\n        while (1)"),
             "for-loop lowering mismatch");
         assert(contains_s(generated, "if ((i < 2))"), "if lowering mismatch");
-        assert(contains_s(generated, "sum = (_rt_iadd(sum, dea_demo_main_add(i, 1)));"),
+        assert(contains_s(generated, "sum = (_rt_iadd(sum, __deaM4demo4mainS3add(i, 1)));"),
             "assignment and call lowering mismatch");
         assert(contains_s(generated, "while (1)"), "while lowering mismatch");
 
@@ -515,7 +515,7 @@ func test_backend_generate_match_and_with_cleanup_block() {
         assert(!analysis_has_errors(result), "analysis should succeed for match/with fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "struct dea_demo_main_MaybeInt _scrutinee = dea_demo_main_make();"),
+        assert(contains_s(generated, "struct __deaM4demo4mainS8MaybeInt _scrutinee = __deaM4demo4mainS4make();"),
             "match scrutinee temp mismatch");
         assert(contains_s(generated, "switch ((_scrutinee).tag) {"), "match lowering should switch on enum tag");
         assert(contains_s(generated, "dea_int v = (_scrutinee).data.Some.value;"), "pattern binding mismatch");
@@ -610,19 +610,19 @@ func test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_le
         assert(!analysis_has_errors(result), "analysis should succeed for with-header try fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "struct dea_demo_main_Expr* left = NULL;"),
+        assert(contains_s(generated, "struct __deaM4demo4mainS4Expr* left = NULL;"),
             "nullable cleanup-block header let should be predeclared to null");
-        assert(contains_s(generated, "struct dea_demo_main_Expr* right = NULL;"),
+        assert(contains_s(generated, "struct __deaM4demo4mainS4Expr* right = NULL;"),
             "second nullable cleanup-block header let should be predeclared to null");
         assert(contains_s(generated, "left = dea_try_"), "predeclared left should be assigned after the try succeeds");
         assert(contains_s(generated, "right = dea_try_"), "predeclared right should be assigned after the try succeeds");
-        assert(!contains_s(generated, "struct dea_demo_main_Expr* left = dea_try_"),
+        assert(!contains_s(generated, "struct __deaM4demo4mainS4Expr* left = dea_try_"),
             "left should not be redeclared after predeclaration");
-        assert(!contains_s(generated, "struct dea_demo_main_Expr* right = dea_try_"),
+        assert(!contains_s(generated, "struct __deaM4demo4mainS4Expr* right = dea_try_"),
             "right should not be redeclared after predeclaration");
-        assert(contains_s(generated, "dea_demo_main_free_expr(left);"),
+        assert(contains_s(generated, "__deaM4demo4mainS9free_expr(left);"),
             "cleanup block should still reference the predeclared left variable");
-        assert(contains_s(generated, "dea_demo_main_free_expr(right);"),
+        assert(contains_s(generated, "__deaM4demo4mainS9free_expr(right);"),
             "cleanup block should still reference the predeclared right variable");
 
         analysis_result_free(result);
@@ -698,12 +698,12 @@ func test_backend_generate_new_and_try_lowering() {
         assert(!analysis_has_errors(result), "analysis should succeed for new/try fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "_rt_alloc_obj((dea_int)sizeof(struct dea_demo_main_Box));"),
+        assert(contains_s(generated, "_rt_alloc_obj((dea_int)sizeof(struct __deaM4demo4mainS3Box));"),
             "new expression should allocate heap storage");
-        assert(contains_s(generated, "(struct dea_demo_main_Box){ 0 }"),
+        assert(contains_s(generated, "(struct __deaM4demo4mainS3Box){ 0 }"),
             "zero-arg struct new should lower to zero initialization");
         assert(contains_s(generated, "*dea_new_"), "new expression should initialize the allocated object");
-        assert(contains_s(generated, "dea_demo_main_Result_Ok"),
+        assert(contains_s(generated, "__deaM4demo4mainS6Result_Ok"),
             "enum variant new should initialize the variant tag");
         assert(contains_s(generated, "dea_opt_int dea_try_"), "try expression should materialize a temp");
         assert(contains_s(generated, "if (!((dea_try_"), "try expression should check has_value");
@@ -751,10 +751,10 @@ func test_backend_generate_intrinsics_use_analyzed_target_types() {
         assert(!analysis_has_errors(result), "analysis should succeed for sizeof/ord/is fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "((dea_int)sizeof(struct dea_demo_main_Pair))"),
+        assert(contains_s(generated, "((dea_int)sizeof(struct __deaM4demo4mainS4Pair))"),
             "sizeof should lower through the analyzed target type");
         assert(contains_s(generated, "((dea_int)((f).tag))"), "ord should lower to the enum tag");
-        assert(contains_s(generated, "(((c).tag) == dea_demo_main_Color_RGB)"),
+        assert(contains_s(generated, "(((c).tag) == __deaM4demo4mainS5Color_RGB)"),
             "is should lower to a direct enum-tag comparison");
 
         analysis_result_free(result);
@@ -803,17 +803,17 @@ func test_backend_generate_dea_intrinsics_respect_symbol_origin() {
         assert(!analysis_has_errors(result), "analysis should succeed for dea shadowing fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "dea_demo_main_sizeof(4)"),
+        assert(contains_s(generated, "__deaM4demo4mainS6sizeof(4)"),
             "local sizeof should lower as a normal function call");
-        assert(contains_s(generated, "dea_demo_main_ord(5)"),
+        assert(contains_s(generated, "__deaM4demo4mainS3ord(5)"),
             "local ord should lower as a normal function call");
-        assert(contains_s(generated, "dea_demo_main_is(6, 7)"),
+        assert(contains_s(generated, "__deaM4demo4mainS2is(6, 7)"),
             "local is should lower as a normal function call");
-        assert(contains_s(generated, "((dea_int)sizeof(struct dea_demo_main_Flag))"),
+        assert(contains_s(generated, "((dea_int)sizeof(struct __deaM4demo4mainS4Flag))"),
             "dea::sizeof should lower through intrinsic emission");
-        assert(contains_s(generated, "((dea_int)(((struct dea_demo_main_Flag){ .tag = dea_demo_main_Flag_On }).tag))"),
+        assert(contains_s(generated, "((dea_int)(((struct __deaM4demo4mainS4Flag){ .tag = __deaM4demo4mainS4Flag_On }).tag))"),
             "dea::ord should lower through intrinsic emission");
-        assert(contains_s(generated, "((((struct dea_demo_main_Flag){ .tag = dea_demo_main_Flag_On }).tag) == dea_demo_main_Flag_On)"),
+        assert(contains_s(generated, "((((struct __deaM4demo4mainS4Flag){ .tag = __deaM4demo4mainS4Flag_On }).tag) == __deaM4demo4mainS4Flag_On)"),
             "dea::is should lower through intrinsic emission");
 
         analysis_result_free(result);
@@ -858,7 +858,7 @@ func test_backend_generate_is_with_call_expr_and_qualified_variant() {
         assert(!analysis_has_errors(result), "analysis should succeed for qualified `is` fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "(((dea_config_types_get_key()).tag) == dea_config_types_Key_String)"),
+        assert(contains_s(generated, "(((__deaM6config5typesS7get_key()).tag) == __deaM6config5typesS3Key_String)"),
             "qualified `is` should lower call result and qualified variant to a direct tag comparison");
 
         analysis_result_free(result);
@@ -1055,15 +1055,15 @@ func test_backend_generate_large_integer_builtins() {
         assert(!analysis_has_errors(result), "analysis should succeed for large integer fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "static dea_uint dea_demo_main_max_uint = 0xffffffffU;"),
+        assert(contains_s(generated, "dea_uint __deaM4demo4mainS8max_uint = 0xffffffffU;"),
             "uint top-level hex bigint literal mismatch");
-        assert(contains_s(generated, "static dea_long dea_demo_main_min_long_hex = INT64_MIN;"),
+        assert(contains_s(generated, "dea_long __deaM4demo4mainS12min_long_hex = INT64_MIN;"),
             "long top-level negative hex bigint literal mismatch");
-        assert(contains_s(generated, "static dea_long dea_demo_main_min_long_dec = INT64_MIN;"),
+        assert(contains_s(generated, "dea_long __deaM4demo4mainS12min_long_dec = INT64_MIN;"),
             "long top-level negative decimal bigint literal mismatch");
-        assert(contains_s(generated, "static dea_ulong dea_demo_main_max_ulong = 0xffffffffffffffffULL;"),
+        assert(contains_s(generated, "dea_ulong __deaM4demo4mainS9max_ulong = 0xffffffffffffffffULL;"),
             "ulong top-level hex bigint literal mismatch");
-        assert(contains_s(generated, "static dea_ulong dea_demo_main_bin_ulong = 0xffffffffffffffffULL;"),
+        assert(contains_s(generated, "dea_ulong __deaM4demo4mainS9bin_ulong = 0xffffffffffffffffULL;"),
             "binary ulong bigint literal mismatch");
         assert(contains_s(generated, "dea_uint a = ((dea_uint)(b));"), "byte-to-uint widening mismatch");
         assert(contains_s(generated, "dea_uint c = ((dea_uint)(us));"), "ushort-to-uint widening mismatch");
@@ -1077,22 +1077,22 @@ func test_backend_generate_large_integer_builtins() {
         assert(contains_s(generated, "dea_opt_long k = ((dea_opt_long){.has_value = 1, .value = ((dea_long)(0))});"),
             "int-to-nullable-long cast lowering mismatch");
         assert(contains_s(generated,
-            "dea_opt_ulong dea_demo_main_zero_ulong_opt_cast_nullable(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = (_rt_narrow_dea_ulong(0))});"),
+            "dea_opt_ulong __deaM4demo4mainS28zero_ulong_opt_cast_nullable(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = (_rt_narrow_dea_ulong(0))});"),
             "int-to-nullable-ulong cast return lowering mismatch");
         assert(contains_s(generated,
-            "dea_opt_ulong dea_demo_main_zero_ulong_opt_cast_inner(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = (_rt_narrow_dea_ulong(0))});"),
+            "dea_opt_ulong __deaM4demo4mainS25zero_ulong_opt_cast_inner(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = (_rt_narrow_dea_ulong(0))});"),
             "inner-ulong-to-nullable-ulong return lowering mismatch");
         assert(contains_s(generated,
-            "dea_opt_long dea_demo_main_big_long_opt_cast_nullable(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = 9999999999LL});"),
+            "dea_opt_long __deaM4demo4mainS26big_long_opt_cast_nullable(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = 9999999999LL});"),
             "bigint-to-nullable-long cast return lowering mismatch");
         assert(contains_s(generated,
-            "dea_opt_long dea_demo_main_direct_long_opt_return(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = ((dea_long)(42))});"),
+            "dea_opt_long __deaM4demo4mainS22direct_long_opt_return(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = ((dea_long)(42))});"),
             "direct int-literal-to-nullable-long return lowering mismatch");
         assert(contains_s(generated,
-            "dea_opt_ulong dea_demo_main_direct_ulong_opt_return(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = ((dea_ulong)(42))});"),
+            "dea_opt_ulong __deaM4demo4mainS23direct_ulong_opt_return(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = ((dea_ulong)(42))});"),
             "direct int-literal-to-nullable-ulong return lowering mismatch");
         assert(contains_s(generated,
-            "dea_opt_long dea_demo_main_direct_big_long_opt_return(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = 9999999999LL});"),
+            "dea_opt_long __deaM4demo4mainS26direct_big_long_opt_return(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = 9999999999LL});"),
             "direct bigint-to-nullable-long return lowering mismatch");
         assert(contains_s(generated, "dea_long j = (_rt_ladd(l, e));"), "long addition helper mismatch");
         assert(contains_s(generated, "return (_rt_ladd(j, i));"), "long return addition helper mismatch");
@@ -1131,9 +1131,9 @@ func test_backend_generate_float_double_builtins() {
         assert(contains_s(generated, "#include <float.h>"), "float fixture should emit float contract guards");
         assert(contains_s(generated, "#if FLT_RADIX != 2"), "float fixture should emit radix guard");
         assert(contains_s(generated, "__FAST_MATH__"), "float fixture should emit fast-math guard");
-        assert(contains_s(generated, "double dea_demo_main_widen(float x);"), "float/double function declaration mismatch");
+        assert(contains_s(generated, "double __deaM4demo4mainS5widen(float x);"), "float/double function declaration mismatch");
         assert(contains_s(generated, "float seed = 1.0f;"), "float literal local lowering mismatch");
-        assert(contains_s(generated, "double total = ((dea_demo_main_widen(seed) + 1.5) + 1.5);"),
+        assert(contains_s(generated, "double total = ((__deaM4demo4mainS5widen(seed) + 1.5) + 1.5);"),
             "double arithmetic lowering mismatch");
         assert(contains_s(generated, "if ((total == 4.0))"), "double equality comparison lowering mismatch");
         assert(contains_s(generated, "if ((total >= 4.0))"), "double ordering comparison lowering mismatch");

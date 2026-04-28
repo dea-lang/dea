@@ -33,7 +33,7 @@ dea_bool _rt_time_to_dea_int_nsec(long value, dea_int *out) {
 /**
  * Internal helper to write time parts to struct.
  */
-dea_bool _rt_time_write_parts(struct dea_sys_rt_RtTimeParts *out, dea_int sec, dea_int nsec) {
+dea_bool _rt_time_write_parts(struct __deaM3sys2rtS11RtTimeParts *out, dea_int sec, dea_int nsec) {
     if (out == NULL) {
         _rt_panic("_rt_time_write_parts: out-parameter is null");
     }
@@ -50,7 +50,7 @@ dea_bool _rt_time_write_parts(struct dea_sys_rt_RtTimeParts *out, dea_int sec, d
  *
  * Dea signature: `extern func rt_time_unix(out: RtTimeParts*) -> bool;`
  */
-dea_bool rt_time_unix(struct dea_sys_rt_RtTimeParts *out) {
+dea_bool rt_time_unix(struct __deaM3sys2rtS11RtTimeParts *out) {
     if (out == NULL) {
         _rt_panic("rt_time_unix: out-parameter is null");
     }
@@ -90,7 +90,7 @@ dea_bool rt_time_unix(struct dea_sys_rt_RtTimeParts *out) {
  *
  * Dea signature: `extern func rt_time_monotonic(out: RtTimeParts*) -> bool;`
  */
-dea_bool rt_time_monotonic(struct dea_sys_rt_RtTimeParts *out) {
+dea_bool rt_time_monotonic(struct __deaM3sys2rtS11RtTimeParts *out) {
     if (out == NULL) {
         _rt_panic("rt_time_monotonic: out-parameter is null");
     }

@@ -11,19 +11,19 @@
 #include <stdbool.h>
 
 /* Helper structs for output parameters matching L1 layout */
-#ifndef DEA_DEFINED_dea_sys_real_RtFloatOut
-#define DEA_DEFINED_dea_sys_real_RtFloatOut
-struct dea_sys_real_RtFloatOut { dea_float val; };
+#ifndef DEA_DEFINED___deaM3sys4realS10RtFloatOut
+#define DEA_DEFINED___deaM3sys4realS10RtFloatOut
+struct __deaM3sys4realS10RtFloatOut { dea_float val; };
 #endif
 
-#ifndef DEA_DEFINED_dea_sys_real_RtDoubleOut
-#define DEA_DEFINED_dea_sys_real_RtDoubleOut
-struct dea_sys_real_RtDoubleOut { dea_double val; };
+#ifndef DEA_DEFINED___deaM3sys4realS11RtDoubleOut
+#define DEA_DEFINED___deaM3sys4realS11RtDoubleOut
+struct __deaM3sys4realS11RtDoubleOut { dea_double val; };
 #endif
 
-#ifndef DEA_DEFINED_dea_sys_real_RtIntOut
-#define DEA_DEFINED_dea_sys_real_RtIntOut
-struct dea_sys_real_RtIntOut { dea_int val; };
+#ifndef DEA_DEFINED___deaM3sys4realS8RtIntOut
+#define DEA_DEFINED___deaM3sys4realS8RtIntOut
+struct __deaM3sys4realS8RtIntOut { dea_int val; };
 #endif
 
 /* Constants */
@@ -67,10 +67,10 @@ static inline dea_float rt_real_fmod_f(dea_float x, dea_float y) { return fmodf(
 static inline dea_double rt_real_fmod_d(dea_double x, dea_double y) { return fmod(x, y); }
 static inline dea_float rt_real_remainder_f(dea_float x, dea_float y) { return remainderf(x, y); }
 static inline dea_double rt_real_remainder_d(dea_double x, dea_double y) { return remainder(x, y); }
-static inline dea_float rt_real_modf_f(dea_float x, struct dea_sys_real_RtFloatOut* iptr) { return modff(x, (float*)&iptr->val); }
-static inline dea_double rt_real_modf_d(dea_double x, struct dea_sys_real_RtDoubleOut* iptr) { return modf(x, (double*)&iptr->val); }
-static inline dea_float rt_real_frexp_f(dea_float x, struct dea_sys_real_RtIntOut* exp) { return frexpf(x, (int*)&exp->val); }
-static inline dea_double rt_real_frexp_d(dea_double x, struct dea_sys_real_RtIntOut* exp) { return frexp(x, (int*)&exp->val); }
+static inline dea_float rt_real_modf_f(dea_float x, struct __deaM3sys4realS10RtFloatOut* iptr) { return modff(x, (float*)&iptr->val); }
+static inline dea_double rt_real_modf_d(dea_double x, struct __deaM3sys4realS11RtDoubleOut* iptr) { return modf(x, (double*)&iptr->val); }
+static inline dea_float rt_real_frexp_f(dea_float x, struct __deaM3sys4realS8RtIntOut* exp) { return frexpf(x, (int*)&exp->val); }
+static inline dea_double rt_real_frexp_d(dea_double x, struct __deaM3sys4realS8RtIntOut* exp) { return frexp(x, (int*)&exp->val); }
 static inline dea_float rt_real_ldexp_f(dea_float x, dea_int exp) { return ldexpf(x, (int)exp); }
 static inline dea_double rt_real_ldexp_d(dea_double x, dea_int exp) { return ldexp(x, (int)exp); }
 

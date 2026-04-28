@@ -249,24 +249,24 @@ static dea_opt_string DEA_OPT_STRING_NULL = { .has_value = 0, .value = { 0 } };
 static dea_opt_string DEA_OPT_STRING_EMPTY = { .has_value = 1, .value = { 0 } };
 
 /**
- * @struct dea_sys_rt_RtTimeParts
+ * @struct __deaM3sys2rtS11RtTimeParts
  * Definition for `sys.rt::RtTimeParts`.
  */
-#ifndef DEA_DEFINED_dea_sys_rt_RtTimeParts
-#define DEA_DEFINED_dea_sys_rt_RtTimeParts
-struct dea_sys_rt_RtTimeParts {
+#ifndef DEA_DEFINED___deaM3sys2rtS11RtTimeParts
+#define DEA_DEFINED___deaM3sys2rtS11RtTimeParts
+struct __deaM3sys2rtS11RtTimeParts {
     dea_int sec;
     dea_int nsec;
 };
 #endif
 
 /**
- * @struct dea_sys_rt_RtFileInfo
+ * @struct __deaM3sys2rtS10RtFileInfo
  * Definition for `sys.rt::RtFileInfo`.
  */
-#ifndef DEA_DEFINED_dea_sys_rt_RtFileInfo
-#define DEA_DEFINED_dea_sys_rt_RtFileInfo
-struct dea_sys_rt_RtFileInfo {
+#ifndef DEA_DEFINED___deaM3sys2rtS10RtFileInfo
+#define DEA_DEFINED___deaM3sys2rtS10RtFileInfo
+struct __deaM3sys2rtS10RtFileInfo {
     dea_bool exists;
     dea_bool is_file;
     dea_bool is_dir;
@@ -359,15 +359,15 @@ dea_int rt_get_pid(void);
 dea_string rt_get_argv(dea_int i);
 dea_bool _rt_time_to_dea_int_sec(time_t value, dea_int *out);
 dea_bool _rt_time_to_dea_int_nsec(long value, dea_int *out);
-dea_bool _rt_time_write_parts(struct dea_sys_rt_RtTimeParts *out, dea_int sec, dea_int nsec);
-dea_bool rt_time_unix(struct dea_sys_rt_RtTimeParts *out);
-dea_bool rt_time_monotonic(struct dea_sys_rt_RtTimeParts *out);
+dea_bool _rt_time_write_parts(struct __deaM3sys2rtS11RtTimeParts *out, dea_int sec, dea_int nsec);
+dea_bool rt_time_unix(struct __deaM3sys2rtS11RtTimeParts *out);
+dea_bool rt_time_monotonic(struct __deaM3sys2rtS11RtTimeParts *out);
 dea_bool rt_time_monotonic_supported(void);
 dea_opt_int rt_time_local_offset_sec(dea_int unix_sec);
 dea_opt_bool rt_time_local_is_dst(dea_int unix_sec);
 dea_opt_string rt_read_file_all(dea_string path);
 dea_bool rt_write_file_all(dea_string path, dea_string data);
-struct dea_sys_rt_RtFileInfo rt_file_info(dea_string path);
+struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path);
 dea_bool rt_delete_file(dea_string path);
 dea_int _rt_stream_write_some(FILE *stream, const dea_byte *buf, dea_int len);
 dea_int rt_stdin_read(dea_byte *buf, dea_int capacity);

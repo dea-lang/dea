@@ -86,7 +86,7 @@ def require_trace_gen_rewrite() -> None:
         c_text = output_path.read_text(encoding="utf-8")
         assert "_rt_string_concat_impl(a, b, __FILE__, __LINE__);" in c_text
         assert "_rt_string_release_impl(c, __FILE__, __LINE__);" in c_text
-        assert "_rt_alloc_obj_impl((dea_int)sizeof(struct dea_trace_gen_main_Box), __FILE__, __LINE__);" in c_text
+        assert "_rt_alloc_obj_impl((dea_int)sizeof(struct __deaM14trace_gen_mainS3Box), __FILE__, __LINE__);" in c_text
         assert "_rt_drop_impl((void*)p, __FILE__, __LINE__);" in c_text
 
 

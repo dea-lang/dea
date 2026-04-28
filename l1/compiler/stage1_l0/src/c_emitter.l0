@@ -345,23 +345,56 @@ func cem_is_c_keyword(name: string) -> bool {
 }
 
 /**
- * Replace dots with underscores for C symbol names.
+ * Canonical mangler for the LBI tagged-section ABI.
  *
- * @param module_name Module name to sanitize.
- * @return C-safe module spelling.
+ * Emits `__deaM<seg_len><seg>...<sigil><component_len><component>`,
+ * where the `M` section length-prefixes each dotted module-path segment and
+ * the final section identifies the symbol category. The full normative spec
+ * lives in `l1/docs/specs/compiler/abi.md`.
+ *
+ * @param module_name Module name in dotted source form (for example `std.math`).
+ * @param sigil One-character LBI section sigil.
+ * @param component Section component.
+ * @return Mangled LBI name.
  */
-func cem_mangle_module(module_name: string) -> string {
+func cem_mangle_lbi_section(module_name: string, sigil: string, component: string) -> string {
+    if (len_s(sigil) != 1) {
+        cem_ice(concat3_s("[ICE-1371] invalid LBI sigil '", sigil, "'"));
+    }
     with (let cb = cb_create() => cb_free(cb)) {
-        for (let i = 0; i < len_s(module_name); i = i + 1) {
-            let c = char_at_s(module_name, i);
-            if (c == '.') {
-                cb_append(cb, '_');
-            } else {
-                cb_append(cb, c);
+        cb_append_s(cb, "__dea");
+        cb_append_s(cb, "M");
+        let seg_start = 0;
+        let mod_len = len_s(module_name);
+        for (let i = 0; i <= mod_len; i = i + 1) {
+            let at_end = (i == mod_len);
+            let at_dot = !at_end && char_at_s(module_name, i) == '.';
+            if (at_end || at_dot) {
+                let seg_len = i - seg_start;
+                if (seg_len == 0) {
+                    cem_ice(concat3_s("[ICE-1370] empty module-path segment in '", module_name, "'"));
+                }
+                cb_append_s(cb, int_to_string(seg_len));
+                cb_append_slice(cb, module_name, seg_start, seg_len);
+                seg_start = i + 1;
             }
         }
+        cb_append_s(cb, sigil);
+        cb_append_s(cb, int_to_string(len_s(component)));
+        cb_append_s(cb, component);
         return cb_to_string(cb);
     }
+}
+
+/**
+ * Canonical mangler for source-level LBI symbols.
+ *
+ * @param module_name Module name in dotted source form (for example `std.math`).
+ * @param symbol_name Source-level symbol name.
+ * @return Mangled LBI name (for example `__deaM3std4mathS3abs`).
+ */
+func cem_mangle_lbi(module_name: string, symbol_name: string) -> string {
+    return cem_mangle_lbi_section(module_name, "S", symbol_name);
 }
 
 /**
@@ -372,7 +405,7 @@ func cem_mangle_module(module_name: string) -> string {
  * @return Mangled C struct name.
  */
 func cem_mangle_struct_name(module_name: string, struct_name: string) -> string {
-    return concat4_s("dea_", cem_mangle_module(module_name), "_", cem_mangle_source_leaf_name(struct_name));
+    return cem_mangle_lbi(module_name, struct_name);
 }
 
 /**
@@ -383,7 +416,7 @@ func cem_mangle_struct_name(module_name: string, struct_name: string) -> string 
  * @return Mangled C enum name.
  */
 func cem_mangle_enum_name(module_name: string, enum_name: string) -> string {
-    return concat4_s("dea_", cem_mangle_module(module_name), "_", cem_mangle_source_leaf_name(enum_name));
+    return cem_mangle_lbi(module_name, enum_name);
 }
 
 /**
@@ -394,7 +427,7 @@ func cem_mangle_enum_name(module_name: string, enum_name: string) -> string {
  * @return Mangled C function name.
  */
 func cem_mangle_function_name(module_name: string, func_name: string) -> string {
-    return concat4_s("dea_", cem_mangle_module(module_name), "_", cem_mangle_source_leaf_name(func_name));
+    return cem_mangle_lbi(module_name, func_name);
 }
 
 /**
@@ -405,21 +438,28 @@ func cem_mangle_function_name(module_name: string, func_name: string) -> string 
  * @return Mangled C identifier.
  */
 func cem_mangle_let_name(module_name: string, let_name: string) -> string {
-    let safe = cem_mangle_source_leaf_name(let_name);
-    if (cem_is_c_keyword(let_name)) {
-        safe = concat_s("dea_kw_", let_name);
-    }
-    return concat4_s("dea_", cem_mangle_module(module_name), "_", safe);
+    return cem_mangle_lbi(module_name, let_name);
+}
+
+/**
+ * Mangle one compiler-generated module lifecycle function name.
+ *
+ * @param module_name Defining module name.
+ * @param lifecycle_name Lifecycle component name.
+ * @return Hidden LBI identifier.
+ */
+func cem_mangle_module_lifecycle_name(module_name: string, lifecycle_name: string) -> string {
+    return cem_mangle_lbi_section(module_name, "I", lifecycle_name);
 }
 
 /**
  * Mangle one hidden module-initializer function name.
  *
  * @param module_name Defining module name.
- * @return Hidden C identifier.
+ * @return Hidden LBI identifier.
  */
 func cem_mangle_module_init_name(module_name: string) -> string {
-    return concat3_s("_dea_init_", cem_mangle_module(module_name), "");
+    return cem_mangle_module_lifecycle_name(module_name, "init");
 }
 
 /**
@@ -1084,14 +1124,19 @@ func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_i
  * @param decl Binding declaration node.
  * @param let_type Resolved binding type.
  * @param c_init C initializer expression.
+ * @param is_exported Whether the symbol is exported.
  */
-func cem_emit_let_declaration(self: CEmitter*, module_name: string, decl: LetDecl*, let_type: Type*, c_init: string) {
+func cem_emit_let_declaration(self: CEmitter*, module_name: string, decl: LetDecl*, let_type: Type*, c_init: string, is_exported: bool) {
     let c_type = cem_emit_type(let_type);
     let c_name = cem_mangle_let_name(module_name, decl.name);
+    let static_prefix = "static ";
+    if (is_exported) {
+        static_prefix = "";
+    }
     if (decl.is_const) {
-        ccb_emit(self.out, concat4_s("static const ", c_type, " ", concat3_s(c_name, " = ", concat_s(c_init, ";"))));
+        ccb_emit(self.out, concat3_s(static_prefix, "const ", concat3_s(c_type, " ", concat3_s(c_name, " = ", concat_s(c_init, ";")))));
     } else {
-        ccb_emit(self.out, concat4_s("static ", c_type, " ", concat3_s(c_name, " = ", concat_s(c_init, ";"))));
+        ccb_emit(self.out, concat3_s(static_prefix, c_type, concat3_s(" ", c_name, concat3_s(" = ", c_init, ";"))));
     }
 }
 
@@ -1102,12 +1147,17 @@ func cem_emit_let_declaration(self: CEmitter*, module_name: string, decl: LetDec
  * @param module_name Name of the defining module.
  * @param decl Binding declaration node.
  * @param let_type Resolved binding type.
+ * @param is_exported Whether the symbol is exported.
  */
-func cem_emit_zero_initialized_let_declaration(self: CEmitter*, module_name: string, decl: LetDecl*, let_type: Type*) {
+func cem_emit_zero_initialized_let_declaration(self: CEmitter*, module_name: string, decl: LetDecl*, let_type: Type*, is_exported: bool) {
     let c_type = cem_emit_type(let_type);
     let c_name = cem_mangle_let_name(module_name, decl.name);
     let c_init = cem_emit_zero_initializer(let_type);
-    ccb_emit(self.out, concat4_s("static ", c_type, " ", concat3_s(c_name, " = ", concat_s(c_init, ";"))));
+    let static_prefix = "static ";
+    if (is_exported) {
+        static_prefix = "";
+    }
+    ccb_emit(self.out, concat3_s(static_prefix, c_type, concat3_s(" ", c_name, concat3_s(" = ", c_init, ";"))));
 }
 
 /**
@@ -1177,8 +1227,9 @@ func cem_function_params(decl: FuncDecl*, func_type: Type*) -> string {
  * @param module_name Name of the defining module.
  * @param decl Function declaration node.
  * @param func_type Resolved function type.
+ * @param is_exported Whether the function is exported.
  */
-func cem_emit_function_declaration(self: CEmitter*, module_name: string, decl: FuncDecl*, func_type: Type*) {
+func cem_emit_function_declaration(self: CEmitter*, module_name: string, decl: FuncDecl*, func_type: Type*, is_exported: bool) {
     let c_name = "";
     if (decl.is_extern) {
         c_name = concat3_s("(", decl.name, ")");
@@ -1188,7 +1239,11 @@ func cem_emit_function_declaration(self: CEmitter*, module_name: string, decl: F
 
     let c_return_type = cem_emit_type(func_type.result as Type*);
     let params_str = cem_function_params(decl, func_type);
-    ccb_emit(self.out, concat4_s(c_return_type, " ", c_name, concat3_s("(", params_str, ");")));
+    let static_prefix = "static ";
+    if (is_exported || decl.is_extern) {
+        static_prefix = "";
+    }
+    ccb_emit(self.out, concat4_s(static_prefix, c_return_type, " ", concat3_s(c_name, "(", concat3_s(params_str, ");", ""))));
 }
 
 /**
@@ -1198,12 +1253,17 @@ func cem_emit_function_declaration(self: CEmitter*, module_name: string, decl: F
  * @param module_name Name of the defining module.
  * @param decl Function declaration node.
  * @param func_type Resolved function type.
+ * @param is_exported Whether the function is exported.
  */
-func cem_emit_function_definition_header(self: CEmitter*, module_name: string, decl: FuncDecl*, func_type: Type*) {
+func cem_emit_function_definition_header(self: CEmitter*, module_name: string, decl: FuncDecl*, func_type: Type*, is_exported: bool) {
     let c_name = cem_mangle_function_name(module_name, decl.name);
     let c_return_type = cem_emit_type(func_type.result as Type*);
     let params_str = cem_function_params(decl, func_type);
-    ccb_emit(self.out, concat4_s(c_return_type, " ", c_name, concat3_s("(", params_str, ")")));
+    let static_prefix = "static ";
+    if (is_exported) {
+        static_prefix = "";
+    }
+    ccb_emit(self.out, concat4_s(static_prefix, c_return_type, " ", concat3_s(c_name, "(", concat3_s(params_str, ")", ""))));
     ccb_emit(self.out, "{");
     ccb_indent(self.out);
 }

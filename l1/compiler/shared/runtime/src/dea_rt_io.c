@@ -110,8 +110,8 @@ dea_bool rt_write_file_all(dea_string path, dea_string data) {
  *
  * Dea signature: `extern func rt_file_info(path: string) -> RtFileInfo;`
  */
-struct dea_sys_rt_RtFileInfo rt_file_info(dea_string path) {
-    struct dea_sys_rt_RtFileInfo out = {
+struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path) {
+    struct __deaM3sys2rtS10RtFileInfo out = {
         .exists = 0,
         .is_file = 0,
         .is_dir = 0,

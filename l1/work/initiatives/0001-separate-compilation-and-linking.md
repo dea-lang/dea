@@ -1,6 +1,6 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-04-25
+- Version: 2026-04-28
 - Status: Active
 - Kind: Initiative
 
@@ -52,10 +52,12 @@ Relevant facts that constrain the plan at the time of writing:
   into a single `.c` and compiled in one `cc` invocation.
 - The L1 backend reference ([`l1/docs/reference/c-backend-design.md`](../../docs/reference/c-backend-design.md)) is the
   current source of truth for L1 generated C behavior.
-- Top-level symbols inside a module are implicitly visible to importers: there is no explicit export manifest, no
-  alias-backed import surface, and no per-symbol public/private split.
-- Generated nominal names follow a `dea_{module}_{name}` style. Everything inside an `extern func` declaration is
-  intentionally **not name-mangled**; this is the only FFI primitive in the language today.
+- Modules support explicit export manifests plus alias and selective import forms. Exported top-level declarations keep
+  external C linkage; non-exported top-level functions and storage use `static` where the current single-CU backend can
+  do so without changing semantics.
+- Generated L1-defined source symbols use LBI `M...S...` names, and compiler-generated module lifecycle symbols use LBI
+  `M...I...` names. Everything inside a legacy `extern func` declaration is intentionally **not name-mangled**; this is
+  the only FFI primitive in the language today.
 - Imports are type-checked by reparsing implementation source files, not from a serialized interface artifact. There is
   no `.l1m` format yet, no fingerprint, and no link-time consistency check beyond what the platform linker surfaces.
 - The current driver CLI uses `-I` and `-L` as runtime-discovery short aliases for `--runtime-include` and
@@ -85,24 +87,27 @@ can still inline and dead-strip internal helpers.
 
 ### 0.2 C ABI identity and link-symbol mangling
 
-With separate compilation the mangled name is the link-time identity. L1 adopts the length-prefixed LBI scheme:
+With separate compilation the mangled name is the link-time identity. L1 adopts the tagged-section, length-prefixed LBI
+scheme specified in [`l1/docs/specs/compiler/abi.md`](../../docs/specs/compiler/abi.md):
 
-- Format: `__dea<module_len><module_name><symbol_len><symbol_name>`.
-- Normalization rule:
-  - **Canonical source form:** the input to mangling is the module's dotted path (for example `std.math`), not its
-    filesystem path. The compiler does not see `/` or platform path separators at the mangling stage.
-  - **Path-component separator:** the source `.` between path components is mapped to `$` in the mangled `<module_name>`
-    component (`std.math` -> `std$math`). This is the only character substitution; no other source character is
-    rewritten on the way to the mangled form. The C backend targets a portability envelope where GCC, Clang, and MSVC
-    all accept `$` as an identifier character by extension.
-  - **Identifier characters:** Dea source identifiers match `[A-Za-z_][A-Za-z0-9_]*`, so `$` cannot appear inside an
-    identifier itself. The substitution is therefore unambiguous: any `$` in a mangled `<module_name>` always represents
-    a path-component separator.
-  - **Stability:** this normalization is part of the LBI ABI and is stable across stages. Stage 2 must produce
-    byte-identical mangled names for the same source surface.
-- Example: `std.math::abs` becomes `__dea8std$math3abs`.
-- The scheme is chosen now so later overloading and generics can extend it without breaking existing object names.
+- Source symbols use `__deaM<seg_len><seg>...S<sym_len><sym>`.
+- Compiler-generated module lifecycle symbols use `__deaM<seg_len><seg>...I<life_len><life>`.
+- **Canonical source form:** the input to mangling is the module's dotted path (for example `std.math`), not its
+  filesystem path. The compiler does not see `/` or platform path separators at the mangling stage.
+- **Module path encoding:** each dotted module segment becomes one length-prefixed component in the `M` section. No
+  character substitution or `$`-in-identifier compiler extension is required.
+- **Identifier characters:** Dea source identifiers match `[A-Za-z_][A-Za-z0-9_]*`, so the boundary between a decimal
+  length and the following component is unambiguous.
+- **Stability:** this normalization is part of the LBI ABI and is stable across stages. Stage 2 must produce
+  byte-identical mangled names for the same source surface.
+- Example: `std.math::abs` becomes `__deaM3std4mathS3abs`.
+- Example: module lifecycle `std.math::init` becomes `__deaM3std4mathI4init`.
+- The scheme is chosen now so later overloading, generics, and additional module lifecycle entries can extend it without
+  breaking existing object names.
 - Declarations inside an `extern "C"` block bypass mangling and are emitted with their declared C spelling.
+
+Phase 0.2 is completed by
+[`l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`](../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md).
 
 ### 0.3 Module artifact format (`.l1m`)
 
@@ -154,8 +159,8 @@ and a single embedding strategy:
   and embedded as 8 raw bytes in object metadata.
 - **Object embedding:** every per-module object file emits two portable C99 `const uint8_t` arrays with mangled names
   (one for the producer's exported fingerprint, one for the consumer's
-  `(imported module, expected dependency fingerprint)` records). Both arrays are referenced from the module's
-  `_dea_init` so the platform linker's dead-strip pass cannot remove them. The driver discovers the records via
+  `(imported module, expected dependency fingerprint)` records). Both arrays are referenced from the module lifecycle
+  `I4init` entry point so the platform linker's dead-strip pass cannot remove them. The driver discovers the records via
   symbol-table lookup, which is the same mechanism every supported object format already exposes (ELF, Mach-O, PE/COFF)
   and is also `tcc`-compatible.
 
@@ -238,8 +243,8 @@ full structural layout, not just an opaque tag.
 
 A new "main wrapper" pseudo-module produces the `main(int argc, char **argv)` shim and is compiled separately when an
 executable is requested. It depends only on the entry module's interface. The driver topologically sorts the module
-dependency graph and emits calls to each module's `_dea_init` entrypoint in dependency order before control reaches the
-user `main`.
+dependency graph and emits calls to each module's `I4init` lifecycle entry point in dependency order before control
+reaches the user `main`.
 
 ### 2c. Interface-file consistency and verification contract
 
@@ -257,7 +262,7 @@ export manifest itself). Verification is explicitly tiered:
 
 The fingerprint algorithm and the object-embedding strategy are anchored in §0.6. In short: SipHash-1-3 with a fixed
 key, 64-bit digest, embedded in each `.o` as portable C99 `const uint8_t` arrays with mangled names, anchored against
-dead-strip from the module's `_dea_init`, and discovered by the driver via symbol-table lookup.
+dead-strip from the module's `I4init` lifecycle entry point, and discovered by the driver via symbol-table lookup.
 
 This replaces any per-symbol ABI hash scheme. The diagnostic goal is a clean stale-interface or stale-object failure
 instead of undefined-symbol noise from the platform linker.
@@ -368,11 +373,11 @@ Recorded near-term tranche checkpoints:
 
 - [x] Finalize mangling and visibility defaults.
 - [x] Finalize `.l1m` format and fingerprint verification contract.
-- [ ] Phase 0.1: parser support for `export` and `import ... as`.
-- [ ] Phase 0.2: C emitter symbol mangling logic.
+- [x] Phase 0.1: parser support for `export` and `import ... as`.
+- [x] Phase 0.2: C emitter symbol mangling logic.
 - [ ] Phase 0.3: `.l1m` interface emission and serialization.
 - [ ] Phase 2.a: `-c` compile-only and `-I` interface-path support.
-- [ ] Phase 2.b: driver topological sort plus per-module `_dea_init` emission.
+- [ ] Phase 2.b: driver topological sort plus per-module `I4init` emission.
 - [ ] Phase 2.c: fingerprint hashing plus provider metadata embedding in `.o`.
 
 ## Cross-cutting concerns
@@ -399,9 +404,9 @@ Phases land with corresponding doc updates in the same change:
 - New
   [`l1/docs/specs/compiler/module-visibility-and-imports.md`](../../docs/specs/compiler/module-visibility-and-imports.md)
   capturing export manifests, aliasing, and selective import.
+- New [`l1/docs/specs/compiler/abi.md`](../../docs/specs/compiler/abi.md) (Phase 0.2, finalized in Phase 2).
 - New [`l1/docs/specs/compiler/module-interface-format.md`](../../docs/specs/compiler/module-interface-format.md) (Phase
   0.3, expanded in Phase 2).
-- New [`l1/docs/specs/compiler/abi.md`](../../docs/specs/compiler/abi.md) (Phase 0.2, finalized in Phase 2).
 - New [`l1/docs/reference/separate-compilation.md`](../../docs/reference/separate-compilation.md) (Phase 2).
 - Substantial revision of the L1 backend-design reference (Phase 2 invalidates the "single generated C compilation unit"
   assertion).
@@ -443,10 +448,10 @@ summarizes the chosen answer and points at the owning section.
    (exact key constant, encoding details, canonicalization rules) are owned by
    [`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`](../plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md).
 2. **Object metadata format:** portable C99 `const uint8_t` arrays with mangled names, anchored against linker
-   dead-strip from each module's `_dea_init`. Driver-side discovery uses symbol-table lookup, which works uniformly
-   across ELF, Mach-O, and PE/COFF and stays compatible with `tcc`. Custom object sections were rejected because they
-   force per-format emitter and reader paths plus quirky compiler attributes. Anchored in §0.6 and §2c; record layout
-   and naming details are owned by the same spawned phase plan.
+   dead-strip from each module's `I4init` lifecycle entry point. Driver-side discovery uses symbol-table lookup, which
+   works uniformly across ELF, Mach-O, and PE/COFF and stays compatible with `tcc`. Custom object sections were rejected
+   because they force per-format emitter and reader paths plus quirky compiler attributes. Anchored in §0.6 and §2c;
+   record layout and naming details are owned by the same spawned phase plan.
 3. **Diagnostic family split:** keep the existing phase-based families (`PAR-*`, `RES-*`, `SIG-*`, `TYP-*`, `DRV-*`,
    `L1C-*`). New `MOD-*` or `LNK-*` families are introduced only if a concrete phase plan demonstrates the existing
    split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. The provisional reservations recorded
@@ -470,9 +475,9 @@ Phase 0 decisions are now recorded directly in this initiative. They do not need
 implementation tranche proves that one decision area needs additional design work.
 
 - Phase 0.1: parser/analyzer support for export manifests and aliased/selective imports under
-  [`l1/work/plans/features/2026-04-24-export-manifests-and-aliased-imports-noref.md`](../plans/features/2026-04-24-export-manifests-and-aliased-imports-noref.md)
+  [`l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`](../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md)
 - Phase 0.2: LBI symbol mangling plus exported-vs-internal linkage emission under
-  [`l1/work/plans/features/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`](../plans/features/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md)
+  [`l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`](../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md)
 - Phase 0.3: `.l1m` interface emission, canonicalization, and parsing contract under
   [`l1/work/plans/features/2026-04-24-module-interface-emission-noref.md`](../plans/features/2026-04-24-module-interface-emission-noref.md)
 - Phase 2.a: compile-only and interface-path driver surface under
@@ -486,7 +491,7 @@ implementation tranche proves that one decision area needs additional design wor
 
 ## Glossary
 
-- **LBI**: Dea L1 Binary Interface.
+- **LBI**: Dea/L1 Binary Interface.
 - **CU**: compilation unit. In this initiative, a single L1 module compiled to one `.o`.
 - **Interface file** (`.l1m`): textual serialized public surface of a module, sufficient for importers to type-check
   without reparsing the implementation source.

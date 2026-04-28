@@ -71,16 +71,27 @@ For `--build` / `--run`, that generated unit now compiles against `dea_rt.h` and
 - `double` lowers to C `double` only when the enforced L1 floating-point contract is satisfied
 - `void` lowers to C `void`
 
-Current L1 prefix policy is:
+Current L1 Binary Interface (LBI) naming policy is:
 
-- `dea_*` for public generated/runtime C identifiers
-- `DEA_*` for public generated/runtime preprocessor names
-- `rt_*` for stable runtime API entry points used by generated C and stdlib declarations
-- `_rt_*` for private runtime helpers
-- `_dea_*` / `_DEA_*` for touched non-`_rt_` private runtime names that previously carried historical `l0` spellings
+- All user-defined symbols (structs, enums, functions, and top-level bindings) use the tagged-section encoding
+  `__deaM<seg_len><seg>...S<sym_len><sym>`, where the `M` section length-prefixes each module-path segment and the `S`
+  section length-prefixes the symbol name (e.g. `std.math::abs` → `__deaM3std4mathS3abs`).
+- Compiler-generated module lifecycle helpers use the same `M` module section plus an `I` lifecycle section (e.g. module
+  `std.math` lifecycle `init` → `__deaM3std4mathI4init`). This avoids collisions between dotted and underscored module
+  names while keeping lifecycle helpers distinct from source-level `S` symbols.
+- The encoding uses only ISO C99 identifier characters; no GCC `$`-in-identifier extension is required. See
+  `l1/docs/specs/compiler/abi.md` for the normative spec.
+- Exported symbols keep global linkage in generated C and the resulting object file.
+- Non-exported top-level symbols are emitted as `static` to allow C compiler optimization.
+- Exported `const` bindings are emitted with global linkage (without `static`) to satisfy ABI linking, overruling the
+  internal-only `static const` default for non-exported constants.
+- `DEA_*` for public generated/runtime preprocessor names.
+- `rt_*` for stable runtime API entry points used by generated C and stdlib declarations.
+- `_rt_*` for private runtime helpers.
+- `_dea_*` / `_DEA_*` for other private runtime names.
 
-The emitter actively mangles user/source names that start with reserved generated/runtime prefixes, including both the
-legacy `l0` families and the current `dea` families, to avoid collisions in generated C.
+The emitter uses these rules to ensure C identifier hygiene and stable link-time identity. Any name starting with
+`__dea` is guaranteed to be a mangled L1 source or compiler-generated lifecycle symbol.
 
 Generated output now includes the public runtime header `dea_rt.h`. The internal helper `dea_siphash.h` lives only in
 the compiled runtime implementation and is not part of the generated-C surface or the public L1 ABI.
@@ -110,8 +121,8 @@ build mode preserve the L1 floating-point contract.
 
 ### Structs, enums, pointers, and nullable values
 
-- user-defined structs lower to C structs with mangled module-qualified names
-- enums lower to tagged unions
+- user-defined structs lower to C structs with mangled LBI names
+- enums lower to tagged unions with LBI-mangled tag names
 - function pointer types lower to signature-specific `dea_func_*` typedefs over plain C function pointers
 - pointer-shaped nullable values use `NULL` representation
 - non-pointer nullable values lower to wrapper structs carrying `has_value` plus the wrapped value

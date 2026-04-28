@@ -282,6 +282,22 @@ func be_lookup_symbol(self: Backend*, name: string, module_path: VectorString*?,
 }
 
 /**
+ * Check whether a top-level symbol is exported by its module.
+ *
+ * @param self Backend state.
+ * @param module_name Module name.
+ * @param symbol_name Symbol name.
+ * @return `true` if the symbol is exported.
+ */
+func be_is_symbol_exported(self: Backend*, module_name: string, symbol_name: string) -> bool {
+    let env = nr_env_find(self.result.names as NameResolution*, module_name);
+    if (env == null) {
+        return true;
+    }
+    return spm_get((env as ModuleEnv*).exports, symbol_name) != null;
+}
+
+/**
  * Return the inferred type of an expression.
  *
  * @param self Backend state to inspect.
@@ -1678,12 +1694,14 @@ func be_emit_let_declarations(self: Backend*) {
             }
             let c_init = be_try_emit_let_initializer(self, decl.value, let_type as Type*);
             if (c_init != null) {
-                cem_emit_let_declaration(self.emitter, root.name, decl, let_type as Type*, c_init as string);
+                cem_emit_let_declaration(self.emitter, root.name, decl, let_type as Type*, c_init as string,
+                    be_is_symbol_exported(self, root.name, decl.name));
             } else {
                 if (decl.is_const) {
                     be_ice("[ICE-1181] unsupported top-level let initializer");
                 }
-                cem_emit_zero_initialized_let_declaration(self.emitter, root.name, decl, let_type as Type*);
+                cem_emit_zero_initialized_let_declaration(self.emitter, root.name, decl, let_type as Type*,
+                    be_is_symbol_exported(self, root.name, decl.name));
             }
         }
     }
@@ -1925,7 +1943,8 @@ func be_emit_function_declarations(self: Backend*) {
             if (func_type == null) {
                 be_ice(concat4_s("[ICE-1150] missing FuncType for ", root.name, ".", decl.name));
             }
-            cem_emit_function_declaration(self.emitter, root.name, decl, func_type as Type*);
+            cem_emit_function_declaration(self.emitter, root.name, decl, func_type as Type*,
+                be_is_symbol_exported(self, root.name, decl.name));
         }
     }
 }
@@ -3687,7 +3706,8 @@ func be_emit_function_definitions(self: Backend*) {
             }
 
             be_emit_line_directive(self, decl.span);
-            cem_emit_function_definition_header(self.emitter, root.name, decl, func_type as Type*);
+            cem_emit_function_definition_header(self.emitter, root.name, decl, func_type as Type*,
+                be_is_symbol_exported(self, root.name, decl.name));
             self.current_func_result = (func_type as Type*).result as Type*;
             let func_scope = be_push_scope(self);
             for (let p = 0; p < vec_size(decl.params); p = p + 1) {

@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-04-27
+Version: 2026-04-28
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -28,8 +28,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   implemented behavior.
 - Any future `stage2_l1` implementation should preserve the L1 language/runtime decisions documented in
   [design-decisions](reference/design-decisions.md) unless the reference set is deliberately updated.
-- The L1 public C ABI should continue using the `dea_*` / `DEA_*` naming policy. Historical `l0_*` names are not part of
-  the current L1 ABI, and the internal SipHash helper now uses the level-local `dea_siphash.h` name.
+- L1-defined source symbols use the tagged-section `__deaM...S...` LBI spelling, compiler-generated module lifecycle
+  helpers use `__deaM...I...`, and runtime/public helper families retain their documented `dea_*`, `DEA_*`, `rt_*`, and
+  `_rt_*` roles. Historical `l0_*` names are not part of the current L1 ABI.
 - The first L1 productization steps should remain bootstrap-oriented until a later plan explicitly makes L1 a release
   line.
 
@@ -110,6 +111,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   [2026-04-24-export-manifests-and-aliased-imports-noref](../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md)
   added module-level export manifests plus alias and selective import resolution for the separate-compilation
   initiative.
+- Feature
+  [2026-04-24-lbi-symbol-mangling-and-linkage-noref](../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md)
+  adopted tagged-section LBI names for source symbols and module lifecycle helpers plus export-driven backend linkage.
 
 </details>
 
@@ -139,9 +143,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   [2026-04-22-anonymous-embedded-struct-members-noref](../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md)
   defines `_ : StructType` as a single first-position anonymous embedded struct member with promoted field access.
 - Feature
-  [2026-04-24-lbi-symbol-mangling-and-linkage-noref](../work/plans/features/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md)
-  adopts `__dea...` LBI emitted names and export-driven backend linkage.
-- Feature
   [2026-04-24-module-interface-emission-noref](../work/plans/features/2026-04-24-module-interface-emission-noref.md)
   introduces deterministic textual `.l1m` interface emission and loading.
 - Feature
@@ -152,7 +153,7 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   adds `.l1m` fingerprints, consumer verification, and provider-object metadata checks.
 - Feature
   [2026-04-24-multi-cu-initialization-and-link-order-noref](../work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md)
-  adapts `_dea_init` ordering and executable-wrapper initialization to the multi-CU build model.
+  adapts `I4init` module lifecycle ordering and executable-wrapper initialization to the multi-CU build model.
 - Feature
   [2026-04-24-external-library-linking-cli-noref](../work/plans/features/2026-04-24-external-library-linking-cli-noref.md)
   adds `-l`, `-L`, `--rpath`, and `--link-arg` as the external-library linking surface.

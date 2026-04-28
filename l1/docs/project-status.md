@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-04-26
+Version: 2026-04-28
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -24,6 +24,7 @@ Use this file as the status snapshot. For implementation details, use:
 - [l1/docs/reference/grammar.md](reference/grammar.md) for accepted concrete syntax
 - [l1/docs/reference/ownership.md](reference/ownership.md) for ownership and cleanup behavior
 - [l1/docs/reference/standard-library.md](reference/standard-library.md) for current std/sys module APIs
+- [l1/docs/specs/compiler/abi.md](specs/compiler/abi.md) for L1 Binary Interface symbol mangling and linkage rules
 
 The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 
@@ -41,6 +42,10 @@ The current compiler also synthesizes the implicit `dea` prelude module for lang
 `dea::ord(...)`, and `dea::is(...)` are always available as the stable qualified forms. The current `is(x, Variant)`
 intrinsic supports payload-ignoring enum tag comparison, including qualified variant references and enum-returning call
 expressions in first position.
+
+Generated C now uses LBI `__deaM...S...` names for L1-defined source symbols and `__deaM...I...` names for
+compiler-generated module lifecycle helpers. Module export manifests drive external vs. internal linkage for top-level
+functions, lets, and consts in the current backend.
 
 ### Runtime and Standard Library
 
@@ -61,7 +66,8 @@ checks, including:
 
 - functions, structs, enums, type aliases, top-level `let`, top-level `const`, and deferred module-init lowering for
   non-constant top-level `let` initializers before user `main`
-- modules/imports with qualified-name disambiguation
+- modules/imports with qualified-name disambiguation, module-level export manifests, alias imports, and selective
+  imports
 - structured control flow including `if`, `while`, `for`, `match`, `case`, and `with` / `cleanup`, with single-statement
   `while`, `for`, and `match` bodies accepted under the current body-local scope/cleanup rules
 - function pointer types, indirect calls, same-signature function pointer identity comparisons, and nullable function
