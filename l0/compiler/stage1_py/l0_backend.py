@@ -1393,7 +1393,7 @@ class Backend:
 
         self.emitter.emit_block_start()
         leaf_scope = self._push_scope()
-        c_cond = self._emit_expr(expr)
+        c_cond = self._emit_condition_expr(expr)
         self.emitter.emit_if_header(c_cond)
         self.emitter.emit_block_start()
         self._emit_cleanup_at_scope_exit(leaf_scope)
@@ -1403,6 +1403,14 @@ class Backend:
         self._pop_scope()
         self.emitter.emit_block_end()
         self.emitter.emit_goto(false_label)
+
+    def _emit_condition_expr(self, expr: Expr) -> str:
+        """Emit a top-level condition expression for direct statement headers."""
+        if isinstance(expr, ParenExpr):
+            return self._emit_condition_expr(expr.inner)
+        if isinstance(expr, BinaryOp):
+            return self._emit_binary_op(expr, expr.op, expr.left, expr.right, for_condition=True)
+        return self._emit_expr(expr)
 
     def _emit_condition_value(self, expr: Expr) -> str:
         """Evaluate a statement condition into a stable boolean temporary.
@@ -3039,7 +3047,9 @@ class Backend:
         self.emitter.emit_temp_decl(c_src, tmp, c_inner)
         return self.emitter.emit_unwrap_opt(c_src, tmp, format_type(src_ty))
 
-    def _emit_binary_op(self, expr_node: Expr, expr_op: str, expr_left: Expr, expr_right: Expr) -> str:
+    def _emit_binary_op(
+            self, expr_node: Expr, expr_op: str, expr_left: Expr, expr_right: Expr, *, for_condition: bool = False
+    ) -> str:
         """Emit code for a binary operation.
 
         Args:
@@ -3075,6 +3085,8 @@ class Backend:
                 self.ice(f"[ICE-1010] invalid null comparison: {c_other} {expr_op} NULL")
 
             # pointer / pointer-optional: compare with NULL
+            if for_condition:
+                return self.emitter.emit_condition_pointer_null_check(c_other, expr_op)
             return self.emitter.emit_pointer_null_check(c_other, expr_op)
 
         c_left = self._emit_expr(expr_left)
@@ -3118,6 +3130,8 @@ class Backend:
                     return self.emitter.emit_unary_op("!", c_cmp)
                 return c_cmp
             if expr_op in ("<", "<=", ">", ">="):
+                if for_condition:
+                    return self.emitter.emit_condition_string_compare_call(expr_op, c_left, c_right)
                 return self.emitter.emit_string_compare_call(expr_op, c_left, c_right)
 
         # Typechecker allows mixed int/byte for numeric comparisons and equality.
@@ -3127,6 +3141,8 @@ class Backend:
                 and self._is_int_assignable(left_ty)
                 and self._is_int_assignable(right_ty)
         ):
+            if for_condition:
+                return self.emitter.emit_condition_binary_op(expr_op, c_left, c_right)
             return self.emitter.emit_binary_op(expr_op, c_left, c_right)
 
         if left_ty != right_ty:
@@ -3135,6 +3151,8 @@ class Backend:
         if not self._is_binary_op_enabled(left_ty):
             self.ice(f"[ICE-1015] {expr_op} lowering not implemented for type '{format_type(left_ty)}'", node=expr_node)
 
+        if for_condition:
+            return self.emitter.emit_condition_binary_op(expr_op, c_left, c_right)
         return self.emitter.emit_binary_op(expr_op, c_left, c_right)
 
     # -------------------------------------------------------------------------

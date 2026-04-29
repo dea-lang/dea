@@ -330,10 +330,52 @@ func test_backend_generate_basic_control_flow() {
         assert(contains_s(generated, "// for loop"), "for-loop wrapper comment mismatch");
         assert(contains_s(generated, "l0_int i = 0;\n        while (1)"),
             "for-loop lowering mismatch");
-        assert(contains_s(generated, "if ((i < 2))"), "if lowering mismatch");
+        assert(contains_s(generated, "if (i < 2)"), "if lowering mismatch");
+        assert(!contains_s(generated, "if ((i < 2))"), "if lowering should avoid redundant condition parens");
         assert(contains_s(generated, "sum = (_rt_iadd(sum, l0_demo_main_add(i, 1)));"),
             "assignment and call lowering mismatch");
         assert(contains_s(generated, "while (1)"), "while lowering mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests condition headers omit only redundant outer parentheses.
+ */
+func test_backend_generate_condition_header_parens() {
+    with (let filenames = vs_create(1) => vs_free(filenames),
+          let sources = vs_create(1) => vs_free(sources),
+          let lines = vs_create(16) => vs_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        vs_push(filenames, "demo/main.l0");
+        vs_push(lines, "module demo.main;");
+        vs_push(lines, "func main(x: int, y: int, flags: int, mask: int) -> int {");
+        vs_push(lines, "    if (x == y) {");
+        vs_push(lines, "        return 1;");
+        vs_push(lines, "    }");
+        vs_push(lines, "    while (x < y) {");
+        vs_push(lines, "        x = x + 1;");
+        vs_push(lines, "    }");
+        vs_push(lines, "    if ((flags & mask) != 0) {");
+        vs_push(lines, "        return 2;");
+        vs_push(lines, "    }");
+        vs_push(lines, "    return 0;");
+        vs_push(lines, "}");
+        vs_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for condition-header fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "if (x == y)"), "equality condition lowering mismatch");
+        assert(!contains_s(generated, "if ((x == y))"), "equality condition should avoid redundant parens");
+        assert(contains_s(generated, "while (x < y)"), "while condition lowering mismatch");
+        assert(!contains_s(generated, "while ((x < y))"), "while condition should avoid redundant parens");
+        assert(contains_s(generated, "if ((flags & mask) != 0)"),
+            "nested precedence parentheses should be preserved");
 
         analysis_result_free(result);
     }

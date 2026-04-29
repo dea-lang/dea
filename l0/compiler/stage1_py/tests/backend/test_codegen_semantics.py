@@ -1101,18 +1101,18 @@ def test_codegen_loop_continue_cleans_only_acquired_arc_locals(codegen_single):
     )
 
     mid_continue_cleanup = re.search(
-        r"if \(\(i == 1\)\)\s*\{.*?rt_string_release\(a\);.*?goto __lcont_\d+;",
+        r"if \(i == 1\)\s*\{.*?rt_string_release\(a\);.*?goto __lcont_\d+;",
         main_body,
         re.DOTALL,
     )
     assert mid_continue_cleanup is not None, (
         "continue after acquiring only `a` must release `a` before jumping"
     )
-    assert "if ((i == 1))" in mid_continue_cleanup.group(0)
+    assert "if (i == 1)" in mid_continue_cleanup.group(0)
     assert "rt_string_release(b);" not in mid_continue_cleanup.group(0)
 
     late_continue_cleanup = re.search(
-        r"if \(\(l0_std_string_len_s\(b\) > 0\)\)\s*\{.*?rt_string_release\(b\);"
+        r"if \(l0_std_string_len_s\(b\) > 0\)\s*\{.*?rt_string_release\(b\);"
         r".*?rt_string_release\(a\);.*?goto __lcont_\d+;",
         main_body,
         re.DOTALL,
@@ -1167,7 +1167,7 @@ def test_codegen_loop_break_cleans_only_acquired_arc_locals(codegen_single):
     main_body = c_code[main_start:]
 
     early_break = re.search(
-        r"if \(\(i == 0\)\)\s*\{.*?goto __lbrk_\d+;",
+        r"if \(i == 0\)\s*\{.*?goto __lbrk_\d+;",
         main_body,
         re.DOTALL,
     )
@@ -1176,7 +1176,7 @@ def test_codegen_loop_break_cleans_only_acquired_arc_locals(codegen_single):
     assert "rt_string_release(b);" not in early_break.group(0)
 
     mid_break = re.search(
-        r"if \(\(i == 1\)\)\s*\{.*?rt_string_release\(a\);.*?goto __lbrk_\d+;",
+        r"if \(i == 1\)\s*\{.*?rt_string_release\(a\);.*?goto __lbrk_\d+;",
         main_body,
         re.DOTALL,
     )
@@ -1184,7 +1184,7 @@ def test_codegen_loop_break_cleans_only_acquired_arc_locals(codegen_single):
     assert "rt_string_release(b);" not in mid_break.group(0)
 
     late_break = re.search(
-        r"if \(\(l0_std_string_len_s\(b\) > 0\)\)\s*\{.*?rt_string_release\(b\);"
+        r"if \(l0_std_string_len_s\(b\) > 0\)\s*\{.*?rt_string_release\(b\);"
         r".*?rt_string_release\(a\);.*?goto __lbrk_\d+;",
         main_body,
         re.DOTALL,
@@ -1273,7 +1273,7 @@ def test_codegen_loop_return_cleans_only_acquired_arc_locals(codegen_single):
     main_body = c_code[main_start:]
 
     early_return = re.search(
-        r"if \(\(i == 0\)\)\s*\{.*?return 10;",
+        r"if \(i == 0\)\s*\{.*?return 10;",
         main_body,
         re.DOTALL,
     )
@@ -1282,7 +1282,7 @@ def test_codegen_loop_return_cleans_only_acquired_arc_locals(codegen_single):
     assert "rt_string_release(b);" not in early_return.group(0)
 
     mid_return = re.search(
-        r"if \(\(i == 1\)\)\s*\{.*?l0_int l0_ret_\d+ = 11;.*?rt_string_release\(a\);"
+        r"if \(i == 1\)\s*\{.*?l0_int l0_ret_\d+ = 11;.*?rt_string_release\(a\);"
         r".*?return l0_ret_\d+;",
         main_body,
         re.DOTALL,
@@ -1291,7 +1291,7 @@ def test_codegen_loop_return_cleans_only_acquired_arc_locals(codegen_single):
     assert "rt_string_release(b);" not in mid_return.group(0)
 
     late_return = re.search(
-        r"if \(\(l0_std_string_len_s\(b\) > 0\)\)\s*\{.*?l0_int l0_ret_\d+ = 12;"
+        r"if \(l0_std_string_len_s\(b\) > 0\)\s*\{.*?l0_int l0_ret_\d+ = 12;"
         r".*?rt_string_release\(b\);.*?rt_string_release\(a\);.*?return l0_ret_\d+;",
         main_body,
         re.DOTALL,

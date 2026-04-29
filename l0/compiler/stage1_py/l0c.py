@@ -589,7 +589,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         if flag_family == "tcc":
             cmd.extend(["-std=c99", "-Wall", "-pedantic"])
         elif flag_family == "gcc":
-            cmd.extend(["-std=c99", "-Wall", "-Wextra", "-Wno-unused", "-Wno-unused-parameter", "-Wno-parentheses", "-pedantic-errors"])
+            cmd.extend(["-std=c99", "-Wall", "-Wextra", "-Wno-unused", "-Wno-unused-parameter", "-pedantic-errors"])
         elif flag_family == "msvc":
             cmd.extend(["/std:c11", "/W4"])
         else:

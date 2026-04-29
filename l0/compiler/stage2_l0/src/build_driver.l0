@@ -814,7 +814,6 @@ func bd_push_standard_flags(words: VectorString*, family: string) {
         vs_push(words, "-Wextra");
         vs_push(words, "-Wno-unused");
         vs_push(words, "-Wno-unused-parameter");
-        vs_push(words, "-Wno-parentheses");
         vs_push(words, "-pedantic-errors");
         return;
     }

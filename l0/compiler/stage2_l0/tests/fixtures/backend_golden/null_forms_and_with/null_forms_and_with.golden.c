@@ -99,7 +99,7 @@ l0_int l0_main_main(void)
         goto __cond_false_2;
     __cond_rhs_5:;
         {
-            if ((l0_main_ptr_none() == NULL))
+            if (l0_main_ptr_none() == NULL)
             {
                 goto __cond_rhs_4;
             }
@@ -107,7 +107,7 @@ l0_int l0_main_main(void)
         goto __cond_false_2;
     __cond_rhs_4:;
         {
-            if ((l0_main_helper() == 2))
+            if (l0_main_helper() == 2)
             {
                 goto __cond_true_1;
             }

@@ -1360,6 +1360,18 @@ func cem_emit_binary_op(op: string, c_left: string, c_right: string) -> string {
 }
 
 /**
+ * Emit a top-level binary condition for direct statement headers.
+ *
+ * @param op Binary operator token.
+ * @param c_left Lowered left operand.
+ * @param c_right Lowered right operand.
+ * @return Non-parenthesized C binary expression.
+ */
+func cem_emit_condition_binary_op(op: string, c_left: string, c_right: string) -> string {
+    return concat3_s(concat4_s(c_left, " ", op, " "), c_right, "");
+}
+
+/**
  * Emit a checked integer division call.
  *
  * @param c_left Lowered left operand.
@@ -1528,6 +1540,17 @@ func cem_emit_pointer_null_check(c_expr: string, op: string) -> string {
 }
 
 /**
+ * Emit a top-level pointer null comparison for direct statement headers.
+ *
+ * @param c_expr Pointer expression.
+ * @param op Comparison operator.
+ * @return Non-parenthesized comparison expression.
+ */
+func cem_emit_condition_pointer_null_check(c_expr: string, op: string) -> string {
+    return concat4_s(c_expr, " ", op, " NULL");
+}
+
+/**
  * Emit access to an optional wrapper's `has_value` flag.
  *
  * @param c_expr Wrapper expression.
@@ -1590,6 +1613,18 @@ func cem_emit_string_equals_call(lhs: string, rhs: string) -> string {
  */
 func cem_emit_string_compare_call(op: string, lhs: string, rhs: string) -> string {
     return concat4_s("(rt_string_compare(", lhs, ", ", concat4_s(rhs, ") ", op, " 0)"));
+}
+
+/**
+ * Emit a top-level string relational check for direct statement headers.
+ *
+ * @param op Relational operator token.
+ * @param lhs Left operand.
+ * @param rhs Right operand.
+ * @return Non-parenthesized comparison expression.
+ */
+func cem_emit_condition_string_compare_call(op: string, lhs: string, rhs: string) -> string {
+    return concat4_s("rt_string_compare(", lhs, ", ", concat4_s(rhs, ") ", op, " 0"));
 }
 
 /**

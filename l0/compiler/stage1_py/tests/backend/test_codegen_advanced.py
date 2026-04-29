@@ -464,9 +464,39 @@ def test_codegen_early_return_in_loop(codegen_single):
     # Should have return inside if inside while
     assert "while (1)" in c_code
     assert "__cond_true_" in c_code
-    assert "if ((i >= 42))" in c_code
+    assert "if (i >= 42)" in c_code
+    assert "if ((i >= 42))" not in c_code
     assert "return i;" in c_code
     assert "return -1;" in c_code
+
+
+def test_codegen_condition_headers_drop_only_outer_parens(codegen_single):
+    """Condition headers should avoid redundant outer parens and keep nested ones."""
+    c_code, _ = codegen_single(
+        "main",
+        """
+        module main;
+
+        func main(x: int, y: int, a: int, b: int, limit: int) -> int {
+            if (x == y) {
+                return 1;
+            }
+            while (x < y) {
+                x = x + 1;
+            }
+            if ((a + b) < limit) {
+                return 2;
+            }
+            return 0;
+        }
+        """,
+    )
+    assert c_code is not None
+    assert "if (x == y)" in c_code
+    assert "if ((x == y))" not in c_code
+    assert "if (((_rt_iadd(a, b))) < limit)" in c_code
+    assert "if (x < y)" in c_code
+    assert "if ((x < y))" not in c_code
 
 
 # ============================================================================

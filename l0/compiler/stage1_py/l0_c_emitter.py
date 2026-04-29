@@ -1290,6 +1290,10 @@ class CEmitter:
         """
         return f"({c_left} {op} {c_right})"
 
+    def emit_condition_binary_op(self, op: str, c_left: str, c_right: str) -> str:
+        """Emit a top-level binary condition for direct statement headers."""
+        return f"{c_left} {op} {c_right}"
+
     def emit_checked_int_div(self, c_left: str, c_right: str) -> str:
         """Emit C code for checked integer division runtime call."""
         return f"(_rt_idiv({c_left}, {c_right}))"
@@ -1393,6 +1397,10 @@ class CEmitter:
         """
         return f"({c_expr} {op} NULL)"
 
+    def emit_condition_pointer_null_check(self, c_expr: str, op: str) -> str:
+        """Emit a top-level pointer null comparison for direct statement headers."""
+        return f"{c_expr} {op} NULL"
+
     def emit_optional_has_value(self, c_expr: str) -> str:
         """Emit C code for reading an optional wrapper's has-value flag."""
         return f"({c_expr}).has_value"
@@ -1416,6 +1424,10 @@ class CEmitter:
     def emit_string_compare_call(self, op: str, lhs: str, rhs: str) -> str:
         """Emit the runtime string-compare helper call wrapped in a relational check."""
         return f"(rt_string_compare({lhs}, {rhs}) {op} 0)"
+
+    def emit_condition_string_compare_call(self, op: str, lhs: str, rhs: str) -> str:
+        """Emit a top-level string relational check for direct statement headers."""
+        return f"rt_string_compare({lhs}, {rhs}) {op} 0"
 
     def emit_discard_expr(self, c_expr: str) -> str:
         """Emit a statement-context discard wrapper for an expression."""

@@ -61,7 +61,7 @@ def compile_generated_c(compiler: str, src: Path, exe: Path) -> None:
     if name.startswith("tcc"):
         command.extend(["-std=c99", "-Wall", "-pedantic"])
     elif name.startswith("gcc") or name.startswith("clang") or name == "cc":
-        command.extend(["-std=c99", "-Wall", "-Wextra", "-Wno-unused", "-Wno-parentheses", "-pedantic-errors"])
+        command.extend(["-std=c99", "-Wall", "-Wextra", "-Wno-unused", "-pedantic-errors"])
     completed = subprocess.run(
         command,
         cwd=REPO_ROOT,

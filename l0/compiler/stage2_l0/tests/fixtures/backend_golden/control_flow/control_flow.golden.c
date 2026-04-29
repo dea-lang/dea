@@ -40,7 +40,7 @@ l0_int l0_main_main(void)
             l0_bool l0_cond_1 = 0;
             {
                 {
-                    if ((i < 3))
+                    if (i < 3)
                     {
                         goto __cond_true_3;
                     }
@@ -60,7 +60,7 @@ l0_int l0_main_main(void)
                 l0_bool l0_cond_2 = 0;
                 {
                     {
-                        if ((i < 2))
+                        if (i < 2)
                         {
                             goto __cond_true_6;
                         }
@@ -87,7 +87,7 @@ __lbrk_1:;
         l0_bool l0_cond_3 = 0;
         {
             {
-                if ((sum > 0))
+                if (sum > 0)
                 {
                     goto __cond_true_11;
                 }

@@ -1579,6 +1579,84 @@ func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
 }
 
 /**
+ * Emit one top-level condition expression for direct statement headers.
+ *
+ * Only the outermost condition operator is unwrapped; child expressions keep
+ * the normal expression emitter so precedence-preserving inner parentheses stay
+ * intact.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression id to lower.
+ * @return Lowered condition expression.
+ */
+func be_emit_condition_expr(self: Backend*, expr_id: ExprId) -> string {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return be_emit_condition_expr(self, expr.expr_a);
+    }
+    if (ord(expr.kind) != ord(EX_BINARY)) {
+        return be_emit_expr(self, expr_id);
+    }
+    let left = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+    let right = expr_arena_get(be_current_expr_arena(self), expr.expr_b);
+
+    if ((expr.text_value == "==" || expr.text_value == "!=") &&
+        (ord(left.kind) == ord(EX_NULL) || ord(right.kind) == ord(EX_NULL))) {
+        let other_id = expr.expr_a;
+        if (ord(left.kind) == ord(EX_NULL)) {
+            other_id = expr.expr_b;
+        }
+
+        with (let other_ty = be_expr_type(self, other_id) => type_free_opt(other_ty)) {
+            let c_other = be_emit_expr(self, other_id);
+            if (other_ty != null && ord((other_ty as Type*).kind) == ord(TY_NULLABLE) &&
+                !cem_is_niche_nullable(other_ty as Type*)) {
+                if (expr.text_value == "==") {
+                    return cem_emit_null_check_eq(c_other);
+                }
+                return cem_emit_null_check_ne(c_other);
+            }
+            return cem_emit_condition_pointer_null_check(c_other, expr.text_value);
+        }
+    }
+
+    let c_left = be_emit_expr(self, expr.expr_a);
+    let c_right = be_emit_expr(self, expr.expr_b);
+    with (let left_ty = be_expr_type(self, expr.expr_a) => type_free_opt(left_ty)) {
+        with (let right_ty = be_expr_type(self, expr.expr_b) => type_free_opt(right_ty)) {
+            if ((expr.text_value == "==" || expr.text_value == "!=") &&
+                left_ty != null && right_ty != null &&
+                type_is_builtin(left_ty as Type*, "string") && type_is_builtin(right_ty as Type*, "string")) {
+                if (be_should_materialize_arc_temp(self, expr.expr_a, left_ty as Type*)) {
+                    c_left = be_materialize_arc_temp(self, c_left, left_ty as Type*);
+                }
+                if (be_should_materialize_arc_temp(self, expr.expr_b, right_ty as Type*)) {
+                    c_right = be_materialize_arc_temp(self, c_right, right_ty as Type*);
+                }
+                let c_cmp = cem_emit_string_equals_call(c_left, c_right);
+                if (expr.text_value == "!=") {
+                    return cem_emit_unary_op("!", c_cmp);
+                }
+                return c_cmp;
+            }
+            if ((expr.text_value == "<" || expr.text_value == "<=" ||
+                 expr.text_value == ">" || expr.text_value == ">=") &&
+                left_ty != null && right_ty != null &&
+                type_is_builtin(left_ty as Type*, "string") && type_is_builtin(right_ty as Type*, "string")) {
+                return cem_emit_condition_string_compare_call(expr.text_value, c_left, c_right);
+            }
+        }
+    }
+
+    if (expr.text_value == "==" || expr.text_value == "!=" || expr.text_value == "<" ||
+        expr.text_value == "<=" || expr.text_value == ">" || expr.text_value == ">=") {
+        return cem_emit_condition_binary_op(expr.text_value, c_left, c_right);
+    }
+
+    return be_emit_expr(self, expr_id);
+}
+
+/**
  * Emit one struct or enum-variant constructor.
  *
  * @param self Backend state to inspect.
@@ -2562,7 +2640,7 @@ func be_emit_condition_branch(self: Backend*, expr_id: ExprId, true_label: strin
 
     cem_emit_block_start(self.emitter);
     let leaf_scope = be_push_scope(self);
-    let c_cond = be_emit_expr(self, expr_id);
+    let c_cond = be_emit_condition_expr(self, expr_id);
     cem_emit_if_header(self.emitter, c_cond);
     cem_emit_block_start(self.emitter);
     be_emit_cleanup_at_scope_exit(self, leaf_scope);

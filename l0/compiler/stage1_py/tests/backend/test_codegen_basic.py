@@ -489,7 +489,7 @@ def test_codegen_if_statement(codegen_single):
     if c_code is None:
         return
 
-    assert "if ((x < 0))" in c_code
+    assert "if (x < 0)" in c_code
     assert "else" in c_code
     assert "return (-x);" in c_code
 
