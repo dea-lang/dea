@@ -961,7 +961,7 @@ def test_codegen_multiple_functions(codegen_single):
 
 
 def test_codegen_cast_expression(codegen_single):
-    """Test generation of cast expressions."""
+    """Test generation of same-type cast expressions."""
     c_code, _ = codegen_single(
         "main",
         """
@@ -976,8 +976,9 @@ def test_codegen_cast_expression(codegen_single):
     if c_code is None:
         return
 
-    # Should generate cast syntax
-    assert "((l0_int)(x))" in c_code or "(l0_int)" in c_code
+    # Same-type casts should lower as no-ops.
+    assert "return x;" in c_code
+    assert "((l0_int)(x))" not in c_code
 
 
 def test_codegen_parenthesized_expression(codegen_single):

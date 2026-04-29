@@ -695,6 +695,48 @@ def test_generated_code_compiles_with_struct(codegen_single, tmp_path, compile_a
     assert success, f"Compilation failed.\nstdout: {stdout}\nstderr: {stderr}"
 
 
+def test_generated_code_same_type_struct_cast_avoids_c_cast(codegen_single, tmp_path, compile_and_run):
+    """Test that same-type struct casts do not lower to pedantic-invalid C casts."""
+    c_code, _ = codegen_single(
+        "main",
+        """
+        module main;
+
+        struct Token {
+            payload: string;
+            offset: int;
+        }
+
+        func get(x: int) -> Token? {
+            if (x % 2 == 0) {
+                return null;
+            }
+            return Token("hello", 0);
+        }
+
+        func pl(t: Token) -> int {
+            return t.offset;
+        }
+
+        func main() -> int {
+            let t2: Token? = get(1);
+
+            if (t2 != null) {
+                let t3: Token = t2 as Token;
+                return pl(t3 as Token) - 0;
+            }
+
+            return 1;
+        }
+        """,
+    )
+    assert c_code is not None
+    assert "l0_main_pl(((struct l0_main_Token)(" not in c_code
+
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"Compilation failed.\nstdout: {stdout}\nstderr: {stderr}"
+
+
 def test_generated_code_compiles_with_enum(codegen_single, tmp_path, compile_and_run):
     """Test that generated code with enums compiles."""
     c_code, err = codegen_single(

@@ -2935,6 +2935,9 @@ class Backend:
                 self.ice("[ICE-1110] failed to resolve cast target type", node=expr.target_type)
             c_dst = self.emitter.emit_type(dst_ty)
 
+            if src_ty == dst_ty:
+                return c_inner
+
             # Checked narrowing cast (T -> T_small): emit runtime check + abort on overflow.
             if (self._is_int_assignable(src_ty) and self._is_int_assignable(dst_ty) and
                     self._int_type_size(src_ty) > self._int_type_size(dst_ty)):

@@ -662,7 +662,7 @@ func test_backend_generate_identity_cast_string_copy_retains() {
         assert(!analysis_has_errors(result), "analysis should succeed for identity-cast ARC copy fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "l0_demo_main_sink(((l0_string)(first)));"),
+        assert(contains_s(generated, "l0_demo_main_sink(first);"),
             "identity cast should pass the borrowed place directly to the callee");
         assert(!contains_s(generated, "l0_string l0_arc_"),
             "identity cast should not materialize a scope-owned ARC temp");

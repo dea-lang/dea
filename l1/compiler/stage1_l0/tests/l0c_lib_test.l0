@@ -529,6 +529,39 @@ func test_run_optional_struct_field_order_builds() {
 }
 
 /**
+ * Tests same-type struct casts lower without a pedantic-invalid C cast.
+ */
+func test_run_same_type_struct_cast_builds() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path();
+    rt_delete_file(out_path);
+    rt_delete_file(c_path);
+
+    with (let argv = vs_create(12) => vs_free(argv)) {
+        vs_push(argv, "--run");
+        vs_push(argv, "--keep-c");
+        vs_push(argv, "-P");
+        vs_push(argv, fixture_root());
+        vs_push(argv, "--output");
+        vs_push(argv, out_path);
+        vs_push(argv, "same_type_struct_cast_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "same-type struct cast should compile and execute under pedantic C99");
+    }
+
+    assert(exists(c_path), "run kept-C file should exist for same_type_struct_cast_main");
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "same_type_struct_cast_main kept C file should exist");
+    assert(!contains_s(c_text as string, "pl(((__deaM4mainS5Token)("),
+        "same-type struct cast should not lower to a C struct cast");
+
+    rt_delete_file(out_path);
+    rt_delete_file(c_path);
+}
+
+/**
  * Tests `std.types` optional-string unwrap through a value-match scrutinee.
  */
 func test_run_std_types_opt_string_builds() {

@@ -2586,6 +2586,10 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                 let c_inner = be_emit_expr(self, expr.expr_a);
                 let c_dst = cem_emit_type(dst_ty as Type*);
 
+                if (src_ty != null && type_equals(src_ty as Type*, dst_ty as Type*)) {
+                    return c_inner;
+                }
+
                 if (src_ty != null &&
                     be_is_int_assignable(src_ty as Type*) &&
                     be_is_int_assignable(dst_ty as Type*) &&
