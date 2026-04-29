@@ -81,6 +81,22 @@ level directory first.
 - Use backticks for language/code identifiers in commit messages.
 - No `Co-Authored-By` lines.
 
+### Summary verb selection
+
+- The commit summary must describe the repository change introduced by the commit, not the lifecycle state of the work
+  session or plan file.
+- Use `Fix ...` for a commit that introduces a bug fix, even when the same commit also creates and closes the
+  corresponding bug-fix plan.
+- Use `Implement ...` for a commit that introduces a new feature or completed implementation, even when the same commit
+  also closes the corresponding feature plan.
+- Use `Refactor ...` when the commit primarily restructures existing behavior without changing semantics.
+- Use `Document ...` when the commit is docs-only.
+- Use `Complete ...` only for follow-up completion work where the implementation already exists in prior commits and
+  this commit finishes remaining integration, docs, tests, or plan cleanup.
+- Use `Close ...` only when the primary repository change is closing, archiving, or updating an already-existing plan or
+  lifecycle artifact. Do not use `Close ...` for a commit whose primary change is a code fix or feature implementation.
+- Mention plan closure in a body bullet, not in the summary, unless the plan lifecycle change is the primary change.
+
 ## Quality Standards
 
 - When operating in autopilot or agentic mode, do not send an extra follow-up request after the task is already complete
