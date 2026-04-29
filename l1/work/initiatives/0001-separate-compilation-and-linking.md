@@ -20,10 +20,10 @@ This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
 
 ## Related initiatives
 
-- **Initiative 0002 - L1 Runtime Library** ([`0002-runtime-static-library.md`][runtime-library]) is a soft prerequisite.
-  It moves the runtime from header-only inclusion to a real static archive, which de-risks the link mechanics that this
-  initiative depends on. Separate compilation can land independently, but the link model is cleaner once 0002 has
-  settled archive linkage and the trace-variant story.
+- **Initiative 0002 - L1 Runtime Library** ([`closed/0002-runtime-static-library.md`][runtime-library]) is a soft
+  prerequisite. It moves the runtime from header-only inclusion to a real static archive, which de-risks the link
+  mechanics that this initiative depends on. Separate compilation can land independently, but the link model is cleaner
+  once 0002 has settled archive linkage and the trace-variant story.
 - **Initiative 0003 - C FFI** ([`0003-c-ffi.md`][c-ffi]) is a downstream consumer. C FFI requires the LBI mangling
   defined here, the separate-compilation driver surface, and the external-library linking CLI before it can express
   `extern "C"` declarations and the closed FFI-safe boundary.
@@ -520,7 +520,7 @@ implementation tranche proves that one decision area needs additional design wor
 [module-interface]: ../../docs/specs/compiler/module-interface-format.md
 [module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
 [roadmap]: ../../docs/roadmap.md
-[runtime-library]: 0002-runtime-static-library.md
+[runtime-library]: closed/0002-runtime-static-library.md
 [separate-compilation]: ../../docs/reference/separate-compilation.md
 [siphash]: ../../compiler/shared/runtime/internal/dea_siphash.h
 [symbol-linkage]: ../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md

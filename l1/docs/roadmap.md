@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-04-28
+Version: 2026-04-29
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -97,6 +97,11 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Initiative [0003-c-ffi][c-ffi] adds the typed C boundary: `extern "C"` declarations, `cstr`, and the closed FFI-safe
   surface.
 
+## Completed initiatives
+
+- Initiative [0002-runtime-static-library][runtime-library] split the L1 runtime from header-only inclusion into public
+  headers plus normal and traced static archives.
+
 ## Active standalone plans
 
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
@@ -136,8 +141,6 @@ surface.
 
 - Separate compilation, interface verification, and external-library linking are tracked by Initiative
   [0001-separate-compilation-and-linking][separate-compilation].
-- Runtime-library split from header-only inclusion to real archives is tracked by Initiative
-  [0002-runtime-static-library][runtime-library].
 - Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative [0003-c-ffi][c-ffi].
 - String operators: `==`, `!=`, `<`, `<=`, `>`, and `>=` now compare `string` values by content bytes through
   `rt_string_equals` and `rt_string_compare`, consistent with `case`-over-string lowering, `std.string::eq_s`, and
@@ -228,7 +231,7 @@ update to be promoted to an initiative or plan:
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
-[runtime-library]: ../work/initiatives/0002-runtime-static-library.md
+[runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-resplit]: ../work/plans/refactors/closed/2026-04-27-runtime-cu-resplit-noref.md
 [runtime-split]: ../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
 [separate-compilation]: ../work/initiatives/0001-separate-compilation-and-linking.md

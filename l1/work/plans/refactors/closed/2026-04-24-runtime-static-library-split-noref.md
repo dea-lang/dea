@@ -23,7 +23,7 @@
   - `l1/compiler/stage1_l0/tests/math_runtime_compile_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0002-runtime-static-library.md`
+  - `l1/work/initiatives/closed/0002-runtime-static-library.md`
   - `l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md`
 - Repro: `make -C l1 test-stage1`
 

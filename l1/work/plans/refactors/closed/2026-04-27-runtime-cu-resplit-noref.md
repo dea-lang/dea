@@ -23,7 +23,7 @@
   - `l1/compiler/stage1_l0/tests/math_runtime_compile_test.l0`
 - Related:
   - [2026-04-24-runtime-static-library-split-noref](../refactors/closed/2026-04-24-runtime-static-library-split-noref.md)
-  - [0002-runtime-static-library](../../initiatives/0002-runtime-static-library.md)
+  - [0002-runtime-static-library](../../initiatives/closed/0002-runtime-static-library.md)
 - Repro: `make -C l1 test-stage1`
 
 ## Summary

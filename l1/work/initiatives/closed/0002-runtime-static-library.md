@@ -1,6 +1,6 @@
 # L1 Initiative 0002 - L1 Runtime Library
 
-- Version: 2026-04-27
+- Version: 2026-04-29
 - Status: Completed
 - Kind: Initiative
 
@@ -84,6 +84,19 @@ keeps `dea_siphash.h` as a distinct, internal-only header (not folded into `dea_
 `build/dea/include/`). A more natural future evolution is exposing SipHash through a dedicated module that produces its
 own shared object and participates in the C FFI surface defined in [Initiative 0003][c-ffi]; keeping the header distinct
 now preserves that option.
+
+**Aside - `l1_real.h` and `DEA_USE_SYS_REAL`:** the `rt_real_*` floating-point helpers are a deliberate exception to the
+"all `_rt_*` and `rt_*` symbols become external" framing above. They live in a separate public optional header,
+`l1_real.h`, that `dea_rt.h` includes only when the user CU is compiled with `#define DEA_USE_SYS_REAL 1`. Stage 1 emits
+that define exactly when the program imports `sys.real`. The helpers therefore stay `static inline` and are *not* in
+`libdea_rt.a` or `libdea_rt_traced.a`. This shape predates the present initiative and was set by the `std.real` feature
+plan ([`l1/work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md`][std-real]) decisions 08 and 09, whose
+explicit intent is to keep `-lm` off the link line for plain `float` / `double` programs. The exception is expected to
+dissolve once [Initiative 0003 - C FFI][c-ffi] lands: `sys.real` is already declared as pure `extern func` bindings, so
+once `extern "C"` blocks against host headers are available, `sys.real` can rebind directly to `<math.h>` and retire
+`l1_real.h`, `DEA_USE_SYS_REAL`, and the Stage 1 `analysis_uses_sys_real` hook in one motion. Unlike the `dea_siphash`
+case above, no new shared object is produced — the migration is a pure rebinding from inline `rt_real_*` helpers to host
+`libm`. See Initiative 0003 §"Forward references" for the parallel note.
 
 ## Phase 1 - Runtime as a static library
 
@@ -191,8 +204,9 @@ The implementation of the runtime split itself remains owned by
 - **Trace archive**: `libdea_rt_traced.a`, the variant compiled with `DEA_TRACE_ARC` and `DEA_TRACE_MEMORY` defined.
 - **Symbol manifest**: a checked-in list of symbols exported by `libdea_rt.a` used as a validation contract.
 
-[bootstrap-productization]: ../plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
-[c-ffi]: 0003-c-ffi.md
-[roadmap]: ../../docs/roadmap.md
-[runtime-split]: ../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
-[separate-compilation]: 0001-separate-compilation-and-linking.md
+[bootstrap-productization]: ../../plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[c-ffi]: ../0003-c-ffi.md
+[roadmap]: ../../../docs/roadmap.md
+[runtime-split]: ../../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
+[separate-compilation]: ../0001-separate-compilation-and-linking.md
+[std-real]: ../../plans/features/closed/2026-04-14-l1-std-real-module-noref.md
