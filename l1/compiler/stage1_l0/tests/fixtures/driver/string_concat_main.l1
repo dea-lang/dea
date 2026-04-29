@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module string_concat_main;
+
+import std.string;
+
+func main() -> int {
+    let hello = "hel" + "lo";
+    let world = " wor" + "ld";
+    let greeting = hello + world;
+    // greeting should be "hello world"
+    // known greeting has 11 chars
+    if (greeting == hello + world) {
+        // Verify concatenation with existing library
+        let via_lib = concat_s("hel", "lo");
+        let via_op = "hel" + "lo";
+        if (via_lib == via_op) {
+            return 23;
+        }
+    }
+    return 0;
+}

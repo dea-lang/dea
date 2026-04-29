@@ -66,6 +66,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   through typing and the C backend via `rt_string_equals`.
 - Feature [2026-04-18-string-relational-operators-noref][string-relational] wired `<`, `<=`, `>`, and `>=` over `string`
   operands through typing and the C backend via `rt_string_compare`.
+- Feature [2026-04-22-string-concatenation-operator-noref][string-concat] wired `string + string` through
+  `rt_string_concat`, yielding a fresh owned result with ordinary ARC behavior.
 - Feature [2026-04-23-single-statement-loop-and-match-bodies-noref][single-statements] relaxed `while`, `for`, and
   `match` arm bodies from `Block` to `Stmt` while preserving body-local scope and cleanup.
 - Feature [2026-04-18-l1-const-declarations-noref][const-declarations] added top-level `const` declarations with
@@ -108,8 +110,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-04-22-string-concatenation-operator-noref][string-concat] adds the first `string + string` concatenation
-  plan and ARC result-ownership contract.
 - Feature [2026-04-22-variadic-functions-noref][variadic-functions] scopes variadic support to L1-defined functions and
   leaves C variadic FFI under Initiative `0003`.
 - Feature [2026-04-22-named-arguments-noref][named-arguments] adds `name: value` call-site arguments for functions and
@@ -142,11 +142,6 @@ surface.
 - Separate compilation, interface verification, and external-library linking are tracked by Initiative
   [0001-separate-compilation-and-linking][separate-compilation].
 - Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative [0003-c-ffi][c-ffi].
-- String operators: `==`, `!=`, `<`, `<=`, `>`, and `>=` now compare `string` values by content bytes through
-  `rt_string_equals` and `rt_string_compare`, consistent with `case`-over-string lowering, `std.string::eq_s`, and
-  `std.string::cmp_s`. String concatenation via `+` is tracked by Feature
-  [2026-04-22-string-concatenation-operator-noref][string-concat], which is intended to settle the ARC result-ownership
-  design.
 - Varargs are split explicitly: L1-defined variadic functions are tracked by Feature
   [2026-04-22-variadic-functions-noref][variadic-functions], while C variadic FFI remains part of Initiative
   [0003-c-ffi][c-ffi].
@@ -237,7 +232,7 @@ update to be promoted to an initiative or plan:
 [separate-compilation]: ../work/initiatives/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
-[string-concat]: ../work/plans/features/2026-04-22-string-concatenation-operator-noref.md
+[string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md

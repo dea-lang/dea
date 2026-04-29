@@ -1035,6 +1035,33 @@ func test_typing_nullable_identity_err() {
 /**
  * Main entry point for the module.
  */
+
+
+/**
+ * Tests successful typing for string concatenation.
+ */
+func test_typing_string_concat_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_concat_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_string_concat_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests diagnostic reporting for invalid string concatenation.
+ */
+func test_typing_string_concat_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_concat_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_string_concat_err");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
 func main() {
     test_typing_ok();
     test_typing_err();
@@ -1080,6 +1107,8 @@ func main() {
     test_typing_large_int_literal_overflow();
     test_typing_float_ok();
     test_typing_float_err();
+    test_typing_string_concat_ok();
+    test_typing_string_concat_err();
     test_typing_prefixed_int_literals_ok();
     test_typing_cast_null_unwrap_err();
     test_typing_nullable_assignment();

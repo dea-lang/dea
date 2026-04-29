@@ -2634,6 +2634,15 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
     }
 
     let op = expr.text_value;
+    // string + string -> string (must precede int/real branches)
+    if (op == "+" &&
+        type_is_builtin(l_ty, "string") && type_is_builtin(r_ty, "string")) {
+        let result = type_builtin_string();
+        type_free(l_ty);
+        type_free(r_ty);
+        if (common_int_ty != null) type_free(common_int_ty as Type*);
+        return result;
+    }
     if (op == "+" || op == "-" || op == "*" || op == "/") {
         if (etc_is_int(l_ty) && etc_is_int(r_ty)) {
             if (common_int_ty == null) {

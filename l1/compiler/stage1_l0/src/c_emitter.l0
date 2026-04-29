@@ -2231,6 +2231,18 @@ func cem_emit_string_equals_call(lhs: string, rhs: string) -> string {
 }
 
 /**
+ * Emit a string concatenation call via the runtime helper.
+ *
+ * @param lhs Left operand C expression.
+ * @param rhs Right operand C expression.
+ * @return Function-call expression.
+ */
+func cem_emit_string_concat_call(lhs: string, rhs: string) -> string {
+    return concat4_s("rt_string_concat(", lhs, ", ", concat_s(rhs, ")"));
+}
+
+
+/**
  * Emits the inline equality check for a nullable non-pointer value.
  *
  * @param op The equality operator ("==" or "!=").

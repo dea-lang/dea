@@ -2122,6 +2122,19 @@ func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
             return cem_emit_string_compare_call(expr.text_value, c_left, c_right);
         }
 
+        // string + string -> string (concatenation via runtime helper)
+        if (expr.text_value == "+" &&
+            left_ty != null && right_ty != null &&
+            type_is_builtin(left_ty as Type*, "string") && type_is_builtin(right_ty as Type*, "string")) {
+            if (be_should_materialize_arc_temp(self, expr.expr_a, left_ty as Type*)) {
+                c_left = be_materialize_arc_temp(self, c_left, left_ty as Type*);
+            }
+            if (be_should_materialize_arc_temp(self, expr.expr_b, right_ty as Type*)) {
+                c_right = be_materialize_arc_temp(self, c_right, right_ty as Type*);
+            }
+            return be_emit_direct_function_call(self, "rt_string_concat", concat3_s(c_left, ", ", c_right));
+        }
+
         let checked_int_op = left_ty != null && right_ty != null &&
             be_is_int_assignable(left_ty as Type*) && be_is_int_assignable(right_ty as Type*);
         if (expr.text_value == "/") {

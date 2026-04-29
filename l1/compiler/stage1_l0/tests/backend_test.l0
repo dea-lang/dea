@@ -973,6 +973,36 @@ func test_backend_generate_string_relational_ops() {
     }
 }
 
+
+/**
+ * Tests string concatenation lowering through the runtime helper.
+ */
+func test_backend_generate_string_concat_ops() {
+    with (let filenames = vs_create(1) => vs_free(filenames),
+          let sources = vs_create(1) => vs_free(sources),
+          let lines = vs_create(12) => vs_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        vs_push(filenames, "demo/main.l1");
+        vs_push(lines, "module demo.main;");
+        vs_push(lines, "func main() -> string {");
+        vs_push(lines, "    let a = \"hel\";");
+        vs_push(lines, "    let b = \"lo\";");
+        vs_push(lines, "    return a + b;");
+        vs_push(lines, "}");
+        vs_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for string concat fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "rt_string_concat(a, b)"), "string concat should lower through runtime helper");
+
+        analysis_result_free(result);
+    }
+}
+
 /**
  * Tests generation for implemented small integer builtin types and checked casts.
  */
@@ -1378,6 +1408,7 @@ func main() {
     test_backend_generate_is_with_call_expr_and_qualified_variant();
     test_backend_generate_string_copy_retains();
     test_backend_generate_string_equality_ops();
+    test_backend_generate_string_concat_ops();
     test_backend_generate_small_integer_builtins();
     test_backend_generate_large_integer_builtins();
     test_backend_generate_float_double_builtins();

@@ -1,0 +1,14 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_string_concat_err;
+
+func concat_mismatch() -> string {
+    return "hello" + 42;  // TYP-0170: string + int mismatched operands
+}
+
+func concat_int_string() -> string {
+    return 1 + "world";   // TYP-0170: int + string mismatched operands
+}

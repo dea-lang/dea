@@ -3,7 +3,7 @@
 ## Add `+` string concatenation operator
 
 - Date: 2026-04-22
-- Status: Draft
+- Status: Completed
 - Title: Add `+` string concatenation operator
 - Kind: Feature
 - Severity: Medium
@@ -26,7 +26,7 @@
   - `l1/docs/reference/design-decisions.md`
   - `l1/work/plans/features/closed/2026-04-18-string-equality-operators-noref.md`
   - `l1/work/plans/features/closed/2026-04-18-string-relational-operators-noref.md`
-- Repro: None
+- Repro: `make clean test-all`
 
 ## Summary
 
@@ -37,6 +37,17 @@ results or the backend/runtime helper surface needed to produce them efficiently
 This plan adds `string + string -> string` as the first concatenation surface. It is intentionally narrow: no implicit
 coercions, no builder API, and no augmented assignment. The main deliverable is a stable ownership and code-generation
 contract for a fresh concatenated result.
+
+## Completion Notes
+
+1. `etc_infer_binary` now accepts `string + string` and yields `string`, while mixed `string` / non-`string` operands
+   still report the existing type-mismatch diagnostics.
+2. `be_emit_binary_op` now routes string concatenation through `rt_string_concat`, and traced code generation preserves
+   caller locations by rewriting the emitted call to `_rt_string_concat_impl(..., __FILE__, __LINE__)`.
+3. Regression coverage now includes positive and negative typing fixtures, backend and emitter assertions, a kept-C
+   runtime fixture, and a traced `--gen` assertion that locks in operator concat rewriting.
+4. `l1/docs/reference/design-decisions.md` and `l1/docs/roadmap.md` now describe string concatenation as shipped
+   behavior, and this plan is closed under `l1/work/plans/features/closed/`.
 
 ## Current State
 

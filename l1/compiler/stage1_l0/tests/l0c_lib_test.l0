@@ -630,6 +630,38 @@ func test_run_string_relational_build_and_keep_c() {
     rt_delete_file(c_path);
 }
 
+
+/**
+ * Tests string concatenation build and keep-c: runtime correctness and lowered C contents.
+ */
+func test_run_string_concat_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path();
+    rt_delete_file(out_path);
+    rt_delete_file(c_path);
+
+    with (let argv = vs_create(12) => vs_free(argv)) {
+        vs_push(argv, "--run");
+        vs_push(argv, "--keep-c");
+        vs_push(argv, "-P");
+        vs_push(argv, fixture_root());
+        vs_push(argv, "--output");
+        vs_push(argv, out_path);
+        vs_push(argv, "string_concat_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "--run --keep-c should compile and execute string_concat_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "string_concat_main kept C file should exist");
+    assert(contains_s(c_text as string, "rt_string_concat"),
+        "string_concat_main concat lowering mismatch");
+
+    rt_delete_file(out_path);
+    rt_delete_file(c_path);
+}
+
 /**
  * Tests top-level `const` execution and `static const` C emission in `--run --keep-c` mode.
  */
@@ -1038,6 +1070,7 @@ func main() {
     test_run_std_types_opt_string_builds();
     test_run_single_statement_bodies();
     test_run_string_relational_build_and_keep_c();
+    test_run_string_concat_build_and_keep_c();
     test_run_const_build_and_keep_c();
     test_run_nonconstant_top_level_let_build_and_keep_c();
     test_run_module_lifecycle_name_collision_build_and_keep_c();

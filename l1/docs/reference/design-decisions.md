@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-04-26
+Version: 2026-04-29
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -424,7 +424,8 @@ Rationale:
   freedom to evolve dedup and arena strategies
 
 The top-level `==`, `!=`, `<`, `<=`, `>`, and `>=` operators are now wired for `string` operands in the current
-bootstrap compiler. String concatenation via `+` remains deferred in the roadmap.
+bootstrap compiler. Top-level `+` also accepts `string + string` and yields a fresh owned `string` result with ordinary
+ARC behavior; neither operand is mutated or consumed.
 
 ## 17. Top-level `const` and `let`
 
