@@ -190,31 +190,9 @@ func bd_with_c_suffix(path: string) -> string {
     let last_sep = bd_find_last_sep(path);
     let last_dot = find_last_s(path, ".");
     if (last_dot > last_sep + 1) {
-        with (let sb = sb_create() => sb_free(sb)) {
-            sb_append(sb, slice_s(path, 0, last_dot));
-            sb_append(sb, ".c");
-            return sb_to_string(sb);
-        }
+        return slice_s(path, 0, last_dot) + ".c";
     }
-    with (let sb = sb_create() => sb_free(sb)) {
-        sb_append(sb, path);
-        sb_append(sb, ".c");
-        return sb_to_string(sb);
-    }
-}
-
-/**
- * Add the platform executable suffix to a temporary stem.
- *
- * @param temp_stem Temporary stem without executable suffix.
- * @return Executable path for the current host.
- */
-func bd_temp_exe_path(temp_stem: string) -> string {
-    with (let sb = sb_create() => sb_free(sb)) {
-        sb_append(sb, temp_stem);
-        sb_append(sb, bd_exe_suffix());
-        return sb_to_string(sb);
-    }
+    return path + ".c";
 }
 
 /**
@@ -285,58 +263,19 @@ func bd_temp_stem(tag: string) -> string {
             sb_append(sb, "-");
             sb_append_int(sb, attempt);
             let temp_stem = join(root, sb_to_string(sb));
-            let c_path = bd_temp_artifact_path(temp_stem, ".c");
-            let out_path = bd_temp_artifact_path(temp_stem, ".out");
-            let exe_path = bd_temp_artifact_path(temp_stem, ".exe");
-            let stdout_path = bd_temp_artifact_path(temp_stem, ".stdout");
-            let stderr_path = bd_temp_artifact_path(temp_stem, ".stderr");
             if (!exists(temp_stem) &&
-                !exists(c_path) &&
-                !exists(out_path) &&
-                !exists(exe_path) &&
-                !exists(stdout_path) &&
-                !exists(stderr_path))
+                !exists(temp_stem + ".c") &&
+                !exists(temp_stem + ".out") &&
+                !exists(temp_stem + ".exe") &&
+                !exists(temp_stem + ".stdout") &&
+                !exists(temp_stem + ".stderr"))
             {
                 return temp_stem;
             }
         }
     }
 
-    with (let sb = sb_create() => sb_free(sb)) {
-        sb_append(sb, "l1c-stage1-");
-        sb_append(sb, tag);
-        sb_append(sb, "-fallback");
-        return join(root, sb_to_string(sb));
-    }
-}
-
-/**
- * Build one temporary artifact path by appending a suffix to a temp stem.
- *
- * @param temp_stem Temporary stem without extension.
- * @param suffix Artifact suffix including the leading dot.
- * @return One owned path string.
- */
-func bd_temp_artifact_path(temp_stem: string, suffix: string) -> string {
-    with (let sb = sb_create() => sb_free(sb)) {
-        sb_append(sb, temp_stem);
-        sb_append(sb, suffix);
-        return sb_to_string(sb);
-    }
-}
-
-/**
- * Resolve the C source path for one build invocation.
- *
- * @param temp_stem Temporary stem without extension.
- * @param keep_c_path Optional kept-C output path.
- * @return One owned path string.
- */
-func bd_resolve_c_path(temp_stem: string, keep_c_path: string?) -> string {
-    if (keep_c_path != null) {
-        return keep_c_path as string;
-    }
-    return bd_temp_artifact_path(temp_stem, ".c");
+    return join(root, "l1c-stage1-" + tag + "-fallback");
 }
 
 /**
@@ -732,16 +671,14 @@ func bd_find_c_compiler() -> string? {
         vs_push(candidates, "cc");
         for (let i = 0; i < vs_size(candidates); i = i + 1) {
             let candidate = vs_get(candidates, i);
+            let probe = "";
             if (bd_is_windows()) {
-                let probe = "where.exe " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
-                if (system(probe) == 0) {
-                    return candidate;
-                }
+                probe = "where.exe " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
             } else {
-                let probe = "command -v " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
-                if (system(probe) == 0) {
-                    return candidate;
-                }
+                probe = "command -v " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
+            }
+            if (system(probe) == 0) {
+                return candidate;
             }
         }
     }
@@ -1267,9 +1204,14 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             let c_code = backend_generate(result, cg_opts, cfg);
             let temp_stem = bd_temp_stem("build");
             let keep_c_enabled = keep_c_path != null;
-            let c_path = bd_resolve_c_path(temp_stem, keep_c_path);
-            let stdout_path = bd_temp_artifact_path(temp_stem, ".stdout");
-            let stderr_path = bd_temp_artifact_path(temp_stem, ".stderr");
+            let c_path = "";
+            if (keep_c_enabled) {
+                c_path = keep_c_path as string;
+            } else {
+                c_path = temp_stem + ".c";
+            }
+            let stdout_path = temp_stem + ".stdout";
+            let stderr_path = temp_stem + ".stderr";
 
             if (write_file(c_path, c_code) == null) {
                 bd_emit_write_error(cmd_diags, c_path);
@@ -1461,7 +1403,7 @@ func bd_cmd_build(opts: CliOptions*, cfg: LogConfig*) -> int {
 func bd_cmd_run(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let run_diags = diag_create() => diag_free(run_diags)) {
         let temp_stem = bd_temp_stem("run");
-        let temp_exe = bd_temp_exe_path(temp_stem);
+        let temp_exe = temp_stem + bd_exe_suffix();
 
         if (opts.output != null && !opts.keep_c) {
             diag_warn(

@@ -2688,17 +2688,13 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
                         "equality not supported for type '" + type_format(l_ty) + "'",
                         (self.current_unit as DriverUnit*).path, expr.span);
                 } else {
+                    let msg = "binary '" + op + "' type mismatch: " + type_format(l_ty) + " and " + type_format(r_ty);
                     if ((etc_is_nullable(l_ty) && etc_types_equal(etc_nullable_inner(l_ty), r_ty)) ||
                         (etc_is_nullable(r_ty) && etc_types_equal(etc_nullable_inner(r_ty), l_ty))) {
-                        etc_diag_error(self, "TYP-0172",
-                            "binary '" + op + "' type mismatch: " + type_format(l_ty) + " and " + type_format(r_ty) +
-                                "; use 'as' to cast for same-type nullable equality",
-                            (self.current_unit as DriverUnit*).path, expr.span);
-                    } else {
-                        etc_diag_error(self, "TYP-0172",
-                            "binary '" + op + "' type mismatch: " + type_format(l_ty) + " and " + type_format(r_ty),
-                            (self.current_unit as DriverUnit*).path, expr.span);
+                        msg = msg + "; use 'as' to cast for same-type nullable equality";
                     }
+                    etc_diag_error(self, "TYP-0172", msg,
+                        (self.current_unit as DriverUnit*).path, expr.span);
                 }
             }
         }

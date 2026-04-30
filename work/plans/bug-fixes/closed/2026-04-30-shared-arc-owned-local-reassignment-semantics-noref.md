@@ -3,7 +3,7 @@
 ## Shared ARC owned-local reassignment semantics and trace repro reduction
 
 - Date: 2026-04-30
-- Status: In Progress
+- Status: Closed
 - Title: Fix shared ARC owned-local reassignment lowering to match the documented slot-replacement semantics and settle
   the remaining shared root-cause question
 - Kind: Bug Fix
@@ -19,9 +19,9 @@
 - Porting rule: Settle the semantic rule and minimal regression in the current oracle/backend pair first, then port the
   fix mechanically to the homologous seeded backends while keeping trace and normal repro coverage aligned
 - Target status:
-  - L0 Python Stage 1: Pending reproducer
-  - L0 Stage 2: No active failing repro
-  - L1 Stage 1: Mitigated in current tree
+  - L0 Python Stage 1: Already Aligned
+  - L0 Stage 2: Already Aligned
+  - L1 Stage 1: Implemented
 - Subsystem: Backend ARC lowering, owned-local reassignment cleanup ordering, and L1 trace/harness reproduction
 - Modules:
   - `l0/compiler/stage1_py/l0_backend.py`
@@ -189,3 +189,51 @@ cd l1 && make test-stage1-trace
 - normal and traced runner paths agree on pass/fail behavior for the same focused repro
 - the ownership docs remain accurate without documenting workaround coding styles
 - the normal and trace regressions for the touched targets pass
+
+## Outcome
+
+The remaining shared root-cause question resolved to an unported L1 Stage 1 backend hunk from the prior
+[2026-04-21 closed plan][casted-place-plan]. That earlier plan widened `is_unwrap_cast_from_place` from
+`T? as T from place` to `any cast from place` in L0 Python and L0 Stage 2, but the matching L1 Stage 1 helper was left
+in the narrow shape — the source-level `?` rewrites in `l1/compiler/stage1_l0/src/` were the only L1 hunks landed at the
+time. The L1 binary therefore continued to misclassify post-`?` redundant identity casts (`Place as T` where `T` matches
+the place's already-narrowed type) as fresh ARC rvalues, fabricating a synthetic alias temp through
+`be_materialize_arc_temp` and double-touching the original owner's heap at scope exit.
+
+The concat-refactor of [2026-04-30 closed plan][concat-plan] increased the count of those redundant-identity casts in
+`l1/compiler/stage1_l0/src/{build_driver,expr_types}.l0`, which surfaced as `mul_runtime_test`, `l0c_lib_test`, and
+later `expr_types_test` failures. The `a5ef576` source reshapes (per-branch `let probe`, in-line-into-both-arms
+diagnostic, `bd_resolve_c_path` / `bd_temp_artifact_path` / `bd_temp_exe_path` / `bd_with_c_suffix` builder helpers) hid
+the trigger patterns; they did not fix the lowering.
+
+Resolution:
+
+- Widened `be_is_unwrap_cast_from_place` in `l1/compiler/stage1_l0/src/backend.l0` to mirror the L0 Stage 2 shape at
+  `l0/compiler/stage2_l0/src/backend.l0:585-591`. The dependent helpers (`be_should_materialize_arc_temp`, the
+  `place_like` check) needed no further change.
+- Added focused regression `test_backend_generate_identity_cast_string_copy_retains` in
+  `l1/compiler/stage1_l0/tests/backend_test.l0` that pins the no-alias-temp invariant for an identity cast on a
+  non-nullable string place, mirroring the L0 Stage 2 `test_backend_generate_identity_cast_string_copy_retains` fixture.
+- Reverted the `a5ef576` defensive source reshapes in `l1/compiler/stage1_l0/src/build_driver.l0` and
+  `l1/compiler/stage1_l0/src/expr_types.l0`: removed `bd_temp_artifact_path`, `bd_temp_exe_path`, `bd_resolve_c_path`;
+  restored `bd_with_c_suffix` to inline `+`; restored the `bd_temp_stem` fallback to inline `+`; restored the outer
+  `let probe = "";` plus conditional reassignment in `bd_find_c_compiler`; restored the
+  `let msg = "..."; if (...) msg = msg + "...";` self-referential reassignment in `etc_check_binary_op` for the
+  `same-type nullable equality` diagnostic. The `concat3_s` / `concat4_s` retirement and the rest of the `+` operator
+  call-site refactor remain in place; only the bug-driven shapes were reverted.
+- All previously-failing tests pass under both `make -C l1 test-stage1` and `make -C l1 test-stage1-trace`. The full L1
+  suite (`make -C l1 test-stage1`, `make -C l1 test-stage1-trace`, `make -C l1 check-examples`) is green, and the L0
+  `make -C l0 -j test-all` (which includes `triple-test`) passes — confirming that the L1 source revert flowing through
+  the strict triple-bootstrap remains clean.
+
+The April 20 closed plan should be considered to have its L1 Stage 1 implementation delivered by this plan rather than
+by `88e7aaa`. The April 20 plan's "L1 Stage 1: Implemented" status was, at the time of closing, accurate only for the
+source-level `?` rewrites; the backend helper port required this follow-up.
+
+A separate follow-up audit plan ([2026-04-30-shared-l1-backend-handler-divergence-audit][followup-plan]) was opened to
+scan the rest of the L1 Stage 1 backend.l0 helper surface for any other unported widenings that may have arrived through
+prior shared plans.
+
+[casted-place-plan]: 2026-04-20-shared-casted-place-null-propagation-arc-noref.md
+[concat-plan]: ../../refactors/closed/2026-04-30-prefer-native-string-concat-operator-noref.md
+[followup-plan]: ../2026-04-30-shared-l1-backend-handler-divergence-audit-noref.md

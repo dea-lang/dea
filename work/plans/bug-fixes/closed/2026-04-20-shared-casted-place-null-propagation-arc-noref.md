@@ -107,3 +107,16 @@ cd l1 && make test-stage1-trace TESTS="l0c_lib_test"
 
 - The ownership rule remains shared: a cast whose operand is already a place must stay place-like for ARC decisions
   unless the cast itself introduces a real ownership boundary.
+
+## Follow-up
+
+The L1 Stage 1 hunk of this fix was incomplete at original closing time: only the source-level `?` rewrites in
+`l1/compiler/stage1_l0/src/{backend,build_driver,expr_types,l1c_lib}.l0` were ported in `88e7aaa`. The actual widening
+of `be_is_unwrap_cast_from_place` from "T? as T from place" to "any cast from place" was missed in
+`l1/compiler/stage1_l0/src/backend.l0` and remained in the narrow shape until the
+[2026-04-30 closed bug-fix plan][followup-plan] discovered the divergence as the root cause of the concat-refactor
+failure footprint and landed the L1 backend port plus the matching L1 backend regression. This closed plan's "L1 Stage
+1: Implemented" status should be read as covering the source-level `?` rewrites only; the backend helper port belongs to
+the follow-up.
+
+[followup-plan]: 2026-04-30-shared-arc-owned-local-reassignment-semantics-noref.md

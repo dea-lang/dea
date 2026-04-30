@@ -187,8 +187,8 @@ Dea source code).
    fixtures and ARC/codegen/bootstrap regression tests that explicitly exercise `concat_s`, `concat3_s`, or empty-string
    `+` behavior.
 4. Updated `l0/docs/reference/ownership.md` and `l1/docs/reference/ownership.md` plus the shared bug-fix plan
-   `work/plans/bug-fixes/2026-04-30-shared-arc-owned-local-reassignment-semantics-noref.md` after the refactor exposed
-   pre-existing ARC lowering bugs in L1 string reassignment paths.
+   `work/plans/bug-fixes/closed/2026-04-30-shared-arc-owned-local-reassignment-semantics-noref.md` after the refactor
+   exposed pre-existing ARC lowering bugs in L1 string reassignment paths.
 
 ## Completion Notes
 
