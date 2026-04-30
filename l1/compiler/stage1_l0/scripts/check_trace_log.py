@@ -6,61 +6,68 @@ import argparse
 import re
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from pathlib import Path
-from textwrap import dedent
 
 TRACE_RE = re.compile(r"^\[l0\]\[(mem|arc)\]\s+(.*)$")
 KV_RE = re.compile(r"(\w+)=([^\s]+)")
 
 
-def _parse_events(text: str) -> tuple[list[dict[str, str]], list[str]]:
-    """Parse raw trace output into structured event dictionaries.
+def _iter_events(lines: Iterable[str]) -> tuple[Iterable[dict[str, str]], list[str], dict[str, int]]:
+    """Yield structured trace events from one raw line iterator.
 
     Args:
-        text: Trace log text, typically captured from Stage 1 stderr.
+        lines: Raw trace log lines, typically captured from Stage 1 stderr.
 
     Returns:
-        A pair containing the parsed events and non-fatal parse warnings.
+        A triple containing the parsed event iterator, non-fatal parse warnings,
+        and summary event counts.
 
     See Also:
-        `_validate_events`: Consumes the parsed events for semantic checks.
-        `main`: Reads the input file and drives the full validation flow.
+        `_validate_trace_file`: Consumes the parsed events for semantic checks.
+        `main`: Opens the input file and drives the full validation flow.
     """
-    events: list[dict[str, str]] = []
     warnings: list[str] = []
+    counts = {"mem_events": 0, "arc_events": 0, "total_events": 0}
 
-    normalized = dedent(text)
+    def event_iter() -> Iterable[dict[str, str]]:
+        for line_no, raw in enumerate(lines, start=1):
+            m = TRACE_RE.match(raw.lstrip())
+            if not m:
+                continue
 
-    for line_no, raw in enumerate(normalized.splitlines(), start=1):
-        m = TRACE_RE.match(raw.lstrip())
-        if not m:
-            continue
+            family = m.group(1)
+            payload = m.group(2)
+            fields = dict(KV_RE.findall(payload))
+            event = {"family": family, "line_no": str(line_no), "raw": raw.rstrip("\n")}
+            event.update(fields)
 
-        family = m.group(1)
-        payload = m.group(2)
-        fields = dict(KV_RE.findall(payload))
-        event = {"family": family, "line_no": str(line_no), "raw": raw}
-        event.update(fields)
-        events.append(event)
+            counts["total_events"] += 1
+            if family == "mem":
+                counts["mem_events"] += 1
+            else:
+                counts["arc_events"] += 1
 
-        if "op" not in fields:
-            warnings.append(f"line {line_no}: trace line missing op=..., ignored for op-based checks")
+            if "op" not in fields:
+                warnings.append(f"line {line_no}: trace line missing op=..., ignored for op-based checks")
+            yield event
 
-    return events, warnings
+    return event_iter(), warnings, counts
 
 
-def _validate_events(events: list[dict[str, str]]) -> tuple[list[str], list[str], dict[str, int], dict]:
-    """Validate trace event sequences for definite runtime misuse patterns.
+def _validate_trace_file(
+    trace_path: Path,
+) -> tuple[list[str], list[str], dict[str, int], dict, list[str], dict[str, int]]:
+    """Validate one trace file without materializing the entire event stream.
 
     Args:
-        events: Parsed trace events from `_parse_events`.
+        trace_path: Path to the captured trace stderr log.
 
     Returns:
-        A tuple of ``(errors, warnings, op_counts, triage)`` summarizing the
-        validation result and leak triage metadata.
+        A tuple of ``(errors, warnings, op_counts, triage, parse_warnings, counts)``.
 
     See Also:
-        `_parse_events`: Produces the event stream consumed here.
+        `_iter_events`: Produces the streaming event iterator consumed here.
         `_print_report`: Renders the returned validation summary.
     """
     errors: list[str] = []
@@ -75,91 +82,91 @@ def _validate_events(events: list[dict[str, str]]) -> tuple[list[str], list[str]
     str_alloc_loc: dict[str, str] = {}
     str_last_ptr_line: dict[str, str] = {}
 
-    for ev in events:
-        family = ev["family"]
-        line_no = ev["line_no"]
-        op = ev.get("op")
-        action = ev.get("action")
-        ptr = ev.get("ptr")
+    with trace_path.open(encoding="utf-8", errors="replace") as trace_file:
+        events, parse_warnings, counts = _iter_events(trace_file)
+        for ev in events:
+            family = ev["family"]
+            line_no = ev["line_no"]
+            op = ev.get("op")
+            action = ev.get("action")
+            ptr = ev.get("ptr")
 
-        if op:
-            op_counts[f"{family}:{op}"] += 1
+            if op:
+                op_counts[f"{family}:{op}"] += 1
 
-        if family == "mem":
-            if ptr:
-                obj_last_ptr_line[ptr] = line_no
-                str_last_ptr_line[ptr] = line_no
+            if family == "mem":
+                if ptr:
+                    obj_last_ptr_line[ptr] = line_no
+                    str_last_ptr_line[ptr] = line_no
 
-            if op in {"new_alloc", "drop", "alloc_string", "free_string"} and not ptr:
-                errors.append(f"line {line_no}: mem op={op} is missing ptr")
-                continue
-
-            if op == "new_alloc" and action == "ok":
-                obj_balance[ptr] += 1  # type: ignore[index]
-                obj_new_meta[ptr] = {
-                    "new_line": line_no,
-                    "bytes": ev.get("bytes", "?"),
-                    "loc": ev.get("loc", "?"),
-                }
-            elif op == "drop" and action == "free":
-                obj_balance[ptr] -= 1  # type: ignore[index]
-                if obj_balance[ptr] < 0:  # type: ignore[index]
-                    errors.append(
-                        f"line {line_no}: drop/free for ptr={ptr} without matching new_alloc in this log"
-                    )
-            elif op == "free" and action == "call" and ptr:
-                # Compatibility path: some object pointers may be finalized by direct free().
-                # Treat it as a release for balance accounting, but surface it as a warning.
-                if obj_balance[ptr] > 0:
-                    obj_balance[ptr] -= 1
-                    warnings.append(
-                        f"line {line_no}: new_alloc ptr={ptr} released via mem op=free action=call (preferred: drop/free)"
-                    )
-            elif op == "alloc_string":
-                str_balance[ptr] += 1  # type: ignore[index]
-                if ptr not in str_alloc_line:
-                    str_alloc_line[ptr] = line_no
-                    str_alloc_loc[ptr] = ev.get("loc", "?")
-            elif op == "free_string" and action == "free":
-                str_balance[ptr] -= 1  # type: ignore[index]
-                if str_balance[ptr] < 0:  # type: ignore[index]
-                    errors.append(
-                        f"line {line_no}: free_string/free for ptr={ptr} without matching alloc_string in this log"
-                    )
-            elif op == "free_string" and action == "decrement-only":
-                pass
-            elif op == "free_string" and action:
-                warnings.append(f"line {line_no}: free_string has uncommon action={action}")
-
-        if family == "arc":
-            if action and action.startswith("panic"):
-                errors.append(f"line {line_no}: arc panic action detected ({action})")
-
-            is_heap_terminal_free = ev.get("kind") == "heap" and op == "release" and action == "free"
-            if is_heap_terminal_free:
-                if not ptr:
-                    errors.append(f"line {line_no}: arc heap free release is missing ptr")
+                if op in {"new_alloc", "drop", "alloc_string", "free_string"} and not ptr:
+                    errors.append(f"line {line_no}: mem op={op} is missing ptr")
                     continue
 
-                rc_before = ev.get("rc_before")
-                rc_after = ev.get("rc_after")
-                if rc_before is None or rc_after is None:
-                    errors.append(f"line {line_no}: arc heap free release missing rc_before/rc_after")
-                    continue
+                if op == "new_alloc" and action == "ok":
+                    obj_balance[ptr] += 1  # type: ignore[index]
+                    obj_new_meta[ptr] = {
+                        "new_line": line_no,
+                        "bytes": ev.get("bytes", "?"),
+                        "loc": ev.get("loc", "?"),
+                    }
+                elif op == "drop" and action == "free":
+                    obj_balance[ptr] -= 1  # type: ignore[index]
+                    if obj_balance[ptr] < 0:  # type: ignore[index]
+                        errors.append(
+                            f"line {line_no}: drop/free for ptr={ptr} without matching new_alloc in this log"
+                        )
+                elif op == "free" and action == "call" and ptr:
+                    if obj_balance[ptr] > 0:
+                        obj_balance[ptr] -= 1
+                        warnings.append(
+                            f"line {line_no}: new_alloc ptr={ptr} released via mem op=free action=call (preferred: drop/free)"
+                        )
+                elif op == "alloc_string":
+                    str_balance[ptr] += 1  # type: ignore[index]
+                    if ptr not in str_alloc_line:
+                        str_alloc_line[ptr] = line_no
+                        str_alloc_loc[ptr] = ev.get("loc", "?")
+                elif op == "free_string" and action == "free":
+                    str_balance[ptr] -= 1  # type: ignore[index]
+                    if str_balance[ptr] < 0:  # type: ignore[index]
+                        errors.append(
+                            f"line {line_no}: free_string/free for ptr={ptr} without matching alloc_string in this log"
+                        )
+                elif op == "free_string" and action == "decrement-only":
+                    pass
+                elif op == "free_string" and action:
+                    warnings.append(f"line {line_no}: free_string has uncommon action={action}")
 
-                try:
-                    int(rc_before)
-                    rc_after_i = int(rc_after)
-                except ValueError:
-                    errors.append(
-                        f"line {line_no}: arc heap free release has non-integer rc values rc_before={rc_before} rc_after={rc_after}"
-                    )
-                    continue
+            if family == "arc":
+                if action and action.startswith("panic"):
+                    errors.append(f"line {line_no}: arc panic action detected ({action})")
 
-                if rc_after_i != 0:
-                    errors.append(
-                        f"line {line_no}: arc heap free release must end at rc_after=0, got rc_after={rc_after_i}"
-                    )
+                is_heap_terminal_free = ev.get("kind") == "heap" and op == "release" and action == "free"
+                if is_heap_terminal_free:
+                    if not ptr:
+                        errors.append(f"line {line_no}: arc heap free release is missing ptr")
+                        continue
+
+                    rc_before = ev.get("rc_before")
+                    rc_after = ev.get("rc_after")
+                    if rc_before is None or rc_after is None:
+                        errors.append(f"line {line_no}: arc heap free release missing rc_before/rc_after")
+                        continue
+
+                    try:
+                        int(rc_before)
+                        rc_after_i = int(rc_after)
+                    except ValueError:
+                        errors.append(
+                            f"line {line_no}: arc heap free release has non-integer rc values rc_before={rc_before} rc_after={rc_after}"
+                        )
+                        continue
+
+                    if rc_after_i != 0:
+                        errors.append(
+                            f"line {line_no}: arc heap free release must end at rc_after=0, got rc_after={rc_after_i}"
+                        )
 
     leaked_objects: list[dict[str, str]] = []
     leaked_strings: list[dict[str, str]] = []
@@ -210,11 +217,11 @@ def _validate_events(events: list[dict[str, str]]) -> tuple[list[str], list[str]
         "leaked_object_bytes": dict(leaked_object_bytes),
     }
 
-    return errors, warnings, dict(op_counts), triage
+    return errors, warnings, dict(op_counts), triage, parse_warnings, counts
 
 
 def _print_report(
-    events: list[dict[str, str]],
+    counts: dict[str, int],
     parse_warnings: list[str],
     errors: list[str],
     warnings: list[str],
@@ -238,14 +245,12 @@ def _print_report(
     See Also:
         `_validate_events`: Produces the summary and triage data rendered here.
     """
-    mem_count = sum(1 for e in events if e["family"] == "mem")
-    arc_count = sum(1 for e in events if e["family"] == "arc")
     total_warnings = parse_warnings + warnings
 
     print("stats:")
-    print(f"  mem_events={mem_count}")
-    print(f"  arc_events={arc_count}")
-    print(f"  total_events={len(events)}")
+    print(f"  mem_events={counts['mem_events']}")
+    print(f"  arc_events={counts['arc_events']}")
+    print(f"  total_events={counts['total_events']}")
     print(f"  errors={len(errors)}")
     print(f"  warnings={len(total_warnings)}")
 
@@ -365,15 +370,12 @@ def main(argv: list[str]) -> int:
         return 2
 
     try:
-        text = trace_path.read_text(encoding="utf-8")
+        errors, warnings, op_counts, triage, parse_warnings, counts = _validate_trace_file(trace_path)
     except OSError as exc:
         print(f"error: failed to read trace file {trace_path}: {exc}")
         return 2
-
-    events, parse_warnings = _parse_events(text)
-    errors, warnings, op_counts, triage = _validate_events(events)
     _print_report(
-        events,
+        counts,
         parse_warnings,
         errors,
         warnings,

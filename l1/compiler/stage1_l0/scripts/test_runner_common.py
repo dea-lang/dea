@@ -9,10 +9,11 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+import tempfile
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Iterable
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[4] / "scripts"
@@ -232,6 +233,15 @@ def resolve_job_count() -> int:
 def resolve_trace_job_count() -> int:
     """Return the worker count for the L1 Stage 1 trace runner."""
 
+    jobs_text = os.environ.get("L1_TRACE_TEST_JOBS", "").strip()
+    if jobs_text:
+        try:
+            jobs = int(jobs_text)
+        except ValueError as exc:
+            raise ValueError(f"L1_TRACE_TEST_JOBS must be a positive integer, got {jobs_text!r}") from exc
+        if jobs < 1:
+            raise ValueError(f"L1_TRACE_TEST_JOBS must be a positive integer, got {jobs_text!r}")
+        return jobs
     return resolve_job_count()
 
 
@@ -272,24 +282,39 @@ def run_captured_binary_output(
     stderr_path: Path | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """Run one subprocess, capture binary stdout/stderr, and optionally write artifacts."""
+    temp_dir = Path(tempfile.mkdtemp(prefix="l1_trace_capture."))
+    tmp_stdout_path = temp_dir / "stdout.bin"
+    tmp_stderr_path = temp_dir / "stderr.bin"
 
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    try:
+        with tmp_stdout_path.open("wb") as stdout_file:
+            with tmp_stderr_path.open("wb") as stderr_file:
+                completed = subprocess.run(
+                    command,
+                    cwd=cwd,
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    check=False,
+                )
 
-    stdout_bytes = completed.stdout if completed.stdout is not None else b""
-    stderr_bytes = completed.stderr if completed.stderr is not None else b""
-    if stdout_path is not None:
-        stdout_path.write_bytes(stdout_bytes)
-    if stderr_path is not None:
-        stderr_path.write_bytes(stderr_bytes)
-    return completed
+        stdout_bytes = tmp_stdout_path.read_bytes()
+        stderr_bytes = tmp_stderr_path.read_bytes()
+        if stdout_path is not None:
+            stdout_path.write_bytes(stdout_bytes)
+        if stderr_path is not None:
+            stderr_path.write_bytes(stderr_bytes)
+        return subprocess.CompletedProcess(
+            completed.args,
+            completed.returncode,
+            stdout=stdout_bytes,
+            stderr=stderr_bytes,
+        )
+    finally:
+        tmp_stdout_path.unlink(missing_ok=True)
+        tmp_stderr_path.unlink(missing_ok=True)
+        temp_dir.rmdir()
 
 
 def print_output_block(text: str) -> None:

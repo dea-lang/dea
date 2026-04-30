@@ -72,15 +72,25 @@ help:
 		'  L1_BOOTSTRAP_L0C=<path>' \
 		'                     Explicit upstream L0 Stage 2 compiler wrapper or native binary.' \
 		'  TESTS=""' \
-		'                     Optional Stage 1 test names for `test-stage1`.' \
+		'                     Optional Stage 1 test names for `test-stage1` and trace targets; forwarded by `make docker` when set.' \
 		'  L1_RUNTIME_CC=<compiler>' \
 		'                     Runtime archive C compiler (defaults to `L1_CC`, then clang/gcc/cc, then `CC`). Example: `make clean-runtime runtime L1_RUNTIME_CC=gcc-15`.' \
+		'  L1_TRACE_TEST_JOBS=<n>' \
+		'                     Override parallelism for `test-stage1-trace*`; when unset, trace runs follow the normal default job policy.' \
+		'  L1_TRACE_ARTIFACT_DIR=<dir>' \
+		'                     Optional trace artifact directory. Local trace runs write artifacts there; `make docker` bind-mounts the host directory and preserves artifacts across `docker run --rm`.' \
 		'  L1_TCC_OBJ_CC=<compiler>' \
 		'                     TinyCC compiler for repo-local tcc runtime objects (defaults to `tcc`, then `TCC`). When absent without an explicit override, `make runtime` prints a notice and skips the specialized tcc object build.' \
 		'  DOCKER_IMAGE=l1-test' \
 		'                     Docker image tag used by `make docker`.' \
 		'  DOCKER_L0_CC=<compiler>' \
 		'                     Optional upstream L0 C compiler passed into the Docker run as `L0_CC` (`gcc` or `clang`).' \
+		'  L1_TEST_JOBS=<n>' \
+		'                     Optional normal-test parallelism override; forwarded by `make docker` when set.' \
+		'  L1_TRACE_TEST_JOBS=<n>' \
+		'                     Optional trace-test parallelism override; forwarded by `make docker` when set.' \
+		'  L1_TRACE_ARTIFACT_DIR=<dir>' \
+		'                     Optional host trace-artifact directory; `make docker` mounts it at `/trace-artifacts` and forwards that path into the container.' \
 		'' \
 		'Default local bootstrap flow:' \
 		'  1. `make use-dev-stage1`  # auto-prepares ../l0 Stage 2 if needed' \
@@ -228,5 +238,12 @@ docker:
 		echo "Example: make docker CMD=test-all"; \
 		exit 2; \
 	else \
-		docker build -f Dockerfile -t "$(DOCKER_IMAGE)" .. && docker run --rm $(if $(strip $(DOCKER_L0_CC)),-e L0_CC=$(DOCKER_L0_CC)) "$(DOCKER_IMAGE)" make $(CMD); \
+		$(if $(strip $(L1_TRACE_ARTIFACT_DIR)),mkdir -p "$(L1_TRACE_ARTIFACT_DIR)" &&) \
+		docker build -f Dockerfile -t "$(DOCKER_IMAGE)" .. && docker run --rm \
+			$(if $(strip $(DOCKER_L0_CC)),-e "L0_CC=$(DOCKER_L0_CC)") \
+			$(if $(strip $(L1_TEST_JOBS)),-e "L1_TEST_JOBS=$(L1_TEST_JOBS)") \
+			$(if $(strip $(L1_TRACE_TEST_JOBS)),-e "L1_TRACE_TEST_JOBS=$(L1_TRACE_TEST_JOBS)") \
+			$(if $(strip $(TESTS)),-e "TESTS=$(TESTS)") \
+			$(if $(strip $(L1_TRACE_ARTIFACT_DIR)),-v "$(abspath $(L1_TRACE_ARTIFACT_DIR)):/trace-artifacts" -e "L1_TRACE_ARTIFACT_DIR=/trace-artifacts") \
+			"$(DOCKER_IMAGE)" make $(CMD); \
 	fi

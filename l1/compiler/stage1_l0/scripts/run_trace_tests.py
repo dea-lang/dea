@@ -12,6 +12,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -33,6 +34,7 @@ from test_runner_common import (
 
 
 TRACE_CHECKER = SCRIPT_DIR / "check_trace_log.py"
+TRACE_ARTIFACT_DIR_ENV = "L1_TRACE_ARTIFACT_DIR"
 
 
 @dataclass(frozen=True)
@@ -47,12 +49,15 @@ class TraceResult:
     summary: str
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI arguments."""
 
     parser = argparse.ArgumentParser(
         description="Run L1 Stage 1 ARC/memory trace checks.",
-        epilog="Parallelism defaults to a bounded auto-detected worker count. Override with L1_TEST_JOBS=<n>.",
+        epilog=(
+            "Parallelism defaults to the normal bounded auto-detected worker count. "
+            "Override with L1_TRACE_TEST_JOBS=<n> or L1_TEST_JOBS=<n>."
+        ),
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Show analyzer details for each test.")
     parser.add_argument(
@@ -61,6 +66,13 @@ def parse_args() -> argparse.Namespace:
         help="Include trace tests that are intentionally skipped by the default trace suite.",
     )
     parser.add_argument("--keep-artifacts", action="store_true", help="Keep trace/stdout/report files under the temp directory.")
+    parser.add_argument(
+        "--artifact-dir",
+        help=(
+            "Write trace/stdout/report files to this directory instead of a temporary location. "
+            f"Also accepts ${TRACE_ARTIFACT_DIR_ENV}."
+        ),
+    )
     parser.add_argument("--max-details", type=int, default=5, help="Pass through to check_trace_log.py detail limit.")
     parser.add_argument(
         "tests",
@@ -68,7 +80,18 @@ def parse_args() -> argparse.Namespace:
         metavar="TEST",
         help="Optional L1 Stage 1 trace test name(s) to run. Match `tests/` file names exactly or omit the extension.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def resolve_artifact_dir(args: argparse.Namespace) -> tuple[Path, bool]:
+    """Return the effective artifact directory and whether it should be cleaned up."""
+
+    artifact_dir_text = (args.artifact_dir or os.environ.get(TRACE_ARTIFACT_DIR_ENV, "")).strip()
+    if artifact_dir_text:
+        artifact_dir = Path(artifact_dir_text).expanduser()
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        return artifact_dir.resolve(strict=False), False
+    return Path(tempfile.mkdtemp(prefix="l1_stage1_trace_tests.")), not args.keep_artifacts
 
 
 def read_text(path: Path) -> str:
@@ -169,8 +192,7 @@ def main() -> int:
         print("No tests found in compiler/stage1_l0/tests", flush=True)
         return 0
 
-    artifact_dir = Path(tempfile.mkdtemp(prefix="l1_stage1_trace_tests."))
-    keep_artifacts = args.keep_artifacts
+    artifact_dir, cleanup_artifacts = resolve_artifact_dir(args)
     failed_names: list[str] = []
     passed = 0
 
@@ -242,7 +264,7 @@ def main() -> int:
         print("All trace tests passed!", flush=True)
         return 0
     finally:
-        if not keep_artifacts:
+        if cleanup_artifacts:
             shutil.rmtree(artifact_dir, ignore_errors=True)
 
 
