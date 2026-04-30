@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import difflib
 import os
-from pathlib import Path
 import shutil
-import subprocess
+from pathlib import Path
 
 from tool_test_common import (
     BUILD_TESTS_ROOT,
@@ -33,7 +32,6 @@ from tool_test_common import (
     repo_relative,
     repo_l0_env,
     run,
-    run_to_files,
     stage2_launcher_path,
     write_text,
 )
@@ -105,6 +103,15 @@ def debug_no_cc_probe(work_dir: Path, stage2_native: str) -> str:
     return "\n".join(lines)
 
 
+def last_non_empty_line(text: str) -> str:
+    """Return the last non-empty logical line from captured text."""
+
+    for line in reversed(text.splitlines()):
+        if line.strip():
+            return line
+    return ""
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -172,8 +179,9 @@ def main() -> int:
             raise ToolTestFailure(f"argv forwarding output mismatch\n{diff}")
 
         demo_result = run([l0c, "--run", "-P", "examples", "demo", "--", "add", "2", "3"])
-        (work_dir / "demo.out").write_text(demo_result.stdout + demo_result.stderr, encoding="utf-8")
-        write_text(work_dir / "demo.tail", read_text(work_dir / "demo.out").splitlines()[-1])
+        (work_dir / "demo.stdout").write_text(demo_result.stdout, encoding="utf-8")
+        (work_dir / "demo.stderr").write_text(demo_result.stderr, encoding="utf-8")
+        write_text(work_dir / "demo.tail", last_non_empty_line(demo_result.stdout))
         assert_text_equals(work_dir / "demo.tail", "= 5")
 
         exit_result = run(
