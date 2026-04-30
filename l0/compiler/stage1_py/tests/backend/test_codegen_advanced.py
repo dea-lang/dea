@@ -499,6 +499,39 @@ def test_codegen_condition_headers_drop_only_outer_parens(codegen_single):
     assert "if ((x < y))" not in c_code
 
 
+def test_codegen_try_cleanup_niche_nullable_avoids_redundant_condition_parens(codegen_single):
+    """`?` on pointer nullables should keep direct null checks when cleanup is active."""
+    c_code, _ = codegen_single(
+        "main",
+        """
+        module main;
+
+        struct Box {
+            value: int;
+        }
+
+        func maybe_box(flag: bool) -> Box*? {
+            if (flag) {
+                return new Box(11);
+            }
+            return null;
+        }
+
+        func main() -> int? {
+            let keep = new Box();
+            let box = maybe_box(true)?;
+            drop box;
+            drop keep;
+            return 0;
+        }
+        """,
+    )
+    assert c_code is not None
+    assert "if (l0_try_" in c_code
+    assert "== NULL)" in c_code
+    assert "if ((l0_try_" not in c_code
+
+
 # ============================================================================
 # Expression complexity tests
 # ============================================================================

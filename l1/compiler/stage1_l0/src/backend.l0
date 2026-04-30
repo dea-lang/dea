@@ -2789,7 +2789,7 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
 
                 if (cem_is_niche_nullable(src_ty as Type*)) {
                     if (be_scope_chain_has_cleanup(self)) {
-                        cem_emit_if_header(self.emitter, cem_emit_pointer_null_check(tmp, "=="));
+                        cem_emit_if_header(self.emitter, cem_emit_condition_pointer_null_check(tmp, "=="));
                         cem_emit_block_start(self.emitter);
                         be_emit_cleanup_for_return(self, null);
                         cem_emit_return_stmt(self.emitter, ret_none);

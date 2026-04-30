@@ -2998,7 +2998,7 @@ class Backend:
 
             if self.emitter.is_niche_nullable(src_ty):
                 if needs_cleanup:
-                    self.emitter.emit_if_header(self.emitter.emit_pointer_null_check(tmp, "=="))
+                    self.emitter.emit_if_header(self.emitter.emit_condition_pointer_null_check(tmp, "=="))
                     self.emitter.emit_block_start()
                     self._emit_cleanup_for_return()
                     self.emitter.emit_return_stmt(ret_none)
