@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-04-21
+Version: 2026-04-30
 
 This document describes how ownership works in L0 today, covering:
 
@@ -78,6 +78,53 @@ In practice:
 - Most ordinary L0 code never needs manual retain/release: the compiler balances ARC automatically on assignments and
   copies.
 - Manual retain/release is reserved for **low-level container internals** and **raw-memory boundaries** (see section 7).
+
+### ARC assignment replacement semantics
+
+Ordinary assignment to an ARC-managed destination is a slot replacement operation.
+
+That rule applies to:
+
+- local `string` variables
+- struct or enum string fields
+- dereferenced pointer destinations
+- other ordinary assignment destinations whose type is `string`
+
+The intended behavior is:
+
+1. evaluate the right-hand side completely
+2. materialize and stabilize any temporary ARC values needed by that expression
+3. release the old value currently stored in the destination slot exactly once
+4. move the stabilized result into the destination slot without requiring a clone-like copy
+5. release temporary ARC values after their last use
+
+This means self-referential ARC assignments are valid ordinary code. For example:
+
+```dea
+name = name + "." + suffix;
+```
+
+must behave as though the old `name` value remains live while the right-hand side is evaluated, then the destination
+slot is replaced exactly once by the newly computed string.
+
+Likewise, replacing one owned string value with another is valid ordinary code:
+
+```dea
+let s = "";
+s = build_name();
+```
+
+and:
+
+```dea
+let exe_path = default_exe_path();
+if (opts.output != null) {
+    exe_path = opts.output as string;
+}
+```
+
+These forms must work without manual retain/release and without restoring clone-like helper functions. If generated code
+or runtime behavior differs from this contract, treat it as a compiler bug.
 
 ### Borrowed ARC parameters and reassignment
 
