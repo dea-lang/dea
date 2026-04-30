@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-04-20
+Version: 2026-04-30
 
 This document records rationale and policy decisions.
 
@@ -187,8 +187,10 @@ Current policy:
 - equality (`==`, `!=`) on `string` compares by content bytes, backed by the runtime helper `rt_string_equals`.
 - ordered comparisons (`<`, `<=`, `>`, `>=`) on `string` compare by byte-wise lexicographic order, backed by the runtime
   helper `rt_string_compare`.
-- equality and ordering are consistent across the top-level operators, `case` arms over `string`, and the
-  `std.string::eq_s` / `std.string::cmp_s` wrappers.
+- concatenation (`+`) on `string` accepts `string + string`, backed by the runtime helper `rt_string_concat`, and
+  returns a fresh owned `string` result without mutating or consuming either operand.
+- equality, ordering, and concatenation are consistent across the top-level operators and the corresponding `std.string`
+  helper surface.
 - string identity, meaning whether two values refer to the same runtime instance, is intentionally not exposed through
   any operator, cast, or intrinsic.
 
@@ -196,5 +198,5 @@ Rationale:
 
 - value-based comparison is the only semantic consistent with `case`-over-string dispatch and with the backend's freedom
   to evolve dedup and arena strategies.
-- the runtime helpers are shared with the stdlib wrappers, so the operator surface and the library wrappers agree by
-  construction.
+- `rt_string_concat` centralizes allocation and copy behavior, so operator lowering and library helper composition share
+  the same ARC ownership contract by construction.

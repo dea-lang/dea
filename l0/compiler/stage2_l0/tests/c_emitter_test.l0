@@ -254,6 +254,8 @@ func test_emitter_expression_and_statement_helpers() {
         assert(cem_emit_enum_payload_field_access("value", "Some", "inner") == "(value).data.Some.inner", "enum payload helper mismatch");
         assert(cem_emit_string_equals_call("lhs", "rhs") == "rt_string_equals(lhs, rhs)",
             "string-equals helper mismatch");
+        assert(cem_emit_string_concat_call("lhs", "rhs") == "rt_string_concat(lhs, rhs)",
+            "string-concat helper mismatch");
         assert(cem_emit_string_compare_call("<=", "lhs", "rhs") == "(rt_string_compare(lhs, rhs) <= 0)",
             "string-compare helper mismatch");
         assert(cem_emit_unary_op("!", cem_emit_string_equals_call("lhs", "rhs")) == "(!rt_string_equals(lhs, rhs))",

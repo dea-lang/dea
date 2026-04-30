@@ -399,6 +399,33 @@ func test_typing_string_relational_err() {
 }
 
 /**
+ * Tests supported string concatenation typing behavior.
+ */
+func test_typing_string_concat_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_concat_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_string_concat_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests mixed string concatenation mismatch diagnostics.
+ */
+func test_typing_string_concat_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_concat_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_string_concat_err");
+        assert(count_diag_code(result, "TYP-0170") == 3, "expected three invalid string concat diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests successful typing for explicit cast parity cases.
  */
 func test_typing_cast_ok() {
@@ -635,6 +662,8 @@ func main() {
     test_typing_string_equality_ok();
     test_typing_string_relational_ok();
     test_typing_string_relational_err();
+    test_typing_string_concat_ok();
+    test_typing_string_concat_err();
     test_typing_cast_ok();
     test_typing_cast_err();
     test_typing_cast_int_to_byte_overflow();

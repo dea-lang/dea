@@ -1604,6 +1604,17 @@ func cem_emit_string_equals_call(lhs: string, rhs: string) -> string {
 }
 
 /**
+ * Emit the runtime string-concatenation helper call.
+ *
+ * @param lhs Left operand.
+ * @param rhs Right operand.
+ * @return Call expression.
+ */
+func cem_emit_string_concat_call(lhs: string, rhs: string) -> string {
+    return concat4_s("rt_string_concat(", lhs, ", ", concat_s(rhs, ")"));
+}
+
+/**
  * Emit the runtime string-compare helper call plus a relational check.
  *
  * @param op Relational operator token.

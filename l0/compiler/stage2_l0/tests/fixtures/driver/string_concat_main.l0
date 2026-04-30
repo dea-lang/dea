@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module string_concat_main;
+
+import std.string;
+
+func main() -> int {
+    let left = "de";
+    let right = "a";
+    let built_left = concat_s("de", "");
+    let built_right = concat_s("", "a");
+    let joined = left + right;
+    let built_joined = built_left + built_right;
+    let empty = "";
+    if (joined == "dea" &&
+        built_joined == "dea" &&
+        left + empty == left &&
+        empty + right == right) {
+        return 23;
+    }
+    return 0;
+}

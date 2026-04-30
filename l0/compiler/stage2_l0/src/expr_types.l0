@@ -1907,6 +1907,11 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
     let r_ty = right_ty as Type*;
 
     let op = expr.text_value;
+    if (op == "+" && etc_is_string(l_ty) && etc_is_string(r_ty)) {
+        type_free(l_ty);
+        type_free(r_ty);
+        return type_builtin_string();
+    }
     if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%" ||
         op == "&" || op == "|" || op == "^" || op == "<<" || op == ">>") {
         if (!etc_is_int(l_ty) || !etc_is_int(r_ty)) {

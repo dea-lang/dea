@@ -1545,9 +1545,6 @@ func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
     if (expr.text_value == "*") {
         return cem_emit_checked_int_mul(c_left, c_right);
     }
-    if (expr.text_value == "+") {
-        return cem_emit_checked_int_add(c_left, c_right);
-    }
     if (expr.text_value == "-") {
         return cem_emit_checked_int_sub(c_left, c_right);
     }
@@ -1568,12 +1565,18 @@ func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
                     }
                     return c_cmp;
                 }
+                if (expr.text_value == "+") {
+                    return cem_emit_string_concat_call(c_left, c_right);
+                }
                 if (expr.text_value == "<" || expr.text_value == "<=" ||
                     expr.text_value == ">" || expr.text_value == ">=") {
                     return cem_emit_string_compare_call(expr.text_value, c_left, c_right);
                 }
             }
         }
+    }
+    if (expr.text_value == "+") {
+        return cem_emit_checked_int_add(c_left, c_right);
     }
     return cem_emit_binary_op(expr.text_value, c_left, c_right);
 }
