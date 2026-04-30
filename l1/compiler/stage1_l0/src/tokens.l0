@@ -121,13 +121,13 @@ struct Token {
 func token_to_string(token: Token) -> string {
     match (token.token_type) {
         TT_EOF => { return "end-of-file"; }
-        TT_IDENT(t) => { return concat3_s("ident(", t, ")"); }
+        TT_IDENT(t) => { return "ident(" + t + ")"; }
         TT_UNDERSCORE => { return "_"; }
-        TT_INT(t, v) => { return concat3_s("int(", t, ")"); }
-        TT_BIGINT(t, b) => { return concat3_s("bigint(", bigint_to_string(t, b), ")"); }
-        TT_REALNUM(s, e, ff) => { return concat3_s("real(", realnum_to_string(s, e, ff), ")"); }
-        TT_BYTE(t, v) => { return concat3_s("byte(", t, ")"); }
-        TT_STRING(t, v) => { return concat3_s("string(", t, ")"); }
+        TT_INT(t, v) => { return "int(" + t + ")"; }
+        TT_BIGINT(t, b) => { return "bigint(" + bigint_to_string(t, b) + ")"; }
+        TT_REALNUM(s, e, ff) => { return "real(" + realnum_to_string(s, e, ff) + ")"; }
+        TT_BYTE(t, v) => { return "byte(" + t + ")"; }
+        TT_STRING(t, v) => { return "string(" + t + ")"; }
 
         // Keywords
         TT_MODULE => { return "module"; }

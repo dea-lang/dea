@@ -107,9 +107,7 @@ func test_format_snippet_tab_before_token() {
         // Gutter width 5: "    1 |  let x = 1;\n            ^"
         //   displayed line: "    1 |  let x = 1;" (tab → space)
         //   caret prefix:   gutter (5) + " | " (3) + start_col-1 (5) = 13 spaces + "^"
-        let expected = concat_s(
-            "    1 |  let x = 1;\n",
-            "             ^");
+        let expected = "    1 |  let x = 1;\n" + "             ^";
         assert(out == expected, "caret should line up under 'x' on tab-indented line");
     }
 }
@@ -125,9 +123,7 @@ func test_format_snippet_tab_inside_span() {
         // Highlight cols 1..5 ("let\ty"): start=1, end_exclusive=6.
         diag_error(dc, "Test", "DPT-0101", "span covers tab", "<mem>", 1, 1, 1, 6);
         let out = dp_format_snippet(diag_get(dc, 0), src);
-        let expected = concat_s(
-            "    1 | let y = 2;\n",
-            "        ^^^^^");
+        let expected = "    1 | let y = 2;\n" + "        ^^^^^";
         assert(out == expected, "caret span should cover 5 normalized columns");
     }
 }
@@ -142,9 +138,7 @@ func test_format_snippet_mixed_tabs_spaces() {
         let src = "\t let y =\tx + 2;\n";
         diag_error(dc, "Test", "DPT-0102", "x with mixed prefix", "<mem>", 1, 11, 1, 12);
         let out = dp_format_snippet(diag_get(dc, 0), src);
-        let expected = concat_s(
-            "    1 |   let y = x + 2;\n",
-            "                  ^");
+        let expected = "    1 |   let y = x + 2;\n" + "                  ^";
         assert(out == expected, "caret should line up under 'x' with mixed tabs/spaces");
     }
 }
@@ -157,9 +151,7 @@ func test_format_snippet_no_tab_unchanged() {
         let src = "let x = 1;\n";
         diag_error(dc, "Test", "DPT-0103", "x here", "<mem>", 1, 5, 1, 6);
         let out = dp_format_snippet(diag_get(dc, 0), src);
-        let expected = concat_s(
-            "    1 | let x = 1;\n",
-            "            ^");
+        let expected = "    1 | let x = 1;\n" + "            ^";
         assert(out == expected, "non-tab snippet should match legacy layout");
     }
 }

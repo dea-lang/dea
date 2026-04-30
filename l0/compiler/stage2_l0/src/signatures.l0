@@ -27,7 +27,7 @@ import types;
  * @return Key in `module::name` form.
  */
 func sig_key(module_name: string, name: string) -> string {
-    return concat3_s(module_name, "::", name);
+    return module_name + "::" + name;
 }
 
 /**
@@ -452,7 +452,7 @@ func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleE
             sig_diag_error(
                 diags,
                 "SIG-0030",
-                concat3_s("cannot infer type for let '", decl.name, "' - type annotation required for non-literal initializers"),
+                "cannot infer type for let '" + decl.name + "' - type annotation required for non-literal initializers",
                 env.module_ptr.filename,
                 decl.span
             );
@@ -533,7 +533,7 @@ func sig_cycle_visit(tables: SignatureTables*, key: string, visiting: StringSet*
                     sig_diag_error(
                         diags,
                         "SIG-0040",
-                        concat3_s("Value-type cycle detected involving ", key, ". Consider using pointers to break the cycle."),
+                        "Value-type cycle detected involving " + key + ". Consider using pointers to break the cycle.",
                         info.filename,
                         info.span
                     );
@@ -561,7 +561,7 @@ func sig_cycle_visit(tables: SignatureTables*, key: string, visiting: StringSet*
                     sig_diag_error(
                         diags,
                         "SIG-0040",
-                        concat3_s("Value-type cycle detected involving ", key, ". Consider using pointers to break the cycle."),
+                        "Value-type cycle detected involving " + key + ". Consider using pointers to break the cycle.",
                         info2.filename,
                         info2.span
                     );

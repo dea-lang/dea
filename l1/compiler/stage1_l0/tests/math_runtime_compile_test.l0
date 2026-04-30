@@ -35,7 +35,7 @@ func mrt_expect_run_success(module_name: string, label: string) {
         vs_push(argv, module_name);
 
         let rc = run_with_argv(argv);
-        assert(rc == 0, concat3_s("expected successful run: ", label, ""));
+        assert(rc == 0, "expected successful run: " + label + "");
     }
 
     printl_ss("[PASS]", label);
@@ -55,7 +55,7 @@ func mrt_expect_runtime_failure(module_name: string, label: string) {
         vs_push(argv, module_name);
 
         let rc = run_with_argv(argv);
-        assert(rc != 0, concat3_s("expected runtime failure: ", label, ""));
+        assert(rc != 0, "expected runtime failure: " + label + "");
     }
 
     printl_ss("[PASS]", label);

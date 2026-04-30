@@ -135,7 +135,7 @@ func be_free(self: Backend*) {
  * @return Key in `module::type` form.
  */
 func be_type_key(module_name: string, type_name: string) -> string {
-    return concat3_s(module_name, "::", type_name);
+    return module_name + "::" + type_name;
 }
 
 /**
@@ -347,7 +347,7 @@ func be_resolve_let_type(self: Backend*, stmt: StmtNode*) -> Type* {
         var_ty = be_expr_type(self, stmt.expr_a);
     }
     if (var_ty == null) {
-        be_ice(concat3_s("[ICE-1170] missing inferred type for let initializer '", stmt.name, "'"));
+        be_ice("[ICE-1170] missing inferred type for let initializer '" + stmt.name + "'");
     }
     return var_ty as Type*;
 }
@@ -400,7 +400,7 @@ func be_emit_with_cleanup_header_let_assign(self: Backend*, stmt: StmtNode*, var
  */
 func be_fresh_label(self: Backend*, prefix: string) -> string {
     self.label_counter = self.label_counter + 1;
-    return concat4_s("__", prefix, "_", int_to_string(self.label_counter));
+    return "__" + prefix + "_" + int_to_string(self.label_counter);
 }
 
 /**
@@ -1097,7 +1097,7 @@ func be_emit_type_definitions(self: Backend*) {
             let key = vs_get(keys, i);
             let deps = ss_create();
             if (!be_collect_type_dependencies(self, key, deps)) {
-                be_ice(concat3_s("[ICE-1341] missing dependency metadata for type key ", key, ""));
+                be_ice("[ICE-1341] missing dependency metadata for type key " + key);
             }
             ptr_vec_push(dep_sets as VectorBase*, deps as void*);
 
@@ -1148,7 +1148,7 @@ func be_emit_type_definitions(self: Backend*) {
             if (struct_info != null) {
                 let decl = be_find_struct_decl(self, module_name, type_name);
                 if (decl == null) {
-                    be_ice(concat4_s("[ICE-1040] missing StructDecl for ", module_name, ".", type_name));
+                    be_ice("[ICE-1040] missing StructDecl for " + module_name + "." + type_name);
                 }
                 self.current_module = module_name;
                 cem_emit_struct(self.emitter, module_name, decl as StructDecl*, struct_info as StructInfo*);
@@ -1159,7 +1159,7 @@ func be_emit_type_definitions(self: Backend*) {
                 let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, module_name, type_name);
                 let enum_decl = be_find_enum_decl(self, module_name, type_name);
                 if (enum_info == null || enum_decl == null) {
-                    be_ice(concat4_s("[ICE-1050] missing EnumDecl/EnumInfo for ", module_name, ".", type_name));
+                    be_ice("[ICE-1050] missing EnumDecl/EnumInfo for " + module_name + "." + type_name);
                 }
                 self.current_module = module_name;
                 cem_emit_enum(self.emitter, module_name, enum_decl as EnumDecl*, enum_info as EnumInfo*);
@@ -1384,7 +1384,7 @@ func be_emit_let_declarations(self: Backend*) {
             let decl = top.data as LetDecl*;
             let let_type = sig_lookup_let_type(self.result.signatures as SignatureTables*, root.name, decl.name);
             if (let_type == null) {
-                be_ice(concat4_s("[ICE-1151] missing Let type for ", root.name, ".", decl.name));
+                be_ice("[ICE-1151] missing Let type for " + root.name + "." + decl.name);
             }
             let c_init = be_emit_let_initializer(self, decl.value, let_type as Type*);
             cem_emit_let_declaration(self.emitter, root.name, decl, let_type as Type*, c_init);
@@ -1419,7 +1419,7 @@ func be_emit_function_declarations(self: Backend*) {
             let decl = top.data as FuncDecl*;
             let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, root.name, decl.name);
             if (func_type == null) {
-                be_ice(concat4_s("[ICE-1150] missing FuncType for ", root.name, ".", decl.name));
+                be_ice("[ICE-1150] missing FuncType for " + root.name + "." + decl.name);
             }
             cem_emit_function_declaration(self.emitter, root.name, decl, func_type as Type*);
         }
@@ -1865,7 +1865,7 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
         if (ord(base_ty.kind) == ord(TY_STRUCT)) {
             let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, base_ty.module_name, base_ty.name);
             if (info == null) {
-                return be_ice_string(concat4_s("[ICE-1210] missing StructInfo for ", base_ty.module_name, ".", base_ty.name));
+                return be_ice_string("[ICE-1210] missing StructInfo for " + base_ty.module_name + "." + base_ty.name);
             }
             with (let field_inits = vs_create(8) => vs_free(field_inits)) {
                 for (let i = 0; i < arg_count; i = i + 1) {
@@ -1911,7 +1911,7 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
             return tmp;
         }
 
-        return be_ice_string(concat3_s("[ICE-1231] unsupported new expression for type '", type_format(base_ty), "'"));
+        return be_ice_string("[ICE-1231] unsupported new expression for type '" + type_format(base_ty) + "'");
     }
 }
 
@@ -1945,8 +1945,7 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
 
             let sym = be_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
             if (sym == null) {
-                return be_ice_string(concat4_s("[ICE-1103] unresolved variable reference after type checking: ",
-                    self.current_module as string, "::", expr.text_value));
+                return be_ice_string("[ICE-1103] unresolved variable reference after type checking: " + self.current_module as string + "::" + expr.text_value);
             }
 
             if (ord((sym as Symbol*).kind) == ord(SYM_FUNC)) {
@@ -2287,7 +2286,7 @@ func be_emit_drop_stmt(self: Backend*, stmt: StmtNode*) {
     if (var_type == null) {
         let sym = be_lookup_symbol(self, stmt.name, null, null);
         if (sym == null) {
-            be_ice(concat3_s("[ICE-1060] undefined variable in drop: ", stmt.name, ""));
+            be_ice("[ICE-1060] undefined variable in drop: " + stmt.name);
         }
         var_type = (sym as Symbol*).resolved_type;
     }
@@ -2300,7 +2299,7 @@ func be_emit_drop_stmt(self: Backend*, stmt: StmtNode*) {
         inner_type = ((var_type as Type*).inner as Type*);
     }
     if (ord(inner_type.kind) != ord(TY_POINTER)) {
-        be_ice(concat3_s("[ICE-1061] drop requires pointer type, got '", type_format(var_type as Type*), "'"));
+        be_ice("[ICE-1061] drop requires pointer type, got '" + type_format(var_type as Type*) + "'");
     }
 
     let pointee = inner_type.inner as Type*;
@@ -2311,7 +2310,7 @@ func be_emit_drop_stmt(self: Backend*, stmt: StmtNode*) {
     } else if (analysis_is_arc_type(pointee)) {
         cem_emit_if_header(self.emitter, cem_emit_pointer_null_check(c_name, "!="));
         cem_emit_block_start(self.emitter);
-        cem_emit_string_release(self.emitter, concat3_s("*", c_name, ""));
+        cem_emit_string_release(self.emitter, "*" + c_name);
         cem_emit_block_end(self.emitter);
     }
 
@@ -2739,7 +2738,7 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
                 var_ty = be_expr_type(self, stmt.expr_a);
             }
             if (var_ty == null) {
-                be_ice(concat3_s("[ICE-1170] missing inferred type for let initializer '", stmt.name, "'"));
+                be_ice("[ICE-1170] missing inferred type for let initializer '" + stmt.name + "'");
             }
             let c_name = cem_mangle_identifier(stmt.name);
             let c_type = cem_emit_type(var_ty as Type*);
@@ -3067,7 +3066,7 @@ func be_emit_function_definitions(self: Backend*) {
 
             let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, root.name, decl.name);
             if (func_type == null) {
-                be_ice(concat4_s("[ICE-1150] missing FuncType for ", root.name, ".", decl.name));
+                be_ice("[ICE-1150] missing FuncType for " + root.name + "." + decl.name);
             }
 
             be_emit_line_directive(self, decl.span);

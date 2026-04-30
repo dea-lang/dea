@@ -73,7 +73,7 @@ func ap_print_line(indent: int, text: string) {
     if (indent == 0) {
         printl_s(text);
     } else {
-        printl_s(concat_s(ap_indent_str(indent), text));
+        printl_s(ap_indent_str(indent) + text);
     }
 }
 
@@ -84,7 +84,7 @@ func ap_print_line(indent: int, text: string) {
  * @param name Label name without colon.
  */
 func ap_print_label(indent: int, name: string) {
-    ap_print_line(indent + 1, concat_s(name, ":"));
+    ap_print_line(indent + 1, name + ":");
 }
 
 /**
@@ -200,7 +200,7 @@ func ap_full_name(text_value: string, module_path: VectorString*?, name_qualifie
 func ap_print_type_ref(tr: TypeRef*, indent: int) {
     with (let sb = sb_create() => sb_free(sb)) {
         sb_append(sb, "TypeRef(name=");
-        sb_append(sb, ap_quote_string(concat_s(ap_module_prefix(tr.module_path), tr.name)));
+        sb_append(sb, ap_quote_string(ap_module_prefix(tr.module_path) + tr.name));
         sb_append(sb, ", pointer_depth=");
         sb_append_int(sb, tr.pointer_depth);
         sb_append(sb, ", is_nullable=");
@@ -222,7 +222,7 @@ func ap_print_type_ref(tr: TypeRef*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_import(imp: Import*, indent: int) {
-    ap_print_line(indent, concat3_s("Import(name=", ap_quote_string(imp.name), ")"));
+    ap_print_line(indent, "Import(name=" + ap_quote_string(imp.name) + ")");
 }
 
 /**
@@ -232,7 +232,7 @@ func ap_print_import(imp: Import*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_param(p: Param*, indent: int) {
-    ap_print_line(indent, concat3_s("Param(name=", ap_quote_string(p.name), ")"));
+    ap_print_line(indent, "Param(name=" + ap_quote_string(p.name) + ")");
     ap_print_label(indent, "type_ref");
     ap_print_type_ref(p.type_ref, indent + 2);
 }
@@ -244,7 +244,7 @@ func ap_print_param(p: Param*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_field_decl(fd: FieldDecl*, indent: int) {
-    ap_print_line(indent, concat3_s("FieldDecl(name=", ap_quote_string(fd.name), ")"));
+    ap_print_line(indent, "FieldDecl(name=" + ap_quote_string(fd.name) + ")");
     ap_print_label(indent, "type_ref");
     ap_print_type_ref(fd.type_ref, indent + 2);
 }
@@ -256,7 +256,7 @@ func ap_print_field_decl(fd: FieldDecl*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_enum_variant(ev: EnumVariant*, indent: int) {
-    ap_print_line(indent, concat3_s("EnumVariant(name=", ap_quote_string(ev.name), ")"));
+    ap_print_line(indent, "EnumVariant(name=" + ap_quote_string(ev.name) + ")");
     if (vec_size(ev.fields) > 0) {
         ap_print_label(indent, "fields");
         for (let i = 0; i < vec_size(ev.fields); i = i + 1) {
@@ -281,7 +281,7 @@ func ap_print_pattern(id: PatternId, pr: ParseResult*, indent: int) {
     let node = pattern_arena_get(pr.pattern_arena, id);
     match (node.kind) {
         PT_WILDCARD => {
-            ap_print_line(indent, concat_s("WildcardPattern()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "WildcardPattern()" + ap_span_suffix(node.span));
         }
         PT_VARIANT => {
             let full_name = ap_full_name(node.name, node.module_path, node.name_qualifier);
@@ -358,7 +358,7 @@ func ap_print_expr(id: ExprId, pr: ParseResult*, indent: int) {
             }
         }
         EX_NULL => {
-            ap_print_line(indent, concat_s("NullLiteral()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "NullLiteral()" + ap_span_suffix(node.span));
         }
         EX_VAR_REF => {
             let full_name = ap_full_name(node.text_value, node.module_path, node.name_qualifier);
@@ -415,7 +415,7 @@ func ap_print_expr(id: ExprId, pr: ParseResult*, indent: int) {
             ap_print_expr(node.expr_b, pr, indent + 2);
         }
         EX_CALL => {
-            ap_print_line(indent, concat_s("CallExpr()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "CallExpr()" + ap_span_suffix(node.span));
             ap_print_label(indent, "callee");
             ap_print_expr(node.expr_a, pr, indent + 2);
             if (node.ids != null) {
@@ -429,7 +429,7 @@ func ap_print_expr(id: ExprId, pr: ParseResult*, indent: int) {
             }
         }
         EX_INDEX => {
-            ap_print_line(indent, concat_s("IndexExpr()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "IndexExpr()" + ap_span_suffix(node.span));
             ap_print_label(indent, "collection");
             ap_print_expr(node.expr_a, pr, indent + 2);
             ap_print_label(indent, "index");
@@ -447,24 +447,24 @@ func ap_print_expr(id: ExprId, pr: ParseResult*, indent: int) {
             ap_print_expr(node.expr_a, pr, indent + 2);
         }
         EX_PAREN => {
-            ap_print_line(indent, concat_s("ParenExpr()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "ParenExpr()" + ap_span_suffix(node.span));
             ap_print_label(indent, "expr");
             ap_print_expr(node.expr_a, pr, indent + 2);
         }
         EX_CAST => {
-            ap_print_line(indent, concat_s("CastExpr()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "CastExpr()" + ap_span_suffix(node.span));
             ap_print_label(indent, "expr");
             ap_print_expr(node.expr_a, pr, indent + 2);
             ap_print_label(indent, "target_type");
             ap_print_type_ref(node.type_ref as TypeRef*, indent + 2);
         }
         EX_TRY => {
-            ap_print_line(indent, concat_s("TryExpr()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "TryExpr()" + ap_span_suffix(node.span));
             ap_print_label(indent, "expr");
             ap_print_expr(node.expr_a, pr, indent + 2);
         }
         EX_TYPE => {
-            ap_print_line(indent, concat_s("TypeExpr()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "TypeExpr()" + ap_span_suffix(node.span));
             ap_print_label(indent, "type_ref");
             ap_print_type_ref(node.type_ref as TypeRef*, indent + 2);
         }
@@ -488,7 +488,7 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
     let node = stmt_arena_get(pr.stmt_arena, id);
     match (node.kind) {
         ST_BLOCK => {
-            ap_print_line(indent, concat_s("Block()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "Block()" + ap_span_suffix(node.span));
             if (node.ids != null) {
                 let stmts = node.ids as VectorBase*;
                 if (vec_size(stmts) > 0) {
@@ -515,19 +515,19 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
             ap_print_expr(node.expr_a, pr, indent + 2);
         }
         ST_ASSIGN => {
-            ap_print_line(indent, concat_s("AssignStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "AssignStmt()" + ap_span_suffix(node.span));
             ap_print_label(indent, "target");
             ap_print_expr(node.expr_a, pr, indent + 2);
             ap_print_label(indent, "value");
             ap_print_expr(node.expr_b, pr, indent + 2);
         }
         ST_EXPR => {
-            ap_print_line(indent, concat_s("ExprStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "ExprStmt()" + ap_span_suffix(node.span));
             ap_print_label(indent, "expr");
             ap_print_expr(node.expr_a, pr, indent + 2);
         }
         ST_IF => {
-            ap_print_line(indent, concat_s("IfStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "IfStmt()" + ap_span_suffix(node.span));
             ap_print_label(indent, "cond");
             ap_print_expr(node.expr_a, pr, indent + 2);
             ap_print_label(indent, "then_stmt");
@@ -538,14 +538,14 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
             }
         }
         ST_WHILE => {
-            ap_print_line(indent, concat_s("WhileStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "WhileStmt()" + ap_span_suffix(node.span));
             ap_print_label(indent, "cond");
             ap_print_expr(node.expr_a, pr, indent + 2);
             ap_print_label(indent, "body");
             ap_print_stmt(node.stmt_a, pr, indent + 2);
         }
         ST_FOR => {
-            ap_print_line(indent, concat_s("ForStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "ForStmt()" + ap_span_suffix(node.span));
             if (node.stmt_a != invalid_stmt_id()) {
                 ap_print_label(indent, "init");
                 ap_print_stmt(node.stmt_a, pr, indent + 2);
@@ -562,7 +562,7 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
             ap_print_stmt(node.stmt_c, pr, indent + 2);
         }
         ST_RETURN => {
-            ap_print_line(indent, concat_s("ReturnStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "ReturnStmt()" + ap_span_suffix(node.span));
             if (node.expr_a != invalid_expr_id()) {
                 ap_print_label(indent, "value");
                 ap_print_expr(node.expr_a, pr, indent + 2);
@@ -578,7 +578,7 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
             }
         }
         ST_MATCH => {
-            ap_print_line(indent, concat_s("MatchStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "MatchStmt()" + ap_span_suffix(node.span));
             ap_print_label(indent, "expr");
             ap_print_expr(node.expr_a, pr, indent + 2);
             if (node.match_arms != null) {
@@ -587,7 +587,7 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
                     ap_print_label(indent, "arms");
                     for (let i = 0; i < vec_size(arms); i = i + 1) {
                         let arm = ptr_vec_get(arms, i) as MatchArm*;
-                        ap_print_line(indent + 2, concat_s("MatchArm()", ap_span_suffix(arm.span)));
+                        ap_print_line(indent + 2, "MatchArm()" + ap_span_suffix(arm.span));
                         ap_print_label(indent + 2, "pattern");
                         ap_print_pattern(arm.pattern, pr, indent + 4);
                         ap_print_label(indent + 2, "body");
@@ -597,7 +597,7 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
             }
         }
         ST_CASE => {
-            ap_print_line(indent, concat_s("CaseStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "CaseStmt()" + ap_span_suffix(node.span));
             ap_print_label(indent, "expr");
             ap_print_expr(node.expr_a, pr, indent + 2);
             if (node.case_arms != null) {
@@ -606,7 +606,7 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
                     ap_print_label(indent, "arms");
                     for (let i = 0; i < vec_size(arms); i = i + 1) {
                         let arm = ptr_vec_get(arms, i) as CaseArm*;
-                        ap_print_line(indent + 2, concat_s("CaseArm()", ap_span_suffix(arm.span)));
+                        ap_print_line(indent + 2, "CaseArm()" + ap_span_suffix(arm.span));
                         ap_print_label(indent + 2, "literal");
                         ap_print_expr(arm.literal, pr, indent + 4);
                         ap_print_label(indent + 2, "body");
@@ -617,19 +617,19 @@ func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
             if (node.case_else != null) {
                 let ce = node.case_else as CaseElse*;
                 ap_print_label(indent, "else_arm");
-                ap_print_line(indent + 2, concat_s("CaseElse()", ap_span_suffix(ce.span)));
+                ap_print_line(indent + 2, "CaseElse()" + ap_span_suffix(ce.span));
                 ap_print_label(indent + 2, "body");
                 ap_print_stmt(ce.body, pr, indent + 4);
             }
         }
         ST_BREAK => {
-            ap_print_line(indent, concat_s("BreakStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "BreakStmt()" + ap_span_suffix(node.span));
         }
         ST_CONTINUE => {
-            ap_print_line(indent, concat_s("ContinueStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "ContinueStmt()" + ap_span_suffix(node.span));
         }
         ST_WITH => {
-            ap_print_line(indent, concat_s("WithStmt()", ap_span_suffix(node.span)));
+            ap_print_line(indent, "WithStmt()" + ap_span_suffix(node.span));
             if (node.with_items != null) {
                 let items = node.with_items as VectorBase*;
                 if (vec_size(items) > 0) {
@@ -703,7 +703,7 @@ func ap_print_func_decl(fd: FuncDecl*, pr: ParseResult*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_struct_decl(sd: StructDecl*, indent: int) {
-    ap_print_line(indent, concat3_s("StructDecl(name=", ap_quote_string(sd.name), concat_s(")", ap_span_suffix(sd.span))));
+    ap_print_line(indent, "StructDecl(name=" + ap_quote_string(sd.name) + ")" + ap_span_suffix(sd.span));
     if (vec_size(sd.fields) > 0) {
         ap_print_label(indent, "fields");
         for (let i = 0; i < vec_size(sd.fields); i = i + 1) {
@@ -720,7 +720,7 @@ func ap_print_struct_decl(sd: StructDecl*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_enum_decl(ed: EnumDecl*, indent: int) {
-    ap_print_line(indent, concat3_s("EnumDecl(name=", ap_quote_string(ed.name), concat_s(")", ap_span_suffix(ed.span))));
+    ap_print_line(indent, "EnumDecl(name=" + ap_quote_string(ed.name) + ")" + ap_span_suffix(ed.span));
     if (vec_size(ed.variants) > 0) {
         ap_print_label(indent, "variants");
         for (let i = 0; i < vec_size(ed.variants); i = i + 1) {
@@ -737,7 +737,7 @@ func ap_print_enum_decl(ed: EnumDecl*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_type_alias_decl(ta: TypeAliasDecl*, indent: int) {
-    ap_print_line(indent, concat3_s("TypeAliasDecl(name=", ap_quote_string(ta.name), concat_s(")", ap_span_suffix(ta.span))));
+    ap_print_line(indent, "TypeAliasDecl(name=" + ap_quote_string(ta.name) + ")" + ap_span_suffix(ta.span));
     ap_print_label(indent, "target");
     ap_print_type_ref(ta.target, indent + 2);
 }
@@ -750,7 +750,7 @@ func ap_print_type_alias_decl(ta: TypeAliasDecl*, indent: int) {
  * @param indent Indent level.
  */
 func ap_print_let_decl(ld: LetDecl*, pr: ParseResult*, indent: int) {
-    ap_print_line(indent, concat3_s("LetDecl(name=", ap_quote_string(ld.name), concat_s(")", ap_span_suffix(ld.span))));
+    ap_print_line(indent, "LetDecl(name=" + ap_quote_string(ld.name) + ")" + ap_span_suffix(ld.span));
     if (ld.type_ref != null) {
         ap_print_label(indent, "type");
         ap_print_type_ref(ld.type_ref as TypeRef*, indent + 2);

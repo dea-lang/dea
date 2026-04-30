@@ -12,9 +12,9 @@ func main() -> int {
     let same_lit = "dea";
     let different_lit = "dea!";
     let empty = "";
-    let built_a = concat_s("de", "a");
-    let built_b = concat_s("de", "a");
-    let built_diff = concat_s("de", "a!");
+    let built_a = "de" + "a";
+    let built_b = "de" + "a";
+    let built_diff = "de" + "a!";
     if (lit == same_lit && lit != different_lit &&
         empty == "" && empty != "x" &&
         built_a == built_b && built_a != built_diff &&

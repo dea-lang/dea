@@ -12,8 +12,8 @@ func main() -> int {
     let same_value = "dea";
     let longer_value = "dea!";
     let empty_value = "";
-    let built_same = concat_s("de", "a");
-    let built_higher = concat_s("de", "b");
+    let built_same = "de" + "a";
+    let built_higher = "de" + "b";
     if (short_value < longer_value &&
         short_value <= same_value &&
         longer_value > short_value &&

@@ -473,6 +473,6 @@ func ps_parse_primary_expr(self: ParserState*) -> ExprId? {
         return expr_arena_add(self.expr_arena, node);
     }
 
-    ps_emit_error(self, "PAR-0225", concat3_s("unexpected token in expression: ", token_to_string(tok), ""), tok);
+    ps_emit_error(self, "PAR-0225", "unexpected token in expression: " + token_to_string(tok), tok);
     return null;
 }

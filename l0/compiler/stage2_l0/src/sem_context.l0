@@ -165,7 +165,7 @@ func analysis_locals(self: AnalysisResult*) -> LocalsResult*? {
  * @return Key in `module::id` form.
  */
 func analysis_expr_key(module_name: string, expr_id: ExprId) -> string {
-    return concat3_s(module_name, "::", int_to_string(expr_id));
+    return module_name + "::" + int_to_string(expr_id);
 }
 
 /**
@@ -242,7 +242,7 @@ func analysis_has_arc_data(self: AnalysisResult*, ty: Type*) -> bool {
         if (self.signatures == null) {
             return false;
         }
-        let key = concat3_s(ty.module_name, "::", ty.name);
+        let key = ty.module_name + "::" + ty.name;
         let info_value = spm_get((self.signatures as SignatureTables*).struct_infos, key);
         if (info_value == null) {
             return false;
@@ -262,7 +262,7 @@ func analysis_has_arc_data(self: AnalysisResult*, ty: Type*) -> bool {
         if (self.signatures == null) {
             return false;
         }
-        let key2 = concat3_s(ty.module_name, "::", ty.name);
+        let key2 = ty.module_name + "::" + ty.name;
         let info_value2 = spm_get((self.signatures as SignatureTables*).enum_infos, key2);
         if (info_value2 == null) {
             return false;

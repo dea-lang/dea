@@ -234,12 +234,7 @@ func cli_try_set_mode(opts: CliOptions*, diags: DiagCollector*, mode: CliMode) {
         cli_emit_error(
             diags,
             "L1C-2002",
-            concat4_s(
-                "multiple mode flags provided: ",
-                cli_mode_flag(opts.mode),
-                " conflicts with ",
-                cli_mode_flag(mode)
-            )
+            "multiple mode flags provided: " + cli_mode_flag(opts.mode) + " conflicts with " + cli_mode_flag(mode)
         );
     }
 }
@@ -450,7 +445,7 @@ func cli_verbose_cluster_count(token: string) -> int {
  */
 func cli_require_next_value(argv: VectorString*, i: int, opt_name: string, diags: DiagCollector*) -> string? {
     if (i + 1 >= vs_size(argv)) {
-        cli_emit_error(diags, "L1C-2003", concat3_s("missing value for option '", opt_name, "'"));
+        cli_emit_error(diags, "L1C-2003", "missing value for option '" + opt_name + "'");
         return null;
     }
     return vs_get(argv, i + 1);
@@ -814,7 +809,7 @@ func cli_parse(argv: VectorString*) -> CliParseResult* {
             }
 
             if (starts_with_s(token, "-")) {
-                cli_emit_error(diags as DiagCollector*, "L1C-2001", concat3_s("unknown option '", token, "'"));
+                cli_emit_error(diags as DiagCollector*, "L1C-2001", "unknown option '" + token + "'");
                 i = i + 1;
                 continue;
             }

@@ -98,7 +98,7 @@ func nr_map_symbol_get(self: StringPtrMap*, name: string) -> Symbol*? {
  * @return Key in `module::name` form.
  */
 func nr_build_top_key(module_name: string, name: string) -> string {
-    return concat3_s(module_name, "::", name);
+    return module_name + "::" + name;
 }
 
 /**
@@ -427,7 +427,7 @@ func nr_define_local(env: ModuleEnv*, diags: DiagCollector*, name: string, sym: 
         nr_span_diag_error(
             diags,
             "RES-0010",
-            concat4_s("duplicate top-level definition of '", name, "' in module '", concat_s(env.module_name, "'")),
+            "duplicate top-level definition of '" + name + "' in module '" + env.module_name + "'",
             env.module_ptr.filename,
             sym.span
         );
@@ -532,7 +532,7 @@ func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
                 nr_span_diag_error(
                     diags,
                     "RES-0030",
-                    concat3_s("duplicate name '", export_name, "' in export manifest"),
+                    "duplicate name '" + export_name + "' in export manifest",
                     env.module_ptr.filename,
                     m.span
                 );
@@ -545,8 +545,7 @@ func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
                 nr_span_diag_error(
                     diags,
                     "RES-0031",
-                    concat4_s("export manifest names unknown top-level symbol '", export_name, "' in module '",
-                        concat_s(env.module_name, "'")),
+                    "export manifest names unknown top-level symbol '" + export_name + "' in module '" + env.module_name + "'",
                     env.module_ptr.filename,
                     m.span
                 );
@@ -621,8 +620,7 @@ func nr_import_symbol(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagColl
         nr_span_diag_error(
             diags,
             "RES-0034",
-            concat4_s("name '", name, "' cannot be used both as an import alias and as a visible symbol in module '",
-                concat_s(env.module_name, "'")),
+            "name '" + name + "' cannot be used both as an import alias and as a visible symbol in module '" + env.module_name + "'",
             env.module_ptr.filename,
             env.module_ptr.span
         );
@@ -636,8 +634,7 @@ func nr_import_symbol(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagColl
             nr_span_diag_warn(
                 diags,
                 "RES-0020",
-                concat4_s("imported extern function '", nr_build_top_key(imported_env.module_name, name),
-                    "' will be shadowed by a compatible local extern declaration in module '", concat_s(env.module_name, "'")),
+                "imported extern function '" + nr_build_top_key(imported_env.module_name, name) + "' will be shadowed by a compatible local extern declaration in module '" + env.module_name + "'",
                 env.module_ptr.filename,
                 local.span
             );
@@ -645,8 +642,7 @@ func nr_import_symbol(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagColl
             nr_span_diag_warn(
                 diags,
                 "RES-0021",
-                concat4_s("imported symbol '", nr_build_top_key(imported_env.module_name, name),
-                    "' will be shadowed by a local definition in module '", concat_s(env.module_name, "'")),
+                "imported symbol '" + nr_build_top_key(imported_env.module_name, name) + "' will be shadowed by a local definition in module '" + env.module_name + "'",
                 env.module_ptr.filename,
                 local.span
             );
@@ -664,13 +660,9 @@ func nr_import_symbol(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagColl
             nr_span_diag_warn(
                 diags,
                 "RES-0021",
-                concat4_s(
-                    concat4_s("imported symbol '", nr_build_top_key(existing_import.module_name, name),
-                        "' will be shadowed by imported symbol '", nr_build_top_key(imported_env.module_name, name)),
-                    "' in module '",
-                    env.module_name,
-                    ""
-                ),
+                "imported symbol '" + nr_build_top_key(existing_import.module_name, name) +
+                    "' will be shadowed by imported symbol '" + nr_build_top_key(imported_env.module_name, name) +
+                    "' in module '" + env.module_name + "'",
                 env.module_ptr.filename,
                 env.module_ptr.span
             );
@@ -686,7 +678,7 @@ func nr_import_symbol(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagColl
         nr_span_diag_warn(
             diags,
             "RES-0022",
-            concat4_s("symbol '", name, "' imported from multiple modules into '", concat_s(env.module_name, "'")),
+            "symbol '" + name + "' imported from multiple modules into '" + env.module_name + "'",
             env.module_ptr.filename,
             env.module_ptr.span
         );
@@ -731,7 +723,7 @@ func nr_bind_import_alias(env: ModuleEnv*, imported_env: ModuleEnv*, diags: Diag
         nr_span_diag_error(
             diags,
             "RES-0033",
-            concat4_s("duplicate import alias '", imp.alias, "' in module '", concat_s(env.module_name, "'")),
+            "duplicate import alias '" + imp.alias + "' in module '" + env.module_name + "'",
             env.module_ptr.filename,
             imp.span
         );
@@ -742,8 +734,7 @@ func nr_bind_import_alias(env: ModuleEnv*, imported_env: ModuleEnv*, diags: Diag
         nr_span_diag_error(
             diags,
             "RES-0034",
-            concat4_s("name '", imp.alias,
-                "' cannot be used both as an import alias and as a visible symbol in module '", concat_s(env.module_name, "'")),
+            "name '" + imp.alias + "' cannot be used both as an import alias and as a visible symbol in module '" + env.module_name + "'",
             env.module_ptr.filename,
             imp.span
         );
@@ -771,7 +762,7 @@ func nr_bind_selective_import(env: ModuleEnv*, imported_env: ModuleEnv*, diags: 
                 nr_span_diag_error(
                     diags,
                     "RES-0032",
-                    concat4_s("module '", imported_env.module_name, "' does not export symbol '", name),
+                    "module '" + imported_env.module_name + "' does not export symbol '" + name,
                     env.module_ptr.filename,
                     imp.span
                 );
@@ -791,8 +782,7 @@ func nr_bind_selective_import(env: ModuleEnv*, imported_env: ModuleEnv*, diags: 
             nr_span_diag_warn(
                 diags,
                 "RES-0035",
-                concat4_s("redundant import: ", nr_format_quoted_names(redundant), " already imported from '",
-                    concat_s(imported_env.module_name, "'")),
+                "redundant import: " + nr_format_quoted_names(redundant) + " already imported from '" + imported_env.module_name + "'",
                 env.module_ptr.filename,
                 imp.span
             );
@@ -839,7 +829,7 @@ func nr_open_imports(nr: NameResolution*, env: ModuleEnv*, diags: DiagCollector*
             nr_span_diag_error(
                 diags,
                 "RES-0029",
-                concat4_s("unknown imported module '", imp.name, "' in module '", concat_s(env.module_name, "'")),
+                "unknown imported module '" + imp.name + "' in module '" + env.module_name + "'",
                 env.module_ptr.filename,
                 env.module_ptr.span
             );
@@ -851,7 +841,7 @@ func nr_open_imports(nr: NameResolution*, env: ModuleEnv*, diags: DiagCollector*
                     nr_span_diag_warn(
                         diags,
                         "RES-0036",
-                        concat3_s("duplicated 'import ", imp.name, "'"),
+                        "duplicated 'import " + imp.name + "'",
                         env.module_ptr.filename,
                         imp.span
                     );

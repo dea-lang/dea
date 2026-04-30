@@ -68,7 +68,7 @@ func _path_ext_with_dot(ext: string) -> string {
     if (char_at_s(ext, 0) == '.') {
         return ext;
     }
-    return concat_s(".", ext);
+    return "." + ext;
 }
 
 /**
@@ -174,9 +174,9 @@ func join(root: string, rel: string) -> string {
 
     let tail = char_at_s(root, len_s(root) - 1);
     if (is_sep(tail)) {
-        return concat_s(root, rel);
+        return root + rel;
     }
-    return concat3_s(root, "/", rel);
+    return root + "/" + rel;
 }
 
 /**

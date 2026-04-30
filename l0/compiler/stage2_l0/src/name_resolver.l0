@@ -91,7 +91,7 @@ func nr_map_symbol_get(self: StringPtrMap*, name: string) -> Symbol*? {
  * @return Key in `module::name` form.
  */
 func nr_build_top_key(module_name: string, name: string) -> string {
-    return concat3_s(module_name, "::", name);
+    return module_name + "::" + name;
 }
 
 /**
@@ -362,7 +362,7 @@ func nr_define_local(env: ModuleEnv*, diags: DiagCollector*, name: string, sym: 
         nr_span_diag_error(
             diags,
             "RES-0010",
-            concat4_s("duplicate top-level definition of '", name, "' in module '", env.module_name),
+            "duplicate top-level definition of '" + name + "' in module '" + env.module_name,
             env.module_ptr.filename,
             sym.span
         );
@@ -441,8 +441,7 @@ func nr_open_imports_one(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagC
                     nr_span_diag_warn(
                         diags,
                         "RES-0020",
-                        concat4_s("imported extern function '", nr_build_top_key(imported_env.module_name, name),
-                            "' will be shadowed by a compatible local extern declaration in module '", env.module_name),
+                        "imported extern function '" + nr_build_top_key(imported_env.module_name, name) + "' will be shadowed by a compatible local extern declaration in module '" + env.module_name,
                         env.module_ptr.filename,
                         local.span
                     );
@@ -450,8 +449,7 @@ func nr_open_imports_one(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagC
                     nr_span_diag_warn(
                         diags,
                         "RES-0021",
-                        concat4_s("imported symbol '", nr_build_top_key(imported_env.module_name, name),
-                            "' will be shadowed by a local definition in module '", env.module_name),
+                        "imported symbol '" + nr_build_top_key(imported_env.module_name, name) + "' will be shadowed by a local definition in module '" + env.module_name,
                         env.module_ptr.filename,
                         local.span
                     );
@@ -461,7 +459,7 @@ func nr_open_imports_one(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagC
                     nr_span_diag_warn(
                         diags,
                         "RES-0022",
-                        concat4_s("symbol '", name, "' imported from multiple modules into '", env.module_name),
+                        "symbol '" + name + "' imported from multiple modules into '" + env.module_name,
                         env.module_ptr.filename,
                         env.module_ptr.span
                     );
@@ -495,7 +493,7 @@ func nr_open_imports(nr: NameResolution*, env: ModuleEnv*, diags: DiagCollector*
             nr_span_diag_error(
                 diags,
                 "RES-0029",
-                concat4_s("unknown imported module '", imp.name, "' in module '", env.module_name),
+                "unknown imported module '" + imp.name + "' in module '" + env.module_name,
                 env.module_ptr.filename,
                 env.module_ptr.span
             );

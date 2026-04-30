@@ -275,28 +275,6 @@ func test_char_buffer_clear() {
 }
 
 /**
- * Tests test_concat3_s.
- */
-func test_concat3_s() {
-    printl_s("=== Test concat3_s ===");
-
-    let result = concat3_s("one", "-", "two");
-    printl_ss("  concat3_s('one', '-', 'two'):", result);
-
-    let result2 = concat3_s("", "middle", "");
-    printl_ss("  concat3_s('', 'middle', ''):", result2);
-
-    let result3 = concat3_s("a", "b", "c");
-    printl_ss("  concat3_s('a', 'b', 'c'):", result3);
-
-    assert(result == "one-two", "Expected concat3_s to be 'one-two'");
-    assert(result2 == "middle", "Expected concat3_s to be 'middle'");
-    assert(result3 == "abc", "Expected concat3_s to be 'abc'");
-
-    printl_s("concat3_s tests passed!\n");
-}
-
-/**
  * Tests test_repeat_s.
  */
 func test_repeat_s() {
@@ -330,20 +308,20 @@ func test_trim_s() {
     printl_s("=== Test trim_s ===");
 
     let t1 = trim_s("  hello  ");
-    printl_s(concat3_s("  trim_s('  hello  '): '", t1, "'"));
+    printl_s("  trim_s('  hello  '): '" + t1 + "'");
 
     let t2 = trim_s("no spaces");
-    printl_s(concat3_s("  trim_s('no spaces'): '", t2, "'"));
+    printl_s("  trim_s('no spaces'): '" + t2 + "'");
 
     let t3 = trim_s("   ");
-    printl_s(concat3_s("  trim_s('   '): '", t3, "'"));
+    printl_s("  trim_s('   '): '" + t3 + "'");
     printl_si("    (length):", len_s(t3));
 
     let t4 = trim_s("\t\n  spaced \n\t");
-    printl_s(concat3_s("  trim_s('\\t\\n  spaced \\n\\t'): '", t4, "'"));
+    printl_s("  trim_s('\\t\\n  spaced \\n\\t'): '" + t4 + "'");
 
     let t5 = trim_s("");
-    printl_s(concat3_s("  trim_s(''): '", t5, "'"));
+    printl_s("  trim_s(''): '" + t5 + "'");
     printl_si("    (length):", len_s(t5));
 
     assert(t1 == "hello", "Expected trim_s('  hello  ') to be 'hello'");
@@ -770,50 +748,50 @@ func test_string_to_int() -> Unit? {
 
     let s1 = "12345";
     let v1 = string_to_int(s1)?;
-    printl_si(concat3_s("  string_to_int('", s1, "'):"), v1);
+    printl_si("  string_to_int('" + s1 + "'):", v1);
 
     let s2 = "-6789";
     let v2 = string_to_int(s2)?;
-    printl_si(concat3_s("  string_to_int('", s2, "'):"), v2);
+    printl_si("  string_to_int('" + s2 + "'):", v2);
 
     let s3 = "0";
     let v3 = string_to_int(s3)?;
-    printl_si(concat3_s("  string_to_int('", s3, "'):"), v3);
+    printl_si("  string_to_int('" + s3 + "'):", v3);
 
     // INT_MIN
     let s4 = "-2147483648"; // INT_MIN
     let v4 = string_to_int(s4)?;
-    printl_si(concat3_s("  string_to_int('", s4, "'):"), v4);
+    printl_si("  string_to_int('" + s4 + "'):", v4);
 
     // INT_MAX
     let s7 = "2147483647"; // INT_MAX
     let v7 = string_to_int(s7)?;
-    printl_si(concat3_s("  string_to_int('", s7, "'):"), v7);
+    printl_si("  string_to_int('" + s7 + "'):", v7);
 
     // check underflow
     let s6 = "-2147483649"; // INT_MIN - 1
     let v6 = string_to_int(s6);
     if (v6 == null) {
-        printl_s(concat3_s("  string_to_int('", s6, "'): null (underflow) OK"));
+        printl_s("  string_to_int('" + s6 + "'): null (underflow) OK");
     }
 
     // check overflow
     let s5 = "2147483648"; // INT_MAX + 1
     let v5 = string_to_int(s5);
     if (v5 == null) {
-        printl_s(concat3_s("  string_to_int('", s5, "'): null (overflow) OK"));
+        printl_s("  string_to_int('" + s5 + "'): null (overflow) OK");
     }
 
     let s8 = "9999999999"; // definitely overflow
     let v8 = string_to_int(s8);
     if (v8 == null) {
-        printl_s(concat3_s("  string_to_int('", s8, "'): null (overflow) OK"));
+        printl_s("  string_to_int('" + s8 + "'): null (overflow) OK");
     }
 
     let s9 = "-9999999999"; // definitely underflow
     let v9 = string_to_int(s9);
     if (v9 == null) {
-        printl_s(concat3_s("  string_to_int('", s9, "'): null (underflow) OK"));
+        printl_s("  string_to_int('" + s9 + "'): null (underflow) OK");
     }
 
     assert(v1 == 12345, "Expected string_to_int('12345') to be 12345");
@@ -986,7 +964,6 @@ func main() -> int {
     test_char_buffer_clear();
 
     // String utilities
-    test_concat3_s();
     test_repeat_s();
     test_trim_s();
     test_is_empty_s();

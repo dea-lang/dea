@@ -76,7 +76,7 @@ func ps_parse_pattern(self: ParserState*) -> PatternId? {
         return pattern_arena_add(self.pattern_arena, node);
     }
 
-    ps_emit_error(self, "PAR-0182", concat3_s("unexpected token in pattern: ", token_to_string(ps_peek(self)), ""), ps_peek(self));
+    ps_emit_error(self, "PAR-0182", "unexpected token in pattern: " + token_to_string(ps_peek(self)), ps_peek(self));
     return null;
 }
 

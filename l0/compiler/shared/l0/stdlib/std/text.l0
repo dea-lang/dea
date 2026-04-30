@@ -263,52 +263,6 @@ func cb_free(self: CharBuffer*) {
    --------------------------------- */
 
 /**
- * Concatenates three strings and returns the result.
- *
- * @param a The first string.
- * @param b The second string.
- * @param c The third string.
- * @return The combined string.
- */
-func concat3_s(a: string, b: string, c: string) -> string {
-    let total_len = len_s(a) + len_s(b) + len_s(c);
-    if (total_len == 0) {
-        return "";
-    }
-    with (let cb = cb_create() => cb_free(cb)) {
-        cb_reserve(cb, total_len);
-        cb_append_s(cb, a);
-        cb_append_s(cb, b);
-        cb_append_s(cb, c);
-        return cb_to_string(cb);
-    }
-}
-
-/**
- * Concatenates four strings and returns the result.
- *
- * @param a The first string.
- * @param b The second string.
- * @param c The third string.
- * @param d The fourth string.
- * @return The combined string.
- */
-func concat4_s(a: string, b: string, c: string, d: string) -> string {
-    let total_len = len_s(a) + len_s(b) + len_s(c) + len_s(d);
-    if (total_len == 0) {
-        return "";
-    }
-    with (let cb = cb_create() => cb_free(cb)) {
-        cb_reserve(cb, total_len);
-        cb_append_s(cb, a);
-        cb_append_s(cb, b);
-        cb_append_s(cb, c);
-        cb_append_s(cb, d);
-        return cb_to_string(cb);
-    }
-}
-
-/**
  * Converts all characters in the input string to uppercase.
  *
  * @param s The string to convert.

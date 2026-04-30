@@ -84,8 +84,7 @@ func analysis_analyze_entry(search_paths: SourceSearchPaths*, entry_module: stri
     let nr_diag_start = diag_count(result.diags);
     let names = nr_resolve(driver_state, result.diags);
     result.names = names;
-    log_debug(cfg, concat4_s("Name resolution produced ", int_to_string(diag_count(result.diags) - nr_diag_start),
-        " diagnostic(s)", ""));
+    log_debug(cfg, "Name resolution produced " + int_to_string(diag_count(result.diags) - nr_diag_start) + " diagnostic(s)");
 
     log_stage(cfg, "Resolving type signatures", "");
     let sigs = sig_resolve(driver_state, names, result.diags);
@@ -95,22 +94,18 @@ func analysis_analyze_entry(search_paths: SourceSearchPaths*, entry_module: stri
     log_stage(cfg, "Resolving local scopes", "");
     let local_envs = locals_resolve(driver_state, result.diags);
     result.locals_result = local_envs;
-    log_debug(cfg, concat4_s("Local scope resolution processed ", int_to_string(locals_env_count(local_envs)),
-        " function(s)", ""));
+    log_debug(cfg, "Local scope resolution processed " + int_to_string(locals_env_count(local_envs)) + " function(s)");
 
     if (analysis_has_errors(result)) {
-        log_info(cfg, concat4_s("Analysis complete: ", int_to_string(analysis_diag_count(result)),
-            " total diagnostic(s), ", concat_s(int_to_string(result.diags.error_count), " error(s)")));
+        log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
         return result;
     }
 
     log_stage(cfg, "Type-checking expressions", "");
     let expr_diag_start = diag_count(result.diags);
     expr_types_check(result);
-    log_debug(cfg, concat4_s("Expression type checking produced ",
-        int_to_string(diag_count(result.diags) - expr_diag_start), " diagnostic(s)", ""));
-    log_info(cfg, concat4_s("Analysis complete: ", int_to_string(analysis_diag_count(result)),
-        " total diagnostic(s), ", concat_s(int_to_string(result.diags.error_count), " error(s)")));
+    log_debug(cfg, "Expression type checking produced " + int_to_string(diag_count(result.diags) - expr_diag_start) + " diagnostic(s)");
+    log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
 
     return result;
 }

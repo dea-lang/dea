@@ -88,7 +88,7 @@ struct LocalsResult {
  * @return Key in `module::func` form.
  */
 func lc_key(module_name: string, func_name: string) -> string {
-    return concat3_s(module_name, "::", func_name);
+    return module_name + "::" + func_name;
 }
 
 /**

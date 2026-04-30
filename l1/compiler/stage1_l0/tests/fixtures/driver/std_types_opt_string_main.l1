@@ -9,7 +9,7 @@ import std.string;
 import std.types;
 
 func main() -> int {
-    let unwrapped = get_opt_value(OptString(concat_s("o", "k") as string?));
+    let unwrapped = get_opt_value(OptString(("o" + "k") as string?));
     if (unwrapped == null) {
         return 1;
     }

@@ -68,8 +68,8 @@ func bd_prepared_input_free_opt(self: BuildPreparedInput*?) {
  * @param project_roots Effective project-root vector.
  */
 func bd_log_effective_roots(cfg: LogConfig*, sys_roots: VectorString*, project_roots: VectorString*) {
-    log_info(cfg, concat_s("System root(s): ", sp_format_root_list(sys_roots)));
-    log_info(cfg, concat_s("Project root(s): ", sp_format_root_list(project_roots)));
+    log_info(cfg, "System root(s): " + sp_format_root_list(sys_roots));
+    log_info(cfg, "Project root(s): " + sp_format_root_list(project_roots));
 }
 
 /**
@@ -190,9 +190,9 @@ func bd_with_c_suffix(path: string) -> string {
     let last_sep = bd_find_last_sep(path);
     let last_dot = find_last_s(path, ".");
     if (last_dot > last_sep + 1) {
-        return concat_s(slice_s(path, 0, last_dot), ".c");
+        return slice_s(path, 0, last_dot) + ".c";
     }
-    return concat_s(path, ".c");
+    return path + ".c";
 }
 
 /**
@@ -264,18 +264,18 @@ func bd_temp_stem(tag: string) -> string {
             sb_append_int(sb, attempt);
             let temp_stem = join(root, sb_to_string(sb));
             if (!exists(temp_stem) &&
-                !exists(concat_s(temp_stem, ".c")) &&
-                !exists(concat_s(temp_stem, ".out")) &&
-                !exists(concat_s(temp_stem, ".exe")) &&
-                !exists(concat_s(temp_stem, ".stdout")) &&
-                !exists(concat_s(temp_stem, ".stderr")))
+                !exists(temp_stem + ".c") &&
+                !exists(temp_stem + ".out") &&
+                !exists(temp_stem + ".exe") &&
+                !exists(temp_stem + ".stdout") &&
+                !exists(temp_stem + ".stderr"))
             {
                 return temp_stem;
             }
         }
     }
 
-    return join(root, concat3_s("l0c-stage2-", tag, "-fallback"));
+    return join(root, "l0c-stage2-" + tag + "-fallback");
 }
 
 /**
@@ -616,9 +616,9 @@ func bd_find_c_compiler() -> string? {
             let candidate = vs_get(candidates, i);
             let probe = "";
             if (bd_is_windows()) {
-                probe = concat3_s("where.exe ", bd_shell_quote(candidate), concat3_s(" >", bd_null_device(), " 2>&1"));
+                probe = "where.exe " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
             } else {
-                probe = concat3_s("command -v ", bd_shell_quote(candidate), concat3_s(" >", bd_null_device(), " 2>&1"));
+                probe = "command -v " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
             }
             if (system(probe) == 0) {
                 return candidate;
@@ -683,7 +683,7 @@ func bd_validate_runtime_lib(runtime_lib_path: string, diags: DiagCollector*) ->
             diags,
             "l0c",
             "L0C-0014",
-            concat3_s("runtime library path '", runtime_lib_path, "' does not exist or is not a directory"),
+            "runtime library path '" + runtime_lib_path + "' does not exist or is not a directory",
             "",
             0,
             0,
@@ -709,7 +709,7 @@ func bd_validate_entry_main(result: AnalysisResult*, entry_module: string, diags
             diags,
             "l0c",
             "L0C-0012",
-            concat3_s("entry module '", entry_module, "' must define a 'main' function for build/run"),
+            "entry module '" + entry_module + "' must define a 'main' function for build/run",
             "",
             0,
             0,
@@ -721,7 +721,7 @@ func bd_validate_entry_main(result: AnalysisResult*, entry_module: string, diags
 
     let entry_env = nr_env_find(result.names as NameResolution*, entry_module);
     if (entry_env == null) {
-        diag_error(diags, "l0c", "L0C-0012", concat3_s("entry module '", entry_module, "' not found in analysis result"),
+        diag_error(diags, "l0c", "L0C-0012", "entry module '" + entry_module + "' not found in analysis result",
             "", 0, 0, 0, 0);
         return false;
     }
@@ -732,7 +732,7 @@ func bd_validate_entry_main(result: AnalysisResult*, entry_module: string, diags
             diags,
             "l0c",
             "L0C-0012",
-            concat3_s("entry module '", entry_module, "' must define a 'main' function for build/run"),
+            "entry module '" + entry_module + "' must define a 'main' function for build/run",
             "",
             0,
             0,
@@ -747,7 +747,7 @@ func bd_validate_entry_main(result: AnalysisResult*, entry_module: string, diags
             diags,
             "l0c",
             "L0C-0016",
-            concat3_s("missing type information for entry function '", concat3_s(entry_module, "::", "main"), "'"),
+            "missing type information for entry function '" + entry_module + "::" + "main" + "'",
             "",
             0,
             0,
@@ -763,7 +763,7 @@ func bd_validate_entry_main(result: AnalysisResult*, entry_module: string, diags
             diags,
             "l0c",
             "L0C-0016",
-            concat3_s("missing type information for entry function '", concat3_s(entry_module, "::", "main"), "'"),
+            "missing type information for entry function '" + entry_module + "::" + "main" + "'",
             "",
             0,
             0,
@@ -779,12 +779,7 @@ func bd_validate_entry_main(result: AnalysisResult*, entry_module: string, diags
             diags,
             "l0c",
             "L0C-0013",
-            concat4_s(
-                "entry 'main' returns '",
-                ret_name,
-                "' (preferred: void/int/bool); generated C entry wrapper will ignore the return value",
-                ""
-            ),
+            "entry 'main' returns '" + ret_name + "' (preferred: void/int/bool); generated C entry wrapper will ignore the return value",
             "",
             0,
             0,
@@ -832,7 +827,7 @@ func bd_push_standard_flags(words: VectorString*, family: string) {
  */
 func bd_push_output_flags(words: VectorString*, family: string, exe_path: string) {
     if (family == "msvc") {
-        vs_push(words, concat_s("/Fe:", exe_path));
+        vs_push(words, "/Fe:" + exe_path);
         return;
     }
     vs_push(words, "-o");
@@ -873,7 +868,7 @@ func bd_replay_compile_output(cfg: LogConfig*, stdout_path: string, stderr_path:
  * @param path Path that could not be written.
  */
 func bd_emit_write_error(diags: DiagCollector*, path: string) {
-    diag_error(diags, "l0c", "L0C-9511", concat_s("cannot write output file: ", path), path, 0, 0, 0, 0);
+    diag_error(diags, "l0c", "L0C-9511", "cannot write output file: " + path, path, 0, 0, 0, 0);
 }
 
 /**
@@ -940,10 +935,10 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             let temp_stem = bd_temp_stem("build");
             let c_path = keep_c_path;
             if (c_path == null) {
-                c_path = concat_s(temp_stem, ".c");
+                c_path = temp_stem + ".c";
             }
-            let stdout_path = concat_s(temp_stem, ".stdout");
-            let stderr_path = concat_s(temp_stem, ".stderr");
+            let stdout_path = temp_stem + ".stdout";
+            let stderr_path = temp_stem + ".stderr";
 
             if (write_file(c_path as string, c_code) == null) {
                 bd_emit_write_error(cmd_diags, c_path as string);
@@ -956,7 +951,7 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 }
                 return 1;
             }
-            log_info(cfg, concat_s("Generated C code: ", c_path as string));
+            log_info(cfg, "Generated C code: " + c_path as string);
 
             let compiler = opts.c_compiler;
             if (compiler == null) {
@@ -983,18 +978,18 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 }
                 return 1;
             }
-            log_info(cfg, concat_s("Using C compiler: ", compiler as string));
+            log_info(cfg, "Using C compiler: " + compiler as string);
 
             let family = bd_compiler_flag_family(compiler as string);
-            log_info(cfg, concat_s("Detected compiler flag family: ", family));
+            log_info(cfg, "Detected compiler flag family: " + family);
             if (vs_size(env_opts) > 0) {
-                log_info(cfg, concat_s("C compiler options from $L0_CFLAGS: ", bd_format_word_list(env_opts)));
+                log_info(cfg, "C compiler options from $L0_CFLAGS: " + bd_format_word_list(env_opts));
             }
             if (vs_size(cli_opts) > 0) {
-                log_info(cfg, concat_s("C compiler options from --c-options: ", bd_format_word_list(cli_opts)));
+                log_info(cfg, "C compiler options from --c-options: " + bd_format_word_list(cli_opts));
             }
             if (vs_size(extra_opts) > 0) {
-                log_info(cfg, concat_s("Extra C compiler options: ", bd_format_word_list(extra_opts)));
+                log_info(cfg, "Extra C compiler options: " + bd_format_word_list(extra_opts));
             }
             let runtime_lib = bd_runtime_lib_dir(opts);
             if (runtime_lib != null && !bd_validate_runtime_lib(runtime_lib as string, cmd_diags)) {
@@ -1016,14 +1011,13 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 vs_push(command_words, vs_get(extra_opts, extra_i));
             }
             if (family == "unknown") {
-                log_warning(cfg, concat4_s("Unsupported compiler '", compiler as string,
-                    "' (flag family '", concat_s(family, "'): not adding standard flags")));
+                log_warning(cfg, "Unsupported compiler '" + compiler as string + "' (flag family '" + family + "'): not adding standard flags");
             }
             bd_push_standard_flags(command_words, family);
 
             let optimize = bd_get_optimize_flag(family, extra_opts);
             if (optimize != null) {
-                log_info(cfg, concat_s("Adding optimization flag: ", optimize as string));
+                log_info(cfg, "Adding optimization flag: " + optimize as string);
                 vs_push(command_words, optimize as string);
             }
 
@@ -1040,12 +1034,7 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             log_info(cfg, "Compiling:");
             log_info(cfg, bd_join_display_words(command_words));
 
-            let compile_cmd = concat4_s(
-                bd_join_shell_words(command_words),
-                " > ",
-                bd_shell_quote(stdout_path),
-                concat3_s(" 2> ", bd_shell_quote(stderr_path), "")
-            );
+            let compile_cmd = bd_join_shell_words(command_words) + " > " + bd_shell_quote(stdout_path) + " 2> " + bd_shell_quote(stderr_path);
             let compile_rc = system(compile_cmd);
             let compile_failed = compile_rc != 0;
             if (compile_failed) {
@@ -1064,7 +1053,7 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             if (compile_failed) {
                 return 1;
             }
-            log_info(cfg, concat_s("Built executable: ", exe_path));
+            log_info(cfg, "Built executable: " + exe_path);
             return 0;
         }
     }
@@ -1078,16 +1067,23 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
  * @return Process-style status code.
  */
 func bd_cmd_build(opts: CliOptions*, cfg: LogConfig*) -> int {
-    let exe_path = bd_default_exe_name();
     if (opts.output != null) {
-        exe_path = opts.output as string;
+        let exe_path = opts.output as string;
+        let keep_c_path: string? = null;
+        if (opts.keep_c) {
+            keep_c_path = bd_with_c_suffix(exe_path);
+        }
+        let rc = bd_build_to_exe(opts, cfg, exe_path, keep_c_path);
+        return rc;
     }
 
+    let exe_path = bd_default_exe_name();
     let keep_c_path: string? = null;
     if (opts.keep_c) {
         keep_c_path = bd_with_c_suffix(exe_path);
     }
-    return bd_build_to_exe(opts, cfg, exe_path, keep_c_path);
+    let rc = bd_build_to_exe(opts, cfg, exe_path, keep_c_path);
+    return rc;
 }
 
 /**
@@ -1100,7 +1096,7 @@ func bd_cmd_build(opts: CliOptions*, cfg: LogConfig*) -> int {
 func bd_cmd_run(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let run_diags = diag_create() => diag_free(run_diags)) {
         let temp_stem = bd_temp_stem("run");
-        let temp_exe = concat_s(temp_stem, bd_exe_suffix());
+        let temp_exe = temp_stem + bd_exe_suffix();
 
         if (opts.output != null && !opts.keep_c) {
             diag_warn(
@@ -1138,7 +1134,7 @@ func bd_cmd_run(opts: CliOptions*, cfg: LogConfig*) -> int {
                 vs_push(words, vs_get(opts.program_args, i));
             }
 
-            log_info(cfg, concat_s("Running: ", bd_join_display_words(words)));
+            log_info(cfg, "Running: " + bd_join_display_words(words));
             let run_cmd = bd_join_shell_words(words);
             let run_rc = system(run_cmd);
             bd_delete_if_present(temp_exe);

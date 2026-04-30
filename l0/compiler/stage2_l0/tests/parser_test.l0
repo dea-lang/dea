@@ -21,7 +21,7 @@ import std.text;
 func expect_error_code(source: string, expected: string) {
     let result = parse_module_source(source, "<test>");
     if (!parse_has_errors(result)) {
-        assert(false, concat3_s("Expected parse error ", expected, " but parse succeeded"));
+        assert(false, "Expected parse error " + expected + " but parse succeeded");
     }
     if (parse_diag_count(result) < 1) {
         assert(false, "Expected at least one diagnostic");
@@ -30,7 +30,7 @@ func expect_error_code(source: string, expected: string) {
     let diag = parse_diag_get(result, 0);
     if (diag.code != expected) {
         printl_ss("actual error code:", diag.code);
-        assert(false, concat_s("Expected parse error code ", expected));
+        assert(false, "Expected parse error code " + expected);
     }
 
     parse_result_free(result);

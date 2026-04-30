@@ -84,7 +84,7 @@ func test_lmss() {
     for (let i = 0; i < lmss_len(m); i = i + 1) {
         let k = lmss_key_at(m, i);
         let v = lmss_value_at(m, i);
-        printl_s(concat4_s("  ", k, " => ", v));
+        printl_s("  " + k + " => " + v);
     }
 
     // Test remove
@@ -102,7 +102,7 @@ func test_lmss() {
     for (let i = 0; i < lmss_len(m); i = i + 1) {
         let k = lmss_key_at(m, i);
         let v = lmss_value_at(m, i);
-        printl_s(concat4_s("  ", k, " => ", v));
+        printl_s("  " + k + " => " + v);
     }
 
     // Free

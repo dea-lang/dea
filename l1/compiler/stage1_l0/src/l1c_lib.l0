@@ -83,8 +83,8 @@ func l0c_copy_collector(dst: DiagCollector*, src: DiagCollector*) {
  * @param project_roots Effective project-root vector.
  */
 func l0c_log_effective_roots(cfg: LogConfig*, sys_roots: VectorString*, project_roots: VectorString*) {
-    log_info(cfg, concat_s("System root(s): ", sp_format_root_list(sys_roots)));
-    log_info(cfg, concat_s("Project root(s): ", sp_format_root_list(project_roots)));
+    log_info(cfg, "System root(s): " + sp_format_root_list(sys_roots));
+    log_info(cfg, "Project root(s): " + sp_format_root_list(project_roots));
 }
 
 /**
@@ -159,7 +159,7 @@ func l0c_print_module_token_header(module_name: string, path: string) {
 func l0c_dump_tokens_for_path(path: string, include_eof: bool, diags: DiagCollector*) -> int {
     let text_opt = read_file(path);
     if (text_opt == null) {
-        diag_error(diags, "l1c", "L1C-0040", concat_s("cannot read source file: ", path), path, 0, 0, 0, 0);
+        diag_error(diags, "l1c", "L1C-0040", "cannot read source file: " + path, path, 0, 0, 0, 0);
         return 1;
     }
 
@@ -273,7 +273,7 @@ func l0c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
                 diags,
                 "l1c",
                 "L1C-0070",
-                concat3_s("Module '", prep.entry_module, "' not found in system_roots or project_roots"),
+                "Module '" + prep.entry_module + "' not found in system_roots or project_roots",
                 "",
                 0,
                 0,
@@ -328,7 +328,7 @@ func l0c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
             let c_code = backend_generate(result, cg_opts, cfg);
             if (opts.output != null) {
                 if (write_file(opts.output as string, c_code) == null) {
-                    diag_error(diags, "l1c", "L1C-9511", concat_s("cannot write output file: ", opts.output as string),
+                    diag_error(diags, "l1c", "L1C-9511", "cannot write output file: " + (opts.output as string),
                         opts.output as string, 0, 0, 0, 0);
                     dp_print_collector(diags);
                     analysis_result_free(result);
@@ -379,12 +379,12 @@ func l0c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
 
                 let env_opt = nr_env_find(result.names as NameResolution*, mod_name);
                 if (env_opt == null) {
-                    printl_s(concat3_s("=== module ", mod_name, " (no symbol env) ==="));
+                    printl_s("=== module " + mod_name + " (no symbol env) ===");
                     continue;
                 }
                 let env = env_opt as ModuleEnv*;
 
-                printl_s(concat3_s("=== module ", mod_name, " ==="));
+                printl_s("=== module " + mod_name + " ===");
 
                 printl_s("  locals:");
                 with (let keys = spm_keys(env.locals) => vs_free(keys)) {
@@ -508,7 +508,7 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
                     continue;
                 }
 
-                printl_s(concat3_s("=== module ", mod_name, " ==="));
+                printl_s("=== module " + mod_name + " ===");
 
                 printl_s("  functions:");
                 let any_funcs = false;
@@ -516,10 +516,10 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
                     vs_sort(f_keys);
                     for (let j = 0; j < vs_size(f_keys); j = j + 1) {
                         let key = vs_get(f_keys, j);
-                        if (starts_with_s(key, concat_s(mod_name, "::"))) {
+                        if (starts_with_s(key, mod_name + "::")) {
                             any_funcs = true;
                             let fname = slice_s(key, len_s(mod_name) + 2, len_s(key));
-                            printl_s(concat4_s("    ", fname, ": ", type_format(spm_get(tables.func_types, key) as Type*)));
+                            printl_s("    " + fname + ": " + type_format(spm_get(tables.func_types, key) as Type*));
                         }
                     }
                 }
@@ -531,13 +531,13 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
                     vs_sort(s_keys);
                     for (let j = 0; j < vs_size(s_keys); j = j + 1) {
                         let key2 = vs_get(s_keys, j);
-                        if (starts_with_s(key2, concat_s(mod_name, "::"))) {
+                        if (starts_with_s(key2, mod_name + "::")) {
                             any_structs = true;
                             let s_info = spm_get(tables.struct_infos, key2) as StructInfo*;
-                            printl_s(concat3_s("    ", s_info.name, ":"));
+                            printl_s("    " + s_info.name + ":");
                             for (let k = 0; k < vec_size(s_info.fields); k = k + 1) {
                                 let f_info = ptr_vec_get(s_info.fields, k) as StructFieldInfo*;
-                                printl_s(concat4_s("      ", f_info.name, ": ", type_format(f_info.field_type)));
+                                printl_s("      " + f_info.name + ": " + type_format(f_info.field_type));
                             }
                         }
                     }
@@ -550,10 +550,10 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
                     vs_sort(e_keys);
                     for (let j = 0; j < vs_size(e_keys); j = j + 1) {
                         let key3 = vs_get(e_keys, j);
-                        if (starts_with_s(key3, concat_s(mod_name, "::"))) {
+                        if (starts_with_s(key3, mod_name + "::")) {
                             any_enums = true;
                             let e_info = spm_get(tables.enum_infos, key3) as EnumInfo*;
-                            printl_s(concat3_s("    ", e_info.name, ":"));
+                            printl_s("    " + e_info.name + ":");
                             for (let k = 0; k < vec_size(e_info.variants); k = k + 1) {
                                 let v_info = ptr_vec_get(e_info.variants, k) as EnumVariantInfo*;
                                 with (let sb = sb_create() => sb_free(sb)) {
@@ -657,7 +657,7 @@ func l0c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
                     if (unit.parse_result.root_module == null) {
                         continue;
                     }
-                    printl_s(concat3_s("=== Module ", name, " ==="));
+                    printl_s("=== Module " + name + " ===");
                     ap_print_module(unit.parse_result.root_module as Module*, unit.parse_result);
                     printl_s("");
                 }
@@ -672,7 +672,7 @@ func l0c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
                 diags,
                 "l1c",
                 "L1C-0070",
-                concat3_s("Module '", result.entry_module, "' not found in compilation unit"),
+                "Module '" + result.entry_module + "' not found in compilation unit",
                 "",
                 0,
                 0,
@@ -690,7 +690,7 @@ func l0c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
                 diags,
                 "l1c",
                 "L1C-0070",
-                concat3_s("Entry module '", result.entry_module, "' has no parsed AST"),
+                "Entry module '" + result.entry_module + "' has no parsed AST",
                 "",
                 0,
                 0,
@@ -721,7 +721,7 @@ func l0c_cmd_nyi(mode: CliMode, cfg: LogConfig*) -> int {
             diags,
             "l1c",
             "L1C-9510",
-            concat3_s("mode '", cli_mode_flag(mode), "' is not implemented in Stage 1 yet"),
+            "mode '" + cli_mode_flag(mode) + "' is not implemented in Stage 1 yet",
             "",
             0,
             0,

@@ -19,13 +19,13 @@ import std.text;
 func realnum_to_string(sig: string, exp_text: string, is_float: bool) -> string {
     let exp_part = "";
     if (exp_text != "") {
-        exp_part = concat_s("e", exp_text);
+        exp_part = "e" + exp_text;
     }
     let suffix = "";
     if (is_float) {
         suffix = "f";
     }
-    return concat3_s(sig, exp_part, suffix);
+    return sig + exp_part + suffix;
 }
 
 /**
@@ -50,9 +50,9 @@ func bigint_to_string(text: string, base: int) -> string {
          2 => { prefix = "0b"; }
     }
     if (len_s(text) > 0 && char_at_s(text, 0) == '-') {
-        return concat3_s("-", prefix, slice_s(text, 1, len_s(text)));
+        return "-" + prefix + slice_s(text, 1, len_s(text));
     }
-    return concat_s(prefix, text);
+    return prefix + text;
 }
 
 /**

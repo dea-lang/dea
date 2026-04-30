@@ -464,7 +464,7 @@ func ls_next_token(self: LexerState*) -> Token? {
 
         else {
             // If we reach here, it's an unrecognized character
-            ls_emit_error(self, "LEX-0040", concat3_s("unexpected character '", byte_to_s(c), "'"), start_line, start_column, start_line, start_column + 1);
+            ls_emit_error(self, "LEX-0040", "unexpected character '" + byte_to_s(c) + "'", start_line, start_column, start_line, start_column + 1);
             return null;
         }
     }
@@ -604,8 +604,7 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
                 return null;
             }
             if (single_byte && char_value > 255) {
-                ls_emit_error(self, "LEX-0031", concat3_s("character literal hexadecimal escape out of range (0-255): '\\x",
-                                               int_to_string_base(char_value, 16), "'"), self.line, self.column, self.line, self.column);
+                ls_emit_error(self, "LEX-0031", "character literal hexadecimal escape out of range (0-255): '\\x" + int_to_string_base(char_value, 16) + "'", self.line, self.column, self.line, self.column);
                 return null;
             }
         }
@@ -670,7 +669,7 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
             }
         }
         else {
-            ls_emit_error(self, "LEX-0059", concat3_s("unknown escape sequence '\\", byte_to_s(c), "'"), self.line, self.column, self.line, self.column);
+            ls_emit_error(self, "LEX-0059", "unknown escape sequence '\\" + byte_to_s(c) + "'", self.line, self.column, self.line, self.column);
             return null;
         }
 
@@ -792,10 +791,10 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
             if (is_ident_part(next_c)) {
                 if (!is_float && (next_c == 'd' || next_c == 'D')) {
                     // special-case error message for 'd'/'D' suffix
-                    ls_emit_error(self, "LEX-0067", concat3_s("invalid suffix '", byte_to_s(next_c), "' after real literal; only 'f' is supported"), self.line, self.column, self.line, self.column + 1);
+                    ls_emit_error(self, "LEX-0067", "invalid suffix '" + byte_to_s(next_c) + "' after real literal; only 'f' is supported", self.line, self.column, self.line, self.column + 1);
                     return null;
                 }
-                ls_emit_error(self, "LEX-0066", concat3_s("invalid character '", byte_to_s(next_c), "' after real literal"), self.line, self.column, self.line, self.column + 1);
+                ls_emit_error(self, "LEX-0066", "invalid character '" + byte_to_s(next_c) + "' after real literal", self.line, self.column, self.line, self.column + 1);
                 return null;
             }
 
@@ -813,10 +812,10 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
             if (is_ident_part(next_c)) {
                 if ((next_c == 'f' || next_c == 'F') && base == 10) {
                     // special-case error message for 'd'/'D' suffix
-                    ls_emit_error(self, "LEX-0068", concat3_s("invalid suffix '", byte_to_s(next_c), concat3_s("' after integer literal; use ", number_str, ".0f for a float")), self.line, self.column, self.line, self.column + 1);
+                    ls_emit_error(self, "LEX-0068", "invalid suffix '" + byte_to_s(next_c) + "' after integer literal; use " + number_str + ".0f for a float", self.line, self.column, self.line, self.column + 1);
                     return null;
                 }
-                ls_emit_error(self, "LEX-0061", concat3_s("invalid character '", byte_to_s(ls_peek(self)), "' after integer literal"), self.line, self.column, self.line, self.column + 1);
+                ls_emit_error(self, "LEX-0061", "invalid character '" + byte_to_s(ls_peek(self)) + "' after integer literal", self.line, self.column, self.line, self.column + 1);
                 return null;
             }
 

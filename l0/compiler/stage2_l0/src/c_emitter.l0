@@ -168,7 +168,7 @@ func ccb_emit(self: CCodeBuilder*, line: string) {
         vs_push(self.lines, "");
         return;
     }
-    vs_push(self.lines, concat_s(ccb_prefix(self), line));
+    vs_push(self.lines, ccb_prefix(self) + line);
 }
 
 /**
@@ -312,7 +312,7 @@ func cem_mangle_module(module_name: string) -> string {
  * @return Mangled C struct name.
  */
 func cem_mangle_struct_name(module_name: string, struct_name: string) -> string {
-    return concat4_s("l0_", cem_mangle_module(module_name), "_", struct_name);
+    return "l0_" + cem_mangle_module(module_name) + "_" + struct_name;
 }
 
 /**
@@ -323,7 +323,7 @@ func cem_mangle_struct_name(module_name: string, struct_name: string) -> string 
  * @return Mangled C enum name.
  */
 func cem_mangle_enum_name(module_name: string, enum_name: string) -> string {
-    return concat4_s("l0_", cem_mangle_module(module_name), "_", enum_name);
+    return "l0_" + cem_mangle_module(module_name) + "_" + enum_name;
 }
 
 /**
@@ -334,7 +334,7 @@ func cem_mangle_enum_name(module_name: string, enum_name: string) -> string {
  * @return Mangled C function name.
  */
 func cem_mangle_function_name(module_name: string, func_name: string) -> string {
-    return concat4_s("l0_", cem_mangle_module(module_name), "_", func_name);
+    return "l0_" + cem_mangle_module(module_name) + "_" + func_name;
 }
 
 /**
@@ -347,9 +347,9 @@ func cem_mangle_function_name(module_name: string, func_name: string) -> string 
 func cem_mangle_let_name(module_name: string, let_name: string) -> string {
     let safe = let_name;
     if (cem_is_c_keyword(let_name)) {
-        safe = concat_s("l0_kw_", let_name);
+        safe = "l0_kw_" + let_name;
     }
-    return concat4_s("l0_", cem_mangle_module(module_name), "_", safe);
+    return "l0_" + cem_mangle_module(module_name) + "_" + safe;
 }
 
 /**
@@ -361,7 +361,7 @@ func cem_mangle_let_name(module_name: string, let_name: string) -> string {
 func cem_mangle_identifier(name: string) -> string {
     if (cem_is_c_keyword(name) || ends_with_s(name, "__v") || starts_with_s(name, "l0_") || starts_with_s(name, "L0_") ||
         starts_with_s(name, "_")) {
-        return concat_s(name, "__v");
+        return name + "__v";
     }
     return name;
 }
@@ -375,7 +375,7 @@ func cem_mangle_identifier(name: string) -> string {
  */
 func cem_fresh_tmp(self: CEmitter*, kind: string) -> string {
     self.tmp_counter = self.tmp_counter + 1;
-    return concat4_s("l0_", kind, "_", int_to_string(self.tmp_counter));
+    return "l0_" + kind + "_" + int_to_string(self.tmp_counter);
 }
 
 /**
@@ -385,7 +385,7 @@ func cem_fresh_tmp(self: CEmitter*, kind: string) -> string {
  * @return Casted `sizeof` expression.
  */
 func cem_emit_sizeof_type(typ: Type*) -> string {
-    return concat3_s("((l0_int)sizeof(", cem_emit_type(typ), "))");
+    return "((l0_int)sizeof(" + cem_emit_type(typ) + "))";
 }
 
 /**
@@ -395,7 +395,7 @@ func cem_emit_sizeof_type(typ: Type*) -> string {
  * @return Casted tag extraction expression.
  */
 func cem_emit_ord(c_enum_expr: string) -> string {
-    return concat3_s("((l0_int)((", c_enum_expr, ").tag))");
+    return "((l0_int)((" + c_enum_expr + ").tag))";
 }
 
 /**
@@ -405,7 +405,7 @@ func cem_emit_ord(c_enum_expr: string) -> string {
  * @return Pointer type spelling.
  */
 func cem_emit_pointer_type(base_type: Type*) -> string {
-    return concat_s(cem_emit_type(base_type), "*");
+    return cem_emit_type(base_type) + "*";
 }
 
 /**
@@ -417,7 +417,7 @@ func cem_emit_pointer_type(base_type: Type*) -> string {
  */
 func cem_emit_enum_tag(enum_type: Type*, variant_name: string) -> string {
     let c_enum_name = cem_mangle_enum_name(enum_type.module_name, enum_type.name);
-    return concat3_s(c_enum_name, "_", variant_name);
+    return c_enum_name + "_" + variant_name;
 }
 
 /**
@@ -441,16 +441,16 @@ func cem_opt_key_for_type(t: Type*) -> string {
         return t.name;
     }
     if (ord(t.kind) == ord(TY_STRUCT)) {
-        return concat_s("s_", cem_mangle_struct_name(t.module_name, t.name));
+        return "s_" + cem_mangle_struct_name(t.module_name, t.name);
     }
     if (ord(t.kind) == ord(TY_ENUM)) {
-        return concat_s("e_", cem_mangle_enum_name(t.module_name, t.name));
+        return "e_" + cem_mangle_enum_name(t.module_name, t.name);
     }
     if (ord(t.kind) == ord(TY_POINTER)) {
-        return concat_s("p_", cem_opt_key_for_type(t.inner as Type*));
+        return "p_" + cem_opt_key_for_type(t.inner as Type*);
     }
     if (ord(t.kind) == ord(TY_NULLABLE)) {
-        return concat_s("n_", cem_opt_key_for_type(t.inner as Type*));
+        return "n_" + cem_opt_key_for_type(t.inner as Type*);
     }
     if (ord(t.kind) == ord(TY_FUNC)) {
         return "fn";
@@ -465,7 +465,7 @@ func cem_opt_key_for_type(t: Type*) -> string {
  * @return Wrapper typedef name.
  */
 func cem_opt_wrapper_name_for_inner(inner: Type*) -> string {
-    return concat_s("l0_opt_", cem_opt_key_for_type(inner));
+    return "l0_opt_" + cem_opt_key_for_type(inner);
 }
 
 /**
@@ -492,13 +492,13 @@ func cem_emit_type(typ: Type*) -> string {
     }
 
     if (ord(typ.kind) == ord(TY_STRUCT)) {
-        return concat_s("struct ", cem_mangle_struct_name(typ.module_name, typ.name));
+        return "struct " + cem_mangle_struct_name(typ.module_name, typ.name);
     }
     if (ord(typ.kind) == ord(TY_ENUM)) {
-        return concat_s("struct ", cem_mangle_enum_name(typ.module_name, typ.name));
+        return "struct " + cem_mangle_enum_name(typ.module_name, typ.name);
     }
     if (ord(typ.kind) == ord(TY_POINTER)) {
-        return concat_s(cem_emit_type(typ.inner as Type*), "*");
+        return cem_emit_type(typ.inner as Type*) + "*";
     }
     if (ord(typ.kind) == ord(TY_NULLABLE)) {
         if (cem_is_niche_nullable(typ)) {
@@ -510,10 +510,10 @@ func cem_emit_type(typ: Type*) -> string {
         return cem_ice_string("[ICE-1291] function pointer type emission not implemented");
     }
     if (ord(typ.kind) == ord(TY_BUILTIN)) {
-        return cem_ice_string(concat3_s("[ICE-1290] unknown builtin type '", type_format(typ), "'"));
+        return cem_ice_string("[ICE-1290] unknown builtin type '" + type_format(typ) + "'");
     }
 
-    return cem_ice_string(concat_s("[ICE-9299] unknown type kind for type emission: ", type_format(typ)));
+    return cem_ice_string("[ICE-9299] unknown type kind for type emission: " + type_format(typ));
 }
 
 /**
@@ -527,7 +527,7 @@ func cem_emit_none_value_for_nullable(t: Type*) -> string {
     if (ord(inner.kind) == ord(TY_POINTER)) {
         return "NULL";
     }
-    return concat4_s("((", cem_opt_wrapper_name_for_inner(inner), "){.has_value = 0", "})");
+    return "((" + cem_opt_wrapper_name_for_inner(inner) + "){.has_value = 0" + "})";
 }
 
 /**
@@ -542,12 +542,7 @@ func cem_emit_some_value_for_nullable(t: Type*, c_inner_expr: string) -> string 
     if (ord(inner.kind) == ord(TY_POINTER)) {
         return c_inner_expr;
     }
-    return concat4_s(
-        "((",
-        cem_opt_wrapper_name_for_inner(inner),
-        "){.has_value = 1, .value = ",
-        concat_s(c_inner_expr, "})")
-    );
+    return "((" + cem_opt_wrapper_name_for_inner(inner) + "){.has_value = 1, .value = " + c_inner_expr + "})";
 }
 
 /**
@@ -567,7 +562,7 @@ func cem_emit_null_literal(expected_type: Type*, for_initializer: bool) -> strin
         }
         return cem_emit_none_value_for_nullable(expected_type);
     }
-    return cem_ice_string(concat3_s("[ICE-1292] invalid expected type for null literal: '", type_format(expected_type), "'"));
+    return cem_ice_string("[ICE-1292] invalid expected type for null literal: '" + type_format(expected_type) + "'");
 }
 
 /**
@@ -585,8 +580,7 @@ func cem_emit_widen_int(c_expr: string, src_type: Type*, dst_type: Type*) -> str
     if (type_is_builtin(src_type, "byte") && type_is_builtin(dst_type, "int")) {
         return cem_emit_cast(cem_emit_type(dst_type), c_expr);
     }
-    return cem_ice_string(concat4_s("[ICE-1293] unsupported widening cast ", type_format(src_type), " -> ",
-        type_format(dst_type)));
+    return cem_ice_string("[ICE-1293] unsupported widening cast " + type_format(src_type) + " -> " + type_format(dst_type));
 }
 
 /**
@@ -596,7 +590,7 @@ func cem_emit_widen_int(c_expr: string, src_type: Type*, dst_type: Type*) -> str
  * @param text Comment text.
  */
 func cem_emit_section_comment(self: CEmitter*, text: string) {
-    ccb_emit(self.out, concat3_s("/* ", text, " */"));
+    ccb_emit(self.out, "/* " + text + " */");
 }
 
 /**
@@ -606,7 +600,7 @@ func cem_emit_section_comment(self: CEmitter*, text: string) {
  * @param module_name Module name to report.
  */
 func cem_emit_module_comment(self: CEmitter*, module_name: string) {
-    ccb_emit(self.out, concat3_s("/* Module: ", module_name, " */"));
+    ccb_emit(self.out, "/* Module: " + module_name + " */");
 }
 
 /**
@@ -638,7 +632,7 @@ func cem_emit_unreachable_comment(self: CEmitter*) {
  */
 func cem_emit_unreachable_marker(self: CEmitter*, reason: string) {
     let c_reason = se_encode_c_string_bytes(reason);
-    ccb_emit(self.out, concat4_s("L0_UNREACHABLE(\"", c_reason, "\"", ");"));
+    ccb_emit(self.out, "L0_UNREACHABLE(\"" + c_reason + "\"" + ");");
 }
 
 /**
@@ -679,7 +673,7 @@ func cem_emit_header(self: CEmitter*, opts: CodegenOptions*) {
 func cem_module_filename(self: CEmitter*, module_name: string) -> string {
     let unit = driver_find_unit(cem_analysis(self).driver_state, module_name);
     if (unit == null) {
-        return concat_s(module_name, ".l0");
+        return module_name + ".l0";
     }
     /* Normalize backslashes to forward slashes so that #line directives are
        deterministic regardless of how the path was provided. */
@@ -700,12 +694,7 @@ func cem_emit_line_directive(self: CEmitter*, line: int, current_module: string,
     }
     ccb_emit(
         self.out,
-        concat4_s(
-            "#line ",
-            int_to_string(line),
-            " \"",
-            concat_s(se_encode_c_string_bytes(cem_module_filename(self, current_module)), "\"")
-        )
+        "#line " + int_to_string(line) + " \"" + se_encode_c_string_bytes(cem_module_filename(self, current_module)) + "\""
     );
 }
 
@@ -730,10 +719,10 @@ func cem_emit_forward_decls(self: CEmitter*) {
             let decl = ptr_vec_get(root.decls, j) as TopLevelDecl*;
             if (ord(decl.kind) == ord(TD_STRUCT)) {
                 let sd = decl.data as StructDecl*;
-                ccb_emit(self.out, concat_s("struct ", concat_s(cem_mangle_struct_name(root.name, sd.name), ";")));
+                ccb_emit(self.out, "struct " + cem_mangle_struct_name(root.name, sd.name) + ";");
             } else if (ord(decl.kind) == ord(TD_ENUM)) {
                 let ed = decl.data as EnumDecl*;
-                ccb_emit(self.out, concat_s("struct ", concat_s(cem_mangle_enum_name(root.name, ed.name), ";")));
+                ccb_emit(self.out, "struct " + cem_mangle_enum_name(root.name, ed.name) + ";");
             }
         }
     }
@@ -768,15 +757,15 @@ func cem_find_enum_variant_info(enum_info: EnumInfo*, variant_name: string) -> E
  */
 func cem_emit_struct(self: CEmitter*, module_name: string, decl: StructDecl*, struct_info: StructInfo*) {
     let c_name = cem_mangle_struct_name(module_name, decl.name);
-    let guard = concat_s("L0_DEFINED_", c_name);
-    ccb_emit(self.out, concat_s("#ifndef ", guard));
-    ccb_emit(self.out, concat_s("#define ", guard));
-    ccb_emit(self.out, concat_s("struct ", concat_s(c_name, " {")));
+    let guard = "L0_DEFINED_" + c_name;
+    ccb_emit(self.out, "#ifndef " + guard);
+    ccb_emit(self.out, "#define " + guard);
+    ccb_emit(self.out, "struct " + c_name + " {");
     ccb_indent(self.out);
 
     for (let i = 0; i < vec_size(struct_info.fields); i = i + 1) {
         let field_info = ptr_vec_get(struct_info.fields, i) as StructFieldInfo*;
-        ccb_emit(self.out, concat3_s(cem_emit_type(field_info.field_type), " ", concat_s(field_info.name, ";")));
+        ccb_emit(self.out, cem_emit_type(field_info.field_type) + " " + field_info.name + ";");
     }
 
     if (vec_size(struct_info.fields) == 0) {
@@ -799,25 +788,25 @@ func cem_emit_struct(self: CEmitter*, module_name: string, decl: StructDecl*, st
  */
 func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_info: EnumInfo*) {
     let c_name = cem_mangle_enum_name(module_name, decl.name);
-    let guard = concat_s("L0_DEFINED_", c_name);
-    let tag_enum_name = concat_s(c_name, "_tag");
+    let guard = "L0_DEFINED_" + c_name;
+    let tag_enum_name = c_name + "_tag";
 
-    ccb_emit(self.out, concat_s("#ifndef ", guard));
-    ccb_emit(self.out, concat_s("#define ", guard));
-    ccb_emit(self.out, concat_s("enum ", concat_s(tag_enum_name, " {")));
+    ccb_emit(self.out, "#ifndef " + guard);
+    ccb_emit(self.out, "#define " + guard);
+    ccb_emit(self.out, "enum " + tag_enum_name + " {");
     ccb_indent(self.out);
 
     for (let i = 0; i < vec_size(decl.variants); i = i + 1) {
         let variant = ptr_vec_get(decl.variants, i) as EnumVariant*;
-        ccb_emit(self.out, concat3_s(c_name, "_", concat_s(variant.name, ",")));
+        ccb_emit(self.out, c_name + "_" + variant.name + ",");
     }
 
     ccb_dedent(self.out);
     ccb_emit(self.out, "};");
     ccb_emit(self.out, "");
-    ccb_emit(self.out, concat_s("struct ", concat_s(c_name, " {")));
+    ccb_emit(self.out, "struct " + c_name + " {");
     ccb_indent(self.out);
-    ccb_emit(self.out, concat_s("enum ", concat_s(tag_enum_name, " tag;")));
+    ccb_emit(self.out, "enum " + tag_enum_name + " tag;");
     ccb_emit(self.out, "union {");
     ccb_indent(self.out);
 
@@ -825,12 +814,12 @@ func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_i
         let variant2 = ptr_vec_get(decl.variants, variant_i) as EnumVariant*;
         let info = cem_find_enum_variant_info(enum_info, variant2.name);
         if (info == null) {
-            cem_ice(concat4_s("[ICE-1271] missing VariantInfo for ", module_name, ".", concat3_s(decl.name, ".", variant2.name)));
+            cem_ice("[ICE-1271] missing VariantInfo for " + module_name + "." + decl.name + "." + variant2.name);
         }
 
         let variant_info = info as EnumVariantInfo*;
         if (vec_size(variant_info.field_types) == 0) {
-            ccb_emit(self.out, concat3_s("struct { char __dummy__; } ", variant2.name, ";"));
+            ccb_emit(self.out, "struct { char __dummy__; } " + variant2.name + ";");
             continue;
         }
 
@@ -873,7 +862,7 @@ func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_i
 func cem_emit_let_declaration(self: CEmitter*, module_name: string, decl: LetDecl*, let_type: Type*, c_init: string) {
     let c_type = cem_emit_type(let_type);
     let c_name = cem_mangle_let_name(module_name, decl.name);
-    ccb_emit(self.out, concat4_s("static ", c_type, " ", concat3_s(c_name, " = ", concat_s(c_init, ";"))));
+    ccb_emit(self.out, "static " + c_type + " " + c_name + " = " + c_init + ";");
 }
 
 /**
@@ -947,14 +936,14 @@ func cem_function_params(decl: FuncDecl*, func_type: Type*) -> string {
 func cem_emit_function_declaration(self: CEmitter*, module_name: string, decl: FuncDecl*, func_type: Type*) {
     let c_name = "";
     if (decl.is_extern) {
-        c_name = concat3_s("(", decl.name, ")");
+        c_name = "(" + decl.name + ")";
     } else {
         c_name = cem_mangle_function_name(module_name, decl.name);
     }
 
     let c_return_type = cem_emit_type(func_type.result as Type*);
     let params_str = cem_function_params(decl, func_type);
-    ccb_emit(self.out, concat4_s(c_return_type, " ", c_name, concat3_s("(", params_str, ");")));
+    ccb_emit(self.out, c_return_type + " " + c_name + "(" + params_str + ");");
 }
 
 /**
@@ -969,7 +958,7 @@ func cem_emit_function_definition_header(self: CEmitter*, module_name: string, d
     let c_name = cem_mangle_function_name(module_name, decl.name);
     let c_return_type = cem_emit_type(func_type.result as Type*);
     let params_str = cem_function_params(decl, func_type);
-    ccb_emit(self.out, concat4_s(c_return_type, " ", c_name, concat3_s("(", params_str, ")")));
+    ccb_emit(self.out, c_return_type + " " + c_name + "(" + params_str + ")");
     ccb_emit(self.out, "{");
     ccb_indent(self.out);
 }
@@ -1003,12 +992,12 @@ func cem_emit_main_wrapper(self: CEmitter*, entry_module: string, func_type: Typ
     ccb_emit(self.out, "_rt_init_args(argc, argv);");
 
     if (c_return_type == "l0_int") {
-        ccb_emit(self.out, concat3_s("int l0_exit_code = (int) ", mangled_name, "();"));
+        ccb_emit(self.out, "int l0_exit_code = (int) " + mangled_name + "();");
     } else if (c_return_type == "bool") {
-        ccb_emit(self.out, concat4_s("bool result = ", mangled_name, "(", ");"));
+        ccb_emit(self.out, "bool result = " + mangled_name + "(" + ");");
         ccb_emit(self.out, "int l0_exit_code = result ? 0 : 1;");
     } else {
-        ccb_emit(self.out, concat3_s(mangled_name, "(", ");"));
+        ccb_emit(self.out, mangled_name + "(" + ");");
         ccb_emit(self.out, "int l0_exit_code = 0;");
     }
 
@@ -1091,12 +1080,12 @@ func cem_emit_optional_wrapper(self: CEmitter*, name: string, inner: Type*) {
         return;
     }
 
-    let guard = concat_s(cem_upper_ascii(name), "_DEFINED");
+    let guard = cem_upper_ascii(name) + "_DEFINED";
     let c_inner = cem_emit_type(inner);
-    ccb_emit(self.out, concat_s("#ifndef ", guard));
-    ccb_emit(self.out, concat_s("#define ", guard));
-    ccb_emit(self.out, concat4_s("typedef struct { l0_bool has_value; ", c_inner, " value; } ", concat_s(name, ";")));
-    ccb_emit(self.out, concat3_s("#endif /* ", guard, " */"));
+    ccb_emit(self.out, "#ifndef " + guard);
+    ccb_emit(self.out, "#define " + guard);
+    ccb_emit(self.out, "typedef struct { l0_bool has_value; " + c_inner + " value; } " + name + ";");
+    ccb_emit(self.out, "#endif /* " + guard + " */");
     ccb_emit(self.out, "");
     ss_add(self.opt_emitted, name);
 }
@@ -1269,9 +1258,9 @@ func cem_encode_c_byte_literal(value: byte) -> string {
 
     let hex = int_to_string_base(value as int, 16);
     if (len_s(hex) == 1) {
-        return concat3_s("\\x0", hex, "");
+        return "\\x0" + hex;
     }
-    return concat3_s("\\x", hex, "");
+    return "\\x" + hex;
 }
 
 /**
@@ -1281,7 +1270,7 @@ func cem_encode_c_byte_literal(value: byte) -> string {
  * @return C spelling for the literal.
  */
 func cem_emit_byte_literal(value: byte) -> string {
-    return concat3_s("((l0_byte)'", cem_encode_c_byte_literal(value), "')");
+    return "((l0_byte)'" + cem_encode_c_byte_literal(value) + "')";
 }
 
 /**
@@ -1292,12 +1281,7 @@ func cem_emit_byte_literal(value: byte) -> string {
  */
 func cem_emit_string_literal(value: string) -> string {
     let escaped = se_encode_c_string_bytes(value);
-    return concat4_s(
-        "((l0_string)L0_STRING_CONST(\"",
-        escaped,
-        "\", ",
-        concat_s(int_to_string(len_s(value)), "))")
-    );
+    return "((l0_string)L0_STRING_CONST(\"" + escaped + "\", " + int_to_string(len_s(value)) + "))";
 }
 
 /**
@@ -1308,12 +1292,7 @@ func cem_emit_string_literal(value: string) -> string {
  */
 func cem_emit_const_string_literal(value: string) -> string {
     let escaped = se_encode_c_string_bytes(value);
-    return concat4_s(
-        "L0_STRING_CONST(\"",
-        escaped,
-        "\", ",
-        concat_s(int_to_string(len_s(value)), ")")
-    );
+    return "L0_STRING_CONST(\"" + escaped + "\", " + int_to_string(len_s(value)) + ")";
 }
 
 /**
@@ -1334,7 +1313,7 @@ func cem_emit_var_ref(c_name: string) -> string {
  * @return Parenthesized C unary expression.
  */
 func cem_emit_unary_op(op: string, c_operand: string) -> string {
-    return concat4_s("(", op, c_operand, ")");
+    return "(" + op + c_operand + ")";
 }
 
 /**
@@ -1356,7 +1335,7 @@ func cem_emit_negated_condition(c_cond: string) -> string {
  * @return Parenthesized C binary expression.
  */
 func cem_emit_binary_op(op: string, c_left: string, c_right: string) -> string {
-    return concat4_s(concat4_s("(", c_left, " ", op), " ", c_right, ")");
+    return "(" + c_left + " " + op + " " + c_right + ")";
 }
 
 /**
@@ -1368,7 +1347,7 @@ func cem_emit_binary_op(op: string, c_left: string, c_right: string) -> string {
  * @return Non-parenthesized C binary expression.
  */
 func cem_emit_condition_binary_op(op: string, c_left: string, c_right: string) -> string {
-    return concat3_s(concat4_s(c_left, " ", op, " "), c_right, "");
+    return c_left + " " + op + " " + c_right;
 }
 
 /**
@@ -1379,7 +1358,7 @@ func cem_emit_condition_binary_op(op: string, c_left: string, c_right: string) -
  * @return Runtime-call expression.
  */
 func cem_emit_checked_int_div(c_left: string, c_right: string) -> string {
-    return concat4_s("(_rt_idiv(", c_left, ", ", concat_s(c_right, "))"));
+    return "(_rt_idiv(" + c_left + ", " + c_right + "))";
 }
 
 /**
@@ -1390,7 +1369,7 @@ func cem_emit_checked_int_div(c_left: string, c_right: string) -> string {
  * @return Runtime-call expression.
  */
 func cem_emit_checked_int_mod(c_left: string, c_right: string) -> string {
-    return concat4_s("(_rt_imod(", c_left, ", ", concat_s(c_right, "))"));
+    return "(_rt_imod(" + c_left + ", " + c_right + "))";
 }
 
 /**
@@ -1401,7 +1380,7 @@ func cem_emit_checked_int_mod(c_left: string, c_right: string) -> string {
  * @return Runtime-call expression.
  */
 func cem_emit_checked_int_mul(c_left: string, c_right: string) -> string {
-    return concat4_s("(_rt_imul(", c_left, ", ", concat_s(c_right, "))"));
+    return "(_rt_imul(" + c_left + ", " + c_right + "))";
 }
 
 /**
@@ -1412,7 +1391,7 @@ func cem_emit_checked_int_mul(c_left: string, c_right: string) -> string {
  * @return Runtime-call expression.
  */
 func cem_emit_checked_int_add(c_left: string, c_right: string) -> string {
-    return concat4_s("(_rt_iadd(", c_left, ", ", concat_s(c_right, "))"));
+    return "(_rt_iadd(" + c_left + ", " + c_right + "))";
 }
 
 /**
@@ -1423,7 +1402,7 @@ func cem_emit_checked_int_add(c_left: string, c_right: string) -> string {
  * @return Runtime-call expression.
  */
 func cem_emit_checked_int_sub(c_left: string, c_right: string) -> string {
-    return concat4_s("(_rt_isub(", c_left, ", ", concat_s(c_right, "))"));
+    return "(_rt_isub(" + c_left + ", " + c_right + "))";
 }
 
 /**
@@ -1434,7 +1413,7 @@ func cem_emit_checked_int_sub(c_left: string, c_right: string) -> string {
  * @return Function-call expression.
  */
 func cem_emit_function_call(c_func_name: string, c_args: string) -> string {
-    return concat4_s(c_func_name, "(", c_args, ")");
+    return c_func_name + "(" + c_args + ")";
 }
 
 /**
@@ -1447,9 +1426,9 @@ func cem_emit_function_call(c_func_name: string, c_args: string) -> string {
  */
 func cem_emit_field_access(c_obj: string, field_name: string, is_pointer: bool) -> string {
     if (is_pointer) {
-        return concat4_s("(", c_obj, ")->", field_name);
+        return "(" + c_obj + ")->" + field_name;
     }
-    return concat4_s("(", c_obj, ").", field_name);
+    return "(" + c_obj + ")." + field_name;
 }
 
 /**
@@ -1459,7 +1438,7 @@ func cem_emit_field_access(c_obj: string, field_name: string, is_pointer: bool) 
  * @return Parenthesized expression.
  */
 func cem_emit_paren_expr(c_inner: string) -> string {
-    return concat3_s("(", c_inner, ")");
+    return "(" + c_inner + ")";
 }
 
 /**
@@ -1470,7 +1449,7 @@ func cem_emit_paren_expr(c_inner: string) -> string {
  * @return Cast expression.
  */
 func cem_emit_cast(c_type: string, c_inner: string) -> string {
-    return concat4_s("((", c_type, ")(", concat_s(c_inner, "))"));
+    return "((" + c_type + ")(" + c_inner + "))";
 }
 
 /**
@@ -1481,7 +1460,7 @@ func cem_emit_cast(c_type: string, c_inner: string) -> string {
  * @return Runtime-call expression.
  */
 func cem_emit_checked_narrow_cast(c_dst_type: string, c_inner: string) -> string {
-    return concat4_s("(_rt_narrow_", c_dst_type, "(", concat_s(c_inner, "))"));
+    return "(_rt_narrow_" + c_dst_type + "(" + c_inner + "))";
 }
 
 /**
@@ -1493,7 +1472,7 @@ func cem_emit_checked_narrow_cast(c_dst_type: string, c_inner: string) -> string
  * @return Unwrap expression.
  */
 func cem_emit_unwrap_ptr(c_dst_type: string, c_inner: string, type_str: string) -> string {
-    return concat4_s("((", c_dst_type, ") _unwrap_ptr(", concat4_s(c_inner, ", \"", type_str, "\"))"));
+    return "((" + c_dst_type + ") _unwrap_ptr(" + c_inner + ", \"" + type_str + "\"))";
 }
 
 /**
@@ -1505,7 +1484,7 @@ func cem_emit_unwrap_ptr(c_dst_type: string, c_inner: string, type_str: string) 
  * @return Unwrap expression.
  */
 func cem_emit_unwrap_opt(c_src_type: string, c_inner: string, type_str: string) -> string {
-    return concat4_s("(((", c_src_type, "*) _unwrap_opt(&(", concat4_s(c_inner, "), \"", type_str, "\"))->value)"));
+    return "(((" + c_src_type + "*) _unwrap_opt(&(" + c_inner + "), \"" + type_str + "\"))->value)";
 }
 
 /**
@@ -1515,7 +1494,7 @@ func cem_emit_unwrap_opt(c_src_type: string, c_inner: string, type_str: string) 
  * @return Equality-check expression.
  */
 func cem_emit_null_check_eq(c_expr: string) -> string {
-    return concat4_s("(!(", cem_emit_optional_has_value(c_expr), "", "))");
+    return "(!(" + cem_emit_optional_has_value(c_expr) + "))";
 }
 
 /**
@@ -1536,7 +1515,7 @@ func cem_emit_null_check_ne(c_expr: string) -> string {
  * @return Comparison expression.
  */
 func cem_emit_pointer_null_check(c_expr: string, op: string) -> string {
-    return concat4_s("(", c_expr, concat3_s(" ", op, " NULL"), ")");
+    return "(" + c_expr + " " + op + " NULL" + ")";
 }
 
 /**
@@ -1547,7 +1526,7 @@ func cem_emit_pointer_null_check(c_expr: string, op: string) -> string {
  * @return Non-parenthesized comparison expression.
  */
 func cem_emit_condition_pointer_null_check(c_expr: string, op: string) -> string {
-    return concat4_s(c_expr, " ", op, " NULL");
+    return c_expr + " " + op + " NULL";
 }
 
 /**
@@ -1557,7 +1536,7 @@ func cem_emit_condition_pointer_null_check(c_expr: string, op: string) -> string
  * @return Member-access expression.
  */
 func cem_emit_optional_has_value(c_expr: string) -> string {
-    return concat3_s("(", c_expr, ").has_value");
+    return "(" + c_expr + ").has_value";
 }
 
 /**
@@ -1567,7 +1546,7 @@ func cem_emit_optional_has_value(c_expr: string) -> string {
  * @return Member-access expression.
  */
 func cem_emit_optional_value(c_expr: string) -> string {
-    return concat3_s("(", c_expr, ").value");
+    return "(" + c_expr + ").value";
 }
 
 /**
@@ -1577,7 +1556,7 @@ func cem_emit_optional_value(c_expr: string) -> string {
  * @return Member-access expression.
  */
 func cem_emit_enum_tag_access(c_expr: string) -> string {
-    return concat3_s("(", c_expr, ").tag");
+    return "(" + c_expr + ").tag";
 }
 
 /**
@@ -1589,7 +1568,7 @@ func cem_emit_enum_tag_access(c_expr: string) -> string {
  * @return Member-access expression.
  */
 func cem_emit_enum_payload_field_access(c_expr: string, variant: string, field: string) -> string {
-    return concat3_s(concat4_s("(", c_expr, ").data.", variant), ".", field);
+    return "(" + c_expr + ").data." + variant + "." + field;
 }
 
 /**
@@ -1600,7 +1579,7 @@ func cem_emit_enum_payload_field_access(c_expr: string, variant: string, field: 
  * @return Call expression.
  */
 func cem_emit_string_equals_call(lhs: string, rhs: string) -> string {
-    return concat4_s("rt_string_equals(", lhs, ", ", concat_s(rhs, ")"));
+    return "rt_string_equals(" + lhs + ", " + rhs + ")";
 }
 
 /**
@@ -1611,7 +1590,7 @@ func cem_emit_string_equals_call(lhs: string, rhs: string) -> string {
  * @return Call expression.
  */
 func cem_emit_string_concat_call(lhs: string, rhs: string) -> string {
-    return concat4_s("rt_string_concat(", lhs, ", ", concat_s(rhs, ")"));
+    return "rt_string_concat(" + lhs + ", " + rhs + ")";
 }
 
 /**
@@ -1623,7 +1602,7 @@ func cem_emit_string_concat_call(lhs: string, rhs: string) -> string {
  * @return Parenthesized comparison expression.
  */
 func cem_emit_string_compare_call(op: string, lhs: string, rhs: string) -> string {
-    return concat4_s("(rt_string_compare(", lhs, ", ", concat4_s(rhs, ") ", op, " 0)"));
+    return "(rt_string_compare(" + lhs + ", " + rhs + ") " + op + " 0)";
 }
 
 /**
@@ -1635,7 +1614,7 @@ func cem_emit_string_compare_call(op: string, lhs: string, rhs: string) -> strin
  * @return Non-parenthesized comparison expression.
  */
 func cem_emit_condition_string_compare_call(op: string, lhs: string, rhs: string) -> string {
-    return concat4_s("rt_string_compare(", lhs, ", ", concat4_s(rhs, ") ", op, " 0"));
+    return "rt_string_compare(" + lhs + ", " + rhs + ") " + op + " 0";
 }
 
 /**
@@ -1645,7 +1624,7 @@ func cem_emit_condition_string_compare_call(op: string, lhs: string, rhs: string
  * @return Wrapped expression.
  */
 func cem_emit_discard_expr(c_expr: string) -> string {
-    return concat3_s("(void)(", c_expr, ")");
+    return "(void)(" + c_expr + ")";
 }
 
 /**
@@ -1655,7 +1634,7 @@ func cem_emit_discard_expr(c_expr: string) -> string {
  * @return Dereference lvalue text.
  */
 func cem_emit_deref_lvalue(ptr_expr: string) -> string {
-    return concat3_s("(*", ptr_expr, ")");
+    return "(*" + ptr_expr + ")";
 }
 
 /**
@@ -1668,9 +1647,9 @@ func cem_emit_deref_lvalue(ptr_expr: string) -> string {
  */
 func cem_emit_field_lvalue(obj: string, field: string, is_pointer: bool) -> string {
     if (is_pointer) {
-        return concat3_s(obj, "->", field);
+        return obj + "->" + field;
     }
-    return concat3_s(obj, ".", field);
+    return obj + "." + field;
 }
 
 /**
@@ -1681,7 +1660,7 @@ func cem_emit_field_lvalue(obj: string, field: string, is_pointer: bool) -> stri
  * @return Indexed lvalue text.
  */
 func cem_emit_index_lvalue(base: string, index: string) -> string {
-    return concat4_s(base, "[", index, "]");
+    return base + "[" + index + "]";
 }
 
 /**
@@ -1693,7 +1672,7 @@ func cem_emit_index_lvalue(base: string, index: string) -> string {
  */
 func cem_emit_struct_constructor(c_struct_name: string, field_inits: VectorString*) -> string {
     if (vs_size(field_inits) == 0) {
-        return concat4_s("(struct ", c_struct_name, "){ 0", " }");
+        return "(struct " + c_struct_name + "){ 0" + " }";
     }
 
     with (let sb = sb_create() => sb_free(sb)) {
@@ -1775,7 +1754,7 @@ func cem_emit_struct_static_initializer_for_type(struct_type: Type*, field_inits
 func cem_emit_variant_constructor(c_enum_name: string, variant_name: string, tag_value: string,
                                   payload_inits: VectorString*) -> string {
     if (vs_size(payload_inits) == 0) {
-        return concat4_s("(struct ", c_enum_name, "){ .tag = ", concat_s(tag_value, " }"));
+        return "(struct " + c_enum_name + "){ .tag = " + tag_value + " }";
     }
 
     with (let sb = sb_create() => sb_free(sb)) {
@@ -1811,7 +1790,7 @@ func cem_emit_variant_constructor(c_enum_name: string, variant_name: string, tag
 func cem_emit_variant_static_initializer(variant_name: string, tag_value: string,
                                          payload_inits: VectorString*) -> string {
     if (vs_size(payload_inits) == 0) {
-        return concat3_s("{ .tag = ", tag_value, " }");
+        return "{ .tag = " + tag_value + " }";
     }
 
     with (let sb = sb_create() => sb_free(sb)) {
@@ -1869,7 +1848,7 @@ func cem_emit_variant_static_initializer_for_type(enum_type: Type*, variant_name
  * @param c_expr Lowered expression.
  */
 func cem_emit_expr_stmt(self: CEmitter*, c_expr: string) {
-    ccb_emit(self.out, concat_s(c_expr, ";"));
+    ccb_emit(self.out, c_expr + ";");
 }
 
 /**
@@ -1879,7 +1858,7 @@ func cem_emit_expr_stmt(self: CEmitter*, c_expr: string) {
  * @param c_value Lowered return value.
  */
 func cem_emit_return_stmt(self: CEmitter*, c_value: string) {
-    ccb_emit(self.out, concat3_s("return ", c_value, ";"));
+    ccb_emit(self.out, "return " + c_value + ";");
 }
 
 /**
@@ -1899,7 +1878,7 @@ func cem_emit_return_void_stmt(self: CEmitter*) {
  */
 func cem_emit_label(self: CEmitter*, label: string) {
     ccb_dedent(self.out);
-    ccb_emit(self.out, concat3_s(label, ":", ";"));
+    ccb_emit(self.out, label + ":" + ";");
     ccb_indent(self.out);
 }
 
@@ -1910,7 +1889,7 @@ func cem_emit_label(self: CEmitter*, label: string) {
  * @param label Target label.
  */
 func cem_emit_goto(self: CEmitter*, label: string) {
-    ccb_emit(self.out, concat3_s("goto ", label, ";"));
+    ccb_emit(self.out, "goto " + label + ";");
 }
 
 /**
@@ -1940,7 +1919,7 @@ func cem_emit_block_end(self: CEmitter*) {
  * @param c_cond Lowered condition expression.
  */
 func cem_emit_while_header(self: CEmitter*, c_cond: string) {
-    ccb_emit(self.out, concat3_s("while (", c_cond, ")"));
+    ccb_emit(self.out, "while (" + c_cond + ")");
 }
 
 /**
@@ -1950,7 +1929,7 @@ func cem_emit_while_header(self: CEmitter*, c_cond: string) {
  * @param c_cond Lowered condition expression.
  */
 func cem_emit_if_header(self: CEmitter*, c_cond: string) {
-    ccb_emit(self.out, concat3_s("if (", c_cond, ")"));
+    ccb_emit(self.out, "if (" + c_cond + ")");
 }
 
 /**
@@ -1990,7 +1969,7 @@ func cem_emit_for_loop_end(self: CEmitter*) {
  * @param c_init Lowered initializer.
  */
 func cem_emit_let_decl(self: CEmitter*, c_type: string, c_var_name: string, c_init: string) {
-    ccb_emit(self.out, concat4_s(c_type, " ", c_var_name, concat3_s(" = ", c_init, ";")));
+    ccb_emit(self.out, c_type + " " + c_var_name + " = " + c_init + ";");
 }
 
 /**
@@ -2001,7 +1980,7 @@ func cem_emit_let_decl(self: CEmitter*, c_type: string, c_var_name: string, c_in
  * @param c_value Lowered rvalue.
  */
 func cem_emit_assignment(self: CEmitter*, c_target: string, c_value: string) {
-    ccb_emit(self.out, concat4_s(c_target, " = ", c_value, ";"));
+    ccb_emit(self.out, c_target + " = " + c_value + ";");
 }
 
 /**
@@ -2013,7 +1992,7 @@ func cem_emit_assignment(self: CEmitter*, c_target: string, c_value: string) {
  * @param c_value Lowered initializer.
  */
 func cem_emit_temp_decl(self: CEmitter*, c_type: string, c_temp_name: string, c_value: string) {
-    ccb_emit(self.out, concat4_s(c_type, " ", c_temp_name, concat3_s(" = ", c_value, ";")));
+    ccb_emit(self.out, c_type + " " + c_temp_name + " = " + c_value + ";");
 }
 
 /**
@@ -2023,7 +2002,7 @@ func cem_emit_temp_decl(self: CEmitter*, c_type: string, c_temp_name: string, c_
  * @param comment Comment text.
  */
 func cem_emit_comment(self: CEmitter*, comment: string) {
-    ccb_emit(self.out, concat3_s("/* ", comment, " */"));
+    ccb_emit(self.out, "/* " + comment + " */");
 }
 
 /**
@@ -2043,7 +2022,7 @@ func cem_emit_exit_switch(self: CEmitter*) {
  * @param c_value Lowered value expression.
  */
 func cem_emit_pointer_assignment(self: CEmitter*, c_ptr_name: string, c_value: string) {
-    ccb_emit(self.out, concat4_s("*", c_ptr_name, " = ", concat_s(c_value, ";")));
+    ccb_emit(self.out, "*" + c_ptr_name + " = " + c_value + ";");
 }
 
 /**
@@ -2053,7 +2032,7 @@ func cem_emit_pointer_assignment(self: CEmitter*, c_ptr_name: string, c_value: s
  * @param c_expr Lowered string expression.
  */
 func cem_emit_string_retain(self: CEmitter*, c_expr: string) {
-    ccb_emit(self.out, concat4_s("rt_string_retain(", c_expr, ")", ";"));
+    ccb_emit(self.out, "rt_string_retain(" + c_expr + ")" + ";");
 }
 
 /**
@@ -2063,7 +2042,7 @@ func cem_emit_string_retain(self: CEmitter*, c_expr: string) {
  * @param c_expr Lowered string expression.
  */
 func cem_emit_string_release(self: CEmitter*, c_expr: string) {
-    ccb_emit(self.out, concat4_s("rt_string_release(", c_expr, ")", ";"));
+    ccb_emit(self.out, "rt_string_release(" + c_expr + ")" + ";");
 }
 
 /**
@@ -2074,7 +2053,7 @@ func cem_emit_string_release(self: CEmitter*, c_expr: string) {
  * @param c_expr Lowered scrutinee expression.
  */
 func cem_emit_match_scrutinee_decl(self: CEmitter*, c_type: string, c_expr: string) {
-    ccb_emit(self.out, concat4_s(c_type, " _scrutinee = ", c_expr, ";"));
+    ccb_emit(self.out, c_type + " _scrutinee = " + c_expr + ";");
 }
 
 /**
@@ -2084,7 +2063,7 @@ func cem_emit_match_scrutinee_decl(self: CEmitter*, c_type: string, c_expr: stri
  * @param c_expr Lowered switch expression.
  */
 func cem_emit_switch_start(self: CEmitter*, c_expr: string) {
-    ccb_emit(self.out, concat4_s("switch (", c_expr, ")", " {"));
+    ccb_emit(self.out, "switch (" + c_expr + ")" + " {");
 }
 
 /**
@@ -2113,7 +2092,7 @@ func cem_emit_switch_end(self: CEmitter*) {
  * @param c_value Lowered tag or literal.
  */
 func cem_emit_case_label(self: CEmitter*, c_value: string) {
-    ccb_emit(self.out, concat3_s("case ", c_value, ":"));
+    ccb_emit(self.out, "case " + c_value + ":");
 }
 
 /**
@@ -2132,7 +2111,7 @@ func cem_emit_default_label(self: CEmitter*) {
  * @param c_ptr_expr Lowered pointer expression.
  */
 func cem_emit_drop_call(self: CEmitter*, c_ptr_expr: string) {
-    ccb_emit(self.out, concat4_s("_rt_drop((void*)", c_ptr_expr, ")", ";"));
+    ccb_emit(self.out, "_rt_drop((void*)" + c_ptr_expr + ")" + ";");
 }
 
 /**
@@ -2142,7 +2121,7 @@ func cem_emit_drop_call(self: CEmitter*, c_ptr_expr: string) {
  * @param c_var Lowered lvalue expression.
  */
 func cem_emit_null_assignment(self: CEmitter*, c_var: string) {
-    ccb_emit(self.out, concat4_s(c_var, " = NULL", "", ";"));
+    ccb_emit(self.out, c_var + " = NULL" + ";");
 }
 
 /**
@@ -2154,8 +2133,7 @@ func cem_emit_null_assignment(self: CEmitter*, c_var: string) {
  * @param c_temp_name Temporary variable name.
  */
 func cem_emit_alloc_obj(self: CEmitter*, c_ptr_type: string, c_base_type: string, c_temp_name: string) {
-    ccb_emit(self.out, concat4_s(c_ptr_type, " ", c_temp_name,
-        concat_s(" = (", concat4_s(c_ptr_type, ")_rt_alloc_obj((l0_int)sizeof(", c_base_type, "));"))));
+    ccb_emit(self.out, c_ptr_type + " " + c_temp_name + " = (" + c_ptr_type + ")_rt_alloc_obj((l0_int)sizeof(" + c_base_type + "));");
 }
 
 /**
@@ -2167,7 +2145,7 @@ func cem_emit_alloc_obj(self: CEmitter*, c_ptr_type: string, c_base_type: string
  * @param c_init_str Lowered initializer body without outer braces.
  */
 func cem_emit_struct_init(self: CEmitter*, c_temp_name: string, c_base_type: string, c_init_str: string) {
-    ccb_emit(self.out, concat4_s("*", c_temp_name, " = (", concat4_s(c_base_type, "){ ", c_init_str, " };")));
+    ccb_emit(self.out, "*" + c_temp_name + " = (" + c_base_type + "){ " + c_init_str + " };");
 }
 
 /**
@@ -2206,7 +2184,7 @@ func cem_emit_enum_variant_init(self: CEmitter*, c_temp_name: string, enum_type:
                                 payload_inits: VectorString*) {
     let tag_value = cem_emit_enum_tag(enum_type, variant_name);
     if (vs_size(payload_inits) == 0) {
-        cem_emit_struct_init(self, c_temp_name, cem_emit_type(enum_type), concat3_s(".tag = ", tag_value, ""));
+        cem_emit_struct_init(self, c_temp_name, cem_emit_type(enum_type), ".tag = " + tag_value);
         return;
     }
 
@@ -2238,8 +2216,7 @@ func cem_emit_enum_variant_init(self: CEmitter*, c_temp_name: string, enum_type:
  * @param c_base_type Lowered base type.
  */
 func cem_emit_zero_init(self: CEmitter*, c_temp_name: string, c_base_type: string) {
-    ccb_emit(self.out, concat4_s("*", c_temp_name, " = (",
-        concat4_s(c_base_type, "){ 0", " }", ";")));
+    ccb_emit(self.out, "*" + c_temp_name + " = (" + c_base_type + "){ 0" + " }" + ";");
 }
 
 /**
@@ -2250,7 +2227,7 @@ func cem_emit_zero_init(self: CEmitter*, c_temp_name: string, c_base_type: strin
  * @param ret_none Lowered `none` return value.
  */
 func cem_emit_try_check_niche(self: CEmitter*, c_tmp: string, ret_none: string) {
-    ccb_emit(self.out, concat4_s("if ", cem_emit_pointer_null_check(c_tmp, "=="), "", concat_s(" return ", concat_s(ret_none, ";"))));
+    ccb_emit(self.out, "if " + cem_emit_pointer_null_check(c_tmp, "==") + " return " + ret_none + ";");
 }
 
 /**
@@ -2261,7 +2238,7 @@ func cem_emit_try_check_niche(self: CEmitter*, c_tmp: string, ret_none: string) 
  * @param ret_none Lowered `none` return value.
  */
 func cem_emit_try_check_value(self: CEmitter*, c_tmp: string, ret_none: string) {
-    ccb_emit(self.out, concat4_s("if ", cem_emit_null_check_eq(c_tmp), "", concat_s(" return ", concat_s(ret_none, ";"))));
+    ccb_emit(self.out, "if " + cem_emit_null_check_eq(c_tmp) + " return " + ret_none + ";");
 }
 
 /**
@@ -2271,7 +2248,7 @@ func cem_emit_try_check_value(self: CEmitter*, c_tmp: string, ret_none: string) 
  * @return Lowered extraction expression.
  */
 func cem_emit_try_extract_value(c_tmp: string) -> string {
-    return concat4_s("(", cem_emit_optional_value(c_tmp), "", ")");
+    return "(" + cem_emit_optional_value(c_tmp) + ")";
 }
 
 /**
@@ -2354,7 +2331,7 @@ func cem_emit_value_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
         if (ord(inner.kind) == ord(TY_POINTER) || !analysis_has_arc_data(cem_analysis(self), inner)) {
             return;
         }
-        ccb_emit(self.out, concat4_s("if (", cem_emit_optional_has_value(c_expr), ")", " {"));
+        ccb_emit(self.out, "if (" + cem_emit_optional_has_value(c_expr) + ")" + " {");
         ccb_indent(self.out);
         cem_emit_value_cleanup(self, cem_emit_optional_value(c_expr), inner);
         ccb_dedent(self.out);
@@ -2407,7 +2384,7 @@ func cem_emit_value_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
                 continue;
             }
 
-            ccb_emit(self.out, concat3_s("case ", cem_emit_enum_tag(ty, variant.name), ": {"));
+            ccb_emit(self.out, "case " + cem_emit_enum_tag(ty, variant.name) + ": {");
             ccb_indent(self.out);
             for (let cleanup_j = 0; cleanup_j < vec_size((info2 as EnumVariantInfo*).field_types); cleanup_j = cleanup_j + 1) {
                 let field_decl = ptr_vec_get(variant.fields, cleanup_j) as FieldDecl*;
@@ -2433,14 +2410,14 @@ func cem_emit_value_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
 func cem_emit_struct_cleanup(self: CEmitter*, c_ptr_expr: string, struct_type: Type*) {
     let info = sig_lookup_struct_info(cem_analysis(self).signatures as SignatureTables*, struct_type.module_name, struct_type.name);
     if (info == null) {
-        cem_ice(concat4_s("[ICE-1270] missing StructInfo for ", struct_type.module_name, ".", struct_type.name));
+        cem_ice("[ICE-1270] missing StructInfo for " + struct_type.module_name + "." + struct_type.name);
     }
 
-    ccb_emit(self.out, concat4_s("if (", c_ptr_expr, " != NULL", ") {"));
+    ccb_emit(self.out, "if (" + c_ptr_expr + " != NULL" + ") {");
     ccb_indent(self.out);
     for (let i = 0; i < vec_size((info as StructInfo*).fields); i = i + 1) {
         let field = ptr_vec_get((info as StructInfo*).fields, i) as StructFieldInfo*;
-        cem_emit_value_cleanup(self, concat3_s(c_ptr_expr, "->", field.name), field.field_type);
+        cem_emit_value_cleanup(self, c_ptr_expr + "->" + field.name, field.field_type);
     }
     ccb_dedent(self.out);
     ccb_emit(self.out, "}");
@@ -2456,19 +2433,19 @@ func cem_emit_struct_cleanup(self: CEmitter*, c_ptr_expr: string, struct_type: T
 func cem_emit_enum_cleanup(self: CEmitter*, c_ptr_expr: string, enum_type: Type*) {
     let enum_info = sig_lookup_enum_info(cem_analysis(self).signatures as SignatureTables*, enum_type.module_name, enum_type.name);
     if (enum_info == null) {
-        cem_ice(concat4_s("[ICE-1080] missing EnumInfo for ", enum_type.module_name, ".", enum_type.name));
+        cem_ice("[ICE-1080] missing EnumInfo for " + enum_type.module_name + "." + enum_type.name);
     }
     let decl = cem_find_enum_decl(self, enum_type.module_name, enum_type.name);
     if (decl == null) {
-        cem_ice(concat4_s("[ICE-1302] missing variant decl for ", enum_type.module_name, ".", enum_type.name));
+        cem_ice("[ICE-1302] missing variant decl for " + enum_type.module_name + "." + enum_type.name);
     }
     if (!cem_enum_has_arc_data(self, enum_info as EnumInfo*, decl as EnumDecl*)) {
         return;
     }
 
-    ccb_emit(self.out, concat4_s("if (", c_ptr_expr, " != NULL", ") {"));
+    ccb_emit(self.out, "if (" + c_ptr_expr + " != NULL" + ") {");
     ccb_indent(self.out);
-    cem_emit_switch_start(self, concat3_s(c_ptr_expr, "->tag", ""));
+    cem_emit_switch_start(self, c_ptr_expr + "->tag");
     for (let i = 0; i < vec_size((decl as EnumDecl*).variants); i = i + 1) {
         let variant = ptr_vec_get((decl as EnumDecl*).variants, i) as EnumVariant*;
         let info2 = cem_find_enum_variant_info(enum_info as EnumInfo*, variant.name);
@@ -2487,12 +2464,12 @@ func cem_emit_enum_cleanup(self: CEmitter*, c_ptr_expr: string, enum_type: Type*
             continue;
         }
 
-        ccb_emit(self.out, concat3_s("case ", cem_emit_enum_tag(enum_type, variant.name), ": {"));
+        ccb_emit(self.out, "case " + cem_emit_enum_tag(enum_type, variant.name) + ": {");
         ccb_indent(self.out);
         for (let cleanup_j = 0; cleanup_j < vec_size((info2 as EnumVariantInfo*).field_types); cleanup_j = cleanup_j + 1) {
             let field_decl = ptr_vec_get(variant.fields, cleanup_j) as FieldDecl*;
             let field_ty = ptr_vec_get((info2 as EnumVariantInfo*).field_types, cleanup_j) as Type*;
-            cem_emit_value_cleanup(self, concat4_s(c_ptr_expr, "->data.", variant.name, concat_s(".", field_decl.name)),
+            cem_emit_value_cleanup(self, c_ptr_expr + "->data." + variant.name + "." + field_decl.name,
                 field_ty);
         }
         cem_emit_exit_switch(self);

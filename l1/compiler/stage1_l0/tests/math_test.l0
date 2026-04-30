@@ -18,7 +18,7 @@ import std.text;
  * @param expected Expected value.
  */
 func mt_expect_eq(label: string, actual: int, expected: int) {
-    assert(actual == expected, concat3_s("integer mismatch: ", label, ""));
+    assert(actual == expected, "integer mismatch: " + label + "");
     printl_ss("[PASS]", label);
 }
 
@@ -30,7 +30,7 @@ func mt_expect_eq(label: string, actual: int, expected: int) {
  * @param expected Expected value.
  */
 func mt_expect_bool(label: string, actual: bool, expected: bool) {
-    assert(actual == expected, concat3_s("bool mismatch: ", label, ""));
+    assert(actual == expected, "bool mismatch: " + label + "");
     printl_ss("[PASS]", label);
 }
 
@@ -42,9 +42,9 @@ func mt_expect_bool(label: string, actual: bool, expected: bool) {
  * @param expected Expected payload.
  */
 func mt_expect_opt_eq(label: string, actual: int?, expected: int) {
-    assert(actual != null, concat3_s("expected int value: ", label, ""));
+    assert(actual != null, "expected int value: " + label + "");
     let value = actual as int;
-    assert(value == expected, concat3_s("optional mismatch: ", label, ""));
+    assert(value == expected, "optional mismatch: " + label + "");
     printl_ss("[PASS]", label);
 }
 
@@ -55,7 +55,7 @@ func mt_expect_opt_eq(label: string, actual: int?, expected: int) {
  * @param actual Computed optional value.
  */
 func mt_expect_opt_null(label: string, actual: int?) {
-    assert(actual == null, concat3_s("expected null: ", label, ""));
+    assert(actual == null, "expected null: " + label + "");
     printl_ss("[PASS]", label);
 }
 

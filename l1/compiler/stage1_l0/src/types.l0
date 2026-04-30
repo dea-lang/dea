@@ -455,16 +455,16 @@ func type_format(self: Type*) -> string {
         return self.name;
     }
     if (ord(self.kind) == ord(TY_STRUCT) || ord(self.kind) == ord(TY_ENUM)) {
-        return concat3_s(self.module_name, "::", self.name);
+        return self.module_name + "::" + self.name;
     }
     if (ord(self.kind) == ord(TY_POINTER)) {
-        return concat_s(type_format(self.inner as Type*), "*");
+        return type_format(self.inner as Type*) + "*";
     }
     if (ord(self.kind) == ord(TY_NULLABLE)) {
         if (ord((self.inner as Type*).kind) == ord(TY_FUNC)) {
-            return concat3_s("(", type_format(self.inner as Type*), ")?");
+            return "(" + type_format(self.inner as Type*) + ")?";
         }
-        return concat_s(type_format(self.inner as Type*), "?");
+        return type_format(self.inner as Type*) + "?";
     }
 
     with (let sb = sb_create() => sb_free(sb)) {

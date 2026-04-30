@@ -25,7 +25,7 @@ import types;
  * @return Key in `module::name` form.
  */
 func tr_key(module_name: string, name: string) -> string {
-    return concat3_s(module_name, "::", name);
+    return module_name + "::" + name;
 }
 
 /**
@@ -88,7 +88,7 @@ func tr_type_ref_simple_name(tref: TypeRef*) -> string {
     if (tref.module_path == null) {
         return tref.name;
     }
-    return concat3_s(tr_module_from_path(tref.module_path as VectorString*), "::", tref.name);
+    return tr_module_from_path(tref.module_path as VectorString*) + "::" + tref.name;
 }
 
 /**
@@ -261,14 +261,14 @@ func tr_resolve_alias(tables: SignatureTables*, nr: NameResolution*, env: Module
         tr_diag_error(
             diags,
             "SIG-0020",
-            concat4_s("cyclic type alias involving '", sym.name, "' in module '", concat_s(sym.module_name, "'")),
+            "cyclic type alias involving '" + sym.name + "' in module '" + sym.module_name + "'",
             env.module_ptr.filename,
             sym.span
         );
         tr_diag_error(
             diags,
             "TYP-0270",
-            concat4_s("type alias '", sym.name, "' does not have a resolved type", ""),
+            "type alias '" + sym.name + "' does not have a resolved type",
             env.module_ptr.filename,
             sym.span
         );
@@ -332,8 +332,7 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
         tr_diag_error(
             diags,
             "SIG-0018",
-            concat4_s("nested symbol path '", full, "': paths must have the form 'module::symbol' (did you mean '",
-                concat_s(simple, "'?)")),
+            "nested symbol path '" + full + "': paths must have the form 'module::symbol' (did you mean '" + simple + "'?)",
             env.module_ptr.filename,
             tref.span
         );
@@ -363,8 +362,7 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
             tr_diag_error(
                 diags,
                 "SIG-0019",
-                concat4_s("ambiguous type '", tref.name, "' (imported from modules '",
-                    concat_s(modules_str, concat_s("'); use ", concat_s(hints, " to disambiguate")))),
+                "ambiguous type '" + tref.name + "' (imported from modules '" + modules_str + "'); use " + hints + " to disambiguate",
                 env.module_ptr.filename,
                 tref.span
             );
@@ -377,7 +375,7 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
         tr_diag_error(
             diags,
             "SIG-0019",
-            concat4_s("unknown type '", tref.name, "' in module '", concat_s(env.module_name, "'")),
+            "unknown type '" + tref.name + "' in module '" + env.module_name + "'",
             env.module_ptr.filename,
             tref.span
         );
@@ -395,8 +393,7 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
         tr_diag_error(
             diags,
             "SIG-0010",
-            concat4_s("symbol '", s.name, "' in module '",
-                concat_s(env.module_name, concat_s("' is not a type (kind=", concat_s(symbol_kind_name(s.kind), ")")))),
+            "symbol '" + s.name + "' in module '" + env.module_name + "' is not a type (kind=" + symbol_kind_name(s.kind) + ")",
             env.module_ptr.filename,
             tref.span
         );

@@ -128,7 +128,7 @@ func etc_nested_symbol_path_simple(expr: ExprNode*) -> string {
     if (expr.module_path == null) {
         return expr.text_value;
     }
-    return concat3_s(tr_module_from_path(expr.module_path as VectorString*), "::", expr.text_value);
+    return tr_module_from_path(expr.module_path as VectorString*) + "::" + expr.text_value;
 }
 
 /**
@@ -140,8 +140,7 @@ func etc_nested_symbol_path_simple(expr: ExprNode*) -> string {
 func etc_nested_symbol_path_message(expr: ExprNode*) -> string {
     let full = etc_nested_symbol_path_full(expr);
     let simple = etc_nested_symbol_path_simple(expr);
-    return concat4_s("nested symbol path '", full, "': paths must have the form 'module::symbol' (did you mean '",
-        concat_s(simple, "'?)"));
+    return "nested symbol path '" + full + "': paths must have the form 'module::symbol' (did you mean '" + simple + "'?)";
 }
 
 /**
@@ -355,18 +354,18 @@ func etc_check_local_declaration(self: ExpressionTypeChecker*, name: string, spa
     }
     let unit = self.current_unit as DriverUnit*;
     if (sim_has(current as StringIntMap*, name)) {
-        etc_diag_error(self, "TYP-0020", concat3_s("local variable '", name, "' already declared in this scope"),
+        etc_diag_error(self, "TYP-0020", "local variable '" + name + "' already declared in this scope",
             unit.path, span);
         return;
     }
     if (etc_decl_outer_has(self, name)) {
-        etc_diag_warn(self, "TYP-0021", concat3_s("local variable '", name, "' shadows an outer local"),
+        etc_diag_warn(self, "TYP-0021", "local variable '" + name + "' shadows an outer local",
             unit.path, span);
     }
     if (self.current_env != null) {
         let env = self.current_env as ModuleEnv*;
         if (nr_module_env_is_ambiguous(env, name)) {
-            etc_diag_warn(self, "TYP-0024", concat3_s("local variable '", name, "' shadows an ambiguous import"),
+            etc_diag_warn(self, "TYP-0024", "local variable '" + name + "' shadows an ambiguous import",
                 unit.path, span);
         } else {
             let sym = nr_module_env_all(env, name);
@@ -374,15 +373,12 @@ func etc_check_local_declaration(self: ExpressionTypeChecker*, name: string, spa
                 let s = sym as Symbol*;
                 if (ord(s.kind) == ord(SYM_ENUM_VARIANT)) {
                     if (s.module_name == self.current_module) {
-                        etc_diag_warn(self, "TYP-0022", concat3_s("local variable '", name,
-                            "' shadows an enum variant"), unit.path, span);
+                        etc_diag_warn(self, "TYP-0022", "local variable '" + name + "' shadows an enum variant", unit.path, span);
                     } else {
-                        etc_diag_warn(self, "TYP-0023", concat3_s("local variable '", name,
-                            "' shadows an imported enum variant"), unit.path, span);
+                        etc_diag_warn(self, "TYP-0023", "local variable '" + name + "' shadows an imported enum variant", unit.path, span);
                     }
                 } else {
-                    etc_diag_warn(self, "TYP-0025", concat3_s("local variable '", name,
-                        "' shadows a top-level symbol"), unit.path, span);
+                    etc_diag_warn(self, "TYP-0025", "local variable '" + name + "' shadows a top-level symbol", unit.path, span);
                 }
             }
         }
@@ -494,7 +490,7 @@ func etc_set_expr_type(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*)
  * @param ty Type to store.
  */
 func etc_set_var_type(self: ExpressionTypeChecker*, name: string, ty: Type*) {
-    let key = concat3_s(self.current_module, "::var::", name);
+    let key = self.current_module + "::var::" + name;
     let old = spm_get(self.result.expr_types, key);
     if (old != null) {
         type_free(old as Type*);
@@ -510,7 +506,7 @@ func etc_set_var_type(self: ExpressionTypeChecker*, name: string, ty: Type*) {
  * @return Cloned stored type, or `null` if absent.
  */
 func etc_get_var_type(self: ExpressionTypeChecker*, name: string) -> Type*? {
-    let key = concat3_s(self.current_module, "::var::", name);
+    let key = self.current_module + "::var::" + name;
     let val = spm_get(self.result.expr_types, key);
     if (val == null) return null;
     return type_clone(val as Type*);
@@ -764,22 +760,22 @@ func etc_diag_type_ref_failure(self: ExpressionTypeChecker*, tref: TypeRef*, fal
         return;
     }
     if (tref.module_path == null && nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, tref.name)) {
-        etc_diag_error(self, "TYP-0279", concat3_s("ambiguous type name '", tref.name, "'"), unit.path, span);
+        etc_diag_error(self, "TYP-0279", "ambiguous type name '" + tref.name + "'", unit.path, span);
         return;
     }
     let sym = etc_lookup_symbol(self, tref.name, tref.module_path, null);
     if (sym != null) {
         let s = sym as Symbol*;
         if (ord(s.kind) == ord(SYM_TYPE_ALIAS)) {
-            etc_diag_error(self, "TYP-0270", concat3_s("type alias '", tref.name, "' does not have a resolved type"),
+            etc_diag_error(self, "TYP-0270", "type alias '" + tref.name + "' does not have a resolved type",
                 unit.path, span);
         } else if (ord(s.kind) != ord(SYM_STRUCT) && ord(s.kind) != ord(SYM_ENUM)) {
-            etc_diag_error(self, "TYP-0271", concat3_s("symbol '", tref.name, "' is not a type"), unit.path, span);
+            etc_diag_error(self, "TYP-0271", "symbol '" + tref.name + "' is not a type", unit.path, span);
         } else {
-            etc_diag_error(self, fallback_code, concat3_s("unknown type '", tref.name, "'"), unit.path, span);
+            etc_diag_error(self, fallback_code, "unknown type '" + tref.name + "'", unit.path, span);
         }
     } else {
-        etc_diag_error(self, fallback_code, concat3_s("unknown type '", tref.name, "'"), unit.path, span);
+        etc_diag_error(self, fallback_code, "unknown type '" + tref.name + "'", unit.path, span);
     }
 }
 
@@ -800,7 +796,7 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
 
         if (nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, expr.text_value)) {
             etc_diag_error(self, "TYP-0303",
-                concat4_s("ambiguous identifier '", expr.text_value, "'; use a module-qualified name", ""),
+                "ambiguous identifier '" + expr.text_value + "'; use a module-qualified name",
                 (self.current_unit as DriverUnit*).path, expr.span);
             return null;
         }
@@ -816,8 +812,7 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
     if (target_module != (self.current_env as ModuleEnv*).module_name &&
         !nr_module_env_imports_module(self.current_env as ModuleEnv*, target_module)) {
         etc_diag_error(self, "TYP-0301",
-            concat4_s("unknown type '", concat3_s(target_module, "::", expr.text_value),
-                "' (module '", concat_s(target_module, "' not imported)")),
+            "unknown type '" + target_module + "::" + expr.text_value + "' (module '" + target_module + "' not imported)",
             (self.current_unit as DriverUnit*).path, expr.span);
         return null;
     }
@@ -825,8 +820,7 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
     let target_env = nr_env_find(self.result.names as NameResolution*, target_module);
     if (target_env == null) {
         etc_diag_error(self, "TYP-0300",
-            concat4_s("unknown type '", concat3_s(target_module, "::", expr.text_value),
-                "' (unknown module '", concat_s(target_module, "')")),
+            "unknown type '" + target_module + "::" + expr.text_value + "' (unknown module '" + target_module + "')",
             (self.current_unit as DriverUnit*).path, expr.span);
         return null;
     }
@@ -925,7 +919,7 @@ func etc_infer_ord_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> T
         return type_builtin_int();
     }
     if (ord((arg_ty as Type*).kind) != ord(TY_ENUM)) {
-        etc_diag_error(self, "TYP-0243", concat_s("ord expects an enum value, got '", concat_s(type_format(arg_ty as Type*), "'")),
+        etc_diag_error(self, "TYP-0243", "ord expects an enum value, got '" + type_format(arg_ty as Type*) + "'",
             (self.current_unit as DriverUnit*).path, expr.span);
     }
     type_free(arg_ty as Type*);
@@ -991,10 +985,10 @@ func etc_find_enum_variant_info(info: EnumInfo*, name: string) -> EnumVariantInf
  */
 func etc_pattern_symbol_name(pattern: PatternNode*) -> string {
     if (pattern.module_path != null) {
-        return concat3_s(tr_module_from_path(pattern.module_path as VectorString*), "::", pattern.name);
+        return tr_module_from_path(pattern.module_path as VectorString*) + "::" + pattern.name;
     }
     if (pattern.name_qualifier != null && vs_size(pattern.name_qualifier as VectorString*) > 0) {
-        return concat3_s(vs_get(pattern.name_qualifier as VectorString*, 0), "::", pattern.name);
+        return vs_get(pattern.name_qualifier as VectorString*, 0) + "::" + pattern.name;
     }
     return pattern.name;
 }
@@ -1027,8 +1021,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
             etc_diag_error(
                 self,
                 "TYP-0102",
-                concat4_s("unknown variant '", qualified, "' for enum '",
-                    concat3_s(type_format(match_ty), "' (module '", concat_s(target_module, "' not imported)"))),
+                "unknown variant '" + qualified + "' for enum '" + type_format(match_ty) + "' (module '" + target_module + "' not imported)",
                 unit.path,
                 pattern.span
             );
@@ -1038,8 +1031,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
             etc_diag_error(
                 self,
                 "TYP-0102",
-                concat4_s("unknown variant '", qualified, "' for enum '",
-                    concat3_s(type_format(match_ty), "' (unknown module '", concat_s(target_module, "')"))),
+                "unknown variant '" + qualified + "' for enum '" + type_format(match_ty) + "' (unknown module '" + target_module + "')",
                 unit.path,
                 pattern.span
             );
@@ -1054,7 +1046,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
             etc_diag_error(
                 self,
                 "TYP-0102",
-                concat4_s("unknown variant '", qualified, "' for enum '", concat_s(type_format(match_ty), "'")),
+                "unknown variant '" + qualified + "' for enum '" + type_format(match_ty) + "'",
                 unit.path,
                 pattern.span
             );
@@ -1067,8 +1059,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
         etc_diag_error(
             self,
             "TYP-0102",
-            concat4_s("unknown variant '", etc_pattern_symbol_name(pattern), "' for enum '",
-                concat_s(type_format(match_ty), "'")),
+            "unknown variant '" + etc_pattern_symbol_name(pattern) + "' for enum '" + type_format(match_ty) + "'",
             unit.path,
             pattern.span
         );
@@ -1085,13 +1076,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
         etc_diag_error(
             self,
             "TYP-0101",
-            concat4_s(
-                "pattern variable count mismatch: variant '",
-                pattern.name,
-                "' has ",
-                concat3_s(int_to_string(expected_arity), " fields but pattern has ",
-                    concat_s(int_to_string(pattern_arity), " variables"))
-            ),
+            "pattern variable count mismatch: variant '" + pattern.name + "' has " + int_to_string(expected_arity) + " fields but pattern has " + int_to_string(pattern_arity) + " variables",
             unit.path,
             pattern.span
         );
@@ -1146,7 +1131,7 @@ func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type
         etc_diag_error(
             self,
             "TYP-0103",
-            concat3_s("no type information for enum '", type_format(match_ty), "'"),
+            "no type information for enum '" + type_format(match_ty) + "'",
             unit.path,
             span
         );
@@ -1169,12 +1154,7 @@ func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type
             etc_diag_warn(
                 self,
                 "TYP-0105",
-                concat4_s(
-                    "unreachable wildcard pattern in match: all variants of enum '",
-                    type_format(match_ty),
-                    "' are already covered",
-                    ""
-                ),
+                "unreachable wildcard pattern in match: all variants of enum '" + type_format(match_ty) + "' are already covered",
                 unit.path,
                 span
             );
@@ -1192,12 +1172,7 @@ func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type
         etc_diag_error(
             self,
             "TYP-0104",
-            concat4_s(
-                "non-exhaustive match: missing variants (",
-                etc_format_missing_match_variants(info as EnumInfo*, covered),
-                ") for enum '",
-                concat_s(type_format(match_ty), "'")
-            ),
+            "non-exhaustive match: missing variants (" + etc_format_missing_match_variants(info as EnumInfo*, covered) + ") for enum '" + type_format(match_ty) + "'",
             unit.path,
             span
         );
@@ -1223,13 +1198,13 @@ func etc_is_case_type(ty: Type*?) -> bool {
  */
 func etc_case_literal_key(expr: ExprNode*) -> string? {
     match (expr.kind) {
-        EX_INT => { return concat_s("int:", int_to_string(expr.int_value)); }
-        EX_BYTE => { return concat_s("byte:", int_to_string(expr.int_value)); }
+        EX_INT => { return "int:" + int_to_string(expr.int_value); }
+        EX_BYTE => { return "byte:" + int_to_string(expr.int_value); }
         EX_BOOL => {
             if (expr.bool_value) return "bool:true";
             return "bool:false";
         }
-        EX_STRING => { return concat_s("string:", expr.text_value); }
+        EX_STRING => { return "string:" + expr.text_value; }
         _ => { return null; }
     }
 }
@@ -1299,9 +1274,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                             let val_ty = etc_infer_expr(self, stmt.expr_a);
                             if (val_ty != null) {
                                 if (!etc_can_assign(self, ann_ty as Type*, val_ty as Type*)) {
-                                    etc_diag_error(self, "TYP-0310", concat4_s("initializer for '", stmt.name,
-                                        "' type mismatch: ",
-                                        concat3_s(type_format(ann_ty as Type*), " and ", type_format(val_ty as Type*))),
+                                    etc_diag_error(self, "TYP-0310", "initializer for '" + stmt.name + "' type mismatch: " + type_format(ann_ty as Type*) + " and " + type_format(val_ty as Type*),
                                         unit.path, stmt.span);
                                 } else {
                                     declare_local = true;
@@ -1314,7 +1287,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         etc_diag_type_ref_failure(self, stmt.type_ref as TypeRef*, "TYP-0279",
                             (stmt.type_ref as TypeRef*).span);
                         etc_diag_error(self, "TYP-0040",
-                            concat3_s("cannot resolve type annotation for variable '", stmt.name, "'"),
+                            "cannot resolve type annotation for variable '" + stmt.name + "'",
                             unit.path, (stmt.type_ref as TypeRef*).span);
                     }
                 }
@@ -1334,7 +1307,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     }
                     type_free(expr_ty);
                 } else {
-                    etc_diag_error(self, "TYP-0051", concat3_s("initializer for '", stmt.name, "' type mismatch"),
+                    etc_diag_error(self, "TYP-0051", "initializer for '" + stmt.name + "' type mismatch",
                         unit.path, stmt.span);
                 }
             }
@@ -1449,7 +1422,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             if (val_ty2 != null) {
                 if (ord((val_ty2 as Type*).kind) != ord(TY_ENUM)) {
                     etc_diag_error(self, "TYP-0100",
-                        concat3_s("match expression must have enum type, got '", type_format(val_ty2 as Type*), "'"),
+                        "match expression must have enum type, got '" + type_format(val_ty2 as Type*) + "'",
                         unit.path, stmt.span);
                 } else if (stmt.match_arms != null) {
                     let arms = stmt.match_arms as VectorBase*;
@@ -1479,12 +1452,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     etc_diag_error(
                         self,
                         "TYP-0106",
-                        concat4_s(
-                            "'case' scrutinee must have type 'int', 'byte', 'bool', or 'string', got '",
-                            type_format(val_ty3 as Type*),
-                            "'",
-                            ""
-                        ),
+                        "'case' scrutinee must have type 'int', 'byte', 'bool', or 'string', got '" + type_format(val_ty3 as Type*) + "'",
                         unit.path,
                         stmt.span
                     );
@@ -1502,12 +1470,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                     etc_diag_error(
                                         self,
                                         "TYP-0107",
-                                        concat4_s(
-                                            "'case' arm literal type '",
-                                            type_format(literal_ty as Type*),
-                                            "' does not match scrutinee type '",
-                                            concat_s(type_format(val_ty3 as Type*), "'")
-                                        ),
+                                        "'case' arm literal type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
                                         unit.path,
                                         arm_literal.span
                                     );
@@ -1614,15 +1577,13 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 let expected = self.current_ret_type as Type*;
                 if (stmt.expr_a < 0) {
                     if (!type_is_builtin(expected, "void")) {
-                        etc_diag_error(self, "TYP-0315", concat_s("return type mismatch: expected ",
-                            type_format(expected)), unit.path, stmt.span);
+                        etc_diag_error(self, "TYP-0315", "return type mismatch: expected " + type_format(expected), unit.path, stmt.span);
                     }
                 } else {
                     let ret_ty = etc_infer_expr(self, stmt.expr_a);
                     if (ret_ty != null) {
                         if (!etc_can_assign(self, expected, ret_ty as Type*)) {
-                            etc_diag_error(self, "TYP-0315", concat4_s("return type mismatch: expected ",
-                                type_format(expected), ", got ", type_format(ret_ty as Type*)), unit.path, stmt.span);
+                            etc_diag_error(self, "TYP-0315", "return type mismatch: expected " + type_format(expected) + ", got " + type_format(ret_ty as Type*), unit.path, stmt.span);
                         }
                         type_free(ret_ty as Type*);
                     }
@@ -1635,10 +1596,10 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             if (drop_ty == null) {
                 let sym = etc_lookup_symbol(self, stmt.name, null, null);
                 if (sym != null && ord((sym as Symbol*).kind) == ord(SYM_LET)) {
-                    etc_diag_error(self, "TYP-0063", concat3_s("cannot drop module-level let '", stmt.name, "'"),
+                    etc_diag_error(self, "TYP-0063", "cannot drop module-level let '" + stmt.name + "'",
                         unit.path, stmt.span);
                 } else {
-                    etc_diag_error(self, "TYP-0060", concat3_s("unknown variable '", stmt.name, "'"),
+                    etc_diag_error(self, "TYP-0060", "unknown variable '" + stmt.name + "'",
                         unit.path, stmt.span);
                 }
             } else {
@@ -1649,12 +1610,12 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     ord((var_ty.inner as Type*).kind) == ord(TY_POINTER);
                 if (!(is_ptr || is_opt_ptr)) {
                     etc_diag_error(self, "TYP-0061",
-                        concat3_s("cannot drop non-pointer type '", type_format(var_ty), "'"),
+                        "cannot drop non-pointer type '" + type_format(var_ty) + "'",
                         unit.path, stmt.span);
                 } else {
                     let alive = etc_alive_lookup(self, stmt.name);
                     if (alive != null && (alive as int) == 0) {
-                        etc_diag_error(self, "TYP-0062", concat3_s("use of dropped variable '", stmt.name, "'"),
+                        etc_diag_error(self, "TYP-0062", "use of dropped variable '" + stmt.name + "'",
                             unit.path, stmt.span);
                     } else {
                         etc_alive_set(self, stmt.name, false);
@@ -1858,19 +1819,19 @@ func etc_infer_unary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
 
     if (expr.text_value == "-") {
         if (!etc_is_int(s_ty)) {
-            etc_diag_error(self, "TYP-0160", concat_s("unary '-' expects int, got ", type_format(s_ty)),
+            etc_diag_error(self, "TYP-0160", "unary '-' expects int, got " + type_format(s_ty),
                 (self.current_unit as DriverUnit*).path, expr.span);
         }
         return s_ty;
     } else if (expr.text_value == "!") {
         if (!etc_is_bool(s_ty)) {
-            etc_diag_error(self, "TYP-0161", concat_s("unary '!' expects bool, got ", type_format(s_ty)),
+            etc_diag_error(self, "TYP-0161", "unary '!' expects bool, got " + type_format(s_ty),
                 (self.current_unit as DriverUnit*).path, expr.span);
         }
         return s_ty;
     } else if (expr.text_value == "*") {
         if (ord(s_ty.kind) != ord(TY_POINTER)) {
-            etc_diag_error(self, "TYP-0162", concat_s("dereference '*' expects pointer, got ", type_format(s_ty)),
+            etc_diag_error(self, "TYP-0162", "dereference '*' expects pointer, got " + type_format(s_ty),
                 (self.current_unit as DriverUnit*).path, expr.span);
             return s_ty;
         }
@@ -1915,7 +1876,7 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
     if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%" ||
         op == "&" || op == "|" || op == "^" || op == "<<" || op == ">>") {
         if (!etc_is_int(l_ty) || !etc_is_int(r_ty)) {
-            etc_diag_error(self, "TYP-0170", concat4_s("binary '", op, "' expects int, got ", type_format(l_ty)),
+            etc_diag_error(self, "TYP-0170", "binary '" + op + "' expects int, got " + type_format(l_ty),
                 (self.current_unit as DriverUnit*).path, expr.span);
         }
         type_free(l_ty);
@@ -1932,14 +1893,13 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
             }
 
             if (!is_null_check) {
-                etc_diag_error(self, "TYP-0172", concat_s(concat4_s("binary '", op, "' type mismatch: ", type_format(l_ty)),
-                    concat_s(" and ", type_format(r_ty))), (self.current_unit as DriverUnit*).path, expr.span);
+                etc_diag_error(self, "TYP-0172", "binary '" + op + "' type mismatch: " + type_format(l_ty) + " and " + type_format(r_ty), (self.current_unit as DriverUnit*).path, expr.span);
             }
         }
         if (!is_null_check && etc_types_equal(l_ty, r_ty) &&
             !etc_is_int(l_ty) && !etc_is_bool(l_ty) && !etc_is_string(l_ty)) {
             etc_diag_error(self, "TYP-0173",
-                concat3_s("equality not supported for type '", type_format(l_ty), "'"),
+                "equality not supported for type '" + type_format(l_ty) + "'",
                 (self.current_unit as DriverUnit*).path, expr.span);
         }
         type_free(l_ty);
@@ -1948,7 +1908,7 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
     } else if (op == "<" || op == "<=" || op == ">" || op == ">=") {
         let string_cmp = etc_is_string(l_ty) && etc_is_string(r_ty);
         if (!string_cmp && (!etc_is_int(l_ty) || !etc_is_int(r_ty))) {
-            etc_diag_error(self, "TYP-0170", concat4_s("binary '", op, "' expects int, got ", type_format(l_ty)),
+            etc_diag_error(self, "TYP-0170", "binary '" + op + "' expects int, got " + type_format(l_ty),
                 (self.current_unit as DriverUnit*).path, expr.span);
         }
         type_free(l_ty);
@@ -1956,7 +1916,7 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
         return type_builtin_bool();
     } else if (op == "&&" || op == "||") {
         if (!etc_is_bool(l_ty) || !etc_is_bool(r_ty)) {
-            etc_diag_error(self, "TYP-0171", concat4_s("binary '", op, "' expects bool, got ", type_format(l_ty)),
+            etc_diag_error(self, "TYP-0171", "binary '" + op + "' expects bool, got " + type_format(l_ty),
                 (self.current_unit as DriverUnit*).path, expr.span);
         }
         type_free(r_ty);
@@ -1989,7 +1949,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
             etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier) == null &&
             callee.module_path == null && callee.name_qualifier == null &&
             !nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, callee.text_value)) {
-            etc_diag_error(self, "TYP-0189", concat3_s("unknown function '", callee.text_value, "'"),
+            etc_diag_error(self, "TYP-0189", "unknown function '" + callee.text_value + "'",
                 (self.current_unit as DriverUnit*).path, callee.span);
             return null;
         }
@@ -2156,7 +2116,7 @@ func etc_infer_field(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
 
     if (ord(l_ty.kind) == ord(TY_NULLABLE) && ord((l_ty.inner as Type*).kind) == ord(TY_STRUCT)) {
         etc_diag_error(self, "TYP-0220",
-            concat4_s("cannot access field '", expr.text_value, "' on nullable struct ", type_format(l_ty)),
+            "cannot access field '" + expr.text_value + "' on nullable struct " + type_format(l_ty),
             (self.current_unit as DriverUnit*).path, expr.span);
         type_free(l_ty);
         return null;
@@ -2180,7 +2140,7 @@ func etc_infer_field(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
             }
 
             etc_diag_error(self, "TYP-0221",
-                concat4_s("struct ", type_format(base_ty), " has no field '", expr.text_value),
+                "struct " + type_format(base_ty) + " has no field '" + expr.text_value,
                 (self.current_unit as DriverUnit*).path, expr.span);
             type_free(l_ty);
             return null;
@@ -2188,7 +2148,7 @@ func etc_infer_field(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
     }
 
     etc_diag_error(self, "TYP-0222",
-        concat4_s("cannot access field '", expr.text_value, "' on non-struct type ", type_format(l_ty)),
+        "cannot access field '" + expr.text_value + "' on non-struct type " + type_format(l_ty),
         (self.current_unit as DriverUnit*).path, expr.span);
     type_free(l_ty);
     return null;
@@ -2213,21 +2173,21 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
     
     if (index_ty != null) {
         if (!etc_is_int(index_ty as Type*)) {
-            etc_diag_error(self, "TYP-0210", concat_s("index expects int, got ", type_format(index_ty as Type*)),
+            etc_diag_error(self, "TYP-0210", "index expects int, got " + type_format(index_ty as Type*),
                 (self.current_unit as DriverUnit*).path, expr.span);
         }
         type_free(index_ty as Type*);
     }
 
     if (ord(l_ty.kind) == ord(TY_NULLABLE)) {
-        etc_diag_error(self, "TYP-0211", concat_s("cannot index nullable type ", type_format(l_ty)),
+        etc_diag_error(self, "TYP-0211", "cannot index nullable type " + type_format(l_ty),
             (self.current_unit as DriverUnit*).path, expr.span);
         type_free(l_ty);
         return null;
     }
 
     if (ord(l_ty.kind) != ord(TY_POINTER)) {
-        etc_diag_error(self, "TYP-0212", concat_s("cannot index into expression of type ", type_format(l_ty)),
+        etc_diag_error(self, "TYP-0212", "cannot index into expression of type " + type_format(l_ty),
             (self.current_unit as DriverUnit*).path, expr.span);
         type_free(l_ty);
         return null;
@@ -2276,19 +2236,14 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                     etc_diag_error(
                         self,
                         "TYP-0156",
-                        concat4_s(
-                            "'cleanup' block references 'with' header variable '",
-                            expr.text_value,
-                            "' that may be uninitialized on '?' header-failure path; use nullable type or inline '=>'",
-                            " cleanup"
-                        ),
+                        "'cleanup' block references 'with' header variable '" + expr.text_value + "' that may be uninitialized on '?' header-failure path; use nullable type or inline '=>'" + " cleanup",
                         unit.path,
                         expr.span
                     );
                 }
                 let alive = etc_alive_lookup(self, expr.text_value);
                 if (alive != null && (alive as int) == 0) {
-                    etc_diag_error(self, "TYP-0150", concat3_s("use of dropped variable '", expr.text_value, "'"),
+                    etc_diag_error(self, "TYP-0150", "use of dropped variable '" + expr.text_value + "'",
                         unit.path, expr.span);
                 }
                 etc_set_var_res(self, expr_id, VAR_RES_LOCAL);
@@ -2303,8 +2258,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                     let s = sym as Symbol*;
                     if (ord(s.kind) == ord(SYM_STRUCT) || ord(s.kind) == ord(SYM_ENUM) ||
                         ord(s.kind) == ord(SYM_TYPE_ALIAS)) {
-                        etc_diag_error(self, "TYP-0151", concat3_s("type name '", expr.text_value,
-                            "' cannot be used as a value"), unit.path, expr.span);
+                        etc_diag_error(self, "TYP-0151", "type name '" + expr.text_value + "' cannot be used as a value", unit.path, expr.span);
                     } else if (ord(s.kind) == ord(SYM_ENUM_VARIANT)) {
                         let variant_has_fields = false;
                         let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, s.module_name, s.owner_name);
@@ -2318,8 +2272,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             }
                         }
                         if (variant_has_fields) {
-                            etc_diag_error(self, "TYP-0152", concat3_s("enum variant '", expr.text_value,
-                                "' requires constructor arguments"), unit.path, expr.span);
+                            etc_diag_error(self, "TYP-0152", "enum variant '" + expr.text_value + "' requires constructor arguments", unit.path, expr.span);
                         } else {
                             etc_set_var_res(self, expr_id, VAR_RES_MODULE);
                             ty = type_new_enum(s.module_name, s.owner_name);
@@ -2338,14 +2291,13 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                     }
                     } else {
                         if (expr.module_path != null) {
-                            etc_diag_error(self, "TYP-0154", concat3_s("module path for '", expr.text_value,
-                                "' is not imported"), unit.path, expr.span);
+                            etc_diag_error(self, "TYP-0154", "module path for '" + expr.text_value + "' is not imported", unit.path, expr.span);
                         } else if (expr.name_qualifier == null &&
                             nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, expr.text_value)) {
-                            etc_diag_error(self, "TYP-0155", concat3_s("ambiguous identifier '", expr.text_value, "'"),
+                            etc_diag_error(self, "TYP-0155", "ambiguous identifier '" + expr.text_value + "'",
                                 unit.path, expr.span);
                         } else {
-                            etc_diag_error(self, "TYP-0159", concat3_s("unknown identifier '", expr.text_value, "'"),
+                            etc_diag_error(self, "TYP-0159", "unknown identifier '" + expr.text_value + "'",
                                 unit.path, expr.span);
                         }
                     }
@@ -2369,8 +2321,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             let const_int = etc_cast_const_int(self, expr.expr_a);
                             if (const_int != null && ((const_int as int) < 0 || (const_int as int) > 255)) {
                                 etc_diag_error(self, "TYP-0700",
-                                    concat4_s("explicit cast from 'int' to 'byte' overflows: ",
-                                        int_to_string(const_int as int), " is outside 0..255", ""),
+                                    "explicit cast from 'int' to 'byte' overflows: " + int_to_string(const_int as int) + " is outside 0..255",
                                     unit.path, expr.span);
                             } else if (ord((src_ty as Type*).kind) == ord(TY_NULLABLE) &&
                                 ord(((src_ty as Type*).inner as Type*).kind) == ord(TY_POINTER) &&
@@ -2378,16 +2329,14 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                 etc_types_equal((target_ty as Type*), ((src_ty as Type*).inner as Type*)) &&
                                 etc_cast_is_const_null(self, expr.expr_a)) {
                                 etc_diag_error(self, "TYP-0701",
-                                    concat4_s("explicit cast from '", type_format(src_ty as Type*),
-                                        concat_s("' to '", type_format(target_ty as Type*)), "' is null at compile time"),
+                                    "explicit cast from '" + type_format(src_ty as Type*) + "' to '" + type_format(target_ty as Type*) + "' is null at compile time",
                                     unit.path, expr.span);
                             } else if (etc_can_cast(self, target_ty as Type*, src_ty as Type*)) {
                                 ty = target_ty;
                                 target_ty = null;
                             } else {
                                 etc_diag_error(self, "TYP-0230",
-                                    concat4_s("cannot cast from '", type_format(src_ty as Type*),
-                                        concat_s("' to '", type_format(target_ty as Type*)), "'"),
+                                    "cannot cast from '" + type_format(src_ty as Type*) + "' to '" + type_format(target_ty as Type*) + "'",
                                     unit.path, expr.span);
                             }
                         } else if (ord((src_ty as Type*).kind) == ord(TY_NULLABLE) &&
@@ -2396,16 +2345,14 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             etc_types_equal((target_ty as Type*), ((src_ty as Type*).inner as Type*)) &&
                             etc_cast_is_const_null(self, expr.expr_a)) {
                             etc_diag_error(self, "TYP-0701",
-                                concat4_s("explicit cast from '", type_format(src_ty as Type*),
-                                    concat_s("' to '", type_format(target_ty as Type*)), "' is null at compile time"),
+                                "explicit cast from '" + type_format(src_ty as Type*) + "' to '" + type_format(target_ty as Type*) + "' is null at compile time",
                                 unit.path, expr.span);
                         } else if (etc_can_cast(self, target_ty as Type*, src_ty as Type*)) {
                             ty = target_ty;
                             target_ty = null;
                         } else {
                             etc_diag_error(self, "TYP-0230",
-                                concat4_s("cannot cast from '", type_format(src_ty as Type*),
-                                    concat_s("' to '", type_format(target_ty as Type*)), "'"),
+                                "cannot cast from '" + type_format(src_ty as Type*) + "' to '" + type_format(target_ty as Type*) + "'",
                                 unit.path, expr.span);
                         }
                         if (target_ty != null) type_free(target_ty as Type*);
@@ -2473,21 +2420,21 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                         let base = base_ty as Type*;
                         if (ord(base.kind) == ord(TY_ENUM)) {
                             etc_diag_error(self, "TYP-0281",
-                                concat4_s("cannot allocate enum type '", type_format(base), "' without a variant", ""),
+                                "cannot allocate enum type '" + type_format(base) + "' without a variant",
                                 unit.path, expr.span);
                         } else if (ord(base.kind) == ord(TY_STRUCT)) {
                             let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*,
                                 base.module_name, base.name);
                             if (info == null) {
                                 etc_diag_error(self, "TYP-0282",
-                                    concat4_s("missing struct info for ", base.module_name, ".", base.name),
+                                    "missing struct info for " + base.module_name + "." + base.name,
                                     unit.path, expr.span);
                             } else {
                                 let fields = (info as StructInfo*).fields;
                                 let field_count = vec_size(fields);
                                 if (arg_count > 0 && arg_count != field_count) {
                                     etc_diag_error(self, "TYP-0283",
-                                        concat4_s("struct '", base.name, "' argument count mismatch", ""),
+                                        "struct '" + base.name + "' argument count mismatch",
                                         unit.path, expr.span);
                                 }
                                 for (let i = 0; i < arg_count; i = i + 1) {
@@ -2497,7 +2444,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                             let field = ptr_vec_get(fields, i) as StructFieldInfo*;
                                             if (!etc_can_assign(self, field.field_type, arg_ty as Type*)) {
                                                 etc_diag_error(self, "TYP-0316",
-                                                    concat4_s("field '", field.name, "' of struct initializer type mismatch", ""),
+                                                    "field '" + field.name + "' of struct initializer type mismatch",
                                                     unit.path, expr.span);
                                             }
                                         }
@@ -2508,7 +2455,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                         } else {
                             if (arg_count > 1) {
                                 etc_diag_error(self, "TYP-0285",
-                                    concat4_s("'new ", type_format(base), "' expects at most 1 argument", ""),
+                                    "'new " + type_format(base) + "' expects at most 1 argument",
                                     unit.path, expr.span);
                             }
                             for (let i = 0; i < arg_count; i = i + 1) {
@@ -2516,8 +2463,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                 if (arg_ty2 != null) {
                                     if (i == 0 && !etc_can_assign(self, base, arg_ty2 as Type*)) {
                                         etc_diag_error(self, "TYP-0286",
-                                            concat4_s("cannot initialize '", type_format(base), "' from argument type ",
-                                                type_format(arg_ty2 as Type*)),
+                                            "cannot initialize '" + type_format(base) + "' from argument type " + type_format(arg_ty2 as Type*),
                                             unit.path, expr.span);
                                     }
                                     type_free(arg_ty2 as Type*);
@@ -2546,7 +2492,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                 let nullable_ty = inner_ty as Type*;
                 if (ord(nullable_ty.kind) != ord(TY_NULLABLE)) {
                     etc_diag_error(self, "TYP-0250",
-                        concat3_s("cannot apply '?' to non-nullable type '", type_format(nullable_ty), "'"),
+                        "cannot apply '?' to non-nullable type '" + type_format(nullable_ty) + "'",
                         unit.path, expr.span);
                     type_free(nullable_ty);
                 } else if (self.current_ret_type == null || ord((self.current_ret_type as Type*).kind) != ord(TY_NULLABLE)) {
@@ -2604,12 +2550,7 @@ func etc_check_function(self: ExpressionTypeChecker*, env: FunctionEnv*) {
         etc_diag_error(
             self,
             "TYP-0010",
-            concat4_s(
-                "not all control paths return a value of type '",
-                type_format(self.current_ret_type as Type*),
-                "'",
-                ""
-            ),
+            "not all control paths return a value of type '" + type_format(self.current_ret_type as Type*) + "'",
             unit.path,
             env.func_decl.span
         );

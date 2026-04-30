@@ -131,7 +131,7 @@ func dp_format_snippet(diag: Diagnostic*, src: string) -> string {
 
         // Right-align line number within gutter.
         let pad = repeat_s(" ", gutter_width - len_s(line_no));
-        let header_line = concat4_s(pad, line_no, " | ", src_line);
+        let header_line = pad + line_no + " | " + src_line;
 
         // Omit caret line when no column info.
         if (diag.column < 1) {
@@ -155,9 +155,9 @@ func dp_format_snippet(diag: Diagnostic*, src: string) -> string {
         // Caret line: gutter_width spaces + " | " + offset spaces + carets.
         let caret_prefix = repeat_s(" ", gutter_width + 3 + (start_col - 1));
         let carets = repeat_s("^", caret_width);
-        let caret_line = concat_s(caret_prefix, carets);
+        let caret_line = caret_prefix + carets;
 
-        return concat3_s(header_line, "\n", caret_line);
+        return header_line + "\n" + caret_line;
     }
 }
 

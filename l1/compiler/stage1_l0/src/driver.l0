@@ -231,7 +231,7 @@ func dr_mark_loaded(loaded: VectorString*, module_name: string) {
  * @return Parse result for the module.
  */
 func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResult* {
-    log_debug(cfg, concat_s("Lexing ", path));
+    log_debug(cfg, "Lexing " + path);
     let ls = ls_create(source, path);
     let toks = tokenize(ls);
     if (toks == null) {
@@ -239,14 +239,14 @@ func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResu
     }
 
     let tv = toks as TokenVector;
-    log_debug(cfg, concat4_s("Lexed ", int_to_string(tv_len(tv)), " token(s) from ", path));
-    log_debug(cfg, concat_s("Parsing ", path));
+    log_debug(cfg, "Lexed " + int_to_string(tv_len(tv)) + " token(s) from " + path);
+    log_debug(cfg, "Parsing " + path);
     let pr = parse_module_tokens_owned(tv, path);
     ls_free(ls);
 
     if (pr.root_module != null) {
         let mod = pr.root_module as Module*;
-        log_debug(cfg, concat4_s("Parsed module '", mod.name, "' from ", path));
+        log_debug(cfg, "Parsed module '" + mod.name + "' from " + path);
     }
 
     return pr;
@@ -299,38 +299,38 @@ func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, mod
 func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loading_chain: string,
                     module_name: string, cfg: LogConfig*) -> bool {
     if (dr_vs_has(state.loaded, module_name)) {
-        log_debug(cfg, concat3_s("Module '", module_name, "' already loaded (cache hit)"));
+        log_debug(cfg, "Module '" + module_name + "' already loaded (cache hit)");
         return true;
     }
 
     if (dea_is_virtual_module_name(module_name)) {
-        log_debug(cfg, concat3_s("Treating module '", module_name, "' as compiler-synthesized prelude"));
+        log_debug(cfg, "Treating module '" + module_name + "' as compiler-synthesized prelude");
         dr_mark_loaded(state.loaded, module_name);
         return true;
     }
 
-    log_debug(cfg, concat3_s("Loading module '", module_name, "'"));
+    log_debug(cfg, "Loading module '" + module_name + "'");
 
-    let cycle_token = concat3_s("|", module_name, "|");
+    let cycle_token = "|" + module_name + "|";
     if (contains_s(loading_chain, cycle_token)) {
-        dr_emit_error(state.diags, "DRV-0030", concat3_s("Cyclic import detected involving '", module_name, "'"), "");
+        dr_emit_error(state.diags, "DRV-0030", "Cyclic import detected involving '" + module_name + "'", "");
         return false;
     }
 
-    let next_loading_chain = concat3_s(loading_chain, module_name, "|");
+    let next_loading_chain = loading_chain + module_name + "|";
     let ok = true;
 
     let path_opt = sp_resolve(search_paths, module_name);
     if (path_opt == null) {
-        dr_emit_error(state.diags, "DRV-0010", concat3_s("Module '", module_name, "' not found in system_roots or project_roots"), "");
+        dr_emit_error(state.diags, "DRV-0010", "Module '" + module_name + "' not found in system_roots or project_roots", "");
         ok = false;
     } else {
         let path = path_opt as string;
-        log_debug(cfg, concat4_s("Resolved '", module_name, "' to ", path));
+        log_debug(cfg, "Resolved '" + module_name + "' to " + path);
 
         let source_opt = read_file(path);
         if (source_opt == null) {
-            dr_emit_error(state.diags, "DRV-0011", concat_s("cannot read source file: ", path), path);
+            dr_emit_error(state.diags, "DRV-0011", "cannot read source file: " + path, path);
             ok = false;
         } else {
             let source_raw = source_opt as string;
@@ -355,8 +355,8 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
                 } else {
                     let mod = pr.root_module as Module*;
                     if (mod.name != module_name) {
-                        let msg = concat4_s("module name mismatch: file ", path, " declares '", mod.name);
-                        dr_emit_error(state.diags, "DRV-0020", concat4_s(msg, "' but was loaded as '", module_name, "'"), path);
+                        let msg = "module name mismatch: file " + path + " declares '" + mod.name;
+                        dr_emit_error(state.diags, "DRV-0020", msg + "' but was loaded as '" + module_name + "'", path);
                         ok = false;
                     } else {
                         for (let i = 0; i < vec_size(mod.imports); i = i + 1) {
@@ -389,7 +389,7 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
  * @return Driver state containing parsed modules, caches, and diagnostics.
  */
 func driver_analyze_entry(search_paths: SourceSearchPaths*, entry_module: string, cfg: LogConfig*) -> DriverState* {
-    log_info(cfg, concat3_s("Starting analysis for entry module '", entry_module, "'"));
+    log_info(cfg, "Starting analysis for entry module '" + entry_module + "'");
     log_stage(cfg, "Building compilation unit", entry_module);
     let state = new DriverState(
         entry_module, ptr_vec_create(8), vs_create(8),
@@ -401,8 +401,8 @@ func driver_analyze_entry(search_paths: SourceSearchPaths*, entry_module: string
             dr_visit_closure(state, search_paths, entry_module, visited, cfg);
         }
         with (let names = driver_module_names_sorted(state) => vs_free(names)) {
-            log_debug(cfg, concat4_s("Compilation unit contains ", int_to_string(vs_size(names)),
-                " module(s): ", join_s(names, ", ")));
+            log_debug(cfg, "Compilation unit contains " + int_to_string(vs_size(names)) +
+                " module(s): " + join_s(names, ", "));
         }
     }
     return state;

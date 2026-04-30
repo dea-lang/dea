@@ -80,7 +80,7 @@ func log_msg(cfg: LogConfig*, level: LogLevel, message: string) {
     }
 
     if (cfg.rich) {
-        err_printl_s(concat4_s("[", log_level_name(level), "] ", message));
+        err_printl_s("[" + log_level_name(level) + "] " + message);
     } else {
         err_printl_s(message);
     }
@@ -135,9 +135,9 @@ func log_debug(cfg: LogConfig*, message: string) {
  */
 func log_format_stage(stage: string, module_name: string) -> string {
     if (!is_empty_s(module_name)) {
-        return concat4_s(stage, " module '", module_name, "'");
+        return stage + " module '" + module_name + "'";
     }
-    return concat_s(stage, "...");
+    return stage + "...";
 }
 
 /**

@@ -303,7 +303,7 @@ func ps_parse_top_level_decl(self: ParserState*) -> TopLevelDecl*? {
         return new TopLevelDecl(TD_LET, decl as void*);
     }
 
-    ps_emit_error(self, "PAR-0020", concat3_s("unexpected token in top level: ", token_to_string(ps_peek(self)), ""), ps_peek(self));
+    ps_emit_error(self, "PAR-0020", "unexpected token in top level: " + token_to_string(ps_peek(self)), ps_peek(self));
     return null;
 }
 

@@ -538,7 +538,7 @@ func ps_sync_top_level(self: ParserState*) {
 func ps_expect(self: ParserState*, kind_ord: int, code: string, msg: string) -> Token? {
     if (!ps_check(self, kind_ord)) {
         let got = token_to_string(ps_peek(self));
-        ps_emit_error(self, code, concat4_s(msg, ", got ", got, " instead"), ps_peek(self));
+        ps_emit_error(self, code, msg + ", got " + got + " instead", ps_peek(self));
         return null;
     }
     return ps_advance(self);
@@ -555,7 +555,7 @@ func ps_expect(self: ParserState*, kind_ord: int, code: string, msg: string) -> 
 func ps_expect_ident(self: ParserState*, code: string, msg: string) -> Token? {
     if (!ps_check_ident(self)) {
         let got = token_to_string(ps_peek(self));
-        ps_emit_error(self, code, concat4_s(msg, ", got ", got, " instead"), ps_peek(self));
+        ps_emit_error(self, code, msg + ", got " + got + " instead", ps_peek(self));
         return null;
     }
     return ps_advance(self);
@@ -774,13 +774,13 @@ func ps_expect_variable_name(self: ParserState*, code: string, msg: string) -> T
     if (tok_is_future_extension(tok)) {
         let t = token_to_string(tok);
         ps_emit_error(self, "PAR-0010",
-            concat3_s("invalid variable name '", t, "': reserved for future language use"), tok);
+            "invalid variable name '" + t + "': reserved for future language use", tok);
         return null;
     }
     let got = ps_expect_ident(self, code, msg)?;
     if (is_reserved_keyword(got)) {
         let ident = token_ident_text(got) as string;
-        ps_emit_error(self, "PAR-0011", concat3_s("invalid variable name '", ident, "': reserved identifier"), got);
+        ps_emit_error(self, "PAR-0011", "invalid variable name '" + ident + "': reserved identifier", got);
         return null;
     }
     return got;
@@ -802,7 +802,12 @@ func parse_dotted_name_rest(self: ParserState*, first: string) -> string? {
     while (ps_match(self, ord(TT_DOT))) {
         let ident = ps_expect_ident(self, "PAR-0300", "expected identifier after '.' in module name")?;
         let ident_text = token_ident_text(ident) as string;
-        name = concat3_s(name, ".", ident_text);
+        with (let sb = sb_create() => sb_free(sb)) {
+            sb_append(sb, name);
+            sb_append(sb, ".");
+            sb_append(sb, ident_text);
+            name = sb_to_string(sb);
+        }
     }
     return name;
 }

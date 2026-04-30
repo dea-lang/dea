@@ -448,7 +448,7 @@ func ls_next_token(self: LexerState*) -> Token? {
 
         else {
             // If we reach here, it's an unrecognized character
-            ls_emit_error(self, "LEX-0040", concat3_s("unexpected character '", byte_to_s(c), "'"), start_line, start_column, start_line, start_column + 1);
+            ls_emit_error(self, "LEX-0040", "unexpected character '" + byte_to_s(c) + "'", start_line, start_column, start_line, start_column + 1);
             return null;
         }
     }
@@ -570,8 +570,7 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
                 return null;
             }
             if (single_byte && char_value > 255) {
-                ls_emit_error(self, "LEX-0031", concat3_s("character literal hexadecimal escape out of range (0-255): '\\x",
-                                               int_to_string_base(char_value, 16), "'"), self.line, self.column, self.line, self.column);
+                ls_emit_error(self, "LEX-0031", "character literal hexadecimal escape out of range (0-255): '\\x" + int_to_string_base(char_value, 16) + "'", self.line, self.column, self.line, self.column);
                 return null;
             }
         }
@@ -636,7 +635,7 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
             }
         }
         else {
-            ls_emit_error(self, "LEX-0059", concat3_s("unknown escape sequence '\\", byte_to_s(c), "'"), self.line, self.column, self.line, self.column);
+            ls_emit_error(self, "LEX-0059", "unknown escape sequence '\\" + byte_to_s(c) + "'", self.line, self.column, self.line, self.column);
             return null;
         }
 
@@ -666,14 +665,14 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
 
         // Check for invalid characters immediately following the number (e.g., "123abc")
         if (is_ident_start(ls_peek(self))) {
-            ls_emit_error(self, "LEX-0061", concat3_s("invalid character '", byte_to_s(ls_peek(self)), "' after integer literal"), start_line, start_column, self.line, self.column);
+            ls_emit_error(self, "LEX-0061", "invalid character '" + byte_to_s(ls_peek(self)) + "' after integer literal", start_line, start_column, self.line, self.column);
             return null;
         }
 
         // Check for integer overflow
         let number_value : int? = string_to_int(number_str);
         if (number_value == null) {
-            ls_emit_error(self, "LEX-0060", concat3_s("integer literal '", number_str, "' exceeds 32-bit signed range"), start_line, start_column, self.line, self.column);
+            ls_emit_error(self, "LEX-0060", "integer literal '" + number_str + "' exceeds 32-bit signed range", start_line, start_column, self.line, self.column);
             return null;
         }
 

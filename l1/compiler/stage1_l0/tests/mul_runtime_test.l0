@@ -32,7 +32,7 @@ func mrt_overflow_fixture_root() -> string {
  * @param expected Expected product.
  */
 func mrt_expect_eq(label: string, actual: int, expected: int) {
-    assert(actual == expected, concat3_s("multiplication mismatch: ", label, ""));
+    assert(actual == expected, "multiplication mismatch: " + label);
     printl_ss("[PASS]", label);
 }
 
@@ -50,7 +50,7 @@ func mrt_expect_overflow(module_name: string, label: string) {
         vs_push(argv, module_name);
 
         let rc = run_with_argv(argv);
-        assert(rc != 0, concat3_s("expected runtime overflow failure: ", label, ""));
+        assert(rc != 0, "expected runtime overflow failure: " + label);
     }
 
     printl_ss("[PASS]", label);
