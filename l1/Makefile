@@ -200,9 +200,9 @@ use-dev-stage1: build-stage1
 	@printf '\n------------------------------------------------------------------------------\n'
 ifeq ($(OS),Windows_NT)
 	@cmd_env_path="$$(cygpath -w "$$(realpath "$(L1_BUILD_DIR)/bin/l1-env.cmd")")"; \
-		printf 'To activate the selected l1c stage in this shell:\n\nIn an MSYS2 bash shell:\n\n    source %s/bin/l1-env.sh\n\nIn CMD:\n\n    call "%s"\n\nThen run:\n\n    l1c --help\n\nSee ../README-WINDOWS.md for PowerShell and direct-launcher guidance.' "$(L1_BUILD_DIR)" "$$cmd_env_path"
+		printf 'To activate the selected l1c stage in this shell:\n\nIn an MSYS2 bash shell, run:\n\n    source %s/bin/l1-env.sh\n\nIn CMD:\n\n    call "%s"\n\nThen run:\n\n    l1c --help\n\nSee ../README-WINDOWS.md for direct-launcher guidance.' "$$(cygpath -u "$$(realpath "$(L1_BUILD_DIR)")")" "$$cmd_env_path"
 else
-	@printf 'To activate the selected l1c stage in this shell, run:\n\n    source %s/bin/l1-env.sh\n\nThis adds %s/bin to your current PATH, so `l1c` invokes the selected compiler. See README.md for more information.' "$(L1_BUILD_DIR)" "$(L1_BUILD_DIR)"
+	@printf 'To activate the selected l1c stage in this shell, run:\n\n    source %s/bin/l1-env.sh\n\nThis adds Dea to your current PATH, so `l1c` invokes the selected compiler.\nSee README.md for more information.' "$(abspath $(L1_BUILD_DIR))"
 endif
 	@printf '\n------------------------------------------------------------------------------\n'
 

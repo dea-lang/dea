@@ -184,8 +184,16 @@ if [[ "${{sourced}}" -eq 0 && -n "${{ZSH_VERSION-}}" && "${{ZSH_EVAL_CONTEXT-}}"
     sourced=1
 fi
 
+source_hint="<repo-root>/{build_relative_from_repo}/bin/{env_script_name}"
+if [[ -n "${{script_src}}" ]]; then
+    script_dir_hint="$(cd -- "$(dirname -- "${{script_src}}")" && pwd -P 2>/dev/null || true)"
+    if [[ -n "${{script_dir_hint}}" ]]; then
+        source_hint="${{script_dir_hint}}/{env_script_name}"
+    fi
+fi
+
 if [[ -z "${{script_src}}" || "${{sourced}}" -eq 0 ]]; then
-    echo "This script must be sourced: source {build_relative_from_repo}/bin/{env_script_name}" >&2
+    echo "This script must be sourced: source ${{source_hint}}" >&2
     return 1 2>/dev/null || exit 1
 fi
 

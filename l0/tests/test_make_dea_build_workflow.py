@@ -150,6 +150,28 @@ def normalize_path_text(value: str | Path) -> str:
     return value.replace("\\", "/")
 
 
+def msys_source_path(path: Path) -> str:
+    """Return the path text expected in MSYS2 bash `source` hints."""
+
+    if not is_windows_host():
+        return normalize_path_text(path)
+
+    proc = subprocess.run(
+        ["cygpath", "-u", str(path)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        fail(
+            f"failed to convert Windows path with cygpath: {path}\n"
+            f"stdout:\n{proc.stdout}\n"
+            f"stderr:\n{proc.stderr}"
+        )
+    return proc.stdout.strip()
+
+
 def assert_version_report(text: str) -> None:
     for expected in (
         "Dea language / L0 compiler",
@@ -290,7 +312,9 @@ def main() -> int:
     prefix_native_path = prefix_dir / "bin" / "l0c-stage2.native"
     prefix_env_path = prefix_dir / "bin" / "l0-env.sh"
     prefix_env_cmd_path = prefix_dir / "bin" / "l0-env.cmd"
-    expected_source_hint = f"source {dea_build_rel}/bin/l0-env.sh"
+    expected_source_hint = f"source {dea_build_dir}/bin/l0-env.sh"
+    expected_windows_source_hint = f"source {msys_source_path(env_path)}"
+    expected_prefix_windows_source_hint = f"source {msys_source_path(prefix_env_path)}"
     expected_windows_hint = "l0-env.cmd"
 
     try:
@@ -375,6 +399,7 @@ def main() -> int:
             assert_exists(alias_cmd_path)
             assert_same_text(alias_path, stage1_path)
             assert_same_text(alias_cmd_path, stage1_cmd_path)
+            assert_output_contains(use_stage1_output, expected_windows_source_hint)
             assert_output_contains(use_stage1_output, expected_windows_hint)
         else:
             assert_symlink_target(alias_path, "l0c-stage1")
@@ -402,6 +427,7 @@ def main() -> int:
             assert_exists(alias_cmd_path)
             assert_same_text(alias_path, stage2_path)
             assert_same_text(alias_cmd_path, stage2_cmd_path)
+            assert_output_contains(use_stage2_output, expected_windows_source_hint)
             assert_output_contains(use_stage2_output, expected_windows_hint)
         else:
             assert_symlink_target(alias_path, "l0c-stage2")
@@ -441,6 +467,7 @@ def main() -> int:
             assert_exists(prefix_alias_cmd_path)
             assert_same_text(prefix_alias_path, prefix_stage2_path)
             assert_same_text(prefix_alias_cmd_path, prefix_stage2_cmd_path)
+            assert_output_contains(install_prefix_output, expected_prefix_windows_source_hint)
             assert_output_contains(install_prefix_output, expected_windows_hint)
         else:
             assert_symlink_target(prefix_alias_path, "l0c-stage2")

@@ -163,8 +163,9 @@ install:
 	@"$(PREFIX)/bin/l0c-stage2" --version
 	@printf '\n------------------------------------------------------------------------------\n'
 ifeq ($(OS),Windows_NT)
-	@cmd_env_path="$$(cygpath -w "$$(realpath "$(PREFIX)/bin/l0-env.cmd")")"; \
-		printf 'Dea/L0 compiler installed at %s/bin/l0c.\nTo activate the installed compiler:\n\nIn an MSYS2 bash shell:\n\n    source %s/bin/l0-env.sh\n\nIn CMD:\n\n    call "%s"\n\nSee ../README-WINDOWS.md for PowerShell and direct-launcher guidance.' "$(PREFIX)" "$(PREFIX)" "$$cmd_env_path"
+	@prefix_posix_path="$$(cygpath -u "$$(realpath "$(PREFIX)")")"; \
+		cmd_env_path="$$(cygpath -w "$$(realpath "$(PREFIX)/bin/l0-env.cmd")")"; \
+		printf 'Dea/L0 compiler installed at %s/bin/l0c.\nTo activate the installed compiler:\n\nIn an MSYS2 bash shell:\n\n    source %s/bin/l0-env.sh\n\nIn CMD:\n\n    call "%s"\n\nSee ../README-WINDOWS.md for PowerShell and direct-launcher guidance.' "$(PREFIX)" "$$prefix_posix_path" "$$cmd_env_path"
 else
 	@printf 'Dea/L0 compiler installed at %s/bin/l0c.\nTo add the installed compiler to your current PATH in this shell, run:\n\n    source %s/bin/l0-env.sh\n\nSee README.md for more information.' "$(PREFIX)" "$(PREFIX)"
 endif
@@ -185,9 +186,9 @@ use-dev-stage1: install-dev-stage1
 	@printf '\n------------------------------------------------------------------------------\n'
 ifeq ($(OS),Windows_NT)
 	@cmd_env_path="$$(cygpath -w "$$(realpath "$(DEA_BUILD_DIR)/bin/l0-env.cmd")")"; \
-		printf 'To activate the selected l0c stage in this shell:\n\nIn an MSYS2 bash shell:\n\n    source %s/bin/l0-env.sh\n\nIn CMD:\n\n    call "%s"\n\nThen run:\n\n    l0c --help\n\nSee ../README-WINDOWS.md for PowerShell and direct-launcher guidance.' "$(DEA_BUILD_DIR)" "$$cmd_env_path"
+		printf 'To activate the selected l0c stage in this shell:\n\nIn an MSYS2 bash shell, run:\n\n    source %s/bin/l0-env.sh\n\nIn CMD:\n\n    call "%s"\n\nThen run:\n\n    l0c --help\n\nSee ../README-WINDOWS.md for direct-launcher guidance.' "$$(cygpath -u "$$(realpath "$(DEA_BUILD_DIR)")")" "$$cmd_env_path"
 else
-	@printf 'To activate the selected l0c stage in this shell, run:\n\n    source %s/bin/l0-env.sh\n\nThis adds %s/bin to your current PATH, so `l0c` invokes the selected compiler. See README.md for more information.' "$(DEA_BUILD_DIR)" "$(DEA_BUILD_DIR)"
+	@printf 'To activate the selected l0c stage in this shell, run:\n\n    source %s/bin/l0-env.sh\n\nThis adds Dea to your current PATH, so `l0c` invokes the selected compiler.\nSee README.md for more information.' "$(abspath $(DEA_BUILD_DIR))"
 endif
 	@printf '\n------------------------------------------------------------------------------\n'
 
@@ -196,9 +197,9 @@ use-dev-stage2: install-dev-stage2
 	@printf '\n------------------------------------------------------------------------------\n'
 ifeq ($(OS),Windows_NT)
 	@cmd_env_path="$$(cygpath -w "$$(realpath "$(DEA_BUILD_DIR)/bin/l0-env.cmd")")"; \
-		printf 'To activate the selected l0c stage in this shell:\n\nIn an MSYS2 bash shell:\n\n    source %s/bin/l0-env.sh\n\nIn CMD:\n\n    call "%s"\n\nThen run:\n\n    l0c --help\n\nSee ../README-WINDOWS.md for PowerShell and direct-launcher guidance.' "$(DEA_BUILD_DIR)" "$$cmd_env_path"
+		printf 'To activate the selected l0c stage in this shell:\n\nIn an MSYS2 bash shell, run:\n\n    source %s/bin/l0-env.sh\n\nIn CMD:\n\n    call "%s"\n\nThen run:\n\n    l0c --help\n\nSee ../README-WINDOWS.md for direct-launcher guidance.' "$$(cygpath -u "$$(realpath "$(DEA_BUILD_DIR)")")" "$$cmd_env_path"
 else
-	@printf 'To activate the selected l0c stage in this shell, run:\n\n    source %s/bin/l0-env.sh\n\nThis adds %s/bin to your current PATH, so `l0c` invokes the selected compiler. See README.md for more information.' "$(DEA_BUILD_DIR)" "$(DEA_BUILD_DIR)"
+	@printf 'To activate the selected l0c stage in this shell, run:\n\n    source %s/bin/l0-env.sh\n\nThis adds Dea to your current PATH, so `l0c` invokes the selected compiler.\nSee README.md for more information.' "$(abspath $(DEA_BUILD_DIR))"
 endif
 	@printf '\n------------------------------------------------------------------------------\n'
 
@@ -263,5 +264,5 @@ docker:
 		echo "Example: make docker CMD=test-all"; \
 		exit 2; \
 	else \
-		docker build -t "$(DOCKER_IMAGE)" . && docker run --rm $(if $(strip $(DOCKER_L0_CC)),-e L0_CC=$(DOCKER_L0_CC)) "$(DOCKER_IMAGE)" make $(CMD); \
+		docker build -f Dockerfile -t "$(DOCKER_IMAGE)" .. && docker run --rm $(if $(strip $(DOCKER_L0_CC)),-e L0_CC=$(DOCKER_L0_CC)) "$(DOCKER_IMAGE)" make $(CMD); \
 	fi
