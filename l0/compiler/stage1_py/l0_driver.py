@@ -25,12 +25,7 @@ class ImportCycleError(Exception):
 
 
 class SourceEncodingError(Exception):
-    """Raised when a source file cannot be decoded as UTF-8.
-
-    Args:
-        path: The path to the file that failed to decode.
-        message: A descriptive error message.
-    """
+    """Raised when a source file cannot be decoded as UTF-8."""
 
     def __init__(self, path: str | Path, message: str):
         """Initialize a UTF-8 decoding failure.

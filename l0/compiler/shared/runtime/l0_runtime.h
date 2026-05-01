@@ -202,29 +202,29 @@ static l0_string L0_STRING_EMPTY = { 0, { .s_str = { 0, NULL } } };
 
 #ifndef L0_OPT_BOOL_DEFINED
 #define L0_OPT_BOOL_DEFINED
-/** @struct l0_opt_bool Optional boolean wrapper. */
+/** Optional boolean wrapper. */
 typedef struct { l0_bool has_value; l0_bool value; } l0_opt_bool;
 #endif /* L0_OPT_BOOL_DEFINED */
 
 #ifndef L0_OPT_BYTE_DEFINED
 #define L0_OPT_BYTE_DEFINED
-/** @struct l0_opt_byte Optional byte wrapper. */
+/** Optional byte wrapper. */
 typedef struct { l0_bool has_value; l0_byte value; } l0_opt_byte;
 #endif /* L0_OPT_BYTE_DEFINED */
 
 #ifndef L0_OPT_INT_DEFINED
 #define L0_OPT_INT_DEFINED
-/** @struct l0_opt_int Optional integer wrapper. */
+/** Optional integer wrapper. */
 typedef struct { l0_bool has_value; l0_int value; } l0_opt_int;
 #endif /* L0_OPT_INT_DEFINED */
 
 #ifndef L0_OPT_STRING_DEFINED
 #define L0_OPT_STRING_DEFINED
-/** @struct l0_opt_string Optional string wrapper. */
+/** Optional string wrapper. */
 typedef struct { l0_bool has_value; l0_string value; } l0_opt_string;
 #endif /* L0_OPT_STRING_DEFINED */
 
-/** @struct _l0_base_opt Base structure for optional types to access has_value. */
+/** Base structure for optional types to access `has_value`. */
 typedef struct { l0_bool has_value; } _l0_base_opt;
 
 /** Static instance for null optional string. */

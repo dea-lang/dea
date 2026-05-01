@@ -1593,8 +1593,8 @@ class Backend:
         Args:
             stmt: The root statement (or None).
 
-        Yields:
-            Every Stmt in the sub-tree, including stmt itself.
+        Returns:
+            An iterator over every `Stmt` in the sub-tree, including `stmt` itself.
         """
         if stmt is None:
             return
@@ -3057,6 +3057,7 @@ class Backend:
             expr_op: The operator string.
             expr_left: The left operand.
             expr_right: The right operand.
+            for_condition: Whether to preserve condition-context code generation.
 
         Returns:
             C code string for the operation.
