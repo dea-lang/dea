@@ -29,7 +29,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref != '' && inputs.source_ref || github.sha }}
+          ref: >-
+            ${{
+              inputs.release_tag != '' &&
+              inputs.source_ref == inputs.release_tag &&
+              format('refs/tags/{0}', inputs.release_tag) ||
+              (inputs.source_ref != '' && inputs.source_ref || github.sha)
+            }}
 
       - name: Set up Python
         uses: actions/setup-python@v6

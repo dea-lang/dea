@@ -11,6 +11,11 @@ on:
         required: false
         default: ""
         type: string
+      publish_release:
+        description: "Publish pre-release after attaching assets to the draft release"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -379,14 +384,25 @@ jobs:
           name: dea-l0-dist-${{ matrix.os }}-${{ matrix.arch }}
           path: l0/${{ env.DIST_ARCHIVE_PATH }}
 
+  build-docs:
+    needs: prepare-snapshot
+    uses: ./.github/workflows/l0-docs-build.yml
+    with:
+      source_ref: ${{ needs.prepare-snapshot.outputs.snapshot_ref }}
+      release_tag: ${{ needs.prepare-snapshot.outputs.snapshot_tag }}
+      build_pdf: true
+
   publish-release:
     needs:
       - prepare-snapshot
       - build-dist
+      - build-docs
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: l0
+    outputs:
+      release_id: ${{ steps.ensure-draft.outputs.release_id }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -401,10 +417,83 @@ jobs:
           merge-multiple: true
           path: l0/build/release-assets
 
+      - name: Download PDF artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: docs-pdf
+          path: l0/build/release-assets
+
+      - name: Download generated Markdown
+        uses: actions/download-artifact@v6
+        with:
+          name: docs-markdown
+          path: l0/build/docs/markdown
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Stage release PDF asset
+        env:
+          CURRENT_TAG: ${{ needs.prepare-snapshot.outputs.snapshot_tag }}
+        run: |
+          pdf_name="dea_l0_api_reference-$CURRENT_TAG.pdf"
+          mv "build/release-assets/dea_l0_api_reference.pdf" "build/release-assets/$pdf_name"
+
+      - name: Build blog export archive
+        env:
+          BLOG_DOCS_PREFIX: ${{ vars.BLOG_DOCS_PREFIX }}
+          BLOG_TAB_TITLE: ${{ vars.BLOG_TAB_TITLE }}
+          BLOG_TAB_ICON: ${{ vars.BLOG_TAB_ICON }}
+          BLOG_TAB_ORDER: ${{ vars.BLOG_TAB_ORDER }}
+          DOCS_SITE_URL_OVERRIDE: ${{ vars.DOCS_SITE_URL }}
+          CURRENT_TAG: ${{ needs.prepare-snapshot.outputs.snapshot_tag }}
+        run: |
+          docs_prefix="${BLOG_DOCS_PREFIX:-api/reference}"
+          tab_title="${BLOG_TAB_TITLE:-API}"
+          tab_icon="${BLOG_TAB_ICON:-fas fa-book}"
+          tab_order="${BLOG_TAB_ORDER:-5}"
+          if [ -n "$DOCS_SITE_URL_OVERRIDE" ]; then
+            html_site_url="$DOCS_SITE_URL_OVERRIDE"
+          else
+            html_site_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          fi
+          pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${CURRENT_TAG}/dea_l0_api_reference-${CURRENT_TAG}.pdf"
+          python -m compiler.docgen.l0_docgen_blog \
+            --input build/docs/markdown \
+            --output build/docs/blog-export \
+            --docs-prefix "$docs_prefix" \
+            --tab-title "$tab_title" \
+            --tab-icon "$tab_icon" \
+            --tab-order "$tab_order" \
+            --html-site-url "$html_site_url" \
+            --pdf-url "$pdf_url" \
+            --release-tag "$CURRENT_TAG"
+          tar -czf build/release-assets/blog-export.tar.gz -C build/docs/blog-export .
+
       - name: Generate checksums
         run: |
-          cd build/release-assets
-          sha256sum ./*.tar.gz ./*.zip > SHA256SUMS
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+
+          assets_dir = Path("build/release-assets")
+          assets = sorted(
+              path for path in assets_dir.iterdir() if path.is_file() and path.name != "SHA256SUMS"
+          )
+          required_assets = {
+              "blog-export.tar.gz",
+              "dea_l0_api_reference-${{ needs.prepare-snapshot.outputs.snapshot_tag }}.pdf",
+          }
+          missing = sorted(name for name in required_assets if not (assets_dir / name).is_file())
+          if missing:
+              raise SystemExit(f"missing release assets before checksum generation: {missing}")
+          with (assets_dir / "SHA256SUMS").open("w", encoding="utf-8") as handle:
+              for asset in assets:
+                  digest = sha256(asset.read_bytes()).hexdigest()
+                  handle.write(f"{digest}  {asset.name}\n")
+          PY
 
       - name: Generate release notes
         env:
@@ -420,15 +509,50 @@ jobs:
             git log --pretty=format:'- %s (%h)' "$CURRENT_TAG" > build/release-notes.md
           fi
 
-      - name: Publish GitHub pre-release
+      - name: Ensure draft GitHub pre-release
+        id: ensure-draft
         env:
           GH_TOKEN: ${{ github.token }}
           CURRENT_TAG: ${{ needs.prepare-snapshot.outputs.snapshot_tag }}
           CURRENT_TITLE: ${{ needs.prepare-snapshot.outputs.snapshot_version }}
         run: |
-          if gh release view "$CURRENT_TAG" >/dev/null 2>&1; then
-            gh release upload "$CURRENT_TAG" build/release-assets/* --clobber
-            gh release edit "$CURRENT_TAG" --title "$CURRENT_TITLE" --notes-file build/release-notes.md --prerelease
+          release_api="repos/$GITHUB_REPOSITORY/releases/tags/$CURRENT_TAG"
+          if gh api "$release_api" >/dev/null 2>&1; then
+            release_id="$(gh api "$release_api" --jq '.id')"
+            is_draft="$(gh api "$release_api" --jq '.draft')"
+            if [ "$is_draft" != "true" ]; then
+              echo "Error: immutable-release violation: $CURRENT_TAG already has a published release." >&2
+              exit 1
+            fi
           else
-            gh release create "$CURRENT_TAG" build/release-assets/* --title "$CURRENT_TITLE" --notes-file build/release-notes.md --prerelease
+            release_id="$(
+              gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+                -f tag_name="$CURRENT_TAG" \
+                -f target_commitish="$GITHUB_SHA" \
+                -f name="$CURRENT_TITLE" \
+                -F draft=true \
+                -F prerelease=true \
+                -F body=@build/release-notes.md \
+                --jq '.id'
+            )"
           fi
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+
+      - name: Upload assets to draft pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_TAG: ${{ needs.prepare-snapshot.outputs.snapshot_tag }}
+        run: gh release upload "$CURRENT_TAG" build/release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Publish GitHub pre-release
+        if: inputs.publish_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.ensure-draft.outputs.release_id }}
+          CURRENT_TITLE: ${{ needs.prepare-snapshot.outputs.snapshot_version }}
+        run: |
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -f name="$CURRENT_TITLE" \
+            -F draft=false \
+            -F prerelease=true \
+            -F body=@build/release-notes.md >/dev/null

@@ -4,9 +4,6 @@
 name: L0 Publish Documentation
 
 on:
-  release:
-    types:
-      - published
   workflow_dispatch:
     inputs:
       ref:
@@ -20,17 +17,22 @@ on:
         default: true
         type: boolean
       publish_blog:
-        description: "Build and upload Chirpy blog export archive to release"
+        description: "Build the Chirpy blog export archive"
         required: true
         default: false
         type: boolean
-      upload_pdf_to_release:
-        description: "Upload the generated API PDF to an existing release"
+      attach_release_assets_to_draft:
+        description: "Attach release PDF/blog assets to an existing draft release"
         required: true
         default: false
         type: boolean
+      draft_release:
+        description: "Draft release URL or numeric GitHub release ID for draft-release asset attachment"
+        required: false
+        default: ""
+        type: string
       release_tag:
-        description: "Release tag for manual PDF upload and Chirpy blog export"
+        description: "Release tag for release-oriented docs/blog publishing when not targeting a draft release by URL/ID"
         required: false
         default: ""
         type: string
@@ -45,28 +47,114 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-draft-release:
+    if: inputs.attach_release_assets_to_draft
+    runs-on: ubuntu-latest
+    outputs:
+      resolved_release_id: ${{ steps.resolve.outputs.resolved_release_id }}
+      resolved_release_tag: ${{ steps.resolve.outputs.resolved_release_tag }}
+      resolved_target_commitish: ${{ steps.resolve.outputs.resolved_target_commitish }}
+    steps:
+      - name: Resolve target draft release
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_DRAFT_RELEASE: ${{ inputs.draft_release }}
+          REPOSITORY_NAME: ${{ github.repository }}
+        run: |
+          draft_release="${INPUT_DRAFT_RELEASE%%\#*}"
+          draft_release="${draft_release%%\?*}"
+          draft_release="${draft_release%/}"
+
+          if [ -z "$draft_release" ]; then
+            echo "Error: draft_release is required when attach_release_assets_to_draft=true." >&2
+            exit 1
+          fi
+
+          release_id=""
+          release_tag=""
+          release_api=""
+
+          if ! printf '%s' "$draft_release" | grep -Eq '[^0-9]'; then
+            release_id="$draft_release"
+            release_api="repos/$GITHUB_REPOSITORY/releases/$release_id"
+          else
+            release_url_prefix="https://github.com/$REPOSITORY_NAME/releases/tag/"
+            case "$draft_release" in
+              "$release_url_prefix"*)
+                release_tag="${draft_release#"$release_url_prefix"}"
+                ;;
+              https://github.com/*/releases/tag/*)
+                echo "Error: draft_release must target https://github.com/$REPOSITORY_NAME/releases/tag/<tag> when provided as a URL." >&2
+                exit 1
+                ;;
+              *)
+                echo "Error: draft_release must be a numeric release ID or a full GitHub release URL." >&2
+                exit 1
+                ;;
+            esac
+            if [ -z "$release_tag" ] || [ "$release_tag" = "$draft_release" ]; then
+              echo "Error: draft_release URL must include a release tag after /releases/tag/." >&2
+              exit 1
+            fi
+            release_api="repos/$GITHUB_REPOSITORY/releases/tags/$release_tag"
+          fi
+
+          if ! gh api "$release_api" >/tmp/dea-l0-draft-release.json 2>/dev/null; then
+            if [ -n "$release_id" ]; then
+              echo "Error: draft release $release_id does not exist." >&2
+            else
+              echo "Error: draft release $release_tag does not exist." >&2
+            fi
+            exit 1
+          fi
+
+          release_id="$(gh api "$release_api" --jq '.id')"
+          is_draft="$(gh api "$release_api" --jq '.draft')"
+          if [ "$is_draft" != "true" ]; then
+            echo "Error: immutable-release violation: release $release_id is already published." >&2
+            exit 1
+          fi
+
+          resolved_tag="$(gh api "$release_api" --jq '.tag_name')"
+          resolved_target_commitish="$(gh api "$release_api" --jq '.target_commitish')"
+
+          echo "resolved_release_id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "resolved_release_tag=$resolved_tag" >> "$GITHUB_OUTPUT"
+          echo "resolved_target_commitish=$resolved_target_commitish" >> "$GITHUB_OUTPUT"
+
   resolve-targets:
+    needs: resolve-draft-release
+    if: >-
+      always() &&
+      (needs.resolve-draft-release.result == 'success' || needs.resolve-draft-release.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       source_ref: ${{ steps.resolve.outputs.source_ref }}
       target_release_tag: ${{ steps.resolve.outputs.target_release_tag }}
+      resolved_release_id: ${{ steps.resolve.outputs.resolved_release_id }}
+      resolved_release_tag: ${{ steps.resolve.outputs.resolved_release_tag }}
+      resolved_target_commitish: ${{ steps.resolve.outputs.resolved_target_commitish }}
     steps:
       - name: Resolve source ref and release tag
         id: resolve
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_REF: ${{ inputs.ref }}
+          INPUT_DRAFT_ATTACH: ${{ inputs.attach_release_assets_to_draft }}
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          RESOLVED_RELEASE_ID: ${{ needs.resolve-draft-release.outputs.resolved_release_id }}
+          RESOLVED_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
+          RESOLVED_TARGET_COMMITISH: ${{ needs.resolve-draft-release.outputs.resolved_target_commitish }}
           DEFAULT_REF: ${{ github.ref_name }}
         run: |
-          if [ "$EVENT_NAME" = "release" ]; then
-            echo "source_ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-            echo "target_release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           source_ref="$INPUT_REF"
+          target_release_tag="$INPUT_RELEASE_TAG"
+          if [ "$INPUT_DRAFT_ATTACH" = "true" ]; then
+            target_release_tag="$RESOLVED_RELEASE_TAG"
+          fi
+          if [ -z "$source_ref" ] && [ "$INPUT_DRAFT_ATTACH" = "true" ]; then
+            source_ref="$RESOLVED_TARGET_COMMITISH"
+          fi
           if [ -z "$source_ref" ] && [ -n "$INPUT_RELEASE_TAG" ]; then
             source_ref="$INPUT_RELEASE_TAG"
           fi
@@ -75,7 +163,10 @@ jobs:
           fi
 
           echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
-          echo "target_release_tag=$INPUT_RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "target_release_tag=$target_release_tag" >> "$GITHUB_OUTPUT"
+          echo "resolved_release_id=$RESOLVED_RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "resolved_release_tag=$RESOLVED_RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "resolved_target_commitish=$RESOLVED_TARGET_COMMITISH" >> "$GITHUB_OUTPUT"
 
   check-pages-availability:
     runs-on: ubuntu-latest
@@ -96,15 +187,15 @@ jobs:
 
   build-docs:
     needs: resolve-targets
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'l0-v')
     uses: ./.github/workflows/l0-docs-build.yml
     with:
       source_ref: ${{ needs.resolve-targets.outputs.source_ref }}
       release_tag: ${{ needs.resolve-targets.outputs.target_release_tag }}
       build_pdf: >-
         ${{
-          github.event_name == 'release' ||
-          (github.event_name == 'workflow_dispatch' && (inputs.publish_pages == true || inputs.upload_pdf_to_release == true))
+          inputs.publish_pages == true ||
+          inputs.publish_blog == true ||
+          inputs.attach_release_assets_to_draft == true
         }}
 
   deploy-pages:
@@ -113,8 +204,7 @@ jobs:
       - build-docs
     if: >-
       needs.check-pages-availability.outputs.pages_enabled == 'true' &&
-      ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'l0-v')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.publish_pages))
+      inputs.publish_pages
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -126,53 +216,174 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  upload-release-pdf:
+  attach-release-assets:
     needs:
+      - resolve-draft-release
       - resolve-targets
       - build-docs
+      - deploy-pages
     if: >-
-      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'l0-v')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.upload_pdf_to_release)
+      always() &&
+      needs.resolve-draft-release.result == 'success' &&
+      needs.resolve-targets.result == 'success' &&
+      needs.build-docs.result == 'success' &&
+      (needs.deploy-pages.result == 'success' || needs.deploy-pages.result == 'skipped') &&
+      inputs.attach_release_assets_to_draft
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: l0
     steps:
+      - name: Check out source repository
+        if: inputs.publish_blog
+        uses: actions/checkout@v6
+
+      - name: Require target draft release
+        env:
+          RESOLVED_RELEASE_ID: ${{ needs.resolve-draft-release.outputs.resolved_release_id }}
+        run: |
+          if [ -z "$RESOLVED_RELEASE_ID" ]; then
+            echo "Error: draft_release resolution did not produce a release ID." >&2
+            exit 1
+          fi
+
+      - name: Validate target draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESOLVED_RELEASE_ID: ${{ needs.resolve-draft-release.outputs.resolved_release_id }}
+        run: |
+          release_api="repos/$GITHUB_REPOSITORY/releases/$RESOLVED_RELEASE_ID"
+          if ! gh api "$release_api" >/dev/null 2>&1; then
+            echo "Error: draft release $RESOLVED_RELEASE_ID does not exist." >&2
+            exit 1
+          fi
+          is_draft="$(gh api "$release_api" --jq '.draft')"
+          if [ "$is_draft" != "true" ]; then
+            echo "Error: immutable-release violation: release $RESOLVED_RELEASE_ID is already published." >&2
+            exit 1
+          fi
+
       - name: Download PDF artifact
         uses: actions/download-artifact@v6
         with:
           name: docs-pdf
           path: l0/build/docs/pdf
 
-      - name: Require target release tag
-        env:
-          TARGET_RELEASE_TAG: ${{ needs.resolve-targets.outputs.target_release_tag }}
-        run: |
-          if [ -z "$TARGET_RELEASE_TAG" ]; then
-            echo "Error: release_tag is required when upload_pdf_to_release=true on workflow_dispatch." >&2
-            exit 1
-          fi
-
-      - name: Upload PDF to GitHub Release
+      - name: Upload PDF to draft release
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_RELEASE_TAG: ${{ needs.resolve-targets.outputs.target_release_tag }}
+          RESOLVED_RELEASE_ID: ${{ needs.resolve-draft-release.outputs.resolved_release_id }}
+          RESOLVED_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
         run: |
           stable_pdf="build/docs/pdf/dea_l0_api_reference.pdf"
-          release_pdf="build/docs/pdf/dea_l0_api_reference-$TARGET_RELEASE_TAG.pdf"
+          release_pdf="build/docs/pdf/dea_l0_api_reference-$RESOLVED_RELEASE_TAG.pdf"
+          asset_name="$(basename "$release_pdf")"
           cp "$stable_pdf" "$release_pdf"
-          gh release upload "$TARGET_RELEASE_TAG" "$release_pdf" --clobber --repo "$GITHUB_REPOSITORY"
+          release_api="repos/$GITHUB_REPOSITORY/releases/$RESOLVED_RELEASE_ID"
+          upload_url="$(gh api "$release_api" --jq '.upload_url' | sed 's/{?name,label}//')"
+          existing_asset_ids="$(gh api "$release_api/assets" --paginate --jq ".[] | select(.name == \"$asset_name\") | .id")"
+          for asset_id in $existing_asset_ids; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+          done
+          gh api \
+            --method POST \
+            -H "Content-Type: application/pdf" \
+            --input "$release_pdf" \
+            "${upload_url}?name=${asset_name}"
+
+      - name: Download generated Markdown
+        if: inputs.publish_blog
+        uses: actions/download-artifact@v6
+        with:
+          name: docs-markdown
+          path: l0/build/docs/markdown
+
+      - name: Set up Python
+        if: inputs.publish_blog
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Export Chirpy API pages
+        if: inputs.publish_blog
+        env:
+          BLOG_DOCS_PREFIX: ${{ vars.BLOG_DOCS_PREFIX }}
+          BLOG_TAB_TITLE: ${{ vars.BLOG_TAB_TITLE }}
+          BLOG_TAB_ICON: ${{ vars.BLOG_TAB_ICON }}
+          BLOG_TAB_ORDER: ${{ vars.BLOG_TAB_ORDER }}
+          DOCS_SITE_URL_OVERRIDE: ${{ vars.DOCS_SITE_URL }}
+          PAGE_URL: ${{ needs.deploy-pages.outputs.page_url }}
+          TARGET_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
+        run: |
+          docs_prefix="${BLOG_DOCS_PREFIX:-api/reference}"
+          tab_title="${BLOG_TAB_TITLE:-API}"
+          tab_icon="${BLOG_TAB_ICON:-fas fa-book}"
+          tab_order="${BLOG_TAB_ORDER:-5}"
+          if [ -n "$PAGE_URL" ]; then
+            html_site_url="$PAGE_URL"
+          elif [ -n "$DOCS_SITE_URL_OVERRIDE" ]; then
+            html_site_url="$DOCS_SITE_URL_OVERRIDE"
+          else
+            html_site_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          fi
+          if [ -n "$TARGET_RELEASE_TAG" ]; then
+            pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TARGET_RELEASE_TAG}/dea_l0_api_reference-${TARGET_RELEASE_TAG}.pdf"
+          else
+            pdf_url="${html_site_url%/}/pdf/dea_l0_api_reference.pdf"
+          fi
+          python -m compiler.docgen.l0_docgen_blog \
+            --input build/docs/markdown \
+            --output build/docs/blog-export \
+            --docs-prefix "$docs_prefix" \
+            --tab-title "$tab_title" \
+            --tab-icon "$tab_icon" \
+            --tab-order "$tab_order" \
+            --html-site-url "$html_site_url" \
+            --pdf-url "$pdf_url" \
+            --release-tag "$TARGET_RELEASE_TAG"
+
+      - name: Create blog export archive
+        if: inputs.publish_blog
+        run: tar -czf blog-export.tar.gz -C build/docs/blog-export .
+
+      - name: Upload blog export artifact
+        if: inputs.publish_blog
+        uses: actions/upload-artifact@v6
+        with:
+          name: blog-export
+          path: l0/blog-export.tar.gz
+
+      - name: Upload blog export to draft release
+        if: inputs.publish_blog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESOLVED_RELEASE_ID: ${{ needs.resolve-draft-release.outputs.resolved_release_id }}
+        run: |
+          release_api="repos/$GITHUB_REPOSITORY/releases/$RESOLVED_RELEASE_ID"
+          upload_url="$(gh api "$release_api" --jq '.upload_url' | sed 's/{?name,label}//')"
+          existing_asset_ids="$(gh api "$release_api/assets" --paginate --jq '.[] | select(.name == "blog-export.tar.gz") | .id')"
+          for asset_id in $existing_asset_ids; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+          done
+          gh api \
+            --method POST \
+            -H "Content-Type: application/gzip" \
+            --input blog-export.tar.gz \
+            "${upload_url}?name=blog-export.tar.gz"
 
   upload-blog-export:
     needs:
       - resolve-targets
       - build-docs
       - deploy-pages
-      - upload-release-pdf
+      - attach-release-assets
     if: >-
       always() &&
       needs.build-docs.result == 'success' &&
       (needs.deploy-pages.result == 'success' || needs.deploy-pages.result == 'skipped') &&
-      (needs.upload-release-pdf.result == 'success' || needs.upload-release-pdf.result == 'skipped') &&
-      ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'l0-v')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.publish_blog))
+      (needs.attach-release-assets.result == 'success' || needs.attach-release-assets.result == 'skipped') &&
+      inputs.publish_blog &&
+      !inputs.attach_release_assets_to_draft
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -215,14 +426,7 @@ jobs:
             html_site_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
           fi
           if [ -n "$TARGET_RELEASE_TAG" ]; then
-            pdf_asset=$(gh release view "$TARGET_RELEASE_TAG" --json assets \
-              -q '.assets[] | select(.name | endswith(".pdf")) | .name' \
-              --repo "$GITHUB_REPOSITORY" 2>/dev/null || true)
-            if [ -n "$pdf_asset" ]; then
-              pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TARGET_RELEASE_TAG}/${pdf_asset}"
-            else
-              pdf_url="${html_site_url%/}/pdf/dea_l0_api_reference.pdf"
-            fi
+            pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TARGET_RELEASE_TAG}/dea_l0_api_reference-${TARGET_RELEASE_TAG}.pdf"
           else
             pdf_url="${html_site_url%/}/pdf/dea_l0_api_reference.pdf"
           fi
@@ -245,13 +449,6 @@ jobs:
         with:
           name: blog-export
           path: l0/blog-export.tar.gz
-
-      - name: Upload blog export to release
-        if: needs.resolve-targets.outputs.target_release_tag != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET_RELEASE_TAG: ${{ needs.resolve-targets.outputs.target_release_tag }}
-        run: gh release upload "$TARGET_RELEASE_TAG" blog-export.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
 
       - name: Fire repository_dispatch (optional)
         if: vars.BLOG_REPO != ''
