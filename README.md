@@ -44,11 +44,11 @@ the semantics are enforced by L0 itself.
 
 ## Project status and directions
 
-L0 `1.0.0.dev0` is the current development line following the `l0-v0.9.2` monorepo release.
+L0 `1.0.0` is the current release line.
 
-- Stage 1: complete and usable.
+- Stage 1: complete and remains the reference implementation for language behavior.
 
-- Stage 2: self-hosted and parity-tested against Stage 1 on a committed golden corpus.
+- Stage 2: self-hosted and is the main delivery vehicle for normal developer, install, and distribution workflows.
 
   - Bootstrap artifact: buildable today under `build/dea/bin` via `python scripts/build_stage2_l0c.py`.
 
@@ -125,16 +125,17 @@ The `$CC` environment variable will be checked as a last resort if none of the a
 
 If you need a specific compiler, set `$L0_CC` to its executable name or path. For example:
 
-For the current `1.0.0.dev0` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2
-`MINGW64` is supported as an alternate environment. MSVC-family builds are still experimental and are not part of the
-validated release matrix.
+For the current `1.0.0` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2 `MINGW64`
+is supported as an alternate environment.
+
+MSVC-family builds are still unsupported and are not part of the validated release matrix.
 
 Specific versions of `gcc` and `clang` whose names include version numbers (e.g. `gcc-14`, `clang-22`) are not probed by
 default but can be used by setting `$L0_CC` accordingly and will be recognized as such.
 
-Tiny C Compiler (`tcc`) is the default if available, as it is fast and supports all required C99 features. It is
-recommended to clone and build `tcc` from source if it is not available on your system, as some platform package
-managers provide outdated versions.
+Tiny C Compiler (`tcc`) is the default if available, as it is fast and supports all required C99 features. It is not
+required, however. If you want to use `tcc` but it is not available on your system, cloning and building it from recent
+source is highly recommended, as some platform package managers provide outdated versions.
 
 ### Install
 

@@ -1,6 +1,6 @@
 # The L0 Standard Library
 
-Version: 2026-04-14
+Version: 2026-05-01
 
 The standard library provides ergonomic L0 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -290,7 +290,7 @@ Shared integer helper module. Floating-point helpers stay out of `std.math`.
 | `char_at_s`     | `(s: string, index: int) -> byte`                     | Returns byte at index.                                                   |
 | `eq_s`          | `(a: string, b: string) -> bool`                      | Compares strings for equality.                                           |
 | `cmp_s`         | `(a: string, b: string) -> int`                       | Compares strings lexicographically (`<0`, `0`, `>0`).                    |
-| `concat_s`      | `(a: string, b: string) -> string`                    | Concatenates strings.                                                    |
+| `concat_s`      | `(a: string, b: string) -> string`                    | Concatenates strings (equivalent to `+`).                                |
 | `slice_s`       | `(s: string, start: int, end: int) -> string`         | Returns substring `[start, end)`.                                        |
 | `byte_to_s`     | `(b: byte) -> string`                                 | Creates one-character string from a byte value.                          |
 | `bytes_to_s`    | `(bytes: byte*, len: int) -> string`                  | Creates string from byte buffer.                                         |

@@ -1,12 +1,13 @@
 # L0 Project Status
 
-Version: 2026-04-24
+Version: 2026-05-01
 
-This document summarizes what is implemented in this repository today and what defines the current Dea/L0 `1.0.0.dev0`
-development branch after the `l0-v0.9.2` release. L0 now lives as one language subtree inside the Dea monorepo; monorepo
-release tags use the `l0-vX.Y.Z` namespace while historical pre-monorepo bare tags remain legacy references. The
-monorepo now also includes an initial `l1/` bootstrap subtree seeded from the current L0 Stage 2 compiler, while L0
-remains the active release line and the canonical user-facing toolchain today.
+This document summarizes what is implemented in this repository today and what defines the current Dea/L0 `1.0.0`
+release.
+
+L0 now lives as one language subtree inside the Dea monorepo; monorepo release tags use the `l0-vX.Y.Z` namespace while
+historical pre-monorepo tags remain legacy references. The monorepo also contains the active Dea/L1 bootstrap subtree
+under `l1/`.
 
 ## Scope and Canonical References
 
@@ -63,8 +64,8 @@ The current implemented language surface covers the core bootstrap subset used t
 - functions, structs, enums, type aliases, and top-level `let`,
 - modules/imports with qualified-name disambiguation,
 - structured control flow including `if`, `while`, `for`, `match`, `case`, and `with`/`cleanup`,
-- explicit nullability, `new`/`drop`, ARC-managed `string`, casts, postfix `expr?`, and value-based `string`
-  equality/ordering operators.
+- explicit nullability, `new`/`drop`, ARC-managed `string`, casts, postfix `expr?`, value-based `string`
+  equality/ordering operators, and the `+` string concatenation operator.
 
 The standard library now includes the core runtime-facing and bootstrap-facing modules for I/O, strings, text, paths,
 filesystem access, the shared integer helper surface in `std.math`, time, randomness, assertions, optionals, and the
@@ -98,36 +99,11 @@ The current development support baseline remains:
 
 ## Known Limitations and Constraints
 
-These remain true on the current `1.0.0.dev0` development branch:
+These remain true in the `1.0.0` release:
 
 1. Backend output is one C translation unit (no multi-object/header split pipeline yet).
 2. Arrays/slices are not implemented; indexing syntax exists but unsupported targets are rejected.
 3. No address-of (`&`) operator in language semantics.
 4. No generics, traits, or macros.
 5. Reserved/future keywords and operators are lexed for diagnostics and staged evolution.
-
-## Post-0.9.2 Development Notes
-
-The current `1.0.0.dev0` branch starts from the `l0-v0.9.2` release baseline:
-
-1. Keep the current Stage 1/Stage 2 CLI, semantics, stdlib surface, and monorepo release wiring stable unless a bug fix
-   requires a targeted correction.
-2. Keep the existing validation gates (`make test-all`, `make triple-test`, workflow/distribution checks, and strict
-   docs generation) as the default bar for release-readiness.
-3. Carry forward the recent Windows/MSYS2 fixes, trace-runner hardening, string comparison work, ARC cleanup fixes, and
-   Stage 2 diagnostic-parity work, including the current optional-wrapper typedef-ordering and unwrap-cast ARC fixes, as
-   part of the normal development baseline.
-4. Treat the limitations listed above as explicit L0 scope boundaries unless a narrowly-scoped `1.0.0` blocker demands
-   otherwise.
-
-## Path to 1.0
-
-After `l0-v0.9.2`, the remaining work toward `1.0.0` is expected to stay focused on documentation and residual bug fixes
-rather than new language surface.
-
-In parallel, the monorepo now carries an early `l1/` tree with `compiler/stage1_l0`, `compiler/stage2_l1`, and shared
-runtime/stdlib scaffolding so later language growth can begin without shifting the current L0 release target.
-
-Once Dea/L0 `1.0.0` is cut, further language growth belongs to later levels of the language family:
-
-- Bitwise operators, top-level `const`, and further language extensions are deferred to Dea/L1.
+6. Bitwise operators, top-level `const`, and further language extensions are deferred to Dea/L1.
