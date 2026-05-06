@@ -10,19 +10,23 @@ RUN apt-get update && \
 
 COPY --from=uv /uv /uvx /usr/local/bin/
 
-WORKDIR /project/l0
 ENV UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/project/.venv
 
-# Deps layer (only rebuilds when lock/pyproject changes)
-COPY l0/pyproject.toml l0/uv.lock ./
+# Deps layer (only rebuilds when the workspace lock or any member pyproject changes).
+WORKDIR /project
+COPY pyproject.toml uv.lock ./
+COPY l0/pyproject.toml /project/l0/pyproject.toml
+COPY l1/pyproject.toml /project/l1/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --group dev --group docs
+    uv sync --frozen --no-install-project --all-groups
 
 # Source layer
+COPY Makefile /project/Makefile
 COPY scripts /project/scripts
 COPY l0 /project/l0
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --group dev --group docs
+    uv sync --frozen --all-groups
 
+WORKDIR /project/l0
 CMD ["make", "help"]

@@ -14,9 +14,6 @@ VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(V
 PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
 L1_BUILD_DIR ?= build/dea
 DOCKER_IMAGE ?= l1-test
-VENV_UV_FLAGS := --quiet
-VENV_PIP_FLAGS := --quiet --disable-pip-version-check
-VENV_QUIET_LABEL := (quiet)
 AR ?= ar
 L1_RUNTIME_CC ?= $(if $(strip $(L1_CC)),$(L1_CC),$(or $(shell if command -v clang >/dev/null 2>&1; then printf '%s' clang; elif command -v gcc >/dev/null 2>&1; then printf '%s' gcc; elif command -v cc >/dev/null 2>&1; then printf '%s' cc; fi),$(if $(filter-out undefined default,$(origin CC)),$(CC))))
 L1_TCC_OBJ_CC ?= $(or $(shell if command -v tcc >/dev/null 2>&1; then printf '%s' tcc; fi),$(if $(filter-out undefined default,$(origin TCC)),$(TCC)))
@@ -38,18 +35,14 @@ RUNTIME_PUBLIC_HEADERS := $(RUNTIME_INCLUDE_DIR)/dea_rt.h $(RUNTIME_INCLUDE_DIR)
 RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-PIP_DEPS_CMD = import tomllib,pathlib;\
-	g=tomllib.loads(pathlib.Path('pyproject.toml').read_text()).get('dependency-groups',{});\
-	print(' '.join(d for d in g.get('dev',[])+g.get('docs',[]) if isinstance(d,str)))
-
-.PHONY: help _check-python venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all check-examples test-all test-docker print-l1-build-dir clean docker
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all check-examples test-all test-docker print-l1-build-dir clean docker
 
 help:
 	@printf '%s\n' \
 		'Dea/L1 bootstrap workflow' \
 		'' \
 		'Targets:' \
-		'  venv               Create or reuse the shared monorepo `../.venv`.' \
+		'  venv               Delegate to the root `make venv` to create or sync the shared monorepo `../.venv`.' \
 		'  runtime            Build the repo-local L1 runtime archives and public headers under `$(L1_BUILD_DIR)`.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  test-all           Run the default L1 validation suite (`test-stage1`, default trace checks, and examples).' \
@@ -97,25 +90,8 @@ help:
 		'  2. `source build/dea/bin/l1-env.sh`' \
 		'  3. `l1c --help`'
 
-_check-python:
-	@$(PYTHON) -c "import sys; sys.exit(0 if sys.version_info >= (3, 14) else 1)" 2>/dev/null \
-		|| { printf 'error: Python 3.14+ is required (found: %s)\n' \
-			"$$($(PYTHON) -c 'import sys; print(".".join(map(str,sys.version_info[:3])))' 2>/dev/null || echo 'none')" >&2; exit 1; }
-
-venv: _check-python
-	@if command -v uv >/dev/null 2>&1; then \
-		if [ -x "$(VENV_PYTHON)" ]; then \
-			printf '%s\n' 'make venv: syncing existing ../.venv with uv $(VENV_QUIET_LABEL)'; \
-		fi; \
-		UV_PROJECT_ENVIRONMENT="$(VENV_DIR)" uv sync $(VENV_UV_FLAGS) --group dev --group docs; \
-	elif [ -x "$(VENV_PYTHON)" ]; then \
-		printf '%s\n' 'make venv: refreshing existing ../.venv with pip $(VENV_QUIET_LABEL)'; \
-		"$(VENV_PYTHON)" -m pip install $(VENV_PIP_FLAGS) $$("$(VENV_PYTHON)" -c "$(PIP_DEPS_CMD)"); \
-	else \
-		$(PYTHON) -m venv "$(VENV_DIR)"; \
-		_vp="$$(if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; else printf '%s' "$(VENV_DIR)/Scripts/python.exe"; fi)"; \
-		"$$_vp" -m pip install $(VENV_PIP_FLAGS) $$("$$_vp" -c "$(PIP_DEPS_CMD)"); \
-	fi
+venv:
+	@$(MAKE) -C .. venv
 
 _ensure-bootstrap-l0-stage2:
 	@if [ -n "$${L1_BOOTSTRAP_L0C:-}" ]; then \

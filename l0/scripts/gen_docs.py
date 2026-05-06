@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 import re
 import shutil
 import subprocess
@@ -57,12 +56,14 @@ Environment:
     )
 
 
-def uv_env() -> dict[str, str]:
-    """Return an environment that keeps `uv run` on the shared monorepo venv."""
+def venv_python() -> str:
+    """Return the path to the shared monorepo venv's Python interpreter."""
 
-    env = os.environ.copy()
-    env.setdefault("UV_PROJECT_ENVIRONMENT", str(REPO_ROOT.parent / ".venv"))
-    return env
+    venv = REPO_ROOT.parent / ".venv"
+    posix = venv / "bin" / "python"
+    if posix.exists():
+        return str(posix)
+    return str(venv / "Scripts" / "python.exe")
 
 
 def parse_args(argv: list[str]) -> ParsedArgs:
@@ -111,9 +112,8 @@ def parse_args(argv: list[str]) -> ParsedArgs:
         elif arg in {"-h", "--help"}:
             show_usage()
             subprocess.run(
-                ["uv", "run", "--group", "docs", "python", "-m", "compiler.docgen.l0_docgen", "--help"],
+                [venv_python(), "-m", "compiler.docgen.l0_docgen", "--help"],
                 cwd=REPO_ROOT,
-                env=uv_env(),
                 check=False,
             )
             raise SystemExit(0)
@@ -223,10 +223,9 @@ def main(argv: list[str] | None = None) -> int:
     keep_logs = False
     try:
         run_logged(
-            ["uv", "run", "--group", "docs", "python", "-m", "compiler.docgen.l0_docgen", *args.docgen_args],
+            [venv_python(), "-m", "compiler.docgen.l0_docgen", *args.docgen_args],
             log_dir / "l0_docgen.log",
             verbose=args.verbose,
-            env=uv_env(),
         )
 
         output_dir = args.output_dir

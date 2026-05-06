@@ -33,7 +33,10 @@ as distribution packages tend to ship an outdated version.
 ### Setting up the development environment
 
 For normal development, start with `make venv`: it validates the Python version, creates the shared monorepo virtual
-environment under `../.venv`, and installs all dev + docs dependencies from `pyproject.toml`.
+environment at `./.venv`, and installs all dev + docs dependency groups declared in the root `pyproject.toml`. The
+monorepo is a single `uv` workspace; level-local `make venv` targets delegate to the root, so any of `make venv`,
+`cd l0 && make venv`, or `cd l1 && make venv` converges on the same `./.venv`. `uv` is preferred when on `PATH`; when
+absent, `make venv` falls back to `python -m venv` plus `pip install` of the same dependency-group specifiers.
 
 ### Pre-commit hooks
 

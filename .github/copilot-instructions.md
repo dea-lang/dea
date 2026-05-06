@@ -57,8 +57,8 @@ make test-stage2-trace TESTS="l0c_lib_test"
 Lint / hooks:
 
 ```bash
-uv run --directory l0 --group dev pre-commit install -c .pre-commit-config.yaml
-uv run --directory l0 --group dev pre-commit run --all-files -c .pre-commit-config.yaml
+uv run --group dev pre-commit install -c .pre-commit-config.yaml
+uv run --group dev pre-commit run --all-files -c .pre-commit-config.yaml
 ```
 
 ### `l1/`
@@ -97,7 +97,8 @@ C99 translation unit. Use `l0/docs/reference/architecture.md` and `l0/CLAUDE.md`
 
 - Treat Stage 1 as the oracle for equivalent Stage 2 behavior, diagnostics, and emitted text.
 - Equivalent Stage 2 diagnostics must reuse the exact Stage 1 diagnostic code.
-- The shared virtual environment is repo-local at `../.venv` and is reused across levels.
+- The repo is a single `uv` workspace; the shared virtual environment is repo-local at `./.venv` (or `../.venv` from a
+  level directory) and is reused across all levels. The root `Makefile` owns `make venv`; level Makefiles delegate.
 - Root `docs/` and `work/` are for Dea-wide or monorepo-wide material only; level-owned docs and plans stay inside the
   corresponding subtree.
 - For `l1/`, do not rely on whichever `l0c` happens to be active on `PATH`; use the repo-local default or

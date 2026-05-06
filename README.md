@@ -155,8 +155,10 @@ make venv                # create or reuse ../.venv; prefers uv when available
 For Windows-specific setup, generated launchers, MSYS2 bash usage, and native `cmd.exe` usage, see
 [README-WINDOWS.md](README-WINDOWS.md).
 
-If you prefer to manage the environment manually, `UV_PROJECT_ENVIRONMENT=../.venv uv sync --group dev --group docs` is
-the recommended direct command; a plain `python3 -m venv ../.venv` workflow also works.
+If you prefer to manage the environment manually, `uv sync --all-groups` from the monorepo root is the recommended
+direct command (the repo is a single `uv` workspace; the root `pyproject.toml` declares `l0/` and `l1/` as members and
+owns the dev/docs dependency groups, and there is one `./.venv` plus one `./uv.lock` at the root). A plain
+`python3 -m venv ./.venv` workflow at the root also works.
 
 For an optional reproducible Linux test environment, use the explicit Docker wrapper:
 

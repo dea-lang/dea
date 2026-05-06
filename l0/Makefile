@@ -14,9 +14,6 @@ VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(V
 PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
 DEA_BUILD_DIR ?= build/dea
 DOCKER_IMAGE ?= l0-test
-VENV_UV_FLAGS := --quiet
-VENV_PIP_FLAGS := --quiet --disable-pip-version-check
-VENV_QUIET_LABEL := (quiet)
 
 # On Windows (MinGW), statically link GCC runtime libraries in distribution and
 # install builds so the resulting l0c binary does not depend on libwinpthread-1.dll.
@@ -26,14 +23,8 @@ else
 DIST_L0_CFLAGS_DEFAULT := -O2
 endif
 
-# Extract dev + docs dependencies from pyproject.toml (requires Python 3.14+ for tomllib).
-PIP_DEPS_CMD = import tomllib,pathlib;\
-	g=tomllib.loads(pathlib.Path('pyproject.toml').read_text()).get('dependency-groups',{});\
-	print(' '.join(d for d in g.get('dev',[])+g.get('docs',[]) if isinstance(d,str)))
-
 .PHONY: \
 	help \
-	_check-python \
 	venv \
 	install-dev-stage1 \
 	install-dev-stage2 \
@@ -52,6 +43,7 @@ PIP_DEPS_CMD = import tomllib,pathlib;\
 	test-dist-fallback \
 	test-release-tags \
 	test-workflows \
+	test-docker \
 	refresh-goldens \
 	list-installed \
 	test-all \
@@ -71,7 +63,7 @@ help:
 		'  dist               Create a relocatable Stage 2 distribution archive under `build/`.' \
 		'' \
 		'Development targets:' \
-		'  venv               Create or reuse the shared monorepo `../.venv` (prefer `uv`, fall back to `python -m venv`).' \
+		'  venv               Delegate to the root `make venv` to create or sync the shared monorepo `../.venv`.' \
 		'  use-dev-stage1     Install and switch the repo-local `l0c` alias to Stage 1.' \
 		'  use-dev-stage2     Build and switch the repo-local `l0c` alias to Stage 2.' \
 		'  install-dev-stages Prepare both Stage 1 and Stage 2 launchers under DEA_BUILD_DIR.' \
@@ -90,6 +82,7 @@ help:
 		'  test-workflows     Run all workflow and distribution tests.' \
 		'' \
 		'Docker:' \
+		'  test-docker        Run the full L0 validation suite under the repo-owned Linux container (POSIX reference path).' \
 		'  docker             Explicitly run a target in the repo-owned Linux Docker container (CMD=<target>).' \
 		'' \
 		'Documentation targets:' \
@@ -119,25 +112,8 @@ help:
 		'  DOCKER_L0_CC=<compiler>' \
 		'                     Optional C compiler passed into the Docker run as `L0_CC` (`gcc` or `clang`).'
 
-_check-python:
-	@$(PYTHON) -c "import sys; sys.exit(0 if sys.version_info >= (3, 14) else 1)" 2>/dev/null \
-		|| { printf 'error: Python 3.14+ is required (found: %s)\n' \
-			"$$($(PYTHON) -c 'import sys; print(".".join(map(str,sys.version_info[:3])))' 2>/dev/null || echo 'none')" >&2; exit 1; }
-
-venv: _check-python
-	@if command -v uv >/dev/null 2>&1; then \
-		if [ -x "$(VENV_PYTHON)" ]; then \
-			printf '%s\n' 'make venv: syncing existing ../.venv with uv $(VENV_QUIET_LABEL)'; \
-		fi; \
-		UV_PROJECT_ENVIRONMENT="$(VENV_DIR)" uv sync $(VENV_UV_FLAGS) --group dev --group docs; \
-	elif [ -x "$(VENV_PYTHON)" ]; then \
-		printf '%s\n' 'make venv: refreshing existing ../.venv with pip $(VENV_QUIET_LABEL)'; \
-		"$(VENV_PYTHON)" -m pip install $(VENV_PIP_FLAGS) $$("$(VENV_PYTHON)" -c "$(PIP_DEPS_CMD)"); \
-	else \
-		$(PYTHON) -m venv "$(VENV_DIR)"; \
-		_vp="$$(if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; else printf '%s' "$(VENV_DIR)/Scripts/python.exe"; fi)"; \
-		"$$_vp" -m pip install $(VENV_PIP_FLAGS) $$("$$_vp" -c "$(PIP_DEPS_CMD)"); \
-	fi
+venv:
+	@$(MAKE) -C .. venv
 
 install-dev-stage1:
 	$(PYTHON) ./scripts/gen_dist_tools.py write-stage1-wrapper --dea-build-dir "$(DEA_BUILD_DIR)"
@@ -257,6 +233,9 @@ clean-dea-build:
 	$(PYTHON) ./scripts/gen_dist_tools.py clean-dea-build --dea-build-dir "$(DEA_BUILD_DIR)"
 
 clean-all: clean clean-dea-build
+
+test-docker:
+	$(MAKE) docker CMD=test-all
 
 docker:
 	@if [ -z "$(CMD)" ]; then \

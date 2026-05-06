@@ -8,13 +8,19 @@ The monorepo root owns a minimal maintenance `Makefile`:
 
 ```bash
 make help   # show root-only monorepo targets
-make venv   # create or sync the shared .venv
+make venv   # create or sync the shared ./.venv (uv if available, pip fallback otherwise)
 make clean  # clean each registered level plus root caches/artifacts
 make clean-all  # run each level's full cleanup entrypoint plus root caches/artifacts
 ```
 
 The root `Makefile` is not a dispatcher for level-specific targets. Build, test, docs, and compiler workflows should be
 run inside the relevant level directory.
+
+The repository is a single `uv` workspace: the root `pyproject.toml` declares `l0/` and `l1/` as members, owns the
+shared dev/docs dependency groups, and produces a single root `uv.lock`. Level Makefiles' `venv` targets delegate to the
+root, so `make venv` from any of `./`, `l0/`, or `l1/` converges on the same `./.venv`. `uv` is an optional accelerator:
+when absent, `make venv` falls back to `python -m venv` plus `pip install` of the dependency-group specifiers extracted
+from the root `pyproject.toml`.
 
 ## Language Levels
 

@@ -178,7 +178,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-suffix: ci-${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}-py3.14
+          cache-suffix: ci-${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}-py3.14-ws
 
       - name: Install Linux build toolchain
         if: matrix.os == 'linux'

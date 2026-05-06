@@ -46,7 +46,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-suffix: docs-build-py3.14
+          cache-suffix: docs-build-py3.14-ws
 
       - name: Install docs toolchain
         run: |
@@ -65,7 +65,8 @@ jobs:
             texlive-fonts-recommended
 
       - name: Sync docs dependencies
-        run: UV_PROJECT_ENVIRONMENT=../.venv uv sync --group docs
+        working-directory: ${{ github.workspace }}
+        run: uv sync --group docs
 
       - name: Build HTML, Markdown, LaTeX, and PDF
         env:

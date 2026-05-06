@@ -39,9 +39,15 @@ level directory first.
 
 ## Shared Environment
 
-- The monorepo uses one shared repo-local virtual environment at `/.venv`.
-- Level-local `make venv` targets populate or reuse that shared environment.
-- Root `make venv` delegates to each registered level.
+- The monorepo is a single `uv` workspace rooted at the repository root, with `l0/` and `l1/` as workspace members (see
+  `pyproject.toml`).
+- One shared virtual environment lives at `./.venv`. One lockfile lives at `./uv.lock`.
+- The root `Makefile` owns `make venv`. It prefers `uv sync --all-groups` and falls back to `python -m venv` plus
+  `pip install` of the dev/docs dependency-group specifiers when `uv` is not on `PATH`. `uv` is therefore an optional
+  accelerator, not a hard dependency.
+- Level-local `make venv` targets delegate upward to the root and are no-ops once the shared `./.venv` is in sync.
+- Dev/docs dependency groups (`pre-commit`, `pytest`, `pytest-xdist`, `mdformat*`, `jinja2`, `PyYAML`, `pygments`) are
+  declared once in the root `pyproject.toml`.
 
 ## Documentation And Work Tracking
 
@@ -73,8 +79,8 @@ level directory first.
   ending with a period.
 - Always leave one blank line between the summary line and the first body bullet.
 - Each bullet is a single line; do not wrap bullets across multiple lines.
-- Before committing, run pre-commit from the relevant level directory against the root config:
-  `uv run --group dev pre-commit run --hook-stage pre-commit -c ../.pre-commit-config.yaml --files $(git diff --cached --name-only --diff-filter=ACMR --relative)`.
+- Before committing, run pre-commit from the monorepo root against the root config:
+  `uv run --group dev pre-commit run --hook-stage pre-commit -c .pre-commit-config.yaml --files $(git diff --cached --name-only --diff-filter=ACMR)`.
 - For multiline commit messages, write the message to a temporary file and use `git commit -F <file>`.
 - Avoid assigning to `zsh` special parameters such as `status` in shell helpers.
 - No tag-phrases such as "for clarity" or "for consistency".

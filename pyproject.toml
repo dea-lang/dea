@@ -1,0 +1,28 @@
+[project]
+name = "dea-monorepo"
+version = "0.0.0"
+description = "Dea language family monorepo (workspace root for l0 and l1)"
+authors = [{ name = "gwz (googlielmo)", email = "googlielmo@gmail.com" }]
+requires-python = ">=3.14"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["l0", "l1"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.0",
+    "pytest>=9.0.3",
+    "pytest-xdist>=3.5",
+    "mdformat>=1.0.0",
+    "mdformat-gfm>=0.3",
+    "mdformat-frontmatter>=2.0",
+]
+docs = [
+    "jinja2>=3.1.6",
+    "PyYAML>=6.0.2",
+    "pygments>=2.20.0",
+]

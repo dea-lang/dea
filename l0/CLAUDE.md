@@ -49,11 +49,12 @@ Also see: `../CONTRIBUTING.md`, `../SECURITY.md`.
 
 - **Virtual Environment:** Always use `make venv` as the primary developer setup entrypoint. It validates Python 3.14+,
   reuses the shared monorepo `../.venv` if present, uses `uv` when available, and falls back to a plain
-  `python3 -m venv` workflow with dependencies extracted from `pyproject.toml`. You can run it either from `l0/` or from
-  the monorepo root, where the root `Makefile` delegates `make venv` to each registered level.
-- **Manual Environment Setup:** If you are not using `make venv`, prefer
-  `UV_PROJECT_ENVIRONMENT=../.venv uv sync --group dev --group docs` (uses `pyproject.toml` and `uv.lock`) or fall back
-  to `python3 -m venv ../.venv && source ../.venv/bin/activate` and install the dev + docs dependency groups from
+  `python3 -m venv` workflow with dependencies extracted from the root `pyproject.toml`. You can run it from the
+  monorepo root or from `l0/`; the level target delegates upward to the root `Makefile`, which owns the venv. The
+  monorepo is a single `uv` workspace and there is exactly one shared `./.venv` and one `./uv.lock` at the repo root.
+- **Manual Environment Setup:** If you are not using `make venv`, prefer `uv sync --all-groups` from the monorepo root
+  (uses the root `pyproject.toml` and root `uv.lock`) or fall back to
+  `python3 -m venv ../.venv && source ../.venv/bin/activate` and install the dev + docs dependency groups from the root
   `pyproject.toml` manually. The project is not an installable Python package (`[tool.uv] package = false`); there is no
   `pip install -e .` step.
 - **Windows Host Setup:** For Windows validation, use an MSYS2 `UCRT64` shell with MinGW-w64 GCC and GNU Make on `PATH`.
@@ -66,9 +67,9 @@ Also see: `../CONTRIBUTING.md`, `../SECURITY.md`.
   `<PREFIX>/bin/l0-env.sh` in POSIX/MSYS2 bash or `call <PREFIX>\bin\l0-env.cmd` in `cmd.exe`. For source-tree usage,
   invoke `./scripts/l0c` or `scripts\l0c.cmd` directly; those wrappers derive `L0_HOME` on their own.
 - **Pre-commit hooks:** Install from the monorepo root with
-  `uv run --directory l0 --group dev pre-commit install -c .pre-commit-config.yaml` after `make venv`. Two hooks run on
-  every commit: `mdformat` (auto-reformats `.md` files; config in `pyproject.toml`) and `copyright-headers` (validates
-  source file copyright notices). If mdformat reformats a file, stage the changes and re-commit.
+  `uv run --group dev pre-commit install -c .pre-commit-config.yaml` after `make venv`. Two hooks run on every commit:
+  `mdformat` (auto-reformats `.md` files; config in `pyproject.toml`) and `copyright-headers` (validates source file
+  copyright notices). If mdformat reformats a file, stage the changes and re-commit.
 
 ## Commands
 

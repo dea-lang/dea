@@ -3,7 +3,28 @@
 DEA_LEVEL_DIRS ?= l0 l1
 ROOT_CLEAN_PATHS := build .pytest_cache __pycache__ pytest-of-*
 
-.PHONY: help venv clean clean-all test-all _check-level-dirs _clean-root-paths
+VENV_DIR := $(abspath ./.venv)
+
+ifeq ($(OS),Windows_NT)
+VENV_PYTHON_DEFAULT := $(VENV_DIR)/Scripts/python.exe
+else
+VENV_PYTHON_DEFAULT := $(VENV_DIR)/bin/python
+endif
+
+HOST_PYTHON ?= $(shell if command -v python3 >/dev/null 2>&1; then printf '%s' python3; else printf '%s' python; fi)
+VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(VENV_PYTHON_DEFAULT); fi)
+PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
+
+VENV_UV_FLAGS := --quiet
+VENV_PIP_FLAGS := --quiet --disable-pip-version-check
+VENV_QUIET_LABEL := (quiet)
+
+# Extract dev + docs dependencies from the root pyproject.toml (requires Python 3.14+ for tomllib).
+PIP_DEPS_CMD = import tomllib,pathlib;\
+	g=tomllib.loads(pathlib.Path('pyproject.toml').read_text()).get('dependency-groups',{});\
+	print(' '.join(d for d in g.get('dev',[])+g.get('docs',[]) if isinstance(d,str)))
+
+.PHONY: help venv clean clean-all test-all _check-level-dirs _check-python _clean-root-paths
 
 help:
 	@printf '%s\n' \
@@ -11,7 +32,7 @@ help:
 		'' \
 		'Targets:' \
 		'  help               Show this help text.' \
-		'  venv               Create or sync the shared monorepo `.venv` by delegating to each registered level.' \
+		'  venv               Create or sync the shared monorepo `./.venv` (prefer `uv`, fall back to `python -m venv` + `pip`).' \
 		'  test-all           Run `make test-all` in each registered level.' \
 		'  clean              Run `make clean` in each registered level, then remove root caches/artifacts.' \
 		'  clean-all          Run `make clean-all` in each registered level, then remove root caches/artifacts.' \
@@ -34,11 +55,25 @@ _check-level-dirs:
 		fi; \
 	done
 
-venv: _check-level-dirs
-	@for level in $(DEA_LEVEL_DIRS); do \
-		printf '==> %s: make venv\n' "$$level"; \
-		$(MAKE) -C "$$level" venv || exit $$?; \
-	done
+_check-python:
+	@$(PYTHON) -c "import sys; sys.exit(0 if sys.version_info >= (3, 14) else 1)" 2>/dev/null \
+		|| { printf 'error: Python 3.14+ is required (found: %s)\n' \
+			"$$($(PYTHON) -c 'import sys; print(".".join(map(str,sys.version_info[:3])))' 2>/dev/null || echo 'none')" >&2; exit 1; }
+
+venv: _check-python
+	@if command -v uv >/dev/null 2>&1; then \
+		if [ -x "$(VENV_PYTHON)" ]; then \
+			printf '%s\n' 'make venv: syncing existing ./.venv with uv $(VENV_QUIET_LABEL)'; \
+		fi; \
+		UV_PROJECT_ENVIRONMENT="$(VENV_DIR)" uv sync $(VENV_UV_FLAGS) --all-groups; \
+	elif [ -x "$(VENV_PYTHON)" ]; then \
+		printf '%s\n' 'make venv: refreshing existing ./.venv with pip $(VENV_QUIET_LABEL)'; \
+		"$(VENV_PYTHON)" -m pip install $(VENV_PIP_FLAGS) $$("$(VENV_PYTHON)" -c "$(PIP_DEPS_CMD)"); \
+	else \
+		$(PYTHON) -m venv "$(VENV_DIR)"; \
+		_vp="$$(if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; else printf '%s' "$(VENV_DIR)/Scripts/python.exe"; fi)"; \
+		"$$_vp" -m pip install $(VENV_PIP_FLAGS) $$("$$_vp" -c "$(PIP_DEPS_CMD)"); \
+	fi
 
 clean: _check-level-dirs
 	@for level in $(DEA_LEVEL_DIRS); do \
