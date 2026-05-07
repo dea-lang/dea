@@ -1,6 +1,8 @@
 ---
 name: troubleshoot-trace-failures
 description: Diagnose Dea ARC and memory trace failures, fix ownership bugs, and validate against the subtree ownership rules.
+model: opus
+effort: high
 ---
 
 ### Troubleshoot tracing errors and leaks

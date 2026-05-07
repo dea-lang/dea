@@ -1,6 +1,8 @@
 ---
 name: finalize-dea-work
 description: Finalize Dea repo work by checking plans/docs/tests, staging only intended files, running level-appropriate validation and pre-commit, and committing with the required Dea L0/L1 message format.
+model: sonnet
+effort: medium
 ---
 
 ### Finalize and commit Dea work

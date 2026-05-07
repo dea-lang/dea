@@ -1,6 +1,8 @@
 ---
 name: refresh-stale-docs
 description: Audit Dea live docs after feature or workflow changes and refresh stale content plus version metadata.
+model: sonnet
+effort: medium
 ---
 
 ### Refresh stale docs

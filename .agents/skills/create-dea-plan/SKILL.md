@@ -1,6 +1,8 @@
 ---
 name: create-dea-plan
 description: Create a new Dea plan in the correct work tree with the right category, filename, metadata, and required roadmap links.
+model: sonnet
+effort: medium
 ---
 
 ### Create a new Dea plan

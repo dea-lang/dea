@@ -1,6 +1,8 @@
 ---
 name: show-open-plans
 description: Show all open Dea plans grouped by level then by initiative, with status and location.
+model: haiku
+effort: low
 ---
 
 ### Show open plans
