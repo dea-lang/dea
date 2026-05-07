@@ -3,7 +3,7 @@
 ## Versioned Dea/L0 API Reference Export Archive
 
 - Date: 2026-05-07
-- Status: In progress (producer landed; consumer rollout pending)
+- Status: Completed (producer landed; consumer redeployed)
 - Title: Rename markdown release archive to `dea_l0_api_reference-<TAG>.tar.gz` and align prose
 - Kind: Tooling
 - Severity: Low
@@ -110,3 +110,10 @@ URL after the next L0 release.
   `dea_l0_api_reference-<TAG>.tar.gz`, and `SHA256SUMS` listing both.
 - End-to-end on the consumer side after redeployment: a scheduled poll (or manual `workflow_dispatch`) downloads the
   versioned archive and commits the synced docs with the marker file updated to the new tag.
+
+## Completion
+
+- 2026-05-07: Consumer-side rollout completed. Operators of downstream blog repos have redeployed the updated
+  `poll-dea-docs.yml` derived from `l0/work/plans/tools/attachments/blog-poll-workflow.yml`. End-to-end sync against the
+  new versioned `dea_l0_api_reference-<TAG>.tar.gz` asset has been validated. Plan moved to
+  `l0/work/plans/tools/closed/`.
