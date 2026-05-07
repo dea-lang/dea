@@ -110,8 +110,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-04-22-variadic-functions-noref][variadic-functions] scopes variadic support to L1-defined functions and
-  leaves C variadic FFI under Initiative `0003`.
 - Feature [2026-04-22-named-arguments-noref][named-arguments] adds `name: value` call-site arguments for functions and
   constructors.
 - Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
@@ -142,9 +140,10 @@ surface.
 - Separate compilation, interface verification, and external-library linking are tracked by Initiative
   [0001-separate-compilation-and-linking][separate-compilation].
 - Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative [0003-c-ffi][c-ffi].
-- Varargs are split explicitly: L1-defined variadic functions are tracked by Feature
-  [2026-04-22-variadic-functions-noref][variadic-functions], while C variadic FFI remains part of Initiative
-  [0003-c-ffi][c-ffi].
+- Varargs are split explicitly. L1-defined variadic functions are scoped by Feature
+  [2026-04-22-variadic-functions-noref][variadic-functions], currently **deferred** pending the typed arrays/buffers/
+  slices item below; once that feature lands, the variadic plan should be re-evaluated and likely shrinks to sugar over
+  a slice-typed parameter. C variadic FFI remains a sibling tranche under Initiative [0003-c-ffi][c-ffi].
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
 - Typed arrays, buffers, shared buffers, and slices as general language features. The current `std.array` / `std.vector`

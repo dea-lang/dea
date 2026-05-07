@@ -34,7 +34,9 @@ L1 calls are positional-only today. This plan adds named arguments in call and c
 syntax `name: value`, for example `move_point(p: mypoint, x: 0.0, y: -3.1)`.
 
 The requested rule is intentionally strict: a call is either fully positional or fully named. Mixed positional/named
-calls are rejected. Variadic interaction is deferred until the standalone variadic-functions design is settled.
+calls are rejected. Calling a variadic function with named arguments is out of scope here and is a separate follow-up
+plan; it is not a sequencing dependency on the standalone variadic-functions plan, since both features independently
+reject the cross-feature combination.
 
 ## Current State
 
@@ -50,7 +52,9 @@ calls are rejected. Variadic interaction is deferred until the standalone variad
 3. Calls are all-or-nothing: every argument in the call is positional or every argument is named.
 4. Named arguments may appear in any source order. Resolution maps them onto declaration order by label.
 5. Source evaluation order remains left-to-right as written, even when lowering must reorder values to match declaration
-   order.
+   order. This matches the dominant convention in modern languages with named or reorderable arguments — Python, C#,
+   Kotlin, Swift, Scala, Ruby, Dart, and OCaml all evaluate call arguments in source order; C++ is the cautionary
+   counterexample with unspecified cross-argument order.
 6. Every declared parameter/constructor field must be supplied exactly once. Unknown labels, duplicates, and omissions
    are rejected.
 7. Variadic-call interaction is explicitly out of scope for this plan.

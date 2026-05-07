@@ -3,7 +3,7 @@
 ## Add L1 variadic functions
 
 - Date: 2026-04-22
-- Status: Draft
+- Status: Deferred
 - Title: Add L1 variadic functions
 - Kind: Feature
 - Severity: Medium
@@ -40,6 +40,19 @@ This split keeps the language-core work reviewable and avoids entangling pack se
 calling-convention edge cases, and `va_list`-style C interop. The standalone plan should leave a clean handoff to the
 FFI initiative rather than pre-committing its boundary rules.
 
+## Deferral Rationale
+
+This plan is deferred pending a general slice/array language feature (currently a backlog item under "Language core" in
+[l1/docs/roadmap.md](../../../docs/roadmap.md)). Phase 2 of this plan would otherwise have to invent a bespoke read-only
+pack contract solely because L1 has no slice/array surface today. If slices/arrays land first, the variadic feature
+collapses to syntactic sugar over a slice-typed trailing parameter: forwarding becomes trivial, variadic
+function-pointer typing simplifies, and no throwaway pack ABI is shipped. Re-evaluate this plan once a slice/array plan
+is promoted from backlog.
+
+Deferring L1 variadics does not block C variadic FFI: that work is a separate sibling tranche under Initiative 0003 with
+its own `va_list` companion-function workaround (see "C variadic FFI scope" in
+[l1/work/initiatives/0003-c-ffi.md](../../initiatives/0003-c-ffi.md)).
+
 ## Current State
 
 1. Function declarations, function types, and calls in L1 all assume a fixed arity.
@@ -55,7 +68,9 @@ FFI initiative rather than pre-committing its boundary rules.
 2. A variadic parameter is a single trailing parameter. There is never more than one variadic parameter in a signature.
 3. The working syntax default is a trailing `...` on the final parameter type, spelled `name: T...`, with the same shape
    mirrored in function-pointer types.
-4. Variadic calls remain positional-only in this plan. Named-argument interaction is explicitly deferred.
+4. Variadic calls remain positional-only in this plan. Named-argument interaction is out of scope and is a separate
+   follow-up plan, not a sequencing dependency on the standalone named-arguments plan; both features independently
+   reject the cross-feature combination.
 5. The pack representation may be compiler-private, but the plan must define a small, documented source-level contract
    for reading the count and individual elements inside the callee.
 
