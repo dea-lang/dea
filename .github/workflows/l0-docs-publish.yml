@@ -17,12 +17,12 @@ on:
         default: true
         type: boolean
       publish_blog:
-        description: "Build the Chirpy blog export archive"
+        description: "Build the Chirpy-compatible Dea/L0 API reference export archive"
         required: true
         default: false
         type: boolean
       attach_release_assets_to_draft:
-        description: "Attach release PDF/blog assets to an existing draft release"
+        description: "Attach release PDF/API reference export assets to an existing draft release"
         required: true
         default: false
         type: boolean
@@ -32,7 +32,7 @@ on:
         default: ""
         type: string
       release_tag:
-        description: "Release tag for release-oriented docs/blog publishing when not targeting a draft release by URL/ID"
+        description: "Release tag for release-oriented docs/API reference export publishing when not targeting a draft release by URL/ID"
         required: false
         default: ""
         type: string
@@ -333,7 +333,7 @@ jobs:
           fi
           python -m compiler.docgen.l0_docgen_blog \
             --input build/docs/markdown \
-            --output build/docs/blog-export \
+            --output build/docs/api-reference \
             --docs-prefix "$docs_prefix" \
             --tab-title "$tab_title" \
             --tab-icon "$tab_icon" \
@@ -342,34 +342,38 @@ jobs:
             --pdf-url "$pdf_url" \
             --release-tag "$TARGET_RELEASE_TAG"
 
-      - name: Create blog export archive
+      - name: Create Dea/L0 API reference export archive
         if: inputs.publish_blog
-        run: tar -czf blog-export.tar.gz -C build/docs/blog-export .
+        env:
+          RESOLVED_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
+        run: tar -czf "dea_l0_api_reference-${RESOLVED_RELEASE_TAG}.tar.gz" -C build/docs/api-reference .
 
-      - name: Upload blog export artifact
+      - name: Upload Dea/L0 API reference export artifact
         if: inputs.publish_blog
         uses: actions/upload-artifact@v6
         with:
           name: blog-export
-          path: l0/blog-export.tar.gz
+          path: l0/dea_l0_api_reference-${{ needs.resolve-draft-release.outputs.resolved_release_tag }}.tar.gz
 
-      - name: Upload blog export to draft release
+      - name: Upload Dea/L0 API reference export to draft release
         if: inputs.publish_blog
         env:
           GH_TOKEN: ${{ github.token }}
           RESOLVED_RELEASE_ID: ${{ needs.resolve-draft-release.outputs.resolved_release_id }}
+          RESOLVED_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
         run: |
+          archive_name="dea_l0_api_reference-${RESOLVED_RELEASE_TAG}.tar.gz"
           release_api="repos/$GITHUB_REPOSITORY/releases/$RESOLVED_RELEASE_ID"
           upload_url="$(gh api "$release_api" --jq '.upload_url' | sed 's/{?name,label}//')"
-          existing_asset_ids="$(gh api "$release_api/assets" --paginate --jq '.[] | select(.name == "blog-export.tar.gz") | .id')"
+          existing_asset_ids="$(gh api "$release_api/assets" --paginate --jq ".[] | select(.name == \"$archive_name\") | .id")"
           for asset_id in $existing_asset_ids; do
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
           done
           gh api \
             --method POST \
             -H "Content-Type: application/gzip" \
-            --input blog-export.tar.gz \
-            "${upload_url}?name=blog-export.tar.gz"
+            --input "$archive_name" \
+            "${upload_url}?name=${archive_name}"
 
   upload-blog-export:
     needs:
@@ -432,7 +436,7 @@ jobs:
           fi
           python -m compiler.docgen.l0_docgen_blog \
             --input build/docs/markdown \
-            --output build/docs/blog-export \
+            --output build/docs/api-reference \
             --docs-prefix "$docs_prefix" \
             --tab-title "$tab_title" \
             --tab-icon "$tab_icon" \
@@ -441,14 +445,18 @@ jobs:
             --pdf-url "$pdf_url" \
             --release-tag "$TARGET_RELEASE_TAG"
 
-      - name: Create blog export archive
-        run: tar -czf blog-export.tar.gz -C build/docs/blog-export .
+      - name: Create Dea/L0 API reference export archive
+        id: archive
+        run: |
+          archive_name="dea_l0_api_reference${TARGET_RELEASE_TAG:+-$TARGET_RELEASE_TAG}.tar.gz"
+          tar -czf "$archive_name" -C build/docs/api-reference .
+          echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
 
-      - name: Upload blog export artifact
+      - name: Upload Dea/L0 API reference export artifact
         uses: actions/upload-artifact@v6
         with:
           name: blog-export
-          path: l0/blog-export.tar.gz
+          path: l0/${{ steps.archive.outputs.archive_name }}
 
       - name: Fire repository_dispatch (optional)
         if: vars.BLOG_REPO != ''

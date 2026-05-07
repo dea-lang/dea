@@ -91,4 +91,4 @@ jobs:
         run: |
           python -m compiler.docgen.l0_docgen_blog \
             --input build/docs/markdown \
-            --output build/docs/blog-export
+            --output build/docs/api-reference

@@ -23,8 +23,8 @@ Generated API documentation is not stored in this tree. The docs pipeline writes
 and Doxygen LaTeX under `build/docs/`. When `python scripts/gen_docs.py --pdf` is used, the built PDF is copied to
 `build/docs/pdf/` (also with `--pdf-fast`). After each successful docs run, generated artifacts are mirrored into a
 stable preview tree under `build/preview/{html,markdown,pdf}` and overwritten by the next successful run. CI publishing
-also produces a Chirpy-compatible export under `build/docs/blog-export/`, packaged as a release asset
-(`blog-export.tar.gz`) for consumption by external blog repositories.
+also produces a Chirpy-compatible markdown export of the Dea/L0 API reference under `build/docs/api-reference/`,
+packaged as a release asset (`dea_l0_api_reference-<TAG>.tar.gz`) for consumption by external blog repositories.
 
 ## Placement Guide
 

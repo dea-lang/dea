@@ -34,7 +34,7 @@ on:
         default: ""
         type: string
       run_id:
-        description: "Dea workflow run ID to download blog-export artifact from (bypasses release asset lookup)"
+        description: "Dea workflow run ID to download the API reference export artifact from (bypasses release asset lookup)"
         required: false
         default: ""
         type: string
@@ -79,6 +79,10 @@ jobs:
           if [ -n "$INPUT_RUN_ID" ]; then
             echo "run_id=$INPUT_RUN_ID" >> "$GITHUB_OUTPUT"
             echo "tag=" >> "$GITHUB_OUTPUT"
+            # Run-id downloads use whatever the artifact ships; the unpacked
+            # filename inside the workflow-artifact is the producer's versioned
+            # name. The fallback below keeps the cleanup paths simple.
+            echo "archive_name=dea_l0_api_reference.tar.gz" >> "$GITHUB_OUTPUT"
             echo "Using workflow run ID: $INPUT_RUN_ID"
             exit 0
           fi
@@ -96,8 +100,10 @@ jobs:
               exit 0
             fi
           fi
+          archive_name="dea_l0_api_reference-$tag.tar.gz"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "url=https://github.com/$DEA_SOURCE_REPO/releases/download/$tag/blog-export.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/$DEA_SOURCE_REPO/releases/download/$tag/$archive_name" >> "$GITHUB_OUTPUT"
           echo "Resolved release tag: $tag"
 
       # -- Check whether this version was already synced -----------------
@@ -124,30 +130,40 @@ jobs:
           GH_TOKEN: ${{ secrets.DEA_ARTIFACTS_TOKEN || github.token }}
         run: |
           repo="${RUN_REPO:-$DEA_SOURCE_REPO}"
-          echo "Downloading blog-export artifact from run $RUN_ID in $repo"
+          # The producer-side artifact `name:` is still `blog-export` (a stable
+          # symbol identifier); only the file packed inside it has been renamed.
+          echo "Downloading API reference export artifact from run $RUN_ID in $repo"
           gh run download "$RUN_ID" -n blog-export -R "$repo"
 
       - name: Download from release asset
         if: steps.resolve.outputs.skip != 'true' && steps.marker.outputs.skip != 'true' && steps.resolve.outputs.run_id == ''
         env:
           ARCHIVE_URL: ${{ steps.resolve.outputs.url }}
+          ARCHIVE_NAME: ${{ steps.resolve.outputs.archive_name }}
         run: |
           echo "Downloading $ARCHIVE_URL"
-          curl -fsSL -o blog-export.tar.gz "$ARCHIVE_URL"
+          curl -fsSL -o "$ARCHIVE_NAME" "$ARCHIVE_URL"
 
       - name: Unpack archive into blog tree
         if: steps.resolve.outputs.skip != 'true' && steps.marker.outputs.skip != 'true'
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
+          ARCHIVE_NAME: ${{ steps.resolve.outputs.archive_name }}
         run: |
           # Clean previous API docs
           rm -f "_tabs/api.md"
           rm -rf "$BLOG_DOCS_PREFIX"
 
+          # Resolve archive on disk: release-asset path uses the versioned name;
+          # run-id path drops whatever filename the workflow-artifact contained.
+          if [ ! -f "$ARCHIVE_NAME" ]; then
+            ARCHIVE_NAME="$(ls -1 dea_l0_api_reference*.tar.gz 2>/dev/null | head -n 1)"
+          fi
+
           # Unpack; archive root contains _tabs/ and the docs prefix tree
           mkdir -p _tabs
           mkdir -p "$(dirname "$BLOG_DOCS_PREFIX")"
-          tar -xzf blog-export.tar.gz
+          tar -xzf "$ARCHIVE_NAME"
 
           # Update version marker (tag or URL fingerprint)
           if [ -n "$TAG" ]; then
@@ -156,7 +172,7 @@ jobs:
             echo "manual-$(date -u +%Y%m%dT%H%M%SZ)" > .dea-docs-version
           fi
 
-          rm -f blog-export.tar.gz
+          rm -f "$ARCHIVE_NAME"
 
       # -- Commit and push -----------------------------------------------
       - name: Commit and push

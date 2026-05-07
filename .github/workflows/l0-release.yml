@@ -416,7 +416,7 @@ jobs:
           pdf_name="dea_l0_api_reference-$CURRENT_TAG.pdf"
           mv "build/release-assets/dea_l0_api_reference.pdf" "build/release-assets/$pdf_name"
 
-      - name: Build blog export archive
+      - name: Build Dea/L0 API reference export archive
         env:
           BLOG_DOCS_PREFIX: ${{ vars.BLOG_DOCS_PREFIX }}
           BLOG_TAB_TITLE: ${{ vars.BLOG_TAB_TITLE }}
@@ -437,7 +437,7 @@ jobs:
           pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${CURRENT_TAG}/dea_l0_api_reference-${CURRENT_TAG}.pdf"
           python -m compiler.docgen.l0_docgen_blog \
             --input build/docs/markdown \
-            --output build/docs/blog-export \
+            --output build/docs/api-reference \
             --docs-prefix "$docs_prefix" \
             --tab-title "$tab_title" \
             --tab-icon "$tab_icon" \
@@ -445,7 +445,7 @@ jobs:
             --html-site-url "$html_site_url" \
             --pdf-url "$pdf_url" \
             --release-tag "$CURRENT_TAG"
-          tar -czf build/release-assets/blog-export.tar.gz -C build/docs/blog-export .
+          tar -czf "build/release-assets/dea_l0_api_reference-${CURRENT_TAG}.tar.gz" -C build/docs/api-reference .
 
       - name: Generate checksums
         run: |
@@ -458,7 +458,7 @@ jobs:
               path for path in assets_dir.iterdir() if path.is_file() and path.name != "SHA256SUMS"
           )
           required_assets = {
-              "blog-export.tar.gz",
+              "dea_l0_api_reference-${{ github.ref_name }}.tar.gz",
               "dea_l0_api_reference-${{ github.ref_name }}.pdf",
           }
           missing = sorted(name for name in required_assets if not (assets_dir / name).is_file())
