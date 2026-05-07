@@ -8,6 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
+- Parent Initiative: `l1/work/initiatives/0003-c-ffi.md`
 - Subsystem: Parser / signatures / typing / backend / runtime / stdlib / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/ast.l0`

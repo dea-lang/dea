@@ -1,8 +1,17 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-04-28
+- Version: 2026-05-07
 - Status: Active
 - Kind: Initiative
+- Open plans:
+  - `l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`
+  - `l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`
+  - `l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`
+  - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
+- Closed plans:
+  - `l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`
+  - `l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`
+  - `l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`
 
 ## Summary
 

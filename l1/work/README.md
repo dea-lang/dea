@@ -47,4 +47,25 @@ When an initiative is opened, link it from the "Active initiatives" section of [
 is closed, move the file into `initiatives/closed/` and move its roadmap entry from "Active initiatives" to "Completed
 initiatives".
 
+## Initiative and plan membership
+
+Initiative documents carry two membership fields in their metadata block, after `Kind: Initiative`:
+
+- `Open plans:` — bulleted list of repo-root paths to currently open spawned plans, or `(none)`.
+- `Closed plans:` — bulleted list of repo-root paths to closed spawned plans, or `(none)`.
+
+Plans spawned by an initiative carry a `Parent Initiative:` field in their metadata block, immediately after `Stage:`,
+pointing at the initiative file using the repo-root path. Standalone plans must not carry this field.
+
+Keep the two sides in sync throughout the plan lifecycle:
+
+- When a plan is spawned from an initiative: add its path to `Open plans:` in the initiative and add
+  `Parent Initiative:` to the plan's metadata.
+- When a plan is closed: move its path from `Open plans:` to `Closed plans:` in the initiative.
+- When an initiative is closed: move its file to `initiatives/closed/`; leave `Open plans:` and `Closed plans:`
+  unchanged.
+
+The `Parent Initiative:` field is the authoritative signal for initiative membership. The `Related:` field may also list
+an initiative when the plan merely references it without being owned by it; that alone does not make the plan a member.
+
 [roadmap]: ../docs/roadmap.md

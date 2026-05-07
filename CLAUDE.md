@@ -72,6 +72,9 @@ level directory first.
 - Shared parity or seeded-port work defaults to one root-owned shared plan with explicit target implementations and
   per-target status. Do not open a follow-up level-local plan for a mechanical downstream port unless the downstream
   scope materially diverges.
+- Plans spawned by an initiative carry a `Parent Initiative:` field in their metadata block pointing at the initiative
+  file using the repo-root path. Standalone plans omit this field. Keep `Open plans:` / `Closed plans:` in the
+  initiative in sync whenever a plan is opened or closed.
 
 ## Git Conventions
 

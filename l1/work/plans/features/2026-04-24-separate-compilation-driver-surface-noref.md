@@ -8,6 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
+- Parent Initiative: `l1/work/initiatives/0001-separate-compilation-and-linking.md`
 - Subsystem: CLI / driver / build workflow / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/cli_args.l0`

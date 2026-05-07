@@ -8,6 +8,7 @@
 - Kind: Feature
 - Severity: Medium
 - Stage: L1
+- Parent Initiative: `l1/work/initiatives/0001-separate-compilation-and-linking.md`
 - Subsystem: Backend / driver / initialization ordering / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/backend.l0`
