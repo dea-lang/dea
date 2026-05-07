@@ -3,7 +3,7 @@
 ## Shared L1 Stage 1 backend handler divergence audit
 
 - Date: 2026-04-30
-- Status: In Progress
+- Status: Closed
 - Title: Audit `l1/compiler/stage1_l0/src/backend.l0` against `l0/compiler/stage2_l0/src/backend.l0` for any other
   unported widenings or fixes that arrived through prior shared bug-fix plans
 - Kind: Bug Fix
@@ -19,7 +19,7 @@
   concat-refactor failure footprint. Other shared backend fixes may have similar L1-port gaps.
 - Porting rule: Audit only — fix any divergences mechanically once the audit is complete. Do not change semantics.
 - Target status:
-  - L1 Stage 1: Pending audit
+  - L1 Stage 1: No divergences found
 - Subsystem: Backend ARC lowering, scope cleanup ordering, expression emission paths
 - Modules:
   - `l1/compiler/stage1_l0/src/backend.l0` (audit subject)
@@ -113,6 +113,31 @@ cd l0 && make -j test-all
 - For each L1 helper audited, either a confirmation note "structurally aligned with L0 Stage 2" is recorded, or a
   dedicated commit lands the port plus a focused L1 regression that pins the post-fix invariant.
 - At plan-close time, every helper in the in-scope list has either a "no divergence" mark or a referenced fixing commit.
+
+## Audit Findings
+
+Audited on 2026-05-07 against L0 Stage 2 oracle at the current `main` HEAD. All 17 in-scope helpers are structurally
+aligned. No semantic divergences were found; no porting commits are required.
+
+| Helper                                  | Result  | Notes                                                                                                                                                                             |
+| --------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `be_is_place_expr`                      | Aligned | Identical.                                                                                                                                                                        |
+| `be_has_side_effects`                   | Aligned | L1 adds `EX_BIGINT`, `EX_FLOAT`, `EX_DOUBLE` arms — valid L1 superset, not divergences.                                                                                           |
+| `be_is_unwrap_cast_from_place`          | Aligned | Ported in parent plan (`29aaf1b`); confirmed identical.                                                                                                                           |
+| `be_needs_arc_temp`                     | Aligned | Identical.                                                                                                                                                                        |
+| `be_should_materialize_arc_temp`        | Aligned | Identical four-term conjunction.                                                                                                                                                  |
+| `be_materialize_arc_temp`               | Aligned | Identical.                                                                                                                                                                        |
+| `be_emit_retain_for_copied_value`       | Aligned | Identical structure and ordering (ARC → nullable → struct → enum).                                                                                                                |
+| `be_emit_copy_expr_with_retains`        | Aligned | Identical.                                                                                                                                                                        |
+| `be_emit_owned_expr_with_expected_type` | Aligned | Identical four-branch ordering.                                                                                                                                                   |
+| `be_emit_value_cleanup`                 | Aligned | Identical single-line delegation to `cem_emit_value_cleanup`.                                                                                                                     |
+| `be_emit_cleanup_at_scope_exit`         | Aligned | Identical reverse-order loop with `analysis_has_arc_data` guard.                                                                                                                  |
+| `be_emit_match_stmt`                    | Aligned | L1 uses `be_emit_scoped_stmt_body` where L0 uses `be_emit_block_sequence`; dispatches identically for block-body arms (the only form in L0). L1-only extension, not a regression. |
+| `be_emit_if_branch`                     | Aligned | Identical.                                                                                                                                                                        |
+| ST_LET handler                          | Aligned | Identical: type resolution order, `be_emit_owned_expr_with_expected_type`, `sc_add_owned` vs `sc_add_declared` branch.                                                            |
+| ST_ASSIGN handler                       | Aligned | Identical: temp-store-then-cleanup-then-assign for ARC types, plain assign otherwise.                                                                                             |
+| ST_RETURN handler                       | Aligned | Identical: `be_lookup_owned_local_name` guard, `be_scope_chain_has_cleanup` guard, `ret_tmp` materialization before `be_emit_cleanup_for_return`.                                 |
+| `be_body_reassigns_param`               | Aligned | Identical arm-by-arm (ST_ASSIGN, ST_BLOCK, ST_IF, ST_WHILE, ST_FOR, ST_MATCH, ST_CASE, ST_WITH, wildcard false).                                                                  |
 
 [borrowed-param-plan]: closed/2026-04-21-shared-arc-borrowed-param-reassignment-noref.md
 [parent-plan]: closed/2026-04-30-shared-arc-owned-local-reassignment-semantics-noref.md
