@@ -2995,14 +2995,14 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
     }
 
     if (ord(l_ty.kind) == ord(TY_NULLABLE)) {
-        etc_diag_error(self, "TYP-0211", "cannot index nullable type " + type_format(l_ty),
+        etc_diag_error(self, "TYP-0211", "cannot index into a nullable expression; indexing is not yet supported",
             (self.current_unit as DriverUnit*).path, expr.span);
         type_free(l_ty);
         return null;
     }
 
     if (ord(l_ty.kind) != ord(TY_POINTER)) {
-        etc_diag_error(self, "TYP-0212", "cannot index into expression of type " + type_format(l_ty),
+        etc_diag_error(self, "TYP-0212", "cannot index into an expression; indexing is not yet supported",
             (self.current_unit as DriverUnit*).path, expr.span);
         type_free(l_ty);
         return null;

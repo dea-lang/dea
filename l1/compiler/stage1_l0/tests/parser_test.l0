@@ -39,6 +39,35 @@ func expect_error_code(source: string, expected: string) {
 }
 
 /**
+ * Parses source and asserts that the first diagnostic matches code and message.
+ *
+ * @param source The module source to parse.
+ * @param expected_code The expected diagnostic code.
+ * @param expected_message The expected diagnostic message text.
+ */
+func expect_error_code_and_message(source: string, expected_code: string, expected_message: string) {
+    let result = parse_module_source(source, "<test>");
+    if (!parse_has_errors(result)) {
+        assert(false, "Expected parse error " + expected_code + " but parse succeeded");
+    }
+    if (parse_diag_count(result) < 1) {
+        assert(false, "Expected at least one diagnostic");
+    }
+
+    let diag = parse_diag_get(result, 0);
+    if (diag.code != expected_code) {
+        printl_ss("actual error code:", diag.code);
+        assert(false, "Expected parse error code " + expected_code);
+    }
+    if (diag.message != expected_message) {
+        printl_ss("actual error message:", diag.message);
+        assert(false, "Expected parse error message " + expected_message);
+    }
+
+    parse_result_free(result);
+}
+
+/**
  * Parses source and asserts that it succeeds without diagnostics.
  *
  * @param source The module source to parse.
@@ -87,6 +116,14 @@ func test_parser_message_omits_embedded_code() {
     assert(diag.code == "PAR-0547", "Expected alias diagnostic code");
     assert(!starts_with_s(diag.message, "[PAR-0547]"), "Parser message should not embed its diagnostic code");
     parse_result_free(result);
+}
+
+/**
+ * Tests array-type syntax rejection wording.
+ */
+func test_array_type_syntax_message() {
+    let src = "module main; func main() -> int { let x: int[] = 0; return x; }";
+    expect_error_code_and_message(src, "PAR-9401", "array types not yet supported");
 }
 
 /**
@@ -638,6 +675,7 @@ func test_top_level_multi_error_collection() {
  */
 func main() {
     test_parser_message_omits_embedded_code();
+    test_array_type_syntax_message();
     test_valid_module();
     test_export_and_new_import_forms_ok();
     test_export_star_ok();

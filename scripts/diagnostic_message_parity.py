@@ -117,7 +117,10 @@ CASES = {
                 }
             """,
         },
-        "expected": "[TYP-0211] cannot index into nullable type 'int*?'; indexing is not yet supported",
+        "expected": {
+            "l0": "[TYP-0211] cannot index into nullable type 'int*?'; indexing is not yet supported",
+            "l1": "[TYP-0211] cannot index into a nullable expression; indexing is not yet supported",
+        },
     },
     "typ-0212-pointer-indexing": {
         "files": {
@@ -127,7 +130,21 @@ CASES = {
                 func foo(i: int) -> int { return buf()[i]; }
             """,
         },
-        "expected": "[TYP-0212] cannot index into expression of type 'int*'; indexing is not yet supported",
+        "expected": {
+            "l0": "[TYP-0212] cannot index into expression of type 'int*'; indexing is not yet supported",
+            "l1": "[TYP-0212] cannot index into an expression; indexing is not yet supported",
+        },
+        "files_by_stage": {
+            "l1": {
+                "main": """\
+                    module main;
+                    func foo(i: int) -> int {
+                        let value: int = 1;
+                        return value[i];
+                    }
+                """,
+            },
+        },
     },
 }
 
@@ -176,7 +193,13 @@ def main() -> int:
     parser.add_argument("--compiler", type=Path, required=True)
     args = parser.parse_args()
     for case_name, spec in CASES.items():
-        run_case(args.stage, args.compiler.resolve(strict=True), case_name, spec["expected"], spec["files"])
+        expected_spec = spec["expected"]
+        if isinstance(expected_spec, dict):
+            expected = expected_spec[args.stage]
+        else:
+            expected = expected_spec
+        files = spec.get("files_by_stage", {}).get(args.stage, spec["files"])
+        run_case(args.stage, args.compiler.resolve(strict=True), case_name, expected, files)
     print(f"{args.stage}: diagnostic message parity passed")
     return 0
 

@@ -991,7 +991,7 @@ func ps_parse_type(self: ParserState*) -> TypeRef*? {
     }
 
     if (ps_check(self, ord(TT_LBRACKET))) {
-        ps_emit_error(self, "PAR-9401", "array types not yet supported: use pointers and [] indexing in expressions", ps_peek(self));
+        ps_emit_error(self, "PAR-9401", "array types not yet supported", ps_peek(self));
         type_ref_free(result);
         return null;
     }

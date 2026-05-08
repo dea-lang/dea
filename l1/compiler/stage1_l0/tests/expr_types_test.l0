@@ -53,6 +53,24 @@ func has_diag_code(result: AnalysisResult*, code: string) -> bool {
 }
 
 /**
+ * Checks if a specific diagnostic code has an exact message.
+ *
+ * @param result The analysis result to inspect.
+ * @param code The diagnostic code to look for.
+ * @param message The exact diagnostic message expected.
+ * @return `true` if the diagnostic with matching code and message is present.
+ */
+func has_diag_message(result: AnalysisResult*, code: string, message: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code && d.message == message) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Counts diagnostics with one specific code.
  *
  * @param result The analysis result to inspect.
@@ -344,6 +362,12 @@ func test_typing_index_diag_err() {
         assert(has_diag_code(result, "TYP-0210"), "expected non-int index expression error");
         assert(has_diag_code(result, "TYP-0211"), "expected nullable index base error");
         assert(has_diag_code(result, "TYP-0212"), "expected invalid index base error");
+        assert(has_diag_message(result, "TYP-0211",
+            "cannot index into a nullable expression; indexing is not yet supported"),
+            "expected nullable index message wording");
+        assert(has_diag_message(result, "TYP-0212",
+            "cannot index into an expression; indexing is not yet supported"),
+            "expected invalid index-base message wording");
         assert(!has_diag_code(result, "TYP-0350"), "did not expect legacy index-base diagnostic code");
         analysis_result_free(result);
     }
