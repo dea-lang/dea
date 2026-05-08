@@ -1466,7 +1466,7 @@ class ExpressionTypeChecker:
         if isinstance(array_ty, NullableType):
             self._error(
                 expr,
-                f"[TYP-0211] cannot index into nullable type '{format_type(array_ty)}'; expected a non-null array",
+                f"[TYP-0211] cannot index into nullable type '{format_type(array_ty)}'; indexing is not yet supported",
             )
             return None
 
@@ -1476,7 +1476,7 @@ class ExpressionTypeChecker:
         if array_ty is not None:
             self._error(
                 expr,
-                f"[TYP-0212] cannot index into expression of type '{format_type(array_ty)}'; expected an array type",
+                f"[TYP-0212] cannot index into expression of type '{format_type(array_ty)}'; indexing is not yet supported",
             )
 
         return None

@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-04-30
+Version: 2026-05-08
 
 This document records rationale and policy decisions.
 
@@ -62,8 +62,9 @@ Rationale:
 
 Pointer arithmetic is not part of L0 surface semantics.
 
-Index syntax exists in the frontend AST/checker, but array/slice types are not implemented in L0; indexing is therefore
-currently rejected for unsupported targets.
+Pointer indexing is also not implemented in L0. Index syntax remains in the frontend AST/checker as preparatory surface
+for future array work, but array/slice types do not exist in the language today, so every user-facing indexing
+expression is currently rejected during semantic analysis.
 
 ## 4. Nullability, Casts, and Introspection
 

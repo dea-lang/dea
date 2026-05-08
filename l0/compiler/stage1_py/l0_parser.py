@@ -445,7 +445,7 @@ class Parser:
         if self._match(TokenKind.QUESTION):
             is_nullable = True
         if self._peek().kind is TokenKind.LBRACKET:
-            self._error_bail("[PAR-9401] array types not yet supported: use pointers and [] indexing in expressions",
+            self._error_bail("[PAR-9401] array types not yet supported",
                              self._peek())
         return TypeRef(name_tok.text, pointer_depth, is_nullable, module_path=module_path,
                        name_qualifier=name_qualifier, span=self._extend_span(start))

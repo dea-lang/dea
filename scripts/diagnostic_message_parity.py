@@ -94,6 +94,41 @@ CASES = {
         },
         "expected": "[SIG-0020] cyclic type alias involving 'A' in module 'main'",
     },
+    "par-9401-array-type-syntax": {
+        "files": {
+            "main": """\
+                module main;
+                func foo() -> int {
+                    let x: int[] = 0;
+                    return x;
+                }
+            """,
+        },
+        "expected": "[PAR-9401] array types not yet supported",
+    },
+    "typ-0211-nullable-indexing": {
+        "files": {
+            "main": """\
+                module main;
+                extern func maybe_buf() -> int*?;
+                func foo(i: int) -> int {
+                    let buf: int*? = maybe_buf();
+                    return buf[i];
+                }
+            """,
+        },
+        "expected": "[TYP-0211] cannot index into nullable type 'int*?'; indexing is not yet supported",
+    },
+    "typ-0212-pointer-indexing": {
+        "files": {
+            "main": """\
+                module main;
+                extern func buf() -> int*;
+                func foo(i: int) -> int { return buf()[i]; }
+            """,
+        },
+        "expected": "[TYP-0212] cannot index into expression of type 'int*'; indexing is not yet supported",
+    },
 }
 
 

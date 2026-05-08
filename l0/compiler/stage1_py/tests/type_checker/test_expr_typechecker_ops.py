@@ -160,6 +160,10 @@ def test_index_pointer_rejected(analyze_single):
     result = analyze_single("main", src)
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0212")
+    assert any(
+        d.message == "[TYP-0212] cannot index into expression of type 'int*'; indexing is not yet supported"
+        for d in result.diagnostics
+    )
 
 
 def test_index_requires_int_index(analyze_single):
@@ -190,6 +194,10 @@ def test_index_requires_pointer_base(analyze_single):
     result = analyze_single("main", src)
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0212")
+    assert any(
+        d.message == "[TYP-0212] cannot index into expression of type 'int'; indexing is not yet supported"
+        for d in result.diagnostics
+    )
 
 
 def test_index_nullable_pointer_rejected(analyze_single):
@@ -207,6 +215,10 @@ def test_index_nullable_pointer_rejected(analyze_single):
     result = analyze_single("main", src)
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0211")
+    assert any(
+        d.message == "[TYP-0211] cannot index into nullable type 'int*?'; indexing is not yet supported"
+        for d in result.diagnostics
+    )
 
 
 def test_field_access_struct_field_type(analyze_single):

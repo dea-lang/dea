@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-04-26
+Version: 2026-04-28
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -72,123 +72,137 @@ and reuse supplement for applying this registry within L0.
 
 ## Parsing and Parse-Time Analysis
 
-| Code       | Level   | Meaning                                                                    |
-| ---------- | ------- | -------------------------------------------------------------------------- |
-| `PAR-0000` | All     | Fallback parser error when no specific parse/lex diagnostic is available   |
-| `PAR-0010` | All     | Invalid variable name: reserved for future language use                    |
-| `PAR-0011` | All     | Invalid variable name: reserved identifier                                 |
-| `PAR-0020` | All     | Unexpected top-level declaration                                           |
-| `PAR-0030` | All     | Expected 'extern'                                                          |
-| `PAR-0040` | All     | Expected 'func'                                                            |
-| `PAR-0041` | All     | Expected function name                                                     |
-| `PAR-0042` | All     | Expected '('                                                               |
-| `PAR-0043` | All     | Expected parameter name                                                    |
-| `PAR-0044` | All     | Expected ':' after parameter name                                          |
-| `PAR-0045` | All     | Expected ')' after parameters                                              |
-| `PAR-0046` | All     | Expected ';' after extern function decl                                    |
-| `PAR-0050` | All     | Expected 'struct'                                                          |
-| `PAR-0051` | All     | Expected struct name                                                       |
-| `PAR-0052` | All     | Expected '{' after struct name                                             |
-| `PAR-0053` | All     | Expected field name                                                        |
-| `PAR-0054` | All     | Expected ':' after field name                                              |
-| `PAR-0055` | All     | Expected ';' after field declaration                                       |
-| `PAR-0056` | All     | Expected '}' after struct body                                             |
-| `PAR-0060` | All     | Expected 'enum'                                                            |
-| `PAR-0061` | All     | Expected enum name                                                         |
-| `PAR-0062` | All     | Expected '{' after enum name                                               |
-| `PAR-0063` | All     | Expected variant name                                                      |
-| `PAR-0064` | All     | Expected variant field name                                                |
-| `PAR-0065` | All     | Expected ':'                                                               |
-| `PAR-0066` | All     | Expected ')' after variant payload                                         |
-| `PAR-0067` | All     | Expected ';' after variant                                                 |
-| `PAR-0068` | All     | Expected '}' after enum body                                               |
-| `PAR-0070` | All     | Expected type name                                                         |
-| `PAR-0071` | All     | Expected type alias name                                                   |
-| `PAR-0072` | All     | Expected '=' in type alias                                                 |
-| `PAR-0073` | All     | Expected ';' after type alias                                              |
-| `PAR-0080` | All     | Expected 'let'                                                             |
-| `PAR-0081` | All     | Expected variable name                                                     |
-| `PAR-0082` | All     | Expected '=' in let binding                                                |
-| `PAR-0083` | All     | Expected ';' after let declaration                                         |
-| `PAR-0090` | All     | Expected '{' to start block                                                |
-| `PAR-0091` | All     | Expected '}' after block                                                   |
-| `PAR-0100` | All     | Expected ';' after statement                                               |
-| `PAR-0110` | All     | Expected 'let'                                                             |
-| `PAR-0111` | All     | Expected variable name                                                     |
-| `PAR-0112` | All     | Expected '=' in let binding                                                |
-| `PAR-0120` | All     | Expected 'if'                                                              |
-| `PAR-0121` | All     | Expected '(' after 'if'                                                    |
-| `PAR-0122` | All     | Expected ')' after condition                                               |
-| `PAR-0130` | All     | Expected 'while'                                                           |
-| `PAR-0131` | All     | Expected '('                                                               |
-| `PAR-0132` | All     | Expected ')'                                                               |
-| `PAR-0140` | All     | Expected 'for'                                                             |
-| `PAR-0141` | All     | Expected '(' after 'for'                                                   |
-| `PAR-0142` | All     | Expected ';' after for loop initialization                                 |
-| `PAR-0143` | All     | Expected ';' after for loop condition                                      |
-| `PAR-0144` | All     | Expected ')' after for loop clauses                                        |
-| `PAR-0150` | All     | Expected 'return'                                                          |
-| `PAR-0160` | All     | Expected 'drop'                                                            |
-| `PAR-0161` | All     | Expected variable name after 'drop'                                        |
-| `PAR-0170` | All     | Expected 'match'                                                           |
-| `PAR-0171` | All     | Expected '('                                                               |
-| `PAR-0172` | All     | Expected ')'                                                               |
-| `PAR-0173` | All     | Expected '{' after match expression                                        |
-| `PAR-0174` | All     | Expected '=>' in match arm                                                 |
-| `PAR-0175` | All     | Expected '}' after match                                                   |
-| `PAR-0176` | All     | Duplicate variant patterns in match statement                              |
-| `PAR-0177` | All     | Match statement must have at least one arm                                 |
-| `PAR-0180` | All     | Expected pattern variable name                                             |
-| `PAR-0181` | All     | Expected ')' in pattern                                                    |
-| `PAR-0182` | All     | Unexpected pattern syntax                                                  |
-| `PAR-0190` | All     | Expected 'break'                                                           |
-| `PAR-0200` | All     | Expected 'continue'                                                        |
-| `PAR-0210` | All     | Expected ')' after arguments                                               |
-| `PAR-0211` | All     | Expected '\]' after index                                                  |
-| `PAR-0212` | All     | Expected field name after '.'                                              |
-| `PAR-0223` | All     | Expected ')' after arguments to 'new'                                      |
-| `PAR-0224` | All     | Expected ')' after expression                                              |
-| `PAR-0225` | All     | Expected expression                                                        |
-| `PAR-0226` | L0 only | Operator is not yet supported                                              |
-| `PAR-0230` | All     | Expected 'case'                                                            |
-| `PAR-0231` | All     | Expected '('                                                               |
-| `PAR-0232` | All     | Expected ')'                                                               |
-| `PAR-0233` | All     | Expected '{' after 'case' expression                                       |
-| `PAR-0234` | All     | Value arm cannot appear after 'else' in 'case' statement                   |
-| `PAR-0235` | All     | Expected '=>' in 'case' arm                                                |
-| `PAR-0236` | All     | Duplicate 'else' arm in 'case' statement                                   |
-| `PAR-0237` | All     | '=>' not allowed in 'else' arm                                             |
-| `PAR-0238` | All     | Expected value literal or `else` in `case` arm                             |
-| `PAR-0239` | All     | Expected '}' after 'case' statement                                        |
-| `PAR-0240` | All     | 'case' statement must have at least one arm                                |
-| `PAR-0241` | All     | Expected literal in 'case' arm                                             |
-| `PAR-0260` | L1+     | `const` declarations require an explicit type annotation                   |
-| `PAR-0261` | L1+     | Expected '=' in const binding                                              |
-| `PAR-0262` | L1+     | Expected ';' after const declaration                                       |
-| `PAR-0263` | L1+     | `const` declarations are only supported at top level                       |
-| `PAR-0300` | All     | Expected identifier after '.' in module name                               |
-| `PAR-0310` | All     | Expected 'module'                                                          |
-| `PAR-0311` | All     | Expected module name                                                       |
-| `PAR-0312` | All     | Expected ';' after module name                                             |
-| `PAR-0320` | All     | Expected imported module name                                              |
-| `PAR-0321` | All     | Expected ';' after import                                                  |
-| `PAR-0400` | All     | Expected type name                                                         |
-| `PAR-0401` | All     | Expected identifier after '::' in qualified name                           |
-| `PAR-0500` | All     | Expected 'with'                                                            |
-| `PAR-0501` | All     | Expected '(' after 'with'                                                  |
-| `PAR-0502` | All     | Expected ')' after with items                                              |
-| `PAR-0503` | All     | 'with': all items must use '=>' or none                                    |
-| `PAR-0504` | All     | 'with': cannot have both '=>' and cleanup block                            |
-| `PAR-0505` | All     | 'with': cleanup block required when '=>' is not used                       |
-| `PAR-0540` | L1+     | Expected exported name or '\*' in export manifest                          |
-| `PAR-0541` | L1+     | Expected ';' after export manifest                                         |
-| `PAR-0542` | L1+     | Export manifest is not allowed after imports or declarations               |
-| `PAR-0543` | L1+     | Duplicate export manifest                                                  |
-| `PAR-0544` | L1+     | Expected imported symbol name after ',' in selective import                |
-| `PAR-0545` | L1+     | Expected 'from' after selective import list                                |
-| `PAR-0546` | L1+     | Expected imported module name after 'from'                                 |
-| `PAR-0547` | L1+     | Expected import alias after 'as'                                           |
-| `PAR-9401` | All     | Array types not yet supported: use pointers and [] indexing in expressions |
+| Code       | Level   | Meaning                                                                  |
+| ---------- | ------- | ------------------------------------------------------------------------ |
+| `PAR-0000` | All     | Fallback parser error when no specific parse/lex diagnostic is available |
+| `PAR-0010` | All     | Invalid variable name: reserved for future language use                  |
+| `PAR-0011` | All     | Invalid variable name: reserved identifier                               |
+| `PAR-0020` | All     | Unexpected top-level declaration                                         |
+| `PAR-0030` | All     | Expected 'extern'                                                        |
+| `PAR-0040` | All     | Expected 'func'                                                          |
+| `PAR-0041` | All     | Expected function name                                                   |
+| `PAR-0042` | All     | Expected '('                                                             |
+| `PAR-0043` | All     | Expected parameter name                                                  |
+| `PAR-0044` | All     | Expected ':' after parameter name                                        |
+| `PAR-0045` | All     | Expected ')' after parameters                                            |
+| `PAR-0046` | All     | Expected ';' after extern function decl                                  |
+| `PAR-0050` | All     | Expected 'struct'                                                        |
+| `PAR-0051` | All     | Expected struct name                                                     |
+| `PAR-0052` | All     | Expected '{' after struct name                                           |
+| `PAR-0053` | All     | Expected field name                                                      |
+| `PAR-0054` | All     | Expected ':' after field name                                            |
+| `PAR-0055` | All     | Expected ';' after field declaration                                     |
+| `PAR-0056` | All     | Expected '}' after struct body                                           |
+| `PAR-0060` | All     | Expected 'enum'                                                          |
+| `PAR-0061` | All     | Expected enum name                                                       |
+| `PAR-0062` | All     | Expected '{' after enum name                                             |
+| `PAR-0063` | All     | Expected variant name                                                    |
+| `PAR-0064` | All     | Expected variant field name                                              |
+| `PAR-0065` | All     | Expected ':'                                                             |
+| `PAR-0066` | All     | Expected ')' after variant payload                                       |
+| `PAR-0067` | All     | Expected ';' after variant                                               |
+| `PAR-0068` | All     | Expected '}' after enum body                                             |
+| `PAR-0070` | All     | Expected type name                                                       |
+| `PAR-0071` | All     | Expected type alias name                                                 |
+| `PAR-0072` | All     | Expected '=' in type alias                                               |
+| `PAR-0073` | All     | Expected ';' after type alias                                            |
+| `PAR-0080` | All     | Expected 'let'                                                           |
+| `PAR-0081` | All     | Expected variable name                                                   |
+| `PAR-0082` | All     | Expected '=' in let binding                                              |
+| `PAR-0083` | All     | Expected ';' after let declaration                                       |
+| `PAR-0090` | All     | Expected '{' to start block                                              |
+| `PAR-0091` | All     | Expected '}' after block                                                 |
+| `PAR-0100` | All     | Expected ';' after statement                                             |
+| `PAR-0110` | All     | Expected 'let'                                                           |
+| `PAR-0111` | All     | Expected variable name                                                   |
+| `PAR-0112` | All     | Expected '=' in let binding                                              |
+| `PAR-0120` | All     | Expected 'if'                                                            |
+| `PAR-0121` | All     | Expected '(' after 'if'                                                  |
+| `PAR-0122` | All     | Expected ')' after condition                                             |
+| `PAR-0130` | All     | Expected 'while'                                                         |
+| `PAR-0131` | All     | Expected '('                                                             |
+| `PAR-0132` | All     | Expected ')'                                                             |
+| `PAR-0140` | All     | Expected 'for'                                                           |
+| `PAR-0141` | All     | Expected '(' after 'for'                                                 |
+| `PAR-0142` | All     | Expected ';' after for loop initialization                               |
+| `PAR-0143` | All     | Expected ';' after for loop condition                                    |
+| `PAR-0144` | All     | Expected ')' after for loop clauses                                      |
+| `PAR-0150` | All     | Expected 'return'                                                        |
+| `PAR-0160` | All     | Expected 'drop'                                                          |
+| `PAR-0161` | All     | Expected variable name after 'drop'                                      |
+| `PAR-0170` | All     | Expected 'match'                                                         |
+| `PAR-0171` | All     | Expected '('                                                             |
+| `PAR-0172` | All     | Expected ')'                                                             |
+| `PAR-0173` | All     | Expected '{' after match expression                                      |
+| `PAR-0174` | All     | Expected '=>' in match arm                                               |
+| `PAR-0175` | All     | Expected '}' after match                                                 |
+| `PAR-0176` | All     | Duplicate variant patterns in match statement                            |
+| `PAR-0177` | All     | Match statement must have at least one arm                               |
+| `PAR-0180` | All     | Expected pattern variable name                                           |
+| `PAR-0181` | All     | Expected ')' in pattern                                                  |
+| `PAR-0182` | All     | Unexpected pattern syntax                                                |
+| `PAR-0190` | All     | Expected 'break'                                                         |
+| `PAR-0200` | All     | Expected 'continue'                                                      |
+| `PAR-0210` | All     | Expected ')' after arguments                                             |
+| `PAR-0211` | All     | Expected '\]' after index                                                |
+| `PAR-0212` | All     | Expected field name after '.'                                            |
+| `PAR-0223` | All     | Expected ')' after arguments to 'new'                                    |
+| `PAR-0224` | All     | Expected ')' after expression                                            |
+| `PAR-0225` | All     | Expected expression                                                      |
+| `PAR-0226` | L0 only | Operator is not yet supported                                            |
+| `PAR-0230` | All     | Expected 'case'                                                          |
+| `PAR-0231` | All     | Expected '('                                                             |
+| `PAR-0232` | All     | Expected ')'                                                             |
+| `PAR-0233` | All     | Expected '{' after 'case' expression                                     |
+| `PAR-0234` | All     | Value arm cannot appear after 'else' in 'case' statement                 |
+| `PAR-0235` | All     | Expected '=>' in 'case' arm                                              |
+| `PAR-0236` | All     | Duplicate 'else' arm in 'case' statement                                 |
+| `PAR-0237` | All     | '=>' not allowed in 'else' arm                                           |
+| `PAR-0238` | All     | Expected value literal or `else` in `case` arm                           |
+| `PAR-0239` | All     | Expected '}' after 'case' statement                                      |
+| `PAR-0240` | All     | 'case' statement must have at least one arm                              |
+| `PAR-0241` | All     | Expected literal in 'case' arm                                           |
+| `PAR-0260` | L1+     | `const` declarations require an explicit type annotation                 |
+| `PAR-0261` | L1+     | Expected '=' in const binding                                            |
+| `PAR-0262` | L1+     | Expected ';' after const declaration                                     |
+| `PAR-0263` | L1+     | `const` declarations are only supported at top level                     |
+| `PAR-0300` | All     | Expected identifier after '.' in module name                             |
+| `PAR-0310` | All     | Expected 'module'                                                        |
+| `PAR-0311` | All     | Expected module name                                                     |
+| `PAR-0312` | All     | Expected ';' after module name                                           |
+| `PAR-0320` | All     | Expected imported module name                                            |
+| `PAR-0321` | All     | Expected ';' after import                                                |
+| `PAR-0400` | All     | Expected type name                                                       |
+| `PAR-0401` | All     | Expected identifier after '::' in qualified name                         |
+| `PAR-0500` | All     | Expected 'with'                                                          |
+| `PAR-0501` | All     | Expected '(' after 'with'                                                |
+| `PAR-0502` | All     | Expected ')' after with items                                            |
+| `PAR-0503` | All     | 'with': all items must use '=>' or none                                  |
+| `PAR-0504` | All     | 'with': cannot have both '=>' and cleanup block                          |
+| `PAR-0505` | All     | 'with': cleanup block required when '=>' is not used                     |
+| `PAR-0540` | L1+     | Expected exported name or '\*' in export manifest                        |
+| `PAR-0541` | L1+     | Expected ';' after export manifest                                       |
+| `PAR-0542` | L1+     | Export manifest is not allowed after imports or declarations             |
+| `PAR-0543` | L1+     | Duplicate export manifest                                                |
+| `PAR-0544` | L1+     | Expected imported symbol name after ',' in selective import              |
+| `PAR-0545` | L1+     | Expected 'from' after selective import list                              |
+| `PAR-0546` | L1+     | Expected imported module name after 'from'                               |
+| `PAR-0547` | L1+     | Expected import alias after 'as'                                         |
+| `PAR-0560` | L1+     | Expected `module` keyword at start of interface file                     |
+| `PAR-0561` | L1+     | Expected `interface` keyword in module interface declaration             |
+| `PAR-0562` | L1+     | Expected module name in interface file header                            |
+| `PAR-0563` | L1+     | Expected ';' after module interface declaration                          |
+| `PAR-0564` | L1+     | Expected `fingerprint` declaration after module interface header         |
+| `PAR-0565` | L1+     | Expected string literal after `fingerprint`                              |
+| `PAR-0566` | L1+     | Expected ';' after fingerprint declaration                               |
+| `PAR-0567` | L1+     | Expected ':' or '=' after name in interface declaration                  |
+| `PAR-0568` | L1+     | Expected ';' after function signature in interface file                  |
+| `PAR-0569` | L1+     | Expected ';' after let declaration in interface file                     |
+| `PAR-0570` | L1+     | Expected constant literal value after '=' in interface const declaration |
+| `PAR-0571` | L1+     | Expected ';' after const declaration in interface file                   |
+| `PAR-0572` | L1+     | Unsupported or unexpected token in interface file                        |
+| `PAR-0573` | L1+     | Expected identifier after keyword in interface declaration               |
+| `PAR-9401` | All     | Array types not yet supported                                            |
 
 ## Driver and Environment
 
@@ -342,8 +356,8 @@ and reuse supplement for applying this registry within L0.
 | `TYP-0200` | All   | Variant has no type information                                                                        |
 | `TYP-0201` | All   | Variant constructor argument count mismatch                                                            |
 | `TYP-0210` | All   | Index expression must have type `int`                                                                  |
-| `TYP-0211` | All   | Cannot index into a nullable array                                                                     |
-| `TYP-0212` | All   | Cannot index into a non-array expression                                                               |
+| `TYP-0211` | All   | Cannot index into a nullable expression; indexing is not yet supported                                 |
+| `TYP-0212` | All   | Cannot index into an expression; indexing is not yet supported                                         |
 | `TYP-0220` | All   | Cannot access a field on a nullable struct                                                             |
 | `TYP-0221` | All   | Struct has no field                                                                                    |
 | `TYP-0222` | All   | Cannot access field on non-struct type                                                                 |

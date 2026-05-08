@@ -274,7 +274,7 @@ func test_typing_index_diag_err() {
         assert(analysis_has_errors(result), "expected typing errors for typing_index_diag_err");
         assert(has_diag_code(result, "TYP-0210"), "expected non-int index expression error");
         assert(has_diag_code(result, "TYP-0211"), "expected nullable index base error");
-        assert(has_diag_code(result, "TYP-0212"), "expected invalid index base error");
+        assert(count_diag_code(result, "TYP-0212") == 5, "expected five invalid index base errors");
         assert(!has_diag_code(result, "TYP-0350"), "did not expect legacy index-base diagnostic code");
         assert(!has_diag_code(result, "TYP-0351"), "did not expect legacy index-type diagnostic code");
         analysis_result_free(result);

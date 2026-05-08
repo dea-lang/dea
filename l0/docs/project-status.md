@@ -1,6 +1,6 @@
 # L0 Project Status
 
-Version: 2026-05-01
+Version: 2026-05-08
 
 This document summarizes what is implemented in this repository today and what defines the current Dea/L0 `1.0.0`
 release.
@@ -102,7 +102,9 @@ The current development support baseline remains:
 These remain true in the `1.0.0` release:
 
 1. Backend output is one C translation unit (no multi-object/header split pipeline yet).
-2. Arrays/slices are not implemented; indexing syntax exists but unsupported targets are rejected.
+2. Arrays/slices are not implemented, and pointer indexing is not part of the current L0 language surface; indexing
+   syntax exists only as dormant frontend shape and all user-facing indexing expressions are rejected during semantic
+   analysis.
 3. No address-of (`&`) operator in language semantics.
 4. No generics, traits, or macros.
 5. Reserved/future keywords and operators are lexed for diagnostics and staged evolution.
