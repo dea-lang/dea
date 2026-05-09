@@ -219,6 +219,8 @@ jobs:
         run: |
           printf 'platform=%s\n' '${{ matrix.platform }}'
           printf 'MSYSTEM=%s\n' "${MSYSTEM:-}"
+          pwd
+          printf 'GITHUB_WORKSPACE=%s\n' "${GITHUB_WORKSPACE:-}"
           command -v python
           python -VV
           command -v uv || true
@@ -246,6 +248,7 @@ jobs:
         if: matrix.os == 'windows'
         shell: msys2 {0}
         env:
+          DEA_DEBUG_VENV: "1"
           L0_CC: ${{ steps.select-cc.outputs.value }}
           PYTHON: python
         run: make ${{ steps.select-make-target.outputs.value }}

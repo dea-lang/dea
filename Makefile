@@ -62,6 +62,22 @@ _check-python:
 
 venv: _check-python
 	@if command -v uv >/dev/null 2>&1; then \
+		if [ -n "$$DEA_DEBUG_VENV" ]; then \
+			printf '%s\n' 'make venv debug: entering uv sync branch'; \
+			printf 'make venv debug: workdir %s\n' "$$(pwd)"; \
+			printf 'make venv debug: VENV_DIR=%s\n' "$(VENV_DIR)"; \
+			printf 'make venv debug: PYTHON=%s\n' "$(PYTHON)"; \
+			printf 'make venv debug: VENV_PYTHON=%s\n' "$(VENV_PYTHON)"; \
+			printf 'make venv debug: UV_PROJECT_ENVIRONMENT=%s\n' "$(VENV_DIR)"; \
+			command -v uv || true; \
+			uv --version || true; \
+			if command -v cygpath >/dev/null 2>&1; then \
+				printf 'make venv debug: cygpath -w VENV_DIR=%s\n' "$$(cygpath -w "$(VENV_DIR)")"; \
+			fi; \
+			ls -ld "$(VENV_DIR)" 2>/dev/null || true; \
+			ls -l "$(VENV_DIR)/Scripts" 2>/dev/null || true; \
+			ls -l "$(VENV_DIR)/bin" 2>/dev/null || true; \
+		fi; \
 		if [ -x "$(VENV_PYTHON)" ]; then \
 			printf '%s\n' 'make venv: syncing existing ./.venv with uv $(VENV_QUIET_LABEL)'; \
 		fi; \
