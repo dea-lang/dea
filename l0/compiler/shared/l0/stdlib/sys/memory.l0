@@ -3,10 +3,10 @@
  * Copyright (c) 2025-2026 gwz
  */
 
-module sys.unsafe;
+module sys.memory;
 
 /* =================================
-   Unsafe memory operations
+   Memory operations
    ================================= */
 
 /**

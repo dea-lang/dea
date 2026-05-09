@@ -6,7 +6,7 @@
 module std.text;
 
 import sys.rt;
-import sys.unsafe;
+import sys.memory;
 
 import std.string;
 import std.math;

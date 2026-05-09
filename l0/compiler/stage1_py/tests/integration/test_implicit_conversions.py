@@ -250,7 +250,7 @@ class TestPointerOptionalConversion:
             self.tmp_path, self.write_l0_file, self.search_paths,
             "main", """
             module main;
-            import sys.unsafe;
+            import sys.memory;
             func f() -> void {
                 let p: void*? = rt_alloc(8);
                 rt_free(p);

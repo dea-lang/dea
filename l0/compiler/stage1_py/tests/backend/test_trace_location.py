@@ -51,7 +51,7 @@ def test_trace_memory_loc_reporting(analyze_single, compile_and_run, tmp_path):
         tmp_path,
         """
         module main;
-        import sys.unsafe;
+        import sys.memory;
 
         func main() -> int {
             let p: void*? = rt_alloc(8);
@@ -118,7 +118,7 @@ def test_trace_memory_realloc_loc_reporting(analyze_single, compile_and_run, tmp
         tmp_path,
         """
         module main;
-        import sys.unsafe;
+        import sys.memory;
 
         func main() -> int {
             let p: void* = rt_alloc(8) as void*;
@@ -143,7 +143,7 @@ def test_trace_memory_calloc_loc_reporting(analyze_single, compile_and_run, tmp_
         tmp_path,
         """
         module main;
-        import sys.unsafe;
+        import sys.memory;
 
         func main() -> int {
             let p: void*? = rt_calloc(2, 4);

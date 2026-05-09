@@ -91,7 +91,7 @@ def test_string_byte_conversions_runtime(codegen_single, compile_and_run, tmp_pa
 
         import std.io;
         import std.string;
-        import sys.unsafe;
+        import sys.memory;
 
         func main() -> int {
             let one: string = byte_to_s(65 as byte);

@@ -107,7 +107,7 @@ def test_hash_data_negative_size_panics(codegen_single, compile_and_run, tmp_pat
         module hash_data_negative_size;
 
         import sys.hash;
-        import sys.unsafe;
+        import sys.memory;
 
         func main() -> int {
             let ptr: void* = rt_calloc(1, 1) as void*;

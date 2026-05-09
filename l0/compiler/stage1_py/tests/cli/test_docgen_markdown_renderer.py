@@ -795,7 +795,7 @@ def test_render_markdown_site_preserves_l0_signature_prefix_and_expands_link_lab
         <name>rt_free</name>
         <briefdescription><para>Free allocated pointer.</para></briefdescription>
         <detaileddescription>
-          <para>L0 signature: <computeroutput>extern func <ref refid="unsafe_8l0_1a_free" kindref="member">rt_free</ref>(ptr: void*?) -&gt; void;</computeroutput></para>
+            <para>L0 signature: <computeroutput>extern func <ref refid="memory_8l0_1a_free" kindref="member">rt_free</ref>(ptr: void*?) -&gt; void;</computeroutput></para>
         </detaileddescription>
         <location file="compiler/shared/runtime/l0_runtime.h" line="120" />
       </memberdef>
@@ -838,13 +838,13 @@ def test_render_markdown_site_preserves_l0_signature_prefix_and_expands_link_lab
 """,
         encoding="utf-8",
     )
-    (xml_dir / "unsafe_8l0.xml").write_text(
+    (xml_dir / "memory_8l0.xml").write_text(
         """<?xml version='1.0' encoding='UTF-8' standalone='no'?>
 <doxygen>
-  <compounddef id="unsafe_8l0" kind="file" language="C++">
-    <compoundname>unsafe.l0</compoundname>
+  <compounddef id="memory_8l0" kind="file" language="C++">
+    <compoundname>memory.l0</compoundname>
     <sectiondef kind="func">
-      <memberdef kind="function" id="unsafe_8l0_1a_free" prot="public" extern="yes">
+      <memberdef kind="function" id="memory_8l0_1a_free" prot="public" extern="yes">
         <type>void</type>
         <definition>void rt_free</definition>
         <argsstring>(void *ptr)</argsstring>
@@ -853,10 +853,10 @@ def test_render_markdown_site_preserves_l0_signature_prefix_and_expands_link_lab
           <type>void *</type>
           <declname>ptr</declname>
         </param>
-        <location file="compiler/shared/l0/stdlib/sys/unsafe.l0" line="10" />
+        <location file="compiler/shared/l0/stdlib/sys/memory.l0" line="10" />
       </memberdef>
     </sectiondef>
-    <location file="compiler/shared/l0/stdlib/sys/unsafe.l0" line="1" />
+    <location file="compiler/shared/l0/stdlib/sys/memory.l0" line="1" />
   </compounddef>
 </doxygen>
 """,
@@ -870,11 +870,11 @@ def test_render_markdown_site_preserves_l0_signature_prefix_and_expands_link_lab
         "L0 signature: extern [func rt_string_slice(s: string, start: int, end: int) -> string]"
         "(../l0/stdlib/sys/rt.md#function-rt_string_slice);"
     ) in page
-    assert "L0 signature: extern [func rt_free(ptr: void*?) -> void](../l0/stdlib/sys/unsafe.md#function-rt_free);" in page
+    assert "L0 signature: extern [func rt_free(ptr: void*?) -> void](../l0/stdlib/sys/memory.md#function-rt_free);" in page
     rt_page = (output_dir / "compiler/shared/l0/stdlib/sys/rt.md").read_text(encoding="utf-8")
-    unsafe_page = (output_dir / "compiler/shared/l0/stdlib/sys/unsafe.md").read_text(encoding="utf-8")
+    memory_page = (output_dir / "compiler/shared/l0/stdlib/sys/memory.md").read_text(encoding="utf-8")
     assert "extern func rt_string_slice(s: string, start: int, end: int) -> string" in rt_page
-    assert "extern func rt_free(ptr: void*?) -> void" in unsafe_page
+    assert "extern func rt_free(ptr: void*?) -> void" in memory_page
 
 
 def test_render_markdown_site_recovers_nullable_l0_function_signatures_from_source(
@@ -885,10 +885,10 @@ def test_render_markdown_site_recovers_nullable_l0_function_signatures_from_sour
     output_dir = tmp_path / "markdown"
     templates_dir = Path(__file__).resolve().parents[4] / "scripts/docs/templates"
 
-    source_path = tmp_path / "compiler/shared/l0/stdlib/sys/unsafe.l0"
+    source_path = tmp_path / "compiler/shared/l0/stdlib/sys/memory.l0"
     source_path.parent.mkdir(parents=True, exist_ok=True)
     source_path.write_text(
-        """module sys.unsafe;
+        """module sys.memory;
 
 extern func rt_alloc(bytes: int) -> void*?;
 extern func rt_free(ptr: void*?) -> void;
@@ -896,13 +896,13 @@ extern func rt_free(ptr: void*?) -> void;
         encoding="utf-8",
     )
 
-    (xml_dir / "unsafe_8l0.xml").write_text(
+    (xml_dir / "memory_8l0.xml").write_text(
         """<?xml version='1.0' encoding='UTF-8' standalone='no'?>
 <doxygen>
-  <compounddef id="unsafe_8l0" kind="file" language="C++">
-    <compoundname>unsafe.l0</compoundname>
+  <compounddef id="memory_8l0" kind="file" language="C++">
+    <compoundname>memory.l0</compoundname>
     <sectiondef kind="func">
-      <memberdef kind="function" id="unsafe_8l0_1a_alloc" prot="public" extern="yes">
+      <memberdef kind="function" id="memory_8l0_1a_alloc" prot="public" extern="yes">
         <type>void *</type>
         <definition>void * rt_alloc</definition>
         <argsstring>(int bytes)</argsstring>
@@ -911,9 +911,9 @@ extern func rt_free(ptr: void*?) -> void;
           <type>int</type>
           <declname>bytes</declname>
         </param>
-        <location file="compiler/shared/l0/stdlib/sys/unsafe.l0" line="3" declline="3" />
+        <location file="compiler/shared/l0/stdlib/sys/memory.l0" line="3" declline="3" />
       </memberdef>
-      <memberdef kind="function" id="unsafe_8l0_1a_free" prot="public" extern="yes">
+      <memberdef kind="function" id="memory_8l0_1a_free" prot="public" extern="yes">
         <type>void</type>
         <definition>void rt_free</definition>
         <argsstring>(void *ptr)</argsstring>
@@ -922,10 +922,10 @@ extern func rt_free(ptr: void*?) -> void;
           <type>void *</type>
           <declname>ptr</declname>
         </param>
-        <location file="compiler/shared/l0/stdlib/sys/unsafe.l0" line="4" declline="4" />
+        <location file="compiler/shared/l0/stdlib/sys/memory.l0" line="4" declline="4" />
       </memberdef>
     </sectiondef>
-    <location file="compiler/shared/l0/stdlib/sys/unsafe.l0" line="1" />
+    <location file="compiler/shared/l0/stdlib/sys/memory.l0" line="1" />
   </compounddef>
 </doxygen>
 """,
@@ -935,7 +935,7 @@ extern func rt_free(ptr: void*?) -> void;
     monkeypatch.chdir(tmp_path)
     render_markdown_site(xml_dir, output_dir, templates_dir)
 
-    page = (output_dir / "compiler/shared/l0/stdlib/sys/unsafe.md").read_text(encoding="utf-8")
+    page = (output_dir / "compiler/shared/l0/stdlib/sys/memory.md").read_text(encoding="utf-8")
     assert "extern func rt_alloc(bytes: int) -> void*?" in page
     assert "extern func rt_free(ptr: void*?) -> void" in page
 

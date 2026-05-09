@@ -238,7 +238,7 @@ def test_side_effect_counter_in_let(tmp_path, write_l0_file, search_paths, compi
         module countertest;
 
         import std.io;
-        import sys.unsafe;
+        import sys.memory;
 
         let counter: int = 0;
 
@@ -292,7 +292,7 @@ def test_dereference_assign_calls_func_once(tmp_path, write_l0_file, search_path
         module dereftest;
 
         import std.io;
-        import sys.unsafe;
+        import sys.memory;
 
         let counter: int = 0;
 
@@ -345,7 +345,7 @@ def test_string_dereference_assign_calls_func_once(tmp_path, write_l0_file, sear
         module stringderef;
 
         import std.io;
-        import sys.unsafe;
+        import sys.memory;
 
         let counter: int = 0;
 
@@ -400,7 +400,7 @@ def test_field_assign_with_function_call_object(tmp_path, write_l0_file, search_
         module fieldtest;
 
         import std.io;
-        import sys.unsafe;
+        import sys.memory;
 
         struct Box {
             value: int;

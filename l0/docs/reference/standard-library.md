@@ -1,6 +1,6 @@
 # The L0 Standard Library
 
-Version: 2026-05-01
+Version: 2026-05-09
 
 The standard library provides ergonomic L0 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -25,7 +25,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
                              v
 +---------------------------------------------------------+
 |                      sys.* Modules                      |
-|      hash, rt (runtime API), unsafe (raw mem)           |
+|      hash, rt (runtime API), memory                     |
 +---------------------------------------------------------+
                              |
                              v
@@ -46,7 +46,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 
 ### `std.array`
 
-**Imports:** `sys.rt`, `sys.unsafe`, `std.assert`, `std.string`
+**Imports:** `sys.rt`, `sys.memory`, `std.assert`, `std.string`
 
 | Type/Function | Signature                                                             | Description                                        |
 | ------------- | --------------------------------------------------------------------- | -------------------------------------------------- |
@@ -84,7 +84,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 
 ### `std.vector`
 
-**Imports:** `sys.rt`, `sys.unsafe`, `std.assert`, `std.string`, `std.array`
+**Imports:** `sys.rt`, `sys.memory`, `std.assert`, `std.string`, `std.array`
 
 | Type/Function                | Signature                                                   | Description                                     |
 | ---------------------------- | ----------------------------------------------------------- | ----------------------------------------------- |
@@ -105,7 +105,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 
 ### `std.hashmap`
 
-**Imports:** `sys.rt`, `sys.unsafe`, `std.assert`, `std.string`, `sys.hash`, `std.array`, `std.vector`
+**Imports:** `sys.rt`, `sys.memory`, `std.assert`, `std.string`, `sys.hash`, `std.array`, `std.vector`
 
 | Type/Function                     | Signature                                | Description                                  |
 | --------------------------------- | ---------------------------------------- | -------------------------------------------- |
@@ -124,7 +124,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 
 ### `std.hashset`
 
-**Imports:** `sys.rt`, `sys.unsafe`, `std.assert`, `std.string`, `sys.hash`, `std.array`, `std.vector`
+**Imports:** `sys.rt`, `sys.memory`, `std.assert`, `std.string`, `sys.hash`, `std.array`, `std.vector`
 
 | Type/Function                    | Signature                                 | Description                                  |
 | -------------------------------- | ----------------------------------------- | -------------------------------------------- |
@@ -138,7 +138,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 
 ### `std.linear_map`
 
-**Imports:** `sys.rt`, `sys.unsafe`, `std.assert`, `std.string`, `sys.hash`, `std.vector`
+**Imports:** `sys.rt`, `sys.memory`, `std.assert`, `std.string`, `sys.hash`, `std.vector`
 
 | Type/Function           | Signature                                                 | Description                                 |
 | ----------------------- | --------------------------------------------------------- | ------------------------------------------- |
@@ -153,7 +153,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 
 ### `std.io`
 
-**Imports:** `sys.rt`, `sys.unsafe`, `std.array`, `std.assert`, `std.unit`
+**Imports:** `sys.rt`, `sys.memory`, `std.array`, `std.assert`, `std.unit`
 
 `std.io` classifies I/O success/failure from direct runtime return values (optional/boolean/sentinel results).
 
@@ -388,7 +388,7 @@ Low-level runtime FFI for strings, I/O, process/system, time, and errors. Also d
 (`struct { sec: int; nsec: int; }`) and `RtFileInfo`
 (`struct { exists: bool; is_file: bool; is_dir: bool; size: int?; mtime_sec: int?; mtime_nsec: int?; }`).
 
-### `sys.unsafe`
+### `sys.memory`
 
 Low-level raw memory FFI. Misuse can cause undefined behavior.
 
@@ -443,7 +443,7 @@ All `extern func` symbols exposed to L0 from stdlib modules are listed here.
 | `rt_file_info`                | `(path: string) -> RtFileInfo`                | Returns stat-like file metadata.       |
 | `rt_delete_file`              | `(path: string) -> bool`                      | Deletes a file by path.                |
 
-### Declared in `sys.unsafe` (11)
+### Declared in `sys.memory` (11)
 
 These are unsafe raw-memory primitives.
 

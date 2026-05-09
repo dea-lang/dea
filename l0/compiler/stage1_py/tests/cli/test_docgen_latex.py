@@ -664,7 +664,7 @@ def test_normalize_latex_site_expands_l0_signature_link_text(tmp_path: Path, mon
         r"""\doxysection{l0_runtime.h File Reference}
 \hypertarget{l0__runtime_8h}{}\label{l0__runtime_8h}\index{l0\_runtime.h@{l0\_runtime.h}}
 L0 signature:\+ {\ttfamily extern func \doxylink{rt_8l0_a1}{rt\+\_\+string\+\_\+slice(s:\+ string, start:\+ int, end:\+ int)} \texorpdfstring{$\rightarrow$}{->} string;}
-L0 signature:\+ {\ttfamily extern func \doxylink{unsafe_8l0_a2}{rt\+\_\+free}(ptr:\+ void\texorpdfstring{$\ast$}{*}?) \texorpdfstring{$\rightarrow$}{->} void;}
+L0 signature:\+ {\ttfamily extern func \doxylink{memory_8l0_a2}{rt\+\_\+free}(ptr:\+ void\texorpdfstring{$\ast$}{*}?) \texorpdfstring{$\rightarrow$}{->} void;}
 """,
         encoding="utf-8",
     )
@@ -674,7 +674,7 @@ L0 signature:\+ {\ttfamily extern func \doxylink{unsafe_8l0_a2}{rt\+\_\+free}(pt
 
     page = (latex_dir / "l0__runtime_8h.tex").read_text(encoding="utf-8")
     assert r"extern \doxylink{rt_8l0_a1}{func rt\+\_\+string\+\_\+slice(s:\+ string, start:\+ int, end:\+ int) \texorpdfstring{$\rightarrow$}{->} string};" in page
-    assert r"extern \doxylink{unsafe_8l0_a2}{func rt\+\_\+free(ptr:\+ void\texorpdfstring{$\ast$}{*}?) \texorpdfstring{$\rightarrow$}{->} void};" in page
+    assert r"extern \doxylink{memory_8l0_a2}{func rt\+\_\+free(ptr:\+ void\texorpdfstring{$\ast$}{*}?) \texorpdfstring{$\rightarrow$}{->} void};" in page
 
 
 def test_normalize_latex_site_moves_extern_suffix_into_l0_signature_prefix(tmp_path: Path, monkeypatch) -> None:

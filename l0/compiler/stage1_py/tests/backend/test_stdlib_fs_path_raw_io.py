@@ -171,7 +171,7 @@ def test_shared_stdlib_raw_stdio_signature_removed(analyze_single):
         module shared_stdlib_raw_stdio_signature_removed;
 
         import std.io;
-        import sys.unsafe;
+        import sys.memory;
 
         func main() -> int {
             with (let buf = rt_calloc(3, 1) as void* => rt_free(buf)) {
@@ -239,7 +239,7 @@ def test_shared_unsafe_raw_stdio_runtime(codegen_single, compile_and_run, tmp_pa
         """
         module shared_unsafe_raw_stdio_runtime;
 
-        import sys.unsafe;
+        import sys.memory;
 
         func main() -> int {
             with (

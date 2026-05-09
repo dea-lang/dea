@@ -6,7 +6,7 @@
 module std.vector;
 
 import sys.rt;
-import sys.unsafe;
+import sys.memory;
 
 import std.assert;
 import std.string;

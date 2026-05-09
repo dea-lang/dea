@@ -12,7 +12,7 @@
 module std.io;
 
 import sys.rt;
-import sys.unsafe;
+import sys.memory;
 
 import std.array;
 import std.assert;
