@@ -151,9 +151,9 @@ func test_export_and_new_import_forms_ok() {
     assert(root.export_manifest != null, "Expected explicit export manifest");
     let manifest = root.export_manifest as ExportManifest*;
     assert(!manifest.export_all, "Expected export allowlist");
-    assert(vs_size(manifest.names) == 2, "Expected two exported names");
-    assert(vs_get(manifest.names, 0) == "foo", "Expected first exported name");
-    assert(vs_get(manifest.names, 1) == "Bar", "Expected second exported name");
+    assert(sv_size(manifest.names) == 2, "Expected two exported names");
+    assert(sv_get(manifest.names, 0) == "foo", "Expected first exported name");
+    assert(sv_get(manifest.names, 1) == "Bar", "Expected second exported name");
     assert(vec_size(root.imports) == 2, "Expected two imports");
     let alias_imp = ptr_vec_get(root.imports, 0) as Import*;
     assert(ord(alias_imp.kind) == ord(IMPORT_ALIAS), "Expected alias import");
@@ -162,9 +162,9 @@ func test_export_and_new_import_forms_ok() {
     let selective_imp = ptr_vec_get(root.imports, 1) as Import*;
     assert(ord(selective_imp.kind) == ord(IMPORT_SELECTIVE), "Expected selective import");
     assert(selective_imp.names != null, "Expected selective import names");
-    assert(vs_size(selective_imp.names as VectorString*) == 2, "Expected two selective imports");
-    assert(vs_get(selective_imp.names as VectorString*, 0) == "abs", "Expected first selective import");
-    assert(vs_get(selective_imp.names as VectorString*, 1) == "pi", "Expected second selective import");
+    assert(sv_size(selective_imp.names as StringVector*) == 2, "Expected two selective imports");
+    assert(sv_get(selective_imp.names as StringVector*, 0) == "abs", "Expected first selective import");
+    assert(sv_get(selective_imp.names as StringVector*, 1) == "pi", "Expected second selective import");
     parse_result_free(result);
 }
 
@@ -643,9 +643,9 @@ func test_is_intrinsic_call_and_qualified_variant_shape() {
     let second_arg = expr_arena_get(result.expr_arena, id_vec_get(call.ids as VectorBase*, 1));
     assert(ord(second_arg.kind) == ord(EX_VAR_REF), "Expected second `is` argument to remain a var-ref");
     assert(second_arg.module_path != null, "Expected qualified variant module path");
-    assert(vs_size(second_arg.module_path as VectorString*) == 2, "Expected two module-path segments");
-    assert(vs_get(second_arg.module_path as VectorString*, 0) == "config", "Expected first module-path segment");
-    assert(vs_get(second_arg.module_path as VectorString*, 1) == "types", "Expected second module-path segment");
+    assert(sv_size(second_arg.module_path as StringVector*) == 2, "Expected two module-path segments");
+    assert(sv_get(second_arg.module_path as StringVector*, 0) == "config", "Expected first module-path segment");
+    assert(sv_get(second_arg.module_path as StringVector*, 1) == "types", "Expected second module-path segment");
     assert(second_arg.text_value == "String", "Expected qualified variant name");
 
     parse_result_free(result);

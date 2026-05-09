@@ -25,40 +25,40 @@ func print_bool(label: string, val: bool) {
 }
 
 /**
- * Tests test_lmss.
+ * Tests test_sslm.
  */
-func test_lmss() {
-    printl_s("=== LinearMapStringString Test ===");
+func test_sslm() {
+    printl_s("=== StringStringLinearMap Test ===");
 
     // Create map
     printl_s("Creating map with initial capacity 4...");
-    let m = lmss_create(4);
-    printl_si("Length:", lmss_len(m));
+    let m = sslm_create(4);
+    printl_si("Length:", sslm_len(m));
 
     // Test set and get
     printl_s("\nAdding entries...");
-    lmss_set(m, "foo", "bar");
-    lmss_set(m, "hello", "world");
-    lmss_set(m, "key1", "value1");
-    printl_si("Length:", lmss_len(m));
+    sslm_set(m, "foo", "bar");
+    sslm_set(m, "hello", "world");
+    sslm_set(m, "key1", "value1");
+    printl_si("Length:", sslm_len(m));
 
     // Test get
     printl_s("\nTesting get...");
-    let v1 = lmss_get(m, "foo");
+    let v1 = sslm_get(m, "foo");
     if (v1 != null) {
         printl_ss("  foo =>", v1 as string);
     } else {
         printl_s("  foo => NOT FOUND");
     }
 
-    let v2 = lmss_get(m, "hello");
+    let v2 = sslm_get(m, "hello");
     if (v2 != null) {
         printl_ss("  hello =>", v2 as string);
     } else {
         printl_s("  hello => NOT FOUND");
     }
 
-    let v3 = lmss_get(m, "nonexistent");
+    let v3 = sslm_get(m, "nonexistent");
     if (v3 != null) {
         printl_ss("  nonexistent =>", v3 as string);
     } else {
@@ -67,85 +67,85 @@ func test_lmss() {
 
     // Test contains
     printl_s("\nTesting contains...");
-    print_bool("  contains 'foo': ", lmss_contains(m, "foo"));
-    print_bool("  contains 'missing': ", lmss_contains(m, "missing"));
+    print_bool("  contains 'foo': ", sslm_contains(m, "foo"));
+    print_bool("  contains 'missing': ", sslm_contains(m, "missing"));
 
     // Test update existing key
     printl_s("\nUpdating 'foo' to 'baz'...");
-    lmss_set(m, "foo", "baz");
-    let v4 = lmss_get(m, "foo");
+    sslm_set(m, "foo", "baz");
+    let v4 = sslm_get(m, "foo");
     if (v4 != null) {
         printl_ss("  foo =>", v4 as string);
     }
-    printl_si("Length (should still be 3):", lmss_len(m));
+    printl_si("Length (should still be 3):", sslm_len(m));
 
     // Test iteration
     printl_s("\nIterating over map...");
-    for (let i = 0; i < lmss_len(m); i = i + 1) {
-        let k = lmss_key_at(m, i);
-        let v = lmss_value_at(m, i);
+    for (let i = 0; i < sslm_len(m); i = i + 1) {
+        let k = sslm_key_at(m, i);
+        let v = sslm_value_at(m, i);
         printl_s("  " + k + " => " + v);
     }
 
     // Test remove
     printl_s("\nRemoving 'hello'...");
-    let removed = lmss_remove(m, "hello");
+    let removed = sslm_remove(m, "hello");
     print_bool("  Removed: ", removed);
-    printl_si("Length:", lmss_len(m));
+    printl_si("Length:", sslm_len(m));
 
     printl_s("\nTrying to remove 'hello' again...");
-    let removed2 = lmss_remove(m, "hello");
+    let removed2 = sslm_remove(m, "hello");
     print_bool("  Removed: ", removed2);
 
     // Final iteration
     printl_s("\nFinal map contents:");
-    for (let i = 0; i < lmss_len(m); i = i + 1) {
-        let k = lmss_key_at(m, i);
-        let v = lmss_value_at(m, i);
+    for (let i = 0; i < sslm_len(m); i = i + 1) {
+        let k = sslm_key_at(m, i);
+        let v = sslm_value_at(m, i);
         printl_s("  " + k + " => " + v);
     }
 
     // Free
     printl_s("\nFreeing map...");
-    lmss_free(m);
+    sslm_free(m);
     printl_s("Done!");
 }
 
 /**
- * Tests test_lmis.
+ * Tests test_islm.
  */
-func test_lmis() {
-    printl_s("\n=== LinearMapIntString Test ===");
+func test_islm() {
+    printl_s("\n=== IntStringLinearMap Test ===");
 
     // Create map
     printl_s("Creating map with initial capacity 4...");
-    let m = lmis_create(4);
-    printl_si("Length:", lmis_len(m));
+    let m = islm_create(4);
+    printl_si("Length:", islm_len(m));
 
     // Test set
     printl_s("\nAdding entries...");
-    lmis_set(m, 1, "one");
-    lmis_set(m, 2, "two");
-    lmis_set(m, 42, "forty-two");
-    printl_si("Length:", lmis_len(m));
+    islm_set(m, 1, "one");
+    islm_set(m, 2, "two");
+    islm_set(m, 42, "forty-two");
+    printl_si("Length:", islm_len(m));
 
     // Test get
     printl_s("\nTesting get...");
-    let v1 = lmis_get(m, 1);
+    let v1 = islm_get(m, 1);
     if (v1 != null) {
         printl_ss("  1 =>", v1 as string);
     } else {
         printl_s("  1 => NOT FOUND");
     }
 
-    let v2 = lmis_get(m, 42);
+    let v2 = islm_get(m, 42);
     if (v2 != null) {
         printl_ss("  42 =>", v2 as string);
     } else {
         printl_s("  42 => NOT FOUND");
     }
 
-    let v3 = lmis_get(m, 999);
+    let v3 = islm_get(m, 999);
     if (v3 != null) {
         printl_ss("  999 =>", v3 as string);
     } else {
@@ -154,64 +154,64 @@ func test_lmis() {
 
     // Test contains
     printl_s("\nTesting contains...");
-    print_bool("  contains 1: ", lmis_contains(m, 1));
-    print_bool("  contains 999: ", lmis_contains(m, 999));
+    print_bool("  contains 1: ", islm_contains(m, 1));
+    print_bool("  contains 999: ", islm_contains(m, 999));
 
     // Test update existing key
     printl_s("\nUpdating key 1 to 'ONE'...");
-    lmis_set(m, 1, "ONE");
-    let v4 = lmis_get(m, 1);
+    islm_set(m, 1, "ONE");
+    let v4 = islm_get(m, 1);
     if (v4 != null) {
         printl_ss("  1 =>", v4 as string);
     }
-    printl_si("Length (should still be 3):", lmis_len(m));
+    printl_si("Length (should still be 3):", islm_len(m));
 
     // Test iteration
     printl_s("\nIterating over map...");
-    for (let i = 0; i < lmis_len(m); i = i + 1) {
-        let k = lmis_key_at(m, i);
-        let val = lmis_value_at(m, i);
+    for (let i = 0; i < islm_len(m); i = i + 1) {
+        let k = islm_key_at(m, i);
+        let val = islm_value_at(m, i);
         printl_si("  key:", k);
         printl_ss("    value:", val);
     }
 
     // Test remove
     printl_s("\nRemoving key 2...");
-    let removed = lmis_remove(m, 2);
+    let removed = islm_remove(m, 2);
     print_bool("  Removed: ", removed);
-    printl_si("Length:", lmis_len(m));
+    printl_si("Length:", islm_len(m));
 
     printl_s("\nTrying to remove key 2 again...");
-    let removed2 = lmis_remove(m, 2);
+    let removed2 = islm_remove(m, 2);
     print_bool("  Removed: ", removed2);
 
     // Final iteration
     printl_s("\nFinal map contents:");
-    for (let i = 0; i < lmis_len(m); i = i + 1) {
-        let k = lmis_key_at(m, i);
-        let val = lmis_value_at(m, i);
+    for (let i = 0; i < islm_len(m); i = i + 1) {
+        let k = islm_key_at(m, i);
+        let val = islm_value_at(m, i);
         printl_si("  key:", k);
         printl_ss("    value:", val);
     }
 
     // Free
     printl_s("\nFreeing map...");
-    lmis_free(m);
+    islm_free(m);
     printl_s("Done!");
 }
 
 /**
- * Tests test_empty_lmss.
+ * Tests test_empty_sslm.
  */
-func test_empty_lmss() {
-    printl_s("\n=== Empty LinearMapStringString Test ===");
+func test_empty_sslm() {
+    printl_s("\n=== Empty StringStringLinearMap Test ===");
 
-    let m = lmss_create(4);
-    printl_si("Empty map length:", lmss_len(m));
+    let m = sslm_create(4);
+    printl_si("Empty map length:", sslm_len(m));
 
     // Test get on empty map
     printl_s("Testing get on empty map...");
-    let v = lmss_get(m, "nonexistent");
+    let v = sslm_get(m, "nonexistent");
     if (v != null) {
         printl_s("  ERROR: get returned non-null on empty map!");
     } else {
@@ -220,67 +220,67 @@ func test_empty_lmss() {
 
     // Test contains on empty map
     printl_s("Testing contains on empty map...");
-    print_bool("  contains('key'): ", lmss_contains(m, "key"));
+    print_bool("  contains('key'): ", sslm_contains(m, "key"));
 
     // Test remove on empty map
     printl_s("Testing remove on empty map...");
-    let removed = lmss_remove(m, "key");
+    let removed = sslm_remove(m, "key");
     print_bool("  remove('key'): ", removed);
 
     // Test iteration on empty map
     printl_s("Testing iteration on empty map...");
     printl_s("  (iterating over 0 elements)");
-    for (let i = 0; i < lmss_len(m); i = i + 1) {
+    for (let i = 0; i < sslm_len(m); i = i + 1) {
         printl_s("  ERROR: should not iterate on empty map!");
     }
     printl_s("  (iteration complete)");
 
-    lmss_free(m);
+    sslm_free(m);
     printl_s("Empty map test passed!");
 }
 
 /**
- * Tests test_lmss_growth.
+ * Tests test_sslm_growth.
  */
-func test_lmss_growth() {
-    printl_s("\n=== LinearMapStringString Growth Test ===");
+func test_sslm_growth() {
+    printl_s("\n=== StringStringLinearMap Growth Test ===");
 
     // Start with small capacity
-    let m = lmss_create(2);
+    let m = sslm_create(2);
     printl_s("Created map with initial capacity 2");
 
     // Add entries to trigger growth using explicit keys
     printl_s("Adding entries to trigger multiple resizes...");
-    lmss_set(m, "key0", "value0");
-    lmss_set(m, "key1", "value1");
-    lmss_set(m, "key2", "value2");
-    lmss_set(m, "key3", "value3");
-    lmss_set(m, "key4", "value4");
-    lmss_set(m, "key5", "value5");
-    lmss_set(m, "key6", "value6");
-    lmss_set(m, "key7", "value7");
-    lmss_set(m, "key8", "value8");
-    lmss_set(m, "key9", "value9");
+    sslm_set(m, "key0", "value0");
+    sslm_set(m, "key1", "value1");
+    sslm_set(m, "key2", "value2");
+    sslm_set(m, "key3", "value3");
+    sslm_set(m, "key4", "value4");
+    sslm_set(m, "key5", "value5");
+    sslm_set(m, "key6", "value6");
+    sslm_set(m, "key7", "value7");
+    sslm_set(m, "key8", "value8");
+    sslm_set(m, "key9", "value9");
 
-    printl_si("Length after 10 entries:", lmss_len(m));
+    printl_si("Length after 10 entries:", sslm_len(m));
 
     // Verify some values
     printl_s("Verifying values...");
-    let v0 = lmss_get(m, "key0");
+    let v0 = sslm_get(m, "key0");
     if (v0 != null) {
         printl_ss("  key0 =>", v0 as string);
     } else {
         printl_s("  ERROR: key0 not found!");
     }
 
-    let v5 = lmss_get(m, "key5");
+    let v5 = sslm_get(m, "key5");
     if (v5 != null) {
         printl_ss("  key5 =>", v5 as string);
     } else {
         printl_s("  ERROR: key5 not found!");
     }
 
-    let v9 = lmss_get(m, "key9");
+    let v9 = sslm_get(m, "key9");
     if (v9 != null) {
         printl_ss("  key9 =>", v9 as string);
     } else {
@@ -288,26 +288,26 @@ func test_lmss_growth() {
     }
 
     // Verify contains
-    print_bool("  contains 'key0': ", lmss_contains(m, "key0"));
-    print_bool("  contains 'key9': ", lmss_contains(m, "key9"));
-    print_bool("  contains 'key99': ", lmss_contains(m, "key99"));
+    print_bool("  contains 'key0': ", sslm_contains(m, "key0"));
+    print_bool("  contains 'key9': ", sslm_contains(m, "key9"));
+    print_bool("  contains 'key99': ", sslm_contains(m, "key99"));
 
-    lmss_free(m);
+    sslm_free(m);
     printl_s("Growth test passed!");
 }
 
 /**
- * Tests test_empty_lmis.
+ * Tests test_empty_islm.
  */
-func test_empty_lmis() {
-    printl_s("\n=== Empty LinearMapIntString Test ===");
+func test_empty_islm() {
+    printl_s("\n=== Empty IntStringLinearMap Test ===");
 
-    let m = lmis_create(4);
-    printl_si("Empty map length:", lmis_len(m));
+    let m = islm_create(4);
+    printl_si("Empty map length:", islm_len(m));
 
     // Test get on empty map
     printl_s("Testing get on empty map...");
-    let v = lmis_get(m, 42);
+    let v = islm_get(m, 42);
     if (v != null) {
         printl_s("  ERROR: get returned non-null on empty map!");
     } else {
@@ -316,66 +316,66 @@ func test_empty_lmis() {
 
     // Test contains on empty map
     printl_s("Testing contains on empty map...");
-    print_bool("  contains(42): ", lmis_contains(m, 42));
+    print_bool("  contains(42): ", islm_contains(m, 42));
 
     // Test remove on empty map
     printl_s("Testing remove on empty map...");
-    let removed = lmis_remove(m, 42);
+    let removed = islm_remove(m, 42);
     print_bool("  remove(42): ", removed);
 
     // Test iteration on empty map
     printl_s("Testing iteration on empty map...");
-    for (let i = 0; i < lmis_len(m); i = i + 1) {
+    for (let i = 0; i < islm_len(m); i = i + 1) {
         printl_s("  ERROR: should not iterate on empty map!");
     }
     printl_s("  (iteration complete)");
 
-    lmis_free(m);
+    islm_free(m);
     printl_s("Empty map test passed!");
 }
 
 /**
- * Tests test_lmis_growth.
+ * Tests test_islm_growth.
  */
-func test_lmis_growth() {
-    printl_s("\n=== LinearMapIntString Growth Test ===");
+func test_islm_growth() {
+    printl_s("\n=== IntStringLinearMap Growth Test ===");
 
     // Start with small capacity
-    let m = lmis_create(2);
+    let m = islm_create(2);
     printl_s("Created map with initial capacity 2");
 
     // Add entries to trigger growth using explicit values
     printl_s("Adding entries to trigger multiple resizes...");
-    lmis_set(m, 0, "value0");
-    lmis_set(m, 1, "value1");
-    lmis_set(m, 2, "value2");
-    lmis_set(m, 3, "value3");
-    lmis_set(m, 4, "value4");
-    lmis_set(m, 5, "value5");
-    lmis_set(m, 6, "value6");
-    lmis_set(m, 7, "value7");
-    lmis_set(m, 8, "value8");
-    lmis_set(m, 9, "value9");
+    islm_set(m, 0, "value0");
+    islm_set(m, 1, "value1");
+    islm_set(m, 2, "value2");
+    islm_set(m, 3, "value3");
+    islm_set(m, 4, "value4");
+    islm_set(m, 5, "value5");
+    islm_set(m, 6, "value6");
+    islm_set(m, 7, "value7");
+    islm_set(m, 8, "value8");
+    islm_set(m, 9, "value9");
 
-    printl_si("Length after 10 entries:", lmis_len(m));
+    printl_si("Length after 10 entries:", islm_len(m));
 
     // Verify some values
     printl_s("Verifying values...");
-    let v0 = lmis_get(m, 0);
+    let v0 = islm_get(m, 0);
     if (v0 != null) {
         printl_ss("  0 =>", v0 as string);
     } else {
         printl_s("  ERROR: key 0 not found!");
     }
 
-    let v5 = lmis_get(m, 5);
+    let v5 = islm_get(m, 5);
     if (v5 != null) {
         printl_ss("  5 =>", v5 as string);
     } else {
         printl_s("  ERROR: key 5 not found!");
     }
 
-    let v9 = lmis_get(m, 9);
+    let v9 = islm_get(m, 9);
     if (v9 != null) {
         printl_ss("  9 =>", v9 as string);
     } else {
@@ -383,11 +383,11 @@ func test_lmis_growth() {
     }
 
     // Verify contains
-    print_bool("  contains 0: ", lmis_contains(m, 0));
-    print_bool("  contains 9: ", lmis_contains(m, 9));
-    print_bool("  contains 99: ", lmis_contains(m, 99));
+    print_bool("  contains 0: ", islm_contains(m, 0));
+    print_bool("  contains 9: ", islm_contains(m, 9));
+    print_bool("  contains 99: ", islm_contains(m, 99));
 
-    lmis_free(m);
+    islm_free(m);
     printl_s("Growth test passed!");
 }
 
@@ -395,12 +395,12 @@ func test_lmis_growth() {
  * Main entry point for the module.
  */
 func main() {
-    test_lmss();
-    test_lmis();
-    test_empty_lmss();
-    test_lmss_growth();
-    test_empty_lmis();
-    test_lmis_growth();
+    test_sslm();
+    test_islm();
+    test_empty_sslm();
+    test_sslm_growth();
+    test_empty_islm();
+    test_islm_growth();
 
     printl_s("\n======================================");
     printl_s("    All Map tests passed!");

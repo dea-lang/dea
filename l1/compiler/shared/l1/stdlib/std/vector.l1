@@ -265,25 +265,25 @@ func vi_sort(self: VectorBase*) {
    String Vector specialization
    --------------------------------- */
 
-type VectorString = VectorBase;
+type StringVector = VectorBase;
 
 /**
- * Creates a new VectorString with the specified initial capacity.
+ * Creates a new StringVector with the specified initial capacity.
  *
  * @param initial_capacity The initial capacity.
- * @return A pointer to the newly created VectorString.
+ * @return A pointer to the newly created StringVector.
  */
-func vs_create(initial_capacity: int) -> VectorString* {
+func sv_create(initial_capacity: int) -> StringVector* {
     return vec_create(sizeof(string), initial_capacity);
 }
 
 /**
- * Pushes a string onto the VectorString.
+ * Pushes a string onto the StringVector.
  *
- * @param self The pointer to the VectorString.
+ * @param self The pointer to the StringVector.
  * @param val The string value to push.
  */
-func vs_push(self: VectorString*, val: string) {
+func sv_push(self: StringVector*, val: string) {
     let dest = vec_push(self) as string*;
     *dest = val;
 }
@@ -291,11 +291,11 @@ func vs_push(self: VectorString*, val: string) {
 /**
  * Returns the string at the specified index.
  *
- * @param self The pointer to the VectorString.
+ * @param self The pointer to the StringVector.
  * @param index The index to access.
  * @return The string at that index.
  */
-func vs_get(self: VectorString*, index: int) -> string {
+func sv_get(self: StringVector*, index: int) -> string {
     let src = vec_get(self, index) as string*;
     return *src;
 }
@@ -303,20 +303,20 @@ func vs_get(self: VectorString*, index: int) -> string {
 /**
  * Returns the number of strings currently in the vector.
  *
- * @param self The pointer to the VectorString.
+ * @param self The pointer to the StringVector.
  * @return The count of elements.
  */
-func vs_size(self: VectorString*) -> int {
+func sv_size(self: StringVector*) -> int {
     return vec_size(self);
 }
 
 /**
  * Returns the current capacity of the string vector.
  *
- * @param self The pointer to the VectorString.
+ * @param self The pointer to the StringVector.
  * @return The total capacity.
  */
-func vs_capacity(self: VectorString*) -> int {
+func sv_capacity(self: StringVector*) -> int {
     return vec_capacity(self);
 }
 
@@ -327,28 +327,28 @@ func vs_capacity(self: VectorString*) -> int {
  * @param b The second string.
  * @return True if a < b lexicographically.
  */
-func _vs_less(a: string, b: string) -> bool {
+func _sv_less(a: string, b: string) -> bool {
     return rt_string_compare(a, b) < 0;
 }
 
 /**
  * Sorts the strings in the vector lexicographically using insertion sort.
  *
- * @param self The pointer to the VectorString to sort.
+ * @param self The pointer to the StringVector to sort.
  */
-func vs_sort(self: VectorString*) {
+func sv_sort(self: StringVector*) {
     let n = vec_size(self);
     if (n <= 1) {
         return;
     }
 
     for (let i: int = 1; i < n; i = i + 1) {
-        let key = vs_get(self, i);
+        let key = sv_get(self, i);
         let j = i - 1;
 
         while (j >= 0) {
-            let cur = vs_get(self, j);
-            if (!_vs_less(key, cur)) {
+            let cur = sv_get(self, j);
+            if (!_sv_less(key, cur)) {
                 break;
             }
             let dst_ptr = vec_get(self, j + 1) as string*;
@@ -364,9 +364,9 @@ func vs_sort(self: VectorString*) {
 /**
  * Clears the string vector and releases all held strings.
  *
- * @param self The pointer to the VectorString to clear.
+ * @param self The pointer to the StringVector to clear.
  */
-func vs_clear(self: VectorString*) {
+func sv_clear(self: StringVector*) {
     for (let i: int = 0; i < vec_size(self); i = i + 1) {
         let str_ptr = vec_get(self, i) as string*;
         rt_string_release(*str_ptr);
@@ -375,11 +375,11 @@ func vs_clear(self: VectorString*) {
 }
 
 /**
- * Free a `VectorString` and release every stored string.
+ * Free a `StringVector` and release every stored string.
  *
  * @param self String vector to free.
  */
-func vs_free(self: VectorString*) {
+func sv_free(self: StringVector*) {
     for (let i: int = 0; i < vec_size(self); i = i + 1) {
         let str_ptr = vec_get(self, i) as string*;
         rt_string_release(*str_ptr);

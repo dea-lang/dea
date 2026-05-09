@@ -100,8 +100,8 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 | `vec_free`                   | `func(self: VectorBase*) -> void`                               | Frees vector storage.                           |
 | `vec_push_int/byte/bool/ptr` | typed push helpers                                              | Push typed scalar/pointer values.               |
 | `vi_sort`                    | `func(self: VectorBase*) -> void`                               | Insertion sort for `int` vectors (ascending).   |
-| `VectorString`               | `type VectorString = VectorBase`                                | String-specialized vector alias.                |
-| `vs_*`                       | `vs_create/push/get/size/capacity/sort/clear/free`              | String vector API with ARC-aware clear/free.    |
+| `StringVector`               | `type StringVector = VectorBase`                                | String-specialized vector alias.                |
+| `sv_*`                       | `sv_create/push/get/size/capacity/sort/clear/free`              | String vector API with ARC-aware clear/free.    |
 
 ### `std.hashmap`
 
@@ -113,13 +113,13 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 | `spm_create/create_with_capacity` | constructors                                                                                                                                        | Create map with default or minimum capacity. |
 | `spm_put/get/has/remove`          | map ops                                                                                                                                             | Insert/update/lookup/presence/remove.        |
 | `spm_size/capacity/clear/free`    | management                                                                                                                                          | Size, capacity, clear entries, free map.     |
-| `spm_keys`                        | `func(self: StringPtrMap*) -> VectorString*`                                                                                                        | Returns keys as new string vector.           |
+| `spm_keys`                        | `func(self: StringPtrMap*) -> StringVector*`                                                                                                        | Returns keys as new string vector.           |
 | `spm_slot_occupied/key/value`     | iteration helpers                                                                                                                                   | Slot-level iteration support.                |
 | `StringIntMap`                    | `struct StringIntMap { capacity: int; count: int; tomb_count: int; states: ArrayBase*; hashes: ArrayBase*; keys: ArrayBase*; values: ArrayBase*; }` | Open-addressed `string -> int` map.          |
 | `sim_create/create_with_capacity` | constructors                                                                                                                                        | Create map with default or minimum capacity. |
 | `sim_put/get/has/remove`          | map ops                                                                                                                                             | Insert/update/lookup/presence/remove.        |
 | `sim_size/capacity/clear/free`    | management                                                                                                                                          | Size, capacity, clear entries, free map.     |
-| `sim_keys`                        | `func(self: StringIntMap*) -> VectorString*`                                                                                                        | Returns keys as new string vector.           |
+| `sim_keys`                        | `func(self: StringIntMap*) -> StringVector*`                                                                                                        | Returns keys as new string vector.           |
 | `sim_slot_occupied/key/value`     | iteration helpers                                                                                                                                   | Slot-level iteration support.                |
 
 ### `std.hashset`
@@ -133,7 +133,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 | `ss_add`                         | `func(self: StringSet*, key: string) -> bool`                                                                                | Adds key; returns false if already present.  |
 | `ss_has/remove`                  | set ops                                                                                                                      | Presence check and removal.                  |
 | `ss_size/capacity/clear/free`    | management                                                                                                                   | Size, capacity, clear entries, free set.     |
-| `ss_to_vector`                   | `func(self: StringSet*) -> VectorString*`                                                                                    | Returns elements as new vector.              |
+| `ss_to_vector`                   | `func(self: StringSet*) -> StringVector*`                                                                                    | Returns elements as new vector.              |
 | `ss_slot_occupied/key`           | iteration helpers                                                                                                            | Slot-level iteration support.                |
 
 ### `std.linear_map`
@@ -146,10 +146,10 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 | `lm_create/free/len`    | base lifecycle                                                                   | Create, free, and query length.             |
 | `lm_set/get/remove`     | base ops                                                                         | Set/get/remove key-value by raw key bytes.  |
 | `lm_contains_key/value` | base queries                                                                     | Presence checks by key/value bytes.         |
-| `LinearMapStringString` | `struct LinearMapStringString { base: LinearMapBase*; }`                         | `string -> string` specialization.          |
-| `lmss_*`                | `create/free/len/set/get/contains/remove/key_at/value_at`                        | ARC-aware string map API.                   |
-| `LinearMapIntString`    | `struct LinearMapIntString { base: LinearMapBase*; }`                            | `int -> string` specialization.             |
-| `lmis_*`                | `create/free/len/set/get/contains/remove/key_at/value_at`                        | ARC-aware int/string map API.               |
+| `StringStringLinearMap` | `struct StringStringLinearMap { base: LinearMapBase*; }`                         | `string -> string` specialization.          |
+| `sslm_*`                | `create/free/len/set/get/contains/remove/key_at/value_at`                        | ARC-aware string map API.                   |
+| `IntStringLinearMap`    | `struct IntStringLinearMap { base: LinearMapBase*; }`                            | `int -> string` specialization.             |
+| `islm_*`                | `create/free/len/set/get/contains/remove/key_at/value_at`                        | ARC-aware int/string map API.               |
 
 ### `std.io`
 
@@ -332,15 +332,15 @@ Shared integer helper module. Floating-point helpers stay out of `std.math`.
 
 | Type/Function                                       | Signature                                                                                           | Description                                                                                               |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `StringBuffer`                                      | `struct StringBuffer { parts: VectorString*; size: int; }`                                          | String-part buffer with cached total size.                                                                |
+| `StringBuffer`                                      | `struct StringBuffer { parts: StringVector*; size: int; }`                                          | String-part buffer with cached total size.                                                                |
 | `sb_*`                                              | `create/append/append_int/append_byte/to_string/size/free`                                          | String buffer API.                                                                                        |
 | `CharBuffer`                                        | `struct CharBuffer { chars: VectorBase*; }`                                                         | Byte-backed buffer for incremental string assembly.                                                       |
 | `cb_*`                                              | `create/capacity/size/reserve/append/append_s/append_slice/append_int/reverse/to_string/clear/free` | Char buffer API.                                                                                          |
 | `to_upper_s/to_lower_s`                             | case helpers                                                                                        | Convert full string case.                                                                                 |
 | `repeat_s/reverse_s`                                | string helpers                                                                                      | Repeat or reverse string content.                                                                         |
-| `split_s`                                           | `func(s: string, sep: string) -> VectorString*`                                                     | Splits by non-empty separator and keeps empty tokens. Caller owns result (`vs_free`).                     |
-| `lines_s`                                           | `func(s: string) -> VectorString*`                                                                  | Splits on `\n`, strips trailing `\r` per line. Caller owns result (`vs_free`).                            |
-| `join_s`                                            | `func(parts: VectorString*, sep: string) -> string`                                                 | Joins vector elements with separator.                                                                     |
+| `split_s`                                           | `func(s: string, sep: string) -> StringVector*`                                                     | Splits by non-empty separator and keeps empty tokens. Caller owns result (`sv_free`).                     |
+| `lines_s`                                           | `func(s: string) -> StringVector*`                                                                  | Splits on `\n`, strips trailing `\r` per line. Caller owns result (`sv_free`).                            |
+| `join_s`                                            | `func(parts: StringVector*, sep: string) -> string`                                                 | Joins vector elements with separator.                                                                     |
 | `replace_s`                                         | `func(s: string, old: string, replacement: string) -> string`                                       | Replaces all non-overlapping matches of non-empty `old` with `replacement`.                               |
 | `int_to_string_base`                                | `func(value: int, base: int) -> string`                                                             | Base conversion for signed ints (`2..16`).                                                                |
 | `int_to_string/int_to_hex_string/int_to_bin_string` | format helpers                                                                                      | Decimal, hex, and binary formatting helpers.                                                              |

@@ -16,10 +16,10 @@ import std.vector;
  * @param src Source vector to copy.
  * @return New vector containing the same strings in the same order.
  */
-func us_vs_clone(src: VectorString*) -> VectorString* {
-    let out = vs_create(vs_size(src));
-    for (let i = 0; i < vs_size(src); i = i + 1) {
-        vs_push(out, vs_get(src, i));
+func us_sv_clone(src: StringVector*) -> StringVector* {
+    let out = sv_create(sv_size(src));
+    for (let i = 0; i < sv_size(src); i = i + 1) {
+        sv_push(out, sv_get(src, i));
     }
     return out;
 }
@@ -32,18 +32,18 @@ func us_vs_clone(src: VectorString*) -> VectorString* {
  * @param keep_empty Whether empty fields should be preserved.
  * @return Vector of split parts.
  */
-func us_split_char(s: string, sep: byte, keep_empty: bool) -> VectorString* {
+func us_split_char(s: string, sep: byte, keep_empty: bool) -> StringVector* {
     let sep_s = byte_to_s(sep);
     if (keep_empty) {
         return split_s(s, sep_s);
     }
 
-    with (let parts = split_s(s, sep_s) => vs_free(parts)) {
-        let out = vs_create(vs_size(parts));
-        for (let i = 0; i < vs_size(parts); i = i + 1) {
-            let part = vs_get(parts, i);
+    with (let parts = split_s(s, sep_s) => sv_free(parts)) {
+        let out = sv_create(sv_size(parts));
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            let part = sv_get(parts, i);
             if (!is_empty_s(part)) {
-                vs_push(out, part);
+                sv_push(out, part);
             }
         }
         return out;
@@ -58,8 +58,8 @@ func us_split_char(s: string, sep: byte, keep_empty: bool) -> VectorString* {
  * @param sep2 Second separator byte.
  * @return Vector of non-empty split parts.
  */
-func us_split_chars2_non_empty(s: string, sep1: byte, sep2: byte) -> VectorString* {
-    let out = vs_create(4);
+func us_split_chars2_non_empty(s: string, sep1: byte, sep2: byte) -> StringVector* {
+    let out = sv_create(4);
     let n = len_s(s);
     let start = 0;
 
@@ -67,14 +67,14 @@ func us_split_chars2_non_empty(s: string, sep1: byte, sep2: byte) -> VectorStrin
         let c = char_at_s(s, i);
         if (c == sep1 || c == sep2) {
             if (i > start) {
-                vs_push(out, slice_s(s, start, i));
+                sv_push(out, slice_s(s, start, i));
             }
             start = i + 1;
         }
     }
 
     if (start < n) {
-        vs_push(out, slice_s(s, start, n));
+        sv_push(out, slice_s(s, start, n));
     }
 
     return out;
@@ -87,8 +87,8 @@ func us_split_chars2_non_empty(s: string, sep1: byte, sep2: byte) -> VectorStrin
  * @return Vector of non-empty split parts.
  * @see std.string::is_space for the definition of space characters.
  */
-func us_split_is_space_non_empty(s: string) -> VectorString* {
-    let out = vs_create(4);
+func us_split_is_space_non_empty(s: string) -> StringVector* {
+    let out = sv_create(4);
     let n = len_s(s);
     let start = 0;
 
@@ -96,14 +96,14 @@ func us_split_is_space_non_empty(s: string) -> VectorString* {
         let c = char_at_s(s, i);
         if (is_space(c)) {
             if (i > start) {
-                vs_push(out, slice_s(s, start, i));
+                sv_push(out, slice_s(s, start, i));
             }
             start = i + 1;
         }
     }
 
     if (start < n) {
-        vs_push(out, slice_s(s, start, n));
+        sv_push(out, slice_s(s, start, n));
     }
 
     return out;

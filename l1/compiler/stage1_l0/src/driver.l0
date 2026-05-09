@@ -37,10 +37,10 @@ struct DriverUnit {
 struct DriverState {
     entry_module: string;
     units: VectorBase*; // DriverUnit*
-    loaded: VectorString*; // used during analysis, inert afterward
+    loaded: StringVector*; // used during analysis, inert afterward
     diags: DiagCollector*;
-    source_names: VectorString*; // source cache: file paths
-    source_texts: VectorString*; // source cache: file contents
+    source_names: StringVector*; // source cache: file paths
+    source_texts: StringVector*; // source cache: file contents
 }
 
 /**
@@ -78,10 +78,10 @@ func dr_units_free(units: VectorBase*?) {
  */
 func driver_state_free(self: DriverState*) {
     dr_units_free(self.units);
-    vs_free(self.loaded);
+    sv_free(self.loaded);
     diag_free(self.diags);
-    vs_free(self.source_names);
-    vs_free(self.source_texts);
+    sv_free(self.source_names);
+    sv_free(self.source_texts);
     drop self;
 }
 
@@ -160,13 +160,13 @@ func driver_find_unit(self: DriverState*, module_name: string) -> DriverUnit*? {
  * @param self Driver state to inspect.
  * @return New vector containing sorted module names.
  */
-func driver_module_names_sorted(self: DriverState*) -> VectorString* {
-    let out = vs_create(vec_size(self.units));
+func driver_module_names_sorted(self: DriverState*) -> StringVector* {
+    let out = sv_create(vec_size(self.units));
     for (let i = 0; i < vec_size(self.units); i = i + 1) {
         let unit = ptr_vec_get(self.units, i) as DriverUnit*;
-        vs_push(out, unit.module_name);
+        sv_push(out, unit.module_name);
     }
-    vs_sort(out);
+    sv_sort(out);
     return out;
 }
 
@@ -201,9 +201,9 @@ func dr_emit_error(diags: DiagCollector*, code: string, message: string, filenam
  * @param module_name Module name to look for.
  * @return `true` if `module_name` is present in `items`.
  */
-func dr_vs_has(items: VectorString*, module_name: string) -> bool {
-    for (let i = 0; i < vs_size(items); i = i + 1) {
-        if (vs_get(items, i) == module_name) {
+func dr_sv_has(items: StringVector*, module_name: string) -> bool {
+    for (let i = 0; i < sv_size(items); i = i + 1) {
+        if (sv_get(items, i) == module_name) {
             return true;
         }
     }
@@ -216,9 +216,9 @@ func dr_vs_has(items: VectorString*, module_name: string) -> bool {
  * @param loaded Vector of loaded module names.
  * @param module_name Module name to record.
  */
-func dr_mark_loaded(loaded: VectorString*, module_name: string) {
-    if (!dr_vs_has(loaded, module_name)) {
-        vs_push(loaded, module_name);
+func dr_mark_loaded(loaded: StringVector*, module_name: string) {
+    if (!dr_sv_has(loaded, module_name)) {
+        sv_push(loaded, module_name);
     }
 }
 
@@ -261,17 +261,17 @@ func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResu
  * @param visited Module names already traversed by this closure walk.
  * @param cfg Logging configuration.
  */
-func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, module_name: string, visited: VectorString*,
+func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, module_name: string, visited: StringVector*,
                       cfg: LogConfig*) {
     let unit_opt = driver_find_unit(state, module_name);
     if (unit_opt == null) {
         return;
     }
 
-    if (dr_vs_has(visited, module_name)) {
+    if (dr_sv_has(visited, module_name)) {
         return;
     }
-    vs_push(visited, module_name);
+    sv_push(visited, module_name);
 
     let unit = unit_opt as DriverUnit*;
     if (unit.parse_result.root_module == null) {
@@ -298,7 +298,7 @@ func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, mod
  */
 func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loading_chain: string,
                     module_name: string, cfg: LogConfig*) -> bool {
-    if (dr_vs_has(state.loaded, module_name)) {
+    if (dr_sv_has(state.loaded, module_name)) {
         log_debug(cfg, "Module '" + module_name + "' already loaded (cache hit)");
         return true;
     }
@@ -340,8 +340,8 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
             } else {
                 let source = us_strip_utf8_bom(source_raw);
 
-                vs_push(state.source_names, path);
-                vs_push(state.source_texts, source);
+                sv_push(state.source_names, path);
+                sv_push(state.source_texts, source);
 
                 let pr = dr_parse_source(path, source, cfg);
 
@@ -392,16 +392,16 @@ func driver_analyze_entry(search_paths: SourceSearchPaths*, entry_module: string
     log_info(cfg, "Starting analysis for entry module '" + entry_module + "'");
     log_stage(cfg, "Building compilation unit", entry_module);
     let state = new DriverState(
-        entry_module, ptr_vec_create(8), vs_create(8),
-        diag_create(), vs_create(4), vs_create(4)
+        entry_module, ptr_vec_create(8), sv_create(8),
+        diag_create(), sv_create(4), sv_create(4)
     );
     dr_load_module(state, search_paths, "|", entry_module, cfg);
     if (!driver_has_errors(state)) {
-        with (let visited = vs_create(driver_unit_count(state)) => vs_free(visited)) {
+        with (let visited = sv_create(driver_unit_count(state)) => sv_free(visited)) {
             dr_visit_closure(state, search_paths, entry_module, visited, cfg);
         }
-        with (let names = driver_module_names_sorted(state) => vs_free(names)) {
-            log_debug(cfg, "Compilation unit contains " + int_to_string(vs_size(names)) +
+        with (let names = driver_module_names_sorted(state) => sv_free(names)) {
+            log_debug(cfg, "Compilation unit contains " + int_to_string(sv_size(names)) +
                 " module(s): " + join_s(names, ", "));
         }
     }

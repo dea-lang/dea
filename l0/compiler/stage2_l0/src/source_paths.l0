@@ -21,8 +21,8 @@ import util.strings;
  * Represents the SourceSearchPaths structure.
  */
 struct SourceSearchPaths {
-    system_roots: VectorString*;
-    project_roots: VectorString*;
+    system_roots: StringVector*;
+    project_roots: StringVector*;
 }
 
 /**
@@ -31,7 +31,7 @@ struct SourceSearchPaths {
  * @return New search-path set with separate system and project root vectors.
  */
 func sp_create() -> SourceSearchPaths* {
-    return new SourceSearchPaths(vs_create(2), vs_create(2));
+    return new SourceSearchPaths(sv_create(2), sv_create(2));
 }
 
 /**
@@ -40,8 +40,8 @@ func sp_create() -> SourceSearchPaths* {
  * @param self Search paths to free.
  */
 func sp_free(self: SourceSearchPaths*) {
-    vs_free(self.system_roots);
-    vs_free(self.project_roots);
+    sv_free(self.system_roots);
+    sv_free(self.project_roots);
     drop self;
 }
 
@@ -52,7 +52,7 @@ func sp_free(self: SourceSearchPaths*) {
  * @param root Root directory to search before project roots.
  */
 func sp_add_system_root(self: SourceSearchPaths*, root: string) {
-    vs_push(self.system_roots, root);
+    sv_push(self.system_roots, root);
 }
 
 /**
@@ -62,7 +62,7 @@ func sp_add_system_root(self: SourceSearchPaths*, root: string) {
  * @param root Project root directory to search.
  */
 func sp_add_project_root(self: SourceSearchPaths*, root: string) {
-    vs_push(self.project_roots, root);
+    sv_push(self.project_roots, root);
 }
 
 /**
@@ -72,7 +72,7 @@ func sp_add_project_root(self: SourceSearchPaths*, root: string) {
  * @return Number of system root directories.
  */
 func sp_system_root_count(self: SourceSearchPaths*) -> int {
-    return vs_size(self.system_roots);
+    return sv_size(self.system_roots);
 }
 
 /**
@@ -82,7 +82,7 @@ func sp_system_root_count(self: SourceSearchPaths*) -> int {
  * @return Number of project root directories.
  */
 func sp_project_root_count(self: SourceSearchPaths*) -> int {
-    return vs_size(self.project_roots);
+    return sv_size(self.project_roots);
 }
 
 /**
@@ -93,7 +93,7 @@ func sp_project_root_count(self: SourceSearchPaths*) -> int {
  * @return System root at `index`.
  */
 func sp_system_root_get(self: SourceSearchPaths*, index: int) -> string {
-    return vs_get(self.system_roots, index);
+    return sv_get(self.system_roots, index);
 }
 
 /**
@@ -104,7 +104,7 @@ func sp_system_root_get(self: SourceSearchPaths*, index: int) -> string {
  * @return Project root at `index`.
  */
 func sp_project_root_get(self: SourceSearchPaths*, index: int) -> string {
-    return vs_get(self.project_roots, index);
+    return sv_get(self.project_roots, index);
 }
 
 /**
@@ -113,18 +113,18 @@ func sp_project_root_get(self: SourceSearchPaths*, index: int) -> string {
  * @param roots Root vector to format.
  * @return Comma-joined quoted roots, or `<none>` when empty.
  */
-func sp_format_root_list(roots: VectorString*) -> string {
-    if (vs_size(roots) == 0) {
+func sp_format_root_list(roots: StringVector*) -> string {
+    if (sv_size(roots) == 0) {
         return "<none>";
     }
 
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(roots); i = i + 1) {
+        for (let i = 0; i < sv_size(roots); i = i + 1) {
             if (i > 0) {
                 sb_append(sb, ",");
             }
             sb_append(sb, "'");
-            sb_append(sb, vs_get(roots, i));
+            sb_append(sb, sv_get(roots, i));
             sb_append(sb, "'");
         }
         return sb_to_string(sb);
@@ -162,15 +162,15 @@ func sp_module_relpath(module_name: string) -> string {
 func sp_resolve(self: SourceSearchPaths*, module_name: string) -> string? {
     let rel = sp_module_relpath(module_name);
 
-    for (let i = 0; i < vs_size(self.system_roots); i = i + 1) {
-        let candidate = join(vs_get(self.system_roots, i), rel);
+    for (let i = 0; i < sv_size(self.system_roots); i = i + 1) {
+        let candidate = join(sv_get(self.system_roots, i), rel);
         if (exists(candidate)) {
             return candidate;
         }
     }
 
-    for (let project_i = 0; project_i < vs_size(self.project_roots); project_i = project_i + 1) {
-        let candidate = join(vs_get(self.project_roots, project_i), rel);
+    for (let project_i = 0; project_i < sv_size(self.project_roots); project_i = project_i + 1) {
+        let candidate = join(sv_get(self.project_roots, project_i), rel);
         if (exists(candidate)) {
             return candidate;
         }
@@ -217,9 +217,9 @@ func sp_is_valid_module_name(module_name: string) -> bool {
         return false;
     }
 
-    with (let parts = us_split_char(module_name, '.', true) => vs_free(parts)) {
-        for (let i = 0; i < vs_size(parts); i = i + 1) {
-            if (!sp_is_valid_ident_component(vs_get(parts, i))) {
+    with (let parts = us_split_char(module_name, '.', true) => sv_free(parts)) {
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            if (!sp_is_valid_ident_component(sv_get(parts, i))) {
                 return false;
             }
         }
@@ -233,9 +233,9 @@ func sp_is_valid_module_name(module_name: string) -> bool {
  *
  * @param project_roots Project-root vector to update.
  */
-func sp_apply_default_project_roots(project_roots: VectorString*) {
-    if (vs_size(project_roots) == 0) {
-        vs_push(project_roots, ".");
+func sp_apply_default_project_roots(project_roots: StringVector*) {
+    if (sv_size(project_roots) == 0) {
+        sv_push(project_roots, ".");
     }
 }
 
@@ -245,10 +245,10 @@ func sp_apply_default_project_roots(project_roots: VectorString*) {
  * @param sys_roots System-root vector to update.
  * @param env_value Colon- or semicolon-separated root list.
  */
-func sp_append_env_sys_roots(sys_roots: VectorString*, env_value: string) {
-    with (let roots = us_split_chars2_non_empty(env_value, ':', ';') => vs_free(roots)) {
-        for (let i = 0; i < vs_size(roots); i = i + 1) {
-            vs_push(sys_roots, vs_get(roots, i));
+func sp_append_env_sys_roots(sys_roots: StringVector*, env_value: string) {
+    with (let roots = us_split_chars2_non_empty(env_value, ':', ';') => sv_free(roots)) {
+        for (let i = 0; i < sv_size(roots); i = i + 1) {
+            sv_push(sys_roots, sv_get(roots, i));
         }
     }
 }
@@ -260,8 +260,8 @@ func sp_append_env_sys_roots(sys_roots: VectorString*, env_value: string) {
  * @param l0_system Effective `L0_SYSTEM` value, if any.
  * @param l0_home Effective `L0_HOME` value, if any.
  */
-func sp_apply_default_sys_roots_env(sys_roots: VectorString*, l0_system: string?, l0_home: string?) {
-    if (vs_size(sys_roots) > 0) {
+func sp_apply_default_sys_roots_env(sys_roots: StringVector*, l0_system: string?, l0_home: string?) {
+    if (sv_size(sys_roots) > 0) {
         return;
     }
 
@@ -271,7 +271,7 @@ func sp_apply_default_sys_roots_env(sys_roots: VectorString*, l0_system: string?
     }
 
     if (l0_home != null && !is_empty_s(l0_home as string)) {
-        vs_push(sys_roots, join(l0_home as string, "shared/l0/stdlib"));
+        sv_push(sys_roots, join(l0_home as string, "shared/l0/stdlib"));
     }
 }
 
@@ -280,7 +280,7 @@ func sp_apply_default_sys_roots_env(sys_roots: VectorString*, l0_system: string?
  *
  * @param sys_roots System-root vector to update.
  */
-func sp_apply_default_sys_roots(sys_roots: VectorString*) {
+func sp_apply_default_sys_roots(sys_roots: StringVector*) {
     sp_apply_default_sys_roots_env(sys_roots, env_get("L0_SYSTEM"), env_get("L0_HOME"));
 }
 
@@ -291,15 +291,15 @@ func sp_apply_default_sys_roots(sys_roots: VectorString*) {
  * @param sys_roots System roots to copy.
  * @return New search-path collection containing both root sets.
  */
-func sp_build_from_roots(project_roots: VectorString*, sys_roots: VectorString*) -> SourceSearchPaths* {
+func sp_build_from_roots(project_roots: StringVector*, sys_roots: StringVector*) -> SourceSearchPaths* {
     let sp = sp_create();
 
-    for (let i = 0; i < vs_size(sys_roots); i = i + 1) {
-        sp_add_system_root(sp, vs_get(sys_roots, i));
+    for (let i = 0; i < sv_size(sys_roots); i = i + 1) {
+        sp_add_system_root(sp, sv_get(sys_roots, i));
     }
 
-    for (let project_i = 0; project_i < vs_size(project_roots); project_i = project_i + 1) {
-        sp_add_project_root(sp, vs_get(project_roots, project_i));
+    for (let project_i = 0; project_i < sv_size(project_roots); project_i = project_i + 1) {
+        sp_add_project_root(sp, sv_get(project_roots, project_i));
     }
 
     return sp;
@@ -313,7 +313,7 @@ func sp_build_from_roots(project_roots: VectorString*, sys_roots: VectorString*)
  * @param diags Diagnostic collector for validation errors.
  * @return Normalized module name, or `null` if validation fails.
  */
-func sp_normalize_entry_target(target: string, project_roots: VectorString*, diags: DiagCollector*) -> string? {
+func sp_normalize_entry_target(target: string, project_roots: StringVector*, diags: DiagCollector*) -> string? {
     if (has_extension(target, ".l0") || is_absolute(target) || has_parent(target)) {
         let module_name = "";
         if (has_extension(target, ".l0")) {
@@ -324,7 +324,7 @@ func sp_normalize_entry_target(target: string, project_roots: VectorString*, dia
 
         let parent_dir = parent(target);
         if (parent_dir != ".") {
-            vs_push(project_roots, parent_dir);
+            sv_push(project_roots, parent_dir);
         }
 
         if (!sp_is_valid_module_name(module_name)) {

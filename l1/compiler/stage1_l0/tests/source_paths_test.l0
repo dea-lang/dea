@@ -17,9 +17,9 @@ import source_paths;
  * Tests test_default_sys_roots_no_env_values.
  */
 func test_default_sys_roots_no_env_values() {
-    with (let sys_roots = vs_create(2) => vs_free(sys_roots)) {
+    with (let sys_roots = sv_create(2) => sv_free(sys_roots)) {
         sp_apply_default_sys_roots_env(sys_roots, null, null);
-        assert(vs_size(sys_roots) == 0, "expected no default sys roots without env values");
+        assert(sv_size(sys_roots) == 0, "expected no default sys roots without env values");
     }
 }
 
@@ -27,11 +27,11 @@ func test_default_sys_roots_no_env_values() {
  * Tests test_default_sys_roots_l0_system_precedence.
  */
 func test_default_sys_roots_l0_system_precedence() {
-    with (let sys_roots = vs_create(2) => vs_free(sys_roots)) {
+    with (let sys_roots = sv_create(2) => sv_free(sys_roots)) {
         sp_apply_default_sys_roots_env(sys_roots, "/sys/a:/sys/b", "/repo/compiler");
-        assert(vs_size(sys_roots) == 2, "expected two sys roots from L1_SYSTEM");
-        assert(vs_get(sys_roots, 0) == "/sys/a", "expected first L1_SYSTEM root");
-        assert(vs_get(sys_roots, 1) == "/sys/b", "expected second L1_SYSTEM root");
+        assert(sv_size(sys_roots) == 2, "expected two sys roots from L1_SYSTEM");
+        assert(sv_get(sys_roots, 0) == "/sys/a", "expected first L1_SYSTEM root");
+        assert(sv_get(sys_roots, 1) == "/sys/b", "expected second L1_SYSTEM root");
     }
 }
 
@@ -39,10 +39,10 @@ func test_default_sys_roots_l0_system_precedence() {
  * Tests test_default_sys_roots_l0_home_fallback.
  */
 func test_default_sys_roots_l0_home_fallback() {
-    with (let sys_roots = vs_create(2) => vs_free(sys_roots)) {
+    with (let sys_roots = sv_create(2) => sv_free(sys_roots)) {
         sp_apply_default_sys_roots_env(sys_roots, null, "/repo/compiler");
-        assert(vs_size(sys_roots) == 1, "expected one fallback sys root from L1_HOME");
-        assert(vs_get(sys_roots, 0) == "/repo/compiler/shared/l1/stdlib", "expected L1_HOME fallback root");
+        assert(sv_size(sys_roots) == 1, "expected one fallback sys root from L1_HOME");
+        assert(sv_get(sys_roots, 0) == "/repo/compiler/shared/l1/stdlib", "expected L1_HOME fallback root");
     }
 }
 
@@ -50,11 +50,11 @@ func test_default_sys_roots_l0_home_fallback() {
  * Tests test_explicit_sys_root_suppresses_defaults.
  */
 func test_explicit_sys_root_suppresses_defaults() {
-    with (let sys_roots = vs_create(2) => vs_free(sys_roots)) {
-        vs_push(sys_roots, "/explicit/sys");
+    with (let sys_roots = sv_create(2) => sv_free(sys_roots)) {
+        sv_push(sys_roots, "/explicit/sys");
         sp_apply_default_sys_roots_env(sys_roots, "/sys/a:/sys/b", "/repo/compiler");
-        assert(vs_size(sys_roots) == 1, "explicit sys roots must suppress defaults");
-        assert(vs_get(sys_roots, 0) == "/explicit/sys", "explicit sys root should be preserved");
+        assert(sv_size(sys_roots) == 1, "explicit sys roots must suppress defaults");
+        assert(sv_get(sys_roots, 0) == "/explicit/sys", "explicit sys root should be preserved");
     }
 }
 
@@ -62,10 +62,10 @@ func test_explicit_sys_root_suppresses_defaults() {
  * Tests test_format_root_list_matches_stage1_contract.
  */
 func test_format_root_list_matches_stage1_contract() {
-    with (let roots = vs_create(2) => vs_free(roots)) {
+    with (let roots = sv_create(2) => sv_free(roots)) {
         assert(sp_format_root_list(roots) == "<none>", "empty roots should render as <none>");
-        vs_push(roots, "/sys/a");
-        vs_push(roots, "/sys/b");
+        sv_push(roots, "/sys/a");
+        sv_push(roots, "/sys/b");
         assert(sp_format_root_list(roots) == "'/sys/a','/sys/b'", "root list rendering mismatch");
     }
 }
@@ -75,14 +75,14 @@ func test_format_root_list_matches_stage1_contract() {
  */
 func test_path_target_parent_suppresses_default_dot_root() {
     with (
-        let roots = vs_create(2) => vs_free(roots),
+        let roots = sv_create(2) => sv_free(roots),
         let diags = diag_create() => diag_free(diags)
     ) {
         let entry = sp_normalize_entry_target("examples/demo.l1", roots, diags);
         assert(entry != null && entry as string == "demo", "expected demo entry module");
         sp_apply_default_project_roots(roots);
-        assert(vs_size(roots) == 1, "path target should not keep default '.' root");
-        assert(vs_get(roots, 0) == "examples", "path target parent should become the only root");
+        assert(sv_size(roots) == 1, "path target should not keep default '.' root");
+        assert(sv_get(roots, 0) == "examples", "path target parent should become the only root");
     }
 }
 

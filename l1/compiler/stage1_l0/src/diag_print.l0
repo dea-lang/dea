@@ -117,13 +117,13 @@ func dp_format_snippet(diag: Diagnostic*, src: string) -> string {
         return "";
     }
 
-    with (let lines = lines_s(src) => vs_free(lines)) {
+    with (let lines = lines_s(src) => sv_free(lines)) {
         let line_index = diag.line - 1;
-        if (line_index < 0 || line_index >= vs_size(lines)) {
+        if (line_index < 0 || line_index >= sv_size(lines)) {
             return "";
         }
 
-        let raw_line = vs_get(lines, line_index);
+        let raw_line = sv_get(lines, line_index);
         let src_line = dp_normalize_line_for_display(raw_line);
         let line_no = int_to_string(diag.line);
 
@@ -201,10 +201,10 @@ func dp_print_snippet(diag: Diagnostic*) {
  * @param filename Filename to load.
  * @return Cached or newly loaded source text, or an empty string on read failure.
  */
-func dp_source_cached(cache_names: VectorString*, cache_texts: VectorString*, filename: string) -> string {
-    for (let i = 0; i < vs_size(cache_names); i = i + 1) {
-        if (vs_get(cache_names, i) == filename) {
-            return vs_get(cache_texts, i);
+func dp_source_cached(cache_names: StringVector*, cache_texts: StringVector*, filename: string) -> string {
+    for (let i = 0; i < sv_size(cache_names); i = i + 1) {
+        if (sv_get(cache_names, i) == filename) {
+            return sv_get(cache_texts, i);
         }
     }
 
@@ -213,8 +213,8 @@ func dp_source_cached(cache_names: VectorString*, cache_texts: VectorString*, fi
     if (src_opt != null) {
         text = src_opt as string;
     }
-    vs_push(cache_names, filename);
-    vs_push(cache_texts, text);
+    sv_push(cache_names, filename);
+    sv_push(cache_texts, text);
     return text;
 }
 
@@ -236,7 +236,7 @@ func dp_print_diag(diag: Diagnostic*) {
  * @param source_texts Cached source texts aligned with `source_names`.
  */
 func dp_print_collector_with_sources(dc: DiagCollector*,
-    source_names: VectorString*, source_texts: VectorString*)
+    source_names: StringVector*, source_texts: StringVector*)
 {
     for (let i = 0; i < diag_count(dc); i = i + 1) {
         let d = diag_get(dc, i);
@@ -254,8 +254,8 @@ func dp_print_collector_with_sources(dc: DiagCollector*,
  */
 func dp_print_collector(dc: DiagCollector*) {
     with (
-        let cache_names = vs_create(4) => vs_free(cache_names),
-        let cache_texts = vs_create(4) => vs_free(cache_texts)
+        let cache_names = sv_create(4) => sv_free(cache_names),
+        let cache_texts = sv_create(4) => sv_free(cache_texts)
     ) {
         dp_print_collector_with_sources(dc, cache_names, cache_texts);
     }

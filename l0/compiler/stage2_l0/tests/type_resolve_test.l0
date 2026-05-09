@@ -63,8 +63,8 @@ func test_tr_symbol_lookup() {
         
         // Lookup qualified variant (Status::Active)
         let env_ok = nr_env_find(nr, "shared_types") as ModuleEnv*;
-        with (let qual = vs_create(1) => vs_free(qual)) {
-            vs_push(qual, "OptionInt");
+        with (let qual = sv_create(1) => sv_free(qual)) {
+            sv_push(qual, "OptionInt");
             let sym3 = tr_symbol_lookup(nr, env_ok, "Some", null, qual);
             assert(sym3 != null, "OptionInt::Some should be found");
             assert(ord((sym3 as Symbol*).kind) == ord(SYM_ENUM_VARIANT), "Some should be a variant");
@@ -135,8 +135,8 @@ func test_tr_module_qualified_variant_lookup_survives_shadow_warning() {
         assert(local != null, "local Red should resolve without qualification");
         assert((local as Symbol*).module_name == "shadow_warn_main", "unqualified Red should resolve locally");
 
-        with (let module_path = vs_create(1) => vs_free(module_path)) {
-            vs_push(module_path, "shadow_warn_uno");
+        with (let module_path = sv_create(1) => sv_free(module_path)) {
+            sv_push(module_path, "shadow_warn_uno");
             let qualified = tr_symbol_lookup(nr, env, "Red", module_path, null);
             assert(qualified != null, "shadow_warn_uno::Red should resolve");
             assert(ord((qualified as Symbol*).kind) == ord(SYM_ENUM_VARIANT), "qualified Red should be a variant");

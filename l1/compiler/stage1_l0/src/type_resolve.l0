@@ -34,13 +34,13 @@ func tr_key(module_name: string, name: string) -> string {
  * @param path Vector of module-path components.
  * @return Dotted module name.
  */
-func tr_module_from_path(path: VectorString*) -> string {
+func tr_module_from_path(path: StringVector*) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(path); i = i + 1) {
+        for (let i = 0; i < sv_size(path); i = i + 1) {
             if (i > 0) {
                 sb_append(sb, ".");
             }
-            sb_append(sb, vs_get(path, i));
+            sb_append(sb, sv_get(path, i));
         }
         return sb_to_string(sb);
     }
@@ -55,21 +55,21 @@ func tr_module_from_path(path: VectorString*) -> string {
 func tr_type_ref_full_name(tref: TypeRef*) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
         if (tref.module_path != null) {
-            let mp = tref.module_path as VectorString*;
-            for (let i = 0; i < vs_size(mp); i = i + 1) {
+            let mp = tref.module_path as StringVector*;
+            for (let i = 0; i < sv_size(mp); i = i + 1) {
                 if (i > 0) {
                     sb_append(sb, ".");
                 }
-                sb_append(sb, vs_get(mp, i));
+                sb_append(sb, sv_get(mp, i));
             }
-            if (vs_size(mp) > 0) {
+            if (sv_size(mp) > 0) {
                 sb_append(sb, "::");
             }
         }
         if (tref.name_qualifier != null) {
-            let nq = tref.name_qualifier as VectorString*;
-            for (let i = 0; i < vs_size(nq); i = i + 1) {
-                sb_append(sb, vs_get(nq, i));
+            let nq = tref.name_qualifier as StringVector*;
+            for (let i = 0; i < sv_size(nq); i = i + 1) {
+                sb_append(sb, sv_get(nq, i));
                 sb_append(sb, "::");
             }
         }
@@ -88,7 +88,7 @@ func tr_type_ref_simple_name(tref: TypeRef*) -> string {
     if (tref.module_path == null) {
         return tref.name;
     }
-    return tr_module_from_path(tref.module_path as VectorString*) + "::" + tref.name;
+    return tr_module_from_path(tref.module_path as StringVector*) + "::" + tref.name;
 }
 
 /**
@@ -99,8 +99,8 @@ func tr_type_ref_simple_name(tref: TypeRef*) -> string {
  * @param name Ambiguous imported type name.
  * @return Sorted module names that provide the ambiguous type.
  */
-func tr_ambiguous_type_modules(nr: NameResolution*, env: ModuleEnv*, name: string) -> VectorString* {
-    let modules = vs_create(4);
+func tr_ambiguous_type_modules(nr: NameResolution*, env: ModuleEnv*, name: string) -> StringVector* {
+    let modules = sv_create(4);
     for (let i = 0; i < nr_env_count(nr); i = i + 1) {
         let candidate = nr_env_get(nr, i);
         if (!nr_module_env_imports_module(env, candidate.module_name)) {
@@ -109,9 +109,9 @@ func tr_ambiguous_type_modules(nr: NameResolution*, env: ModuleEnv*, name: strin
         if (nr_module_env_local(candidate, name) == null) {
             continue;
         }
-        vs_push(modules, candidate.module_name);
+        sv_push(modules, candidate.module_name);
     }
-    vs_sort(modules);
+    sv_sort(modules);
     return modules;
 }
 
@@ -121,13 +121,13 @@ func tr_ambiguous_type_modules(nr: NameResolution*, env: ModuleEnv*, name: strin
  * @param modules Sorted module names contributing an ambiguity.
  * @return String like `a', 'b`.
  */
-func tr_format_ambiguous_modules(modules: VectorString*) -> string {
+func tr_format_ambiguous_modules(modules: StringVector*) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(modules); i = i + 1) {
+        for (let i = 0; i < sv_size(modules); i = i + 1) {
             if (i > 0) {
                 sb_append(sb, "', '");
             }
-            sb_append(sb, vs_get(modules, i));
+            sb_append(sb, sv_get(modules, i));
         }
         return sb_to_string(sb);
     }
@@ -140,14 +140,14 @@ func tr_format_ambiguous_modules(modules: VectorString*) -> string {
  * @param name Ambiguous type name.
  * @return String like `'a::T' or 'b::T'`.
  */
-func tr_format_ambiguous_hints(modules: VectorString*, name: string) -> string {
+func tr_format_ambiguous_hints(modules: StringVector*, name: string) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(modules); i = i + 1) {
+        for (let i = 0; i < sv_size(modules); i = i + 1) {
             if (i > 0) {
                 sb_append(sb, " or ");
             }
             sb_append(sb, "'");
-            sb_append(sb, vs_get(modules, i));
+            sb_append(sb, sv_get(modules, i));
             sb_append(sb, "::");
             sb_append(sb, name);
             sb_append(sb, "'");
@@ -191,8 +191,8 @@ func tr_type_free_opt(ty: Type*?) {
  * @param name_qualifier Optional enum-variant qualifier.
  * @return Resolved symbol, or `null` if lookup fails.
  */
-func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module_path: VectorString*?,
-                       name_qualifier: VectorString*?) -> Symbol*? {
+func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module_path: StringVector*?,
+                       name_qualifier: StringVector*?) -> Symbol*? {
     if (module_path == null) {
         if (name_qualifier == null) {
             if (nr_module_env_is_ambiguous(env, name)) {
@@ -201,7 +201,7 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
             return nr_module_env_all(env, name);
         }
 
-        if (vs_size(name_qualifier as VectorString*) != 1) {
+        if (sv_size(name_qualifier as StringVector*) != 1) {
             return null;
         }
 
@@ -213,13 +213,13 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
         if (ord(s.kind) != ord(SYM_ENUM_VARIANT)) {
             return null;
         }
-        if (s.owner_name != vs_get(name_qualifier as VectorString*, 0)) {
+        if (s.owner_name != sv_get(name_qualifier as StringVector*, 0)) {
             return null;
         }
         return s;
     }
 
-    let target_module = tr_module_from_path(module_path as VectorString*);
+    let target_module = tr_module_from_path(module_path as StringVector*);
     let target_env: ModuleEnv*? = null;
     let use_exports = false;
     let alias_env = nr_module_env_alias_target(env, target_module);
@@ -245,7 +245,7 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
         return nr_module_env_local(target_env as ModuleEnv*, name);
     }
 
-    if (vs_size(name_qualifier as VectorString*) != 1) {
+    if (sv_size(name_qualifier as StringVector*) != 1) {
         return null;
     }
 
@@ -262,7 +262,7 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
     if (ord(s2.kind) != ord(SYM_ENUM_VARIANT)) {
         return null;
     }
-    if (s2.owner_name != vs_get(name_qualifier as VectorString*, 0)) {
+    if (s2.owner_name != sv_get(name_qualifier as StringVector*, 0)) {
         return null;
     }
     return s2;
@@ -441,7 +441,7 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
     }
 
     if (tref.module_path == null && nr_module_env_is_ambiguous(env, tref.name)) {
-        with (let modules = tr_ambiguous_type_modules(nr, env, tref.name) => vs_free(modules)) {
+        with (let modules = tr_ambiguous_type_modules(nr, env, tref.name) => sv_free(modules)) {
             let modules_str = tr_format_ambiguous_modules(modules);
             let hints = tr_format_ambiguous_hints(modules, tref.name);
             tr_diag_error(

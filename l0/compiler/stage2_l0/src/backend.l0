@@ -273,7 +273,7 @@ func be_resolve_type_ref(self: Backend*, tref: TypeRef*) -> Type*? {
  * @param name_qualifier Optional enum-name qualifier.
  * @return Matching symbol, or `null` if absent.
  */
-func be_lookup_symbol(self: Backend*, name: string, module_path: VectorString*?, name_qualifier: VectorString*?) -> Symbol*? {
+func be_lookup_symbol(self: Backend*, name: string, module_path: StringVector*?, name_qualifier: StringVector*?) -> Symbol*? {
     if (self.result.names == null) {
         return null;
     }
@@ -1039,8 +1039,8 @@ func be_dependency_sets_free(sets: VectorBase*?) {
  * @param self Backend state to inspect.
  * @return Ordered vector of type keys.
  */
-func be_collect_type_keys(self: Backend*) -> VectorString* {
-    let out = vs_create(8);
+func be_collect_type_keys(self: Backend*) -> StringVector* {
+    let out = sv_create(8);
 
     for (let enum_unit_i = 0; enum_unit_i < driver_unit_count(self.result.driver_state); enum_unit_i = enum_unit_i + 1) {
         let unit = driver_unit_get(self.result.driver_state, enum_unit_i);
@@ -1053,7 +1053,7 @@ func be_collect_type_keys(self: Backend*) -> VectorString* {
             let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
             if (ord(top.kind) == ord(TD_STRUCT)) {
                 let decl = top.data as StructDecl*;
-                vs_push(out, be_type_key(root.name, decl.name));
+                sv_push(out, be_type_key(root.name, decl.name));
             }
         }
     }
@@ -1069,7 +1069,7 @@ func be_collect_type_keys(self: Backend*) -> VectorString* {
             let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
             if (ord(top.kind) == ord(TD_ENUM)) {
                 let decl2 = top.data as EnumDecl*;
-                vs_push(out, be_type_key(root.name, decl2.name));
+                sv_push(out, be_type_key(root.name, decl2.name));
             }
         }
     }
@@ -1086,15 +1086,15 @@ func be_emit_type_definitions(self: Backend*) {
         return;
     }
 
-    with (let keys = be_collect_type_keys(self) => vs_free(keys),
-          let ordered = vs_create(vs_size(keys)) => vs_free(ordered),
-          let queue = vs_create(vs_size(keys)) => vs_free(queue),
-          let dep_sets: VectorBase*? = ptr_vec_create(vs_size(keys)) => be_dependency_sets_free(dep_sets),
-          let in_degrees: VectorBase*? = id_vec_create(vs_size(keys)) => id_vec_free(in_degrees)) {
+    with (let keys = be_collect_type_keys(self) => sv_free(keys),
+          let ordered = sv_create(sv_size(keys)) => sv_free(ordered),
+          let queue = sv_create(sv_size(keys)) => sv_free(queue),
+          let dep_sets: VectorBase*? = ptr_vec_create(sv_size(keys)) => be_dependency_sets_free(dep_sets),
+          let in_degrees: VectorBase*? = id_vec_create(sv_size(keys)) => id_vec_free(in_degrees)) {
         cem_emit_section_comment(self.emitter, "Type definitions (dependency-ordered)");
 
-        for (let i = 0; i < vs_size(keys); i = i + 1) {
-            let key = vs_get(keys, i);
+        for (let i = 0; i < sv_size(keys); i = i + 1) {
+            let key = sv_get(keys, i);
             let deps = ss_create();
             if (!be_collect_type_dependencies(self, key, deps)) {
                 be_ice("[ICE-1341] missing dependency metadata for type key " + key);
@@ -1109,17 +1109,17 @@ func be_emit_type_definitions(self: Backend*) {
             }
             id_vec_push(in_degrees as VectorBase*, in_degree);
             if (in_degree == 0) {
-                vs_push(queue, key);
+                sv_push(queue, key);
             }
         }
 
         let queue_index = 0;
-        while (queue_index < vs_size(queue)) {
-            let emitted_key = vs_get(queue, queue_index);
+        while (queue_index < sv_size(queue)) {
+            let emitted_key = sv_get(queue, queue_index);
             queue_index = queue_index + 1;
-            vs_push(ordered, emitted_key);
+            sv_push(ordered, emitted_key);
 
-            for (let i = 0; i < vs_size(keys); i = i + 1) {
+            for (let i = 0; i < sv_size(keys); i = i + 1) {
                 let degree_ptr = vec_get(in_degrees as VectorBase*, i) as int*;
                 if (*degree_ptr <= 0) {
                     continue;
@@ -1130,17 +1130,17 @@ func be_emit_type_definitions(self: Backend*) {
                 }
                 *degree_ptr = *degree_ptr - 1;
                 if (*degree_ptr == 0) {
-                    vs_push(queue, vs_get(keys, i));
+                    sv_push(queue, sv_get(keys, i));
                 }
             }
         }
 
-        if (vs_size(ordered) != vs_size(keys)) {
+        if (sv_size(ordered) != sv_size(keys)) {
             be_ice("[ICE-1340] value-type cycle detected in type definitions");
         }
 
-        for (let ordered_i = 0; ordered_i < vs_size(ordered); ordered_i = ordered_i + 1) {
-            let key = vs_get(ordered, ordered_i);
+        for (let ordered_i = 0; ordered_i < sv_size(ordered); ordered_i = ordered_i + 1) {
+            let key = sv_get(ordered, ordered_i);
             let module_name = be_type_key_module(key);
             let type_name = be_type_key_name(key);
 
@@ -1226,7 +1226,7 @@ func be_emit_bare_variant_static_initializer(self: Backend*, expr_id: ExprId, ex
         return be_ice_string("[ICE-1053] bare enum variant initializer requires zero payload fields");
     }
 
-    with (let payload_inits = vs_create(0) => vs_free(payload_inits)) {
+    with (let payload_inits = sv_create(0) => sv_free(payload_inits)) {
         return cem_emit_variant_static_initializer_for_type(expected_type, target.name, payload_inits);
     }
 }
@@ -1285,12 +1285,12 @@ func be_emit_const_constructor(self: Backend*, expr_id: ExprId, expected_type: T
         if (info == null) {
             return be_ice_string("[ICE-1040] missing StructInfo for constant constructor");
         }
-        with (let field_inits = vs_create(8) => vs_free(field_inits)) {
+        with (let field_inits = sv_create(8) => sv_free(field_inits)) {
             let struct_info = info as StructInfo*;
             for (let i = 0; i < vec_size(struct_info.fields); i = i + 1) {
                 let field = ptr_vec_get(struct_info.fields, i) as StructFieldInfo*;
-                vs_push(field_inits, field.name);
-                vs_push(field_inits,
+                sv_push(field_inits, field.name);
+                sv_push(field_inits,
                     be_emit_let_initializer(self, id_vec_get(call.ids as VectorBase*, i), field.field_type));
             }
             return cem_emit_struct_static_initializer_for_type(expected_type, field_inits);
@@ -1314,12 +1314,12 @@ func be_emit_const_constructor(self: Backend*, expr_id: ExprId, expected_type: T
         if (variant_decl == null) {
             return be_ice_string("[ICE-1052] missing EnumVariant decl for constant constructor");
         }
-        with (let payload_inits = vs_create(8) => vs_free(payload_inits)) {
+        with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
             let info2 = variant_info as EnumVariantInfo*;
             for (let i = 0; i < vec_size(info2.field_types); i = i + 1) {
                 let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
-                vs_push(payload_inits, field_decl.name);
-                vs_push(payload_inits,
+                sv_push(payload_inits, field_decl.name);
+                sv_push(payload_inits,
                     be_emit_let_initializer(self, id_vec_get(call.ids as VectorBase*, i), ptr_vec_get(info2.field_types, i) as Type*));
             }
             return cem_emit_variant_static_initializer_for_type(expected_type, variant_name, payload_inits);
@@ -1676,12 +1676,12 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
         if (info == null) {
             return be_ice_string("[ICE-1040] missing StructInfo for constructor");
         }
-        with (let field_inits = vs_create(8) => vs_free(field_inits)) {
+        with (let field_inits = sv_create(8) => sv_free(field_inits)) {
             let struct_info = info as StructInfo*;
             for (let i = 0; i < vec_size(struct_info.fields); i = i + 1) {
                 let field = ptr_vec_get(struct_info.fields, i) as StructFieldInfo*;
-                vs_push(field_inits, field.name);
-                vs_push(field_inits,
+                sv_push(field_inits, field.name);
+                sv_push(field_inits,
                     be_emit_owned_expr_with_expected_type(self, id_vec_get(expr.ids as VectorBase*, i), field.field_type));
             }
             return cem_emit_struct_constructor_for_type(result_ty, field_inits);
@@ -1702,12 +1702,12 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
         if (variant_decl == null) {
             return be_ice_string("[ICE-1052] missing EnumVariant decl for constructor");
         }
-        with (let payload_inits = vs_create(8) => vs_free(payload_inits)) {
+        with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
             let info2 = variant_info as EnumVariantInfo*;
             for (let i = 0; i < vec_size(info2.field_types); i = i + 1) {
                 let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
-                vs_push(payload_inits, field_decl.name);
-                vs_push(payload_inits,
+                sv_push(payload_inits, field_decl.name);
+                sv_push(payload_inits,
                     be_emit_owned_expr_with_expected_type(self, id_vec_get(expr.ids as VectorBase*, i),
                         ptr_vec_get(info2.field_types, i) as Type*));
             }
@@ -1867,11 +1867,11 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
             if (info == null) {
                 return be_ice_string("[ICE-1210] missing StructInfo for " + base_ty.module_name + "." + base_ty.name);
             }
-            with (let field_inits = vs_create(8) => vs_free(field_inits)) {
+            with (let field_inits = sv_create(8) => sv_free(field_inits)) {
                 for (let i = 0; i < arg_count; i = i + 1) {
                     let field = ptr_vec_get((info as StructInfo*).fields, i) as StructFieldInfo*;
-                    vs_push(field_inits, field.name);
-                    vs_push(field_inits,
+                    sv_push(field_inits, field.name);
+                    sv_push(field_inits,
                         be_emit_owned_expr_with_expected_type(self, id_vec_get(expr.ids as VectorBase*, i), field.field_type));
                 }
                 cem_emit_struct_init_from_fields(self.emitter, tmp, base_ty, field_inits);
@@ -1893,12 +1893,12 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
             if (variant_decl == null || variant_info == null) {
                 return be_ice_string("[ICE-1220] new enum allocation missing variant symbol");
             }
-            with (let payload_inits = vs_create(8) => vs_free(payload_inits)) {
+            with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
                 for (let i = 0; i < arg_count; i = i + 1) {
                     let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
                     let field_ty = ptr_vec_get((variant_info as EnumVariantInfo*).field_types, i) as Type*;
-                    vs_push(payload_inits, field_decl.name);
-                    vs_push(payload_inits,
+                    sv_push(payload_inits, field_decl.name);
+                    sv_push(payload_inits,
                         be_emit_owned_expr_with_expected_type(self, id_vec_get(expr.ids as VectorBase*, i), field_ty));
                 }
                 cem_emit_enum_variant_init(self.emitter, tmp, base_ty, variant_name, payload_inits);
@@ -1962,7 +1962,7 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
 
             if (ord((sym as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
                 with (let expr_ty = be_expr_type(self, expr_id) => type_free_opt(expr_ty),
-                      let payload = vs_create(0) => vs_free(payload)) {
+                      let payload = sv_create(0) => sv_free(payload)) {
                     if (expr_ty == null) {
                         return be_ice_string("[ICE-1104] missing enum type for bare variant constructor");
                     }
@@ -2244,10 +2244,10 @@ func be_emit_pattern_bindings(self: Backend*, pattern_id: PatternId, enum_type: 
         return;
     }
 
-    for (let i = 0; i < vs_size(pattern.vars as VectorString*); i = i + 1) {
+    for (let i = 0; i < sv_size(pattern.vars as StringVector*); i = i + 1) {
         let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
         let field_ty = ptr_vec_get((variant_info as EnumVariantInfo*).field_types, i) as Type*;
-        let c_name = cem_mangle_identifier(vs_get(pattern.vars as VectorString*, i));
+        let c_name = cem_mangle_identifier(sv_get(pattern.vars as StringVector*, i));
         cem_emit_let_decl(self.emitter, cem_emit_type(field_ty), c_name,
             cem_emit_pattern_binding_init("_scrutinee", pattern.name, field_decl.name));
         sc_add_declared(arm_scope, c_name, field_ty);

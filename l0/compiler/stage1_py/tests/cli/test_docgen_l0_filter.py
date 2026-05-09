@@ -9,7 +9,7 @@ def test_transform_l0_for_doxygen_rewrites_struct_fields() -> None:
     source = """
 struct Span {
     start_line: int;
-    name_qualifier: VectorString*?;
+    name_qualifier: StringVector*?;
     fields: VectorBase*; // FieldDecl*
 }
 """
@@ -17,11 +17,11 @@ struct Span {
     transformed = transform_l0_for_doxygen(source)
 
     assert "int start_line;" in transformed
-    assert "VectorString* name_qualifier; /* nullable */" in transformed
+    assert "StringVector* name_qualifier; /* nullable */" in transformed
     assert "VectorBase* fields; // FieldDecl*" in transformed
     assert "};" in transformed
     assert "start_line: int;" not in transformed
-    assert "name_qualifier: VectorString*?;" not in transformed
+    assert "name_qualifier: StringVector*?;" not in transformed
 
 
 def test_transform_l0_for_doxygen_rewrites_enum_members() -> None:
@@ -64,7 +64,7 @@ def test_transform_l0_for_doxygen_rewrites_multiline_function_signatures() -> No
  * @param name Symbol name.
  * @return Optional symbol pointer.
  */
-func lookup(module_path: VectorString*?,
+func lookup(module_path: StringVector*?,
             name: string) -> Symbol*? {
     return null;
 }
@@ -72,7 +72,7 @@ func lookup(module_path: VectorString*?,
 
     transformed = transform_l0_for_doxygen(source)
 
-    assert "Symbol* /* nullable */ lookup(VectorString* /* nullable */ module_path, string name) {" in transformed
+    assert "Symbol* /* nullable */ lookup(StringVector* /* nullable */ module_path, string name) {" in transformed
     assert "func lookup(" not in transformed
 
 

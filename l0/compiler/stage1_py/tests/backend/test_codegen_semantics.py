@@ -1210,9 +1210,9 @@ def test_codegen_identity_cast_place_copy_retains(codegen_single):
         }
 
         func helper() -> int? {
-            with (let items = vs_create(1) => vs_free(items)) {
+            with (let items = sv_create(1) => sv_free(items)) {
                 let first = maybe(true)?;
-                vs_push(items, first as string);
+                sv_push(items, first as string);
                 return 0 as int?;
             }
         }
@@ -1223,7 +1223,7 @@ def test_codegen_identity_cast_place_copy_retains(codegen_single):
         """,
     )
     assert c_code is not None, [d.message for d in diags]
-    assert "l0_std_vector_vs_push(items, first);" in c_code
+    assert "l0_std_vector_sv_push(items, first);" in c_code
     assert "l0_string l0_arc_" not in c_code
     assert "rt_string_release(l0_arc_" not in c_code
 

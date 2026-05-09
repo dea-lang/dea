@@ -82,7 +82,7 @@ func l0c_copy_collector(dst: DiagCollector*, src: DiagCollector*) {
  * @param sys_roots Effective system-root vector.
  * @param project_roots Effective project-root vector.
  */
-func l0c_log_effective_roots(cfg: LogConfig*, sys_roots: VectorString*, project_roots: VectorString*) {
+func l0c_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_roots: StringVector*) {
     log_info(cfg, "System root(s): " + sp_format_root_list(sys_roots));
     log_info(cfg, "Project root(s): " + sp_format_root_list(project_roots));
 }
@@ -97,8 +97,8 @@ func l0c_log_effective_roots(cfg: LogConfig*, sys_roots: VectorString*, project_
  */
 func l0c_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*) -> PreparedInput*? {
     with (
-        let project_roots = us_vs_clone(opts.project_roots) => vs_free(project_roots),
-        let sys_roots = us_vs_clone(opts.sys_roots) => vs_free(sys_roots)
+        let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
+        let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
     ) {
         sp_apply_default_sys_roots(sys_roots);
 
@@ -243,10 +243,10 @@ func l0c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
                 return 1;
             }
 
-            with (let names = driver_module_names_sorted(result) => vs_free(names)) {
+            with (let names = driver_module_names_sorted(result) => sv_free(names)) {
                 let rc = 0;
-                for (let i = 0; i < vs_size(names); i = i + 1) {
-                    let name = vs_get(names, i);
+                for (let i = 0; i < sv_size(names); i = i + 1) {
+                    let name = sv_get(names, i);
                     let unit = driver_find_unit(result, name);
                     if (unit == null) {
                         continue;
@@ -369,9 +369,9 @@ func l0c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
             return 1;
         }
 
-        with (let module_names = driver_module_names_sorted(result.driver_state) => vs_free(module_names)) {
-            for (let i = 0; i < vs_size(module_names); i = i + 1) {
-                let mod_name = vs_get(module_names, i);
+        with (let module_names = driver_module_names_sorted(result.driver_state) => sv_free(module_names)) {
+            for (let i = 0; i < sv_size(module_names); i = i + 1) {
+                let mod_name = sv_get(module_names, i);
                 let entry_unit = driver_find_unit(result.driver_state, result.driver_state.entry_module) as DriverUnit*;
                 if (!opts.all_modules && mod_name != entry_unit.module_name) {
                     continue;
@@ -387,11 +387,11 @@ func l0c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
                 printl_s("=== module " + mod_name + " ===");
 
                 printl_s("  locals:");
-                with (let keys = spm_keys(env.locals) => vs_free(keys)) {
-                    vs_sort(keys);
-                    if (vs_size(keys) > 0) {
-                        for (let j = 0; j < vs_size(keys); j = j + 1) {
-                            let sym = spm_get(env.locals, vs_get(keys, j)) as Symbol*;
+                with (let keys = spm_keys(env.locals) => sv_free(keys)) {
+                    sv_sort(keys);
+                    if (sv_size(keys) > 0) {
+                        for (let j = 0; j < sv_size(keys); j = j + 1) {
+                            let sym = spm_get(env.locals, sv_get(keys, j)) as Symbol*;
                             with (let sb = sb_create() => sb_free(sb)) {
                                 sb_append(sb, "    ");
                                 sb_append(sb, symbol_kind_name(sym.kind));
@@ -410,11 +410,11 @@ func l0c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
                 }
 
                 printl_s("  imported:");
-                with (let keys2 = spm_keys(env.imported) => vs_free(keys2)) {
-                    vs_sort(keys2);
-                    if (vs_size(keys2) > 0) {
-                        for (let j = 0; j < vs_size(keys2); j = j + 1) {
-                            let sym2 = spm_get(env.imported, vs_get(keys2, j)) as Symbol*;
+                with (let keys2 = spm_keys(env.imported) => sv_free(keys2)) {
+                    sv_sort(keys2);
+                    if (sv_size(keys2) > 0) {
+                        for (let j = 0; j < sv_size(keys2); j = j + 1) {
+                            let sym2 = spm_get(env.imported, sv_get(keys2, j)) as Symbol*;
                             with (let sb2 = sb_create() => sb_free(sb2)) {
                                 sb_append(sb2, "    ");
                                 sb_append(sb2, symbol_kind_name(sym2.kind));
@@ -436,11 +436,11 @@ func l0c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
                 }
 
                 printl_s("  all:");
-                with (let keys3 = spm_keys(env.all) => vs_free(keys3)) {
-                    vs_sort(keys3);
-                    if (vs_size(keys3) > 0) {
-                        for (let j = 0; j < vs_size(keys3); j = j + 1) {
-                            let name = vs_get(keys3, j);
+                with (let keys3 = spm_keys(env.all) => sv_free(keys3)) {
+                    sv_sort(keys3);
+                    if (sv_size(keys3) > 0) {
+                        for (let j = 0; j < sv_size(keys3); j = j + 1) {
+                            let name = sv_get(keys3, j);
                             let sym3 = spm_get(env.all, name) as Symbol*;
                             let origin = "unknown";
                             if (spm_has(env.locals, name)) { origin = "local"; }
@@ -500,9 +500,9 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
         }
 
         let tables = result.signatures as SignatureTables*;
-        with (let module_names = driver_module_names_sorted(result.driver_state) => vs_free(module_names)) {
-            for (let i = 0; i < vs_size(module_names); i = i + 1) {
-                let mod_name = vs_get(module_names, i);
+        with (let module_names = driver_module_names_sorted(result.driver_state) => sv_free(module_names)) {
+            for (let i = 0; i < sv_size(module_names); i = i + 1) {
+                let mod_name = sv_get(module_names, i);
                 let entry_unit = driver_find_unit(result.driver_state, result.driver_state.entry_module) as DriverUnit*;
                 if (!opts.all_modules && mod_name != entry_unit.module_name) {
                     continue;
@@ -512,10 +512,10 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
 
                 printl_s("  functions:");
                 let any_funcs = false;
-                with (let f_keys = spm_keys(tables.func_types) => vs_free(f_keys)) {
-                    vs_sort(f_keys);
-                    for (let j = 0; j < vs_size(f_keys); j = j + 1) {
-                        let key = vs_get(f_keys, j);
+                with (let f_keys = spm_keys(tables.func_types) => sv_free(f_keys)) {
+                    sv_sort(f_keys);
+                    for (let j = 0; j < sv_size(f_keys); j = j + 1) {
+                        let key = sv_get(f_keys, j);
                         if (starts_with_s(key, mod_name + "::")) {
                             any_funcs = true;
                             let fname = slice_s(key, len_s(mod_name) + 2, len_s(key));
@@ -527,10 +527,10 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
 
                 printl_s("  structs:");
                 let any_structs = false;
-                with (let s_keys = spm_keys(tables.struct_infos) => vs_free(s_keys)) {
-                    vs_sort(s_keys);
-                    for (let j = 0; j < vs_size(s_keys); j = j + 1) {
-                        let key2 = vs_get(s_keys, j);
+                with (let s_keys = spm_keys(tables.struct_infos) => sv_free(s_keys)) {
+                    sv_sort(s_keys);
+                    for (let j = 0; j < sv_size(s_keys); j = j + 1) {
+                        let key2 = sv_get(s_keys, j);
                         if (starts_with_s(key2, mod_name + "::")) {
                             any_structs = true;
                             let s_info = spm_get(tables.struct_infos, key2) as StructInfo*;
@@ -546,10 +546,10 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
 
                 printl_s("  enums:");
                 let any_enums = false;
-                with (let e_keys = spm_keys(tables.enum_infos) => vs_free(e_keys)) {
-                    vs_sort(e_keys);
-                    for (let j = 0; j < vs_size(e_keys); j = j + 1) {
-                        let key3 = vs_get(e_keys, j);
+                with (let e_keys = spm_keys(tables.enum_infos) => sv_free(e_keys)) {
+                    sv_sort(e_keys);
+                    for (let j = 0; j < sv_size(e_keys); j = j + 1) {
+                        let key3 = sv_get(e_keys, j);
                         if (starts_with_s(key3, mod_name + "::")) {
                             any_enums = true;
                             let e_info = spm_get(tables.enum_infos, key3) as EnumInfo*;
@@ -590,7 +590,7 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @param dst Destination vector for parsed option words.
  * @param raw Raw options string, or `null`.
  */
-func l0c_append_c_option_words(dst: VectorString*, raw: string?) {
+func l0c_append_c_option_words(dst: StringVector*, raw: string?) {
     bd_append_c_option_words(dst, raw);
 }
 
@@ -601,7 +601,7 @@ func l0c_append_c_option_words(dst: VectorString*, raw: string?) {
  * @param cli_opts Options from `--c-options`.
  * @return Parsed option words in final order.
  */
-func l0c_merge_c_option_words(env_opts: string?, cli_opts: string?) -> VectorString* {
+func l0c_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVector* {
     return bd_merge_c_option_words(env_opts, cli_opts);
 }
 
@@ -611,7 +611,7 @@ func l0c_merge_c_option_words(env_opts: string?, cli_opts: string?) -> VectorStr
  * @param opts Parsed CLI options.
  * @return Parsed option words in final order.
  */
-func l0c_collect_c_option_words(opts: CliOptions*) -> VectorString* {
+func l0c_collect_c_option_words(opts: CliOptions*) -> StringVector* {
     return bd_collect_c_option_words(opts);
 }
 
@@ -646,9 +646,9 @@ func l0c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
         }
 
         if (opts.all_modules) {
-            with (let names = driver_module_names_sorted(result) => vs_free(names)) {
-                for (let i = 0; i < vs_size(names); i = i + 1) {
-                    let name = vs_get(names, i);
+            with (let names = driver_module_names_sorted(result) => sv_free(names)) {
+                for (let i = 0; i < sv_size(names); i = i + 1) {
+                    let name = sv_get(names, i);
                     let unit_opt = driver_find_unit(result, name);
                     if (unit_opt == null) {
                         continue;
@@ -739,7 +739,7 @@ func l0c_cmd_nyi(mode: CliMode, cfg: LogConfig*) -> int {
  * @param argv Argument vector excluding the executable name.
  * @return Process-style status code.
  */
-func run_with_argv(argv: VectorString*) -> int {
+func run_with_argv(argv: StringVector*) -> int {
     let parsed = cli_parse(argv);
     if (parsed.help_requested) {
         cli_print_help();

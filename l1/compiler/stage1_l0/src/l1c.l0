@@ -14,9 +14,9 @@ import l1c_lib;
  * Run the Stage 1 `l1c` entry point with process arguments.
  */
 func main() {
-    with (let argv_vec = vs_create(argc()) => vs_free(argv_vec)) {
+    with (let argv_vec = sv_create(argc()) => sv_free(argv_vec)) {
         for (let i = 1; i < argc(); i = i + 1) {
-            vs_push(argv_vec, argv(i));
+            sv_push(argv_vec, argv(i));
         }
 
         let rc = run_with_argv(argv_vec);

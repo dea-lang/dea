@@ -682,8 +682,8 @@ func parse_dotted_name_rest(self: ParserState*, first: string) -> string? {
  * Represents the QualifiedNameResult structure.
  */
 struct QualifiedNameResult {
-    module_path: VectorString*;
-    name_qualifier: VectorString*?;
+    module_path: StringVector*;
+    name_qualifier: StringVector*?;
     name_tok: Token;
 }
 
@@ -693,8 +693,8 @@ struct QualifiedNameResult {
  * @param self Qualified-name result to free.
  */
 func qn_result_free_all(self: QualifiedNameResult*) {
-    vs_free(self.module_path);
-    vs_free_opt(self.name_qualifier);
+    sv_free(self.module_path);
+    sv_free_opt(self.name_qualifier);
     drop self;
 }
 
@@ -729,13 +729,13 @@ func ps_try_parse_qualified_name(self: ParserState*) -> QualifiedNameResult*? {
     // Commit parse and build vectors.
     let first = ps_expect_ident(self, "PAR-0401", "expected identifier before '::'")?;
 
-    with (let parts: VectorString*? = vs_create(4) => vs_free_opt(parts),
-          let qualifier: VectorString*? = null => vs_free_opt(qualifier)) {
-        vs_push(parts as VectorString*, token_ident_text(first) as string);
+    with (let parts: StringVector*? = sv_create(4) => sv_free_opt(parts),
+          let qualifier: StringVector*? = null => sv_free_opt(qualifier)) {
+        sv_push(parts as StringVector*, token_ident_text(first) as string);
 
         while (ps_match(self, ord(TT_DOT))) {
             let part = ps_expect_ident(self, "PAR-0300", "expected identifier after '.' in module name")?;
-            vs_push(parts as VectorString*, token_ident_text(part) as string);
+            sv_push(parts as StringVector*, token_ident_text(part) as string);
         }
 
         ps_expect(self, ord(TT_DOUBLE_COLON), "PAR-0401", "expected '::' in qualified name")?;
@@ -745,13 +745,13 @@ func ps_try_parse_qualified_name(self: ParserState*) -> QualifiedNameResult*? {
 
         while (ps_match(self, ord(TT_DOUBLE_COLON))) {
             if (qualifier == null) {
-                qualifier = vs_create(2);
+                qualifier = sv_create(2);
             }
-            vs_push(qualifier as VectorString*, token_ident_text(current_name_tok) as string);
+            sv_push(qualifier as StringVector*, token_ident_text(current_name_tok) as string);
             current_name_tok = ps_expect_ident(self, "PAR-0401", "expected identifier after '::'")?;
         }
 
-        let result = new QualifiedNameResult(parts as VectorString*, qualifier, current_name_tok);
+        let result = new QualifiedNameResult(parts as StringVector*, qualifier, current_name_tok);
         parts = null;
         qualifier = null;
         return result;
@@ -771,8 +771,8 @@ func ps_try_parse_qualified_name(self: ParserState*) -> QualifiedNameResult*? {
 func ps_parse_type(self: ParserState*) -> TypeRef*? {
     let start = ps_span_start(self);
 
-    let module_path: VectorString*? = null;
-    let name_qualifier: VectorString*? = null;
+    let module_path: StringVector*? = null;
+    let name_qualifier: StringVector*? = null;
     let name_tok = Token(TT_EOF, 0, 0, 0);
 
     let qualified = ps_try_parse_qualified_name(self);
@@ -798,8 +798,8 @@ func ps_parse_type(self: ParserState*) -> TypeRef*? {
 
     if (ps_check(self, ord(TT_LBRACKET))) {
         ps_emit_error(self, "PAR-9401", "array types not yet supported", ps_peek(self));
-        vs_free_opt(module_path);
-        vs_free_opt(name_qualifier);
+        sv_free_opt(module_path);
+        sv_free_opt(name_qualifier);
         return null;
     }
 

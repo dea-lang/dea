@@ -797,7 +797,7 @@ def test_optional_unwrap_return_retains(artifact_dir: Path) -> None:
 
 
 def test_optional_unwrap_into_vector_retains(artifact_dir: Path) -> None:
-    """`vs_push(v, opt as string)` must retain before optional cleanup and keep the vector entry valid."""
+    """`sv_push(v, opt as string)` must retain before optional cleanup and keep the vector entry valid."""
 
     stdout, _stderr, _report, arc = run_case(
         "optional_unwrap_into_vector_retains",
@@ -807,18 +807,18 @@ def test_optional_unwrap_into_vector_retains(artifact_dir: Path) -> None:
         import std.string;
         import std.vector;
 
-        func build() -> VectorString* {
-            let v = vs_create(0);
+        func build() -> StringVector* {
+            let v = sv_create(0);
             let opt: string? = concat_s("c", "d") as string?;
-            vs_push(v, opt as string);
+            sv_push(v, opt as string);
             return v;
         }
 
         func main() -> int {
             let v = build();
-            let s = vs_get(v, 0);
+            let s = sv_get(v, 0);
             printl_s(s);
-            vs_free(v);
+            sv_free(v);
             return 0;
         }
         """,

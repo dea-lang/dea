@@ -34,8 +34,8 @@ func ps_parse_pattern(self: ParserState*) -> PatternId? {
     }
 
     if (ps_check_ident(self)) {
-        let module_path: VectorString*? = null;
-        let name_qualifier: VectorString*? = null;
+        let module_path: StringVector*? = null;
+        let name_qualifier: StringVector*? = null;
         let name_tok = Token(TT_EOF, 0, 0, 0);
 
         let qualified = ps_try_parse_qualified_name(self);
@@ -55,11 +55,11 @@ func ps_parse_pattern(self: ParserState*) -> PatternId? {
         node.name_qualifier = name_qualifier;
 
         if (ps_match(self, ord(TT_LPAREN))) {
-            with (let vars: VectorString*? = vs_create(2) => vs_free_opt(vars)) {
+            with (let vars: StringVector*? = sv_create(2) => sv_free_opt(vars)) {
                 if (!ps_check(self, ord(TT_RPAREN))) {
                     while (true) {
                         let var_tok = ps_expect_variable_name(self, "PAR-0180", "expected pattern variable name")?;
-                        vs_push(vars as VectorString*, token_ident_text(var_tok) as string);
+                        sv_push(vars as StringVector*, token_ident_text(var_tok) as string);
                         if (!ps_match(self, ord(TT_COMMA))) {
                             break;
                         }

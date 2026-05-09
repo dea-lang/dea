@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-04-30
+Version: 2026-05-09
 
 This document describes how ownership works in L0 today, covering:
 
@@ -158,7 +158,7 @@ prematurely released when the optional goes out of scope.
 The same applies to:
 
 - Returning an unwrapped `string?` from a function.
-- Passing an unwrapped `string?` into a container (e.g. `vs_push`).
+- Passing an unwrapped `string?` into a container (e.g. `sv_push`).
 
 **When would you need a manual retain?** Only if you are moving the unwrapped value across a **raw, non-assignment
 boundary**, for example storing it via `rt_memcpy` into a manually managed buffer. In normal L0 code, you should not
@@ -166,13 +166,13 @@ need to add `rt_string_retain` after `opt as string`.
 
 ## 6. Container Ownership Contracts
 
-### 6.1 `std.vector` / `VectorString`
+### 6.1 `std.vector` / `StringVector`
 
-- `vs_push` uses assignment semantics: the compiler retains the incoming value and releases any overwritten slot.
-- `vs_clear` and `vs_free` release all stored strings before clearing or freeing the underlying storage.
-- The generic `vec_*` API is **not** ARC-aware; always use the `vs_*` helpers for string vectors.
+- `sv_push` uses assignment semantics: the compiler retains the incoming value and releases any overwritten slot.
+- `sv_clear` and `sv_free` release all stored strings before clearing or freeing the underlying storage.
+- The generic `vec_*` API is **not** ARC-aware; always use the `sv_*` helpers for string vectors.
 
-**Caller rule:** do not manually release a string after `vs_push`; the container now owns it.
+**Caller rule:** do not manually release a string after `sv_push`; the container now owns it.
 
 ### 6.2 `std.hashmap` (`spm` / `sim`)
 
@@ -180,7 +180,7 @@ need to add `rt_string_retain` after `opt as string`.
 - Insert/update retains the new key and releases any replaced key.
 - Remove/clear/free release all occupied keys.
 - Rehash moves keys by byte-copy (`rt_memcpy`); old storage is freed without additional per-key release.
-- `spm_keys` / `sim_keys` return a **caller-owned** `VectorString*`; you must call `vs_free` on it.
+- `spm_keys` / `sim_keys` return a **caller-owned** `StringVector*`; you must call `sv_free` on it.
 
 Value ownership:
 
@@ -192,12 +192,12 @@ Value ownership:
 - Set keys are ARC strings owned by the set.
 - Add/remove/clear/free follow the same retain/release discipline as hashmap keys.
 - Rehash uses byte-copy ownership transfer.
-- `ss_to_vector` returns a **caller-owned** `VectorString*`; call `vs_free` when done.
+- `ss_to_vector` returns a **caller-owned** `StringVector*`; call `sv_free` when done.
 
 ### 6.4 `std.linear_map`
 
 - `LinearMapBase` is byte-oriented and does **not** provide deep-ownership semantics on its own.
-- ARC-aware specializations (`lmss`, `lmis`) use assignment semantics for string fields and explicit release on
+- ARC-aware specializations (`sslm`, `islm`) use assignment semantics for string fields and explicit release on
   remove/free paths.
 - Swap-removal copies bytes to avoid extra assignment churn, but ownership rules still require explicit release when a
   slot is destroyed.
@@ -213,7 +213,7 @@ Value ownership:
 **Usually wrong** when:
 
 1. You perform ordinary L0 assignment on ARC-managed fields or slots.
-2. You use ARC-aware stdlib helpers that already handle ownership (`vs_*`, `lmss_*`, `lmis_*`, map/set key APIs).
+2. You use ARC-aware stdlib helpers that already handle ownership (`sv_*`, `sslm_*`, `islm_*`, map/set key APIs).
 
 ## 8. Control Flow and ARC Cleanup
 

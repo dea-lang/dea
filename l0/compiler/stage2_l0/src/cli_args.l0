@@ -36,8 +36,8 @@ struct CliOptions {
     verbosity: int;
     log: bool;
 
-    project_roots: VectorString*;
-    sys_roots: VectorString*;
+    project_roots: StringVector*;
+    sys_roots: StringVector*;
 
     output: string?;
     keep_c: bool;
@@ -55,7 +55,7 @@ struct CliOptions {
 
     entry_target: string?;
     extra_target_count: int;
-    program_args: VectorString*;
+    program_args: StringVector*;
 }
 
 /**
@@ -81,8 +81,8 @@ func cli_options_create() -> CliOptions* {
         false,
         0,
         false,
-        vs_create(2),
-        vs_create(2),
+        sv_create(2),
+        sv_create(2),
         null,
         false,
         null,
@@ -96,7 +96,7 @@ func cli_options_create() -> CliOptions* {
         false,
         null,
         0,
-        vs_create(4)
+        sv_create(4)
     );
 }
 
@@ -106,9 +106,9 @@ func cli_options_create() -> CliOptions* {
  * @param self CLI options to free.
  */
 func cli_options_free(self: CliOptions*) {
-    vs_free(self.project_roots);
-    vs_free(self.sys_roots);
-    vs_free(self.program_args);
+    sv_free(self.project_roots);
+    sv_free(self.sys_roots);
+    sv_free(self.program_args);
     drop self;
 }
 
@@ -234,9 +234,9 @@ func cli_try_set_mode(opts: CliOptions*, diags: DiagCollector*, mode: CliMode) {
  * @param argv Full argument vector.
  * @return Separator index, or `-1` if `--` is not present.
  */
-func cli_split_index(argv: VectorString*) -> int {
-    for (let i = 0; i < vs_size(argv); i = i + 1) {
-        if (vs_get(argv, i) == "--") {
+func cli_split_index(argv: StringVector*) -> int {
+    for (let i = 0; i < sv_size(argv); i = i + 1) {
+        if (sv_get(argv, i) == "--") {
             return i;
         }
     }
@@ -252,9 +252,9 @@ func cli_split_index(argv: VectorString*) -> int {
  * @param cli_end Exclusive end index for compiler CLI arguments.
  * @return `true` when `-h` or `--help` is present before `cli_end`.
  */
-func cli_has_help_flag(argv: VectorString*, cli_end: int) -> bool {
+func cli_has_help_flag(argv: StringVector*, cli_end: int) -> bool {
     for (let i = 0; i < cli_end; i = i + 1) {
-        let token = vs_get(argv, i);
+        let token = sv_get(argv, i);
         if (token == "-h" || token == "--help") {
             return true;
         }
@@ -271,9 +271,9 @@ func cli_has_help_flag(argv: VectorString*, cli_end: int) -> bool {
  * @param cli_end Exclusive end index for compiler CLI arguments.
  * @return `true` when `--version` is present before `cli_end`.
  */
-func cli_has_version_flag(argv: VectorString*, cli_end: int) -> bool {
+func cli_has_version_flag(argv: StringVector*, cli_end: int) -> bool {
     for (let i = 0; i < cli_end; i = i + 1) {
-        if (vs_get(argv, i) == "--version") {
+        if (sv_get(argv, i) == "--version") {
             return true;
         }
     }
@@ -429,12 +429,12 @@ func cli_verbose_cluster_count(token: string) -> int {
  * @param diags Diagnostic collector.
  * @return Following argument value, or `null` after emitting a missing-value error.
  */
-func cli_require_next_value(argv: VectorString*, i: int, opt_name: string, diags: DiagCollector*) -> string? {
-    if (i + 1 >= vs_size(argv)) {
+func cli_require_next_value(argv: StringVector*, i: int, opt_name: string, diags: DiagCollector*) -> string? {
+    if (i + 1 >= sv_size(argv)) {
         cli_emit_error(diags, "L0C-2003", "missing value for option '" + opt_name + "'");
         return null;
     }
-    return vs_get(argv, i + 1);
+    return sv_get(argv, i + 1);
 }
 
 /**
@@ -515,17 +515,17 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
  * @param argv Argument vector excluding the executable name.
  * @return Parsed options together with any diagnostics produced during parsing.
  */
-func cli_parse(argv: VectorString*) -> CliParseResult* {
+func cli_parse(argv: StringVector*) -> CliParseResult* {
     with (
         let opts: CliOptions*? = cli_options_create() => cli_options_free_opt(opts),
         let diags: DiagCollector*? = diag_create() => cli_diag_free_opt(diags)
     ) {
         let split_idx = cli_split_index(argv);
-        let cli_end = vs_size(argv);
+        let cli_end = sv_size(argv);
         if (split_idx >= 0) {
             cli_end = split_idx;
-            for (let i = split_idx + 1; i < vs_size(argv); i = i + 1) {
-                vs_push((opts as CliOptions*).program_args, vs_get(argv, i));
+            for (let i = split_idx + 1; i < sv_size(argv); i = i + 1) {
+                sv_push((opts as CliOptions*).program_args, sv_get(argv, i));
             }
         }
 
@@ -567,7 +567,7 @@ func cli_parse(argv: VectorString*) -> CliParseResult* {
 
         let i = 0;
         while (i < cli_end) {
-            let token = vs_get(argv, i);
+            let token = sv_get(argv, i);
 
             if (token == "--run" || token == "-r") {
                 cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_RUN);
@@ -670,7 +670,7 @@ func cli_parse(argv: VectorString*) -> CliParseResult* {
                 if (value == null) {
                     i = i + 1;
                 } else {
-                    vs_push((opts as CliOptions*).project_roots, value as string);
+                    sv_push((opts as CliOptions*).project_roots, value as string);
                     i = i + 2;
                 }
                 continue;
@@ -678,7 +678,7 @@ func cli_parse(argv: VectorString*) -> CliParseResult* {
 
             if (starts_with_s(token, "--project-root=")) {
                 let value = slice_s(token, len_s("--project-root="), len_s(token));
-                vs_push((opts as CliOptions*).project_roots, value);
+                sv_push((opts as CliOptions*).project_roots, value);
                 i = i + 1;
                 continue;
             }
@@ -688,7 +688,7 @@ func cli_parse(argv: VectorString*) -> CliParseResult* {
                 if (value == null) {
                     i = i + 1;
                 } else {
-                    vs_push((opts as CliOptions*).sys_roots, value as string);
+                    sv_push((opts as CliOptions*).sys_roots, value as string);
                     i = i + 2;
                 }
                 continue;
@@ -696,7 +696,7 @@ func cli_parse(argv: VectorString*) -> CliParseResult* {
 
             if (starts_with_s(token, "--sys-root=")) {
                 let value = slice_s(token, len_s("--sys-root="), len_s(token));
-                vs_push((opts as CliOptions*).sys_roots, value);
+                sv_push((opts as CliOptions*).sys_roots, value);
                 i = i + 1;
                 continue;
             }
@@ -809,7 +809,7 @@ func cli_parse(argv: VectorString*) -> CliParseResult* {
                 );
             }
         } else {
-            if (vs_size((opts as CliOptions*).program_args) > 0) {
+            if (sv_size((opts as CliOptions*).program_args) > 0) {
                 cli_emit_error(
                     diags as DiagCollector*,
                     "L0C-2023",

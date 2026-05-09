@@ -63,7 +63,7 @@ func test_analysis_ok_main() {
         assert(analysis_name_resolution(result) != null, "expected name resolution data");
         assert(analysis_signature_tables(result) != null, "expected signature tables");
         assert(analysis_locals(result) != null, "expected locals data");
-        assert(vs_size(analysis_source_names(result)) == 3, "expected 3 cached sources");
+        assert(sv_size(analysis_source_names(result)) == 3, "expected 3 cached sources");
         analysis_result_free(result);
     }
     sp_free(sp);

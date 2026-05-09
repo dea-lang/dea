@@ -95,21 +95,21 @@ func etc_diag_warn(self: ExpressionTypeChecker*, code: string, message: string, 
 func etc_nested_symbol_path_full(expr: ExprNode*) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
         if (expr.module_path != null) {
-            let mp = expr.module_path as VectorString*;
-            for (let i = 0; i < vs_size(mp); i = i + 1) {
+            let mp = expr.module_path as StringVector*;
+            for (let i = 0; i < sv_size(mp); i = i + 1) {
                 if (i > 0) {
                     sb_append(sb, ".");
                 }
-                sb_append(sb, vs_get(mp, i));
+                sb_append(sb, sv_get(mp, i));
             }
-            if (vs_size(mp) > 0) {
+            if (sv_size(mp) > 0) {
                 sb_append(sb, "::");
             }
         }
         if (expr.name_qualifier != null) {
-            let nq = expr.name_qualifier as VectorString*;
-            for (let i = 0; i < vs_size(nq); i = i + 1) {
-                sb_append(sb, vs_get(nq, i));
+            let nq = expr.name_qualifier as StringVector*;
+            for (let i = 0; i < sv_size(nq); i = i + 1) {
+                sb_append(sb, sv_get(nq, i));
                 sb_append(sb, "::");
             }
         }
@@ -128,7 +128,7 @@ func etc_nested_symbol_path_simple(expr: ExprNode*) -> string {
     if (expr.module_path == null) {
         return expr.text_value;
     }
-    return tr_module_from_path(expr.module_path as VectorString*) + "::" + expr.text_value;
+    return tr_module_from_path(expr.module_path as StringVector*) + "::" + expr.text_value;
 }
 
 /**
@@ -700,8 +700,8 @@ func etc_lookup_local(self: ExpressionTypeChecker*, name: string) -> Type*? {
  * @param name_qualifier Optional enum-variant qualifier.
  * @return Resolved symbol, or `null` if lookup fails.
  */
-func etc_lookup_symbol(self: ExpressionTypeChecker*, name: string, module_path: VectorString*?,
-                        name_qualifier: VectorString*?) -> Symbol*? {
+func etc_lookup_symbol(self: ExpressionTypeChecker*, name: string, module_path: StringVector*?,
+                        name_qualifier: StringVector*?) -> Symbol*? {
     return tr_symbol_lookup(self.result.names as NameResolution*, self.current_env as ModuleEnv*, name, module_path,
         name_qualifier);
 }
@@ -808,7 +808,7 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
         return etc_symbol_as_type(self, sym as Symbol*);
     }
 
-    let target_module = tr_module_from_path(expr.module_path as VectorString*);
+    let target_module = tr_module_from_path(expr.module_path as StringVector*);
     if (target_module != (self.current_env as ModuleEnv*).module_name &&
         !nr_module_env_imports_module(self.current_env as ModuleEnv*, target_module)) {
         etc_diag_error(self, "TYP-0301",
@@ -948,10 +948,10 @@ func etc_bind_pattern_types(self: ExpressionTypeChecker*, match_ty: Type*, patte
         let v_info = ptr_vec_get(variants, i) as EnumVariantInfo*;
         if (v_info.name == pattern.name) {
             if (pattern.vars != null) {
-                let vars = pattern.vars as VectorString*;
-                for (let j = 0; j < vs_size(vars); j = j + 1) {
+                let vars = pattern.vars as StringVector*;
+                for (let j = 0; j < sv_size(vars); j = j + 1) {
                     if (j < vec_size(v_info.field_types)) {
-                        etc_set_var_type(self, vs_get(vars, j), ptr_vec_get(v_info.field_types, j) as Type*);
+                        etc_set_var_type(self, sv_get(vars, j), ptr_vec_get(v_info.field_types, j) as Type*);
                     }
                 }
             }
@@ -985,10 +985,10 @@ func etc_find_enum_variant_info(info: EnumInfo*, name: string) -> EnumVariantInf
  */
 func etc_pattern_symbol_name(pattern: PatternNode*) -> string {
     if (pattern.module_path != null) {
-        return tr_module_from_path(pattern.module_path as VectorString*) + "::" + pattern.name;
+        return tr_module_from_path(pattern.module_path as StringVector*) + "::" + pattern.name;
     }
-    if (pattern.name_qualifier != null && vs_size(pattern.name_qualifier as VectorString*) > 0) {
-        return vs_get(pattern.name_qualifier as VectorString*, 0) + "::" + pattern.name;
+    if (pattern.name_qualifier != null && sv_size(pattern.name_qualifier as StringVector*) > 0) {
+        return sv_get(pattern.name_qualifier as StringVector*, 0) + "::" + pattern.name;
     }
     return pattern.name;
 }
@@ -1014,7 +1014,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
     }
 
     if (pattern.module_path != null) {
-        let target_module = tr_module_from_path(pattern.module_path as VectorString*);
+        let target_module = tr_module_from_path(pattern.module_path as StringVector*);
         let qualified = etc_pattern_symbol_name(pattern);
         if (target_module != (self.current_env as ModuleEnv*).module_name &&
             !nr_module_env_imports_module(self.current_env as ModuleEnv*, target_module)) {
@@ -1068,7 +1068,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
 
     let pattern_arity = 0;
     if (pattern.vars != null) {
-        pattern_arity = vs_size(pattern.vars as VectorString*);
+        pattern_arity = sv_size(pattern.vars as StringVector*);
     }
     let variant_info = variant as EnumVariantInfo*;
     let expected_arity = vec_size(variant_info.field_types);
@@ -1358,9 +1358,9 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     let merged_map = ptr_vec_get(merged, i) as StringIntMap*;
                     let then_map = ptr_vec_get(then_alive as VectorBase*, i) as StringIntMap*;
                     let else_map = ptr_vec_get(else_alive, i) as StringIntMap*;
-                    with (let keys = sim_keys(merged_map) => vs_free(keys)) {
-                        for (let j = 0; j < vs_size(keys); j = j + 1) {
-                            let name = vs_get(keys, j);
+                    with (let keys = sim_keys(merged_map) => sv_free(keys)) {
+                        for (let j = 0; j < sv_size(keys); j = j + 1) {
+                            let name = sv_get(keys, j);
                             let then_value = sim_get(then_map, name);
                             let else_value = sim_get(else_map, name);
                             if (then_value != null && else_value != null) {

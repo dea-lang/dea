@@ -42,10 +42,10 @@ func test_shell_quote_windows_handles_spaces_and_quotes() {
  * Tests test_join_shell_words_quotes_every_token.
  */
 func test_join_shell_words_quotes_every_token() {
-    with (let words = vs_create(3) => vs_free(words)) {
-        vs_push(words, "alpha");
-        vs_push(words, "two words");
-        vs_push(words, "rock'n'roll");
+    with (let words = sv_create(3) => sv_free(words)) {
+        sv_push(words, "alpha");
+        sv_push(words, "two words");
+        sv_push(words, "rock'n'roll");
 
         let joined = bd_join_shell_words(words);
         if (bd_is_windows()) {
@@ -69,10 +69,10 @@ func test_windows_exec_token_rewrites_relative_slashes() {
  * Tests test_join_display_words_matches_stage1_logging.
  */
 func test_join_display_words_matches_stage1_logging() {
-    with (let words = vs_create(3) => vs_free(words)) {
-        vs_push(words, "clang");
-        vs_push(words, "file.c");
-        vs_push(words, "-O1");
+    with (let words = sv_create(3) => sv_free(words)) {
+        sv_push(words, "clang");
+        sv_push(words, "file.c");
+        sv_push(words, "-O1");
 
         let joined = bd_join_display_words(words);
         assert(joined == "clang file.c -O1", "display command mismatch");
@@ -83,10 +83,10 @@ func test_join_display_words_matches_stage1_logging() {
  * Tests test_format_word_list_matches_stage1_logging.
  */
 func test_format_word_list_matches_stage1_logging() {
-    with (let words = vs_create(2) => vs_free(words)) {
+    with (let words = sv_create(2) => sv_free(words)) {
         assert(bd_format_word_list(words) == "[]", "empty option list mismatch");
-        vs_push(words, "-g");
-        vs_push(words, "-O0");
+        sv_push(words, "-g");
+        sv_push(words, "-O0");
         assert(bd_format_word_list(words) == "['-g', '-O0']", "formatted option list mismatch");
     }
 }
@@ -106,7 +106,7 @@ func test_compiler_flag_family_detection() {
  * Tests test_get_optimize_flag_defaults_and_overrides.
  */
 func test_get_optimize_flag_defaults_and_overrides() {
-    with (let empty = vs_create(1) => vs_free(empty)) {
+    with (let empty = sv_create(1) => sv_free(empty)) {
         let gcc_opt = bd_get_optimize_flag("gcc", empty);
         let expected = "-O1";
         if (bd_is_windows()) {
@@ -115,20 +115,20 @@ func test_get_optimize_flag_defaults_and_overrides() {
         assert(gcc_opt != null && gcc_opt as string == expected, "gcc default optimize flag mismatch");
     }
 
-    with (let debug_words = vs_create(1) => vs_free(debug_words)) {
-        vs_push(debug_words, "-g");
+    with (let debug_words = sv_create(1) => sv_free(debug_words)) {
+        sv_push(debug_words, "-g");
         let gcc_debug = bd_get_optimize_flag("gcc", debug_words);
         assert(gcc_debug != null && gcc_debug as string == "-Og", "gcc debug optimize flag mismatch");
     }
 
-    with (let msvc_debug_words = vs_create(1) => vs_free(msvc_debug_words)) {
-        vs_push(msvc_debug_words, "/Zi");
+    with (let msvc_debug_words = sv_create(1) => sv_free(msvc_debug_words)) {
+        sv_push(msvc_debug_words, "/Zi");
         let msvc_debug = bd_get_optimize_flag("msvc", msvc_debug_words);
         assert(msvc_debug != null && msvc_debug as string == "/Od", "msvc debug optimize flag mismatch");
     }
 
-    with (let explicit_opt = vs_create(1) => vs_free(explicit_opt)) {
-        vs_push(explicit_opt, "-O2");
+    with (let explicit_opt = sv_create(1) => sv_free(explicit_opt)) {
+        sv_push(explicit_opt, "-O2");
         assert(bd_get_optimize_flag("gcc", explicit_opt) == null, "explicit optimize flag should suppress defaults");
     }
 }
@@ -137,17 +137,17 @@ func test_get_optimize_flag_defaults_and_overrides() {
  * Tests test_output_flag_selection_matches_compiler_family.
  */
 func test_output_flag_selection_matches_compiler_family() {
-    with (let gcc_words = vs_create(4) => vs_free(gcc_words)) {
+    with (let gcc_words = sv_create(4) => sv_free(gcc_words)) {
         bd_push_output_flags(gcc_words, "gcc", "out.exe");
-        assert(vs_size(gcc_words) == 2, "gcc output flags should use two argv words");
-        assert(vs_get(gcc_words, 0) == "-o", "gcc output flag mismatch");
-        assert(vs_get(gcc_words, 1) == "out.exe", "gcc output path mismatch");
+        assert(sv_size(gcc_words) == 2, "gcc output flags should use two argv words");
+        assert(sv_get(gcc_words, 0) == "-o", "gcc output flag mismatch");
+        assert(sv_get(gcc_words, 1) == "out.exe", "gcc output path mismatch");
     }
 
-    with (let msvc_words = vs_create(2) => vs_free(msvc_words)) {
+    with (let msvc_words = sv_create(2) => sv_free(msvc_words)) {
         bd_push_output_flags(msvc_words, "msvc", "out.exe");
-        assert(vs_size(msvc_words) == 1, "msvc output flags should use one argv word");
-        assert(vs_get(msvc_words, 0) == "/Fe:out.exe", "msvc output flag mismatch");
+        assert(sv_size(msvc_words) == 1, "msvc output flags should use one argv word");
+        assert(sv_get(msvc_words, 0) == "/Fe:out.exe", "msvc output flag mismatch");
     }
 }
 

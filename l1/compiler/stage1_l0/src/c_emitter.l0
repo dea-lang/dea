@@ -26,7 +26,7 @@ import util.strings;
  * Represents a line-oriented C source builder with indentation tracking.
  */
 struct CCodeBuilder {
-    lines: VectorString*;
+    lines: StringVector*;
     indent_level: int;
     indent_str: string;
     cached_prefix: string;
@@ -150,7 +150,7 @@ func cem_func_ptr_map_free(items: StringPtrMap*) {
  * @return New builder with four-space indentation.
  */
 func ccb_create() -> CCodeBuilder* {
-    return new CCodeBuilder(vs_create(32), 0, "    ", "", 0);
+    return new CCodeBuilder(sv_create(32), 0, "    ", "", 0);
 }
 
 /**
@@ -159,7 +159,7 @@ func ccb_create() -> CCodeBuilder* {
  * @param self Builder to free.
  */
 func ccb_free(self: CCodeBuilder*) {
-    vs_free(self.lines);
+    sv_free(self.lines);
     drop self;
 }
 
@@ -211,13 +211,13 @@ func ccb_prefix(self: CCodeBuilder*) -> string {
  */
 func ccb_emit(self: CCodeBuilder*, line: string) {
     if (is_empty_s(line)) {
-        vs_push(self.lines, "");
+        sv_push(self.lines, "");
         return;
     }
     with (let sb = sb_create() => sb_free(sb)) {
         sb_append(sb, ccb_prefix(self));
         sb_append(sb, line);
-        vs_push(self.lines, sb_to_string(sb));
+        sv_push(self.lines, sb_to_string(sb));
     }
 }
 
@@ -228,7 +228,7 @@ func ccb_emit(self: CCodeBuilder*, line: string) {
  * @param line Raw line text.
  */
 func ccb_emit_raw(self: CCodeBuilder*, line: string) {
-    vs_push(self.lines, line);
+    sv_push(self.lines, line);
 }
 
 /**
@@ -239,8 +239,8 @@ func ccb_emit_raw(self: CCodeBuilder*, line: string) {
  */
 func ccb_to_string(self: CCodeBuilder*) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(self.lines); i = i + 1) {
-            sb_append(sb, vs_get(self.lines, i));
+        for (let i = 0; i < sv_size(self.lines); i = i + 1) {
+            sb_append(sb, sv_get(self.lines, i));
             sb_append(sb, "\n");
         }
         return sb_to_string(sb);
@@ -1523,10 +1523,10 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
  * @param early `true` for builtin-only wrappers, `false` for user-defined wrappers.
  */
 func cem_emit_optional_wrappers(self: CEmitter*, early: bool) {
-    with (let names = spm_keys(self.opt_wrappers) => vs_free(names)) {
-        vs_sort(names);
-        for (let i = 0; i < vs_size(names); i = i + 1) {
-            let name = vs_get(names, i);
+    with (let names = spm_keys(self.opt_wrappers) => sv_free(names)) {
+        sv_sort(names);
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let name = sv_get(names, i);
             let inner = spm_get(self.opt_wrappers, name) as Type*;
             if (cem_is_early_inner(inner) != early) {
                 continue;
@@ -1603,12 +1603,12 @@ func cem_emit_func_ptr_typedef(self: CEmitter*, name: string) {
  * @param self Emitter to update.
  */
 func cem_emit_func_ptr_typedefs(self: CEmitter*) {
-    with (let names = spm_keys(self.func_ptrs) => vs_free(names)) {
-        vs_sort(names);
-        for (let i = 0; i < vs_size(names); i = i + 1) {
-            cem_emit_func_ptr_typedef(self, vs_get(names, i));
+    with (let names = spm_keys(self.func_ptrs) => sv_free(names)) {
+        sv_sort(names);
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            cem_emit_func_ptr_typedef(self, sv_get(names, i));
         }
-        if (vs_size(names) > 0) {
+        if (sv_size(names) > 0) {
             ccb_emit(self.out, "");
         }
     }
@@ -2373,8 +2373,8 @@ func cem_emit_index_lvalue(base: string, index: string) -> string {
  * @param field_inits Vector of alternating field-name and field-value strings.
  * @return Compound-literal expression.
  */
-func cem_emit_struct_constructor(c_struct_name: string, field_inits: VectorString*) -> string {
-    if (vs_size(field_inits) == 0) {
+func cem_emit_struct_constructor(c_struct_name: string, field_inits: StringVector*) -> string {
+    if (sv_size(field_inits) == 0) {
         return "(struct " + c_struct_name + "){ 0" + " }";
     }
 
@@ -2382,14 +2382,14 @@ func cem_emit_struct_constructor(c_struct_name: string, field_inits: VectorStrin
         sb_append(sb, "(struct ");
         sb_append(sb, c_struct_name);
         sb_append(sb, "){ ");
-        for (let i = 0; i < vs_size(field_inits); i = i + 2) {
+        for (let i = 0; i < sv_size(field_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, vs_get(field_inits, i));
+            sb_append(sb, sv_get(field_inits, i));
             sb_append(sb, " = ");
-            sb_append(sb, vs_get(field_inits, i + 1));
+            sb_append(sb, sv_get(field_inits, i + 1));
         }
         sb_append(sb, " }");
         return sb_to_string(sb);
@@ -2402,21 +2402,21 @@ func cem_emit_struct_constructor(c_struct_name: string, field_inits: VectorStrin
  * @param field_inits Vector of alternating field-name and field-value strings.
  * @return Brace-only initializer text.
  */
-func cem_emit_struct_static_initializer(field_inits: VectorString*) -> string {
-    if (vs_size(field_inits) == 0) {
+func cem_emit_struct_static_initializer(field_inits: StringVector*) -> string {
+    if (sv_size(field_inits) == 0) {
         return "{ 0 }";
     }
 
     with (let sb = sb_create() => sb_free(sb)) {
         sb_append(sb, "{ ");
-        for (let i = 0; i < vs_size(field_inits); i = i + 2) {
+        for (let i = 0; i < sv_size(field_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, vs_get(field_inits, i));
+            sb_append(sb, sv_get(field_inits, i));
             sb_append(sb, " = ");
-            sb_append(sb, vs_get(field_inits, i + 1));
+            sb_append(sb, sv_get(field_inits, i + 1));
         }
         sb_append(sb, " }");
         return sb_to_string(sb);
@@ -2430,7 +2430,7 @@ func cem_emit_struct_static_initializer(field_inits: VectorString*) -> string {
  * @param field_inits Vector of alternating field-name and field-value strings.
  * @return Compound-literal expression.
  */
-func cem_emit_struct_constructor_for_type(struct_type: Type*, field_inits: VectorString*) -> string {
+func cem_emit_struct_constructor_for_type(struct_type: Type*, field_inits: StringVector*) -> string {
     return cem_emit_struct_constructor(cem_mangle_struct_name(struct_type.module_name, struct_type.name), field_inits);
 }
 
@@ -2441,7 +2441,7 @@ func cem_emit_struct_constructor_for_type(struct_type: Type*, field_inits: Vecto
  * @param field_inits Vector of alternating field-name and field-value strings.
  * @return Brace-only initializer text.
  */
-func cem_emit_struct_static_initializer_for_type(struct_type: Type*, field_inits: VectorString*) -> string {
+func cem_emit_struct_static_initializer_for_type(struct_type: Type*, field_inits: StringVector*) -> string {
     return cem_emit_struct_static_initializer(field_inits);
 }
 
@@ -2455,8 +2455,8 @@ func cem_emit_struct_static_initializer_for_type(struct_type: Type*, field_inits
  * @return Tagged-union literal expression.
  */
 func cem_emit_variant_constructor(c_enum_name: string, variant_name: string, tag_value: string,
-                                  payload_inits: VectorString*) -> string {
-    if (vs_size(payload_inits) == 0) {
+                                  payload_inits: StringVector*) -> string {
+    if (sv_size(payload_inits) == 0) {
         return "(struct " + c_enum_name + "){ .tag = " + tag_value + " }";
     }
 
@@ -2468,14 +2468,14 @@ func cem_emit_variant_constructor(c_enum_name: string, variant_name: string, tag
         sb_append(sb, ", .data = { .");
         sb_append(sb, variant_name);
         sb_append(sb, " = { ");
-        for (let i = 0; i < vs_size(payload_inits); i = i + 2) {
+        for (let i = 0; i < sv_size(payload_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, vs_get(payload_inits, i));
+            sb_append(sb, sv_get(payload_inits, i));
             sb_append(sb, " = ");
-            sb_append(sb, vs_get(payload_inits, i + 1));
+            sb_append(sb, sv_get(payload_inits, i + 1));
         }
         sb_append(sb, " } } }");
         return sb_to_string(sb);
@@ -2491,8 +2491,8 @@ func cem_emit_variant_constructor(c_enum_name: string, variant_name: string, tag
  * @return Brace-only tagged-union initializer.
  */
 func cem_emit_variant_static_initializer(variant_name: string, tag_value: string,
-                                         payload_inits: VectorString*) -> string {
-    if (vs_size(payload_inits) == 0) {
+                                         payload_inits: StringVector*) -> string {
+    if (sv_size(payload_inits) == 0) {
         return "{ .tag = " + tag_value + " }";
     }
 
@@ -2502,14 +2502,14 @@ func cem_emit_variant_static_initializer(variant_name: string, tag_value: string
         sb_append(sb, ", .data = { .");
         sb_append(sb, variant_name);
         sb_append(sb, " = { ");
-        for (let i = 0; i < vs_size(payload_inits); i = i + 2) {
+        for (let i = 0; i < sv_size(payload_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, vs_get(payload_inits, i));
+            sb_append(sb, sv_get(payload_inits, i));
             sb_append(sb, " = ");
-            sb_append(sb, vs_get(payload_inits, i + 1));
+            sb_append(sb, sv_get(payload_inits, i + 1));
         }
         sb_append(sb, " } } }");
         return sb_to_string(sb);
@@ -2524,7 +2524,7 @@ func cem_emit_variant_static_initializer(variant_name: string, tag_value: string
  * @param payload_inits Vector of alternating field-name and field-value strings.
  * @return Tagged-union literal expression.
  */
-func cem_emit_variant_constructor_for_type(enum_type: Type*, variant_name: string, payload_inits: VectorString*) -> string {
+func cem_emit_variant_constructor_for_type(enum_type: Type*, variant_name: string, payload_inits: StringVector*) -> string {
     let c_enum_name = cem_mangle_enum_name(enum_type.module_name, enum_type.name);
     let tag_value = cem_emit_enum_tag(enum_type, variant_name);
     return cem_emit_variant_constructor(c_enum_name, variant_name, tag_value, payload_inits);
@@ -2539,7 +2539,7 @@ func cem_emit_variant_constructor_for_type(enum_type: Type*, variant_name: strin
  * @return Brace-only tagged-union initializer.
  */
 func cem_emit_variant_static_initializer_for_type(enum_type: Type*, variant_name: string,
-                                                  payload_inits: VectorString*) -> string {
+                                                  payload_inits: StringVector*) -> string {
     let tag_value = cem_emit_enum_tag(enum_type, variant_name);
     return cem_emit_variant_static_initializer(variant_name, tag_value, payload_inits);
 }
@@ -2875,16 +2875,16 @@ func cem_emit_struct_init(self: CEmitter*, c_temp_name: string, c_base_type: str
  * @param base_type Struct type being initialized.
  * @param field_inits Vector of alternating field-name and field-value strings.
  */
-func cem_emit_struct_init_from_fields(self: CEmitter*, c_temp_name: string, base_type: Type*, field_inits: VectorString*) {
+func cem_emit_struct_init_from_fields(self: CEmitter*, c_temp_name: string, base_type: Type*, field_inits: StringVector*) {
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(field_inits); i = i + 2) {
+        for (let i = 0; i < sv_size(field_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, vs_get(field_inits, i));
+            sb_append(sb, sv_get(field_inits, i));
             sb_append(sb, " = ");
-            sb_append(sb, vs_get(field_inits, i + 1));
+            sb_append(sb, sv_get(field_inits, i + 1));
         }
         cem_emit_struct_init(self, c_temp_name, cem_emit_type(base_type), sb_to_string(sb));
     }
@@ -2900,9 +2900,9 @@ func cem_emit_struct_init_from_fields(self: CEmitter*, c_temp_name: string, base
  * @param payload_inits Vector of alternating field-name and field-value strings.
  */
 func cem_emit_enum_variant_init(self: CEmitter*, c_temp_name: string, enum_type: Type*, variant_name: string,
-                                payload_inits: VectorString*) {
+                                payload_inits: StringVector*) {
     let tag_value = cem_emit_enum_tag(enum_type, variant_name);
-    if (vs_size(payload_inits) == 0) {
+    if (sv_size(payload_inits) == 0) {
         cem_emit_struct_init(self, c_temp_name, cem_emit_type(enum_type), ".tag = " + tag_value);
         return;
     }
@@ -2913,14 +2913,14 @@ func cem_emit_enum_variant_init(self: CEmitter*, c_temp_name: string, enum_type:
         sb_append(sb, ", .data = { .");
         sb_append(sb, variant_name);
         sb_append(sb, " = { ");
-        for (let i = 0; i < vs_size(payload_inits); i = i + 2) {
+        for (let i = 0; i < sv_size(payload_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, vs_get(payload_inits, i));
+            sb_append(sb, sv_get(payload_inits, i));
             sb_append(sb, " = ");
-            sb_append(sb, vs_get(payload_inits, i + 1));
+            sb_append(sb, sv_get(payload_inits, i + 1));
         }
         sb_append(sb, " } }");
         cem_emit_struct_init(self, c_temp_name, cem_emit_type(enum_type), sb_to_string(sb));

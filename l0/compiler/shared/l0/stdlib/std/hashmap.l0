@@ -476,17 +476,17 @@ func spm_clear(self: StringPtrMap*) {
 }
 
 /**
- * Collect all keys into a new VectorString.
- * Caller owns the result and must vs_free() it.
+ * Collect all keys into a new StringVector.
+ * Caller owns the result and must sv_free() it.
  *
  * @param self The pointer to the StringPtrMap.
- * @return A new VectorString containing all keys.
+ * @return A new StringVector containing all keys.
  */
-func spm_keys(self: StringPtrMap*) -> VectorString* {
-    let result = vs_create(self.count);
+func spm_keys(self: StringPtrMap*) -> StringVector* {
+    let result = sv_create(self.count);
     for (let i: int = 0; i < self.capacity; i = i + 1) {
         if (_spm_get_state(self, i) == HM_OCCUPIED) {
-            vs_push(result, _spm_get_key(self, i));
+            sv_push(result, _spm_get_key(self, i));
         }
     }
     return result;
@@ -964,17 +964,17 @@ func sim_clear(self: StringIntMap*) {
 }
 
 /**
- * Collect all keys into a new VectorString.
- * Caller owns the result and must vs_free() it.
+ * Collect all keys into a new StringVector.
+ * Caller owns the result and must sv_free() it.
  *
  * @param self The pointer to the StringIntMap.
- * @return A new VectorString containing all keys.
+ * @return A new StringVector containing all keys.
  */
-func sim_keys(self: StringIntMap*) -> VectorString* {
-    let result = vs_create(self.count);
+func sim_keys(self: StringIntMap*) -> StringVector* {
+    let result = sv_create(self.count);
     for (let i: int = 0; i < self.capacity; i = i + 1) {
         if (_sim_get_state(self, i) == HM_OCCUPIED) {
-            vs_push(result, _sim_get_key(self, i));
+            sv_push(result, _sim_get_key(self, i));
         }
     }
     return result;

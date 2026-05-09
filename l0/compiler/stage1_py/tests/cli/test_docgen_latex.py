@@ -574,7 +574,7 @@ def test_normalize_latex_site_recovers_nullable_l0_struct_fields_from_source(tmp
     source_path.write_text(
         """module ast;
 struct TypeRef {
-    module_path: VectorString*?;
+    module_path: StringVector*?;
 }
 """,
         encoding="utf-8",
@@ -634,9 +634,9 @@ Body.
     page = (latex_dir / "struct_type_ref.tex").read_text(encoding="utf-8")
     assert (
         r"\doxymbox{\hyperlink{struct_type_ref_a1}{module\+_path}}: "
-        r"VectorString\texorpdfstring{$\ast$}{*}?"
+        r"StringVector\texorpdfstring{$\ast$}{*}?"
     ) in page
-    assert r"module\_path: VectorString\texorpdfstring{$\ast$}{*}?" in page
+    assert r"module\_path: StringVector\texorpdfstring{$\ast$}{*}?" in page
 
 
 def test_normalize_latex_site_expands_l0_signature_link_text(tmp_path: Path, monkeypatch) -> None:

@@ -113,7 +113,7 @@ func analysis_diag_get(self: AnalysisResult*, index: int) -> Diagnostic* {
  * @param self Analysis result to inspect.
  * @return Vector of source filenames.
  */
-func analysis_source_names(self: AnalysisResult*) -> VectorString* {
+func analysis_source_names(self: AnalysisResult*) -> StringVector* {
     return self.driver_state.source_names;
 }
 
@@ -123,7 +123,7 @@ func analysis_source_names(self: AnalysisResult*) -> VectorString* {
  * @param self Analysis result to inspect.
  * @return Vector of source texts aligned with `analysis_source_names`.
  */
-func analysis_source_texts(self: AnalysisResult*) -> VectorString* {
+func analysis_source_texts(self: AnalysisResult*) -> StringVector* {
     return self.driver_state.source_texts;
 }
 

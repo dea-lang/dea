@@ -17,8 +17,8 @@ import cli_args;
  * Tests test_default_mode_build.
  */
 func test_default_mode_build() {
-    with (let argv = vs_create(2) => vs_free(argv)) {
-        vs_push(argv, "app.main");
+    with (let argv = sv_create(2) => sv_free(argv)) {
+        sv_push(argv, "app.main");
 
         let parsed = cli_parse(argv);
         assert(!diag_has_errors(parsed.diags), "expected CLI parse success");
@@ -37,12 +37,12 @@ func test_default_mode_build() {
  * Tests test_run_accepts_program_args_after_separator.
  */
 func test_run_accepts_program_args_after_separator() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "app.main");
-        vs_push(argv, "--");
-        vs_push(argv, "alpha");
-        vs_push(argv, "--beta");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "app.main");
+        sv_push(argv, "--");
+        sv_push(argv, "alpha");
+        sv_push(argv, "--beta");
 
         let parsed = cli_parse(argv);
         assert(!diag_has_errors(parsed.diags), "expected run parse success");
@@ -50,9 +50,9 @@ func test_run_accepts_program_args_after_separator() {
 
         assert(ord(opts.mode) == ord(CM_RUN), "expected run mode");
         assert(opts.entry_target as string == "app.main", "expected run target");
-        assert(vs_size(opts.program_args) == 2, "expected 2 program args");
-        assert(vs_get(opts.program_args, 0) == "alpha", "expected alpha arg");
-        assert(vs_get(opts.program_args, 1) == "--beta", "expected --beta arg");
+        assert(sv_size(opts.program_args) == 2, "expected 2 program args");
+        assert(sv_get(opts.program_args, 0) == "alpha", "expected alpha arg");
+        assert(sv_get(opts.program_args, 1) == "--beta", "expected --beta arg");
 
         cli_parse_result_free(parsed);
     }
@@ -62,11 +62,11 @@ func test_run_accepts_program_args_after_separator() {
  * Tests test_non_run_rejects_program_args_separator.
  */
 func test_non_run_rejects_program_args_separator() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--check");
-        vs_push(argv, "app.main");
-        vs_push(argv, "--");
-        vs_push(argv, "x");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "app.main");
+        sv_push(argv, "--");
+        sv_push(argv, "x");
 
         let parsed = cli_parse(argv);
         assert(diag_has_errors(parsed.diags), "expected parse errors for -- outside run");
@@ -80,10 +80,10 @@ func test_non_run_rejects_program_args_separator() {
  * Tests test_mode_scoped_flag_validation.
  */
 func test_mode_scoped_flag_validation() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--check");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "app.main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "app.main");
 
         let parsed = cli_parse(argv);
         assert(diag_has_errors(parsed.diags), "expected parse errors for invalid scoped flag");
@@ -97,10 +97,10 @@ func test_mode_scoped_flag_validation() {
  * Tests test_multiple_targets_rejected.
  */
 func test_multiple_targets_rejected() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--check");
-        vs_push(argv, "a");
-        vs_push(argv, "b");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "a");
+        sv_push(argv, "b");
 
         let parsed = cli_parse(argv);
         assert(diag_has_errors(parsed.diags), "expected parse errors for multi-target");
@@ -113,9 +113,9 @@ func test_multiple_targets_rejected() {
  * Tests test_help_flag_short_circuits_validation.
  */
 func test_help_flag_short_circuits_validation() {
-    with (let argv = vs_create(4) => vs_free(argv)) {
-        vs_push(argv, "-h");
-        vs_push(argv, "--bogus");
+    with (let argv = sv_create(4) => sv_free(argv)) {
+        sv_push(argv, "-h");
+        sv_push(argv, "--bogus");
 
         let parsed = cli_parse(argv);
         assert(parsed.help_requested, "expected help request");
@@ -130,9 +130,9 @@ func test_help_flag_short_circuits_validation() {
  * Tests test_version_flag_short_circuits_validation.
  */
 func test_version_flag_short_circuits_validation() {
-    with (let argv = vs_create(4) => vs_free(argv)) {
-        vs_push(argv, "--version");
-        vs_push(argv, "--bogus");
+    with (let argv = sv_create(4) => sv_free(argv)) {
+        sv_push(argv, "--version");
+        sv_push(argv, "--bogus");
 
         let parsed = cli_parse(argv);
         assert(parsed.version_requested, "expected version request");
@@ -149,9 +149,9 @@ func test_version_flag_short_circuits_validation() {
  * Tests that `--ast` is accepted as a valid mode.
  */
 func test_ast_mode_accepted() {
-    with (let argv = vs_create(2) => vs_free(argv)) {
-        vs_push(argv, "--ast");
-        vs_push(argv, "app.main");
+    with (let argv = sv_create(2) => sv_free(argv)) {
+        sv_push(argv, "--ast");
+        sv_push(argv, "app.main");
 
         let parsed = cli_parse(argv);
         assert(!diag_has_errors(parsed.diags), "expected --ast parse success");
@@ -171,10 +171,10 @@ func test_ast_mode_accepted() {
  * Tests that `--ast --all-modules` is accepted.
  */
 func test_ast_all_modules_accepted() {
-    with (let argv = vs_create(4) => vs_free(argv)) {
-        vs_push(argv, "--ast");
-        vs_push(argv, "--all-modules");
-        vs_push(argv, "app.main");
+    with (let argv = sv_create(4) => sv_free(argv)) {
+        sv_push(argv, "--ast");
+        sv_push(argv, "--all-modules");
+        sv_push(argv, "app.main");
 
         let parsed = cli_parse(argv);
         assert(!diag_has_errors(parsed.diags), "expected --ast --all-modules parse success");
@@ -192,9 +192,9 @@ func test_ast_all_modules_accepted() {
  * Tests test_no_legacy_command_rewrite.
  */
 func test_no_legacy_command_rewrite() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "run");
-        vs_push(argv, "app.main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "run");
+        sv_push(argv, "app.main");
 
         let parsed = cli_parse(argv);
         assert(diag_has_errors(parsed.diags), "legacy command words should not be rewritten");

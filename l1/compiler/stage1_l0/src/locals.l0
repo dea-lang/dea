@@ -290,9 +290,9 @@ func lc_bind_pattern(env: FunctionEnv*, pattern_id: PatternId, scope: Scope*) {
     if (ord(pattern.kind) != ord(PT_VARIANT) || pattern.vars == null) {
         return;
     }
-    let vars = pattern.vars as VectorString*;
-    for (let i = 0; i < vs_size(vars); i = i + 1) {
-        lc_scope_define(scope, vs_get(vars, i), LK_PATTERN_VAR, pattern as void*);
+    let vars = pattern.vars as StringVector*;
+    for (let i = 0; i < sv_size(vars); i = i + 1) {
+        lc_scope_define(scope, sv_get(vars, i), LK_PATTERN_VAR, pattern as void*);
     }
 }
 

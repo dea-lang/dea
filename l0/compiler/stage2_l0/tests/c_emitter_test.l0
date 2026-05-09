@@ -30,7 +30,7 @@ import util.diag;
  */
 func cet_empty_analysis_result() -> AnalysisResult* {
     return new AnalysisResult(
-        new DriverState("", ptr_vec_create(0), vs_create(0), diag_create(), vs_create(0), vs_create(0)),
+        new DriverState("", ptr_vec_create(0), sv_create(0), diag_create(), sv_create(0), sv_create(0)),
         diag_create(),
         null,
         null,
@@ -232,14 +232,14 @@ func test_emitter_expression_and_statement_helpers() {
     let point_ty = type_new_struct("demo.main", "Point");
     let maybe_point_ty = type_new_enum("demo.main", "MaybePoint");
 
-    with (let field_inits = vs_create(4) => vs_free(field_inits),
-          let payload_inits = vs_create(2) => vs_free(payload_inits)) {
-        vs_push(field_inits, "x");
-        vs_push(field_inits, "1");
-        vs_push(field_inits, "y");
-        vs_push(field_inits, "2");
-        vs_push(payload_inits, "value");
-        vs_push(payload_inits, "pt");
+    with (let field_inits = sv_create(4) => sv_free(field_inits),
+          let payload_inits = sv_create(2) => sv_free(payload_inits)) {
+        sv_push(field_inits, "x");
+        sv_push(field_inits, "1");
+        sv_push(field_inits, "y");
+        sv_push(field_inits, "2");
+        sv_push(payload_inits, "value");
+        sv_push(payload_inits, "pt");
 
         assert(cem_emit_bool_literal(true) == "1", "expression bool literal mismatch");
         assert(cem_emit_const_bool_literal(false) == "false", "const bool literal mismatch");

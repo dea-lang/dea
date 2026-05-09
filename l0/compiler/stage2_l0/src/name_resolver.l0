@@ -118,13 +118,13 @@ func nr_path_is_same_signature(left: TypeRef*?, right: TypeRef*?) -> bool {
         return false;
     }
     if (left_modules != null) {
-        let lv = left_modules as VectorString*;
-        let rv = right_modules as VectorString*;
-        if (vs_size(lv) != vs_size(rv)) {
+        let lv = left_modules as StringVector*;
+        let rv = right_modules as StringVector*;
+        if (sv_size(lv) != sv_size(rv)) {
             return false;
         }
-        for (let i = 0; i < vs_size(lv); i = i + 1) {
-            if (vs_get(lv, i) != vs_get(rv, i)) {
+        for (let i = 0; i < sv_size(lv); i = i + 1) {
+            if (sv_get(lv, i) != sv_get(rv, i)) {
                 return false;
             }
         }
@@ -136,13 +136,13 @@ func nr_path_is_same_signature(left: TypeRef*?, right: TypeRef*?) -> bool {
         return false;
     }
     if (left_names != null) {
-        let lv2 = left_names as VectorString*;
-        let rv2 = right_names as VectorString*;
-        if (vs_size(lv2) != vs_size(rv2)) {
+        let lv2 = left_names as StringVector*;
+        let rv2 = right_names as StringVector*;
+        if (sv_size(lv2) != sv_size(rv2)) {
             return false;
         }
-        for (let i = 0; i < vs_size(lv2); i = i + 1) {
-            if (vs_get(lv2, i) != vs_get(rv2, i)) {
+        for (let i = 0; i < sv_size(lv2); i = i + 1) {
+            if (sv_get(lv2, i) != sv_get(rv2, i)) {
                 return false;
             }
         }
@@ -325,7 +325,7 @@ func nr_module_env_imports_module(self: ModuleEnv*, module_name: string) -> bool
  * @param self Module environment to inspect.
  * @return New vector of local symbol names.
  */
-func nr_module_env_local_keys(self: ModuleEnv*) -> VectorString* {
+func nr_module_env_local_keys(self: ModuleEnv*) -> StringVector* {
     return spm_keys(self.locals);
 }
 
@@ -335,7 +335,7 @@ func nr_module_env_local_keys(self: ModuleEnv*) -> VectorString* {
  * @param self Module environment to inspect.
  * @return New vector of imported symbol names.
  */
-func nr_module_env_imported_keys(self: ModuleEnv*) -> VectorString* {
+func nr_module_env_imported_keys(self: ModuleEnv*) -> StringVector* {
     return spm_keys(self.imported);
 }
 
@@ -345,7 +345,7 @@ func nr_module_env_imported_keys(self: ModuleEnv*) -> VectorString* {
  * @param self Module environment to inspect.
  * @return New vector of visible symbol names.
  */
-func nr_module_env_all_keys(self: ModuleEnv*) -> VectorString* {
+func nr_module_env_all_keys(self: ModuleEnv*) -> StringVector* {
     return spm_keys(self.all);
 }
 

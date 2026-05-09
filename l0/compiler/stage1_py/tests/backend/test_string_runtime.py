@@ -204,10 +204,10 @@ def test_string_text_helpers_runtime(codegen_single, compile_and_run, tmp_path):
             return 0;
         }
 
-        func emit_vec(v: VectorString*) {
-            printl_i(vs_size(v));
-            for (let i = 0; i < vs_size(v); i = i + 1) {
-                printl_s(concat3_s("[", vs_get(v, i), "]"));
+        func emit_vec(v: StringVector*) {
+            printl_i(sv_size(v));
+            for (let i = 0; i < sv_size(v); i = i + 1) {
+                printl_s(concat3_s("[", sv_get(v, i), "]"));
             }
         }
 
@@ -216,26 +216,26 @@ def test_string_text_helpers_runtime(codegen_single, compile_and_run, tmp_path):
             printl_i(bool_to_int(is_empty_s("x")));
             printl_s(trim_s(" \\t hi \\n"));
 
-            with (let p1 = split_s("a,,b", ",") => vs_free(p1)) {
+            with (let p1 = split_s("a,,b", ",") => sv_free(p1)) {
                 emit_vec(p1);
             }
 
-            with (let p2 = split_s("a--b----c", "--") => vs_free(p2)) {
+            with (let p2 = split_s("a--b----c", "--") => sv_free(p2)) {
                 emit_vec(p2);
             }
 
-            with (let p3 = split_s("", ",") => vs_free(p3)) {
+            with (let p3 = split_s("", ",") => sv_free(p3)) {
                 emit_vec(p3);
             }
 
-            with (let lines = lines_s("a\\r\\n\\r\\nb\\n") => vs_free(lines)) {
+            with (let lines = lines_s("a\\r\\n\\r\\nb\\n") => sv_free(lines)) {
                 emit_vec(lines);
             }
 
-            with (let parts = vs_create(3) => vs_free(parts)) {
-                vs_push(parts, "x");
-                vs_push(parts, "");
-                vs_push(parts, "z");
+            with (let parts = sv_create(3) => sv_free(parts)) {
+                sv_push(parts, "x");
+                sv_push(parts, "");
+                sv_push(parts, "z");
                 printl_s(join_s(parts, ":"));
             }
 

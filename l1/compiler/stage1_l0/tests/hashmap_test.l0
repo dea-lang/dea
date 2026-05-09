@@ -238,10 +238,10 @@ func test_spm_keys() {
     spm_put(m, "b", v3 as void*);
 
     let keys = spm_keys(m);
-    assert(vs_size(keys) == 3, "keys vector should have 3 entries");
-    printl_si("  keys count:", vs_size(keys));
+    assert(sv_size(keys) == 3, "keys vector should have 3 entries");
+    printl_si("  keys count:", sv_size(keys));
 
-    vs_free(keys);
+    sv_free(keys);
     spm_free(m);
     drop v1;
     drop v2;
@@ -470,10 +470,10 @@ func test_ss_to_vector() {
     ss_add(s, "three");
 
     let v = ss_to_vector(s);
-    assert(vs_size(v) == 3, "vector should have 3 elements");
-    printl_si("  vector size:", vs_size(v));
+    assert(sv_size(v) == 3, "vector should have 3 elements");
+    printl_si("  vector size:", sv_size(v));
 
-    vs_free(v);
+    sv_free(v);
     ss_free(s);
 
     printl_s("ss_to_vector passed!\n");

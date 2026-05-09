@@ -125,13 +125,13 @@ func nr_path_is_same_signature(left: TypeRef*?, right: TypeRef*?) -> bool {
         return false;
     }
     if (left_modules != null) {
-        let lv = left_modules as VectorString*;
-        let rv = right_modules as VectorString*;
-        if (vs_size(lv) != vs_size(rv)) {
+        let lv = left_modules as StringVector*;
+        let rv = right_modules as StringVector*;
+        if (sv_size(lv) != sv_size(rv)) {
             return false;
         }
-        for (let i = 0; i < vs_size(lv); i = i + 1) {
-            if (vs_get(lv, i) != vs_get(rv, i)) {
+        for (let i = 0; i < sv_size(lv); i = i + 1) {
+            if (sv_get(lv, i) != sv_get(rv, i)) {
                 return false;
             }
         }
@@ -143,13 +143,13 @@ func nr_path_is_same_signature(left: TypeRef*?, right: TypeRef*?) -> bool {
         return false;
     }
     if (left_names != null) {
-        let lv2 = left_names as VectorString*;
-        let rv2 = right_names as VectorString*;
-        if (vs_size(lv2) != vs_size(rv2)) {
+        let lv2 = left_names as StringVector*;
+        let rv2 = right_names as StringVector*;
+        if (sv_size(lv2) != sv_size(rv2)) {
             return false;
         }
-        for (let i = 0; i < vs_size(lv2); i = i + 1) {
-            if (vs_get(lv2, i) != vs_get(rv2, i)) {
+        for (let i = 0; i < sv_size(lv2); i = i + 1) {
+            if (sv_get(lv2, i) != sv_get(rv2, i)) {
                 return false;
             }
         }
@@ -380,7 +380,7 @@ func nr_module_env_has_prelude_name(self: ModuleEnv*, name: string) -> bool {
  * @param self Module environment to inspect.
  * @return New vector of local symbol names.
  */
-func nr_module_env_local_keys(self: ModuleEnv*) -> VectorString* {
+func nr_module_env_local_keys(self: ModuleEnv*) -> StringVector* {
     return spm_keys(self.locals);
 }
 
@@ -390,7 +390,7 @@ func nr_module_env_local_keys(self: ModuleEnv*) -> VectorString* {
  * @param self Module environment to inspect.
  * @return New vector of imported symbol names.
  */
-func nr_module_env_imported_keys(self: ModuleEnv*) -> VectorString* {
+func nr_module_env_imported_keys(self: ModuleEnv*) -> StringVector* {
     return spm_keys(self.imported);
 }
 
@@ -400,7 +400,7 @@ func nr_module_env_imported_keys(self: ModuleEnv*) -> VectorString* {
  * @param self Module environment to inspect.
  * @return New vector of exported symbol names.
  */
-func nr_module_env_export_keys(self: ModuleEnv*) -> VectorString* {
+func nr_module_env_export_keys(self: ModuleEnv*) -> StringVector* {
     return spm_keys(self.exports);
 }
 
@@ -410,7 +410,7 @@ func nr_module_env_export_keys(self: ModuleEnv*) -> VectorString* {
  * @param self Module environment to inspect.
  * @return New vector of visible symbol names.
  */
-func nr_module_env_all_keys(self: ModuleEnv*) -> VectorString* {
+func nr_module_env_all_keys(self: ModuleEnv*) -> StringVector* {
     return spm_keys(self.all);
 }
 
@@ -526,8 +526,8 @@ func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
     }
 
     with (let seen = ss_create() => ss_free(seen)) {
-        for (let name_i = 0; name_i < vs_size(m.names); name_i = name_i + 1) {
-            let export_name = vs_get(m.names, name_i);
+        for (let name_i = 0; name_i < sv_size(m.names); name_i = name_i + 1) {
+            let export_name = sv_get(m.names, name_i);
             if (ss_has(seen, export_name)) {
                 nr_span_diag_error(
                     diags,
@@ -577,9 +577,9 @@ func nr_symbols_same_identity(left: Symbol*, right: Symbol*) -> bool {
  * @param name Name to look up.
  * @return `true` if `name` is present.
  */
-func nr_vs_has(values: VectorString*, name: string) -> bool {
-    for (let i = 0; i < vs_size(values); i = i + 1) {
-        if (vs_get(values, i) == name) {
+func nr_sv_has(values: StringVector*, name: string) -> bool {
+    for (let i = 0; i < sv_size(values); i = i + 1) {
+        if (sv_get(values, i) == name) {
             return true;
         }
     }
@@ -592,14 +592,14 @@ func nr_vs_has(values: VectorString*, name: string) -> bool {
  * @param names Names to format.
  * @return String such as `'a', 'b', 'c'`.
  */
-func nr_format_quoted_names(names: VectorString*) -> string {
+func nr_format_quoted_names(names: StringVector*) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(names); i = i + 1) {
+        for (let i = 0; i < sv_size(names); i = i + 1) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, "'");
-            sb_append(sb, vs_get(names, i));
+            sb_append(sb, sv_get(names, i));
             sb_append(sb, "'");
         }
         return sb_to_string(sb);
@@ -753,10 +753,10 @@ func nr_bind_import_alias(env: ModuleEnv*, imported_env: ModuleEnv*, diags: Diag
  * @param imp Selective import declaration.
  */
 func nr_bind_selective_import(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagCollector*, imp: Import*) {
-    let names = imp.names as VectorString*;
-    with (let redundant = vs_create(vs_size(names)) => vs_free(redundant)) {
-        for (let i = 0; i < vs_size(names); i = i + 1) {
-            let name = vs_get(names, i);
+    let names = imp.names as StringVector*;
+    with (let redundant = sv_create(sv_size(names)) => sv_free(redundant)) {
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let name = sv_get(names, i);
             let value = spm_get(imported_env.exports, name);
             if (value == null) {
                 nr_span_diag_error(
@@ -772,13 +772,13 @@ func nr_bind_selective_import(env: ModuleEnv*, imported_env: ModuleEnv*, diags: 
             let existing_import = nr_module_env_imported(env, name);
             if (existing_import != null &&
                 nr_symbols_same_identity(existing_import as Symbol*, value as Symbol*) &&
-                !nr_vs_has(redundant, name)) {
-                vs_push(redundant, name);
+                !nr_sv_has(redundant, name)) {
+                sv_push(redundant, name);
             }
             nr_import_symbol(env, imported_env, diags, name, value as Symbol*);
         }
 
-        if (vs_size(redundant) > 0) {
+        if (sv_size(redundant) > 0) {
             nr_span_diag_warn(
                 diags,
                 "RES-0035",
@@ -913,9 +913,9 @@ func nr_make_dea_env() -> ModuleEnv* {
  * @param self Name-resolution result to inspect.
  * @return Sorted module names.
  */
-func nr_env_names_sorted(self: NameResolution*) -> VectorString* {
+func nr_env_names_sorted(self: NameResolution*) -> StringVector* {
     let names = spm_keys(self.by_name);
-    vs_sort(names);
+    sv_sort(names);
     return names;
 }
 

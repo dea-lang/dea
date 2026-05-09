@@ -95,7 +95,7 @@ def empty_result_helper() -> str:
     return """
     func empty_result() -> AnalysisResult* {
         let result = new AnalysisResult(
-            new DriverState("", ptr_vec_create(0), vs_create(0), diag_create(), vs_create(0), vs_create(0)),
+            new DriverState("", ptr_vec_create(0), sv_create(0), diag_create(), sv_create(0), sv_create(0)),
             diag_create(),
             null,
             null,

@@ -404,17 +404,17 @@ func ss_clear(self: StringSet*) {
 }
 
 /**
- * Collect all elements into a new VectorString.
- * Caller owns the result and must vs_free() it.
+ * Collect all elements into a new StringVector.
+ * Caller owns the result and must sv_free() it.
  *
  * @param self The pointer to the StringSet.
- * @return A new VectorString containing all elements.
+ * @return A new StringVector containing all elements.
  */
-func ss_to_vector(self: StringSet*) -> VectorString* {
-    let result = vs_create(self.count);
+func ss_to_vector(self: StringSet*) -> StringVector* {
+    let result = sv_create(self.count);
     for (let i: int = 0; i < self.capacity; i = i + 1) {
         if (_ss_get_state(self, i) == HS_OCCUPIED) {
-            vs_push(result, _ss_get_key(self, i));
+            sv_push(result, _ss_get_key(self, i));
         }
     }
     return result;

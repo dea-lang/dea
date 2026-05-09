@@ -134,18 +134,18 @@ func ap_quote_string(s: string) -> string {
  * @param module_path Optional module path segments.
  * @return Formatted prefix ending with `"::"`, or empty string.
  */
-func ap_module_prefix(module_path: VectorString*?) -> string {
+func ap_module_prefix(module_path: StringVector*?) -> string {
     if (module_path == null) {
         return "";
     }
-    let mp = module_path as VectorString*;
-    if (vs_size(mp) == 0) {
+    let mp = module_path as StringVector*;
+    if (sv_size(mp) == 0) {
         return "";
     }
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(mp); i = i + 1) {
+        for (let i = 0; i < sv_size(mp); i = i + 1) {
             if (i > 0) { sb_append(sb, "."); }
-            sb_append(sb, vs_get(mp, i));
+            sb_append(sb, sv_get(mp, i));
         }
         sb_append(sb, "::");
         return sb_to_string(sb);
@@ -163,22 +163,22 @@ func ap_module_prefix(module_path: VectorString*?) -> string {
  * @param name_qualifier Optional name qualifier segments.
  * @return Fully qualified display name.
  */
-func ap_full_name(text_value: string, module_path: VectorString*?, name_qualifier: VectorString*?) -> string {
+func ap_full_name(text_value: string, module_path: StringVector*?, name_qualifier: StringVector*?) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
         if (module_path != null) {
-            let mp = module_path as VectorString*;
-            for (let i = 0; i < vs_size(mp); i = i + 1) {
+            let mp = module_path as StringVector*;
+            for (let i = 0; i < sv_size(mp); i = i + 1) {
                 if (i > 0) { sb_append(sb, "."); }
-                sb_append(sb, vs_get(mp, i));
+                sb_append(sb, sv_get(mp, i));
             }
-            if (vs_size(mp) > 0) {
+            if (sv_size(mp) > 0) {
                 sb_append(sb, "::");
             }
         }
         if (name_qualifier != null) {
-            let nq = name_qualifier as VectorString*;
-            for (let i = 0; i < vs_size(nq); i = i + 1) {
-                sb_append(sb, vs_get(nq, i));
+            let nq = name_qualifier as StringVector*;
+            for (let i = 0; i < sv_size(nq); i = i + 1) {
+                sb_append(sb, sv_get(nq, i));
                 sb_append(sb, "::");
             }
         }
@@ -293,11 +293,11 @@ func ap_print_pattern(id: PatternId, pr: ParseResult*, indent: int) {
                 ap_print_line(indent, sb_to_string(sb));
             }
             if (node.vars != null) {
-                let vars = node.vars as VectorString*;
-                if (vs_size(vars) > 0) {
+                let vars = node.vars as StringVector*;
+                if (sv_size(vars) > 0) {
                     ap_print_label(indent, "vars");
-                    for (let i = 0; i < vs_size(vars); i = i + 1) {
-                        ap_print_line(indent + 2, ap_quote_string(vs_get(vars, i)));
+                    for (let i = 0; i < sv_size(vars); i = i + 1) {
+                        ap_print_line(indent + 2, ap_quote_string(sv_get(vars, i)));
                     }
                 }
             }

@@ -585,15 +585,15 @@ func sig_cycle_visit(tables: SignatureTables*, key: string, visiting: StringSet*
 func sig_detect_value_type_cycles(tables: SignatureTables*, diags: DiagCollector*) {
     with (let visiting = ss_create() => ss_free(visiting),
           let visited = ss_create() => ss_free(visited),
-          let keys = spm_keys(tables.struct_infos) => vs_free(keys),
-          let enum_keys = spm_keys(tables.enum_infos) => vs_free(enum_keys)) {
-        for (let i = 0; i < vs_size(keys); i = i + 1) {
-            if (sig_cycle_visit(tables, vs_get(keys, i), visiting, visited, diags)) {
+          let keys = spm_keys(tables.struct_infos) => sv_free(keys),
+          let enum_keys = spm_keys(tables.enum_infos) => sv_free(enum_keys)) {
+        for (let i = 0; i < sv_size(keys); i = i + 1) {
+            if (sig_cycle_visit(tables, sv_get(keys, i), visiting, visited, diags)) {
                 return;
             }
         }
-        for (let enum_key_i = 0; enum_key_i < vs_size(enum_keys); enum_key_i = enum_key_i + 1) {
-            if (sig_cycle_visit(tables, vs_get(enum_keys, enum_key_i), visiting, visited, diags)) {
+        for (let enum_key_i = 0; enum_key_i < sv_size(enum_keys); enum_key_i = enum_key_i + 1) {
+            if (sig_cycle_visit(tables, sv_get(enum_keys, enum_key_i), visiting, visited, diags)) {
                 return;
             }
         }

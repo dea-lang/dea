@@ -23,7 +23,7 @@ import std.vector;
  * parts in a vector.
  */
 struct StringBuffer {
-    parts: VectorString*; // Vector of strings
+    parts: StringVector*; // Vector of strings
     size: int; // Total size of all parts (cached for efficiency)
 }
 
@@ -33,7 +33,7 @@ struct StringBuffer {
  * @return A pointer to the newly created StringBuffer.
  */
 func sb_create() -> StringBuffer* {
-    let parts = vs_create(8);
+    let parts = sv_create(8);
     let self = new StringBuffer(parts, 0);
     return self;
 }
@@ -45,7 +45,7 @@ func sb_create() -> StringBuffer* {
  * @param s The string to append.
  */
 func sb_append(self: StringBuffer*, s: string) {
-    vs_push(self.parts, s);
+    sv_push(self.parts, s);
     self.size = self.size + len_s(s);
 }
 
@@ -78,8 +78,8 @@ func sb_append_byte(self: StringBuffer*, b: byte){
 func sb_to_string(self: StringBuffer*) -> string {
     with (let cb = cb_create() => cb_free(cb)) {
         cb_reserve(cb, self.size);
-        for (let i: int = 0; i < vs_size(self.parts); i = i + 1) {
-            cb_append_s(cb, vs_get(self.parts, i));
+        for (let i: int = 0; i < sv_size(self.parts); i = i + 1) {
+            cb_append_s(cb, sv_get(self.parts, i));
         }
         return cb_to_string(cb);
     }
@@ -101,7 +101,7 @@ func sb_size(self: StringBuffer*) -> int {
  * @param self String buffer to free.
  */
 func sb_free(self: StringBuffer*) {
-    vs_free(self.parts);
+    sv_free(self.parts);
     drop self;
 }
 
@@ -315,12 +315,12 @@ func repeat_s(s: string, count: int) -> string {
  *
  * @param s The string to split.
  * @param sep The separator string.
- * @return A new VectorString containing the parts.
+ * @return A new StringVector containing the parts.
  */
-func split_s(s: string, sep: string) -> VectorString* {
+func split_s(s: string, sep: string) -> StringVector* {
     assert(!is_empty_s(sep), "split_s: separator must be non-empty");
 
-    let out = vs_create(4);
+    let out = sv_create(4);
     let n = len_s(s);
     let sep_len = len_s(sep);
 
@@ -332,12 +332,12 @@ func split_s(s: string, sep: string) -> VectorString* {
         if (hit < 0) {
             break;
         }
-        vs_push(out, slice_s(s, start, hit));
+        sv_push(out, slice_s(s, start, hit));
         start = hit + sep_len;
         search_pos = start;
     }
 
-    vs_push(out, slice_s(s, start, n));
+    sv_push(out, slice_s(s, start, n));
     return out;
 }
 
@@ -359,10 +359,10 @@ func _line_strip_trailing_cr(s: string) -> string {
  * Splits a string into lines, supporting both LF and CRLF.
  *
  * @param s The string to split into lines.
- * @return A new VectorString containing the lines.
+ * @return A new StringVector containing the lines.
  */
-func lines_s(s: string) -> VectorString* {
-    let out = vs_create(16);
+func lines_s(s: string) -> StringVector* {
+    let out = sv_create(16);
     let n = len_s(s);
     if (n == 0) {
         return out;
@@ -371,13 +371,13 @@ func lines_s(s: string) -> VectorString* {
     let start = 0;
     for (let i = 0; i < n; i = i + 1) {
         if (char_at_s(s, i) == '\n') {
-            vs_push(out, _line_strip_trailing_cr(slice_s(s, start, i)));
+            sv_push(out, _line_strip_trailing_cr(slice_s(s, start, i)));
             start = i + 1;
         }
     }
 
     if (start < n) {
-        vs_push(out, _line_strip_trailing_cr(slice_s(s, start, n)));
+        sv_push(out, _line_strip_trailing_cr(slice_s(s, start, n)));
     }
 
     return out;
@@ -390,8 +390,8 @@ func lines_s(s: string) -> VectorString* {
  * @param sep The separator string.
  * @return The single joined string.
  */
-func join_s(parts: VectorString*, sep: string) -> string {
-    let count = vs_size(parts);
+func join_s(parts: StringVector*, sep: string) -> string {
+    let count = sv_size(parts);
     if (count == 0) {
         return "";
     }
@@ -399,7 +399,7 @@ func join_s(parts: VectorString*, sep: string) -> string {
     let sep_len = len_s(sep);
     let total_len = sep_len * (count - 1);
     for (let p = 0; p < count; p = p + 1) {
-        total_len = total_len + len_s(vs_get(parts, p));
+        total_len = total_len + len_s(sv_get(parts, p));
     }
 
     with (let cb = cb_create() => cb_free(cb)) {
@@ -408,7 +408,7 @@ func join_s(parts: VectorString*, sep: string) -> string {
             if (i > 0) {
                 cb_append_s(cb, sep);
             }
-            cb_append_s(cb, vs_get(parts, i));
+            cb_append_s(cb, sv_get(parts, i));
         }
         return cb_to_string(cb);
     }

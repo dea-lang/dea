@@ -308,7 +308,7 @@ func lm_get(self: LinearMapBase*, key_ptr: void*) -> void*? {
 /**
  * Entry for a string-to-string linear map.
  */
-struct LinearMapStringStringEntry {
+struct StringStringLinearMapEntry {
     /* Simple payload, no need for hash codes as they are expensive to compute vs string compare */
     key: string;
     value: string;
@@ -317,36 +317,36 @@ struct LinearMapStringStringEntry {
 /**
  * A linear map specialized for string keys and string values.
  */
-struct LinearMapStringString {
+struct StringStringLinearMap {
     base: LinearMapBase*;
 }
 
 /* ---------------------------------
-   LinearMapStringString internal functions
+   StringStringLinearMap internal functions
    --------------------------------- */
 
 /**
  * Returns a pointer to the string-string entry at the specified index.
  *
- * @param self The pointer to the LinearMapStringString.
+ * @param self The pointer to the StringStringLinearMap.
  * @param index The index of the entry.
- * @return A pointer to the LinearMapStringStringEntry.
+ * @return A pointer to the StringStringLinearMapEntry.
  */
-func _lmss_entry_by_index(self: LinearMapStringString*, index: int) -> LinearMapStringStringEntry* {
-    let entry_ptr = vec_get(self.base.entries, index) as LinearMapStringStringEntry*;
+func _sslm_entry_by_index(self: StringStringLinearMap*, index: int) -> StringStringLinearMapEntry* {
+    let entry_ptr = vec_get(self.base.entries, index) as StringStringLinearMapEntry*;
     return entry_ptr;
 }
 
 /**
  * Finds the index of an entry by its string key.
  *
- * @param self The pointer to the LinearMapStringString.
+ * @param self The pointer to the StringStringLinearMap.
  * @param key The key string to find.
  * @return The index of the entry, or -1 if not found.
  */
-func _lmss_find_by_key(self: LinearMapStringString*, key: string) -> int {
+func _sslm_find_by_key(self: StringStringLinearMap*, key: string) -> int {
     for (let i: int = 0; i < self.base.entries.length; i = i + 1) {
-        let entry_ptr = _lmss_entry_by_index(self, i);
+        let entry_ptr = _sslm_entry_by_index(self, i);
         if (entry_ptr.key == key) {
             return i;
         }
@@ -355,7 +355,7 @@ func _lmss_find_by_key(self: LinearMapStringString*, key: string) -> int {
 }
 
 /* ---------------------------------
-   LinearMapStringString public functions
+   StringStringLinearMap public functions
    --------------------------------- */
 
 /**
@@ -364,14 +364,14 @@ func _lmss_find_by_key(self: LinearMapStringString*, key: string) -> int {
  * @param initial_capacity The initial capacity of the map.
  * @return A pointer to the newly created map.
  */
-func lmss_create(initial_capacity: int) -> LinearMapStringString* {
-    let entry_size = sizeof(LinearMapStringStringEntry);
+func sslm_create(initial_capacity: int) -> StringStringLinearMap* {
+    let entry_size = sizeof(StringStringLinearMapEntry);
     let base = new LinearMapBase(
         vec_create(entry_size, initial_capacity),
         sizeof(string),
         sizeof(string)
     );
-    return new LinearMapStringString(base);
+    return new StringStringLinearMap(base);
 }
 
 /**
@@ -379,10 +379,10 @@ func lmss_create(initial_capacity: int) -> LinearMapStringString* {
  *
  * @param self Map to free.
  */
-func lmss_free(self: LinearMapStringString*) {
+func sslm_free(self: StringStringLinearMap*) {
     // Release all strings before freeing the underlying storage
     for (let i: int = 0; i < self.base.entries.length; i = i + 1) {
-        let entry_ptr = _lmss_entry_by_index(self, i);
+        let entry_ptr = _sslm_entry_by_index(self, i);
         rt_string_release(entry_ptr.key);
         rt_string_release(entry_ptr.value);
     }
@@ -396,7 +396,7 @@ func lmss_free(self: LinearMapStringString*) {
  * @param self The pointer to the map.
  * @return The entry count.
  */
-func lmss_len(self: LinearMapStringString*) -> int {
+func sslm_len(self: StringStringLinearMap*) -> int {
     return self.base.entries.length;
 }
 
@@ -407,12 +407,12 @@ func lmss_len(self: LinearMapStringString*) -> int {
  * @param key The key string.
  * @param value The value string.
  */
-func lmss_set(self: LinearMapStringString*, key: string, value: string) {
-    let index = _lmss_find_by_key(self, key);
+func sslm_set(self: StringStringLinearMap*, key: string, value: string) {
+    let index = _sslm_find_by_key(self, key);
 
     if (index >= 0) {
         // Assignment already performs ARC retain/release for string fields.
-        let entry_ptr = _lmss_entry_by_index(self, index);
+        let entry_ptr = _sslm_entry_by_index(self, index);
         entry_ptr.value = value;
         return;
     }
@@ -420,7 +420,7 @@ func lmss_set(self: LinearMapStringString*, key: string, value: string) {
     // Assignment already performs ARC retain/release for string fields.
     _lm_grow(self.base);
     let new_index = self.base.entries.length - 1;
-    let entry_ptr = _lmss_entry_by_index(self, new_index);
+    let entry_ptr = _sslm_entry_by_index(self, new_index);
     entry_ptr.key = key;
     entry_ptr.value = value;
 }
@@ -432,10 +432,10 @@ func lmss_set(self: LinearMapStringString*, key: string, value: string) {
  * @param key The key string.
  * @return The associated value string, or null if not found.
  */
-func lmss_get(self: LinearMapStringString*, key: string) -> string? {
-    let index = _lmss_find_by_key(self, key);
+func sslm_get(self: StringStringLinearMap*, key: string) -> string? {
+    let index = _sslm_find_by_key(self, key);
     if (index >= 0) {
-        let entry_ptr = _lmss_entry_by_index(self, index);
+        let entry_ptr = _sslm_entry_by_index(self, index);
         return entry_ptr.value;
     }
     return null;
@@ -448,8 +448,8 @@ func lmss_get(self: LinearMapStringString*, key: string) -> string? {
  * @param key The key string.
  * @return True if present, false otherwise.
  */
-func lmss_contains(self: LinearMapStringString*, key: string) -> bool {
-    return _lmss_find_by_key(self, key) >= 0;
+func sslm_contains(self: StringStringLinearMap*, key: string) -> bool {
+    return _sslm_find_by_key(self, key) >= 0;
 }
 
 /**
@@ -459,24 +459,24 @@ func lmss_contains(self: LinearMapStringString*, key: string) -> bool {
  * @param key The key string to remove.
  * @return True if found and removed, false otherwise.
  */
-func lmss_remove(self: LinearMapStringString*, key: string) -> bool {
-    let index = _lmss_find_by_key(self, key);
+func sslm_remove(self: StringStringLinearMap*, key: string) -> bool {
+    let index = _sslm_find_by_key(self, key);
 
     if (index < 0) {
         return false;
     }
 
     // Release strings for the entry being removed
-    let entry_ptr = _lmss_entry_by_index(self, index);
+    let entry_ptr = _sslm_entry_by_index(self, index);
     rt_string_release(entry_ptr.key);
     rt_string_release(entry_ptr.value);
 
     // Swap with last entry and shrink
     let last_index = self.base.entries.length - 1;
     if (index != last_index) {
-        let last_entry_ptr = _lmss_entry_by_index(self, last_index);
+        let last_entry_ptr = _sslm_entry_by_index(self, last_index);
         // Move bytes to avoid extra ARC retains from field-by-field assignment.
-        rt_memcpy(entry_ptr, last_entry_ptr, sizeof(LinearMapStringStringEntry));
+        rt_memcpy(entry_ptr, last_entry_ptr, sizeof(StringStringLinearMapEntry));
     }
     vec_zap(self.base.entries, last_index);
     self.base.entries.length = self.base.entries.length - 1;
@@ -490,8 +490,8 @@ func lmss_remove(self: LinearMapStringString*, key: string) -> bool {
  * @param index The entry index.
  * @return The key string.
  */
-func lmss_key_at(self: LinearMapStringString*, index: int) -> string {
-    let entry_ptr = _lmss_entry_by_index(self, index);
+func sslm_key_at(self: StringStringLinearMap*, index: int) -> string {
+    let entry_ptr = _sslm_entry_by_index(self, index);
     return entry_ptr.key;
 }
 
@@ -502,8 +502,8 @@ func lmss_key_at(self: LinearMapStringString*, index: int) -> string {
  * @param index The entry index.
  * @return The value string.
  */
-func lmss_value_at(self: LinearMapStringString*, index: int) -> string {
-    let entry_ptr = _lmss_entry_by_index(self, index);
+func sslm_value_at(self: StringStringLinearMap*, index: int) -> string {
+    let entry_ptr = _sslm_entry_by_index(self, index);
     return entry_ptr.value;
 }
 
@@ -514,7 +514,7 @@ func lmss_value_at(self: LinearMapStringString*, index: int) -> string {
 /**
  * Entry for an integer-to-string linear map.
  */
-struct LinearMapIntStringEntry {
+struct IntStringLinearMapEntry {
     /* Simple payload, no need for hash codes as int key and string value are straightforward to compare */
     key: int;
     value: string;
@@ -523,36 +523,36 @@ struct LinearMapIntStringEntry {
 /**
  * A linear map specialized for integer keys and string values.
  */
-struct LinearMapIntString {
+struct IntStringLinearMap {
     base: LinearMapBase*;
 }
 
 /* ---------------------------------
-   LinearMapIntString internal functions
+   IntStringLinearMap internal functions
    --------------------------------- */
 
 /**
  * Returns a pointer to the int-string entry at the specified index.
  *
- * @param self The pointer to the LinearMapIntString.
+ * @param self The pointer to the IntStringLinearMap.
  * @param index The index of the entry.
- * @return A pointer to the LinearMapIntStringEntry.
+ * @return A pointer to the IntStringLinearMapEntry.
  */
-func _lmis_entry_by_index(self: LinearMapIntString*, index: int) -> LinearMapIntStringEntry* {
-    let entry_ptr = vec_get(self.base.entries, index) as LinearMapIntStringEntry*;
+func _islm_entry_by_index(self: IntStringLinearMap*, index: int) -> IntStringLinearMapEntry* {
+    let entry_ptr = vec_get(self.base.entries, index) as IntStringLinearMapEntry*;
     return entry_ptr;
 }
 
 /**
  * Finds the index of an entry by its integer key.
  *
- * @param self The pointer to the LinearMapIntString.
+ * @param self The pointer to the IntStringLinearMap.
  * @param key The integer key to find.
  * @return The index of the entry, or -1 if not found.
  */
-func _lmis_find_by_key(self: LinearMapIntString*, key: int) -> int {
+func _islm_find_by_key(self: IntStringLinearMap*, key: int) -> int {
     for (let i: int = 0; i < self.base.entries.length; i = i + 1) {
-        let entry_ptr = _lmis_entry_by_index(self, i);
+        let entry_ptr = _islm_entry_by_index(self, i);
         if (entry_ptr.key == key) {
             return i;
         }
@@ -561,7 +561,7 @@ func _lmis_find_by_key(self: LinearMapIntString*, key: int) -> int {
 }
 
 /* ---------------------------------
-   LinearMapIntString public functions
+   IntStringLinearMap public functions
    --------------------------------- */
 
 /**
@@ -570,14 +570,14 @@ func _lmis_find_by_key(self: LinearMapIntString*, key: int) -> int {
  * @param initial_capacity The initial capacity of the map.
  * @return A pointer to the newly created map.
  */
-func lmis_create(initial_capacity: int) -> LinearMapIntString* {
-    let entry_size = sizeof(LinearMapIntStringEntry);
+func islm_create(initial_capacity: int) -> IntStringLinearMap* {
+    let entry_size = sizeof(IntStringLinearMapEntry);
     let base = new LinearMapBase(
         vec_create(entry_size, initial_capacity),
         sizeof(int),
         sizeof(string)
     );
-    return new LinearMapIntString(base);
+    return new IntStringLinearMap(base);
 }
 
 /**
@@ -585,10 +585,10 @@ func lmis_create(initial_capacity: int) -> LinearMapIntString* {
  *
  * @param self Map to free.
  */
-func lmis_free(self: LinearMapIntString*) {
+func islm_free(self: IntStringLinearMap*) {
     // Release all string values before freeing the underlying storage
     for (let i: int = 0; i < self.base.entries.length; i = i + 1) {
-        let entry_ptr = _lmis_entry_by_index(self, i);
+        let entry_ptr = _islm_entry_by_index(self, i);
         rt_string_release(entry_ptr.value);
     }
     lm_free(self.base);
@@ -601,7 +601,7 @@ func lmis_free(self: LinearMapIntString*) {
  * @param self The pointer to the map.
  * @return The entry count.
  */
-func lmis_len(self: LinearMapIntString*) -> int {
+func islm_len(self: IntStringLinearMap*) -> int {
     return self.base.entries.length;
 }
 
@@ -612,12 +612,12 @@ func lmis_len(self: LinearMapIntString*) -> int {
  * @param key The integer key.
  * @param value The value string.
  */
-func lmis_set(self: LinearMapIntString*, key: int, value: string) {
-    let index = _lmis_find_by_key(self, key);
+func islm_set(self: IntStringLinearMap*, key: int, value: string) {
+    let index = _islm_find_by_key(self, key);
 
     if (index >= 0) {
         // Assignment already performs ARC retain/release for string fields.
-        let entry_ptr = _lmis_entry_by_index(self, index);
+        let entry_ptr = _islm_entry_by_index(self, index);
         entry_ptr.value = value;
         return;
     }
@@ -625,7 +625,7 @@ func lmis_set(self: LinearMapIntString*, key: int, value: string) {
     // Assignment already performs ARC retain/release for string fields.
     _lm_grow(self.base);
     let new_index = self.base.entries.length - 1;
-    let entry_ptr = _lmis_entry_by_index(self, new_index);
+    let entry_ptr = _islm_entry_by_index(self, new_index);
     entry_ptr.key = key;
     entry_ptr.value = value;
 }
@@ -637,10 +637,10 @@ func lmis_set(self: LinearMapIntString*, key: int, value: string) {
  * @param key The integer key.
  * @return The associated value string, or null if not found.
  */
-func lmis_get(self: LinearMapIntString*, key: int) -> string? {
-    let index = _lmis_find_by_key(self, key);
+func islm_get(self: IntStringLinearMap*, key: int) -> string? {
+    let index = _islm_find_by_key(self, key);
     if (index >= 0) {
-        let entry_ptr = _lmis_entry_by_index(self, index);
+        let entry_ptr = _islm_entry_by_index(self, index);
         return entry_ptr.value;
     }
     return null;
@@ -653,8 +653,8 @@ func lmis_get(self: LinearMapIntString*, key: int) -> string? {
  * @param key The integer key.
  * @return True if present, false otherwise.
  */
-func lmis_contains(self: LinearMapIntString*, key: int) -> bool {
-    return _lmis_find_by_key(self, key) >= 0;
+func islm_contains(self: IntStringLinearMap*, key: int) -> bool {
+    return _islm_find_by_key(self, key) >= 0;
 }
 
 /**
@@ -664,23 +664,23 @@ func lmis_contains(self: LinearMapIntString*, key: int) -> bool {
  * @param key The integer key to remove.
  * @return True if found and removed, false otherwise.
  */
-func lmis_remove(self: LinearMapIntString*, key: int) -> bool {
-    let index = _lmis_find_by_key(self, key);
+func islm_remove(self: IntStringLinearMap*, key: int) -> bool {
+    let index = _islm_find_by_key(self, key);
 
     if (index < 0) {
         return false;
     }
 
     // Release string value for the entry being removed
-    let entry_ptr = _lmis_entry_by_index(self, index);
+    let entry_ptr = _islm_entry_by_index(self, index);
     rt_string_release(entry_ptr.value);
 
     // Swap with last entry and shrink
     let last_index = self.base.entries.length - 1;
     if (index != last_index) {
-        let last_entry_ptr = _lmis_entry_by_index(self, last_index);
+        let last_entry_ptr = _islm_entry_by_index(self, last_index);
         // Move bytes to avoid extra ARC retains from field-by-field assignment.
-        rt_memcpy(entry_ptr, last_entry_ptr, sizeof(LinearMapIntStringEntry));
+        rt_memcpy(entry_ptr, last_entry_ptr, sizeof(IntStringLinearMapEntry));
     }
     vec_zap(self.base.entries, last_index);
     self.base.entries.length = self.base.entries.length - 1;
@@ -694,8 +694,8 @@ func lmis_remove(self: LinearMapIntString*, key: int) -> bool {
  * @param index The entry index.
  * @return The integer key.
  */
-func lmis_key_at(self: LinearMapIntString*, index: int) -> int {
-    let entry_ptr = _lmis_entry_by_index(self, index);
+func islm_key_at(self: IntStringLinearMap*, index: int) -> int {
+    let entry_ptr = _islm_entry_by_index(self, index);
     return entry_ptr.key;
 }
 
@@ -706,7 +706,7 @@ func lmis_key_at(self: LinearMapIntString*, index: int) -> int {
  * @param index The entry index.
  * @return The value string.
  */
-func lmis_value_at(self: LinearMapIntString*, index: int) -> string {
-    let entry_ptr = _lmis_entry_by_index(self, index);
+func islm_value_at(self: IntStringLinearMap*, index: int) -> string {
+    let entry_ptr = _islm_entry_by_index(self, index);
     return entry_ptr.value;
 }

@@ -558,7 +558,7 @@ def test_trace_arc_optional_unwrap_return_stabilized(
 def test_trace_arc_optional_unwrap_into_vector_stabilized(
     analyze_single, compile_and_run, tmp_path
 ):
-    """`vs_push(v, opt as string)` must not leave vector entries dangling."""
+    """`sv_push(v, opt as string)` must not leave vector entries dangling."""
     ok, stdout, _stderr, arc = _compile_with_trace_arc(
         analyze_single,
         compile_and_run,
@@ -569,18 +569,18 @@ def test_trace_arc_optional_unwrap_into_vector_stabilized(
         import std.vector;
         import std.io;
 
-        func build() -> VectorString* {
-            let v = vs_create(0);
+        func build() -> StringVector* {
+            let v = sv_create(0);
             let opt: string? = concat_s("c", "d") as string?;
-            vs_push(v, opt as string);
+            sv_push(v, opt as string);
             return v;
         }
 
         func main() -> int {
             let v = build();
-            let s = vs_get(v, 0);
+            let s = sv_get(v, 0);
             printl_s(s);
-            vs_free(v);
+            sv_free(v);
             return 0;
         }
         """,

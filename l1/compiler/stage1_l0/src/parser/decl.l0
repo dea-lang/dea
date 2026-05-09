@@ -342,14 +342,14 @@ func ps_parse_top_level_decl(self: ParserState*) -> TopLevelDecl*? {
  * @param message Diagnostic message for following identifier failures.
  * @return Parsed names in source order, or `null` on error.
  */
-func ps_parse_ident_list_rest(self: ParserState*, first_tok: Token, code: string, message: string) -> VectorString*? {
-    with (let names: VectorString*? = vs_create(4) => vs_free_opt(names)) {
-        vs_push(names as VectorString*, token_ident_text(first_tok) as string);
+func ps_parse_ident_list_rest(self: ParserState*, first_tok: Token, code: string, message: string) -> StringVector*? {
+    with (let names: StringVector*? = sv_create(4) => sv_free_opt(names)) {
+        sv_push(names as StringVector*, token_ident_text(first_tok) as string);
         while (ps_match(self, ord(TT_COMMA))) {
             let tok = ps_expect_ident(self, code, message)?;
-            vs_push(names as VectorString*, token_ident_text(tok) as string);
+            sv_push(names as StringVector*, token_ident_text(tok) as string);
         }
-        let result = names as VectorString*;
+        let result = names as StringVector*;
         names = null;
         return result;
     }
@@ -371,14 +371,14 @@ func ps_parse_export_manifest(self: ParserState*) -> ExportManifest*? {
 
     if (ps_match(self, ord(TT_STAR))) {
         ps_expect(self, ord(TT_SEMI), "PAR-0541", "expected ';' after export manifest")?;
-        return new ExportManifest(true, vs_create(0), ps_extend_span(self, start));
+        return new ExportManifest(true, sv_create(0), ps_extend_span(self, start));
     }
 
     let first = ps_expect_ident(self, "PAR-0540", "expected exported name or '*' after 'export'")?;
-    with (let names: VectorString*? = ps_parse_ident_list_rest(self, first, "PAR-0540",
-              "expected exported name after ','") => vs_free_opt(names)) {
+    with (let names: StringVector*? = ps_parse_ident_list_rest(self, first, "PAR-0540",
+              "expected exported name after ','") => sv_free_opt(names)) {
         ps_expect(self, ord(TT_SEMI), "PAR-0541", "expected ';' after export manifest")?;
-        let result = new ExportManifest(false, names as VectorString*, ps_extend_span(self, start));
+        let result = new ExportManifest(false, names as StringVector*, ps_extend_span(self, start));
         names = null;
         return result;
     }
@@ -397,13 +397,13 @@ func ps_parse_import_decl(self: ParserState*) -> Import*? {
     let first_text = token_ident_text(first) as string;
 
     if (ps_check(self, ord(TT_COMMA)) || ps_check(self, ord(TT_FROM))) {
-        with (let names: VectorString*? = ps_parse_ident_list_rest(self, first, "PAR-0544",
-                  "expected imported symbol name after ','") => vs_free_opt(names)) {
+        with (let names: StringVector*? = ps_parse_ident_list_rest(self, first, "PAR-0544",
+                  "expected imported symbol name after ','") => sv_free_opt(names)) {
             ps_expect(self, ord(TT_FROM), "PAR-0545", "expected 'from' after selective import list")?;
             let module_tok = ps_expect_ident(self, "PAR-0546", "expected imported module name after 'from'")?;
             let module_name = parse_dotted_name_rest(self, token_ident_text(module_tok) as string)?;
             ps_expect(self, ord(TT_SEMI), "PAR-0321", "expected ';' after import")?;
-            let result = new Import(module_name, IMPORT_SELECTIVE, "", names as VectorString*, ps_extend_span(self, start));
+            let result = new Import(module_name, IMPORT_SELECTIVE, "", names as StringVector*, ps_extend_span(self, start));
             names = null;
             return result;
         }

@@ -78,11 +78,11 @@ func mt_expect_opt_null(label: string, actual: int?) {
  * @param label Human-readable case label.
  */
 func mt_expect_runtime_failure(module_name: string, label: string) {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, mt_fixture_root());
-        vs_push(argv, module_name);
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, mt_fixture_root());
+        sv_push(argv, module_name);
 
         let rc = run_with_argv(argv);
         assert(rc != 0, "expected runtime failure: " + label);

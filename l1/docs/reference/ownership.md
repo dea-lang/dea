@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-04-30
+Version: 2026-05-09
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -121,10 +121,10 @@ In ordinary L1 code, you should not need to add a compensating manual retain aft
 
 ## 6. Container Ownership Contracts
 
-### `std.vector` / `VectorString`
+### `std.vector` / `StringVector`
 
-- `vs_push` uses assignment semantics
-- `vs_clear` and `vs_free` release stored strings before clearing/freeing storage
+- `sv_push` uses assignment semantics
+- `sv_clear` and `sv_free` release stored strings before clearing/freeing storage
 - the generic `vec_*` layer is not ARC-aware by itself
 
 ### `std.hashmap`
@@ -132,13 +132,13 @@ In ordinary L1 code, you should not need to add a compensating manual retain aft
 - map keys are ARC strings owned by the map
 - insert/update retains new keys and releases replaced keys
 - remove/clear/free release all occupied keys
-- `spm_keys` and `sim_keys` return caller-owned `VectorString*`
+- `spm_keys` and `sim_keys` return caller-owned `StringVector*`
 
 ### `std.hashset`
 
 - set keys are ARC strings owned by the set
 - add/remove/clear/free follow the same retain/release discipline as map keys
-- `ss_to_vector` returns caller-owned `VectorString*`
+- `ss_to_vector` returns caller-owned `StringVector*`
 
 ### `std.linear_map`
 

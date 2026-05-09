@@ -995,7 +995,7 @@ def test_render_markdown_site_recovers_nullable_l0_struct_fields_from_source(tmp
         """module ast;
 
 struct TypeRef {
-    module_path: VectorString*?;   // string entries
+    module_path: StringVector*?;   // string entries
 }
 """,
         encoding="utf-8",
@@ -1020,8 +1020,8 @@ struct TypeRef {
     <compoundname>TypeRef</compoundname>
     <sectiondef kind="public-attrib">
       <memberdef kind="variable" id="struct_type_ref_1a_module_path" prot="public">
-        <type>VectorString *</type>
-        <definition>VectorString * TypeRef::module_path</definition>
+        <type>StringVector *</type>
+        <definition>StringVector * TypeRef::module_path</definition>
         <name>module_path</name>
         <qualifiedname>TypeRef::module_path</qualifiedname>
         <location file="compiler/stage2_l0/src/ast.l0" line="4" />
@@ -1038,7 +1038,7 @@ struct TypeRef {
     render_markdown_site(xml_dir, output_dir, templates_dir)
 
     page = (output_dir / "compiler/stage2_l0/src/ast.md").read_text(encoding="utf-8")
-    assert "module_path: VectorString*?" in page
+    assert "module_path: StringVector*?" in page
 
 
 def test_render_markdown_site_uses_display_language_mapping_for_l0(tmp_path: Path) -> None:
@@ -1400,11 +1400,11 @@ def test_render_markdown_site_normalizes_l0_function_signature_spacing(tmp_path:
     <sectiondef kind="func">
       <memberdef kind="function" id="driver_8l0_1a" prot="public">
         <type>bool</type>
-        <definition>bool dr_vs_has</definition>
-        <argsstring>(VectorString *items, string module_name)</argsstring>
-        <name>dr_vs_has</name>
+        <definition>bool dr_sv_has</definition>
+        <argsstring>(StringVector *items, string module_name)</argsstring>
+        <name>dr_sv_has</name>
         <param>
-          <type>VectorString *</type>
+          <type>StringVector *</type>
           <declname>items</declname>
         </param>
         <param>
@@ -1425,7 +1425,7 @@ def test_render_markdown_site_normalizes_l0_function_signature_spacing(tmp_path:
     render_markdown_site(xml_dir, output_dir, templates_dir)
 
     page = (output_dir / "compiler/stage2_l0/src/driver.md").read_text(encoding="utf-8")
-    assert "func dr_vs_has(items: VectorString*, module_name: string) -> bool" in page
+    assert "func dr_sv_has(items: StringVector*, module_name: string) -> bool" in page
 
 
 def test_render_curated_html_site_keeps_stage1_page_as_hub(tmp_path: Path) -> None:

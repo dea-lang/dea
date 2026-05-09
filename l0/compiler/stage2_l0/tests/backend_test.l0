@@ -33,7 +33,7 @@ import util.log;
  * @return New empty driver state.
  */
 func bt_empty_driver_state() -> DriverState* {
-    return new DriverState("", ptr_vec_create(0), vs_create(0), diag_create(), vs_create(0), vs_create(0));
+    return new DriverState("", ptr_vec_create(0), sv_create(0), diag_create(), sv_create(0), sv_create(0));
 }
 
 /**
@@ -60,8 +60,8 @@ func bt_push_source_unit(state: DriverState*, source: string, filename: string) 
     }
 
     let mod = pr.root_module as Module*;
-    vs_push(state.source_names, filename);
-    vs_push(state.source_texts, source);
+    sv_push(state.source_names, filename);
+    sv_push(state.source_texts, source);
     ptr_vec_push(state.units, new DriverUnit(mod.name, filename, pr) as void*);
 }
 
@@ -73,12 +73,12 @@ func bt_push_source_unit(state: DriverState*, source: string, filename: string) 
  * @param sources Module source texts aligned with `filenames`.
  * @return Fully analyzed result.
  */
-func bt_analyze_sources(entry_module: string, filenames: VectorString*, sources: VectorString*) -> AnalysisResult* {
-    let state = new DriverState(entry_module, ptr_vec_create(vs_size(sources)), vs_create(vs_size(sources)), diag_create(),
-        vs_create(vs_size(sources)), vs_create(vs_size(sources)));
+func bt_analyze_sources(entry_module: string, filenames: StringVector*, sources: StringVector*) -> AnalysisResult* {
+    let state = new DriverState(entry_module, ptr_vec_create(sv_size(sources)), sv_create(sv_size(sources)), diag_create(),
+        sv_create(sv_size(sources)), sv_create(sv_size(sources)));
 
-    for (let i = 0; i < vs_size(sources); i = i + 1) {
-        bt_push_source_unit(state, vs_get(sources, i), vs_get(filenames, i));
+    for (let i = 0; i < sv_size(sources); i = i + 1) {
+        bt_push_source_unit(state, sv_get(sources, i), sv_get(filenames, i));
     }
 
     let result = new AnalysisResult(state, diag_create(), null, null, null, spm_create(), sim_create(), spm_create());
@@ -95,10 +95,10 @@ func bt_analyze_sources(entry_module: string, filenames: VectorString*, sources:
  * @param lines Source lines in order.
  * @return Combined source text with trailing newlines.
  */
-func bt_source(lines: VectorString*) -> string {
+func bt_source(lines: StringVector*) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(lines); i = i + 1) {
-            sb_append(sb, vs_get(lines, i));
+        for (let i = 0; i < sv_size(lines); i = i + 1) {
+            sb_append(sb, sv_get(lines, i));
             sb_append(sb, "\n");
         }
         return sb_to_string(sb);
@@ -245,30 +245,30 @@ func test_analysis_has_arc_data_for_struct_and_nullable_pointer() {
  * Tests test_backend_generate_types_and_top_level_lets.
  */
 func test_backend_generate_types_and_top_level_lets() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(16) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "struct Point {");
-        vs_push(lines, "    x: int;");
-        vs_push(lines, "    y: int;");
-        vs_push(lines, "}");
-        vs_push(lines, "enum MaybePoint {");
-        vs_push(lines, "    None;");
-        vs_push(lines, "    Some(value: Point);");
-        vs_push(lines, "}");
-        vs_push(lines, "type Alias = Point;");
-        vs_push(lines, "let origin: Alias = Alias(0, 0);");
-        vs_push(lines, "let empty = None;");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let p: Alias = Alias(origin.x, origin.y);");
-        vs_push(lines, "    return p.x + ord(empty);");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Point {");
+        sv_push(lines, "    x: int;");
+        sv_push(lines, "    y: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "enum MaybePoint {");
+        sv_push(lines, "    None;");
+        sv_push(lines, "    Some(value: Point);");
+        sv_push(lines, "}");
+        sv_push(lines, "type Alias = Point;");
+        sv_push(lines, "let origin: Alias = Alias(0, 0);");
+        sv_push(lines, "let empty = None;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p: Alias = Alias(origin.x, origin.y);");
+        sv_push(lines, "    return p.x + ord(empty);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for type-order fixture");
@@ -295,30 +295,30 @@ func test_backend_generate_types_and_top_level_lets() {
  * Tests test_backend_generate_basic_control_flow.
  */
 func test_backend_generate_basic_control_flow() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(16) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "func add(a: int, b: int) -> int {");
-        vs_push(lines, "    return a + b;");
-        vs_push(lines, "}");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let sum = 0;");
-        vs_push(lines, "    for (let i = 0; i < 3; i = i + 1) {");
-        vs_push(lines, "        if (i < 2) {");
-        vs_push(lines, "            sum = sum + add(i, 1);");
-        vs_push(lines, "        }");
-        vs_push(lines, "    }");
-        vs_push(lines, "    while (sum > 0) {");
-        vs_push(lines, "        return sum;");
-        vs_push(lines, "    }");
-        vs_push(lines, "    return 0;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func add(a: int, b: int) -> int {");
+        sv_push(lines, "    return a + b;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let sum = 0;");
+        sv_push(lines, "    for (let i = 0; i < 3; i = i + 1) {");
+        sv_push(lines, "        if (i < 2) {");
+        sv_push(lines, "            sum = sum + add(i, 1);");
+        sv_push(lines, "        }");
+        sv_push(lines, "    }");
+        sv_push(lines, "    while (sum > 0) {");
+        sv_push(lines, "        return sum;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for control-flow fixture");
@@ -344,27 +344,27 @@ func test_backend_generate_basic_control_flow() {
  * Tests condition headers omit only redundant outer parentheses.
  */
 func test_backend_generate_condition_header_parens() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(16) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "func main(x: int, y: int, flags: int, mask: int) -> int {");
-        vs_push(lines, "    if (x == y) {");
-        vs_push(lines, "        return 1;");
-        vs_push(lines, "    }");
-        vs_push(lines, "    while (x < y) {");
-        vs_push(lines, "        x = x + 1;");
-        vs_push(lines, "    }");
-        vs_push(lines, "    if ((flags & mask) != 0) {");
-        vs_push(lines, "        return 2;");
-        vs_push(lines, "    }");
-        vs_push(lines, "    return 0;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main(x: int, y: int, flags: int, mask: int) -> int {");
+        sv_push(lines, "    if (x == y) {");
+        sv_push(lines, "        return 1;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    while (x < y) {");
+        sv_push(lines, "        x = x + 1;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    if ((flags & mask) != 0) {");
+        sv_push(lines, "        return 2;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for condition-header fixture");
@@ -385,28 +385,28 @@ func test_backend_generate_condition_header_parens() {
  * Tests test_backend_generate_loop_exit_case_lowering.
  */
 func test_backend_generate_loop_exit_case_lowering() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(16) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    for (let i = 0; i < 3; i = i + 1) {");
-        vs_push(lines, "        case (i) {");
-        vs_push(lines, "            0 => {");
-        vs_push(lines, "                continue;");
-        vs_push(lines, "            }");
-        vs_push(lines, "            else {");
-        vs_push(lines, "                break;");
-        vs_push(lines, "            }");
-        vs_push(lines, "        }");
-        vs_push(lines, "    }");
-        vs_push(lines, "    return 0;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    for (let i = 0; i < 3; i = i + 1) {");
+        sv_push(lines, "        case (i) {");
+        sv_push(lines, "            0 => {");
+        sv_push(lines, "                continue;");
+        sv_push(lines, "            }");
+        sv_push(lines, "            else {");
+        sv_push(lines, "                break;");
+        sv_push(lines, "            }");
+        sv_push(lines, "        }");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for case/loop fixture");
@@ -424,38 +424,38 @@ func test_backend_generate_loop_exit_case_lowering() {
  * Tests test_backend_generate_match_and_with_cleanup_block.
  */
 func test_backend_generate_match_and_with_cleanup_block() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(24) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(24) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "enum MaybeInt {");
-        vs_push(lines, "    None;");
-        vs_push(lines, "    Some(value: int);");
-        vs_push(lines, "}");
-        vs_push(lines, "func make() -> MaybeInt {");
-        vs_push(lines, "    return Some(7);");
-        vs_push(lines, "}");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let total = 0;");
-        vs_push(lines, "    with (let x = 1) {");
-        vs_push(lines, "        total = x;");
-        vs_push(lines, "    } cleanup {");
-        vs_push(lines, "        total = x;");
-        vs_push(lines, "    }");
-        vs_push(lines, "    match (make()) {");
-        vs_push(lines, "        Some(v) => {");
-        vs_push(lines, "            return v;");
-        vs_push(lines, "        }");
-        vs_push(lines, "        None => {");
-        vs_push(lines, "            return total;");
-        vs_push(lines, "        }");
-        vs_push(lines, "    }");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "enum MaybeInt {");
+        sv_push(lines, "    None;");
+        sv_push(lines, "    Some(value: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func make() -> MaybeInt {");
+        sv_push(lines, "    return Some(7);");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let total = 0;");
+        sv_push(lines, "    with (let x = 1) {");
+        sv_push(lines, "        total = x;");
+        sv_push(lines, "    } cleanup {");
+        sv_push(lines, "        total = x;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    match (make()) {");
+        sv_push(lines, "        Some(v) => {");
+        sv_push(lines, "            return v;");
+        sv_push(lines, "        }");
+        sv_push(lines, "        None => {");
+        sv_push(lines, "            return total;");
+        sv_push(lines, "        }");
+        sv_push(lines, "    }");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for match/with fixture");
@@ -476,33 +476,33 @@ func test_backend_generate_match_and_with_cleanup_block() {
  * Tests test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets.
  */
 func test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(20) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(20) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "enum Expr {");
-        vs_push(lines, "    Num(value: int);");
-        vs_push(lines, "}");
-        vs_push(lines, "func parse(c: int) -> Expr*? {");
-        vs_push(lines, "    return null;");
-        vs_push(lines, "}");
-        vs_push(lines, "func free_expr(e: Expr*?) {");
-        vs_push(lines, "}");
-        vs_push(lines, "func main() -> Expr*? {");
-        vs_push(lines, "    let result: Expr*? = null;");
-        vs_push(lines, "    with (let left: Expr*? = parse(0)?,");
-        vs_push(lines, "          let right: Expr*? = parse(1)?) {");
-        vs_push(lines, "        return result;");
-        vs_push(lines, "    } cleanup {");
-        vs_push(lines, "        if (result == null) { free_expr(left); free_expr(right); }");
-        vs_push(lines, "    }");
-        vs_push(lines, "    return result;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "enum Expr {");
+        sv_push(lines, "    Num(value: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func parse(c: int) -> Expr*? {");
+        sv_push(lines, "    return null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func free_expr(e: Expr*?) {");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> Expr*? {");
+        sv_push(lines, "    let result: Expr*? = null;");
+        sv_push(lines, "    with (let left: Expr*? = parse(0)?,");
+        sv_push(lines, "          let right: Expr*? = parse(1)?) {");
+        sv_push(lines, "        return result;");
+        sv_push(lines, "    } cleanup {");
+        sv_push(lines, "        if (result == null) { free_expr(left); free_expr(right); }");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return result;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for with-header try fixture");
@@ -531,21 +531,21 @@ func test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_le
  * Tests test_backend_generate_drop_statement.
  */
 func test_backend_generate_drop_statement() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(8) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(8) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "extern func alloc() -> int*;");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let p = alloc();");
-        vs_push(lines, "    drop p;");
-        vs_push(lines, "    return 0;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "extern func alloc() -> int*;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p = alloc();");
+        sv_push(lines, "    drop p;");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for drop fixture");
@@ -562,41 +562,41 @@ func test_backend_generate_drop_statement() {
  * Tests test_backend_generate_new_and_try_lowering.
  */
 func test_backend_generate_new_and_try_lowering() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(24) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(24) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "struct Box {");
-        vs_push(lines, "    value: int;");
-        vs_push(lines, "}");
-        vs_push(lines, "enum Result {");
-        vs_push(lines, "    Ok(value: int);");
-        vs_push(lines, "}");
-        vs_push(lines, "func maybe(flag: bool) -> int? {");
-        vs_push(lines, "    if (flag) { return 7; }");
-        vs_push(lines, "    return null;");
-        vs_push(lines, "}");
-        vs_push(lines, "func maybe_box(flag: bool) -> Box*? {");
-        vs_push(lines, "    if (flag) { return new Box(11); }");
-        vs_push(lines, "    return null;");
-        vs_push(lines, "}");
-        vs_push(lines, "func main() -> int? {");
-        vs_push(lines, "    let z = new Box();");
-        vs_push(lines, "    let p = new Box(7);");
-        vs_push(lines, "    let r = new Ok(9);");
-        vs_push(lines, "    let q = maybe_box(true)?;");
-        vs_push(lines, "    let x = maybe(true)?;");
-        vs_push(lines, "    drop q;");
-        vs_push(lines, "    drop z;");
-        vs_push(lines, "    drop p;");
-        vs_push(lines, "    drop r;");
-        vs_push(lines, "    return x;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Box {");
+        sv_push(lines, "    value: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "enum Result {");
+        sv_push(lines, "    Ok(value: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func maybe(flag: bool) -> int? {");
+        sv_push(lines, "    if (flag) { return 7; }");
+        sv_push(lines, "    return null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func maybe_box(flag: bool) -> Box*? {");
+        sv_push(lines, "    if (flag) { return new Box(11); }");
+        sv_push(lines, "    return null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int? {");
+        sv_push(lines, "    let z = new Box();");
+        sv_push(lines, "    let p = new Box(7);");
+        sv_push(lines, "    let r = new Ok(9);");
+        sv_push(lines, "    let q = maybe_box(true)?;");
+        sv_push(lines, "    let x = maybe(true)?;");
+        sv_push(lines, "    drop q;");
+        sv_push(lines, "    drop z;");
+        sv_push(lines, "    drop p;");
+        sv_push(lines, "    drop r;");
+        sv_push(lines, "    return x;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for new/try fixture");
@@ -622,28 +622,28 @@ func test_backend_generate_new_and_try_lowering() {
  * Tests test_backend_generate_intrinsics_use_analyzed_target_types.
  */
 func test_backend_generate_intrinsics_use_analyzed_target_types() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(16) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "enum Flag {");
-        vs_push(lines, "    Off;");
-        vs_push(lines, "    On;");
-        vs_push(lines, "}");
-        vs_push(lines, "struct Pair {");
-        vs_push(lines, "    left: int;");
-        vs_push(lines, "    right: int;");
-        vs_push(lines, "}");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let p = Pair(1, sizeof(Pair));");
-        vs_push(lines, "    let f = On;");
-        vs_push(lines, "    return p.right + ord(f);");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "enum Flag {");
+        sv_push(lines, "    Off;");
+        sv_push(lines, "    On;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct Pair {");
+        sv_push(lines, "    left: int;");
+        sv_push(lines, "    right: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p = Pair(1, sizeof(Pair));");
+        sv_push(lines, "    let f = On;");
+        sv_push(lines, "    return p.right + ord(f);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for sizeof/ord fixture");
@@ -661,20 +661,20 @@ func test_backend_generate_intrinsics_use_analyzed_target_types() {
  * Tests test_backend_generate_string_copy_retains.
  */
 func test_backend_generate_string_copy_retains() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(8) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(8) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let s = \"hi\";");
-        vs_push(lines, "    let t = s;");
-        vs_push(lines, "    return 0;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let s = \"hi\";");
+        sv_push(lines, "    let t = s;");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for ARC copy fixture");
@@ -692,21 +692,21 @@ func test_backend_generate_string_copy_retains() {
  * Tests casted-place string copies still retain before entering a new owner.
  */
 func test_backend_generate_identity_cast_string_copy_retains() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(8) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(8) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "func sink(x: string) {}");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let first = \"hi\";");
-        vs_push(lines, "    sink(first as string);");
-        vs_push(lines, "    return 0;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func sink(x: string) {}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let first = \"hi\";");
+        sv_push(lines, "    sink(first as string);");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for identity-cast ARC copy fixture");
@@ -727,24 +727,24 @@ func test_backend_generate_identity_cast_string_copy_retains() {
  * Tests string equality and inequality lowering through the runtime helper.
  */
 func test_backend_generate_string_equality_ops() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(12) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(12) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let lhs = \"dea\";");
-        vs_push(lines, "    let same = \"dea\";");
-        vs_push(lines, "    let different = \"dea!\";");
-        vs_push(lines, "    if (lhs == same && lhs != different) {");
-        vs_push(lines, "        return 23;");
-        vs_push(lines, "    }");
-        vs_push(lines, "    return 0;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let lhs = \"dea\";");
+        sv_push(lines, "    let same = \"dea\";");
+        sv_push(lines, "    let different = \"dea!\";");
+        sv_push(lines, "    if (lhs == same && lhs != different) {");
+        sv_push(lines, "        return 23;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for string equality fixture");
@@ -762,25 +762,25 @@ func test_backend_generate_string_equality_ops() {
  * Tests string relational lowering through the runtime helper.
  */
 func test_backend_generate_string_relational_ops() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(14) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(14) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "func main() -> int {");
-        vs_push(lines, "    let lhs = \"dea\";");
-        vs_push(lines, "    let same = \"dea\";");
-        vs_push(lines, "    let longer = \"dea!\";");
-        vs_push(lines, "    let higher = \"deb\";");
-        vs_push(lines, "    if (lhs < longer && lhs <= same && higher > lhs && higher >= same) {");
-        vs_push(lines, "        return 23;");
-        vs_push(lines, "    }");
-        vs_push(lines, "    return 0;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let lhs = \"dea\";");
+        sv_push(lines, "    let same = \"dea\";");
+        sv_push(lines, "    let longer = \"dea!\";");
+        sv_push(lines, "    let higher = \"deb\";");
+        sv_push(lines, "    if (lhs < longer && lhs <= same && higher > lhs && higher >= same) {");
+        sv_push(lines, "        return 23;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for string relational fixture");
@@ -803,20 +803,20 @@ func test_backend_generate_string_relational_ops() {
  * Tests string concatenation lowering through the runtime helper.
  */
 func test_backend_generate_string_concat_ops() {
-    with (let filenames = vs_create(1) => vs_free(filenames),
-          let sources = vs_create(1) => vs_free(sources),
-          let lines = vs_create(12) => vs_free(lines),
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(12) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
-        vs_push(filenames, "demo/main.l0");
-        vs_push(lines, "module demo.main;");
-        vs_push(lines, "func main() -> string {");
-        vs_push(lines, "    let a = \"hel\";");
-        vs_push(lines, "    let b = \"lo\";");
-        vs_push(lines, "    return a + b;");
-        vs_push(lines, "}");
-        vs_push(sources, bt_source(lines));
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> string {");
+        sv_push(lines, "    let a = \"hel\";");
+        sv_push(lines, "    let b = \"lo\";");
+        sv_push(lines, "    return a + b;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for string concat fixture");

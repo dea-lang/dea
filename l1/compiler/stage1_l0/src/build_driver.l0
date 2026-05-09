@@ -67,7 +67,7 @@ func bd_prepared_input_free_opt(self: BuildPreparedInput*?) {
  * @param sys_roots Effective system-root vector.
  * @param project_roots Effective project-root vector.
  */
-func bd_log_effective_roots(cfg: LogConfig*, sys_roots: VectorString*, project_roots: VectorString*) {
+func bd_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_roots: StringVector*) {
     log_info(cfg, "System root(s): " + sp_format_root_list(sys_roots));
     log_info(cfg, "Project root(s): " + sp_format_root_list(project_roots));
 }
@@ -82,8 +82,8 @@ func bd_log_effective_roots(cfg: LogConfig*, sys_roots: VectorString*, project_r
  */
 func bd_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*) -> BuildPreparedInput*? {
     with (
-        let project_roots = us_vs_clone(opts.project_roots) => vs_free(project_roots),
-        let sys_roots = us_vs_clone(opts.sys_roots) => vs_free(sys_roots)
+        let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
+        let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
     ) {
         sp_apply_default_sys_roots(sys_roots);
 
@@ -102,14 +102,14 @@ func bd_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*)
  * @param dst Destination vector for parsed option words.
  * @param raw Raw options string, or `null`.
  */
-func bd_append_c_option_words(dst: VectorString*, raw: string?) {
+func bd_append_c_option_words(dst: StringVector*, raw: string?) {
     if (raw == null) {
         return;
     }
 
-    with (let parts = us_split_is_space_non_empty(raw as string) => vs_free(parts)) {
-        for (let i = 0; i < vs_size(parts); i = i + 1) {
-            vs_push(dst, vs_get(parts, i));
+    with (let parts = us_split_is_space_non_empty(raw as string) => sv_free(parts)) {
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            sv_push(dst, sv_get(parts, i));
         }
     }
 }
@@ -121,8 +121,8 @@ func bd_append_c_option_words(dst: VectorString*, raw: string?) {
  * @param cli_opts Options from `--c-options`.
  * @return Parsed option words in final order.
  */
-func bd_merge_c_option_words(env_opts: string?, cli_opts: string?) -> VectorString* {
-    let out = vs_create(4);
+func bd_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVector* {
+    let out = sv_create(4);
     bd_append_c_option_words(out, env_opts);
     bd_append_c_option_words(out, cli_opts);
     return out;
@@ -134,19 +134,19 @@ func bd_merge_c_option_words(env_opts: string?, cli_opts: string?) -> VectorStri
  * @param words Option vector to format.
  * @return Python-list-style rendering for verbose logs.
  */
-func bd_format_word_list(words: VectorString*) -> string {
-    if (vs_size(words) == 0) {
+func bd_format_word_list(words: StringVector*) -> string {
+    if (sv_size(words) == 0) {
         return "[]";
     }
 
     with (let sb = sb_create() => sb_free(sb)) {
         sb_append(sb, "[");
-        for (let i = 0; i < vs_size(words); i = i + 1) {
+        for (let i = 0; i < sv_size(words); i = i + 1) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, "'");
-            sb_append(sb, vs_get(words, i));
+            sb_append(sb, sv_get(words, i));
             sb_append(sb, "'");
         }
         sb_append(sb, "]");
@@ -160,7 +160,7 @@ func bd_format_word_list(words: VectorString*) -> string {
  * @param opts Parsed CLI options.
  * @return Parsed option words in final order.
  */
-func bd_collect_c_option_words(opts: CliOptions*) -> VectorString* {
+func bd_collect_c_option_words(opts: CliOptions*) -> StringVector* {
     return bd_merge_c_option_words(env_get("L1_CFLAGS"), opts.c_options);
 }
 
@@ -468,13 +468,13 @@ func bd_windows_exec_token(arg: string) -> string {
  * @param words Command words to quote and join.
  * @return One shell command line.
  */
-func bd_join_shell_words(words: VectorString*) -> string {
+func bd_join_shell_words(words: StringVector*) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
-        for (let i = 0; i < vs_size(words); i = i + 1) {
+        for (let i = 0; i < sv_size(words); i = i + 1) {
             if (i > 0) {
                 sb_append(sb, " ");
             }
-            let word = vs_get(words, i);
+            let word = sv_get(words, i);
             if (bd_is_windows() && i == 0) {
                 word = bd_windows_exec_token(word);
             }
@@ -494,7 +494,7 @@ func bd_join_shell_words(words: VectorString*) -> string {
  * @param words Command words to join.
  * @return Space-delimited command line without shell quoting.
  */
-func bd_join_display_words(words: VectorString*) -> string {
+func bd_join_display_words(words: StringVector*) -> string {
     return join_s(words, " ");
 }
 
@@ -529,9 +529,9 @@ func bd_compiler_flag_family(compiler: string) -> string {
  * @param extra_opts Collected extra C compiler options.
  * @return `true` when an explicit optimization flag is present.
  */
-func bd_has_explicit_opt_flag(extra_opts: VectorString*) -> bool {
-    for (let i = 0; i < vs_size(extra_opts); i = i + 1) {
-        let opt = vs_get(extra_opts, i);
+func bd_has_explicit_opt_flag(extra_opts: StringVector*) -> bool {
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        let opt = sv_get(extra_opts, i);
         if (starts_with_s(opt, "-O") || starts_with_s(opt, "/O")) {
             return true;
         }
@@ -545,9 +545,9 @@ func bd_has_explicit_opt_flag(extra_opts: VectorString*) -> bool {
  * @param extra_opts Collected extra C compiler options.
  * @return `true` when a debug flag is present.
  */
-func bd_has_debug_flag(extra_opts: VectorString*) -> bool {
-    for (let i = 0; i < vs_size(extra_opts); i = i + 1) {
-        let opt = vs_get(extra_opts, i);
+func bd_has_debug_flag(extra_opts: StringVector*) -> bool {
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        let opt = sv_get(extra_opts, i);
         if (opt == "-g" || opt == "/Zi" || opt == "/Z7") {
             return true;
         }
@@ -562,7 +562,7 @@ func bd_has_debug_flag(extra_opts: VectorString*) -> bool {
  * @param extra_opts Collected extra C compiler options.
  * @return Optimization flag, or `null`.
  */
-func bd_get_optimize_flag(family: string, extra_opts: VectorString*) -> string? {
+func bd_get_optimize_flag(family: string, extra_opts: StringVector*) -> string? {
     if (bd_has_explicit_opt_flag(extra_opts)) {
         return null;
     }
@@ -633,14 +633,14 @@ func bd_float_contract_forbidden_option_reason(opt: string) -> string? {
  * @param diags Diagnostic collector for rejection messages.
  * @return `true` when the option set is acceptable.
  */
-func bd_validate_float_c_options(result: AnalysisResult*, extra_opts: VectorString*, diags: DiagCollector*) -> bool {
+func bd_validate_float_c_options(result: AnalysisResult*, extra_opts: StringVector*, diags: DiagCollector*) -> bool {
     if (!analysis_uses_floating_point(result)) {
         return true;
     }
 
     let ok = true;
-    for (let i = 0; i < vs_size(extra_opts); i = i + 1) {
-        let opt = vs_get(extra_opts, i);
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        let opt = sv_get(extra_opts, i);
         let reason = bd_float_contract_forbidden_option_reason(opt);
         if (reason == null) {
             continue;
@@ -664,13 +664,13 @@ func bd_find_c_compiler() -> string? {
         return from_env as string;
     }
 
-    with (let candidates = vs_create(4) => vs_free(candidates)) {
-        vs_push(candidates, "tcc");
-        vs_push(candidates, "gcc");
-        vs_push(candidates, "clang");
-        vs_push(candidates, "cc");
-        for (let i = 0; i < vs_size(candidates); i = i + 1) {
-            let candidate = vs_get(candidates, i);
+    with (let candidates = sv_create(4) => sv_free(candidates)) {
+        sv_push(candidates, "tcc");
+        sv_push(candidates, "gcc");
+        sv_push(candidates, "clang");
+        sv_push(candidates, "cc");
+        for (let i = 0; i < sv_size(candidates); i = i + 1) {
+            let candidate = sv_get(candidates, i);
             let probe = "";
             if (bd_is_windows()) {
                 probe = "where.exe " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
@@ -840,7 +840,7 @@ func bd_runtime_archive_link_name(opts: CliOptions*) -> string {
  * @param build_dir Repo-local L1 build directory, or `null` when unavailable.
  * @return Runtime object paths, or `null` when no repo-local build dir is known.
  */
-func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?) -> VectorString*? {
+func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?) -> StringVector*? {
     if (build_dir == null) {
         return null;
     }
@@ -850,16 +850,16 @@ func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?
         variant = "traced";
     }
     let object_dir = join(join(join(build_dir as string, "runtime"), "tcc"), variant);
-    let paths = vs_create(16);
-    vs_push(paths, join(object_dir, "dea_rt_panic.o"));
-    vs_push(paths, join(object_dir, "dea_rt_sys.o"));
-    vs_push(paths, join(object_dir, "dea_rt_math.o"));
-    vs_push(paths, join(object_dir, "dea_rt_rand.o"));
-    vs_push(paths, join(object_dir, "dea_rt_string.o"));
-    vs_push(paths, join(object_dir, "dea_rt_alloc.o"));
-    vs_push(paths, join(object_dir, "dea_rt_io.o"));
-    vs_push(paths, join(object_dir, "dea_rt_hash.o"));
-    vs_push(paths, join(object_dir, "dea_rt_time.o"));
+    let paths = sv_create(16);
+    sv_push(paths, join(object_dir, "dea_rt_panic.o"));
+    sv_push(paths, join(object_dir, "dea_rt_sys.o"));
+    sv_push(paths, join(object_dir, "dea_rt_math.o"));
+    sv_push(paths, join(object_dir, "dea_rt_rand.o"));
+    sv_push(paths, join(object_dir, "dea_rt_string.o"));
+    sv_push(paths, join(object_dir, "dea_rt_alloc.o"));
+    sv_push(paths, join(object_dir, "dea_rt_io.o"));
+    sv_push(paths, join(object_dir, "dea_rt_hash.o"));
+    sv_push(paths, join(object_dir, "dea_rt_time.o"));
     return paths;
 }
 
@@ -869,7 +869,7 @@ func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?
  * @param opts Parsed CLI options.
  * @return Runtime object paths, or `null` when no repo-local build dir is known.
  */
-func bd_runtime_object_paths(opts: CliOptions*) -> VectorString*? {
+func bd_runtime_object_paths(opts: CliOptions*) -> StringVector*? {
     return bd_runtime_object_paths_for_build_dir(opts, env_get("L1_BUILD_DIR"));
 }
 
@@ -878,9 +878,9 @@ func bd_runtime_object_paths(opts: CliOptions*) -> VectorString*? {
  *
  * @param paths Optional vector returned by `bd_runtime_object_paths`.
  */
-func bd_runtime_object_paths_free(paths: VectorString*?) {
+func bd_runtime_object_paths_free(paths: StringVector*?) {
     if (paths != null) {
-        vs_free(paths as VectorString*);
+        sv_free(paths as StringVector*);
     }
 }
 
@@ -890,9 +890,9 @@ func bd_runtime_object_paths_free(paths: VectorString*?) {
  * @param paths Runtime object paths.
  * @return `true` when every path exists.
  */
-func bd_runtime_object_paths_exist(paths: VectorString*) -> bool {
-    for (let i = 0; i < vs_size(paths); i = i + 1) {
-        if (!exists(vs_get(paths, i))) {
+func bd_runtime_object_paths_exist(paths: StringVector*) -> bool {
+    for (let i = 0; i < sv_size(paths); i = i + 1) {
+        if (!exists(sv_get(paths, i))) {
             return false;
         }
     }
@@ -1029,25 +1029,25 @@ func bd_validate_entry_main(result: AnalysisResult*, entry_module: string, diags
  * @param words Command words to extend.
  * @param family Compiler flag-family name.
  */
-func bd_push_standard_flags(words: VectorString*, family: string) {
+func bd_push_standard_flags(words: StringVector*, family: string) {
     if (family == "tcc") {
-        vs_push(words, "-std=c99");
-        vs_push(words, "-Wall");
-        vs_push(words, "-pedantic");
+        sv_push(words, "-std=c99");
+        sv_push(words, "-Wall");
+        sv_push(words, "-pedantic");
         return;
     }
     if (family == "gcc") {
-        vs_push(words, "-std=c99");
-        vs_push(words, "-Wall");
-        vs_push(words, "-Wextra");
-        vs_push(words, "-Wno-unused");
-        vs_push(words, "-Wno-unused-parameter");
-        vs_push(words, "-pedantic-errors");
+        sv_push(words, "-std=c99");
+        sv_push(words, "-Wall");
+        sv_push(words, "-Wextra");
+        sv_push(words, "-Wno-unused");
+        sv_push(words, "-Wno-unused-parameter");
+        sv_push(words, "-pedantic-errors");
         return;
     }
     if (family == "msvc") {
-        vs_push(words, "/std:c11");
-        vs_push(words, "/W4");
+        sv_push(words, "/std:c11");
+        sv_push(words, "/W4");
     }
 }
 
@@ -1058,13 +1058,13 @@ func bd_push_standard_flags(words: VectorString*, family: string) {
  * @param family Compiler flag-family name.
  * @param exe_path Output executable path.
  */
-func bd_push_output_flags(words: VectorString*, family: string, exe_path: string) {
+func bd_push_output_flags(words: StringVector*, family: string, exe_path: string) {
     if (family == "msvc") {
-        vs_push(words, "/Fe:" + exe_path);
+        sv_push(words, "/Fe:" + exe_path);
         return;
     }
-    vs_push(words, "-o");
-    vs_push(words, exe_path);
+    sv_push(words, "-o");
+    sv_push(words, exe_path);
 }
 
 /**
@@ -1073,10 +1073,10 @@ func bd_push_output_flags(words: VectorString*, family: string, exe_path: string
  * @param words Command words to extend.
  * @param runtime_lib Runtime library search directory.
  */
-func bd_push_runtime_lib_flags(words: VectorString*, runtime_lib: string, opts: CliOptions*) {
-    vs_push(words, "-L");
-    vs_push(words, runtime_lib);
-    vs_push(words, "-l" + bd_runtime_archive_link_name(opts));
+func bd_push_runtime_lib_flags(words: StringVector*, runtime_lib: string, opts: CliOptions*) {
+    sv_push(words, "-L");
+    sv_push(words, runtime_lib);
+    sv_push(words, "-l" + bd_runtime_archive_link_name(opts));
 }
 
 /**
@@ -1087,11 +1087,11 @@ func bd_push_runtime_lib_flags(words: VectorString*, runtime_lib: string, opts: 
  * @param uses_sys_real Whether the analyzed program imports `sys.real`.
  * @return `true` when one or more flags were appended.
  */
-func bd_push_sys_real_link_flags(words: VectorString*, family: string, uses_sys_real: bool) -> bool {
+func bd_push_sys_real_link_flags(words: StringVector*, family: string, uses_sys_real: bool) -> bool {
     if (!uses_sys_real || family == "msvc") {
         return false;
     }
-    vs_push(words, "-lm");
+    sv_push(words, "-lm");
     return true;
 }
 
@@ -1177,18 +1177,18 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
 
         with (
             let cg_opts = cg_options_create() => cg_options_free(cg_opts),
-            let env_opts = vs_create(4) => vs_free(env_opts),
-            let cli_opts = vs_create(4) => vs_free(cli_opts),
-            let extra_opts = vs_create(4) => vs_free(extra_opts),
-            let command_words = vs_create(16) => vs_free(command_words)
+            let env_opts = sv_create(4) => sv_free(env_opts),
+            let cli_opts = sv_create(4) => sv_free(cli_opts),
+            let extra_opts = sv_create(4) => sv_free(extra_opts),
+            let command_words = sv_create(16) => sv_free(command_words)
         ) {
             bd_append_c_option_words(env_opts, env_get("L1_CFLAGS"));
             bd_append_c_option_words(cli_opts, opts.c_options);
-            for (let i = 0; i < vs_size(env_opts); i = i + 1) {
-                vs_push(extra_opts, vs_get(env_opts, i));
+            for (let i = 0; i < sv_size(env_opts); i = i + 1) {
+                sv_push(extra_opts, sv_get(env_opts, i));
             }
-            for (let cli_i = 0; cli_i < vs_size(cli_opts); cli_i = cli_i + 1) {
-                vs_push(extra_opts, vs_get(cli_opts, cli_i));
+            for (let cli_i = 0; cli_i < sv_size(cli_opts); cli_i = cli_i + 1) {
+                sv_push(extra_opts, sv_get(cli_opts, cli_i));
             }
 
             cg_opts.emit_line_directives = !opts.no_line_directives;
@@ -1254,23 +1254,23 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
 
             let family = bd_compiler_flag_family(compiler);
             log_info(cfg, "Detected compiler flag family: " + family);
-            if (vs_size(env_opts) > 0) {
+            if (sv_size(env_opts) > 0) {
                 log_info(cfg, "C compiler options from $L1_CFLAGS: " + bd_format_word_list(env_opts));
             }
-            if (vs_size(cli_opts) > 0) {
+            if (sv_size(cli_opts) > 0) {
                 log_info(cfg, "C compiler options from --c-options: " + bd_format_word_list(cli_opts));
             }
-            if (vs_size(extra_opts) > 0) {
+            if (sv_size(extra_opts) > 0) {
                 log_info(cfg, "Extra C compiler options: " + bd_format_word_list(extra_opts));
             }
             let runtime_lib_opt = bd_runtime_lib_dir(opts);
 
-            vs_push(command_words, compiler);
-            vs_push(command_words, c_path);
+            sv_push(command_words, compiler);
+            sv_push(command_words, c_path);
             bd_push_output_flags(command_words, family, exe_path);
 
-            for (let extra_i = 0; extra_i < vs_size(extra_opts); extra_i = extra_i + 1) {
-                vs_push(command_words, vs_get(extra_opts, extra_i));
+            for (let extra_i = 0; extra_i < sv_size(extra_opts); extra_i = extra_i + 1) {
+                sv_push(command_words, sv_get(extra_opts, extra_i));
             }
             if (family == "unknown") {
                 log_warning(cfg, "Unsupported compiler '" + compiler +
@@ -1283,7 +1283,7 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 let optimize = optimize_opt as string;
                 optimize_opt = null;
                 log_info(cfg, "Adding optimization flag: " + optimize);
-                vs_push(command_words, optimize);
+                sv_push(command_words, optimize);
             }
 
             if (bd_push_sys_real_link_flags(command_words, family, analysis_uses_sys_real(result))) {
@@ -1294,8 +1294,8 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             if (runtime_include_opt != null) {
                 let runtime_include = runtime_include_opt as string;
                 runtime_include_opt = null;
-                vs_push(command_words, "-I");
-                vs_push(command_words, runtime_include);
+                sv_push(command_words, "-I");
+                sv_push(command_words, runtime_include);
             }
 
             if (runtime_lib_opt != null) {
@@ -1325,13 +1325,13 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
 
                 let runtime_objects = bd_runtime_object_paths(opts);
                 if (family == "tcc" && runtime_objects != null &&
-                    bd_runtime_object_paths_exist(runtime_objects as VectorString*)) {
+                    bd_runtime_object_paths_exist(runtime_objects as StringVector*)) {
                     /* See `bd_runtime_object_paths_for_build_dir` for the tcc object-format carve-out. */
                     log_info(cfg, "Linking repo-local runtime objects for tcc compatibility:");
-                    for (let runtime_i = 0; runtime_i < vs_size(runtime_objects as VectorString*); runtime_i = runtime_i + 1) {
-                        let runtime_object = vs_get(runtime_objects as VectorString*, runtime_i);
+                    for (let runtime_i = 0; runtime_i < sv_size(runtime_objects as StringVector*); runtime_i = runtime_i + 1) {
+                        let runtime_object = sv_get(runtime_objects as StringVector*, runtime_i);
                         log_info(cfg, "  " + runtime_object);
-                        vs_push(command_words, runtime_object);
+                        sv_push(command_words, runtime_object);
                     }
                 } else {
                     bd_push_runtime_lib_flags(command_words, runtime_lib, opts);
@@ -1435,10 +1435,10 @@ func bd_cmd_run(opts: CliOptions*, cfg: LogConfig*) -> int {
             return rc;
         }
 
-        with (let words = vs_create(vs_size(opts.program_args) + 1) => vs_free(words)) {
-            vs_push(words, temp_exe);
-            for (let i = 0; i < vs_size(opts.program_args); i = i + 1) {
-                vs_push(words, vs_get(opts.program_args, i));
+        with (let words = sv_create(sv_size(opts.program_args) + 1) => sv_free(words)) {
+            sv_push(words, temp_exe);
+            for (let i = 0; i < sv_size(opts.program_args); i = i + 1) {
+                sv_push(words, sv_get(opts.program_args, i));
             }
 
             log_info(cfg, "Running: " + bd_join_display_words(words));

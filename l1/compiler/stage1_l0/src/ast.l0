@@ -143,8 +143,8 @@ struct TypeRef {
     pointer_depth: int;
     is_nullable: bool;
     is_unsafe: bool;
-    module_path: VectorString*?;      // string entries
-    name_qualifier: VectorString*?;   // string entries
+    module_path: StringVector*?;      // string entries
+    name_qualifier: StringVector*?;   // string entries
     func_params: VectorBase*?;        // TypeRef*
     func_result: TypeRef*?;
     span: Span;
@@ -155,7 +155,7 @@ struct TypeRef {
  */
 struct ExportManifest {
     export_all: bool;
-    names: VectorString*;
+    names: StringVector*;
     span: Span;
 }
 
@@ -175,7 +175,7 @@ struct Import {
     name: string;
     kind: ImportKind;
     alias: string;
-    names: VectorString*?;
+    names: StringVector*?;
     span: Span;
 }
 
@@ -304,9 +304,9 @@ struct PatternNode {
     kind: PatternKind;
     span: Span;
     name: string;
-    vars: VectorString*?;
-    module_path: VectorString*?;
-    name_qualifier: VectorString*?;
+    vars: StringVector*?;
+    module_path: StringVector*?;
+    name_qualifier: StringVector*?;
 }
 
 /**
@@ -367,9 +367,9 @@ func pattern_arena_get(self: PatternArena*, id: PatternId) -> PatternNode* {
  *
  * @param v Optional vector to free.
  */
-func vs_free_opt(v: VectorString*?) {
+func sv_free_opt(v: StringVector*?) {
     if (v != null) {
-        vs_free(v as VectorString*);
+        sv_free(v as StringVector*);
     }
 }
 
@@ -379,9 +379,9 @@ func vs_free_opt(v: VectorString*?) {
  * @param node Pattern node to free.
  */
 func pattern_node_free(node: PatternNode*) {
-    vs_free_opt(node.vars);
-    vs_free_opt(node.module_path);
-    vs_free_opt(node.name_qualifier);
+    sv_free_opt(node.vars);
+    sv_free_opt(node.module_path);
+    sv_free_opt(node.name_qualifier);
     drop node;
 }
 
@@ -446,8 +446,8 @@ struct ExprNode {
 
     ids: VectorBase*?;        // int entries, typically call/new args
     type_ref: TypeRef*?;
-    module_path: VectorString*?;
-    name_qualifier: VectorString*?;
+    module_path: StringVector*?;
+    name_qualifier: StringVector*?;
 }
 
 /**
@@ -681,8 +681,8 @@ func stmt_arena_get(self: StmtArena*, id: StmtId) -> StmtNode* {
 func type_ref_free(self: TypeRef*?) {
     if (self != null) {
         let type_ref = self as TypeRef*;
-        vs_free_opt(type_ref.module_path);
-        vs_free_opt(type_ref.name_qualifier);
+        sv_free_opt(type_ref.module_path);
+        sv_free_opt(type_ref.name_qualifier);
         if (type_ref.func_params != null) {
             let params = type_ref.func_params as VectorBase*;
             for (let i = 0; i < vec_size(params); i = i + 1) {
@@ -826,7 +826,7 @@ func top_level_decl_free(self: TopLevelDecl*) {
 func export_manifest_free(self: ExportManifest*?) {
     if (self != null) {
         let manifest = self as ExportManifest*;
-        vs_free(manifest.names);
+        sv_free(manifest.names);
         drop manifest;
     }
 }
@@ -837,7 +837,7 @@ func export_manifest_free(self: ExportManifest*?) {
  * @param self Import declaration to free.
  */
 func import_free(self: Import*) {
-    vs_free_opt(self.names);
+    sv_free_opt(self.names);
     drop self;
 }
 
@@ -1011,8 +1011,8 @@ func with_item_vec_free(v: VectorBase*?) {
 func expr_node_free(self: ExprNode*) {
     id_vec_free(self.ids);
     type_ref_free(self.type_ref);
-    vs_free_opt(self.module_path);
-    vs_free_opt(self.name_qualifier);
+    sv_free_opt(self.module_path);
+    sv_free_opt(self.name_qualifier);
     drop self;
 }
 
