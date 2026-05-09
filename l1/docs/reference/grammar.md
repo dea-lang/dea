@@ -128,6 +128,7 @@ Semantic notes:
 
 ```ebnf
 TopLevelDecl        ::=     FunctionDecl
+                      |     UnsafeFunctionDecl
                       |     StructDecl
                       |     EnumDecl
                       |     TypeAliasDecl
@@ -140,6 +141,8 @@ TopLevelDecl        ::=     FunctionDecl
 
 ```ebnf
 FunctionDecl        ::=     "func" Ident "(" ParamList? ")" "->" Type Block
+UnsafeFunctionDecl  ::=     "unsafe" ( "func" Ident "(" ParamList? ")" "->" Type Block
+                                     | "extern" "func" Ident "(" ParamList? ")" "->" Type ";" )
 
 ParamList           ::=     Param ("," Param)*
 Param               ::=     Ident ":" Type
@@ -206,7 +209,7 @@ UnsuffixedType      ::=     SimpleType
                       |     FuncPointerType
                       |     "(" FuncPointerType ")"     (* useful before nullable suffixes *)
 SimpleType          ::=     QualifiedIdent
-FuncPointerType     ::=     "func" "(" TypeList? ")" "->" Type
+FuncPointerType     ::=     ( "unsafe" )? "func" "(" TypeList? ")" "->" Type
 TypeList            ::=     Type ("," Type)*
 PointerSuffix       ::=     "*"
 NullableSuffix      ::=     "?"     (* applies to the preceding type syntactically *)
@@ -227,6 +230,7 @@ Examples (all syntactically valid types in L<sub>1</sub>):
 - `int?`
 - `Expr*?`
 - `func(int, bool) -> int`
+- `unsafe func(byte*) -> int`
 - `(func() -> void)?`
 
 Exact semantic rules (e.g. when `?` is allowed) are enforced in the type checker, not in the grammar.

@@ -142,6 +142,7 @@ struct TypeRef {
     name: string;
     pointer_depth: int;
     is_nullable: bool;
+    is_unsafe: bool;
     module_path: VectorString*?;      // string entries
     name_qualifier: VectorString*?;   // string entries
     func_params: VectorBase*?;        // TypeRef*
@@ -211,6 +212,7 @@ struct FuncDecl {
     return_type: TypeRef*;
     body: StmtId;            // points into stmt arena
     is_extern: bool;
+    is_unsafe: bool;
     span: Span;
 }
 

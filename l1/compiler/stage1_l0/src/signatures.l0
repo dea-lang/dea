@@ -331,7 +331,7 @@ func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, env: Module
             return;
         }
 
-        let func_type = type_new_func(params as VectorBase*, ret_type as Type*);
+        let func_type = type_new_func(params as VectorBase*, ret_type as Type*, decl.is_unsafe);
         let key = sig_key(env.module_name, decl.name);
         spm_put(tables.func_types, key, func_type as void*);
         let sym_opt = nr_module_env_local(env, decl.name);

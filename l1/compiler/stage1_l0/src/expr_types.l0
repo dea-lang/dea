@@ -2176,6 +2176,68 @@ func etc_types_equal(a: Type*?, b: Type*?) -> bool {
 }
 
 /**
+ * Compare two types structurally while ignoring the `unsafe` marker on
+ * function types.
+ *
+ * @param a First type.
+ * @param b Second type.
+ * @return `true` when `a` and `b` differ only by function unsafety.
+ */
+func etc_types_equal_ignoring_func_unsafety(a: Type*?, b: Type*?) -> bool {
+    if (a == null || b == null) {
+        return a == null && b == null;
+    }
+
+    let left = a as Type*;
+    let right = b as Type*;
+    if (ord(left.kind) != ord(right.kind)) {
+        return false;
+    }
+
+    if (ord(left.kind) == ord(TY_BUILTIN) || ord(left.kind) == ord(TY_NULL)) {
+        return left.name == right.name;
+    }
+
+    if (ord(left.kind) == ord(TY_STRUCT) || ord(left.kind) == ord(TY_ENUM)) {
+        return left.module_name == right.module_name && left.name == right.name;
+    }
+
+    if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE)) {
+        return etc_types_equal_ignoring_func_unsafety(left.inner, right.inner);
+    }
+
+    let left_params = left.params as VectorBase*;
+    let right_params = right.params as VectorBase*;
+    if (vec_size(left_params) != vec_size(right_params)) {
+        return false;
+    }
+    for (let i = 0; i < vec_size(left_params); i = i + 1) {
+        if (!etc_types_equal_ignoring_func_unsafety(
+            *(vec_get(left_params, i) as Type**),
+            *(vec_get(right_params, i) as Type**)
+        )) {
+            return false;
+        }
+    }
+    return etc_types_equal_ignoring_func_unsafety(left.result, right.result);
+}
+
+/**
+ * Return whether two types differ only by the `unsafe` marker on one or more
+ * function-type nodes.
+ *
+ * @param a First type.
+ * @param b Second type.
+ * @return `true` when function unsafety is the only difference.
+ */
+func etc_has_function_unsafety_mismatch(a: Type*, b: Type*) -> bool {
+    if (!etc_types_equal_ignoring_func_unsafety(a, b)) {
+        return false;
+    }
+    return !type_equals(a, b);
+}
+
+/**
  * Free an optional owned type.
  *
  * @param ty Optional type to free.
@@ -2312,6 +2374,13 @@ func etc_check_assign_expr(self: ExpressionTypeChecker*, dst: Type*, src: Type*,
     }
 
     if (etc_can_assign(self, dst, src)) return ASSIGN_ACCEPT;
+
+    if (etc_has_function_unsafety_mismatch(dst, src)) {
+        etc_diag_error(self, "TYP-0780",
+            "unsafe/plain function type mismatch: expected " + type_format(dst) + ", got " + type_format(src),
+            filename, span);
+        return ASSIGN_REPORTED;
+    }
 
     if (type_is_builtin(src, "int") && etc_is_int(dst) && !type_is_builtin(dst, "int")) {
         let const_int = etc_cast_const_int(self, expr_id);

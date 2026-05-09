@@ -382,7 +382,7 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
             if (result == null) {
                 return null;
             }
-            let func_ty = type_new_func(params as VectorBase*, result as Type*);
+            let func_ty = type_new_func(params as VectorBase*, result as Type*, tref.is_unsafe);
             params = null;
             result = null;
             return tr_apply_suffix(func_ty, tref, diags, env.module_ptr.filename);

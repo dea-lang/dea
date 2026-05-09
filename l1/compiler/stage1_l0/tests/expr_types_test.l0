@@ -182,6 +182,33 @@ func test_typing_function_pointer_err() {
 }
 
 /**
+ * Tests unsafe function pointer values and non-gated calls.
+ */
+func test_typing_unsafe_function_pointer_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_unsafe_func_ptr_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_unsafe_func_ptr_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests unsafe/plain function pointer mismatch diagnostics.
+ */
+func test_typing_unsafe_function_pointer_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_unsafe_func_ptr_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_unsafe_func_ptr_err");
+        assert(count_diag_code(result, "TYP-0780") == 4, "expected four unsafe/plain function type mismatch diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests `let` declaration diagnostic parity cases.
  */
 func test_typing_let_diag_err() {
@@ -1093,6 +1120,8 @@ func main() {
     test_typing_alias_value_err();
     test_typing_function_pointer_ok();
     test_typing_function_pointer_err();
+    test_typing_unsafe_function_pointer_ok();
+    test_typing_unsafe_function_pointer_err();
     test_typing_let_diag_err();
     test_typing_let_diag_tail_err();
     test_typing_const_ok();

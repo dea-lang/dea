@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-04-28
+Version: 2026-05-09
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -202,6 +202,9 @@ and reuse supplement for applying this registry within L0.
 | `PAR-0571` | L1+     | Expected ';' after const declaration in interface file                   |
 | `PAR-0572` | L1+     | Unsupported or unexpected token in interface file                        |
 | `PAR-0573` | L1+     | Expected identifier after keyword in interface declaration               |
+| `PAR-0600` | L1+     | Expected `func` or `extern` after `unsafe` in top-level declaration      |
+| `PAR-0601` | L1+     | Expected `func` after `unsafe` in function type                          |
+| `PAR-0602` | L1+     | Expected `func` after `unsafe` in interface file                         |
 | `PAR-9401` | All     | Array types not yet supported                                            |
 
 ## Driver and Environment
@@ -401,6 +404,7 @@ and reuse supplement for applying this registry within L0.
 | `TYP-0701` | All   | Explicit nullable-pointer-to-pointer cast is provably null at compile time                             |
 | `TYP-0702` | All   | Integer literal outside `int` requires a contextual integer type                                       |
 | `TYP-0703` | All   | Integer literal outside `int` cannot be used in this contextual type                                   |
+| `TYP-0780` | L1+   | Unsafe/plain function type mismatch                                                                    |
 | `TYP-9209` | All   | Internal error: variant does not produce enum type                                                     |
 | `TYP-9288` | All   | Internal error: 'new' outside function context                                                         |
 | `TYP-9289` | All   | Internal error: missing module environment for the current function                                    |

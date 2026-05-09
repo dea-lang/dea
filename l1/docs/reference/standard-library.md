@@ -552,9 +552,9 @@ remainder/decomposition, rounding, and transcendental math.
 
 Low-level raw memory FFI. Misuse can cause undefined behavior.
 
-## FFI Inventory (`extern func`)
+## FFI Inventory (`extern func` / `unsafe extern func`)
 
-All `extern func` symbols exposed to L1 from stdlib modules are listed here.
+All `extern func` and `unsafe extern func` symbols exposed to L1 from stdlib modules are listed here.
 
 ### Declared in `sys.rt` (42)
 
@@ -617,19 +617,19 @@ All `extern func` symbols exposed to L1 from stdlib modules are listed here.
 
 These are unsafe raw-memory primitives.
 
-| Function           | Signature                                                     | Description                  |
-| ------------------ | ------------------------------------------------------------- | ---------------------------- |
-| `rt_alloc`         | `(bytes: int) -> void*?`                                      | Allocates raw heap memory.   |
-| `rt_realloc`       | `(ptr: void*, new_bytes: int) -> void*?`                      | Resizes raw heap memory.     |
-| `rt_free`          | `(ptr: void*?) -> void`                                       | Frees raw heap memory.       |
-| `rt_calloc`        | `(count: int, elem_size: int) -> void*?`                      | Allocates zeroed raw memory. |
-| `rt_memcpy`        | `(dest: void*, src: void*, bytes: int) -> void*`              | Copies raw bytes.            |
-| `rt_memset`        | `(dest: void*, value: int, bytes: int) -> void*`              | Fills raw bytes.             |
-| `rt_memcmp`        | `(a: void*, b: void*, bytes: int) -> int`                     | Compares raw bytes.          |
-| `rt_array_element` | `(array_data: void*, element_size: int, index: int) -> void*` | Computes an element pointer. |
-| `rt_stdin_read`    | `(buf: byte*, capacity: int) -> int`                          | Reads raw bytes from stdin.  |
-| `rt_stdout_write`  | `(buf: byte*, len: int) -> int`                               | Writes raw bytes to stdout.  |
-| `rt_stderr_write`  | `(buf: byte*, len: int) -> int`                               | Writes raw bytes to stderr.  |
+| Function           | Signature                                                                | Description                  |
+| ------------------ | ------------------------------------------------------------------------ | ---------------------------- |
+| `rt_alloc`         | `(bytes: int) -> void*?`                                                 | Allocates raw heap memory.   |
+| `rt_calloc`        | `(count: int, elem_size: int) -> void*?`                                 | Allocates zeroed raw memory. |
+| `rt_realloc`       | `unsafe func(ptr: void*, new_bytes: int) -> void*?`                      | Resizes raw heap memory.     |
+| `rt_free`          | `unsafe func(ptr: void*?) -> void`                                       | Frees raw heap memory.       |
+| `rt_memcpy`        | `unsafe func(dest: void*, src: void*, bytes: int) -> void*`              | Copies raw bytes.            |
+| `rt_memset`        | `unsafe func(dest: void*, value: int, bytes: int) -> void*`              | Fills raw bytes.             |
+| `rt_memcmp`        | `unsafe func(a: void*, b: void*, bytes: int) -> int`                     | Compares raw bytes.          |
+| `rt_array_element` | `unsafe func(array_data: void*, element_size: int, index: int) -> void*` | Computes an element pointer. |
+| `rt_stdin_read`    | `unsafe func(buf: byte*, capacity: int) -> int`                          | Reads raw bytes from stdin.  |
+| `rt_stdout_write`  | `unsafe func(buf: byte*, len: int) -> int`                               | Writes raw bytes to stdout.  |
+| `rt_stderr_write`  | `unsafe func(buf: byte*, len: int) -> int`                               | Writes raw bytes to stderr.  |
 
 ### Declared in `sys.hash` (11)
 

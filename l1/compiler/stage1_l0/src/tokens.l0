@@ -38,6 +38,7 @@ enum TokenType {
     TT_ENUM;
     TT_TYPE;
     TT_EXTERN;
+    TT_UNSAFE;
     TT_LET;
     TT_CONST;
     TT_RETURN;
@@ -138,6 +139,7 @@ func token_to_string(token: Token) -> string {
         TT_ENUM => { return "enum"; }
         TT_TYPE => { return "type"; }
         TT_EXTERN => { return "extern"; }
+        TT_UNSAFE => { return "unsafe"; }
         TT_LET => { return "let"; }
         TT_CONST => { return "const"; }
         TT_RETURN => { return "return"; }
@@ -232,6 +234,7 @@ func is_reserved_keyword(token: Token) -> bool {
         TT_ENUM => { return true; }
         TT_TYPE => { return true; }
         TT_EXTERN => { return true; }
+        TT_UNSAFE => { return true; }
         TT_LET => { return true; }
         TT_CONST => { return true; }
         TT_RETURN => { return true; }
@@ -277,6 +280,7 @@ func ident_to_token(ident: string, index: int, line: int, col: int) -> Token {
          "enum" => return Token(TT_ENUM, index, line, col);
          "type" => return Token(TT_TYPE, index, line, col);
          "extern" => return Token(TT_EXTERN, index, line, col);
+         "unsafe" => return Token(TT_UNSAFE, index, line, col);
          "let" => return Token(TT_LET, index, line, col);
          "const" => return Token(TT_CONST, index, line, col);
          "return" => return Token(TT_RETURN, index, line, col);

@@ -499,6 +499,7 @@ func ps_match_string(self: ParserState*) -> bool {
  */
 func ps_is_top_level_start(self: ParserState*) -> bool {
     return ps_check(self, ord(TT_EXTERN)) ||
+           ps_check(self, ord(TT_UNSAFE)) ||
            ps_check(self, ord(TT_FUNC)) ||
            ps_check(self, ord(TT_STRUCT)) ||
            ps_check(self, ord(TT_ENUM)) ||
@@ -920,6 +921,15 @@ func type_ref_vec_free(items: VectorBase*?) {
  * @return Parsed type reference, or `null` on parse error.
  */
 func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
+    let is_unsafe = false;
+    if (ps_match(self, ord(TT_UNSAFE))) {
+        if (!ps_check(self, ord(TT_FUNC))) {
+            ps_emit_error(self, "PAR-0601", "expected 'func' after 'unsafe' in function type", ps_peek(self));
+            return null;
+        }
+        is_unsafe = true;
+    }
+
     if (ps_match(self, ord(TT_FUNC))) {
         ps_expect(self, ord(TT_LPAREN), "PAR-0402", "expected '(' after 'func' in function type")?;
         with (let params: VectorBase*? = ptr_vec_create(4) => type_ref_vec_free(params),
@@ -937,7 +947,7 @@ func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
             ps_expect(self, ord(TT_ARROW_FUNC), "PAR-0404", "expected '->' in function type")?;
             result = ps_parse_type(self)?;
 
-            let tref = new TypeRef("func", 0, false, null, null, params as VectorBase*, result as TypeRef*,
+            let tref = new TypeRef("func", 0, false, is_unsafe, null, null, params as VectorBase*, result as TypeRef*,
                 ps_extend_span(self, start));
             params = null;
             result = null;
@@ -969,7 +979,11 @@ func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
     }
 
     let type_name = token_ident_text(name_tok) as string;
-    return new TypeRef(type_name, 0, false, module_path, name_qualifier, null, null, ps_extend_span(self, atom_start));
+    if (is_unsafe) {
+        ps_emit_error(self, "PAR-0601", "expected 'func' after 'unsafe' in function type", ps_last(self));
+        return null;
+    }
+    return new TypeRef(type_name, 0, false, false, module_path, name_qualifier, null, null, ps_extend_span(self, atom_start));
 }
 
 /**

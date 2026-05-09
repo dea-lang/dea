@@ -205,6 +205,8 @@ func ap_print_type_ref(tr: TypeRef*, indent: int) {
         sb_append_int(sb, tr.pointer_depth);
         sb_append(sb, ", is_nullable=");
         sb_append(sb, ap_bool_str(tr.is_nullable));
+        sb_append(sb, ", is_unsafe=");
+        sb_append(sb, ap_bool_str(tr.is_unsafe));
         sb_append(sb, ")");
         sb_append(sb, ap_span_suffix(tr.span));
         ap_print_line(indent, sb_to_string(sb));
@@ -746,6 +748,8 @@ func ap_print_func_decl(fd: FuncDecl*, pr: ParseResult*, indent: int) {
         sb_append(sb, ap_quote_string(fd.name));
         sb_append(sb, ", is_extern=");
         sb_append(sb, ap_bool_str(fd.is_extern));
+        sb_append(sb, ", is_unsafe=");
+        sb_append(sb, ap_bool_str(fd.is_unsafe));
         sb_append(sb, ")");
         sb_append(sb, ap_span_suffix(fd.span));
         ap_print_line(indent, sb_to_string(sb));

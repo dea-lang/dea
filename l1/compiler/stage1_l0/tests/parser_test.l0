@@ -555,6 +555,40 @@ func test_function_pointer_type_syntax_ok() {
 }
 
 /**
+ * Tests `unsafe` function syntax in declarations and function types.
+ */
+func test_unsafe_function_syntax_ok() {
+    let src = "module main; unsafe extern func sink(cb: unsafe func(int) -> int) -> void; unsafe func helper(cb: unsafe func(int) -> int) -> int { return cb(1); } func main(cb: unsafe func(int) -> int) -> int { let chosen: unsafe func(int) -> int = helper; sink(chosen); return helper(cb); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected unsafe function syntax to parse");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    let sink_decl = (ptr_vec_get(root.decls, 0) as TopLevelDecl*).data as FuncDecl*;
+    let helper_decl = (ptr_vec_get(root.decls, 1) as TopLevelDecl*).data as FuncDecl*;
+    let main_decl = (ptr_vec_get(root.decls, 2) as TopLevelDecl*).data as FuncDecl*;
+
+    assert(sink_decl.is_extern, "Expected unsafe extern decl");
+    assert(sink_decl.is_unsafe, "Expected unsafe extern flag");
+    assert(helper_decl.is_unsafe, "Expected unsafe function flag");
+    assert(!(main_decl.is_unsafe), "Expected safe main function");
+
+    let sink_param = ptr_vec_get(sink_decl.params, 0) as Param*;
+    assert(sink_param.type_ref.is_unsafe, "Expected unsafe function type parameter");
+    assert(sink_param.type_ref.func_params != null, "Expected function type parameter shape");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests malformed `unsafe` syntax diagnostics.
+ */
+func test_unsafe_function_syntax_err() {
+    expect_error_code("module main; unsafe struct Box { value: int; }", "PAR-0600");
+    expect_error_code("module main; type Bad = unsafe int;", "PAR-0601");
+}
+
+/**
  * Tests that `is(value, Variant)` parses as an ordinary call with a bare variant argument.
  */
 func test_is_intrinsic_payload_variant_arg_shape() {
@@ -708,6 +742,8 @@ func main() {
     test_enum_variant_field_error();
     test_new_expr_bitwise_arg_ok();
     test_function_pointer_type_syntax_ok();
+    test_unsafe_function_syntax_ok();
+    test_unsafe_function_syntax_err();
     test_is_intrinsic_payload_variant_arg_shape();
     test_is_intrinsic_call_and_qualified_variant_shape();
     test_single_statement_loop_and_match_bodies_ok();

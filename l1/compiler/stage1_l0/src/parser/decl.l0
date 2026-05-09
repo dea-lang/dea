@@ -44,7 +44,8 @@ func ps_make_empty_block_stmt(self: ParserState*, span: Span) -> StmtId {
  * @param ret_type Parsed return type.
  * @return Completed function declaration, or `null` on error.
  */
-func ps_finish_function(self: ParserState*, start: Span, name_tok: Token, params: VectorBase*, is_extern: bool, ret_type: TypeRef*) -> FuncDecl*? {
+func ps_finish_function(self: ParserState*, start: Span, name_tok: Token, params: VectorBase*, is_extern: bool,
+                        is_unsafe: bool, ret_type: TypeRef*) -> FuncDecl*? {
     let body = invalid_stmt_id();
     if (is_extern) {
         ps_expect(self, ord(TT_SEMI), "PAR-0046", "expected ';' after extern function decl")?;
@@ -59,6 +60,7 @@ func ps_finish_function(self: ParserState*, start: Span, name_tok: Token, params
         ret_type,
         body,
         is_extern,
+        is_unsafe,
         ps_extend_span(self, start)
     );
 }
@@ -70,7 +72,7 @@ func ps_finish_function(self: ParserState*, start: Span, name_tok: Token, params
  * @param is_extern Whether the declaration started with `extern`.
  * @return Parsed function declaration, or `null` on error.
  */
-func ps_parse_function(self: ParserState*, is_extern: bool) -> FuncDecl*? {
+func ps_parse_function(self: ParserState*, is_extern: bool, is_unsafe: bool) -> FuncDecl*? {
     let start = ps_span_start(self);
     ps_expect(self, ord(TT_FUNC), "PAR-0040", "expected 'func'")?;
     let name_tok = ps_expect_ident(self, "PAR-0041", "expected function name")?;
@@ -95,10 +97,11 @@ func ps_parse_function(self: ParserState*, is_extern: bool) -> FuncDecl*? {
         if (ps_match(self, ord(TT_ARROW_FUNC))) {
             ret_type = ps_parse_type(self)?;
         } else {
-            ret_type = new TypeRef("void", 0, false, null, null, null, null, ps_extend_span(self, start));
+            ret_type = new TypeRef("void", 0, false, false, null, null, null, null, ps_extend_span(self, start));
         }
 
-        let result = ps_finish_function(self, start, name_tok, params as VectorBase*, is_extern, ret_type as TypeRef*);
+        let result = ps_finish_function(self, start, name_tok, params as VectorBase*, is_extern, is_unsafe,
+            ret_type as TypeRef*);
         if (result != null) {
             params = null;
             ret_type = null;
@@ -115,7 +118,26 @@ func ps_parse_function(self: ParserState*, is_extern: bool) -> FuncDecl*? {
  */
 func ps_parse_extern_func(self: ParserState*) -> FuncDecl*? {
     ps_expect(self, ord(TT_EXTERN), "PAR-0030", "expected 'extern'")?;
-    return ps_parse_function(self, true);
+    return ps_parse_function(self, true, false);
+}
+
+/**
+ * Parse an `unsafe`-prefixed top-level function declaration.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed unsafe function declaration, or `null` on error.
+ */
+func ps_parse_unsafe_func(self: ParserState*) -> FuncDecl*? {
+    ps_expect(self, ord(TT_UNSAFE), "PAR-0600", "expected 'unsafe'")?;
+    if (ps_check(self, ord(TT_EXTERN))) {
+        ps_expect(self, ord(TT_EXTERN), "PAR-0030", "expected 'extern'")?;
+        return ps_parse_function(self, true, true);
+    }
+    if (!ps_check(self, ord(TT_FUNC))) {
+        ps_emit_error(self, "PAR-0600", "expected 'func' or 'extern' after 'unsafe'", ps_peek(self));
+        return null;
+    }
+    return ps_parse_function(self, false, true);
 }
 
 /**
@@ -278,8 +300,12 @@ func ps_parse_top_level_decl(self: ParserState*) -> TopLevelDecl*? {
         let decl = ps_parse_extern_func(self)?;
         return new TopLevelDecl(TD_FUNC, decl as void*);
     }
+    if (ps_check(self, ord(TT_UNSAFE))) {
+        let decl = ps_parse_unsafe_func(self)?;
+        return new TopLevelDecl(TD_FUNC, decl as void*);
+    }
     if (ps_check(self, ord(TT_FUNC))) {
-        let decl = ps_parse_function(self, false)?;
+        let decl = ps_parse_function(self, false, false)?;
         return new TopLevelDecl(TD_FUNC, decl as void*);
     }
     if (ps_check(self, ord(TT_STRUCT))) {

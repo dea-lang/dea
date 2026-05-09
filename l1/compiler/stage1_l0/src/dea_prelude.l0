@@ -109,7 +109,7 @@ func dea_add_intrinsic(locals: StringPtrMap*, all: StringPtrMap*, name: string, 
     if (param_name2 != null) {
         ptr_vec_push(params, type_new_builtin(param_name2 as string) as void*);
     }
-    let func_type = type_new_func(params, result_type);
+    let func_type = type_new_func(params, result_type, false);
     let sym = symbol_create(name, SYM_FUNC, dea_module_name(), "", null, dea_zero_span());
     symbol_set_type_clone(sym, func_type);
     dea_put_local_symbol(locals, all, sym);

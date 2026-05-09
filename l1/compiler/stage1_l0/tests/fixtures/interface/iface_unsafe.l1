@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module iface_unsafe;
+
+export *;
+
+type UnsafeCb = unsafe func(int) -> int;
+
+unsafe func borrow(cb: UnsafeCb) -> UnsafeCb {
+    return cb;
+}
+
+func main(cb: UnsafeCb) -> int {
+    let chosen: UnsafeCb = borrow(cb);
+    return chosen(1);
+}

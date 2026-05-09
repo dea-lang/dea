@@ -3,6 +3,20 @@
  * Copyright (c) 2025-2026 gwz
  */
 
+/**
+ * Low-level runtime bindings for direct memory management and operations.
+ *
+ * Most functions in this module are `unsafe` and may lead to undefined
+ * behavior if used incorrectly. Use with caution and ensure proper memory
+ * management.
+ *
+ * Note: These functions operate on raw pointers and do not perform any
+ * bounds checking. It is the caller's responsibility to ensure that pointers
+ * are valid and that memory is managed correctly.
+ * Misuse of these functions can lead to memory corruption, leaks, or crashes.
+ * Always validate inputs and handle memory carefully when using these
+ * functions.
+ */
 module sys.memory;
 
 /* =================================
@@ -10,22 +24,8 @@ module sys.memory;
    ================================= */
 
 /**
- * UNSAFE: Functions in this module are unsafe and may lead to
- * undefined behavior if used incorrectly.
- * Use with caution and ensure proper memory management.
- *
- * Note: These functions operate on raw pointers and do not perform
- * any bounds checking.
- * It is the caller's responsibility to ensure that pointers are
- * valid and that memory is managed correctly.
- * Misuse of these functions can lead to memory corruption, leaks,
- * or crashes.
- * Always validate inputs and handle memory carefully when using
- * these functions.
- */
-
-/**
  * Allocate a new block of memory of the given size.
+ * Panics if `bytes` is zero or negative.
  *
  * @param bytes The number of bytes to allocate.
  * @return A pointer to the newly allocated memory, or null on failure.
@@ -33,29 +33,32 @@ module sys.memory;
 extern func rt_alloc(bytes: int) -> void*?;
 
 /**
- * Resize an existing memory block to a new size.
- *
- * @param ptr The pointer to the existing memory block.
- * @param new_bytes The new size in bytes.
- * @return A pointer to the resized memory block, or null on failure.
- */
-extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;
-
-/**
- * Free a previously allocated memory block.
- *
- * @param ptr The pointer to the memory block to free.
- */
-extern func rt_free(ptr: void*?) -> void;
-
-/**
  * Allocate zero-initialized memory for multiple elements.
+ * Panics if `count` or `elem_size` is zero or negative, or if their
+ * product overflows.
  *
  * @param count The number of elements.
  * @param elem_size The size of each element in bytes.
  * @return A pointer to the newly allocated memory, or null on failure.
  */
 extern func rt_calloc(count: int, elem_size: int) -> void*?;
+
+/**
+ * Resize an existing memory block to a new size.
+ * Panics if `new_bytes` is zero or negative or in case of overflow.
+ *
+ * @param ptr The pointer to the existing memory block.
+ * @param new_bytes The new size in bytes.
+ * @return A pointer to the resized memory block, or null on failure.
+ */
+unsafe extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;
+
+/**
+ * Free a previously allocated memory block.
+ *
+ * @param ptr The pointer to the memory block to free.
+ */
+unsafe extern func rt_free(ptr: void*?) -> void;
 
 /**
  * Copy bytes from one memory location to another.
@@ -65,37 +68,40 @@ extern func rt_calloc(count: int, elem_size: int) -> void*?;
  * @param bytes The number of bytes to copy.
  * @return The destination pointer.
  */
-extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;
+unsafe extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;
 
 /**
  * Set a block of memory to a specific byte value.
+ * Panics if `bytes` is negative.
  *
  * @param dest The destination pointer.
  * @param value The byte value to set.
  * @param bytes The number of bytes to set.
  * @return The destination pointer.
  */
-extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;
+unsafe extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;
 
 /**
  * Compare two blocks of memory.
+ * Panics if `bytes` is negative.
  *
  * @param a The first pointer.
  * @param b The second pointer.
  * @param bytes The number of bytes to compare.
  * @return Zero if equal, non-zero otherwise.
  */
-extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;
+unsafe extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;
 
 /**
  * Get a pointer to an element in an array given its index.
+ * Panics if `element_size` is zero or negative, or if `index` is negative.
  *
  * @param array_data The pointer to the base of the array.
  * @param element_size The size of each element in bytes.
  * @param index The element index.
  * @return A pointer to the requested element.
  */
-extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;
+unsafe extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;
 
 /**
  * Read up to `capacity` bytes from standard input into `buf`.
@@ -104,7 +110,7 @@ extern func rt_array_element(array_data: void*, element_size: int, index: int) -
  * @param capacity Maximum number of bytes to read.
  * @return Bytes read, `0` on EOF, or `-1` on error.
  */
-extern func rt_stdin_read(buf: byte*, capacity: int) -> int;
+unsafe extern func rt_stdin_read(buf: byte*, capacity: int) -> int;
 
 /**
  * Write up to `len` bytes from `buf` to standard output.
@@ -113,7 +119,7 @@ extern func rt_stdin_read(buf: byte*, capacity: int) -> int;
  * @param len Maximum number of bytes to write.
  * @return Bytes written, or `-1` on error.
  */
-extern func rt_stdout_write(buf: byte*, len: int) -> int;
+unsafe extern func rt_stdout_write(buf: byte*, len: int) -> int;
 
 /**
  * Write up to `len` bytes from `buf` to standard error.
@@ -122,4 +128,4 @@ extern func rt_stdout_write(buf: byte*, len: int) -> int;
  * @param len Maximum number of bytes to write.
  * @return Bytes written, or `-1` on error.
  */
-extern func rt_stderr_write(buf: byte*, len: int) -> int;
+unsafe extern func rt_stderr_write(buf: byte*, len: int) -> int;

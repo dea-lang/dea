@@ -112,6 +112,34 @@ func test_alias_cycle_reports_error() {
 }
 
 /**
+ * Tests that unsafe function signatures are preserved semantically.
+ */
+func test_unsafe_function_signatures_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "unsafe_signature_main", cfg);
+        assert(!analysis_has_errors(result), "expected no semantic errors for unsafe signatures");
+
+        let sigs = analysis_signature_tables(result);
+        assert(sigs != null, "expected signature tables");
+        let tables = sigs as SignatureTables*;
+
+        let wrap_ty = sig_lookup_func_type(tables, "unsafe_signature_main", "wrap");
+        assert(wrap_ty != null, "expected wrap function type");
+        assert(type_format(wrap_ty as Type*) == "func(unsafe func(int) -> int) -> unsafe func(int) -> int",
+            "unexpected unsafe function signature");
+
+        let apply_ty = sig_lookup_func_type(tables, "unsafe_signature_main", "apply");
+        assert(apply_ty != null, "expected apply function type");
+        assert(type_format(apply_ty as Type*) == "unsafe func(unsafe func(int) -> int, int) -> int",
+            "unexpected unsafe top-level function signature");
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests test_value_cycle_reports_error.
  */
 func test_value_cycle_reports_error() {
@@ -144,6 +172,7 @@ func test_infer_fail_reports_error() {
  */
 func main() {
     test_signature_tables_ok();
+    test_unsafe_function_signatures_ok();
     test_alias_cycle_reports_error();
     test_value_cycle_reports_error();
     test_infer_fail_reports_error();

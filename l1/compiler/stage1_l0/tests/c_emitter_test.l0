@@ -48,7 +48,7 @@ func cet_empty_analysis_result() -> AnalysisResult* {
  * @return New type-ref node.
  */
 func cet_builtin_type_ref(name: string) -> TypeRef* {
-    return new TypeRef(name, 0, false, null, null, null, null, span_here(1, 1));
+    return new TypeRef(name, 0, false, false, null, null, null, null, span_here(1, 1));
 }
 
 /**
@@ -580,7 +580,7 @@ func test_emitter_optional_wrappers_emit_early_then_late() {
     ptr_vec_push(params, type_new_nullable(type_builtin_short()) as void*);
     ptr_vec_push(params, type_new_nullable(type_builtin_int()) as void*);
     ptr_vec_push(params, type_new_nullable(type_new_enum("demo.main", "Color")) as void*);
-    let func_ty = type_new_func(params, type_new_nullable(type_new_struct("demo.main", "Point")));
+    let func_ty = type_new_func(params, type_new_nullable(type_new_struct("demo.main", "Point")), false);
     spm_put((result.signatures as SignatureTables*).func_types, "demo.main::make", func_ty as void*);
 
     let emitter = cem_create();
@@ -678,12 +678,12 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     ptr_vec_push(func_params, new Param("b", cet_builtin_type_ref("int")) as void*);
     ptr_vec_push(func_param_types, type_builtin_int() as void*);
     ptr_vec_push(func_param_types, type_builtin_int() as void*);
-    let sum_decl = new FuncDecl("sum", func_params, cet_builtin_type_ref("int"), invalid_stmt_id(), false, span_here(1, 1));
-    let sum_type = type_new_func(func_param_types, type_builtin_int());
+    let sum_decl = new FuncDecl("sum", func_params, cet_builtin_type_ref("int"), invalid_stmt_id(), false, false, span_here(1, 1));
+    let sum_type = type_new_func(func_param_types, type_builtin_int(), false);
 
-    let extern_decl = new FuncDecl("puts", extern_params, cet_builtin_type_ref("void"), invalid_stmt_id(), true, span_here(1,
+    let extern_decl = new FuncDecl("puts", extern_params, cet_builtin_type_ref("void"), invalid_stmt_id(), true, false, span_here(1,
         1));
-    let extern_type = type_new_func(extern_param_types, type_builtin_void());
+    let extern_type = type_new_func(extern_param_types, type_builtin_void(), false);
     let let_decl = new LetDecl("answer", cet_builtin_type_ref("int"), invalid_expr_id(), false, span_here(1, 1));
     let const_decl = new LetDecl("limit", cet_builtin_type_ref("int"), invalid_expr_id(), true, span_here(1, 1));
     let let_type = type_builtin_int();
@@ -758,6 +758,24 @@ func test_emitter_top_level_forms_match_stage1_shape() {
 }
 
 /**
+ * Tests that safe and unsafe function types share the same C lowering.
+ */
+func test_emitter_unsafe_function_types_share_c_abi() {
+    let safe_params = ptr_vec_create(1);
+    let unsafe_params = ptr_vec_create(1);
+    ptr_vec_push(safe_params, type_builtin_int() as void*);
+    ptr_vec_push(unsafe_params, type_builtin_int() as void*);
+
+    let safe_ty = type_new_func(safe_params, type_builtin_int(), false);
+    let unsafe_ty = type_new_func(unsafe_params, type_builtin_int(), true);
+
+    assert(cem_emit_type(safe_ty) == cem_emit_type(unsafe_ty), "safe/unsafe function types should share C typedef spelling");
+
+    type_free(safe_ty);
+    type_free(unsafe_ty);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -777,5 +795,6 @@ func main() {
     test_emitter_forward_decls_follow_loaded_module_order();
     test_emitter_optional_wrappers_emit_early_then_late();
     test_emitter_top_level_forms_match_stage1_shape();
+    test_emitter_unsafe_function_types_share_c_abi();
     printl_s("c_emitter_test: all tests passed");
 }

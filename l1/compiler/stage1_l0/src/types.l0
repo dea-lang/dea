@@ -35,6 +35,7 @@ struct Type {
     inner: Type*?;
     params: VectorBase*?; // Type*
     result: Type*?;
+    is_unsafe: bool;
 }
 
 /**
@@ -119,8 +120,8 @@ func type_param_vec_free(items: VectorBase*?) {
  * @return New type descriptor.
  */
 func type_new(kind: TypeKind, module_name: string, name: string, inner: Type*?, params: VectorBase*?,
-              result: Type*?) -> Type* {
-    return new Type(kind, module_name, name, inner, params, result);
+              result: Type*?, is_unsafe: bool) -> Type* {
+    return new Type(kind, module_name, name, inner, params, result, is_unsafe);
 }
 
 /**
@@ -130,7 +131,7 @@ func type_new(kind: TypeKind, module_name: string, name: string, inner: Type*?, 
  * @return New builtin type.
  */
 func type_new_builtin(name: string) -> Type* {
-    return type_new(TY_BUILTIN, "", name, null, null, null);
+    return type_new(TY_BUILTIN, "", name, null, null, null, false);
 }
 
 /**
@@ -256,7 +257,7 @@ func type_builtin_void() -> Type* {
  * @return New `null` type.
  */
 func type_new_null() -> Type* {
-    return type_new(TY_NULL, "", "null", null, null, null);
+    return type_new(TY_NULL, "", "null", null, null, null, false);
 }
 
 /**
@@ -267,7 +268,7 @@ func type_new_null() -> Type* {
  * @return New struct type.
  */
 func type_new_struct(module_name: string, name: string) -> Type* {
-    return type_new(TY_STRUCT, module_name, name, null, null, null);
+    return type_new(TY_STRUCT, module_name, name, null, null, null, false);
 }
 
 /**
@@ -278,7 +279,7 @@ func type_new_struct(module_name: string, name: string) -> Type* {
  * @return New enum type.
  */
 func type_new_enum(module_name: string, name: string) -> Type* {
-    return type_new(TY_ENUM, module_name, name, null, null, null);
+    return type_new(TY_ENUM, module_name, name, null, null, null, false);
 }
 
 /**
@@ -288,7 +289,7 @@ func type_new_enum(module_name: string, name: string) -> Type* {
  * @return New pointer type.
  */
 func type_new_pointer(inner: Type*) -> Type* {
-    return type_new(TY_POINTER, "", "", inner, null, null);
+    return type_new(TY_POINTER, "", "", inner, null, null, false);
 }
 
 /**
@@ -298,7 +299,7 @@ func type_new_pointer(inner: Type*) -> Type* {
  * @return New nullable type.
  */
 func type_new_nullable(inner: Type*) -> Type* {
-    return type_new(TY_NULLABLE, "", "", inner, null, null);
+    return type_new(TY_NULLABLE, "", "", inner, null, null, false);
 }
 
 /**
@@ -308,8 +309,8 @@ func type_new_nullable(inner: Type*) -> Type* {
  * @param result Result type.
  * @return New function type.
  */
-func type_new_func(params: VectorBase*, result: Type*) -> Type* {
-    return type_new(TY_FUNC, "", "", null, params, result);
+func type_new_func(params: VectorBase*, result: Type*, is_unsafe: bool) -> Type* {
+    return type_new(TY_FUNC, "", "", null, params, result, is_unsafe);
 }
 
 /**
@@ -395,7 +396,7 @@ func type_clone(self: Type*) -> Type* {
         let param = *(vec_get(src_params, i) as Type**);
         vec_push_ptr(params, type_clone(param) as void*);
     }
-    return type_new_func(params, type_clone(self.result as Type*));
+    return type_new_func(params, type_clone(self.result as Type*), self.is_unsafe);
 }
 
 /**
@@ -430,6 +431,9 @@ func type_equals(a: Type*?, b: Type*?) -> bool {
 
     let left_params = left.params as VectorBase*;
     let right_params = right.params as VectorBase*;
+    if (left.is_unsafe != right.is_unsafe) {
+        return false;
+    }
     if (vec_size(left_params) != vec_size(right_params)) {
         return false;
     }
@@ -468,6 +472,9 @@ func type_format(self: Type*) -> string {
     }
 
     with (let sb = sb_create() => sb_free(sb)) {
+        if (self.is_unsafe) {
+            sb_append(sb, "unsafe ");
+        }
         sb_append(sb, "func(");
         let params = self.params as VectorBase*;
         for (let i = 0; i < vec_size(params); i = i + 1) {

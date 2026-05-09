@@ -3,7 +3,7 @@
 ## Add the `unsafe` function marker
 
 - Date: 2026-05-08
-- Status: Draft
+- Status: Completed
 - Title: Add the `unsafe` function marker
 - Kind: Feature
 - Severity: High
@@ -134,3 +134,20 @@ initialized pointer. Raw-pointer indexing gates land in a later pointer-indexing
    representations.
 5. Existing dereference examples such as `let copy = *p;` and pointer field access remain valid.
 6. `make -C l1 test-stage1` passes.
+
+## Completion Notes
+
+1. `unsafe` is now a reserved keyword and the parser accepts `unsafe func`, `unsafe extern func`, and
+   `unsafe func(...) -> T`.
+2. Semantic function types carry the unsafe bit through type resolution, formatting, equality, bare function references,
+   and `.l1m` interface round-tripping.
+3. Plain and unsafe function pointer types remain ABI-compatible in generated C while staying distinct in L1 analysis,
+   with `TYP-0780` covering unsafe/plain mismatch diagnostics.
+4. `sys.memory` now marks the raw-memory and raw-buffer helpers with unchecked caller-side preconditions as
+   `unsafe extern func`, and the runtime autodoc comments mirror the shipped Dea signatures.
+5. Safe code may still call `unsafe func` values in this tranche; no call-site gate, `unsafe {}` block, dereference
+   gate, or pointer-indexing gate was introduced.
+
+## Final Validation
+
+- `make -C l1 test-stage1 TESTS="parser_test signatures_test expr_types_test backend_test c_emitter_test interface_test"`

@@ -83,7 +83,7 @@ void *rt_alloc(dea_int bytes) {
  * @param new_bytes New size.
  * @return Pointer to reallocated memory or NULL.
  *
- * Dea signature: `extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;`
+ * Dea signature: `unsafe extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;`
  */
 #ifdef DEA_TRACE_MEMORY
 void *_rt_realloc_impl(void *ptr, dea_int new_bytes, const char *_loc_file, int _loc_line) {
@@ -141,7 +141,7 @@ void *rt_realloc(void *ptr, dea_int new_bytes) {
  *
  * @param ptr Pointer to free.
  *
- * Dea signature: `extern func rt_free(ptr: void*?) -> void;`
+ * Dea signature: `unsafe extern func rt_free(ptr: void*?) -> void;`
  */
 #ifdef DEA_TRACE_MEMORY
 void _rt_free_impl(void *ptr, const char *_loc_file, int _loc_line) {
@@ -224,7 +224,7 @@ void *rt_calloc(dea_int count, dea_int elem_size) {
  * @param bytes Number of bytes.
  * @return dest.
  *
- * Dea signature: `extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;`
+ * Dea signature: `unsafe extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;`
  */
 void *rt_memset(void *dest, dea_int value, dea_int bytes) {
     if (bytes < 0) {
@@ -249,7 +249,7 @@ void *rt_memset(void *dest, dea_int value, dea_int bytes) {
  * @param bytes Number of bytes.
  * @return dest.
  *
- * Dea signature: `extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;`
+ * Dea signature: `unsafe extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;`
  */
 void *rt_memcpy(void *dest, void *src, dea_int bytes) {
     if (bytes < 0) {
@@ -273,7 +273,7 @@ void *rt_memcpy(void *dest, void *src, dea_int bytes) {
  * @param bytes Number of bytes.
  * @return Comparison result.
  *
- * Dea signature: `extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;`
+ * Dea signature: `unsafe extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;`
  */
 dea_int rt_memcmp(void *a, void *b, dea_int bytes) {
     if (bytes < 0) {
@@ -304,7 +304,7 @@ dea_int rt_memcmp(void *a, void *b, dea_int bytes) {
  * @param index Element index.
  * @return Pointer to the element.
  *
- * Dea signature: `extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;`
+ * Dea signature: `unsafe extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;`
  */
 void *rt_array_element(void *array_data, dea_int element_size, dea_int index) {
     if (array_data == NULL) {
@@ -326,10 +326,6 @@ void *rt_array_element(void *array_data, dea_int element_size, dea_int index) {
     size_t offset = (size_t)index * (size_t)element_size;
     return (void *)((uintptr_t)array_data + offset);
 }
-
-/* =========================================================================
- * End of UNSAFE ZONE
- * ========================================================================= */
 
 /* =========================================================================
  * Runtime support for `new` & `drop`

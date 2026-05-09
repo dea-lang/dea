@@ -123,19 +123,23 @@ These docs should not be read as excluding either feature from L1 going forward.
 
 ## 8. Function Pointer Types
 
-L1 supports function pointer types with the spelling `func(T1, T2) -> U`. The zero-argument form is `func() -> U`, and
-`void` remains the result type for functions that do not return a value. Bare references to top-level functions have the
-function pointer type matching their signature, so they can be stored in variables, passed as arguments, returned, and
-called indirectly.
+L1 supports function pointer types with the spelling `func(T1, T2) -> U` and `unsafe func(T1, T2) -> U`. The
+zero-argument form is `func() -> U`, and `void` remains the result type for functions that do not return a value. Bare
+references to top-level functions have the function pointer type matching their signature, so they can be stored in
+variables, passed as arguments, returned, and called indirectly.
 
 Function pointer types are pointer-valued ABI objects. Generated C represents each distinct signature with a
 `dea_func_*` typedef over a plain C function pointer. Two function pointer types are compatible only when parameter
-arity, parameter types, and result type match exactly.
+arity, parameter types, result type, and the presence or absence of the `unsafe` marker match exactly.
 
 Nullability follows the existing `T?` model. Because `func(...) -> U?` means a non-null function pointer returning
-nullable `U`, a nullable function pointer is written with parentheses: `(func(...) -> U)?`. Nullable function pointer
-values use the same `NULL` niche representation as object pointers. Equality operators compare function pointer identity
-for same-signature operands; ordered comparisons remain rejected.
+nullable `U`, a nullable function pointer is written with parentheses: `(func(...) -> U)?`. The same rule applies to
+unsafe function pointers, for example `(unsafe func(void*) -> int)?`. Nullable function pointer values use the same
+`NULL` niche representation as object pointers. Equality operators compare function pointer identity for same-signature
+operands; ordered comparisons remain rejected.
+
+The current `unsafe` marker is a function-level contract marker, not a call-site gate. Safe code may still call an
+`unsafe func` value today; the marker exists to distinguish unchecked raw-memory contracts in signatures and interfaces.
 
 Lambdas, closures, method pointers, and C variadic function pointer types are intentionally out of scope for the current
 bootstrap feature.

@@ -3,9 +3,9 @@
 - Version: 2026-05-08
 - Status: Active
 - Kind: Initiative
-- Open plans:
-  - `l1/work/plans/features/2026-05-08-unsafe-function-marker-noref.md`
-- Closed plans: (none)
+- Open plans: (none)
+- Closed plans:
+  - `l1/work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md`
 
 ## Summary
 
