@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-05-08
+Version: 2026-05-09
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -98,6 +98,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   verification, and external-library linking.
 - Initiative [0003-c-ffi][c-ffi] adds the typed C boundary: `extern "C"` declarations, `cstr`, and the closed FFI-safe
   surface.
+- Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe] adds fixed-size array primitives and the
+  function-level `unsafe` marker for raw-memory contracts.
 
 ## Completed initiatives
 
@@ -128,6 +130,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   non-variadic C boundary.
 - Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] carves OS/process helpers and RNG out of
   `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c` CUs.
+- Feature [2026-05-08-unsafe-function-marker-noref][unsafe-marker] adds the `unsafe func` marker and unsafe function
+  pointer types.
 
 ## Backlog
 
@@ -146,11 +150,10 @@ surface.
   a slice-typed parameter. C variadic FFI remains a sibling tranche under Initiative [0003-c-ffi][c-ffi].
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
-- Typed arrays, buffers, shared buffers, and slices as general language features. The current `std.array` / `std.vector`
-  surface is library-level storage, not typed language-level arrays or slices.
-- Unsafe module boundaries and raw pointer operations, including address-of (`&`) semantics and pointer indexing /
-  addressing gates. Current `sys.unsafe` is a low-level runtime binding only. Same-type non-null pointer identity
-  equality is implemented; ordered pointer comparisons remain rejected.
+- Fixed-size typed arrays, pointer-indexing finalization, and the function-level unsafe marker for raw-memory contracts
+  are tracked by Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. Dynamic buffers, shared buffers,
+  slices, address-of (`&`), and broader pointer arithmetic remain backlog items. Current `std.array` / `std.vector`
+  storage is library-level rather than typed language-level arrays or slices.
 - `_` struct-member semantics are tracked by Feature
   [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members], which fixes `_ : StructType` as a single
   first-position anonymous embedded struct member and defines its construction, field-access, layout, and ABI rules.
@@ -200,6 +203,7 @@ update to be promoted to an initiative or plan:
 - Package management, manifests, and dependency resolution.
 
 [abi-prefix]: ../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md
+[arrays-unsafe]: ../work/initiatives/0004-array-primitives-and-unsafe-marker.md
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
@@ -235,6 +239,7 @@ update to be promoted to an initiative or plan:
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
+[unsafe-marker]: ../work/plans/features/2026-05-08-unsafe-function-marker-noref.md
 [variadic-functions]: ../work/plans/features/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
 [wide-int]: ../work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md
