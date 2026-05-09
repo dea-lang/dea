@@ -99,7 +99,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Initiative [0003-c-ffi][c-ffi] adds the typed C boundary: `extern "C"` declarations, `cstr`, and the closed FFI-safe
   surface.
 - Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe] adds fixed-size array primitives and the
-  function-level `unsafe` marker for raw-memory contracts.
+  function-level `unsafe` marker for raw-memory contracts. Its completed Phase 2 pointer-indexing work is documented by
+  Feature [2026-05-09-raw-pointer-indexing-semantics-noref][pointer-indexing].
 
 ## Completed initiatives
 
@@ -227,6 +228,7 @@ update to be promoted to an initiative or plan:
 [nullable-equality]: ../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
+[pointer-indexing]: ../work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md

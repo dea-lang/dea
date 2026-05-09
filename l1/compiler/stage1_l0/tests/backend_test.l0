@@ -941,6 +941,54 @@ func test_backend_generate_identity_cast_string_copy_retains() {
 }
 
 /**
+ * Tests raw-pointer indexing lowering for reads, writes, and single evaluation of side-effectful operands.
+ */
+func test_backend_generate_pointer_indexing_contract() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(20) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "extern func next_index() -> int;");
+        sv_push(lines, "extern func make_ptr() -> int*;");
+        sv_push(lines, "unsafe func read(p: int*, i: int) -> int {");
+        sv_push(lines, "    return p[i];");
+        sv_push(lines, "}");
+        sv_push(lines, "unsafe func write(p: int*, i: int, value: int) {");
+        sv_push(lines, "    p[i] = value;");
+        sv_push(lines, "}");
+        sv_push(lines, "unsafe func write_effectful(value: int) {");
+        sv_push(lines, "    make_ptr()[next_index()] = value;");
+        sv_push(lines, "}");
+        sv_push(lines, "unsafe func read_effectful() -> int {");
+        sv_push(lines, "    return make_ptr()[next_index()];");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int { return 0; }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for pointer-indexing fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "return p[i];"), "pointer-index read should lower to direct C indexing");
+        assert(contains_s(generated, "p[i] = value;"), "pointer-index write should lower to direct C indexing");
+        assert(contains_s(generated, "dea_int* dea_base_"),
+            "effectful write base should be captured once");
+        assert(contains_s(generated, "dea_int dea_idx_"),
+            "effectful write index should be captured once");
+        assert(contains_s(generated, " = value;"),
+            "effectful write should still emit one indexed assignment after temp capture");
+        assert(contains_s(generated, "return make_ptr()[next_index()];"),
+            "effectful read should still lower to one direct indexing expression");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests string equality and inequality lowering through the runtime helper.
  */
 func test_backend_generate_string_equality_ops() {
@@ -1451,6 +1499,7 @@ func main() {
     test_backend_generate_is_with_call_expr_and_qualified_variant();
     test_backend_generate_string_copy_retains();
     test_backend_generate_identity_cast_string_copy_retains();
+    test_backend_generate_pointer_indexing_contract();
     test_backend_generate_string_equality_ops();
     test_backend_generate_string_concat_ops();
     test_backend_generate_small_integer_builtins();

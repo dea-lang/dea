@@ -153,6 +153,8 @@ Key rules:
 - scope exit cleanup runs in reverse declaration order
 - early exits run pending `with` cleanup before normal owned-value cleanup
 - enum and struct cleanup recursively releases owned fields for active values
+- raw-pointer indexing lowers to direct C indexing; side-effectful lvalue bases or indexes are captured once so writes
+  preserve single evaluation of both operands
 
 See [ownership.md](ownership.md) for the language-facing ownership rules that this lowering must preserve.
 

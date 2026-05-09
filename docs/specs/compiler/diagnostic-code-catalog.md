@@ -294,117 +294,120 @@ and reuse supplement for applying this registry within L0.
 
 ## Expression Type Checking, Type Inference, and Type-Related Semantic Analysis
 
-| Code       | Level | Meaning                                                                                                |
-| ---------- | ----- | ------------------------------------------------------------------------------------------------------ |
-| `TYP-0001` | All   | No compilation unit available for expression type checking                                             |
-| `TYP-0002` | All   | Internal error: missing resolved function type during expression checking                              |
-| `TYP-0010` | All   | Not all control paths return the required value type                                                   |
-| `TYP-0020` | All   | Local variable already declared in this scope                                                          |
-| `TYP-0021` | All   | Local variable shadows variable from outer scope                                                       |
-| `TYP-0022` | All   | Local variable shadows an enum variant in the same module                                              |
-| `TYP-0023` | All   | Local variable shadows an imported enum variant                                                        |
-| `TYP-0024` | All   | Local variable shadows an ambiguously imported symbol                                                  |
-| `TYP-0025` | All   | Local variable shadows a top-level symbol                                                              |
-| `TYP-0030` | All   | Unreachable code                                                                                       |
-| `TYP-0031` | All   | Unreachable code after 'return'                                                                        |
-| `TYP-0040` | All   | Cannot resolve type annotation for variable                                                            |
-| `TYP-0050` | All   | Variable cannot have type 'void'                                                                       |
-| `TYP-0051` | All   | Initializer for type mismatch                                                                          |
-| `TYP-0052` | All   | Cannot infer type from 'null'; explicit type required                                                  |
-| `TYP-0053` | All   | Initializer is 'void', cannot assign to variable                                                       |
-| `TYP-0060` | All   | Unknown variable                                                                                       |
-| `TYP-0061` | All   | Cannot drop non-pointer type                                                                           |
-| `TYP-0062` | All   | Use of dropped variable                                                                                |
-| `TYP-0063` | All   | Cannot drop module-level let                                                                           |
-| `TYP-0070` | All   | If condition must have type 'bool'                                                                     |
-| `TYP-0080` | All   | While condition must have type 'bool'                                                                  |
-| `TYP-0090` | All   | For loop condition must have type 'bool'                                                               |
-| `TYP-0100` | All   | Match expression must have enum type                                                                   |
-| `TYP-0101` | All   | Pattern variable count mismatch: variant has fields but pattern has variables                          |
-| `TYP-0102` | All   | Unknown variant for enum                                                                               |
-| `TYP-0103` | All   | No type information for enum                                                                           |
-| `TYP-0104` | All   | Non-exhaustive match                                                                                   |
-| `TYP-0105` | All   | Unreachable wildcard pattern in match: all variants of enum are already covered                        |
-| `TYP-0106` | All   | `case` scrutinee must have type `int`, `byte`, `bool`, or `string`                                     |
-| `TYP-0107` | All   | 'case' arm literal must be int, byte, bool, or string                                                  |
-| `TYP-0108` | All   | Duplicate literal value in 'case' statement                                                            |
-| `TYP-0109` | All   | Invalid escape in 'case' literal                                                                       |
-| `TYP-0110` | All   | 'break' statement not within a loop                                                                    |
-| `TYP-0120` | All   | 'continue' statement not within a loop                                                                 |
-| `TYP-0139` | All   | Unknown statement type                                                                                 |
-| `TYP-0149` | All   | Internal error: cannot infer the type of an empty expression placeholder                               |
-| `TYP-0150` | All   | Use of dropped variable                                                                                |
-| `TYP-0151` | All   | Symbol is not a value                                                                                  |
-| `TYP-0152` | All   | Variant requires arguments; use '(...)' constructor syntax                                             |
-| `TYP-0153` | All   | Unknown identifier from an unknown module                                                              |
-| `TYP-0154` | All   | Identifier refers to a non-imported module                                                             |
-| `TYP-0155` | All   | Ambiguous identifier                                                                                   |
-| `TYP-0156` | All   | 'cleanup' block references 'with' header variable that may be uninitialized on '?' header-failure path |
-| `TYP-0158` | All   | Nested symbol paths are not supported                                                                  |
-| `TYP-0159` | All   | Unknown identifier                                                                                     |
-| `TYP-0160` | All   | Unary `-` requires an integer operand                                                                  |
-| `TYP-0161` | All   | Unary `!` requires a `bool` operand                                                                    |
-| `TYP-0162` | All   | Cannot dereference a non-pointer expression                                                            |
-| `TYP-0170` | All   | Operator requires integer operands                                                                     |
-| `TYP-0171` | All   | Operator requires boolean operands                                                                     |
-| `TYP-0172` | All   | Equality operator requires same-type operands (except for 'null' checks)                               |
-| `TYP-0173` | All   | Equality not supported for the type in question                                                        |
-| `TYP-0180` | All   | Callee must be a function name                                                                         |
-| `TYP-0181` | All   | Symbol is not callable                                                                                 |
-| `TYP-0182` | All   | Callee is not a function                                                                               |
-| `TYP-0183` | All   | Function call argument count mismatch                                                                  |
-| `TYP-0189` | All   | Unknown or ambiguous callee identifier                                                                 |
-| `TYP-0190` | All   | No type information for struct                                                                         |
-| `TYP-0191` | All   | Struct constructor argument count mismatch                                                             |
-| `TYP-0200` | All   | Variant has no type information                                                                        |
-| `TYP-0201` | All   | Variant constructor argument count mismatch                                                            |
-| `TYP-0210` | All   | Index expression must have type `int`                                                                  |
-| `TYP-0211` | All   | Cannot index into a nullable expression; indexing is not yet supported                                 |
-| `TYP-0212` | All   | Cannot index into an expression; indexing is not yet supported                                         |
-| `TYP-0220` | All   | Cannot access a field on a nullable struct                                                             |
-| `TYP-0221` | All   | Struct has no field                                                                                    |
-| `TYP-0222` | All   | Cannot access field on non-struct type                                                                 |
-| `TYP-0230` | All   | Invalid explicit cast                                                                                  |
-| `TYP-0240` | All   | Cannot take `sizeof(void)`                                                                             |
-| `TYP-0241` | All   | `sizeof` expects exactly 1 argument                                                                    |
-| `TYP-0242` | All   | `ord` expects exactly 1 argument                                                                       |
-| `TYP-0243` | All   | `ord` expects an enum value                                                                            |
-| `TYP-0244` | L1+   | Intrinsic reference may only be used in call position                                                  |
-| `TYP-0245` | L1+   | `is` expects exactly 2 arguments                                                                       |
-| `TYP-0246` | L1+   | `is` expects an enum value as its first argument                                                       |
-| `TYP-0247` | L1+   | `is` expects an enum variant reference as its second argument                                          |
-| `TYP-0248` | L1+   | `is` expects a variant of the first argument's enum type                                               |
-| `TYP-0250` | All   | Cannot apply '?' to non-nullable type                                                                  |
-| `TYP-0251` | All   | Cannot use '?' in a function that does not return a nullable type (T?)                                 |
-| `TYP-0260` | All   | Return statement outside of function                                                                   |
-| `TYP-0270` | All   | Type alias does not have a resolved type                                                               |
-| `TYP-0271` | All   | Symbol is not a type                                                                                   |
-| `TYP-0278` | All   | Type 'void' cannot be nullable                                                                         |
-| `TYP-0279` | All   | Unknown or ambiguous type                                                                              |
-| `TYP-0280` | All   | Unknown type in 'new' expression                                                                       |
-| `TYP-0281` | All   | Cannot allocate enum type without a variant                                                            |
-| `TYP-0282` | All   | Missing struct layout information                                                                      |
-| `TYP-0283` | All   | Heap-allocated struct argument count mismatch                                                          |
-| `TYP-0285` | All   | `new` scalar initializer arity mismatch                                                                |
-| `TYP-0286` | All   | Invalid scalar initializer for `new`                                                                   |
-| `TYP-0290` | All   | Type expression is only valid as argument to type-accepting intrinsics such as 'sizeof'                |
-| `TYP-0300` | All   | Unknown type from an unknown module                                                                    |
-| `TYP-0301` | All   | Type refers to a non-imported module                                                                   |
-| `TYP-0303` | All   | Ambiguous identifier                                                                                   |
-| `TYP-0310` | All   | Expression type mismatch                                                                               |
-| `TYP-0311` | All   | Assignment type mismatch                                                                               |
-| `TYP-0312` | All   | Function call argument type mismatch                                                                   |
-| `TYP-0313` | All   | Struct constructor field type mismatch                                                                 |
-| `TYP-0314` | All   | Enum variant constructor field type mismatch                                                           |
-| `TYP-0315` | All   | Return expression type mismatch                                                                        |
-| `TYP-0316` | All   | Heap allocation initializer type mismatch                                                              |
-| `TYP-0319` | All   | Internal default code for widening-context type mismatches                                             |
-| `TYP-0360` | L1+   | Cannot assign to const binding                                                                         |
-| `TYP-0700` | All   | Integer literal is outside the target integer type range                                               |
-| `TYP-0701` | All   | Explicit nullable-pointer-to-pointer cast is provably null at compile time                             |
-| `TYP-0702` | All   | Integer literal outside `int` requires a contextual integer type                                       |
-| `TYP-0703` | All   | Integer literal outside `int` cannot be used in this contextual type                                   |
-| `TYP-0780` | L1+   | Unsafe/plain function type mismatch                                                                    |
-| `TYP-9209` | All   | Internal error: variant does not produce enum type                                                     |
-| `TYP-9288` | All   | Internal error: 'new' outside function context                                                         |
-| `TYP-9289` | All   | Internal error: missing module environment for the current function                                    |
+| Code       | Level   | Meaning                                                                                                |
+| ---------- | ------- | ------------------------------------------------------------------------------------------------------ |
+| `TYP-0001` | All     | No compilation unit available for expression type checking                                             |
+| `TYP-0002` | All     | Internal error: missing resolved function type during expression checking                              |
+| `TYP-0010` | All     | Not all control paths return the required value type                                                   |
+| `TYP-0020` | All     | Local variable already declared in this scope                                                          |
+| `TYP-0021` | All     | Local variable shadows variable from outer scope                                                       |
+| `TYP-0022` | All     | Local variable shadows an enum variant in the same module                                              |
+| `TYP-0023` | All     | Local variable shadows an imported enum variant                                                        |
+| `TYP-0024` | All     | Local variable shadows an ambiguously imported symbol                                                  |
+| `TYP-0025` | All     | Local variable shadows a top-level symbol                                                              |
+| `TYP-0030` | All     | Unreachable code                                                                                       |
+| `TYP-0031` | All     | Unreachable code after 'return'                                                                        |
+| `TYP-0040` | All     | Cannot resolve type annotation for variable                                                            |
+| `TYP-0050` | All     | Variable cannot have type 'void'                                                                       |
+| `TYP-0051` | All     | Initializer for type mismatch                                                                          |
+| `TYP-0052` | All     | Cannot infer type from 'null'; explicit type required                                                  |
+| `TYP-0053` | All     | Initializer is 'void', cannot assign to variable                                                       |
+| `TYP-0060` | All     | Unknown variable                                                                                       |
+| `TYP-0061` | All     | Cannot drop non-pointer type                                                                           |
+| `TYP-0062` | All     | Use of dropped variable                                                                                |
+| `TYP-0063` | All     | Cannot drop module-level let                                                                           |
+| `TYP-0070` | All     | If condition must have type 'bool'                                                                     |
+| `TYP-0080` | All     | While condition must have type 'bool'                                                                  |
+| `TYP-0090` | All     | For loop condition must have type 'bool'                                                               |
+| `TYP-0100` | All     | Match expression must have enum type                                                                   |
+| `TYP-0101` | All     | Pattern variable count mismatch: variant has fields but pattern has variables                          |
+| `TYP-0102` | All     | Unknown variant for enum                                                                               |
+| `TYP-0103` | All     | No type information for enum                                                                           |
+| `TYP-0104` | All     | Non-exhaustive match                                                                                   |
+| `TYP-0105` | All     | Unreachable wildcard pattern in match: all variants of enum are already covered                        |
+| `TYP-0106` | All     | `case` scrutinee must have type `int`, `byte`, `bool`, or `string`                                     |
+| `TYP-0107` | All     | 'case' arm literal must be int, byte, bool, or string                                                  |
+| `TYP-0108` | All     | Duplicate literal value in 'case' statement                                                            |
+| `TYP-0109` | All     | Invalid escape in 'case' literal                                                                       |
+| `TYP-0110` | All     | 'break' statement not within a loop                                                                    |
+| `TYP-0120` | All     | 'continue' statement not within a loop                                                                 |
+| `TYP-0139` | All     | Unknown statement type                                                                                 |
+| `TYP-0149` | All     | Internal error: cannot infer the type of an empty expression placeholder                               |
+| `TYP-0150` | All     | Use of dropped variable                                                                                |
+| `TYP-0151` | All     | Symbol is not a value                                                                                  |
+| `TYP-0152` | All     | Variant requires arguments; use '(...)' constructor syntax                                             |
+| `TYP-0153` | All     | Unknown identifier from an unknown module                                                              |
+| `TYP-0154` | All     | Identifier refers to a non-imported module                                                             |
+| `TYP-0155` | All     | Ambiguous identifier                                                                                   |
+| `TYP-0156` | All     | 'cleanup' block references 'with' header variable that may be uninitialized on '?' header-failure path |
+| `TYP-0158` | All     | Nested symbol paths are not supported                                                                  |
+| `TYP-0159` | All     | Unknown identifier                                                                                     |
+| `TYP-0160` | All     | Unary `-` requires an integer operand                                                                  |
+| `TYP-0161` | All     | Unary `!` requires a `bool` operand                                                                    |
+| `TYP-0162` | All     | Cannot dereference a non-pointer expression                                                            |
+| `TYP-0170` | All     | Operator requires integer operands                                                                     |
+| `TYP-0171` | All     | Operator requires boolean operands                                                                     |
+| `TYP-0172` | All     | Equality operator requires same-type operands (except for 'null' checks)                               |
+| `TYP-0173` | All     | Equality not supported for the type in question                                                        |
+| `TYP-0180` | All     | Callee must be a function name                                                                         |
+| `TYP-0181` | All     | Symbol is not callable                                                                                 |
+| `TYP-0182` | All     | Callee is not a function                                                                               |
+| `TYP-0183` | All     | Function call argument count mismatch                                                                  |
+| `TYP-0189` | All     | Unknown or ambiguous callee identifier                                                                 |
+| `TYP-0190` | All     | No type information for struct                                                                         |
+| `TYP-0191` | All     | Struct constructor argument count mismatch                                                             |
+| `TYP-0200` | All     | Variant has no type information                                                                        |
+| `TYP-0201` | All     | Variant constructor argument count mismatch                                                            |
+| `TYP-0210` | All     | Index expression must have type `int`                                                                  |
+| `TYP-0211` | All     | Cannot index into a nullable base expression                                                           |
+| `TYP-0212` | L0 only | Cannot index into expression of the given type; indexing is not yet supported                          |
+| `TYP-0213` | L1+     | Cannot index into a non-pointer expression                                                             |
+| `TYP-0214` | L1+     | Pointer indexing is allowed only inside an `unsafe func` body                                          |
+| `TYP-0215` | L1+     | Cannot index through a pointer to an unsupported unsized pointee type such as `void`                   |
+| `TYP-0220` | All     | Cannot access a field on a nullable struct                                                             |
+| `TYP-0221` | All     | Struct has no field                                                                                    |
+| `TYP-0222` | All     | Cannot access field on non-struct type                                                                 |
+| `TYP-0230` | All     | Invalid explicit cast                                                                                  |
+| `TYP-0240` | All     | Cannot take `sizeof(void)`                                                                             |
+| `TYP-0241` | All     | `sizeof` expects exactly 1 argument                                                                    |
+| `TYP-0242` | All     | `ord` expects exactly 1 argument                                                                       |
+| `TYP-0243` | All     | `ord` expects an enum value                                                                            |
+| `TYP-0244` | L1+     | Intrinsic reference may only be used in call position                                                  |
+| `TYP-0245` | L1+     | `is` expects exactly 2 arguments                                                                       |
+| `TYP-0246` | L1+     | `is` expects an enum value as its first argument                                                       |
+| `TYP-0247` | L1+     | `is` expects an enum variant reference as its second argument                                          |
+| `TYP-0248` | L1+     | `is` expects a variant of the first argument's enum type                                               |
+| `TYP-0250` | All     | Cannot apply '?' to non-nullable type                                                                  |
+| `TYP-0251` | All     | Cannot use '?' in a function that does not return a nullable type (T?)                                 |
+| `TYP-0260` | All     | Return statement outside of function                                                                   |
+| `TYP-0270` | All     | Type alias does not have a resolved type                                                               |
+| `TYP-0271` | All     | Symbol is not a type                                                                                   |
+| `TYP-0278` | All     | Type 'void' cannot be nullable                                                                         |
+| `TYP-0279` | All     | Unknown or ambiguous type                                                                              |
+| `TYP-0280` | All     | Unknown type in 'new' expression                                                                       |
+| `TYP-0281` | All     | Cannot allocate enum type without a variant                                                            |
+| `TYP-0282` | All     | Missing struct layout information                                                                      |
+| `TYP-0283` | All     | Heap-allocated struct argument count mismatch                                                          |
+| `TYP-0285` | All     | `new` scalar initializer arity mismatch                                                                |
+| `TYP-0286` | All     | Invalid scalar initializer for `new`                                                                   |
+| `TYP-0290` | All     | Type expression is only valid as argument to type-accepting intrinsics such as 'sizeof'                |
+| `TYP-0300` | All     | Unknown type from an unknown module                                                                    |
+| `TYP-0301` | All     | Type refers to a non-imported module                                                                   |
+| `TYP-0303` | All     | Ambiguous identifier                                                                                   |
+| `TYP-0310` | All     | Expression type mismatch                                                                               |
+| `TYP-0311` | All     | Assignment type mismatch                                                                               |
+| `TYP-0312` | All     | Function call argument type mismatch                                                                   |
+| `TYP-0313` | All     | Struct constructor field type mismatch                                                                 |
+| `TYP-0314` | All     | Enum variant constructor field type mismatch                                                           |
+| `TYP-0315` | All     | Return expression type mismatch                                                                        |
+| `TYP-0316` | All     | Heap allocation initializer type mismatch                                                              |
+| `TYP-0319` | All     | Internal default code for widening-context type mismatches                                             |
+| `TYP-0360` | L1+     | Cannot assign to const binding                                                                         |
+| `TYP-0700` | All     | Integer literal is outside the target integer type range                                               |
+| `TYP-0701` | All     | Explicit nullable-pointer-to-pointer cast is provably null at compile time                             |
+| `TYP-0702` | All     | Integer literal outside `int` requires a contextual integer type                                       |
+| `TYP-0703` | All     | Integer literal outside `int` cannot be used in this contextual type                                   |
+| `TYP-0780` | L1+     | Unsafe/plain function type mismatch                                                                    |
+| `TYP-9209` | All     | Internal error: variant does not produce enum type                                                     |
+| `TYP-9288` | All     | Internal error: 'new' outside function context                                                         |
+| `TYP-9289` | All     | Internal error: missing module environment for the current function                                    |

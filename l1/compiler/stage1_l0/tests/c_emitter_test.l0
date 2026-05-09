@@ -395,6 +395,7 @@ func test_emitter_expression_and_statement_helpers() {
         assert(cem_emit_checked_int_add("a", "b") == "(_rt_iadd(a, b))", "checked add helper mismatch");
         assert(cem_emit_function_call("func", "x, y") == "func(x, y)", "function call helper mismatch");
         assert(cem_emit_field_access("obj", "x", false) == "(obj).x", "field access helper mismatch");
+        assert(cem_emit_index_lvalue("base", "idx") == "base[idx]", "index helper mismatch");
         assert(cem_emit_cast("dea_int", "b") == "((dea_int)(b))", "cast helper mismatch");
         assert(cem_emit_checked_narrow_cast("dea_tiny", "x") == "(_rt_narrow_dea_tiny(x))",
             "tiny narrow helper mismatch");

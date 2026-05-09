@@ -79,9 +79,9 @@ implementation. In addition, `in` remains reserved for a future extension.
 ```
 
 Note: the current bootstrap implementation uses `&` only as the binary bitwise-AND operator. No forward-looking design
-decision has been made yet on whether prefix address-of will become part of the L<sub>1</sub> language surface.
-Likewise, the presence of postfix indexing syntax in this grammar should not be read as freezing the final semantic
-contract of pointer indexing.
+decision has been made yet on whether prefix address-of will become part of the L<sub>1</sub> language surface. Postfix
+indexing syntax is part of the current surface: `ptr[index]` is the raw-pointer indexing form, accepted only in
+`unsafe func` bodies, with `int` indexes and direct unchecked lowering for sized non-`void` pointee types.
 
 ### 1.5 Special identifier `_`
 

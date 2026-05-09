@@ -108,18 +108,18 @@ Equality operators (`==` and `!=`) on same-type pointer operands compare by refe
 §16's explicit refusal of `string` identity equality, as heap pointers do not share string's potential for deduplication
 or re-homing. Ordered pointer comparisons remain rejected, as address ordering is not defined in L1.
 
-No design decision has been finalized yet on:
-
-- whether address-of (`&`) will become part of the L1 language surface
-- the final semantic contract for postfix pointer indexing (`ptr[index]`)
+No design decision has been finalized yet on whether address-of (`&`) will become part of the L1 language surface.
 
 Current bootstrap status:
 
 - `&` is reserved in the current implementation and is not yet assigned address-of semantics
-- postfix indexing is implemented today for current pointer-based use cases, but its long-term language status and
-  precise semantic contract are not being frozen by this document
-
-These docs should not be read as excluding either feature from L1 going forward.
+- postfix pointer indexing is finalized as a raw-pointer operation: for `ptr: T*` and `index: int`, `ptr[index]` is
+  accepted only inside `unsafe func` bodies, rejects nullable bases and `void*`, emits no bounds check, and lowers to
+  direct C indexing
+- ordinary pointer dereference (`*p`) and pointer field access remain available in safe code; only postfix pointer
+  indexing is gated on `unsafe func`
+- `ptr[index] = value` follows the same slot-replacement ARC discipline as other ordinary assignments when `T`
+  transitively contains ARC-managed data
 
 ## 8. Function Pointer Types
 

@@ -301,7 +301,7 @@ func test_case_empty_error() {
  * Tests test_expr_precedence_postfix_and_qualified_type_ok.
  */
 func test_expr_precedence_postfix_and_qualified_type_ok() {
-    let src = "module main; extern func sink(x: int) -> int; func helper(v: int*) -> int { return v[0]; } func main() -> int { let p: int* = new int(1); let n: int = sink((1 + 2 * 3) as int); let x: int = helper(p); let y: int = new color::Color::Red*(p).field?; return n + x + y; }";
+    let src = "module main; extern func sink(x: int) -> int; unsafe func helper(v: int*) -> int { return v[0]; } func main() -> int { let p: int* = new int(1); let n: int = sink((1 + 2 * 3) as int); let x: int = helper(p); let y: int = new color::Color::Red*(p).field?; return n + x + y; }";
     expect_ok(src);
 }
 

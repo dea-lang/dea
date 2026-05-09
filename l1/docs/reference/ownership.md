@@ -75,6 +75,7 @@ That rule applies to:
 - local `string` variables
 - struct or enum string fields
 - dereferenced pointer destinations
+- raw-pointer indexed destinations such as `ptr[i]` inside `unsafe func`
 - other ordinary assignment destinations whose type is `string`
 
 The intended behavior is:
@@ -112,6 +113,10 @@ if (opts.output != null) {
 
 These forms must work without manual retain/release and without restoring clone-like helper functions. If generated code
 or runtime behavior differs from this contract, treat it as a compiler bug.
+
+Raw-pointer writes inherit that same slot-replacement rule even though the access itself is unchecked. In other words,
+`ptr[i] = value` inside an `unsafe func` does not add bounds checks or provenance checks, but once the destination slot
+is identified it must retain the incoming ARC-managed value before releasing the overwritten contents of that slot.
 
 ## 5. Optional Unwrap
 

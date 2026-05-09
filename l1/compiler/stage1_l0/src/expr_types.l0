@@ -780,6 +780,16 @@ func etc_is_void(ty: Type*?) -> bool {
 }
 
 /**
+ * Report whether postfix pointer indexing is allowed in the current function context.
+ *
+ * @param self Expression checker state.
+ * @return `true` when the current expression is inside an `unsafe func` body.
+ */
+func etc_in_unsafe_func(self: ExpressionTypeChecker*) -> bool {
+    return self.current_func != null && (self.current_func as FunctionEnv*).func_decl.is_unsafe;
+}
+
+/**
  * Resolve a visible symbol as a type usable by `sizeof`.
  *
  * @param self Expression checker state.
@@ -3064,21 +3074,34 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
     }
 
     if (ord(l_ty.kind) == ord(TY_NULLABLE)) {
-        etc_diag_error(self, "TYP-0211", "cannot index into a nullable expression; indexing is not yet supported",
+        etc_diag_error(self, "TYP-0211", "cannot index into a nullable pointer; unwrap it before indexing",
             (self.current_unit as DriverUnit*).path, expr.span);
         type_free(l_ty);
         return null;
     }
 
     if (ord(l_ty.kind) != ord(TY_POINTER)) {
-        etc_diag_error(self, "TYP-0212", "cannot index into an expression; indexing is not yet supported",
+        etc_diag_error(self, "TYP-0213", "cannot index into non-pointer type " + type_format(l_ty),
             (self.current_unit as DriverUnit*).path, expr.span);
         type_free(l_ty);
         return null;
     }
 
     if (ord(l_ty.kind) == ord(TY_POINTER)) {
-        let res = type_clone(l_ty.inner as Type*);
+        let pointee = l_ty.inner as Type*;
+        if (etc_is_void(pointee)) {
+            etc_diag_error(self, "TYP-0215", "cannot index through pointer to unsized type " + type_format(pointee),
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(l_ty);
+            return null;
+        }
+        if (!etc_in_unsafe_func(self)) {
+            etc_diag_error(self, "TYP-0214", "pointer indexing is allowed only inside an unsafe func body",
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(l_ty);
+            return null;
+        }
+        let res = type_clone(pointee);
         type_free(l_ty);
         return res;
     }

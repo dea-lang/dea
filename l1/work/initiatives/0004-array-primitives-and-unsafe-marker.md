@@ -6,6 +6,7 @@
 - Open plans: (none)
 - Closed plans:
   - `l1/work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md`
+  - `l1/work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md`
 
 ## Summary
 
@@ -214,9 +215,9 @@ payloads when those enum values are otherwise supported by the existing value se
 Pointer indexing already exists in the bootstrap compiler. This initiative finalizes it as raw-pointer indexing with the
 following contract:
 
-- for `e: *T` and `i: int`, `e[i]` lowers to direct C indexing (`e[i]`, equivalent to `*(e + i)`)
+- for `e: T*` and `i: int`, `e[i]` lowers to direct C indexing (`e[i]`, equivalent to `*(e + i)`)
 - `T` must be sized and must not be `void`-shaped
-- `e: *T?` rejects directly; callers must unwrap before indexing
+- `e: T*?` rejects directly; callers must unwrap before indexing
 - no bounds check is emitted
 - read and write forms are accepted only inside `unsafe func` bodies
 - write forms reuse the existing slot-replacement discipline when `T` transitively contains ARC data
@@ -226,7 +227,7 @@ Existing invalid-index diagnostics are updated so they no longer imply indexing 
 
 ### Index type
 
-The index type for both `T[N]` and `*T` indexing is `int` for this initiative, matching the locked stdlib index type. A
+The index type for both `T[N]` and `T*` indexing is `int` for this initiative, matching the locked stdlib index type. A
 future extension may parameterize array index type for very large arrays without promoting `int` everywhere, but this
 initiative does not freeze syntax for that direction.
 
@@ -264,7 +265,7 @@ Plan artifacts:
 
 Finalize the existing postfix indexing implementation for raw pointers. Type rules require:
 
-- `*T` receiver
+- `T*` receiver
 - non-nullable receiver
 - sized, non-`void` element type
 - `int` index
@@ -278,7 +279,7 @@ Tests extend typing, backend, and C-emitter coverage for:
 
 - accepted read and write forms in `unsafe func`
 - rejection outside `unsafe func`
-- rejection for `*T?`, `void*`, non-pointer bases, and non-`int` indexes
+- rejection for `T*?`, `void*`, non-pointer bases, and non-`int` indexes
 - single-evaluation lowering for side-effectful base/index expressions
 - scalar and ARC-containing element writes
 
@@ -297,7 +298,7 @@ Implementation work includes:
 - implement recursive retain/release/cleanup/copy for arrays whose element type has ARC data
 - implement checked array read/write lowering with single evaluation
 - support `new T[N]` and `drop` cleanup for `T[N]*`
-- document FFI exposure: `T[N]` crosses C as a wrapper struct, not a bare C array; FFI users should use `*T` plus length
+- document FFI exposure: `T[N]` crosses C as a wrapper struct, not a bare C array; FFI users should use `T*` plus length
   until a later FFI-specific array policy exists
 
 Compiler-side touches include `ast.l0`, `parser.l0`, `parser/expr.l0`, `parser/shared.l0`, `types.l0`,

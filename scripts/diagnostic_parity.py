@@ -115,6 +115,25 @@ def stage_trigger_source(stage: str, code: str, oracle) -> str | None:
             "LEX-0067": "1.0d",
             "LEX-0068": "123f",
             "TYP-0244": "module main;\nimport dea;\nfunc foo() -> int { let f = sizeof; return 0; }\n",
+            "TYP-0213": (
+                "module main;\n"
+                "unsafe func foo(i: int) -> int {\n"
+                "    let value: int = 1;\n"
+                "    return value[i];\n"
+                "}\n"
+            ),
+            "TYP-0214": (
+                "module main;\n"
+                "extern func buf() -> int*;\n"
+                "func foo(i: int) -> int { return buf()[i]; }\n"
+            ),
+            "TYP-0215": (
+                "module main;\n"
+                "extern func raw_bytes() -> void*;\n"
+                "unsafe func foo(i: int) -> void {\n"
+                "    let value = raw_bytes()[i];\n"
+                "}\n"
+            ),
         }.get(code)
         if extra is not None:
             return extra
@@ -132,11 +151,15 @@ def all_codes(stage: str, oracle) -> list[str]:
     for family_codes in oracle.DIAGNOSTIC_CODE_FAMILIES.values():
         codes.extend(family_codes)
     if stage == "l1":
-        codes.extend(["LEX-0062", "LEX-0063", "LEX-0064", "LEX-0065", "LEX-0066", "LEX-0067", "LEX-0068", "TYP-0244"])
+        codes.extend([
+            "LEX-0062", "LEX-0063", "LEX-0064", "LEX-0065", "LEX-0066", "LEX-0067", "LEX-0068",
+            "TYP-0213", "TYP-0214", "TYP-0215", "TYP-0244",
+        ])
     skip = set(oracle.CLI_ONLY_CODES) | set(oracle.INTERNAL_CODES)
     if stage == "l1":
         skip.add("LEX-0060")
         skip.add("PAR-0226")
+        skip.add("TYP-0212")
     return [code for code in codes if code not in skip]
 
 

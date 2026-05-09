@@ -119,7 +119,6 @@ CASES = {
         },
         "expected": {
             "l0": "[TYP-0211] cannot index into nullable type 'int*?'; indexing is not yet supported",
-            "l1": "[TYP-0211] cannot index into a nullable expression; indexing is not yet supported",
         },
     },
     "typ-0212-pointer-indexing": {
@@ -132,18 +131,6 @@ CASES = {
         },
         "expected": {
             "l0": "[TYP-0212] cannot index into expression of type 'int*'; indexing is not yet supported",
-            "l1": "[TYP-0212] cannot index into an expression; indexing is not yet supported",
-        },
-        "files_by_stage": {
-            "l1": {
-                "main": """\
-                    module main;
-                    func foo(i: int) -> int {
-                        let value: int = 1;
-                        return value[i];
-                    }
-                """,
-            },
         },
     },
 }
@@ -195,6 +182,8 @@ def main() -> int:
     for case_name, spec in CASES.items():
         expected_spec = spec["expected"]
         if isinstance(expected_spec, dict):
+            if args.stage not in expected_spec:
+                continue
             expected = expected_spec[args.stage]
         else:
             expected = expected_spec

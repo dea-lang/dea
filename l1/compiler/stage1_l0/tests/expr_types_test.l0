@@ -379,6 +379,19 @@ func test_typing_field_diag_err() {
 }
 
 /**
+ * Tests accepted pointer indexing forms inside `unsafe func`.
+ */
+func test_typing_index_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_index_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_index_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests index diagnostic parity cases.
  */
 func test_typing_index_diag_err() {
@@ -388,12 +401,15 @@ func test_typing_index_diag_err() {
         assert(analysis_has_errors(result), "expected typing errors for typing_index_diag_err");
         assert(has_diag_code(result, "TYP-0210"), "expected non-int index expression error");
         assert(has_diag_code(result, "TYP-0211"), "expected nullable index base error");
-        assert(has_diag_code(result, "TYP-0212"), "expected invalid index base error");
+        assert(has_diag_code(result, "TYP-0213"), "expected invalid index base error");
+        assert(count_diag_code(result, "TYP-0214") == 2,
+            "expected pointer indexing outside unsafe func for safe and top-level cases");
+        assert(has_diag_code(result, "TYP-0215"), "expected unsupported unsized pointer index error");
         assert(has_diag_message(result, "TYP-0211",
-            "cannot index into a nullable expression; indexing is not yet supported"),
+            "cannot index into a nullable pointer; unwrap it before indexing"),
             "expected nullable index message wording");
-        assert(has_diag_message(result, "TYP-0212",
-            "cannot index into an expression; indexing is not yet supported"),
+        assert(has_diag_message(result, "TYP-0213",
+            "cannot index into non-pointer type int"),
             "expected invalid index-base message wording");
         assert(!has_diag_code(result, "TYP-0350"), "did not expect legacy index-base diagnostic code");
         analysis_result_free(result);
@@ -1133,6 +1149,7 @@ func main() {
     test_typing_case_diag_err();
     test_typing_with_cleanup_guard();
     test_typing_field_diag_err();
+    test_typing_index_ok();
     test_typing_index_diag_err();
     test_return_void_in_non_void();
     test_return_invalid_expr();

@@ -7,6 +7,7 @@ module typing_index_diag_err;
 
 extern func maybe_buf() -> int*?;
 extern func buf() -> int*;
+extern func raw_bytes() -> void*;
 
 /**
  * Triggers a non-int index expression error.
@@ -19,7 +20,7 @@ func err_non_int_index() {
 /**
  * Triggers indexing on a nullable base.
  */
-func err_nullable_index_base() {
+unsafe func err_nullable_index_base() {
     let p: int*? = maybe_buf();
     let value = p[0]; // TYP-0211
 }
@@ -27,7 +28,28 @@ func err_nullable_index_base() {
 /**
  * Triggers indexing on a non-pointer base.
  */
-func err_invalid_index_base() {
+unsafe func err_invalid_index_base() {
     let value: int = 1;
-    let item = value[0]; // TYP-0212
+    let item = value[0]; // TYP-0213
+}
+
+/**
+ * Triggers indexing outside an unsafe function body.
+ */
+func err_safe_pointer_index() -> int {
+    let p = buf();
+    return p[0]; // TYP-0214
+}
+
+/**
+ * Triggers indexing in a non-function context.
+ */
+let top_level_value: int = buf()[0]; // TYP-0214
+
+/**
+ * Triggers indexing through an unsupported unsized pointee.
+ */
+unsafe func err_void_pointer_index() {
+    let bytes = raw_bytes();
+    let value = bytes[0]; // TYP-0215
 }

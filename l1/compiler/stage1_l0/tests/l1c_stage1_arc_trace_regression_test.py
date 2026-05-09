@@ -634,6 +634,68 @@ def test_borrowed_param_return_with_cleanup_retains(artifact_dir: Path) -> None:
     assert_true(len(heap_frees(arc)) >= 2, f"expected frees for temp and returned value, got {heap_frees(arc)!r}", artifact_dir)
 
 
+def test_pointer_index_arc_slot_replacement(artifact_dir: Path) -> None:
+    """`ptr[i] = value` over ARC data must retain the incoming value before releasing the old slot."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "pointer_index_arc_slot_replacement",
+        """
+        module main;
+        import std.string;
+
+        unsafe func store(slot: string*, value: string) {
+            slot[0] = value;
+        }
+
+        func main() -> int {
+            let slot: string* = new string();
+            let first: string = concat_s("a", "1");
+            let second: string = concat_s("b", "2");
+            store(slot, first);
+            store(slot, second);
+            drop slot;
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    second_retain_index = -1
+    overwritten_release_index = -1
+    for index, event in enumerate(heap):
+        if (
+            second_retain_index < 0
+            and event.get("op") == "retain"
+            and event.get("action") == "retain"
+            and event.get("rc_before") == "1"
+            and event.get("rc_after") == "2"
+        ):
+            second_retain_index = index
+            continue
+        if (
+            second_retain_index >= 0
+            and event.get("op") == "release"
+            and event.get("action") == "keep"
+            and event.get("rc_before") == "2"
+            and event.get("rc_after") == "1"
+        ):
+            overwritten_release_index = index
+            break
+
+    assert_true(second_retain_index >= 0, f"expected retain of incoming indexed value, got {heap!r}", artifact_dir)
+    assert_true(
+        overwritten_release_index >= 0,
+        f"expected release of overwritten indexed slot, got {heap!r}",
+        artifact_dir,
+    )
+    assert_true(
+        second_retain_index < overwritten_release_index,
+        f"expected incoming retain before overwritten-slot release, got {heap!r}",
+        artifact_dir,
+    )
+
+
 def test_loop_continue_cleanup(artifact_dir: Path) -> None:
     """Continue paths should release exactly the ARC locals acquired on those paths."""
 
@@ -1388,6 +1450,7 @@ def main() -> int:
         test_null_optional_no_heap_release,
         test_borrowed_param_return_retains,
         test_borrowed_param_return_with_cleanup_retains,
+        test_pointer_index_arc_slot_replacement,
         test_loop_continue_cleanup,
         test_loop_break_cleanup,
         test_loop_return_cleanup,
