@@ -450,16 +450,16 @@ These are unsafe raw-memory primitives.
 | Function           | Signature                                                     | Description                  |
 | ------------------ | ------------------------------------------------------------- | ---------------------------- |
 | `rt_alloc`         | `(bytes: int) -> void*?`                                      | Allocates raw heap memory.   |
-| `rt_realloc`       | `(ptr: void*, new_bytes: int) -> void*?`                      | Resizes raw heap memory.     |
+| `rt_realloc`       | `(ptr: void*?, new_bytes: int) -> void*?`                     | Resizes raw heap memory.     |
 | `rt_free`          | `(ptr: void*?) -> void`                                       | Frees raw heap memory.       |
 | `rt_calloc`        | `(count: int, elem_size: int) -> void*?`                      | Allocates zeroed raw memory. |
 | `rt_memcpy`        | `(dest: void*, src: void*, bytes: int) -> void*`              | Copies raw bytes.            |
 | `rt_memset`        | `(dest: void*, value: int, bytes: int) -> void*`              | Fills raw bytes.             |
 | `rt_memcmp`        | `(a: void*, b: void*, bytes: int) -> int`                     | Compares raw bytes.          |
 | `rt_array_element` | `(array_data: void*, element_size: int, index: int) -> void*` | Computes an element pointer. |
-| `rt_stdin_read`    | `(buf: byte*, capacity: int) -> int`                          | Reads raw bytes from stdin.  |
-| `rt_stdout_write`  | `(buf: byte*, len: int) -> int`                               | Writes raw bytes to stdout.  |
-| `rt_stderr_write`  | `(buf: byte*, len: int) -> int`                               | Writes raw bytes to stderr.  |
+| `rt_stdin_read`    | `(buf: byte*?, capacity: int) -> int`                         | Reads raw bytes from stdin.  |
+| `rt_stdout_write`  | `(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stdout.  |
+| `rt_stderr_write`  | `(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stderr.  |
 
 ### Declared in `sys.hash` (11)
 

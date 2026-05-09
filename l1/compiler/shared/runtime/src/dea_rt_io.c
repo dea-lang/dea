@@ -211,11 +211,12 @@ dea_int _rt_stream_write_some(FILE *stream, const dea_byte *buf, dea_int len) {
 /**
  * Read raw bytes from standard input.
  *
- * @param buf Destination bytes.
+ * @param buf Destination bytes. A NULL buffer is reported as `-1`.
  * @param capacity Maximum number of bytes to read.
- * @return Bytes read, `0` on EOF, or `-1` on error.
+ * @return Bytes read, `0` on EOF, or `-1` on error (including a NULL `buf`
+ *         when `capacity > 0`).
  *
- * Dea signature: `unsafe extern func rt_stdin_read(buf: byte*, capacity: int) -> int;`
+ * Dea signature: `unsafe extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;`
  */
 dea_int rt_stdin_read(dea_byte *buf, dea_int capacity) {
     if (capacity < 0) {
@@ -239,11 +240,12 @@ dea_int rt_stdin_read(dea_byte *buf, dea_int capacity) {
 /**
  * Write raw bytes to standard output.
  *
- * @param buf Source bytes.
+ * @param buf Source bytes. A NULL buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error.
+ * @return Bytes written, or `-1` on error (including a NULL `buf`
+ *         when `len > 0`).
  *
- * Dea signature: `unsafe extern func rt_stdout_write(buf: byte*, len: int) -> int;`
+ * Dea signature: `unsafe extern func rt_stdout_write(buf: byte*?, len: int) -> int;`
  */
 dea_int rt_stdout_write(dea_byte *buf, dea_int len) {
     return _rt_stream_write_some(stdout, buf, len);
@@ -252,11 +254,12 @@ dea_int rt_stdout_write(dea_byte *buf, dea_int len) {
 /**
  * Write raw bytes to standard error.
  *
- * @param buf Source bytes.
+ * @param buf Source bytes. A NULL buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error.
+ * @return Bytes written, or `-1` on error (including a NULL `buf`
+ *         when `len > 0`).
  *
- * Dea signature: `unsafe extern func rt_stderr_write(buf: byte*, len: int) -> int;`
+ * Dea signature: `unsafe extern func rt_stderr_write(buf: byte*?, len: int) -> int;`
  */
 dea_int rt_stderr_write(dea_byte *buf, dea_int len) {
     return _rt_stream_write_some(stderr, buf, len);

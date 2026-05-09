@@ -79,11 +79,11 @@ void *rt_alloc(dea_int bytes) {
  * Panics if new_bytes is negative or too large to fit in size_t (platform-dependent).
  * If ptr is NULL, behaves like rt_alloc.
  *
- * @param ptr Pointer to memory.
+ * @param ptr Pointer to memory, or NULL to allocate fresh.
  * @param new_bytes New size.
  * @return Pointer to reallocated memory or NULL.
  *
- * Dea signature: `unsafe extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;`
+ * Dea signature: `unsafe extern func rt_realloc(ptr: void*?, new_bytes: int) -> void*?;`
  */
 #ifdef DEA_TRACE_MEMORY
 void *_rt_realloc_impl(void *ptr, dea_int new_bytes, const char *_loc_file, int _loc_line) {

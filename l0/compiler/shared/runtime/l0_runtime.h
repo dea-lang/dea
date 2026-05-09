@@ -1739,11 +1739,12 @@ static l0_int _rt_stream_write_some(FILE *stream, const l0_byte *buf, l0_int len
 /**
  * Read raw bytes from standard input.
  *
- * @param buf Destination bytes.
+ * @param buf Destination bytes. A NULL buffer is reported as `-1`.
  * @param capacity Maximum number of bytes to read.
- * @return Bytes read, `0` on EOF, or `-1` on error.
+ * @return Bytes read, `0` on EOF, or `-1` on error (including a NULL `buf`
+ *         when `capacity > 0`).
  *
- * L0 signature: `extern func rt_stdin_read(buf: byte*, capacity: int) -> int;`
+ * L0 signature: `extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;`
  */
 static l0_int rt_stdin_read(l0_byte *buf, l0_int capacity) {
     if (capacity < 0) {
@@ -1767,11 +1768,12 @@ static l0_int rt_stdin_read(l0_byte *buf, l0_int capacity) {
 /**
  * Write raw bytes to standard output.
  *
- * @param buf Source bytes.
+ * @param buf Source bytes. A NULL buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error.
+ * @return Bytes written, or `-1` on error (including a NULL `buf`
+ *         when `len > 0`).
  *
- * L0 signature: `extern func rt_stdout_write(buf: byte*, len: int) -> int;`
+ * L0 signature: `extern func rt_stdout_write(buf: byte*?, len: int) -> int;`
  */
 static l0_int rt_stdout_write(l0_byte *buf, l0_int len) {
     return _rt_stream_write_some(stdout, buf, len);
@@ -1780,11 +1782,12 @@ static l0_int rt_stdout_write(l0_byte *buf, l0_int len) {
 /**
  * Write raw bytes to standard error.
  *
- * @param buf Source bytes.
+ * @param buf Source bytes. A NULL buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error.
+ * @return Bytes written, or `-1` on error (including a NULL `buf`
+ *         when `len > 0`).
  *
- * L0 signature: `extern func rt_stderr_write(buf: byte*, len: int) -> int;`
+ * L0 signature: `extern func rt_stderr_write(buf: byte*?, len: int) -> int;`
  */
 static l0_int rt_stderr_write(l0_byte *buf, l0_int len) {
     return _rt_stream_write_some(stderr, buf, len);
@@ -2143,12 +2146,12 @@ static void *rt_alloc(l0_int bytes) {
  * Returns NULL on failure.
  * Panics if new_bytes is negative or too large to fit in size_t (platform-dependent).
  * If ptr is NULL, behaves like rt_alloc.
- * 
- * @param ptr Pointer to memory.
+ *
+ * @param ptr Pointer to memory, or NULL to allocate fresh.
  * @param new_bytes New size.
  * @return Pointer to reallocated memory or NULL.
  *
- * L0 signature: `extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;` 
+ * L0 signature: `extern func rt_realloc(ptr: void*?, new_bytes: int) -> void*?;`
  */
 #ifdef L0_TRACE_MEMORY
 static void *_rt_realloc_impl(void *ptr, l0_int new_bytes, const char *_loc_file, int _loc_line) {

@@ -46,12 +46,13 @@ extern func rt_calloc(count: int, elem_size: int) -> void*?;
 /**
  * Resize an existing memory block to a new size.
  * Panics if `new_bytes` is zero or negative or in case of overflow.
+ * If `ptr` is null, this behaves like `rt_alloc`.
  *
- * @param ptr The pointer to the existing memory block.
+ * @param ptr The pointer to the existing memory block, or null to allocate fresh.
  * @param new_bytes The new size in bytes.
  * @return A pointer to the resized memory block, or null on failure.
  */
-unsafe extern func rt_realloc(ptr: void*, new_bytes: int) -> void*?;
+unsafe extern func rt_realloc(ptr: void*?, new_bytes: int) -> void*?;
 
 /**
  * Free a previously allocated memory block.
@@ -106,26 +107,29 @@ unsafe extern func rt_array_element(array_data: void*, element_size: int, index:
 /**
  * Read up to `capacity` bytes from standard input into `buf`.
  *
- * @param buf Destination buffer.
+ * @param buf Destination buffer. A null buffer is reported as `-1`.
  * @param capacity Maximum number of bytes to read.
- * @return Bytes read, `0` on EOF, or `-1` on error.
+ * @return Bytes read, `0` on EOF, or `-1` on error (including a null `buf`
+ *         when `capacity > 0`).
  */
-unsafe extern func rt_stdin_read(buf: byte*, capacity: int) -> int;
+unsafe extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;
 
 /**
  * Write up to `len` bytes from `buf` to standard output.
  *
- * @param buf Source buffer.
+ * @param buf Source buffer. A null buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error.
+ * @return Bytes written, or `-1` on error (including a null `buf`
+ *         when `len > 0`).
  */
-unsafe extern func rt_stdout_write(buf: byte*, len: int) -> int;
+unsafe extern func rt_stdout_write(buf: byte*?, len: int) -> int;
 
 /**
  * Write up to `len` bytes from `buf` to standard error.
  *
- * @param buf Source buffer.
+ * @param buf Source buffer. A null buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error.
+ * @return Bytes written, or `-1` on error (including a null `buf`
+ *         when `len > 0`).
  */
-unsafe extern func rt_stderr_write(buf: byte*, len: int) -> int;
+unsafe extern func rt_stderr_write(buf: byte*?, len: int) -> int;
