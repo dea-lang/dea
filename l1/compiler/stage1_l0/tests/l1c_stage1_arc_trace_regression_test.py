@@ -113,6 +113,53 @@ def heap_frees(arc_lines: list[dict[str, str]]) -> list[dict[str, str]]:
     return [event for event in heap_releases(arc_lines) if event.get("action") == "free"]
 
 
+def heap_arc_sequence(arc_lines: list[dict[str, str]]) -> list[tuple[str | None, str | None, str | None, str | None]]:
+    """Return heap ARC events as `(op, action, rc_before, rc_after)` tuples."""
+
+    return [
+        (event.get("op"), event.get("action"), event.get("rc_before"), event.get("rc_after"))
+        for event in heap_events(arc_lines)
+    ]
+
+
+def assert_heap_transition_counts(
+    arc_lines: list[dict[str, str]],
+    expected_retains: int,
+    expected_keeps: int,
+    expected_frees: int,
+    message: str,
+    artifact_dir: Path,
+) -> None:
+    """Assert ARC transition counts and refcount deltas for heap events."""
+
+    retains = [event for event in heap_retains(arc_lines) if event.get("action") == "retain"]
+    keeps = [event for event in heap_releases(arc_lines) if event.get("action") == "keep"]
+    frees = heap_frees(arc_lines)
+
+    assert_equal(len(retains), expected_retains, f"{message}: retain count mismatch", artifact_dir)
+    assert_equal(len(keeps), expected_keeps, f"{message}: keep count mismatch", artifact_dir)
+    assert_equal(len(frees), expected_frees, f"{message}: free count mismatch", artifact_dir)
+
+    for event in retains:
+        assert_true(
+            event.get("rc_before") == "1" and event.get("rc_after") == "2",
+            f"{message}: expected retain 1->2, got {event!r}",
+            artifact_dir,
+        )
+    for event in keeps:
+        assert_true(
+            event.get("rc_before") == "2" and event.get("rc_after") == "1",
+            f"{message}: expected keep 2->1, got {event!r}",
+            artifact_dir,
+        )
+    for event in frees:
+        assert_true(
+            event.get("rc_before") == "1" and event.get("rc_after") == "0",
+            f"{message}: expected free 1->0, got {event!r}",
+            artifact_dir,
+        )
+
+
 def static_events(arc_lines: list[dict[str, str]]) -> list[dict[str, str]]:
     """Return static ARC events only."""
 
@@ -473,6 +520,265 @@ def test_array_nested_arc_struct_inner_arc_arrays_cleanup(artifact_dir: Path) ->
     keeps = [event for event in heap_releases(arc) if event.get("action") == "keep"]
     assert_true(len(frees) >= 3, f"expected terminal frees for recursive ARC array cleanup, got {frees!r}", artifact_dir)
     assert_true(len(keeps) >= 400, f"expected releases across NestedStruct[10][20], got {keeps!r}", artifact_dir)
+
+
+def test_array_arc_slot_replacement(artifact_dir: Path) -> None:
+    """`arr[i] = value` must retain the incoming string before freeing the overwritten slot."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "array_arc_slot_replacement",
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            let arr: string[2] = [concat_s("a", "1"), concat_s("a", "2")];
+            let replacement: string = concat_s("b", "3");
+            arr[0] = replacement;
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_equal(
+        heap_arc_sequence(arc),
+        [
+            ("retain", "retain", "1", "2"),
+            ("release", "free", "1", "0"),
+            ("release", "keep", "2", "1"),
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "array slot replacement ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_nested_array_arc_slot_replacement(artifact_dir: Path) -> None:
+    """`arr[i][j] = value` must recurse through nested arrays without leaking or double-freeing."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "nested_array_arc_slot_replacement",
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            let arr: string[1][2] = [[concat_s("a", "1"), concat_s("a", "2")]];
+            let replacement: string = concat_s("b", "3");
+            arr[0][1] = replacement;
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_equal(
+        heap_arc_sequence(arc),
+        [
+            ("retain", "retain", "1", "2"),
+            ("release", "free", "1", "0"),
+            ("release", "keep", "2", "1"),
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "nested array slot replacement ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_array_self_assignment_retains_before_cleanup(artifact_dir: Path) -> None:
+    """`arr = arr` must retain the source array elements before releasing the overwritten owner slots."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "array_self_assignment_retains_before_cleanup",
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            let arr: string[2] = [concat_s("s", "1"), concat_s("s", "2")];
+            arr = arr;
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_equal(
+        heap_arc_sequence(arc),
+        [
+            ("retain", "retain", "1", "2"),
+            ("retain", "retain", "1", "2"),
+            ("release", "keep", "2", "1"),
+            ("release", "keep", "2", "1"),
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "array self-assignment ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_array_param_return_retains(artifact_dir: Path) -> None:
+    """Passing and returning a `string[2]` by value must keep both elements alive for the caller."""
+
+    stdout, _stderr, _report, arc = run_case(
+        "array_param_return_retains",
+        """
+        module main;
+        import std.io;
+        import std.string;
+
+        func make_pair() -> string[2] {
+            let pair: string[2] = [concat_s("r", "1"), concat_s("r", "2")];
+            return pair;
+        }
+
+        func bounce(pair: string[2]) -> string[2] {
+            return pair;
+        }
+
+        func main() -> int {
+            let pair = make_pair();
+            let copy = bounce(pair);
+            printl_s(copy[1]);
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "r2\n", "array param/return stdout mismatch", artifact_dir)
+
+    assert_equal(
+        heap_arc_sequence(arc),
+        [
+            ("retain", "retain", "1", "2"),
+            ("retain", "retain", "1", "2"),
+            ("release", "keep", "2", "1"),
+            ("release", "keep", "2", "1"),
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "array param/return ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_nested_string_array_copy_retains_recursively(artifact_dir: Path) -> None:
+    """Copying a `string[2][2]` must retain every nested ARC leaf exactly once."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "nested_string_array_copy_retains_recursively",
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            let src: string[2][2] = [
+                [concat_s("a", "1"), concat_s("a", "2")],
+                [concat_s("b", "1"), concat_s("b", "2")],
+            ];
+            let copy: string[2][2] = src;
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_heap_transition_counts(
+        arc,
+        expected_retains=4,
+        expected_keeps=4,
+        expected_frees=4,
+        message="nested string array copy ARC transitions",
+        artifact_dir=artifact_dir,
+    )
+
+
+def test_nested_struct_array_copy_retains_recursively(artifact_dir: Path) -> None:
+    """Copying a `Pair[2]` must retain ARC fields recursively through struct elements."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "nested_struct_array_copy_retains_recursively",
+        """
+        module main;
+        import std.string;
+
+        struct Pair {
+            left: string;
+            right: string;
+        }
+
+        func main() -> int {
+            let src: Pair[2] = [
+                Pair(concat_s("a", "1"), concat_s("a", "2")),
+                Pair(concat_s("b", "1"), concat_s("b", "2")),
+            ];
+            let copy: Pair[2] = src;
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_heap_transition_counts(
+        arc,
+        expected_retains=4,
+        expected_keeps=4,
+        expected_frees=4,
+        message="nested struct array copy ARC transitions",
+        artifact_dir=artifact_dir,
+    )
+
+
+def test_nested_struct_array_param_return_retains_recursively(artifact_dir: Path) -> None:
+    """Returning an owned `Pair[1][2]` by value must retain nested ARC leaves for the caller."""
+
+    stdout, _stderr, _report, arc = run_case(
+        "nested_struct_array_param_return_retains_recursively",
+        """
+        module main;
+        import std.io;
+        import std.string;
+
+        struct Pair {
+            left: string;
+            right: string;
+        }
+
+        func make_pairs() -> Pair[1][2] {
+            let pairs: Pair[1][2] = [[
+                Pair(concat_s("a", "1"), concat_s("a", "2")),
+                Pair(concat_s("b", "1"), concat_s("b", "2")),
+            ]];
+            return pairs;
+        }
+
+        func bounce(pairs: Pair[1][2]) -> Pair[1][2] {
+            return pairs;
+        }
+
+        func main() -> int {
+            let pairs = make_pairs();
+            let copy = bounce(pairs);
+            printl_s(copy[0][1].right);
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "b2\n", "nested struct array param/return stdout mismatch", artifact_dir)
+
+    assert_heap_transition_counts(
+        arc,
+        expected_retains=4,
+        expected_keeps=4,
+        expected_frees=4,
+        message="nested struct array param/return ARC transitions",
+        artifact_dir=artifact_dir,
+    )
 
 
 def test_enum_string_variant_cleanup(artifact_dir: Path) -> None:
@@ -893,6 +1199,99 @@ def test_loop_return_cleanup(artifact_dir: Path) -> None:
             f"expected rc 1->0 free, got {event!r}",
             artifact_dir,
         )
+
+
+def test_array_loop_continue_cleanup(artifact_dir: Path) -> None:
+    """Continuing past an array local with ARC elements must clean both elements before the next iteration."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "array_loop_continue_cleanup",
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            for (let i = 0; i < 1; i = i + 1) {
+                let arr: string[2] = [concat_s("x", "1"), concat_s("y", "2")];
+                continue;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_equal(
+        heap_arc_sequence(arc),
+        [
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "array loop continue ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_array_loop_break_cleanup(artifact_dir: Path) -> None:
+    """Breaking past an array local with ARC elements must clean both elements before leaving the loop."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "array_loop_break_cleanup",
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            for (let i = 0; i < 1; i = i + 1) {
+                let arr: string[2] = [concat_s("x", "1"), concat_s("y", "2")];
+                break;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_equal(
+        heap_arc_sequence(arc),
+        [
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "array loop break ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_array_loop_return_cleanup(artifact_dir: Path) -> None:
+    """Returning past an array local with ARC elements must clean both elements before leaving the function."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "array_loop_return_cleanup",
+        """
+        module main;
+        import std.string;
+
+        func main() -> int {
+            for (let i = 0; i < 1; i = i + 1) {
+                let arr: string[2] = [concat_s("x", "1"), concat_s("y", "2")];
+                return 0;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_equal(
+        heap_arc_sequence(arc),
+        [
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "array loop return ARC sequence mismatch",
+        artifact_dir,
+    )
 
 
 def test_optional_unwrap_return_retains(artifact_dir: Path) -> None:
@@ -1520,6 +1919,13 @@ def main() -> int:
         test_struct_heap_string_field_drop,
         test_array_nested_arc_struct_cleanup,
         test_array_nested_arc_struct_inner_arc_arrays_cleanup,
+        test_array_arc_slot_replacement,
+        test_nested_array_arc_slot_replacement,
+        test_array_self_assignment_retains_before_cleanup,
+        test_array_param_return_retains,
+        test_nested_string_array_copy_retains_recursively,
+        test_nested_struct_array_copy_retains_recursively,
+        test_nested_struct_array_param_return_retains_recursively,
         test_enum_string_variant_cleanup,
         test_optional_string_cleanup,
         test_case_scrutinee_unwrap_retains,
@@ -1531,6 +1937,9 @@ def main() -> int:
         test_loop_continue_cleanup,
         test_loop_break_cleanup,
         test_loop_return_cleanup,
+        test_array_loop_continue_cleanup,
+        test_array_loop_break_cleanup,
+        test_array_loop_return_cleanup,
         test_optional_unwrap_return_retains,
         test_optional_unwrap_into_vector_retains,
         test_try_cleanup_on_early_return,

@@ -1,0 +1,29 @@
+module fixed_array_nested_return_main;
+
+import std.string;
+
+struct Pair {
+    left: string;
+    right: string;
+}
+
+func make_pairs() -> Pair[1][2] {
+    let pairs: Pair[1][2] = [[
+        Pair(concat_s("a", "1"), concat_s("a", "2")),
+        Pair(concat_s("b", "1"), concat_s("b", "2")),
+    ]];
+    return pairs;
+}
+
+func bounce(pairs: Pair[1][2]) -> Pair[1][2] {
+    return pairs;
+}
+
+func main() -> int {
+    let pairs = make_pairs();
+    let copy = bounce(pairs);
+    if (len_s(copy[0][1].right) == 2) {
+        return 0;
+    }
+    return 1;
+}

@@ -34,8 +34,8 @@
   - `l1/compiler/stage1_l0/tests/backend_test.l0`
   - `l1/compiler/stage1_l0/tests/interface_test.l0`
 - Related:
-  - `l1/work/plans/features/2026-05-10-fixed-size-array-primitive-noref.md`
-  - `l1/work/initiatives/0004-array-primitives-and-unsafe-marker.md`
+  - `l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md`
+  - `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
   - `l1/docs/reference/grammar.md`
   - `l1/docs/reference/design-decisions.md`
   - `l1/docs/specs/compiler/abi.md`

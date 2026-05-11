@@ -1,13 +1,14 @@
 # L1 Initiative 0004 - Array Primitives and Unsafe Marker
 
-- Version: 2026-05-10
-- Status: Active
+- Version: 2026-05-11
+- Status: Completed
 - Kind: Initiative
-- Open plans:
-  - `l1/work/plans/features/2026-05-10-fixed-size-array-primitive-noref.md`
+- Open plans: (none)
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-05-11-ordered-type-suffix-constructors-noref.md`
   - `l1/work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md`
   - `l1/work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md`
+  - `l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md`
 
 ## Summary
 
@@ -18,6 +19,22 @@ language feature, and pointer indexing should be contract-final before arrays us
 bounds-checked form.
 
 This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
+
+## Completion
+
+Initiative 0004 is complete. L1 now ships the `unsafe func` marker, finalized raw-pointer indexing `ptr[i]`, and the
+fixed-size array primitive `T[N]` with checked indexing, ARC-aware copy and cleanup semantics, recursive nested-array
+and struct support, and traced coverage through both the Python ARC harness and `.l0` driver tests. The ordered type
+suffix constructor follow-up also landed as an enabling prerequisite so arrays could add `[N]` as another ordered type
+constructor instead of extending the legacy `base + pointer_depth + is_nullable` model.
+
+Validation:
+
+```bash
+cd l1
+make test-stage1 TESTS="l0c_lib_test"
+../.venv/bin/python compiler/stage1_l0/tests/l1c_stage1_arc_trace_regression_test.py
+```
 
 ## Motivation
 
@@ -336,7 +353,7 @@ recursive ARC retain/release ordering and heap `new`/`drop` array cleanup.
 
 Plan artifact:
 
-- `l1/work/plans/features/2026-05-10-fixed-size-array-primitive-noref.md`
+- `l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md`
 
 ## Phase Planning Notes
 

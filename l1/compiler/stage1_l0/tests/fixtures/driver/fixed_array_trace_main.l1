@@ -1,0 +1,14 @@
+module fixed_array_trace_main;
+
+import std.string;
+
+func main() -> int {
+    let arr: string[2] = [concat_s("a", "1"), concat_s("a", "2")];
+    let replacement: string = concat_s("b", "3");
+    arr[0] = replacement;
+    arr = arr;
+    if (len_s(arr[1]) == 2) {
+        return 0;
+    }
+    return 1;
+}

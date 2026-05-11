@@ -3,12 +3,12 @@
 ## Add the fixed-size array primitive
 
 - Date: 2026-05-10
-- Status: Testing/Fixing
+- Status: Completed
 - Title: Add the fixed-size array primitive
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: `l1/work/initiatives/0004-array-primitives-and-unsafe-marker.md`
+- Parent Initiative: `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
 - Subsystem: Parser / typing / lowering / runtime / ARC / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/ast.l0`
@@ -43,10 +43,11 @@
   - `l1/compiler/stage1_l0/tests/runtime_test.l0`
   - `l1/compiler/stage1_l0/tests/trace`
 - Related:
-  - `l1/work/initiatives/0004-array-primitives-and-unsafe-marker.md`
+  - `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
   - `l1/work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
-- Repro: `make -C l1 test-stage1 TESTS="parser_test expr_types_test backend_test c_emitter_test interface_test"`
+- Repro:
+  `make -C l1 test-stage1 TESTS="parser_test expr_types_test type_resolve_test backend_test c_emitter_test interface_test l0c_lib_test"`
 
 ## Summary
 
@@ -314,16 +315,24 @@ The follow-up also adds focused coverage for `PAR-0622`, `PAR-0623`, `TYP-0800` 
 round-tripping, nullable-array C wrapper ordering, ABI wrapper-name examples, nested-index bounds checks, and a runtime
 `_rt_panic_oob` failure path.
 
-### Remaining observations
+### Final observations
 
 - The plan listed `l1/compiler/stage1_l0/src/locals.l0` as a target module, but the implementation still did not need a
-  locals-specific change. Existing semantic and backend tests cover array-typed locals at the typing/lowering boundary;
-  a future trace-focused cleanup test could make that more explicit for ARC-heavy local scopes.
-- ARC trace coverage for fixed-size arrays remains thinner than the original verification wish list. Backend tests cover
-  recursive retain/cleanup emission for nested managed arrays, but no dedicated trace fixture asserts the runtime event
-  sequence.
+  locals-specific change. Existing semantic, backend, ARC trace, and traced driver tests now cover array-typed locals at
+  the typing, lowering, and cleanup boundaries.
+- Dedicated ARC trace fixtures now assert runtime retain/release sequences for array slot replacement, whole-array
+  self-assignment, array-by-value parameter and return paths, nested recursive copies, nested ARC array returns, and
+  loop exits. `l0c_lib_test.l0` also runs fixed-size array fixtures through the traced Stage 1 CLI path.
 - `be_emit_lvalue` materializes side-effectful pointer-index read bases into temps as part of its single-evaluation
   discipline. This is defensible, but it remains a behavioral-shape change from the pre-array pointer-index lowering.
+
+## Validation
+
+```bash
+cd l1
+make test-stage1 TESTS="l0c_lib_test"
+../.venv/bin/python compiler/stage1_l0/tests/l1c_stage1_arc_trace_regression_test.py
+```
 
 [abi]: ../../../docs/specs/compiler/abi.md
 [backend-design]: ../../../docs/reference/c-backend-design.md

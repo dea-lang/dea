@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: `l1/work/initiatives/0004-array-primitives-and-unsafe-marker.md`
+- Parent Initiative: `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
 - Subsystem: Lexer / parser / signatures / typing / interfaces / backend / stdlib / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/tokens.l0`
@@ -38,7 +38,7 @@
   - `l1/compiler/stage1_l0/tests/c_emitter_test.l0`
   - `l1/compiler/stage1_l0/tests/interface_test.l0`
 - Related:
-  - `l1/work/initiatives/0004-array-primitives-and-unsafe-marker.md`
+  - `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
   - `work/plans/refactors/closed/2026-05-08-sys-memory-rename-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="parser_test signatures_test expr_types_test backend_test c_emitter_test"`

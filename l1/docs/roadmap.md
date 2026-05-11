@@ -209,7 +209,7 @@ update to be promoted to an initiative or plan:
 - Package management, manifests, and dependency resolution.
 
 [abi-prefix]: ../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md
-[arrays-unsafe]: ../work/initiatives/0004-array-primitives-and-unsafe-marker.md
+[arrays-unsafe]: ../work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
@@ -220,7 +220,7 @@ update to be promoted to an initiative or plan:
 [embedded-members]: ../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [ffi-cstr]: ../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
-[fixed-arrays]: ../work/plans/features/2026-05-10-fixed-size-array-primitive-noref.md
+[fixed-arrays]: ../work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md

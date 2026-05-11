@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: `l1/work/initiatives/0004-array-primitives-and-unsafe-marker.md`
+- Parent Initiative: `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
 - Subsystem: Typing / backend / C emission / docs / tests
 - Modules:
   - `l1/compiler/stage1_l0/src/expr_types.l0`
@@ -27,7 +27,7 @@
   - `l1/compiler/stage1_l0/tests/c_emitter_test.l0`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_arc_trace_regression_test.py`
 - Related:
-  - `l1/work/initiatives/0004-array-primitives-and-unsafe-marker.md`
+  - `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
   - `l1/docs/roadmap.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="expr_types_test parser_test backend_test c_emitter_test"`

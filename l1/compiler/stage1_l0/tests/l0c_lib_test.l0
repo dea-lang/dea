@@ -1056,6 +1056,40 @@ func test_run_fixed_array_oob_fails() {
 }
 
 /**
+ * Tests traced execution for fixed-size array ARC assignment paths.
+ */
+func test_run_trace_fixed_array_arc_paths() {
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "fixed_array_trace_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced fixed_array_trace_main should succeed");
+    }
+}
+
+/**
+ * Tests traced execution for nested fixed-size array ARC return paths.
+ */
+func test_run_trace_fixed_array_nested_return() {
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "fixed_array_nested_return_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced fixed_array_nested_return_main should succeed");
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -1101,5 +1135,7 @@ func main() {
     test_run_real_decompose();
     test_run_real_transcendental();
     test_run_fixed_array_oob_fails();
+    test_run_trace_fixed_array_arc_paths();
+    test_run_trace_fixed_array_nested_return();
     printl_s("l0c_lib_test: all tests passed");
 }
