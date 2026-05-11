@@ -205,7 +205,11 @@ and reuse supplement for applying this registry within L0.
 | `PAR-0600` | L1+     | Expected `func` or `extern` after `unsafe` in top-level declaration      |
 | `PAR-0601` | L1+     | Expected `func` after `unsafe` in function type                          |
 | `PAR-0602` | L1+     | Expected `func` after `unsafe` in interface file                         |
-| `PAR-9401` | All     | Array types not yet supported                                            |
+| `PAR-0620` | L1+     | Expected integer length in array type suffix                             |
+| `PAR-0621` | L1+     | Expected '\]' after array type length                                    |
+| `PAR-0622` | L1+     | Expected '\]' after array literal                                        |
+| `PAR-0623` | L1+     | Expected ')' after array constructor arguments                           |
+| `PAR-9401` | L0 only | Array types are not supported in L0                                      |
 
 ## Driver and Environment
 
@@ -408,6 +412,14 @@ and reuse supplement for applying this registry within L0.
 | `TYP-0702` | All     | Integer literal outside `int` requires a contextual integer type                                       |
 | `TYP-0703` | All     | Integer literal outside `int` cannot be used in this contextual type                                   |
 | `TYP-0780` | L1+     | Unsafe/plain function type mismatch                                                                    |
+| `TYP-0800` | L1+     | Array length must be a positive `int` literal                                                          |
+| `TYP-0801` | L1+     | Array literal requires a contextual array type                                                         |
+| `TYP-0802` | L1+     | Array literal has more elements than the contextual target length                                      |
+| `TYP-0803` | L1+     | Array literal element type mismatch                                                                    |
+| `TYP-0804` | L1+     | Array constructor target must be an array type                                                         |
+| `TYP-0805` | L1+     | Array constructor or allocation has invalid arity                                                      |
+| `TYP-0806` | L1+     | Array scalar fill value type mismatch                                                                  |
+| `TYP-0807` | L1+     | Unknown or ambiguous array constructor target type                                                     |
 | `TYP-9209` | All     | Internal error: variant does not produce enum type                                                     |
 | `TYP-9288` | All     | Internal error: 'new' outside function context                                                         |
 | `TYP-9289` | All     | Internal error: missing module environment for the current function                                    |
