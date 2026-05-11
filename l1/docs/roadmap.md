@@ -28,9 +28,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   implemented behavior.
 - Any future `stage2_l1` implementation should preserve the L1 language/runtime decisions documented in
   [design-decisions] unless the reference set is deliberately updated.
-- L1-defined source symbols use the tagged-section `__deaM...S...` LBI spelling, compiler-generated module lifecycle
-  helpers use `__deaM...I...`, and runtime/public helper families retain their documented `dea_*`, `DEA_*`, `rt_*`, and
-  `_rt_*` roles. Historical `l0_*` names are not part of the current L1 ABI.
+- L1-defined source symbols currently use the broad-`S` `__deaM...S...` LBI spelling; Refactor
+  [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] will replace this with `N` / `S` / `E` terminals once it
+  lands. Compiler-generated module lifecycle helpers use `__deaM...I...`. Runtime/public helper families retain their
+  documented `dea_*`, `DEA_*`, `rt_*`, and `_rt_*` roles. Historical `l0_*` names are not part of the current L1 ABI.
 - The first L1 productization steps should remain bootstrap-oriented until a later plan explicitly makes L1 a release
   line.
 
@@ -138,6 +139,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-05-11-ordered-type-suffix-constructors-noref][ordered-type-suffixes] relaxes pointer/nullable type
   suffixes into ordered left-to-right type constructors, a prerequisite for restarting fixed-size arrays on the right
   semantic model.
+- Refactor [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] collapses the two-layer LBI scheme into a
+  single recursive grammar, replacing the broad-`S` link-name layer with `N` / `S` / `E` / `I` terminals plus trailing
+  type components for function signatures.
 
 ## Backlog
 
@@ -248,6 +252,7 @@ update to be promoted to an initiative or plan:
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
+[unified-lbi-mangling]: ../work/plans/refactors/2026-05-11-unified-lbi-mangling-noref.md
 [unsafe-marker]: ../work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md
 [variadic-functions]: ../work/plans/features/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
