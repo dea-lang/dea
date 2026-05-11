@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-05-09
+Version: 2026-05-10
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -100,7 +100,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   surface.
 - Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe] adds fixed-size array primitives and the
   function-level `unsafe` marker for raw-memory contracts. Its completed Phase 2 pointer-indexing work is documented by
-  Feature [2026-05-09-raw-pointer-indexing-semantics-noref][pointer-indexing].
+  Feature [2026-05-09-raw-pointer-indexing-semantics-noref][pointer-indexing], and its active Phase 3 fixed-size array
+  work is tracked by Feature [2026-05-10-fixed-size-array-primitive-noref][fixed-arrays].
 
 ## Completed initiatives
 
@@ -215,6 +216,7 @@ update to be promoted to an initiative or plan:
 [embedded-members]: ../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [ffi-cstr]: ../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
+[fixed-arrays]: ../work/plans/features/2026-05-10-fixed-size-array-primitive-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md

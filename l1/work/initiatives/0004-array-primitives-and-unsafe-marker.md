@@ -1,9 +1,10 @@
 # L1 Initiative 0004 - Array Primitives and Unsafe Marker
 
-- Version: 2026-05-08
+- Version: 2026-05-10
 - Status: Active
 - Kind: Initiative
-- Open plans: (none)
+- Open plans:
+  - `l1/work/plans/features/2026-05-10-fixed-size-array-primitive-noref.md`
 - Closed plans:
   - `l1/work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md`
   - `l1/work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md`
@@ -56,12 +57,13 @@ Out of scope:
 - block-level `unsafe { }`
 - address-of operator `&`
 - pointer arithmetic outside existing dereference and `ptr[i]`
-- variable-length arrays, dynamic-size primitive arrays, slice/view types, shared buffers, and multidimensional arrays
+- variable-length arrays, dynamic-size primitive arrays, slice/view types, and shared buffers
 - new enum value semantics beyond whatever recursive ARC/value-copy support already requires for existing enum values
 - array element-wise equality operators
 - generics over `T` or `N`
 - block-local uninitialized `let`; array examples must use explicit initializers unless a separate feature changes the
   current `let name = expr` grammar
+- unsafe uninitialized memory, the future `undefined` keyword, and sparse indexed array constructors
 
 ## Key Decisions
 
@@ -137,7 +139,7 @@ unchecked pointer indexing is finalized in a later phase.
 
 ### Type suffix grammar
 
-`T[N]` extends the existing type-suffix model. Suffixes apply strictly left-to-right:
+`T[N]` extends the existing type-suffix model:
 
 ```ebnf
 Type             ::= UnsuffixedType TypeSuffix* NullableSuffix?
@@ -146,7 +148,8 @@ FuncPointerType  ::= "unsafe"? "func" "(" TypeList? ")" "->" Type
 ```
 
 `T*[N]` is an array of `N` pointers to `T`. `T[N]*` is a pointer to an array of `N` `T` values. `N` is an `IntLiteral`,
-must fit `int`, and must be `>= 1`; zero-length arrays are rejected at type formation.
+must fit `int`, and must be `>= 1`; zero-length arrays are rejected at type formation. Chained array suffixes use C-like
+source-order dimension semantics: `int[2][3]` is two rows of three `int` values, stored contiguously in row-major order.
 
 ### Array literal syntax
 
@@ -157,9 +160,24 @@ PrimaryExpr ::= ... | "[" ExprList? "]"
 ExprList    ::= Expr ("," Expr)*
 ```
 
-The element count must exactly match `N`. An unannotated literal with no inference target is a typing diagnostic,
-parallel to bare `null`. An empty `[]` literal is valid only with a contextual `T[0]` target, but `T[0]` is rejected, so
-empty array literals always diagnose in this initiative.
+The element count must be no greater than `N`; omitted trailing elements are zero/default initialized. An empty `[]`
+literal is therefore the canonical all-zero/default initializer for a contextual array target. An unannotated literal
+with no inference target is a typing diagnostic, parallel to bare `null`. Nested literals are contextualized
+recursively, so `let matrix: int[2][3] = [[1, 2, 3], [4, 5, 6]];` initializes two rows of three `int` values.
+
+Bare array declarations remain illegal under the existing `let name [: T] = expr` grammar, so safe code never observes
+uninitialized array storage.
+
+Array constructor expressions use type-call syntax over array types:
+
+```dea
+let a = int[3]([1, 2, 3]);
+let filled = byte[1024](0xFF);
+```
+
+The constructor accepts exactly one argument in this initiative: either an array literal using the same contextual
+zero/default-padding rules, or a scalar `T` value used as a uniform fill for every element. `int[1, 2, 3]` is not an
+initializer form, and `new int[3](1, 2, 3)` is rejected.
 
 Top-level `const` arrays are allowed when every element expression is compile-time constant under the existing `const`
 rules extended to array literals. Non-constant top-level `let` arrays use the existing deferred-initialization path.
@@ -172,16 +190,17 @@ Lower `T[N]` to a generated C wrapper struct whose single field is the native C 
 typedef struct __dea...array... { T data[N]; } __dea...array...;
 ```
 
-The exact wrapper name is owned by the LBI type-instantiation amendment in [`abi.md`][abi]; this initiative does not
-reuse a new sigil until the ABI spec reserves and defines it. The wrapper preserves the expected `sizeof` and alignment
-properties for supported targets, and the backend must reject unsupported host layouts rather than silently changing L1
-semantics.
+The exact wrapper name is owned by the type-component layer in [`abi.md`][abi]. The wrapper preserves the expected
+`sizeof` and alignment properties for supported targets, and the backend must reject unsupported host layouts rather
+than silently changing L1 semantics.
 
 Arrays are value types:
 
 - assignment, parameter passing, and return copy or move the full wrapper value
 - returning an owned local `T[N]` is treated as a move, parallel to existing owned-local return handling
 - `new T[N]` yields `T[N]*` and allocates zeroed wrapper storage through existing `new` lowering
+- `new T[N](arg)` mirrors stack/value array construction: an array literal initializes a prefix and zero/default pads,
+  while a scalar `T` value fills every element
 - `drop` on `T[N]*` must run element cleanup when `T` transitively contains ARC-managed data, then free the allocation
 
 Indexing `arr[i]` and assigning `arr[i] = v` are always bounds-checked:
@@ -283,7 +302,9 @@ Tests extend typing, backend, and C-emitter coverage for:
 - single-evaluation lowering for side-effectful base/index expressions
 - scalar and ARC-containing element writes
 
-Plan artifact: TBD.
+Plan artifact:
+
+- `l1/work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md`
 
 ### Phase 3: `T[N]` primitive
 
@@ -293,11 +314,14 @@ syntax, heap allocation/drop support, and the `_rt_panic_oob` runtime helper.
 Implementation work includes:
 
 - parse and resolve array type suffixes, storing array length and element type in semantic type metadata
-- add array literal AST nodes, contextual typing, length checks, and compile-time-constant validation for `const`
+- add array literal AST nodes, contextual typing, zero/default padding, overflow checks, and compile-time-constant
+  validation for `const`
+- add array constructor expressions for `T[N]([ ... ])` and scalar uniform fill `T[N](value)`
+- support multidimensional `T[M][N]` arrays with source-order dimensions and row-major contiguous storage
 - emit deterministic array wrapper typedefs under the LBI type-instantiation rules
 - implement recursive retain/release/cleanup/copy for arrays whose element type has ARC data
 - implement checked array read/write lowering with single evaluation
-- support `new T[N]` and `drop` cleanup for `T[N]*`
+- support `new T[N]`, `new T[N](arg)`, and `drop` cleanup for `T[N]*`
 - document FFI exposure: `T[N]` crosses C as a wrapper struct, not a bare C array; FFI users should use `T*` plus length
   until a later FFI-specific array policy exists
 
@@ -310,17 +334,21 @@ Runtime touches include `compiler/shared/runtime/include/dea_rt.h`, `libdea_rt.a
 Tests add array-specific typing/backend/runtime cases under `compiler/stage1_l0/tests/`, including trace coverage for
 recursive ARC retain/release ordering and heap `new`/`drop` array cleanup.
 
-Plan artifact: TBD.
+Plan artifact:
+
+- `l1/work/plans/features/2026-05-10-fixed-size-array-primitive-noref.md`
 
 ## Phase Planning Notes
 
 1. **Diagnostic codes.** New diagnostics are needed for unsafe/plain function pointer mismatch, malformed array type
-   length, array literal length mismatch, array literal without contextual type, invalid pointer-index base,
-   pointer-indexing outside `unsafe func`, and unsupported array element type if implementation discovers a Phase 3
-   limitation. Codes should be assigned against the live [`diagnostic-code-catalog.md`][diag-catalog] during phase
-   planning.
-2. **C ABI type-instantiation spelling.** The array wrapper name requires a formal LBI amendment. Phase 3 must update
-   [`abi.md`][abi] before emitting generated names for array instantiations.
+   length, array literal overflow, array literal without contextual type, array constructor arity/type mismatch, invalid
+   pointer-index base, pointer-indexing outside `unsafe func`, and unsupported array element type if implementation
+   discovers a Phase 3 limitation. Codes should be assigned against the live
+   [`diagnostic-code-catalog.md`][diag-catalog] during phase planning.
+2. **C ABI type-instantiation spelling.** Array wrapper names use the finalized type-component layer in [`abi.md`][abi]:
+   lowercase builtin sigils, prefix `P`/`Q`/`X` modifiers, and one `A<dim>_` constructor per source-order array
+   dimension. For example, `byte[1024]` mangles as `__deaA1024_h`, `int[2][3]` as `__deaA2_A3_i`, `int*[2][3]` as
+   `__deaA2_A3_Pi`, and `demo.main::Point[4]` as `__deaA4_M4demo4mainS5Point`.
 3. **Payload-carrying enum arrays.** Recursive ARC/value support is the accepted direction. If implementation reveals
    enum value-copy gaps not specific to arrays, the Phase 3 plan must close those gaps first rather than narrow the
    array feature.
