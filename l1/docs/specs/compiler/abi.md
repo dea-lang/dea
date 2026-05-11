@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-05-10
+Version: 2026-05-11
 
 Status: Finalized
 
@@ -251,7 +251,9 @@ first type sigil because the encoding walks the type tree from root to leaves.
 int                                  i
 int*                                 Pi
 int?                                 Qi
+int??                                QQi
 int*?                                QPi
+int*??                               QQPi
 int?*                                PQi
 int[3]                               A3_i
 int[3][4]                            A3_A4_i
@@ -324,6 +326,12 @@ The Stage 1 C backend also emits helper names that are ABI-visible in generated 
 - Runtime-owned nullable wrappers use `dea_opt_*`, such as `dea_opt_int`, `dea_opt_ulong`, and `dea_opt_string`.
 - Generated nullable wrappers for non-runtime aggregate types use `dea_opt_s_<lbi-name>` for structs and
   `dea_opt_e_<lbi-name>` for enums.
+- Nested nullable helper names preserve ordered constructor shape in the wrapped payload key. The current helper key
+  uses `n_` for nullable payloads, `p_` for pointer payloads, and `a<N>_` for array payloads, so `int??` uses
+  `dea_opt_n_int` and `int*??` uses `dea_opt_n_p_int`.
+- Nullable pointers and nullable function pointers use the `NULL` niche only when the immediate nullable payload is a
+  non-nullable pointer-shaped value. For example, `int*?` lowers as `dea_int*`; `int*??` needs the outer
+  `dea_opt_n_p_int` wrapper; `int?*?` lowers as `dea_opt_int*`.
 - Function pointer typedefs use `dea_func_` plus the current signature key, such as `dea_func_int_int_int`.
 - Matching safe and unsafe function pointer types share the same C typedef spelling by design (see
   [`unsafe` Lowering](#unsafe-lowering)).

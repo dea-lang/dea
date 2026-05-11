@@ -621,6 +621,65 @@ func test_emitter_optional_wrappers_emit_early_then_late() {
 }
 
 /**
+ * Tests nested nullable pointer forms keep distinct C representations.
+ */
+func test_emitter_nested_nullable_pointer_representations() {
+    let int_ptr_opt = type_new_nullable(type_new_pointer(type_builtin_int()));
+    let int_ptr_opt_opt = type_new_nullable(type_clone(int_ptr_opt));
+    let int_opt_ptr_opt = type_new_nullable(type_new_pointer(type_new_nullable(type_builtin_int())));
+    let int_opt_array_opt = type_new_nullable(type_new_array(type_new_nullable(type_builtin_int()), 3));
+
+    assert(cem_is_niche_nullable(int_ptr_opt), "int*? should use pointer niche");
+    assert(!cem_is_niche_nullable(int_ptr_opt_opt), "int*?? needs an outer wrapper");
+    assert(cem_is_niche_nullable(int_opt_ptr_opt), "int?*? should use pointer niche for the outer optional");
+    assert(cem_emit_type(int_ptr_opt) == "dea_int*", "int*? C type mismatch");
+    assert(cem_emit_type(int_ptr_opt_opt) == "dea_opt_n_p_int", "int*?? C type mismatch");
+    assert(cem_emit_type(int_opt_ptr_opt) == "dea_opt_int*", "int?*? C type mismatch");
+    assert(cem_emit_type(int_opt_array_opt) == "dea_opt_a3_n_int", "int?[3]? C type mismatch");
+
+    let result = cet_empty_analysis_result();
+    result.signatures = sig_make_tables();
+    let params = ptr_vec_create(4);
+    ptr_vec_push(params, type_clone(int_ptr_opt_opt) as void*);
+    ptr_vec_push(params, type_clone(int_opt_ptr_opt) as void*);
+    ptr_vec_push(params, type_new_nullable(type_new_nullable(type_builtin_int())) as void*);
+    ptr_vec_push(params, type_clone(int_opt_array_opt) as void*);
+    let func_ty = type_new_func(params, type_builtin_void(), false);
+    spm_put((result.signatures as SignatureTables*).func_types, "demo.main::nested", func_ty as void*);
+
+    let emitter = cem_create();
+    cem_set_analysis(emitter, result);
+    cem_prepare_optional_wrappers(emitter);
+    cem_emit_optional_wrappers(emitter, true);
+    cem_emit_optional_wrappers(emitter, false);
+
+    let output = cem_get_output(emitter);
+    assert(contains_s(output, "typedef struct { dea_bool has_value; dea_int value; } dea_opt_int;"),
+        "expected int? wrapper");
+    assert(contains_s(output, "typedef struct { dea_bool has_value; dea_opt_int value; } dea_opt_n_int;"),
+        "expected int?? wrapper");
+    assert(contains_s(output, "typedef struct { dea_bool has_value; dea_int* value; } dea_opt_n_p_int;"),
+        "expected int*?? wrapper");
+    assert(contains_s(output, "typedef struct __deaA3_Qi { dea_opt_int data[3]; } __deaA3_Qi;"),
+        "expected int?[3] wrapper");
+    assert(contains_s(output, "typedef struct { dea_bool has_value; __deaA3_Qi value; } dea_opt_a3_n_int;"),
+        "expected int?[3]? wrapper");
+    assert(find_s(output, "dea_opt_int value") > find_s(output, "} dea_opt_int;"),
+        "expected int? wrapper before int?? payload use");
+    assert(find_s(output, "} __deaA3_Qi;") > find_s(output, "} dea_opt_int;"),
+        "expected int? wrapper before int?[3] payload use");
+    assert(find_s(output, "} dea_opt_a3_n_int;") > find_s(output, "} __deaA3_Qi;"),
+        "expected int?[3] wrapper before int?[3]? payload use");
+
+    cem_free(emitter);
+    analysis_result_free(result);
+    type_free(int_ptr_opt);
+    type_free(int_ptr_opt_opt);
+    type_free(int_opt_ptr_opt);
+    type_free(int_opt_array_opt);
+}
+
+/**
  * Tests test_emitter_top_level_forms_match_stage1_shape.
  */
 func test_emitter_top_level_forms_match_stage1_shape() {
@@ -795,6 +854,7 @@ func main() {
     test_emitter_cleanup_and_switch_helpers();
     test_emitter_forward_decls_follow_loaded_module_order();
     test_emitter_optional_wrappers_emit_early_then_late();
+    test_emitter_nested_nullable_pointer_representations();
     test_emitter_top_level_forms_match_stage1_shape();
     test_emitter_unsafe_function_types_share_c_abi();
     printl_s("c_emitter_test: all tests passed");

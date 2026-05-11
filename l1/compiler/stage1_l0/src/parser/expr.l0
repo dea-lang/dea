@@ -54,6 +54,30 @@ func ps_is_unambiguous_type_start(self: ParserState*) -> bool {
 
     let saved = self.index;
     ps_advance(self); // identifier
+    let after_first = self.index;
+    while (ps_match(self, ord(TT_DOT))) {
+        if (!ps_check_ident(self)) {
+            self.index = saved;
+            return false;
+        }
+        ps_advance(self);
+    }
+    if (ps_match(self, ord(TT_DOUBLE_COLON))) {
+        if (!ps_check_ident(self)) {
+            self.index = saved;
+            return false;
+        }
+        ps_advance(self);
+        while (ps_match(self, ord(TT_DOUBLE_COLON))) {
+            if (!ps_check_ident(self)) {
+                self.index = saved;
+                return false;
+            }
+            ps_advance(self);
+        }
+    } else {
+        self.index = after_first;
+    }
 
     let has_suffix = false;
     while (ps_check(self, ord(TT_STAR)) || ps_check(self, ord(TT_QUESTION))) {

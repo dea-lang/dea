@@ -200,10 +200,10 @@ syntax.
 
 ## 4. Types
 
-L<sub>1</sub> has simple named types, function pointer types, pointer suffixes, and an optional nullable suffix.
+L<sub>1</sub> has simple named types, function pointer types, and source-ordered pointer and nullable suffixes.
 
 ```ebnf
-Type                ::=     UnsuffixedType PointerSuffix* NullableSuffix?
+Type                ::=     UnsuffixedType TypeSuffix*
 
 UnsuffixedType      ::=     SimpleType
                       |     FuncPointerType
@@ -211,6 +211,7 @@ UnsuffixedType      ::=     SimpleType
 SimpleType          ::=     QualifiedIdent
 FuncPointerType     ::=     ( "unsafe" )? "func" "(" TypeList? ")" "->" Type
 TypeList            ::=     Type ("," Type)*
+TypeSuffix          ::=     PointerSuffix | NullableSuffix
 PointerSuffix       ::=     "*"
 NullableSuffix      ::=     "?"     (* applies to the preceding type syntactically *)
 
@@ -228,12 +229,19 @@ Examples (all syntactically valid types in L<sub>1</sub>):
 - `Expr*`
 - `Expr**`
 - `int?`
+- `int?*`
+- `int??`
 - `Expr*?`
+- `Expr*??`
 - `func(int, bool) -> int`
 - `unsafe func(byte*) -> int`
 - `(func() -> void)?`
 
 Exact semantic rules (e.g. when `?` is allowed) are enforced in the type checker, not in the grammar.
+
+Type suffixes apply left-to-right and build an ordered constructor stack. `T?*` is a pointer to an optional `T`; `T*?`
+is an optional pointer to `T`; `T??` is an optional optional `T` and is not collapsed by the type system. `void*` is
+valid, but `void?` and `void?*` are rejected because `void` is not a value object.
 
 ## 5. Blocks and statements
 
@@ -422,8 +430,10 @@ ArgList             ::=     Arg ( "," Arg )*
 Arg                 ::=     TypeExpr
                       |     Expr
 
-TypeExpr            ::=     BuiltinTypeName ( "*" )* ( "?" )?
-                      |     QualifiedIdent ( "*" )+ ( "?" )?
+TypeExpr            ::=     BuiltinTypeName TypeSuffix*
+                      |     QualifiedIdent PointerNullableSuffix+
+PointerNullableSuffix
+                    ::=     PointerSuffix | NullableSuffix
 
 BuiltinTypeName     ::=     "tiny" | "short" | "int" | "long"
                       |     "byte" | "ushort" | "uint" | "ulong"
@@ -446,11 +456,12 @@ Notes:
   variant, it acts as a constructor (e.g. `Red` is equivalent to `Red()`).
 - `as` casts support `T?` \<-> `T` conversion. Integer casts may also target nullable integer types when the same cast
   to the nullable inner type is valid, such as `0 as ulong?`.
+- Type suffixes apply left-to-right. `T?*`, `T*?`, and `T??` are distinct types.
 - The `?` type suffix denotes nullable types in the `Type` grammar.
 - `?` as a postfix operator is the **null propagation operator** (also known as the **try operator**).
 - `TypeExpr` allows types in argument position for intrinsics such as `sizeof(int*)` a.k.a. `dea::sizeof(int*)`.
-- A `TypeExpr` is syntactically unambiguous: either a builtin type name, or an identifier (including a qualified name)
-  followed by `*` or `?` suffixes that end at an argument boundary (`,` or `)`).
+- A `TypeExpr` is syntactically unambiguous in call arguments: either a builtin type name, or an identifier (including a
+  qualified name) followed by one or more `*`/`?` suffixes that end at an argument boundary (`,` or `)`).
 - Plain identifiers like `sizeof(Point)` parse as `Expr`; the type checker resolves whether `Point` refers to a type or
   variable.
 - Calls to `sizeof`, `ord`, and `is` are parsed as ordinary function calls. Semantic analysis then resolves whether the

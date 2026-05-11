@@ -325,6 +325,38 @@ func type_is_builtin(self: Type*, name: string) -> bool {
 }
 
 /**
+ * Report whether a type is a pointer constructor.
+ *
+ * @param self Type to inspect.
+ * @return `true` when `self` is `Pointer(_)`.
+ */
+func type_is_pointer_type(self: Type*) -> bool {
+    return ord(self.kind) == ord(TY_POINTER);
+}
+
+/**
+ * Report whether a type is an optional constructor.
+ *
+ * @param self Type to inspect.
+ * @return `true` when `self` is `Optional(_)`.
+ */
+func type_is_optional_type(self: Type*) -> bool {
+    return ord(self.kind) == ord(TY_NULLABLE);
+}
+
+/**
+ * Report whether a nullable type has an immediate non-nullable pointer payload.
+ *
+ * @param self Type to inspect.
+ * @return `true` for exactly `Optional(Pointer(_))`.
+ */
+func type_is_nullable_pointer_type(self: Type*) -> bool {
+    return ord(self.kind) == ord(TY_NULLABLE) &&
+        self.inner != null &&
+        ord((self.inner as Type*).kind) == ord(TY_POINTER);
+}
+
+/**
  * Report whether one type tree mentions builtin floating-point types.
  *
  * @param self Type to inspect.

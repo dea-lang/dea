@@ -827,7 +827,13 @@ func etc_symbol_as_type(self: ExpressionTypeChecker*, sym: Symbol*) -> Type*? {
  */
 func etc_diag_type_ref_failure(self: ExpressionTypeChecker*, tref: TypeRef*, fallback_code: string, span: Span) {
     let unit = self.current_unit as DriverUnit*;
-    if (tref.is_nullable && tref.pointer_depth == 0 && tref.module_path == null && tref.name == "void") {
+    let nullable_void = tref.is_nullable && tref.pointer_depth == 0;
+    if (tref.suffixes != null) {
+        let suffixes = tref.suffixes as VectorBase*;
+        nullable_void = vec_size(suffixes) > 0 &&
+            ord((ptr_vec_get(suffixes, 0) as TypeSuffix*).kind) == ord(TS_NULLABLE);
+    }
+    if (nullable_void && tref.module_path == null && tref.name == "void") {
         etc_diag_error(self, "TYP-0278", "type 'void' cannot be nullable", unit.path, span);
         return;
     }
@@ -910,6 +916,59 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
 }
 
 /**
+ * Try to resolve a `sizeof` argument expression as an array type expression.
+ *
+ * Identifier array type expressions are syntactically ambiguous with value
+ * indexing, so the parser leaves them as index expressions. `sizeof` can
+ * disambiguate semantically: a type-name base plus literal indexes is a type.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Expression to interpret.
+ * @return Resolved type, or `null` when the expression should remain a value.
+ */
+func etc_try_resolve_sizeof_type_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
+    let unit = self.current_unit as DriverUnit*;
+    let expr = expr_arena_get(unit.parse_result.expr_arena, expr_id);
+
+    if (ord(expr.kind) == ord(EX_TYPE) && expr.type_ref != null) {
+        with (let seen = ss_create() => ss_free(seen)) {
+            return tr_resolve_type_ref(self.result.signatures as SignatureTables*,
+                self.result.names as NameResolution*, self.current_env as ModuleEnv*, expr.type_ref as TypeRef*,
+                self.result.diags, seen);
+        }
+    }
+
+    if (ord(expr.kind) == ord(EX_VAR_REF)) {
+        return etc_try_resolve_type_name(self, expr);
+    }
+
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return etc_try_resolve_sizeof_type_expr(self, expr.expr_a);
+    }
+
+    if (ord(expr.kind) == ord(EX_INDEX)) {
+        let base_ty = etc_try_resolve_sizeof_type_expr(self, expr.expr_a);
+        if (base_ty == null) {
+            return null;
+        }
+        let len_expr = expr_arena_get(unit.parse_result.expr_arena, expr.expr_b);
+        if (ord(len_expr.kind) != ord(EX_INT)) {
+            etc_diag_error(self, "TYP-0800", "array length must be a positive int literal",
+                unit.path, len_expr.span);
+            return type_append_array_dimension(base_ty as Type*, 1);
+        }
+        if (len_expr.int_value <= 0) {
+            etc_diag_error(self, "TYP-0800", "array length must be a positive int literal",
+                unit.path, len_expr.span);
+            return type_append_array_dimension(base_ty as Type*, 1);
+        }
+        return type_append_array_dimension(base_ty as Type*, len_expr.int_value);
+    }
+
+    return null;
+}
+
+/**
  * Try to resolve one expression as an enum variant symbol for `is`.
  *
  * @param self Expression checker state.
@@ -966,17 +1025,15 @@ func etc_infer_sizeof_intrinsic(self: ExpressionTypeChecker*, expr_id: ExprId, e
         }
     }
 
-    if (ord(arg.kind) == ord(EX_VAR_REF)) {
-        let type_name_ty = etc_try_resolve_type_name(self, arg);
-        if (type_name_ty != null) {
-            if (etc_is_void(type_name_ty as Type*)) {
-                etc_diag_error(self, "TYP-0240", "cannot take sizeof(void)",
-                    (self.current_unit as DriverUnit*).path, expr.span);
-            }
-            etc_set_intrinsic_target(self, expr_id, type_name_ty as Type*);
-            type_free(type_name_ty as Type*);
-            return type_builtin_int();
+    let type_expr_ty = etc_try_resolve_sizeof_type_expr(self, arg_id);
+    if (type_expr_ty != null) {
+        if (etc_is_void(type_expr_ty as Type*)) {
+            etc_diag_error(self, "TYP-0240", "cannot take sizeof(void)",
+                (self.current_unit as DriverUnit*).path, expr.span);
         }
+        etc_set_intrinsic_target(self, expr_id, type_expr_ty as Type*);
+        type_free(type_expr_ty as Type*);
+        return type_builtin_int();
     }
 
     let arg_ty2 = etc_infer_expr(self, arg_id);
@@ -2214,6 +2271,9 @@ func etc_types_equal_ignoring_func_unsafety(a: Type*?, b: Type*?) -> bool {
 
     if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE)) {
         return etc_types_equal_ignoring_func_unsafety(left.inner, right.inner);
+    }
+    if (ord(left.kind) == ord(TY_ARRAY)) {
+        return left.array_len == right.array_len && etc_types_equal_ignoring_func_unsafety(left.inner, right.inner);
     }
 
     let left_params = left.params as VectorBase*;

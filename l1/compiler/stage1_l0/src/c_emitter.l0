@@ -561,8 +561,8 @@ func cem_emit_enum_tag(enum_type: Type*, variant_name: string) -> string {
  * @return `true` when `null` lowers to `NULL`.
  */
 func cem_is_niche_nullable(t: Type*) -> bool {
-    return ord(t.kind) == ord(TY_NULLABLE) &&
-        (ord((t.inner as Type*).kind) == ord(TY_POINTER) || ord((t.inner as Type*).kind) == ord(TY_FUNC));
+    return type_is_nullable_pointer_type(t) ||
+        (ord(t.kind) == ord(TY_NULLABLE) && ord((t.inner as Type*).kind) == ord(TY_FUNC));
 }
 
 /**
@@ -586,6 +586,9 @@ func cem_opt_key_for_type(t: Type*) -> string {
     }
     if (ord(t.kind) == ord(TY_NULLABLE)) {
         return "n_" + cem_opt_key_for_type(t.inner as Type*);
+    }
+    if (ord(t.kind) == ord(TY_ARRAY)) {
+        return "a" + int_to_string(t.array_len) + "_" + cem_opt_key_for_type(t.inner as Type*);
     }
     if (ord(t.kind) == ord(TY_FUNC)) {
         with (let sb = sb_create() => sb_free(sb)) {
@@ -719,7 +722,7 @@ func cem_emit_none_value_for_nullable(t: Type*) -> string {
  */
 func cem_emit_some_value_for_nullable(t: Type*, c_inner_expr: string) -> string {
     let inner = t.inner as Type*;
-    if (ord(inner.kind) == ord(TY_POINTER)) {
+    if (cem_is_niche_nullable(t)) {
         return c_inner_expr;
     }
     return "((" + cem_opt_wrapper_name_for_inner(inner) + "){.has_value = 1, .value = " + c_inner_expr + "})";
@@ -1403,19 +1406,257 @@ func cem_collect_opt_wrappers_from_type(self: CEmitter*, t: Type*) {
 }
 
 /**
- * Return whether a wrapper inner type can be emitted before user type definitions.
+ * Return the non-array element type for an array chain.
  *
- * @param inner Inner wrapped type.
- * @return `true` for builtin-only wrapper dependencies.
+ * @param typ Array type.
+ * @return Innermost element type.
+ */
+func cem_array_base_element_type(typ: Type*) -> Type* {
+    let cur = typ;
+    while (ord(cur.kind) == ord(TY_ARRAY)) {
+        cur = cur.inner as Type*;
+    }
+    return cur;
+}
+
+/**
+ * Emit one collected array-wrapper typedef.
+ *
+ * @param self Emitter to update.
+ * @param name Wrapper name.
+ * @param typ Array type.
+ */
+func cem_emit_array_wrapper(self: CEmitter*, name: string, typ: Type*) {
+    if (ss_has(self.array_emitted, name)) {
+        return;
+    }
+    if (ord(typ.kind) != ord(TY_ARRAY)) {
+        return;
+    }
+    cem_emit_type_typedef_deps(self, cem_array_base_element_type(typ));
+    let guard = cem_upper_ascii(name) + "_DEFINED";
+    with (let dims = sv_create(4) => sv_free(dims),
+          let sb = sb_create() => sb_free(sb)) {
+        let cur = typ;
+        while (ord(cur.kind) == ord(TY_ARRAY)) {
+            sv_push(dims, "[" + int_to_string(cur.array_len) + "]");
+            cur = cur.inner as Type*;
+        }
+        ccb_emit(self.out, "#ifndef " + guard);
+        ccb_emit(self.out, "#define " + guard);
+        sb_append(sb, "typedef struct ");
+        sb_append(sb, name);
+        sb_append(sb, " { ");
+        sb_append(sb, cem_emit_type(cur));
+        sb_append(sb, " data");
+        for (let i = 0; i < sv_size(dims); i = i + 1) {
+            sb_append(sb, sv_get(dims, i));
+        }
+        sb_append(sb, "; } ");
+        sb_append(sb, name);
+        sb_append(sb, ";");
+        ccb_emit(self.out, sb_to_string(sb));
+        ccb_emit(self.out, "#endif /* " + guard + " */");
+        ccb_emit(self.out, "");
+    }
+    ss_add(self.array_emitted, name);
+}
+
+/**
+ * Emit every collected array-wrapper typedef.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_array_wrappers(self: CEmitter*) {
+    with (let names = spm_keys(self.array_wrappers) => sv_free(names)) {
+        sv_sort(names);
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let name = sv_get(names, i);
+            cem_emit_array_wrapper(self, name, spm_get(self.array_wrappers, name) as Type*);
+        }
+    }
+}
+
+/**
+ * Emit collected array wrappers whose storage element is a just-defined value type.
+ *
+ * @param self Emitter to update.
+ * @param inner Just-defined struct or enum type.
+ */
+func cem_emit_array_wrappers_for_defined_type(self: CEmitter*, inner: Type*) {
+    with (let names = spm_keys(self.array_wrappers) => sv_free(names)) {
+        sv_sort(names);
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let name = sv_get(names, i);
+            let wrapper_ty = spm_get(self.array_wrappers, name) as Type*;
+            if (type_equals(cem_array_base_element_type(wrapper_ty), inner)) {
+                cem_emit_array_wrapper(self, name, wrapper_ty);
+            }
+        }
+    }
+}
+
+/**
+ * Free an optional cloned type.
+ *
+ * @param ty Optional type to free.
+ */
+func cem_type_free_opt(ty: Type*?) {
+    if (ty != null) {
+        type_free(ty as Type*);
+    }
+}
+
+/**
+ * Resolve one parsed type reference and collect generated wrapper dependencies.
+ *
+ * @param self Emitter to update.
+ * @param module_name Module owning the type reference.
+ * @param tref Parsed type reference.
+ */
+func cem_collect_wrappers_from_type_ref(self: CEmitter*, module_name: string, tref: TypeRef*?) {
+    if (tref == null || self.analysis == null) {
+        return;
+    }
+    let analysis = self.analysis as AnalysisResult*;
+    if (analysis.signatures == null || analysis.names == null) {
+        return;
+    }
+    let env = nr_env_find(analysis.names as NameResolution*, module_name);
+    if (env == null) {
+        return;
+    }
+    with (let seen = ss_create() => ss_free(seen),
+          let ty: Type*? = tr_resolve_type_ref(analysis.signatures as SignatureTables*,
+              analysis.names as NameResolution*, env as ModuleEnv*, tref as TypeRef*, analysis.diags, seen) => cem_type_free_opt(ty)) {
+        if (ty != null) {
+            cem_collect_array_wrappers_from_type(self, ty as Type*);
+            cem_collect_opt_wrappers_from_type(self, ty as Type*);
+            cem_collect_func_ptrs_from_type(self, ty as Type*);
+        }
+    }
+}
+
+/**
+ * Scan parsed AST type references so annotation-only array types get wrappers.
+ *
+ * @param self Emitter to update.
+ */
+func cem_collect_wrappers_from_ast_type_refs(self: CEmitter*) {
+    let analysis = cem_analysis(self);
+    let state = analysis.driver_state;
+    for (let unit_i = 0; unit_i < driver_unit_count(state); unit_i = unit_i + 1) {
+        let unit = driver_unit_get(state, unit_i);
+        if ((unit as DriverUnit*).parse_result.root_module == null) {
+            continue;
+        }
+        let module_name = (unit as DriverUnit*).module_name;
+        let root = (unit as DriverUnit*).parse_result.root_module as Module*;
+        for (let decl_i = 0; decl_i < vec_size(root.decls); decl_i = decl_i + 1) {
+            let top = ptr_vec_get(root.decls, decl_i) as TopLevelDecl*;
+            match (top.kind) {
+                TD_FUNC => {
+                    let fd = top.data as FuncDecl*;
+                    for (let p = 0; p < vec_size(fd.params); p = p + 1) {
+                        cem_collect_wrappers_from_type_ref(self, module_name, (ptr_vec_get(fd.params, p) as Param*).type_ref);
+                    }
+                    cem_collect_wrappers_from_type_ref(self, module_name, fd.return_type);
+                }
+                TD_STRUCT => {
+                    let sd = top.data as StructDecl*;
+                    for (let f = 0; f < vec_size(sd.fields); f = f + 1) {
+                        cem_collect_wrappers_from_type_ref(self, module_name, (ptr_vec_get(sd.fields, f) as FieldDecl*).type_ref);
+                    }
+                }
+                TD_ENUM => {
+                    let ed = top.data as EnumDecl*;
+                    for (let v = 0; v < vec_size(ed.variants); v = v + 1) {
+                        let variant = ptr_vec_get(ed.variants, v) as EnumVariant*;
+                        for (let ef = 0; ef < vec_size(variant.fields); ef = ef + 1) {
+                            cem_collect_wrappers_from_type_ref(self, module_name,
+                                (ptr_vec_get(variant.fields, ef) as FieldDecl*).type_ref);
+                        }
+                    }
+                }
+                TD_TYPE_ALIAS => {
+                    cem_collect_wrappers_from_type_ref(self, module_name, (top.data as TypeAliasDecl*).target);
+                }
+                TD_LET => {
+                    cem_collect_wrappers_from_type_ref(self, module_name, (top.data as LetDecl*).type_ref);
+                }
+            }
+        }
+        let stmts = (unit as DriverUnit*).parse_result.stmt_arena.nodes;
+        for (let stmt_i = 0; stmt_i < vec_size(stmts); stmt_i = stmt_i + 1) {
+            let stmt = ptr_vec_get(stmts, stmt_i) as StmtNode*;
+            cem_collect_wrappers_from_type_ref(self, module_name, stmt.type_ref);
+        }
+        let exprs = (unit as DriverUnit*).parse_result.expr_arena.nodes;
+        for (let expr_i = 0; expr_i < vec_size(exprs); expr_i = expr_i + 1) {
+            let expr = ptr_vec_get(exprs, expr_i) as ExprNode*;
+            cem_collect_wrappers_from_type_ref(self, module_name, expr.type_ref);
+        }
+    }
+}
+
+/**
+ * Report whether the C spelling of one type can be emitted before value-type
+ * definitions.
+ *
+ * @param inner Type to inspect.
+ * @return `true` when all typedef dependencies are early-safe.
  */
 func cem_is_early_inner(inner: Type*) -> bool {
     if (ord(inner.kind) == ord(TY_BUILTIN)) {
         return true;
     }
-    if (ord(inner.kind) == ord(TY_NULLABLE) && !cem_is_niche_nullable(inner)) {
+    if (ord(inner.kind) == ord(TY_POINTER)) {
+        let pointee = inner.inner as Type*;
+        if (ord(pointee.kind) == ord(TY_STRUCT) || ord(pointee.kind) == ord(TY_ENUM)) {
+            return true;
+        }
+        return cem_is_early_inner(pointee);
+    }
+    if (ord(inner.kind) == ord(TY_FUNC)) {
+        return true;
+    }
+    if (ord(inner.kind) == ord(TY_NULLABLE)) {
         return cem_is_early_inner(inner.inner as Type*);
     }
+    if (ord(inner.kind) == ord(TY_ARRAY)) {
+        return cem_is_early_inner(cem_array_base_element_type(inner));
+    }
     return false;
+}
+
+/**
+ * Emit optional, array, and function-pointer typedef dependencies required by
+ * the C spelling of one type.
+ *
+ * @param self Emitter to update.
+ * @param typ Type whose C spelling will be referenced.
+ */
+func cem_emit_type_typedef_deps(self: CEmitter*, typ: Type*) {
+    if (ord(typ.kind) == ord(TY_NULLABLE)) {
+        if (!cem_is_niche_nullable(typ)) {
+            cem_emit_optional_wrapper(self, cem_opt_wrapper_name_for_inner(typ.inner as Type*), typ.inner as Type*);
+        } else {
+            cem_emit_type_typedef_deps(self, typ.inner as Type*);
+        }
+        return;
+    }
+    if (ord(typ.kind) == ord(TY_POINTER)) {
+        cem_emit_type_typedef_deps(self, typ.inner as Type*);
+        return;
+    }
+    if (ord(typ.kind) == ord(TY_ARRAY)) {
+        let name = cem_array_wrapper_name_for_type(typ);
+        cem_emit_array_wrapper(self, name, typ);
+        return;
+    }
+    if (ord(typ.kind) == ord(TY_FUNC)) {
+        cem_emit_func_ptr_typedef(self, cem_func_ptr_name_for_type(typ));
+    }
 }
 
 /**
@@ -1430,6 +1671,7 @@ func cem_emit_optional_wrapper(self: CEmitter*, name: string, inner: Type*) {
         return;
     }
 
+    cem_emit_type_typedef_deps(self, inner);
     let guard = cem_upper_ascii(name) + "_DEFINED";
     let c_inner = cem_emit_type(inner);
     ccb_emit(self.out, "#ifndef " + guard);

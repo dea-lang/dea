@@ -1011,27 +1011,14 @@ func be_convert_expr_with_expected_type(c_expr: string, natural_ty: Type*?, expe
         return c_expr;
     }
 
-    if (ord(expected.kind) == ord(TY_NULLABLE) && type_equals(expected.inner as Type*, natural)) {
-        if (cem_is_niche_nullable(expected)) {
-            return c_expr;
-        }
-        return cem_emit_some_value_for_nullable(expected, c_expr);
-    }
-
-    if (ord(expected.kind) == ord(TY_NULLABLE) &&
-        be_is_int_assignable(expected.inner as Type*) &&
-        be_is_int_assignable(natural)) {
+    if (ord(expected.kind) == ord(TY_NULLABLE)) {
         let inner = expected.inner as Type*;
-        let c_payload = c_expr;
-        if (be_can_widen_int(inner, natural)) {
-            c_payload = cem_emit_widen_int(c_expr, natural, inner);
-        } else if (!type_equals(inner, natural)) {
-            c_payload = cem_emit_cast(cem_emit_type(inner), c_expr);
+        let payload = be_convert_expr_with_expected_type(c_expr, natural, inner);
+        if (be_is_int_assignable(inner) && be_is_int_assignable(natural) && !type_equals(inner, natural) &&
+            !be_can_widen_int(inner, natural)) {
+            payload = cem_emit_cast(cem_emit_type(inner), c_expr);
         }
-        if (cem_is_niche_nullable(expected)) {
-            return cem_emit_cast(cem_emit_type(expected), c_payload);
-        }
-        return cem_emit_some_value_for_nullable(expected, c_payload);
+        return cem_emit_some_value_for_nullable(expected, payload);
     }
 
     if (be_can_widen_int(expected, natural)) {
@@ -1039,6 +1026,38 @@ func be_convert_expr_with_expected_type(c_expr: string, natural_ty: Type*?, expe
     }
 
     return c_expr;
+}
+
+/**
+ * Convert a lowered place expression to an expected owned destination type.
+ *
+ * @param self Backend state to update.
+ * @param c_expr Lowered source expression.
+ * @param natural Natural source type.
+ * @param expected Expected destination type.
+ * @param place_like Whether `c_expr` references existing storage.
+ * @return Converted C expression, retaining copied owned data when needed.
+ */
+func be_convert_owned_c_expr_with_expected_type(self: Backend*, c_expr: string, natural: Type*, expected: Type*,
+                                                place_like: bool) -> string {
+    if (type_equals(natural, expected)) {
+        if (place_like) {
+            return be_emit_copy_expr_with_retains(self, c_expr, expected);
+        }
+        return c_expr;
+    }
+
+    if (ord(expected.kind) == ord(TY_NULLABLE)) {
+        let inner = expected.inner as Type*;
+        let payload = be_convert_owned_c_expr_with_expected_type(self, c_expr, natural, inner, place_like);
+        if (be_is_int_assignable(inner) && be_is_int_assignable(natural) && !type_equals(inner, natural) &&
+            !be_can_widen_int(inner, natural)) {
+            payload = cem_emit_cast(cem_emit_type(inner), c_expr);
+        }
+        return cem_emit_some_value_for_nullable(expected, payload);
+    }
+
+    return be_convert_expr_with_expected_type(c_expr, natural, expected);
 }
 
 /**
@@ -1100,20 +1119,10 @@ func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expe
     with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
         let c_expr = be_emit_expr(self, expr_id);
         let place_like = be_is_place_expr(self, expr_id) || be_is_unwrap_cast_from_place(self, expr_id);
-        if (natural_ty == null || !place_like) {
+        if (natural_ty == null) {
             return be_convert_expr_with_expected_type(c_expr, natural_ty, expected);
         }
-        if (type_equals(natural_ty as Type*, expected)) {
-            return be_emit_copy_expr_with_retains(self, c_expr, expected);
-        }
-        if (ord(expected.kind) == ord(TY_NULLABLE) && type_equals(expected.inner as Type*, natural_ty as Type*)) {
-            if (cem_is_niche_nullable(expected)) {
-                return c_expr;
-            }
-            return cem_emit_some_value_for_nullable(expected,
-                be_emit_copy_expr_with_retains(self, c_expr, natural_ty as Type*));
-        }
-        return be_convert_expr_with_expected_type(c_expr, natural_ty, expected);
+        return be_convert_owned_c_expr_with_expected_type(self, c_expr, natural_ty as Type*, expected, place_like);
     }
 }
 

@@ -42,6 +42,37 @@ func make_paths() -> SourceSearchPaths* {
 }
 
 /**
+ * Create a builtin type reference with source-ordered suffixes.
+ *
+ * @param name Builtin type name.
+ * @param suffixes Owned suffix vector.
+ * @return New type reference.
+ */
+func ordered_tref(name: string, suffixes: VectorBase*) -> TypeRef* {
+    let pointer_depth = 0;
+    let is_nullable = false;
+    for (let i = 0; i < vec_size(suffixes); i = i + 1) {
+        let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
+        if (ord(suffix.kind) == ord(TS_POINTER)) {
+            pointer_depth = pointer_depth + 1;
+        } else if (ord(suffix.kind) == ord(TS_NULLABLE)) {
+            is_nullable = true;
+        }
+    }
+    return new TypeRef(name, pointer_depth, is_nullable, false, null, null, null, null, suffixes, Span(0,0,0,0));
+}
+
+/**
+ * Append one non-array type suffix for tests.
+ *
+ * @param suffixes Suffix vector to update.
+ * @param kind Suffix kind to append.
+ */
+func push_suffix(suffixes: VectorBase*, kind: TypeSuffixKind) {
+    ptr_vec_push(suffixes, new TypeSuffix(kind, 0, Span(0,0,0,0)) as void*);
+}
+
+/**
  * Tests test_tr_symbol_lookup.
  */
 func test_tr_symbol_lookup() {
@@ -187,6 +218,63 @@ func test_tr_resolve_type_ref() {
 }
 
 /**
+ * Tests source-ordered pointer and nullable type constructors.
+ */
+func test_tr_resolve_ordered_suffix_constructors() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "ok_main", cfg);
+        let nr = result.names as NameResolution*;
+        let tables = result.signatures as SignatureTables*;
+        let env = nr_env_find(nr, "ok_main") as ModuleEnv*;
+
+        with (let seen = ss_create() => ss_free(seen)) {
+            let opt_opt_suffixes = ptr_vec_create(2);
+            push_suffix(opt_opt_suffixes, TS_NULLABLE);
+            push_suffix(opt_opt_suffixes, TS_NULLABLE);
+            let opt_opt_ref = ordered_tref("int", opt_opt_suffixes);
+            let opt_opt = tr_resolve_type_ref(tables, nr, env, opt_opt_ref, result.diags, seen);
+            assert(opt_opt != null, "int?? should resolve");
+            assert(type_format(opt_opt as Type*) == "int??", "int?? should preserve nested optional shape");
+            assert(ord((opt_opt as Type*).kind) == ord(TY_NULLABLE), "int?? outer should be nullable");
+            assert(ord(((opt_opt as Type*).inner as Type*).kind) == ord(TY_NULLABLE),
+                "int?? inner should be nullable");
+            type_free(opt_opt as Type*);
+            type_ref_free(opt_opt_ref);
+
+            let opt_ptr_suffixes = ptr_vec_create(2);
+            push_suffix(opt_ptr_suffixes, TS_NULLABLE);
+            push_suffix(opt_ptr_suffixes, TS_POINTER);
+            let opt_ptr_ref = ordered_tref("int", opt_ptr_suffixes);
+            let opt_ptr = tr_resolve_type_ref(tables, nr, env, opt_ptr_ref, result.diags, seen);
+            assert(opt_ptr != null, "int?* should resolve");
+            assert(type_format(opt_ptr as Type*) == "int?*", "int?* should preserve suffix order");
+            assert(ord((opt_ptr as Type*).kind) == ord(TY_POINTER), "int?* outer should be pointer");
+            assert(ord(((opt_ptr as Type*).inner as Type*).kind) == ord(TY_NULLABLE),
+                "int?* pointee should be nullable");
+            type_free(opt_ptr as Type*);
+            type_ref_free(opt_ptr_ref);
+
+            let ptr_opt_suffixes = ptr_vec_create(2);
+            push_suffix(ptr_opt_suffixes, TS_POINTER);
+            push_suffix(ptr_opt_suffixes, TS_NULLABLE);
+            let ptr_opt_ref = ordered_tref("int", ptr_opt_suffixes);
+            let ptr_opt = tr_resolve_type_ref(tables, nr, env, ptr_opt_ref, result.diags, seen);
+            assert(ptr_opt != null, "int*? should resolve");
+            assert(type_format(ptr_opt as Type*) == "int*?", "int*? should preserve suffix order");
+            assert(ord((ptr_opt as Type*).kind) == ord(TY_NULLABLE), "int*? outer should be nullable");
+            assert(ord(((ptr_opt as Type*).inner as Type*).kind) == ord(TY_POINTER),
+                "int*? payload should be pointer");
+            type_free(ptr_opt as Type*);
+            type_ref_free(ptr_opt_ref);
+        }
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests module-qualified enum variant lookup when a local variant shadows imported names.
  */
 func test_tr_module_qualified_variant_lookup_survives_shadow_warning() {
@@ -223,6 +311,7 @@ func test_tr_module_qualified_variant_lookup_survives_shadow_warning() {
 func main() {
     test_tr_symbol_lookup();
     test_tr_resolve_type_ref();
+    test_tr_resolve_ordered_suffix_constructors();
     test_tr_module_qualified_variant_lookup_survives_shadow_warning();
     printl_s("type_resolve_test: all tests passed");
 }

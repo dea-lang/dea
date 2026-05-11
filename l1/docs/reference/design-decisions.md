@@ -97,7 +97,7 @@ Rationale:
 
 Current bootstrap policy includes:
 
-- pointer types (`T*`, nullable `T*?`)
+- pointer types and ordered pointer/nullable suffix constructor stacks (`T*`, `T*?`, `T?*`, `T??`)
 - dereference (`*expr`)
 - pointer field access through the current compiler's auto-deref behavior
 - postfix pointer indexing syntax (`ptr[index]`) in expressions
@@ -148,7 +148,7 @@ bootstrap feature.
 
 Current policy:
 
-- `T?` is the nullable form of `T`
+- `?` is a unary type suffix constructor applied left-to-right with other suffixes
 - `null` is the only empty value of a nullable type
 - a value of type `T` may be used in a `T?` context, including returns, assignments, and arguments; generated code wraps
   the value as present
@@ -160,6 +160,10 @@ Current policy:
   types; it does not yet mean that every implicit widening conversion composes with `as`
 - `expr?` is the null-propagation operator
 
+Nested nullable types are preserved. `T??` is distinct from `T?` and can represent outer null, outer present with inner
+null, and outer present with an inner `T` value. Likewise, suffix order is semantic: `T?*` is a pointer to an optional
+`T`, while `T*?` is an optional pointer to `T`.
+
 Equality operators (`==` and `!=`) are accepted between two operands of the same nullable type `T?`, provided the inner
 type `T` itself supports equality. The semantics follow a three-valued rule:
 
@@ -169,11 +173,12 @@ type `T` itself supports equality. The semantics follow a three-valued rule:
 
 The rule is strict: `T? == T` and `T == T?` are rejected even when `T` supports equality. Users must cast explicitly to
 reach a same-type pair, for example `x as T? == y` or `x == y as T`, depending on the side whose type they want to move.
-Nullable-pointer operands (`T*?`) use the same pointer-null niche representation as non-nullable pointers (see §7), so
-they inherit the same reference-identity semantics consistently.
+Nullable-pointer operands use the pointer-null niche representation only when the nullable payload is immediately a
+non-nullable pointer or function pointer, as in `T*?` and `(func() -> T)?`. `T*??` uses an outer wrapper so it can
+distinguish outer null from an outer-present inner null pointer.
 
-For non-pointer nullable values, generated C uses wrapper representations rather than exposing host-specific niche
-assumptions.
+For non-pointer nullable values, and for nested nullable values whose outer layer cannot use a pointer niche, generated
+C uses wrapper representations rather than exposing host-specific niche assumptions.
 
 Future direction: broaden the cast rule so `expr as U` is valid whenever there is an explicit cast target `V` for the
 operand and `V` can be implicitly widened to `U`. That would make the current integer-to-optional-integer behavior one

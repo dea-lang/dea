@@ -127,6 +127,91 @@ func test_array_type_syntax_message() {
 }
 
 /**
+ * Tests pointer and nullable type suffixes keep source order.
+ */
+func test_ordered_pointer_nullable_suffix_syntax_ok() {
+    let src = "module main; func main(a: int??, b: int?*, c: int*?*?, d: int?*?*?) -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected ordered pointer/nullable suffix syntax to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+
+    let a = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(a.type_ref.suffixes != null, "Expected suffixes on int??");
+    assert(vec_size(a.type_ref.suffixes as VectorBase*) == 2, "Expected two suffixes on int??");
+    assert(ord((ptr_vec_get(a.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected first suffix on int?? to be nullable");
+    assert(ord((ptr_vec_get(a.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected second suffix on int?? to be nullable");
+
+    let b = ptr_vec_get(func_decl.params, 1) as Param*;
+    assert(ord((ptr_vec_get(b.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected first suffix on int?* to be nullable");
+    assert(ord((ptr_vec_get(b.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_POINTER),
+        "Expected second suffix on int?* to be pointer");
+
+    let c = ptr_vec_get(func_decl.params, 2) as Param*;
+    assert(vec_size(c.type_ref.suffixes as VectorBase*) == 4, "Expected four suffixes on int*?*?");
+    assert(ord((ptr_vec_get(c.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_POINTER),
+        "Expected int*?*? suffix 0");
+    assert(ord((ptr_vec_get(c.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected int*?*? suffix 1");
+    assert(ord((ptr_vec_get(c.type_ref.suffixes as VectorBase*, 2) as TypeSuffix*).kind) == ord(TS_POINTER),
+        "Expected int*?*? suffix 2");
+    assert(ord((ptr_vec_get(c.type_ref.suffixes as VectorBase*, 3) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected int*?*? suffix 3");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests indexed values in call arguments are not parsed as type expressions.
+ */
+func test_call_argument_indexing_is_value_expr() {
+    let src = "module main; func add(a: int, b: int) -> int { return a + b; } func main() -> int { let a: int[2] = [1, 2]; return add(a[0], a[1]); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected indexed call arguments to parse as expressions");
+    let root = result.root_module as Module*;
+    let main_top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let main_decl = main_top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, main_decl.body);
+    let stmts = body.ids as VectorBase*;
+    let ret_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 1));
+    let call = expr_arena_get(result.expr_arena, ret_stmt.expr_a);
+    assert(ord(call.kind) == ord(EX_CALL), "Expected return expression to be a call");
+    let args = call.ids as VectorBase*;
+    assert(ord(expr_arena_get(result.expr_arena, id_vec_get(args, 0)).kind) == ord(EX_INDEX),
+        "Expected first call argument to be an index expression");
+    assert(ord(expr_arena_get(result.expr_arena, id_vec_get(args, 1)).kind) == ord(EX_INDEX),
+        "Expected second call argument to be an index expression");
+    parse_result_free(result);
+}
+
+/**
+ * Tests dotted field expressions with try suffix are not parsed as type expressions.
+ */
+func test_call_argument_field_try_is_value_expr() {
+    let src = "module main; func use(x: int?) -> int? { return x; } func main() -> int? { return use(a.b?); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected dotted try call argument to parse as an expression");
+    let root = result.root_module as Module*;
+    let main_top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let main_decl = main_top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, main_decl.body);
+    let stmts = body.ids as VectorBase*;
+    let ret_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let call = expr_arena_get(result.expr_arena, ret_stmt.expr_a);
+    assert(ord(call.kind) == ord(EX_CALL), "Expected return expression to be a call");
+    let args = call.ids as VectorBase*;
+    let arg0 = expr_arena_get(result.expr_arena, id_vec_get(args, 0));
+    assert(ord(arg0.kind) == ord(EX_TRY), "Expected call argument to be a try expression");
+    assert(ord(expr_arena_get(result.expr_arena, arg0.expr_a).kind) == ord(EX_FIELD),
+        "Expected try payload to be a field expression");
+    parse_result_free(result);
+}
+
+/**
  * Tests test_valid_module.
  */
 func test_valid_module() {
@@ -710,6 +795,11 @@ func test_top_level_multi_error_collection() {
 func main() {
     test_parser_message_omits_embedded_code();
     test_array_type_syntax_message();
+    test_fixed_array_syntax_ok();
+    test_fixed_array_complex_suffix_order_ok();
+    test_ordered_pointer_nullable_suffix_syntax_ok();
+    test_call_argument_indexing_is_value_expr();
+    test_call_argument_field_try_is_value_expr();
     test_valid_module();
     test_export_and_new_import_forms_ok();
     test_export_star_ok();
