@@ -1,0 +1,6 @@
+module fixed_array_oob_main;
+
+func main() -> int {
+    let a: int[2] = [10, 20];
+    return a[2];
+}

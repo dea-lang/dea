@@ -15,9 +15,11 @@ import std.vector;
 import ast;
 import codegen_options;
 import driver;
+import name_resolver;
 import sem_context;
 import signatures;
 import string_escape;
+import type_resolve;
 import types;
 import util.numbers;
 import util.strings;
@@ -43,6 +45,8 @@ struct CEmitter {
     tmp_counter: int;
     opt_wrappers: StringPtrMap*; // wrapper name -> Type*
     opt_emitted: StringSet*;
+    array_wrappers: StringPtrMap*; // wrapper name -> Type*
+    array_emitted: StringSet*;
     func_ptrs: StringPtrMap*; // typedef name -> Type*
     func_ptr_emitted: StringSet*;
     trace_arc: bool;
@@ -253,7 +257,8 @@ func ccb_to_string(self: CCodeBuilder*) -> string {
  * @return New emitter.
  */
 func cem_create() -> CEmitter* {
-    return new CEmitter(null, null, ccb_create(), 0, spm_create(), ss_create(), spm_create(), ss_create(), false, false);
+    return new CEmitter(null, null, ccb_create(), 0, spm_create(), ss_create(), spm_create(), ss_create(),
+        spm_create(), ss_create(), false, false);
 }
 
 /**
@@ -281,6 +286,18 @@ func cem_reset_func_ptr_typedefs(self: CEmitter*) {
 }
 
 /**
+ * Clear every collected array-wrapper entry.
+ *
+ * @param self Emitter to update.
+ */
+func cem_reset_array_wrappers(self: CEmitter*) {
+    cem_func_ptr_map_free(self.array_wrappers);
+    ss_free(self.array_emitted);
+    self.array_wrappers = spm_create();
+    self.array_emitted = ss_create();
+}
+
+/**
  * Free a Stage 1 C emitter.
  *
  * @param self Emitter to free.
@@ -288,6 +305,8 @@ func cem_reset_func_ptr_typedefs(self: CEmitter*) {
 func cem_free(self: CEmitter*) {
     cem_opt_wrapper_map_free(self.opt_wrappers);
     ss_free(self.opt_emitted);
+    cem_func_ptr_map_free(self.array_wrappers);
+    ss_free(self.array_emitted);
     cem_func_ptr_map_free(self.func_ptrs);
     ss_free(self.func_ptr_emitted);
     ccb_free(self.out);
@@ -399,6 +418,30 @@ func cem_mangle_lbi_section(module_name: string, sigil: string, component: strin
  */
 func cem_mangle_lbi(module_name: string, symbol_name: string) -> string {
     return cem_mangle_lbi_section(module_name, "S", symbol_name);
+}
+
+/**
+ * Encode a module path as length-prefixed ABI components.
+ *
+ * @param module_name Dotted module name.
+ * @return Encoded module path without the leading `M`.
+ */
+func cem_mangle_module_path_components(module_name: string) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        let seg_start = 0;
+        let mod_len = len_s(module_name);
+        for (let i = 0; i <= mod_len; i = i + 1) {
+            let at_end = (i == mod_len);
+            let at_dot = !at_end && char_at_s(module_name, i) == '.';
+            if (at_end || at_dot) {
+                let seg_len = i - seg_start;
+                cb_append_s(cb, int_to_string(seg_len));
+                cb_append_slice(cb, module_name, seg_start, seg_len);
+                seg_start = i + 1;
+            }
+        }
+        return cb_to_string(cb);
+    }
 }
 
 /**
@@ -618,6 +661,52 @@ func cem_func_ptr_name_for_type(typ: Type*) -> string {
 }
 
 /**
+ * Return the ABI component for one type wrapper name.
+ *
+ * @param typ Type to encode.
+ * @return Stable ABI component text.
+ */
+func cem_type_component(typ: Type*) -> string {
+    if (type_is_builtin(typ, "bool")) return "b";
+    if (type_is_builtin(typ, "tiny")) return "t";
+    if (type_is_builtin(typ, "byte")) return "h";
+    if (type_is_builtin(typ, "short")) return "s";
+    if (type_is_builtin(typ, "int")) return "i";
+    if (type_is_builtin(typ, "ushort")) return "r";
+    if (type_is_builtin(typ, "uint")) return "u";
+    if (type_is_builtin(typ, "long")) return "l";
+    if (type_is_builtin(typ, "ulong")) return "m";
+    if (type_is_builtin(typ, "float")) return "f";
+    if (type_is_builtin(typ, "double")) return "d";
+    if (type_is_builtin(typ, "string")) return "c";
+    if (type_is_builtin(typ, "void")) return "v";
+    if (ord(typ.kind) == ord(TY_POINTER)) return "P" + cem_type_component(typ.inner as Type*);
+    if (ord(typ.kind) == ord(TY_NULLABLE)) return "Q" + cem_type_component(typ.inner as Type*);
+    if (ord(typ.kind) == ord(TY_ARRAY)) {
+        return "A" + int_to_string(typ.array_len) + "_" + cem_type_component(typ.inner as Type*);
+    }
+    if (ord(typ.kind) == ord(TY_STRUCT)) {
+        return "M" + cem_mangle_module_path_components(typ.module_name) + "S" +
+            int_to_string(len_s(typ.name)) + typ.name;
+    }
+    if (ord(typ.kind) == ord(TY_ENUM)) {
+        return "M" + cem_mangle_module_path_components(typ.module_name) + "E" +
+            int_to_string(len_s(typ.name)) + typ.name;
+    }
+    return "X";
+}
+
+/**
+ * Return the wrapper typedef name used for an array type.
+ *
+ * @param typ Array type.
+ * @return Stable typedef name.
+ */
+func cem_array_wrapper_name_for_type(typ: Type*) -> string {
+    return "__dea" + cem_type_component(typ);
+}
+
+/**
  * Return the wrapper typedef name used for a non-pointer nullable type.
  *
  * @param inner Inner type of the nullable wrapper.
@@ -688,6 +777,9 @@ func cem_emit_type(typ: Type*) -> string {
             return cem_emit_type(typ.inner as Type*);
         }
         return cem_opt_wrapper_name_for_inner(typ.inner as Type*);
+    }
+    if (ord(typ.kind) == ord(TY_ARRAY)) {
+        return cem_array_wrapper_name_for_type(typ);
     }
     if (ord(typ.kind) == ord(TY_FUNC)) {
         return cem_func_ptr_name_for_type(typ);
@@ -1359,6 +1451,10 @@ func cem_note_func_ptr_typedef(self: CEmitter*, typ: Type*) {
  * @param t Type to scan.
  */
 func cem_collect_func_ptrs_from_type(self: CEmitter*, t: Type*) {
+    if (ord(t.kind) == ord(TY_ARRAY)) {
+        cem_collect_func_ptrs_from_type(self, t.inner as Type*);
+        return;
+    }
     if (ord(t.kind) == ord(TY_NULLABLE) || ord(t.kind) == ord(TY_POINTER)) {
         cem_collect_func_ptrs_from_type(self, t.inner as Type*);
         return;
@@ -1375,12 +1471,56 @@ func cem_collect_func_ptrs_from_type(self: CEmitter*, t: Type*) {
 }
 
 /**
+ * Record one array wrapper if it was not already collected.
+ *
+ * @param self Emitter to update.
+ * @param typ Array type to store.
+ */
+func cem_note_array_wrapper(self: CEmitter*, typ: Type*) {
+    let name = cem_array_wrapper_name_for_type(typ);
+    if (spm_get(self.array_wrappers, name) == null) {
+        spm_put(self.array_wrappers, name, type_clone(typ) as void*);
+    }
+}
+
+/**
+ * Recursively collect array wrappers reachable from one type.
+ *
+ * @param self Emitter to update.
+ * @param t Type to scan.
+ */
+func cem_collect_array_wrappers_from_type(self: CEmitter*, t: Type*) {
+    if (ord(t.kind) == ord(TY_ARRAY)) {
+        cem_note_array_wrapper(self, t);
+        cem_collect_array_wrappers_from_type(self, t.inner as Type*);
+        cem_collect_opt_wrappers_from_type(self, t.inner as Type*);
+        cem_collect_func_ptrs_from_type(self, t.inner as Type*);
+        return;
+    }
+    if (ord(t.kind) == ord(TY_NULLABLE) || ord(t.kind) == ord(TY_POINTER)) {
+        cem_collect_array_wrappers_from_type(self, t.inner as Type*);
+        return;
+    }
+    if (ord(t.kind) == ord(TY_FUNC)) {
+        let params = t.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            cem_collect_array_wrappers_from_type(self, ptr_vec_get(params, i) as Type*);
+        }
+        cem_collect_array_wrappers_from_type(self, t.result as Type*);
+    }
+}
+
+/**
  * Recursively collect optional-wrapper types reachable from one type.
  *
  * @param self Emitter to update.
  * @param t Type to scan.
  */
 func cem_collect_opt_wrappers_from_type(self: CEmitter*, t: Type*) {
+    if (ord(t.kind) == ord(TY_ARRAY)) {
+        cem_collect_opt_wrappers_from_type(self, t.inner as Type*);
+        return;
+    }
     if (ord(t.kind) == ord(TY_NULLABLE)) {
         if (!cem_is_niche_nullable(t)) {
             cem_note_opt_wrapper(self, t.inner as Type*);
@@ -1624,7 +1764,7 @@ func cem_is_early_inner(inner: Type*) -> bool {
         return cem_is_early_inner(inner.inner as Type*);
     }
     if (ord(inner.kind) == ord(TY_ARRAY)) {
-        return cem_is_early_inner(cem_array_base_element_type(inner));
+        return false;
     }
     return false;
 }
@@ -1705,16 +1845,19 @@ func cem_emit_optional_wrapper_for_defined_type(self: CEmitter*, inner: Type*) {
 func cem_prepare_optional_wrappers(self: CEmitter*) {
     cem_reset_optional_wrappers(self);
     cem_reset_func_ptr_typedefs(self);
+    cem_reset_array_wrappers(self);
     let analysis = cem_analysis(self);
     if (analysis.signatures == null) {
         return;
     }
 
     let tables = analysis.signatures as SignatureTables*;
+    cem_collect_wrappers_from_ast_type_refs(self);
 
     for (let i = 0; i < spm_capacity(tables.func_types); i = i + 1) {
         if (spm_slot_occupied(tables.func_types, i)) {
             let func_type = spm_slot_value(tables.func_types, i) as Type*;
+            cem_collect_array_wrappers_from_type(self, func_type);
             cem_collect_opt_wrappers_from_type(self, func_type);
             let params = func_type.params as VectorBase*;
             for (let j = 0; j < vec_size(params); j = j + 1) {
@@ -1731,6 +1874,7 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
         let info = spm_slot_value(tables.struct_infos, struct_info_i) as StructInfo*;
         for (let j = 0; j < vec_size(info.fields); j = j + 1) {
             let field_info = ptr_vec_get(info.fields, j) as StructFieldInfo*;
+            cem_collect_array_wrappers_from_type(self, field_info.field_type);
             cem_collect_opt_wrappers_from_type(self, field_info.field_type);
             cem_collect_func_ptrs_from_type(self, field_info.field_type);
         }
@@ -1744,16 +1888,20 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
         for (let j = 0; j < vec_size(enum_info.variants); j = j + 1) {
             let variant_info = ptr_vec_get(enum_info.variants, j) as EnumVariantInfo*;
             for (let k = 0; k < vec_size(variant_info.field_types); k = k + 1) {
-                cem_collect_opt_wrappers_from_type(self, ptr_vec_get(variant_info.field_types, k) as Type*);
-                cem_collect_func_ptrs_from_type(self, ptr_vec_get(variant_info.field_types, k) as Type*);
+                let variant_field_ty = ptr_vec_get(variant_info.field_types, k) as Type*;
+                cem_collect_array_wrappers_from_type(self, variant_field_ty);
+                cem_collect_opt_wrappers_from_type(self, variant_field_ty);
+                cem_collect_func_ptrs_from_type(self, variant_field_ty);
             }
         }
     }
 
     for (let expr_type_i = 0; expr_type_i < spm_capacity(analysis.expr_types); expr_type_i = expr_type_i + 1) {
         if (spm_slot_occupied(analysis.expr_types, expr_type_i)) {
-            cem_collect_opt_wrappers_from_type(self, spm_slot_value(analysis.expr_types, expr_type_i) as Type*);
-            cem_collect_func_ptrs_from_type(self, spm_slot_value(analysis.expr_types, expr_type_i) as Type*);
+            let expr_ty = spm_slot_value(analysis.expr_types, expr_type_i) as Type*;
+            cem_collect_array_wrappers_from_type(self, expr_ty);
+            cem_collect_opt_wrappers_from_type(self, expr_ty);
+            cem_collect_func_ptrs_from_type(self, expr_ty);
         }
     }
 }
@@ -3300,6 +3448,25 @@ func cem_emit_value_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
         return;
     }
 
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        if (!analysis_has_arc_data(cem_analysis(self), ty.inner as Type*)) {
+            return;
+        }
+        let idx = cem_fresh_tmp(self, "arr_i");
+        ccb_emit(self.out, "for (dea_int " + idx + " = " + int_to_string(ty.array_len) +
+            "; " + idx + " > 0; " + idx + " = " + idx + " - 1) {");
+        ccb_indent(self.out);
+        let inner = ty.inner as Type*;
+        if (ord(inner.kind) == ord(TY_ARRAY)) {
+            cem_emit_raw_array_cleanup(self, "(" + c_expr + ").data[" + idx + " - 1]", inner);
+        } else {
+            cem_emit_value_cleanup(self, "(" + c_expr + ").data[" + idx + " - 1]", inner);
+        }
+        ccb_dedent(self.out);
+        ccb_emit(self.out, "}");
+        return;
+    }
+
     if (ord(ty.kind) == ord(TY_STRUCT)) {
         let info = sig_lookup_struct_info(cem_analysis(self).signatures as SignatureTables*, ty.module_name, ty.name);
         if (info == null) {
@@ -3359,6 +3526,35 @@ func cem_emit_value_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
         ccb_emit(self.out, "default: break;");
         cem_emit_switch_end(self);
     }
+}
+
+/**
+ * Emit cleanup for a raw C array row belonging to a flattened array wrapper.
+ *
+ * @param self Emitter to update.
+ * @param c_expr Lowered raw C array expression.
+ * @param ty Array type represented by `c_expr`.
+ */
+func cem_emit_raw_array_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
+    if (ord(ty.kind) != ord(TY_ARRAY)) {
+        cem_emit_value_cleanup(self, c_expr, ty);
+        return;
+    }
+    if (!analysis_has_arc_data(cem_analysis(self), ty.inner as Type*)) {
+        return;
+    }
+    let idx = cem_fresh_tmp(self, "arr_i");
+    ccb_emit(self.out, "for (dea_int " + idx + " = " + int_to_string(ty.array_len) +
+        "; " + idx + " > 0; " + idx + " = " + idx + " - 1) {");
+    ccb_indent(self.out);
+    let inner = ty.inner as Type*;
+    if (ord(inner.kind) == ord(TY_ARRAY)) {
+        cem_emit_raw_array_cleanup(self, c_expr + "[" + idx + " - 1]", inner);
+    } else {
+        cem_emit_value_cleanup(self, c_expr + "[" + idx + " - 1]", inner);
+    }
+    ccb_dedent(self.out);
+    ccb_emit(self.out, "}");
 }
 
 /**

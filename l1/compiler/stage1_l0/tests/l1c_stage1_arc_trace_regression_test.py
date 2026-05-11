@@ -400,6 +400,81 @@ def test_struct_heap_string_field_drop(artifact_dir: Path) -> None:
     assert_true(frees[-1].get("rc_after") == "0", f"expected terminal heap free, got {frees[-1]!r}", artifact_dir)
 
 
+def test_array_nested_arc_struct_cleanup(artifact_dir: Path) -> None:
+    """An array of structs with nested heap strings must clean up every element."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "array_nested_arc_struct_cleanup",
+        """
+        module main;
+        import std.string;
+
+        struct NestedStruct {
+            t1: string;
+            t2: string;
+        }
+
+        struct MyStruct1 {
+            s: string;
+            n: NestedStruct;
+        }
+
+        func make_box(a: string, b: string, c: string) -> MyStruct1 {
+            return MyStruct1(a, NestedStruct(b, c));
+        }
+
+        func main() -> int {
+            let items: MyStruct1[2] = [
+                make_box(concat_s("a", "1"), concat_s("b", "1"), concat_s("c", "1")),
+                make_box(concat_s("a", "2"), concat_s("b", "2"), concat_s("c", "2")),
+            ];
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    frees = heap_frees(arc)
+    assert_true(len(frees) >= 6, f"expected heap frees for nested ARC struct array, got {frees!r}", artifact_dir)
+
+
+def test_array_nested_arc_struct_inner_arc_arrays_cleanup(artifact_dir: Path) -> None:
+    """Nested ARC arrays inside structs must be cleaned up recursively."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "array_nested_arc_struct_inner_arc_arrays_cleanup",
+        """
+        module main;
+        import std.string;
+
+        struct NestedStruct {
+            t1: string;
+            t2: string;
+        }
+
+        struct NestedStruct2 {
+            v1: string;
+            v2: NestedStruct[10][20];
+        }
+
+        func main() -> int {
+            let seed = NestedStruct(concat_s("x", "1"), concat_s("y", "1"));
+            let row = NestedStruct[20](seed);
+            let items: NestedStruct2[1] = [
+                NestedStruct2(concat_s("z", "1"), NestedStruct[10][20](row)),
+            ];
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    frees = heap_frees(arc)
+    keeps = [event for event in heap_releases(arc) if event.get("action") == "keep"]
+    assert_true(len(frees) >= 3, f"expected terminal frees for recursive ARC array cleanup, got {frees!r}", artifact_dir)
+    assert_true(len(keeps) >= 400, f"expected releases across NestedStruct[10][20], got {keeps!r}", artifact_dir)
+
+
 def test_enum_string_variant_cleanup(artifact_dir: Path) -> None:
     """A heap string inside an enum variant must be freed at scope exit."""
 
@@ -1443,6 +1518,8 @@ def main() -> int:
         test_discarded_concat_freed,
         test_struct_static_string_field_drop,
         test_struct_heap_string_field_drop,
+        test_array_nested_arc_struct_cleanup,
+        test_array_nested_arc_struct_inner_arc_arrays_cleanup,
         test_enum_string_variant_cleanup,
         test_optional_string_cleanup,
         test_case_scrutinee_unwrap_retains,

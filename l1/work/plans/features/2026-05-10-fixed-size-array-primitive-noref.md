@@ -3,7 +3,7 @@
 ## Add the fixed-size array primitive
 
 - Date: 2026-05-10
-- Status: Draft
+- Status: Testing/Fixing
 - Title: Add the fixed-size array primitive
 - Kind: Feature
 - Severity: High
@@ -59,6 +59,14 @@ This plan replaces the current unsupported-array placeholder with real parser, t
 reference-doc coverage. Dynamic arrays, slices/views, address-of, broader pointer arithmetic, array equality, generics
 over `T` or `N`, unsafe uninitialized storage, sparse initialization, and block-level `unsafe {}` remain out of scope.
 
+## Outcome
+
+Implemented in the L1 Stage 1 bootstrap compiler on 2026-05-11. The implementation adds source-ordered array type
+suffixes, semantic `TY_ARRAY`, contextual literals, array constructors, heap allocation/drop support, checked indexing
+through `_rt_panic_oob`, generated array wrapper typedefs using the ABI type-component layer, flattened adjacent
+multi-dimensional C storage, recursive retain/cleanup participation for array values, tests, diagnostics, and reference
+docs.
+
 ## Current State
 
 1. Type syntax currently rejects array-looking forms through the placeholder diagnostic `PAR-9401`.
@@ -84,10 +92,11 @@ over `T` or `N`, unsafe uninitialized storage, sparse initialization, and block-
     never observes uninitialized array storage.
 07. Array literals may be shorter than `N`; omitted elements are zero/default initialized. Empty `[]` is a valid
     all-zero/default initializer in a contextual array target. Literals longer than `N` are rejected.
-08. Array constructor expressions use `T[N](arg)` syntax. The sole argument may be an array literal, or a scalar `T`
-    value used as a uniform fill for every element.
+08. Array constructor expressions use `T[N](arg)` syntax. The sole argument may be an array literal for the outer array
+    shape, or a value of the outer array's element type `T` used as a uniform fill for every element. `T` may itself be
+    an array type, so `int[10][20]([1, 2, 3])` broadcasts one contextually-built `int[20]` row.
 09. `new T[N]` allocates zeroed wrapper storage and returns `T[N]*`. `new T[N](arg)` mirrors stack/value constructor
-    rules for literal initialization or scalar uniform fill.
+    rules for literal initialization or element-typed fill.
 10. Each array instantiation lowers to a generated C wrapper struct with one `data[N]` field.
 11. Indexing `arr[i]` and assigning `arr[i] = value` emit bounds checks before `.data[index]` access and evaluate base
     and index expressions exactly once.
@@ -99,7 +108,7 @@ over `T` or `N`, unsafe uninitialized storage, sparse initialization, and block-
 1. Parse and resolve `T[N]`, nested pointer/array suffixes, and nullable interactions.
 2. Add semantic array types with element type and positive length metadata.
 3. Add contextual array literals with zero/default padding and element typing.
-4. Add array constructor expressions for literal construction and scalar uniform fill.
+4. Add array constructor expressions for literal construction and element-typed fill.
 5. Lower arrays as deterministic C wrapper structs and checked `.data` indexing.
 6. Extend recursive retain, release, cleanup, copy, assignment, and slot replacement to arrays.
 7. Support `new T[N]`, `new T[N](arg)`, `drop`, `sizeof(T[N])`, top-level `const` arrays, and deferred top-level `let`
@@ -134,11 +143,11 @@ zero/default padding, empty literals, overflow length rejection, element type mi
 
 Add array constructor expressions using type-call syntax over array types only. `T[N]([a, b])` constructs an array value
 using the same contextual literal and zero/default padding rules as annotated `let` initialization. `T[N](value)`
-constructs an array value by assigning the scalar `T` value into every element. Constructors accept exactly one argument
-in this phase.
+constructs an array value by assigning the element-typed `T` value into every element; `T` may itself be an array type.
+Constructors accept exactly one argument in this phase.
 
 Constructor tests cover `int[3]([1, 2, 3])`, `int[1000]([1, 2])`, `byte[1024](0xFF)`, invalid `int[1, 2, 3]`, invalid
-`int[1000]` as a value expression, invalid bare type-as-value use, invalid `let x: int[1000];`, wrong scalar type, and
+`int[1000]` as a value expression, invalid bare type-as-value use, invalid `let x: int[1000];`, wrong fill type, and
 wrong constructor arity.
 
 ### Phase 4: ABI and C lowering
@@ -209,7 +218,7 @@ For array instantiations whose element type has ARC data:
 
 Heap allocation mirrors stack/value construction. `new T[N]` and `new T[N]()` zero/default initialize the full wrapper.
 `new T[N]([a, b])` copies the literal prefix and zero/default pads the rest. `new T[N](value)` fills every element from
-the scalar value. `new T[N](a, b, c)` is rejected.
+the element-typed value. `new T[N](a, b, c)` is rejected.
 
 ARC trace tests cover `string[N]`, nullable string arrays, structs containing strings, payload enum arrays, whole-array
 assignment alias ordering, element replacement, scope cleanup, return moves, and heap `new`/`drop` cleanup.
@@ -271,14 +280,50 @@ Document deferred follow-ups without implementing them in this plan: unsafe-only
    padding, empty literals, overflow rejection, element mismatches, constructor mismatches, nullable/pointer
    interactions, `new T[N]`, `drop`, and `sizeof(T[N])`.
 3. Backend and C-emitter tests cover wrapper typedef names, field layout, bounds-check emission, single evaluation of
-   base/index for reads and writes, constructor lowering, scalar fill, array assignment, parameter passing, returns,
-   top-level `const` arrays, deferred top-level `let` arrays, and multidimensional row-major layout.
+   base/index for reads and writes, constructor lowering, element-typed fill, array assignment, parameter passing,
+   returns, top-level `const` arrays, deferred top-level `let` arrays, and multidimensional row-major layout.
 4. Runtime tests cover in-bounds reads/writes and out-of-bounds panic behavior.
 5. ARC trace tests cover array cleanup and copy behavior for strings, nullable ARC values, structs, payload enums,
    nested arrays, element replacement, return moves, and heap `new`/`drop`.
 6. Documentation updates cover grammar, design decisions, ownership, C backend, standard library, ABI, diagnostics, and
    roadmap entries.
 7. `make -C l1 test-stage1` passes.
+
+## Post-Implementation Findings
+
+The first implementation landed on 2026-05-11 and the planned test suite (`make -C l1 test-stage1`, 43 tests) passes. A
+post-merge review surfaced the following gaps. The correctness defects were handled by a follow-up implementation pass;
+remaining items below are coverage and cleanup observations rather than known correctness blockers.
+
+### Resolved follow-up findings
+
+The 2026-05-11 FSA follow-up resolves the correctness and portability defects from the first review:
+
+1. Multidimensional constructor fill now follows Reading B: `T[N](value_of_T)` accepts `T` as an array type, so
+   `int[10][20]([1, 2, 3])` broadcasts one contextually-built `int[20]` row.
+2. Builtin and alias type-as-value mistakes now use the same `TYP-0151` diagnostic family.
+3. Indexed values in call arguments remain value expressions; only explicit `T[N](...)` type calls parse as array
+   constructors.
+4. Nullable arrays use array-aware optional-wrapper keys and emit array typedef dependencies before wrappers that store
+   them.
+5. Empty array literals lower to C99-compatible `{0}` initializers.
+6. `TYP-0805` uses one message for constructor and allocation arity failures.
+7. Invalid array lengths no longer cascade into a misleading unknown-type diagnostic.
+
+The follow-up also adds focused coverage for `PAR-0622`, `PAR-0623`, `TYP-0800` through `TYP-0807`, array interface
+round-tripping, nullable-array C wrapper ordering, ABI wrapper-name examples, nested-index bounds checks, and a runtime
+`_rt_panic_oob` failure path.
+
+### Remaining observations
+
+- The plan listed `l1/compiler/stage1_l0/src/locals.l0` as a target module, but the implementation still did not need a
+  locals-specific change. Existing semantic and backend tests cover array-typed locals at the typing/lowering boundary;
+  a future trace-focused cleanup test could make that more explicit for ARC-heavy local scopes.
+- ARC trace coverage for fixed-size arrays remains thinner than the original verification wish list. Backend tests cover
+  recursive retain/cleanup emission for nested managed arrays, but no dedicated trace fixture asserts the runtime event
+  sequence.
+- `be_emit_lvalue` materializes side-effectful pointer-index read bases into temps as part of its single-evaluation
+  discipline. This is defensible, but it remains a behavioral-shape change from the pre-array pointer-index lowering.
 
 [abi]: ../../../docs/specs/compiler/abi.md
 [backend-design]: ../../../docs/reference/c-backend-design.md

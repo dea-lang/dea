@@ -118,6 +118,23 @@ func nr_path_is_same_signature(left: TypeRef*?, right: TypeRef*?) -> bool {
     if (lt.name != rt.name || lt.pointer_depth != rt.pointer_depth || lt.is_nullable != rt.is_nullable) {
         return false;
     }
+    if ((lt.suffixes == null) != (rt.suffixes == null)) {
+        return false;
+    }
+    if (lt.suffixes != null) {
+        let ls = lt.suffixes as VectorBase*;
+        let rs = rt.suffixes as VectorBase*;
+        if (vec_size(ls) != vec_size(rs)) {
+            return false;
+        }
+        for (let si = 0; si < vec_size(ls); si = si + 1) {
+            let a = ptr_vec_get(ls, si) as TypeSuffix*;
+            let b = ptr_vec_get(rs, si) as TypeSuffix*;
+            if (ord(a.kind) != ord(b.kind) || a.array_len != b.array_len) {
+                return false;
+            }
+        }
+    }
 
     let left_modules = lt.module_path;
     let right_modules = rt.module_path;

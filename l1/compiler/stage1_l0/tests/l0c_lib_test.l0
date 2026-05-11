@@ -1043,6 +1043,18 @@ func test_run_real_transcendental() {
     }
 }
 
+func test_run_fixed_array_oob_fails() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "fixed_array_oob_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc != 0, "fixed_array_oob_main should fail through _rt_panic_oob");
+    }
+}
+
 /**
  * Main entry point for the module.
  */
@@ -1088,5 +1100,6 @@ func main() {
     test_run_real_round();
     test_run_real_decompose();
     test_run_real_transcendental();
+    test_run_fixed_array_oob_fails();
     printl_s("l0c_lib_test: all tests passed");
 }

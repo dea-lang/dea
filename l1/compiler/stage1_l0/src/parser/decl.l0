@@ -97,7 +97,7 @@ func ps_parse_function(self: ParserState*, is_extern: bool, is_unsafe: bool) -> 
         if (ps_match(self, ord(TT_ARROW_FUNC))) {
             ret_type = ps_parse_type(self)?;
         } else {
-            ret_type = new TypeRef("void", 0, false, false, null, null, null, null, ps_extend_span(self, start));
+            ret_type = new TypeRef("void", 0, false, false, null, null, null, null, null, ps_extend_span(self, start));
         }
 
         let result = ps_finish_function(self, start, name_tok, params as VectorBase*, is_extern, is_unsafe,

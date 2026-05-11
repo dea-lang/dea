@@ -827,6 +827,20 @@ func etc_symbol_as_type(self: ExpressionTypeChecker*, sym: Symbol*) -> Type*? {
  */
 func etc_diag_type_ref_failure(self: ExpressionTypeChecker*, tref: TypeRef*, fallback_code: string, span: Span) {
     let unit = self.current_unit as DriverUnit*;
+    let invalid_array_suffix = false;
+    if (tref.suffixes != null) {
+        let suffixes_for_array = tref.suffixes as VectorBase*;
+        for (let i = 0; i < vec_size(suffixes_for_array); i = i + 1) {
+            let suffix_for_array = ptr_vec_get(suffixes_for_array, i) as TypeSuffix*;
+            if (ord(suffix_for_array.kind) == ord(TS_ARRAY) && suffix_for_array.array_len <= 0) {
+                invalid_array_suffix = true;
+            }
+        }
+    }
+    if (invalid_array_suffix && tref.module_path == null && type_is_builtin_name(tref.name)) {
+        return;
+    }
+
     let nullable_void = tref.is_nullable && tref.pointer_depth == 0;
     if (tref.suffixes != null) {
         let suffixes = tref.suffixes as VectorBase*;
@@ -844,6 +858,10 @@ func etc_diag_type_ref_failure(self: ExpressionTypeChecker*, tref: TypeRef*, fal
     let sym = etc_lookup_symbol(self, tref.name, tref.module_path, null);
     if (sym != null) {
         let s = sym as Symbol*;
+        if (invalid_array_suffix &&
+            (ord(s.kind) == ord(SYM_TYPE_ALIAS) || ord(s.kind) == ord(SYM_STRUCT) || ord(s.kind) == ord(SYM_ENUM))) {
+            return;
+        }
         if (ord(s.kind) == ord(SYM_TYPE_ALIAS)) {
             etc_diag_error(self, "TYP-0270", "type alias '" + tref.name + "' does not have a resolved type",
                 unit.path, span);
@@ -1485,6 +1503,15 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         if (type_is_builtin(ann_ty as Type*, "void")) {
                             etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", unit.path, stmt.span);
                         } else {
+                            let init_expr = expr_arena_get(unit.parse_result.expr_arena, stmt.expr_a);
+                            if (ord((ann_ty as Type*).kind) == ord(TY_ARRAY) &&
+                                ord(init_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+                                let array_result = etc_check_array_literal_expr(self, ann_ty as Type*, stmt.expr_a,
+                                    unit.path, stmt.span);
+                                if (ord(array_result) == ord(ASSIGN_ACCEPT)) {
+                                    declare_local = true;
+                                }
+                            } else {
                             let val_ty = etc_infer_expr(self, stmt.expr_a);
                             if (val_ty != null) {
                                 let assign_result = etc_check_assign_expr(self, ann_ty as Type*, val_ty as Type*,
@@ -1496,6 +1523,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                     declare_local = true;
                                 }
                                 type_free(val_ty as Type*);
+                            }
                             }
                         }
                         type_free(ann_ty as Type*);
@@ -3140,6 +3168,12 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
         return null;
     }
 
+    if (ord(l_ty.kind) == ord(TY_ARRAY)) {
+        let res = type_clone(l_ty.inner as Type*);
+        type_free(l_ty);
+        return res;
+    }
+
     if (ord(l_ty.kind) != ord(TY_POINTER)) {
         etc_diag_error(self, "TYP-0213", "cannot index into non-pointer type " + type_format(l_ty),
             (self.current_unit as DriverUnit*).path, expr.span);
@@ -3171,6 +3205,133 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
 }
 
 /**
+ * Check an array literal against a contextual array target.
+ *
+ * @param self Expression checker state.
+ * @param dst Contextual array type.
+ * @param expr_id Array literal expression id.
+ * @param filename Source filename.
+ * @param span Diagnostic span.
+ * @return Assignability result.
+ */
+func etc_check_array_literal_expr(self: ExpressionTypeChecker*, dst: Type*, expr_id: ExprId, filename: string,
+                                  span: Span) -> AssignCheckResult {
+    return etc_check_array_literal_expr_mode(self, dst, expr_id, filename, span, true, true);
+}
+
+/**
+ * Check an array literal against a contextual array target.
+ *
+ * @param self Expression checker state.
+ * @param dst Contextual array type.
+ * @param expr_id Array literal expression id.
+ * @param filename Source filename.
+ * @param span Diagnostic span.
+ * @param report Whether to emit diagnostics for mismatches.
+ * @param record Whether to record the contextual type on accepted literals.
+ * @return Assignability result.
+ */
+func etc_check_array_literal_expr_mode(self: ExpressionTypeChecker*, dst: Type*, expr_id: ExprId, filename: string,
+                                       span: Span, report: bool, record: bool) -> AssignCheckResult {
+    let unit = self.current_unit as DriverUnit*;
+    let expr = expr_arena_get(unit.parse_result.expr_arena, expr_id);
+    if (ord(dst.kind) != ord(TY_ARRAY) || ord(expr.kind) != ord(EX_ARRAY_LITERAL)) {
+        return ASSIGN_REJECT;
+    }
+    let ids = expr.ids as VectorBase*;
+    if (vec_size(ids) > dst.array_len) {
+        if (report) {
+            etc_diag_error(self, "TYP-0802",
+                "array literal has " + int_to_string(vec_size(ids)) + " element(s), but target " + type_format(dst) +
+                " has length " + int_to_string(dst.array_len),
+                filename, span);
+        }
+        return ASSIGN_REPORTED;
+    }
+    let elem_ty = dst.inner as Type*;
+    for (let i = 0; i < vec_size(ids); i = i + 1) {
+        let elem_id = id_vec_get(ids, i);
+        let elem_expr = expr_arena_get(unit.parse_result.expr_arena, elem_id);
+        if (ord(elem_ty.kind) == ord(TY_ARRAY) && ord(elem_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+            let nested = etc_check_array_literal_expr_mode(self, elem_ty, elem_id, filename, elem_expr.span, report,
+                record);
+            if (ord(nested) != ord(ASSIGN_ACCEPT)) {
+                return nested;
+            }
+            continue;
+        }
+        let actual = etc_infer_expr(self, elem_id);
+        if (actual != null) {
+            if (ord(etc_check_assign_expr(self, elem_ty, actual as Type*, elem_id, filename, elem_expr.span)) ==
+                ord(ASSIGN_REJECT)) {
+                if (report) {
+                    etc_diag_error(self, "TYP-0803",
+                        "array literal element type mismatch: expected " + type_format(elem_ty) +
+                        ", got " + type_format(actual as Type*),
+                        filename, elem_expr.span);
+                }
+                type_free(actual as Type*);
+                return ASSIGN_REPORTED;
+            }
+            type_free(actual as Type*);
+        }
+    }
+    if (record) {
+        etc_set_expr_type(self, expr_id, dst);
+    }
+    return ASSIGN_ACCEPT;
+}
+
+/**
+ * Check the sole argument to an array constructor or array allocation.
+ *
+ * Literal arguments first try the outer array shape. If that fails and the
+ * element type is itself an array, the literal is treated as a value of the
+ * element type and broadcast across the outer array.
+ *
+ * @param self Expression checker state.
+ * @param target Target array type.
+ * @param arg_id Constructor/allocation argument expression.
+ * @param filename Source filename.
+ * @return `true` when the argument is valid.
+ */
+func etc_check_array_constructor_arg(self: ExpressionTypeChecker*, target: Type*, arg_id: ExprId,
+                                     filename: string) -> bool {
+    let unit = self.current_unit as DriverUnit*;
+    let arg_expr = expr_arena_get(unit.parse_result.expr_arena, arg_id);
+    if (ord(arg_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+        let outer = etc_check_array_literal_expr_mode(self, target, arg_id, filename, arg_expr.span, false, false);
+        if (ord(outer) == ord(ASSIGN_ACCEPT)) {
+            etc_check_array_literal_expr_mode(self, target, arg_id, filename, arg_expr.span, true, true);
+            return true;
+        }
+        if (ord((target.inner as Type*).kind) == ord(TY_ARRAY)) {
+            let inner = etc_check_array_literal_expr_mode(self, target.inner as Type*, arg_id, filename, arg_expr.span,
+                true, true);
+            return ord(inner) == ord(ASSIGN_ACCEPT);
+        }
+        etc_check_array_literal_expr_mode(self, target, arg_id, filename, arg_expr.span, true, true);
+        return false;
+    }
+
+    let arg_ty = etc_infer_expr(self, arg_id);
+    if (arg_ty != null) {
+        if (ord(etc_check_assign_expr(self, target.inner as Type*, arg_ty as Type*, arg_id, filename, arg_expr.span)) ==
+            ord(ASSIGN_REJECT)) {
+            etc_diag_error(self, "TYP-0806",
+                "array fill value type mismatch: expected " +
+                type_format(target.inner as Type*) + ", got " + type_format(arg_ty as Type*),
+                filename, arg_expr.span);
+            type_free(arg_ty as Type*);
+            return false;
+        }
+        type_free(arg_ty as Type*);
+        return true;
+    }
+    return false;
+}
+
+/**
  * Infers the type for a expr.
  *
  * @param self Expression checker state.
@@ -3197,6 +3358,11 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
         EX_VAR_REF => {
             if (contains_s(expr.text_value, "::")) {
                 etc_diag_error(self, "TYP-0158", etc_nested_symbol_path_message(expr),
+                    unit.path, expr.span);
+                return null;
+            }
+            if (expr.module_path == null && expr.name_qualifier == null && type_is_builtin_name(expr.text_value)) {
+                etc_diag_error(self, "TYP-0151", "type name '" + expr.text_value + "' cannot be used as a value",
                     unit.path, expr.span);
                 return null;
             }
@@ -3285,6 +3451,44 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
         EX_CALL => { ty = etc_infer_call(self, expr_id, expr); }
         EX_FIELD => { ty = etc_infer_field(self, expr_id, expr); }
         EX_INDEX => { ty = etc_infer_index(self, expr_id, expr); }
+        EX_ARRAY_LITERAL => {
+            etc_diag_error(self, "TYP-0801", "array literal requires a contextual array type", unit.path, expr.span);
+        }
+        EX_ARRAY_CONSTRUCTOR => {
+            if (expr.type_ref != null) {
+                with (let seen_arr = ss_create() => ss_free(seen_arr)) {
+                    let target_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
+                        self.result.names as NameResolution*, self.current_env as ModuleEnv*,
+                        expr.type_ref as TypeRef*, self.result.diags, seen_arr);
+                    if (target_ty != null) {
+                        let target = target_ty as Type*;
+                        let arg_count = 0;
+                        if (expr.ids != null) {
+                            arg_count = vec_size(expr.ids as VectorBase*);
+                        }
+                        if (ord(target.kind) != ord(TY_ARRAY)) {
+                            etc_diag_error(self, "TYP-0804", "array constructor target must be an array type",
+                                unit.path, expr.span);
+                        } else if (arg_count != 1) {
+                            etc_diag_error(self, "TYP-0805", "array constructor or allocation has invalid arity",
+                                unit.path, expr.span);
+                        } else {
+                            let arg_id = id_vec_get(expr.ids as VectorBase*, 0);
+                            if (etc_check_array_constructor_arg(self, target, arg_id, unit.path)) {
+                                ty = target;
+                                target_ty = null;
+                            }
+                        }
+                        if (target_ty != null) {
+                            type_free(target_ty as Type*);
+                        }
+                    } else {
+                        etc_diag_type_ref_failure(self, expr.type_ref as TypeRef*, "TYP-0807",
+                            (expr.type_ref as TypeRef*).span);
+                    }
+                }
+            }
+        }
         EX_CAST => {
             let src_ty = etc_infer_expr(self, expr.expr_a);
             if (src_ty != null && expr.type_ref != null) {
@@ -3415,7 +3619,15 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                         target_ref, self.result.diags, seen2);
                     if (base_ty != null) {
                         let base = base_ty as Type*;
-                        if (ord(base.kind) == ord(TY_ENUM)) {
+                        if (ord(base.kind) == ord(TY_ARRAY)) {
+                            if (arg_count > 1) {
+                                etc_diag_error(self, "TYP-0805", "array constructor or allocation has invalid arity",
+                                    unit.path, expr.span);
+                            } else if (arg_count == 1) {
+                                let arg_id = id_vec_get(expr.ids as VectorBase*, 0);
+                                etc_check_array_constructor_arg(self, base, arg_id, unit.path);
+                            }
+                        } else if (ord(base.kind) == ord(TY_ENUM)) {
                             etc_diag_error(self, "TYP-0281",
                                 "cannot allocate enum type '" + type_format(base) + "' without a variant",
                                 unit.path, expr.span);

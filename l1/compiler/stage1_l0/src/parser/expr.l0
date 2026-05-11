@@ -92,6 +92,75 @@ func ps_is_unambiguous_type_start(self: ParserState*) -> bool {
 }
 
 /**
+ * Report whether a parsed type reference includes an array suffix.
+ *
+ * @param tref Type reference to inspect.
+ * @return `true` if an array suffix was parsed.
+ */
+func ps_type_ref_has_array_suffix(tref: TypeRef*) -> bool {
+    if (tref.suffixes == null) {
+        return false;
+    }
+    let suffixes = tref.suffixes as VectorBase*;
+    for (let i = 0; i < vec_size(suffixes); i = i + 1) {
+        let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
+        if (ord(suffix.kind) == ord(TS_ARRAY)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return whether lookahead can start an array constructor type-call.
+ *
+ * @param self Parser state to inspect without consuming.
+ * @return `true` for `T[N](`-shaped prefixes.
+ */
+func ps_looks_like_array_constructor_start(self: ParserState*) -> bool {
+    let saved = self.index;
+    if (!ps_check_ident(self)) {
+        return false;
+    }
+    ps_advance(self);
+    while (ps_match(self, ord(TT_DOT))) {
+        if (!ps_check_ident(self)) {
+            self.index = saved;
+            return false;
+        }
+        ps_advance(self);
+    }
+    while (ps_match(self, ord(TT_DOUBLE_COLON))) {
+        if (!ps_check_ident(self)) {
+            self.index = saved;
+            return false;
+        }
+        ps_advance(self);
+    }
+    let has_array = false;
+    while (ps_check(self, ord(TT_STAR)) || ps_check(self, ord(TT_QUESTION)) ||
+           ps_check(self, ord(TT_LBRACKET))) {
+        if (ps_match(self, ord(TT_LBRACKET))) {
+            if (!ps_check_int(self)) {
+                self.index = saved;
+                return false;
+            }
+            ps_advance(self);
+            if (!ps_match(self, ord(TT_RBRACKET))) {
+                self.index = saved;
+                return false;
+            }
+            has_array = true;
+        } else {
+            ps_advance(self);
+        }
+    }
+    let result = has_array && ps_check(self, ord(TT_LPAREN));
+    self.index = saved;
+    return result;
+}
+
+/**
  * Parse one call argument.
  *
  * @param self Parser state to advance.
@@ -504,6 +573,60 @@ func ps_parse_postfix_expr(self: ParserState*) -> ExprId? {
 func ps_parse_primary_expr(self: ParserState*) -> ExprId? {
     let start = ps_span_start(self);
     let tok = ps_peek(self);
+
+    if (ps_check(self, ord(TT_LBRACKET))) {
+        ps_advance(self);
+        with (let elems: VectorBase*? = id_vec_create(4) => id_vec_free(elems)) {
+            if (!ps_check(self, ord(TT_RBRACKET))) {
+                while (true) {
+                    let elem = ps_parse_expr(self)?;
+                    id_vec_push(elems as VectorBase*, elem);
+                    if (!ps_match(self, ord(TT_COMMA))) {
+                        break;
+                    }
+                    if (ps_check(self, ord(TT_RBRACKET))) {
+                        break;
+                    }
+                }
+            }
+            ps_expect(self, ord(TT_RBRACKET), "PAR-0622", "expected ']' after array literal")?;
+            let node = expr_node_create(EX_ARRAY_LITERAL, ps_extend_span(self, start));
+            node.ids = elems as VectorBase*;
+            elems = null;
+            return expr_arena_add(self.expr_arena, node);
+        }
+    }
+
+    if (ps_looks_like_array_constructor_start(self)) {
+        let saved = self.index;
+        let parsed_type = ps_parse_type(self);
+        if (parsed_type != null) {
+            let type_ref = parsed_type as TypeRef*;
+            if (ps_type_ref_has_array_suffix(type_ref) && ps_match(self, ord(TT_LPAREN))) {
+                with (let args: VectorBase*? = id_vec_create(2) => id_vec_free(args),
+                      let owned_type: TypeRef*? = type_ref => type_ref_free(owned_type)) {
+                    if (!ps_check(self, ord(TT_RPAREN))) {
+                        while (true) {
+                            let arg = ps_parse_call_argument(self)?;
+                            id_vec_push(args as VectorBase*, arg);
+                            if (!ps_match(self, ord(TT_COMMA))) {
+                                break;
+                            }
+                        }
+                    }
+                    ps_expect(self, ord(TT_RPAREN), "PAR-0623", "expected ')' after array constructor arguments")?;
+                    let node = expr_node_create(EX_ARRAY_CONSTRUCTOR, ps_extend_span(self, start));
+                    node.type_ref = owned_type as TypeRef*;
+                    node.ids = args as VectorBase*;
+                    owned_type = null;
+                    args = null;
+                    return expr_arena_add(self.expr_arena, node);
+                }
+            }
+            type_ref_free(type_ref);
+        }
+        self.index = saved;
+    }
 
     if (ps_match(self, ord(TT_NEW))) {
         let parsed_type = ps_parse_type(self)?;

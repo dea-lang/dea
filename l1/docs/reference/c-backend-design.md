@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-04-26
+Version: 2026-05-11
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -130,6 +130,9 @@ build mode preserve the L1 floating-point contract.
   a `ulong?` function stores the converted `ulong` payload in `dea_opt_ulong`
 - explicit integer casts to nullable integer targets lower as a checked cast to the inner C type followed by wrapper
   construction; for example, `0 as ulong?` lowers through the same `int` to `ulong` range check as `0 as ulong`
+- fixed-size arrays lower to generated wrapper structs named with the ABI type-component layer, for example `byte[1024]`
+  -> `__deaA1024_h` and `int[2][3]` -> `__deaA2_A3_i`; the wrapper contains one `data` field, and adjacent dimensions
+  lower as contiguous C arrays such as `data[2][3]`
 
 ## Statement and Expression Lowering
 
@@ -141,6 +144,8 @@ Implemented lowering currently includes:
 - `if`, `while`, `for`, `match`, `case`, `with`, `break`, `continue`, and `return`
 - `expr?` null-propagation lowering with early return on empty
 - checked integer arithmetic and narrowing via runtime helpers
+- contextual array literals, array constructors, `new T[N]`, `sizeof(T[N])`, whole-array value copies, and checked array
+  indexing
 
 ## Ownership and Cleanup Model
 
@@ -153,8 +158,13 @@ Key rules:
 - scope exit cleanup runs in reverse declaration order
 - early exits run pending `with` cleanup before normal owned-value cleanup
 - enum and struct cleanup recursively releases owned fields for active values
+- arrays whose element type transitively contains ARC-managed data participate in retain and cleanup; cleanup walks
+  elements in reverse index order
 - raw-pointer indexing lowers to direct C indexing; side-effectful lvalue bases or indexes are captured once so writes
   preserve single evaluation of both operands
+- fixed-size array values lower at the wrapper boundary; flattened nested rows are raw C arrays only inside dedicated
+  array helper paths
+- fixed-size array indexing emits a bounds check that calls `_rt_panic_oob(index, length)` before accessing `.data`
 
 See [ownership.md](ownership.md) for the language-facing ownership rules that this lowering must preserve.
 

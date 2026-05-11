@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-05-09
+Version: 2026-05-11
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -50,11 +50,19 @@ Current lowering policy:
 - `new Struct` and `new Struct()` allocate one zero-initialized object
 - `new Struct(args...)` allocates and initializes fields positionally
 - `new Variant(args...)` allocates the owning enum object for that active variant
+- `new T[N]` and `new T[N]()` allocate one zero-initialized array wrapper
+- `new T[N]([ ... ])` and `new T[N](value)` use the same array literal and fill construction rules as stack array
+  values; the fill value has element type `T`, which may itself be an array
 - `drop` accepts both `T*` and `T*?`
 - dropping `null` is a safe no-op
 
 Before calling the final drop helper, compiler-generated cleanup may release owned fields such as `string` members.
 Pointer children with independent ownership are still your responsibility.
+
+Fixed-size arrays are value types. Copying an array copies the full wrapper value; if the element type transitively
+contains ARC-managed data, generated code retains copied elements and releases overwritten or leaving-scope elements.
+Array cleanup runs elements in reverse index order, recursively applying the same rules to nested arrays, structs,
+enums, nullable non-pointers, and `string`.
 
 ## 4. ARC `string` Semantics
 
@@ -76,6 +84,7 @@ That rule applies to:
 - struct or enum string fields
 - dereferenced pointer destinations
 - raw-pointer indexed destinations such as `ptr[i]` inside `unsafe func`
+- fixed-size array element destinations such as `arr[i]`
 - other ordinary assignment destinations whose type is `string`
 
 The intended behavior is:

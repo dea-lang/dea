@@ -147,6 +147,25 @@ struct TypeRef {
     name_qualifier: StringVector*?;   // string entries
     func_params: VectorBase*?;        // TypeRef*
     func_result: TypeRef*?;
+    suffixes: VectorBase*?;           // TypeSuffix*
+    span: Span;
+}
+
+/**
+ * Defines parsed type suffix kinds.
+ */
+enum TypeSuffixKind {
+    TS_POINTER;
+    TS_NULLABLE;
+    TS_ARRAY;
+}
+
+/**
+ * Represents one source-ordered type suffix.
+ */
+struct TypeSuffix {
+    kind: TypeSuffixKind;
+    array_len: int;
     span: Span;
 }
 
@@ -426,6 +445,8 @@ enum ExprKind {
     EX_CAST;
     EX_TRY;
     EX_TYPE;
+    EX_ARRAY_LITERAL;
+    EX_ARRAY_CONSTRUCTOR;
 }
 
 /**
@@ -691,6 +712,14 @@ func type_ref_free(self: TypeRef*?) {
             vec_free(params);
         }
         type_ref_free(type_ref.func_result);
+        if (type_ref.suffixes != null) {
+            let suffixes = type_ref.suffixes as VectorBase*;
+            for (let i = 0; i < vec_size(suffixes); i = i + 1) {
+                let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
+                drop suffix;
+            }
+            vec_free(suffixes);
+        }
         drop type_ref;
     }
 }

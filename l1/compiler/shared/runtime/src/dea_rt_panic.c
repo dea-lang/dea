@@ -42,6 +42,10 @@ void _rt_panic_fmt(const char* fmt, ...) {
     abort();
 }
 
+void _rt_panic_oob(dea_int index, dea_int length) {
+    _rt_panic_fmt("array index %d out of bounds for length %d", (int)index, (int)length);
+}
+
 void *_unwrap_ptr(void *opt, const char *type_name) {
     if (opt == NULL) {
         _rt_panic_fmt("unwrap of empty optional: '%s'", type_name);

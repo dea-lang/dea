@@ -48,7 +48,7 @@ func cet_empty_analysis_result() -> AnalysisResult* {
  * @return New type-ref node.
  */
 func cet_builtin_type_ref(name: string) -> TypeRef* {
-    return new TypeRef(name, 0, false, false, null, null, null, null, span_here(1, 1));
+    return new TypeRef(name, 0, false, false, null, null, null, null, null, span_here(1, 1));
 }
 
 /**
@@ -680,6 +680,22 @@ func test_emitter_nested_nullable_pointer_representations() {
 }
 
 /**
+ * Tests fixed-size array ABI wrapper names from the spec examples.
+ */
+func test_emitter_array_wrapper_spec_names() {
+    let byte_buf = type_new_array(type_builtin_byte(), 1024);
+    let point_vec = type_new_array(type_new_struct("demo.main", "Point"), 4);
+
+    assert(cem_array_wrapper_name_for_type(byte_buf) == "__deaA1024_h",
+        "byte[1024] wrapper ABI name mismatch");
+    assert(cem_array_wrapper_name_for_type(point_vec) == "__deaA4_M4demo4mainS5Point",
+        "demo.main::Point[4] wrapper ABI name mismatch");
+
+    type_free(byte_buf);
+    type_free(point_vec);
+}
+
+/**
  * Tests test_emitter_top_level_forms_match_stage1_shape.
  */
 func test_emitter_top_level_forms_match_stage1_shape() {
@@ -855,6 +871,7 @@ func main() {
     test_emitter_forward_decls_follow_loaded_module_order();
     test_emitter_optional_wrappers_emit_early_then_late();
     test_emitter_nested_nullable_pointer_representations();
+    test_emitter_array_wrapper_spec_names();
     test_emitter_top_level_forms_match_stage1_shape();
     test_emitter_unsafe_function_types_share_c_abi();
     printl_s("c_emitter_test: all tests passed");

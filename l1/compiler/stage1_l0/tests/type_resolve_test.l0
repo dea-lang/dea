@@ -126,21 +126,21 @@ func test_tr_resolve_type_ref() {
         
         with (let seen = ss_create() => ss_free(seen)) {
             // builtin int
-            let tref = new TypeRef("int", 0, false, false, null, null, null, null, Span(0,0,0,0));
+            let tref = new TypeRef("int", 0, false, false, null, null, null, null, null, Span(0,0,0,0));
             let ty = tr_resolve_type_ref(tables, nr, env, tref, result.diags, seen);
             assert(ty != null, "int should resolve");
             assert(type_is_builtin(ty as Type*, "int"), "should be int");
             type_free(ty as Type*);
             drop tref;
 
-            let tref_tiny = new TypeRef("tiny", 0, false, false, null, null, null, null, Span(0,0,0,0));
+            let tref_tiny = new TypeRef("tiny", 0, false, false, null, null, null, null, null, Span(0,0,0,0));
             let ty_tiny = tr_resolve_type_ref(tables, nr, env, tref_tiny, result.diags, seen);
             assert(ty_tiny != null, "tiny should resolve");
             assert(type_is_builtin(ty_tiny as Type*, "tiny"), "should be tiny");
             type_free(ty_tiny as Type*);
             drop tref_tiny;
 
-            let tref_short_opt = new TypeRef("short", 0, true, false, null, null, null, null, Span(0,0,0,0));
+            let tref_short_opt = new TypeRef("short", 0, true, false, null, null, null, null, null, Span(0,0,0,0));
             let ty_short_opt = tr_resolve_type_ref(tables, nr, env, tref_short_opt, result.diags, seen);
             assert(ty_short_opt != null, "short? should resolve");
             assert(ord((ty_short_opt as Type*).kind) == ord(TY_NULLABLE), "should be nullable");
@@ -148,14 +148,14 @@ func test_tr_resolve_type_ref() {
             type_free(ty_short_opt as Type*);
             drop tref_short_opt;
 
-            let tref_uint = new TypeRef("uint", 0, false, false, null, null, null, null, Span(0,0,0,0));
+            let tref_uint = new TypeRef("uint", 0, false, false, null, null, null, null, null, Span(0,0,0,0));
             let ty_uint = tr_resolve_type_ref(tables, nr, env, tref_uint, result.diags, seen);
             assert(ty_uint != null, "uint should resolve");
             assert(type_is_builtin(ty_uint as Type*, "uint"), "should be uint");
             type_free(ty_uint as Type*);
             drop tref_uint;
 
-            let tref_long_opt = new TypeRef("long", 0, true, false, null, null, null, null, Span(0,0,0,0));
+            let tref_long_opt = new TypeRef("long", 0, true, false, null, null, null, null, null, Span(0,0,0,0));
             let ty_long_opt = tr_resolve_type_ref(tables, nr, env, tref_long_opt, result.diags, seen);
             assert(ty_long_opt != null, "long? should resolve");
             assert(ord((ty_long_opt as Type*).kind) == ord(TY_NULLABLE), "should be nullable");
@@ -163,7 +163,7 @@ func test_tr_resolve_type_ref() {
             type_free(ty_long_opt as Type*);
             drop tref_long_opt;
 
-            let tref_ushort_ptr = new TypeRef("ushort", 1, false, false, null, null, null, null, Span(0,0,0,0));
+            let tref_ushort_ptr = new TypeRef("ushort", 1, false, false, null, null, null, null, null, Span(0,0,0,0));
             let ty_ushort_ptr = tr_resolve_type_ref(tables, nr, env, tref_ushort_ptr, result.diags, seen);
             assert(ty_ushort_ptr != null, "ushort* should resolve");
             assert(ord((ty_ushort_ptr as Type*).kind) == ord(TY_POINTER), "should be pointer");
@@ -171,7 +171,7 @@ func test_tr_resolve_type_ref() {
             type_free(ty_ushort_ptr as Type*);
             drop tref_ushort_ptr;
 
-            let tref_ulong_ptr = new TypeRef("ulong", 1, false, false, null, null, null, null, Span(0,0,0,0));
+            let tref_ulong_ptr = new TypeRef("ulong", 1, false, false, null, null, null, null, null, Span(0,0,0,0));
             let ty_ulong_ptr = tr_resolve_type_ref(tables, nr, env, tref_ulong_ptr, result.diags, seen);
             assert(ty_ulong_ptr != null, "ulong* should resolve");
             assert(ord((ty_ulong_ptr as Type*).kind) == ord(TY_POINTER), "should be pointer");
@@ -179,14 +179,14 @@ func test_tr_resolve_type_ref() {
             type_free(ty_ulong_ptr as Type*);
             drop tref_ulong_ptr;
 
-            let tref_float = new TypeRef("float", 0, false, false, null, null, null, null, Span(0,0,0,0));
+            let tref_float = new TypeRef("float", 0, false, false, null, null, null, null, null, Span(0,0,0,0));
             let ty_float = tr_resolve_type_ref(tables, nr, env, tref_float, result.diags, seen);
             assert(ty_float != null, "float should resolve");
             assert(type_is_builtin(ty_float as Type*, "float"), "should be float");
             type_free(ty_float as Type*);
             drop tref_float;
 
-            let tref_double_opt = new TypeRef("double", 0, true, false, null, null, null, null, Span(0,0,0,0));
+            let tref_double_opt = new TypeRef("double", 0, true, false, null, null, null, null, null, Span(0,0,0,0));
             let ty_double_opt = tr_resolve_type_ref(tables, nr, env, tref_double_opt, result.diags, seen);
             assert(ty_double_opt != null, "double? should resolve");
             assert(ord((ty_double_opt as Type*).kind) == ord(TY_NULLABLE), "should be nullable");
@@ -195,7 +195,7 @@ func test_tr_resolve_type_ref() {
             drop tref_double_opt;
             
             // struct Point (from shared_types)
-            let tref2 = new TypeRef("Point", 0, false, false, null, null, null, null, Span(0,0,0,0));
+            let tref2 = new TypeRef("Point", 0, false, false, null, null, null, null, null, Span(0,0,0,0));
             let ty2 = tr_resolve_type_ref(tables, nr, env, tref2, result.diags, seen);
             assert(ty2 != null, "Point should resolve");
             assert(ord((ty2 as Type*).kind) == ord(TY_STRUCT), "should be struct");
@@ -204,7 +204,7 @@ func test_tr_resolve_type_ref() {
             drop tref2;
             
             // pointer Point*
-            let tref3 = new TypeRef("Point", 1, false, false, null, null, null, null, Span(0,0,0,0));
+            let tref3 = new TypeRef("Point", 1, false, false, null, null, null, null, null, Span(0,0,0,0));
             let ty3 = tr_resolve_type_ref(tables, nr, env, tref3, result.diags, seen);
             assert(ty3 != null, "Point* should resolve");
             assert(ord((ty3 as Type*).kind) == ord(TY_POINTER), "should be pointer");

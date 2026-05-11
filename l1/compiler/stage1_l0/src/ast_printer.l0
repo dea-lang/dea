@@ -537,6 +537,26 @@ func ap_print_expr(id: ExprId, pr: ParseResult*, indent: int) {
             ap_print_label(indent, "type_ref");
             ap_print_type_ref(node.type_ref as TypeRef*, indent + 2);
         }
+        EX_ARRAY_LITERAL => {
+            ap_print_line(indent, "ArrayLiteral()" + ap_span_suffix(node.span));
+            if (node.ids != null) {
+                let elems = node.ids as VectorBase*;
+                for (let i = 0; i < vec_size(elems); i = i + 1) {
+                    ap_print_expr(id_vec_get(elems, i), pr, indent + 2);
+                }
+            }
+        }
+        EX_ARRAY_CONSTRUCTOR => {
+            ap_print_line(indent, "ArrayConstructor()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "type_ref");
+            ap_print_type_ref(node.type_ref as TypeRef*, indent + 2);
+            if (node.ids != null) {
+                let args = node.ids as VectorBase*;
+                for (let i2 = 0; i2 < vec_size(args); i2 = i2 + 1) {
+                    ap_print_expr(id_vec_get(args, i2), pr, indent + 2);
+                }
+            }
+        }
     }
 }
 

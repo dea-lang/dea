@@ -106,6 +106,27 @@ func bt_source(lines: StringVector*) -> string {
 }
 
 /**
+ * Count non-overlapping occurrences of one substring.
+ *
+ * @param text Text to scan.
+ * @param needle Substring to count.
+ * @return Occurrence count.
+ */
+func bt_count_substring(text: string, needle: string) -> int {
+    let count = 0;
+    let pos = 0;
+    while (true) {
+        let found = find_from_s(text, needle, pos);
+        if (found < 0) {
+            return count;
+        }
+        count = count + 1;
+        pos = found + len_s(needle);
+    }
+    return count;
+}
+
+/**
  * Tests test_codegen_options_defaults.
  */
 func test_codegen_options_defaults() {
@@ -981,8 +1002,130 @@ func test_backend_generate_pointer_indexing_contract() {
             "effectful write index should be captured once");
         assert(contains_s(generated, " = value;"),
             "effectful write should still emit one indexed assignment after temp capture");
-        assert(contains_s(generated, "return make_ptr()[next_index()];"),
-            "effectful read should still lower to one direct indexing expression");
+        assert(contains_s(generated, "dea_int* dea_base_"),
+            "effectful read base should be captured once");
+        assert(contains_s(generated, "return dea_base_"),
+            "effectful read should return the indexed temporary base");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests fixed-size array wrappers, literals, constructors, and checked indexing.
+ */
+func test_backend_generate_fixed_arrays() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(20) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func get_index() -> int { return 1; }");
+        sv_push(lines, "unsafe func read_row(p: int[3]*, i: int, j: int) -> int { return p[i][j]; }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let a: int[3] = [1, 2];");
+        sv_push(lines, "    let z: int[3] = [];");
+        sv_push(lines, "    let b = int[3](7);");
+        sv_push(lines, "    let m: int[2][3] = [[1, 2, 3], [4, 5, 6]];");
+        sv_push(lines, "    let filled = int[2][3]([8, 9]);");
+        sv_push(lines, "    let heap = new int[2][3]([4, 5]);");
+        sv_push(lines, "    let opt_arr: int[3]? = a;");
+        sv_push(lines, "    return a[get_index()] + z[0] + b[2] + m[get_index()][get_index()] + filled[1][0] + (*heap)[1][1] + sizeof(int[3]) + sizeof(a[0]);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "fixed array fixture should analyze without errors");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "typedef struct __deaA3_i { dea_int data[3]; } __deaA3_i;"),
+            "expected int[3] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA2_A3_i { dea_int data[2][3]; } __deaA2_A3_i;"),
+            "expected flattened int[2][3] wrapper typedef");
+        assert(contains_s(generated, "typedef struct { dea_bool has_value; __deaA3_i value; } dea_opt_a3_int;"),
+            "expected nullable int[3] wrapper typedef");
+        assert(find_s(generated, "} dea_opt_a3_int;") > find_s(generated, "} __deaA3_i;"),
+            "expected int[3] wrapper before nullable int[3] wrapper");
+        assert(contains_s(generated, "__deaA3_i a = ((__deaA3_i){.data = {1, 2}});"),
+            "expected contextual array literal initializer");
+        assert(contains_s(generated, "__deaA3_i z = ((__deaA3_i){.data = {0}});"),
+            "expected C99-compatible empty array literal initializer");
+        assert(contains_s(generated, "__deaA2_A3_i filled = dea_arr_"),
+            "expected multidimensional literal-as-fill constructor");
+        assert(contains_s(generated, "*dea_new_") && contains_s(generated, "dea_arr_"),
+            "expected heap multidimensional literal-as-fill constructor");
+        assert(contains_s(generated, "_rt_panic_oob("), "expected array bounds checks");
+        assert(bt_count_substring(generated, "_rt_panic_oob(") >= 2,
+            "expected nested indexing to emit checks at both dimensions");
+        assert(contains_s(generated, "((dea_int)sizeof(__deaA3_i))"), "expected sizeof array wrapper");
+        assert(contains_s(generated, "((dea_int)sizeof(dea_int))"), "expected sizeof indexed value type");
+        assert(!contains_s(generated, "__deaA3_i dea_base_"),
+            "nested row indexing should not materialize a flattened row as a wrapper");
+        assert(contains_s(generated, "(p[i]).data[j]"),
+            "pointer-to-array indexing should keep wrapper boundary before row access");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests fixed-size arrays with nested ARC structs and mixed pointer suffix wrappers.
+ */
+func test_backend_generate_fixed_array_arc_shapes() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct NestedStruct {");
+        sv_push(lines, "    t1: string;");
+        sv_push(lines, "    t2: string;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct MyStruct1 {");
+        sv_push(lines, "    s: string;");
+        sv_push(lines, "    n: NestedStruct;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct NestedStruct2 {");
+        sv_push(lines, "    v1: string;");
+        sv_push(lines, "    v2: NestedStruct[10][20];");
+        sv_push(lines, "}");
+        sv_push(lines, "func use_complex(p: string[10]*[20]*[30]) -> int { return sizeof(string[10]*[20]*[30]); }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let n = NestedStruct(\"a\", \"b\");");
+        sv_push(lines, "    let one = MyStruct1(\"c\", n);");
+        sv_push(lines, "    let arr: MyStruct1[2] = [one];");
+        sv_push(lines, "    let seed = NestedStruct(\"d\", \"e\");");
+        sv_push(lines, "    let row = NestedStruct[20](seed);");
+        sv_push(lines, "    let nested = NestedStruct2(\"f\", NestedStruct[10][20](row));");
+        sv_push(lines, "    let arr2: NestedStruct2[1] = [nested];");
+        sv_push(lines, "    return sizeof(MyStruct1[2]) + sizeof(NestedStruct2[1]) + sizeof(string[10]*[20]*[30]);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "fixed array ARC shape fixture should analyze without errors");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "typedef struct __deaA2_M4demo4mainS9MyStruct1"),
+            "expected MyStruct1[2] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA10_A20_M4demo4mainS12NestedStruct"),
+            "expected flattened NestedStruct[10][20] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA1_M4demo4mainS13NestedStruct2"),
+            "expected NestedStruct2[1] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA10_c { dea_string data[10]; } __deaA10_c;"),
+            "expected string[10] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA20_PA10_c { __deaA10_c* data[20]; } __deaA20_PA10_c;"),
+            "expected string[10]*[20] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA30_PA20_PA10_c { __deaA20_PA10_c* data[30]; } __deaA30_PA20_PA10_c;"),
+            "expected string[10]*[20]*[30] wrapper typedef");
+        assert(contains_s(generated, "rt_string_release"), "expected managed string cleanup calls");
+        assert(contains_s(generated, "for (dea_int dea_arr_i_"), "expected recursive array cleanup loops");
 
         analysis_result_free(result);
     }
@@ -1500,6 +1643,8 @@ func main() {
     test_backend_generate_string_copy_retains();
     test_backend_generate_identity_cast_string_copy_retains();
     test_backend_generate_pointer_indexing_contract();
+    test_backend_generate_fixed_arrays();
+    test_backend_generate_fixed_array_arc_shapes();
     test_backend_generate_string_equality_ops();
     test_backend_generate_string_concat_ops();
     test_backend_generate_small_integer_builtins();

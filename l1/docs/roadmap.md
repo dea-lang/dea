@@ -100,8 +100,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   surface.
 - Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe] adds fixed-size array primitives and the
   function-level `unsafe` marker for raw-memory contracts. Its completed Phase 2 pointer-indexing work is documented by
-  Feature [2026-05-09-raw-pointer-indexing-semantics-noref][pointer-indexing], and its active Phase 3 fixed-size array
-  work is tracked by Feature [2026-05-10-fixed-size-array-primitive-noref][fixed-arrays].
+  Feature [2026-05-09-raw-pointer-indexing-semantics-noref][pointer-indexing], and its in-progress Phase 3 fixed-size
+  array work is tracked by Feature [2026-05-10-fixed-size-array-primitive-noref][fixed-arrays] (reopened for
+  post-implementation testing and fixes).
 
 ## Completed initiatives
 
@@ -158,7 +159,7 @@ surface.
 - Fixed-size typed arrays, pointer-indexing finalization, and the function-level unsafe marker for raw-memory contracts
   are tracked by Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. Dynamic buffers, shared buffers,
   slices, address-of (`&`), and broader pointer arithmetic remain backlog items. Current `std.array` / `std.vector`
-  storage is library-level rather than typed language-level arrays or slices.
+  storage remains the library-level dynamic/container layer rather than a replacement for `T[N]`.
 - `_` struct-member semantics are tracked by Feature
   [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members], which fixes `_ : StructType` as a single
   first-position anonymous embedded struct member and defines its construction, field-access, layout, and ABI rules.
@@ -247,7 +248,7 @@ update to be promoted to an initiative or plan:
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
-[unsafe-marker]: ../work/plans/features/2026-05-08-unsafe-function-marker-noref.md
+[unsafe-marker]: ../work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md
 [variadic-functions]: ../work/plans/features/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
 [wide-int]: ../work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md

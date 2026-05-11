@@ -284,6 +284,7 @@ struct __deaM3sys2rtS10RtFileInfo {
 void _rt_init_args(int argc, char** argv);
 void _rt_panic(const char* message);
 void _rt_panic_fmt(const char* fmt, ...);
+void _rt_panic_oob(dea_int index, dea_int length);
 dea_int _rt_idiv(dea_int a, dea_int b);
 dea_int _rt_imod(dea_int a, dea_int b);
 dea_int _rt_iadd(dea_int a, dea_int b);

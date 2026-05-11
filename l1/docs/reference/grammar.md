@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> Grammar
 
-Version: 2026-04-23
+Version: 2026-05-11
 
 The following is the formal grammar for the Dea/L<sub>1</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -81,7 +81,8 @@ implementation. In addition, `in` remains reserved for a future extension.
 Note: the current bootstrap implementation uses `&` only as the binary bitwise-AND operator. No forward-looking design
 decision has been made yet on whether prefix address-of will become part of the L<sub>1</sub> language surface. Postfix
 indexing syntax is part of the current surface: `ptr[index]` is the raw-pointer indexing form, accepted only in
-`unsafe func` bodies, with `int` indexes and direct unchecked lowering for sized non-`void` pointee types.
+`unsafe func` bodies, with `int` indexes and direct unchecked lowering for sized non-`void` pointee types. `arr[index]`
+on fixed-size arrays is safe, bounds checked, and also requires an `int` index.
 
 ### 1.5 Special identifier `_`
 
@@ -200,7 +201,8 @@ syntax.
 
 ## 4. Types
 
-L<sub>1</sub> has simple named types, function pointer types, and source-ordered pointer and nullable suffixes.
+L<sub>1</sub> has simple named types, function pointer types, and source-ordered pointer, nullable, and fixed-size array
+suffixes.
 
 ```ebnf
 Type                ::=     UnsuffixedType TypeSuffix*
@@ -211,8 +213,9 @@ UnsuffixedType      ::=     SimpleType
 SimpleType          ::=     QualifiedIdent
 FuncPointerType     ::=     ( "unsafe" )? "func" "(" TypeList? ")" "->" Type
 TypeList            ::=     Type ("," Type)*
-TypeSuffix          ::=     PointerSuffix | NullableSuffix
+TypeSuffix          ::=     PointerSuffix | ArraySuffix | NullableSuffix
 PointerSuffix       ::=     "*"
+ArraySuffix         ::=     "[" IntLiteral "]"
 NullableSuffix      ::=     "?"     (* applies to the preceding type syntactically *)
 
 QualifiedIdent      ::=     Ident
@@ -228,6 +231,10 @@ Examples (all syntactically valid types in L<sub>1</sub>):
 - `string`
 - `Expr*`
 - `Expr**`
+- `int[3]`
+- `int*[2]`
+- `int[2]*`
+- `int[2][3]`
 - `int?`
 - `int?*`
 - `int??`
@@ -237,7 +244,9 @@ Examples (all syntactically valid types in L<sub>1</sub>):
 - `unsafe func(byte*) -> int`
 - `(func() -> void)?`
 
-Exact semantic rules (e.g. when `?` is allowed) are enforced in the type checker, not in the grammar.
+Fixed-size array lengths must be positive `int` literals. Adjacent array suffixes preserve source-order dimensions:
+`int[2][3]` is two rows of three `int` values. Exact semantic rules (e.g. when `?` is allowed) are enforced in the type
+checker, not in the grammar.
 
 Type suffixes apply left-to-right and build an ordered constructor stack. `T?*` is a pointer to an optional `T`; `T*?`
 is an optional pointer to `T`; `T??` is an optional optional `T` and is not collapsed by the type system. `void*` is
@@ -444,9 +453,15 @@ PrimaryExpr         ::=     IntLiteral
                       |     ByteLiteral
                       |     StringLiteral
                       |     BoolLiteral
+                      |     ArrayLiteral
+                      |     ArrayConstructor
                       |     QualifiedIdent
                       |     "new" Type ( "(" ArgList? ")" )?
                       |     "(" Expr ")"
+
+ArrayLiteral        ::=     "[" ( Expr ( "," Expr )* ","? )? "]"
+ArrayConstructor    ::=     TypeWithArraySuffix "(" Expr ")"
+TypeWithArraySuffix ::=     UnsuffixedType TypeSuffix* ArraySuffix TypeSuffix*
 ```
 
 Notes:
@@ -460,8 +475,15 @@ Notes:
 - The `?` type suffix denotes nullable types in the `Type` grammar.
 - `?` as a postfix operator is the **null propagation operator** (also known as the **try operator**).
 - `TypeExpr` allows types in argument position for intrinsics such as `sizeof(int*)` a.k.a. `dea::sizeof(int*)`.
+- Array literals require a contextual `T[N]` type. Short literals zero/default-pad trailing elements; overlong literals
+  are rejected.
+- Array constructors are restricted to array type calls such as `int[3]([1, 2])` or `byte[1024](0xFF)`. Fill arguments
+  have the outer array's element type, so `int[10][20]([1, 2, 3])` broadcasts one contextually-built `int[20]` row.
 - A `TypeExpr` is syntactically unambiguous in call arguments: either a builtin type name, or an identifier (including a
   qualified name) followed by one or more `*`/`?` suffixes that end at an argument boundary (`,` or `)`).
+- Builtin type expressions may include array suffixes, such as `sizeof(int[4])`. Qualified identifier array suffixes are
+  parsed as value indexing first, so `value[index]` in a call argument remains value indexing. The `sizeof` semantic
+  path recognizes `TypeName[4]`-shaped arguments as array type expressions when the base resolves to a type name.
 - Plain identifiers like `sizeof(Point)` parse as `Expr`; the type checker resolves whether `Point` refers to a type or
   variable.
 - Calls to `sizeof`, `ord`, and `is` are parsed as ordinary function calls. Semantic analysis then resolves whether the

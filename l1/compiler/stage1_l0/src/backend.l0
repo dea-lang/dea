@@ -649,6 +649,8 @@ func be_has_side_effects(self: Backend*, expr_id: ExprId) -> bool {
         EX_INDEX => { return be_has_side_effects(self, expr.expr_a) || be_has_side_effects(self, expr.expr_b); }
         EX_TRY => { return be_has_side_effects(self, expr.expr_a); }
         EX_TYPE => { return false; }
+        EX_ARRAY_LITERAL => { return false; }
+        EX_ARRAY_CONSTRUCTOR => { return true; }
     }
 }
 
@@ -760,6 +762,25 @@ func be_emit_retain_for_copied_value(self: Backend*, c_expr: string, ty: Type*) 
         return;
     }
 
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        if (!analysis_has_arc_data(self.result, ty.inner as Type*)) {
+            return;
+        }
+        let idx = cem_fresh_tmp(self.emitter, "arr_i");
+        ccb_emit(self.emitter.out, "for (dea_int " + idx + " = 0; " + idx + " < " +
+            int_to_string(ty.array_len) + "; " + idx + " = " + idx + " + 1) {");
+        ccb_indent(self.emitter.out);
+        let inner = ty.inner as Type*;
+        if (ord(inner.kind) == ord(TY_ARRAY)) {
+            be_emit_retain_for_copied_raw_array(self, "(" + c_expr + ").data[" + idx + "]", inner);
+        } else {
+            be_emit_retain_for_copied_value(self, "(" + c_expr + ").data[" + idx + "]", inner);
+        }
+        ccb_dedent(self.emitter.out);
+        ccb_emit(self.emitter.out, "}");
+        return;
+    }
+
     if (ord(ty.kind) == ord(TY_STRUCT)) {
         let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, ty.module_name, ty.name);
         if (info == null) {
@@ -802,6 +823,35 @@ func be_emit_retain_for_copied_value(self: Backend*, c_expr: string, ty: Type*) 
 }
 
 /**
+ * Emit retain operations for copied values in raw C array storage.
+ *
+ * @param self Backend state to update.
+ * @param c_expr Lowered raw C array expression.
+ * @param ty Array type represented by `c_expr`.
+ */
+func be_emit_retain_for_copied_raw_array(self: Backend*, c_expr: string, ty: Type*) {
+    if (ord(ty.kind) != ord(TY_ARRAY)) {
+        be_emit_retain_for_copied_value(self, c_expr, ty);
+        return;
+    }
+    if (!analysis_has_arc_data(self.result, ty.inner as Type*)) {
+        return;
+    }
+    let idx = cem_fresh_tmp(self.emitter, "arr_i");
+    ccb_emit(self.emitter.out, "for (dea_int " + idx + " = 0; " + idx + " < " +
+        int_to_string(ty.array_len) + "; " + idx + " = " + idx + " + 1) {");
+    ccb_indent(self.emitter.out);
+    let inner = ty.inner as Type*;
+    if (ord(inner.kind) == ord(TY_ARRAY)) {
+        be_emit_retain_for_copied_raw_array(self, c_expr + "[" + idx + "]", inner);
+    } else {
+        be_emit_retain_for_copied_value(self, c_expr + "[" + idx + "]", inner);
+    }
+    ccb_dedent(self.emitter.out);
+    ccb_emit(self.emitter.out, "}");
+}
+
+/**
  * Materialize one copied value into a temp and retain any owned fields.
  *
  * @param self Backend state to update.
@@ -818,6 +868,31 @@ func be_emit_copy_expr_with_retains(self: Backend*, c_expr: string, ty: Type*) -
     cem_emit_temp_decl(self.emitter, cem_emit_type(ty), temp, c_expr);
     be_emit_retain_for_copied_value(self, temp, ty);
     return temp;
+}
+
+/**
+ * Emit an index lvalue, including a bounds check for fixed-size arrays.
+ *
+ * @param self Backend state to update.
+ * @param base Lowered base expression.
+ * @param index Lowered index expression.
+ * @param base_ty Type of the base expression.
+ * @return Lowered lvalue.
+ */
+func be_emit_checked_index_lvalue(self: Backend*, base: string, index: string, base_ty: Type*, raw_array_base: bool) -> string {
+    if (ord(base_ty.kind) == ord(TY_ARRAY)) {
+        ccb_emit(self.emitter.out, "if ((" + index + ") < 0 || (" + index + ") >= " +
+            int_to_string(base_ty.array_len) + ") {");
+        ccb_indent(self.emitter.out);
+        ccb_emit(self.emitter.out, "_rt_panic_oob(" + index + ", " + int_to_string(base_ty.array_len) + ");");
+        ccb_dedent(self.emitter.out);
+        ccb_emit(self.emitter.out, "}");
+        if (raw_array_base) {
+            return "(" + base + ")[" + index + "]";
+        }
+        return "(" + base + ").data[" + index + "]";
+    }
+    return cem_emit_index_lvalue(base, index);
 }
 
 /**
@@ -1083,6 +1158,114 @@ func be_emit_direct_function_call(self: Backend*, c_func_name: string, c_args: s
 }
 
 /**
+ * Emit a fixed-size array literal for a contextual array type.
+ *
+ * @param self Backend state to update.
+ * @param expr_id Array literal expression.
+ * @param expected Contextual array type.
+ * @return Compound literal expression.
+ */
+func be_emit_array_literal_value(self: Backend*, expr_id: ExprId, expected: Type*) -> string {
+    return "((" + cem_emit_type(expected) + "){.data = " +
+        be_emit_array_literal_data_initializer(self, expr_id, expected) + "})";
+}
+
+/**
+ * Emit the C brace initializer for an array literal's data field.
+ *
+ * @param self Backend state to update.
+ * @param expr_id Array literal expression.
+ * @param expected Contextual array type.
+ * @return Brace initializer for the array data.
+ */
+func be_emit_array_literal_data_initializer(self: Backend*, expr_id: ExprId, expected: Type*) -> string {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "{");
+        let ids = expr.ids as VectorBase*;
+        if (vec_size(ids) == 0) {
+            sb_append(sb, "0");
+        }
+        for (let i = 0; i < vec_size(ids); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            let elem_id = id_vec_get(ids, i);
+            let elem_expr = expr_arena_get(be_current_expr_arena(self), elem_id);
+            let elem_ty = expected.inner as Type*;
+            if (ord(elem_ty.kind) == ord(TY_ARRAY) && ord(elem_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+                sb_append(sb, be_emit_array_literal_data_initializer(self, elem_id, elem_ty));
+            } else {
+                sb_append(sb, be_emit_owned_expr_with_expected_type(self, elem_id, elem_ty));
+            }
+        }
+        sb_append(sb, "}");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Copy one array value into raw C array storage, retaining managed leaves.
+ *
+ * @param self Backend state to update.
+ * @param target_raw Lowered C array storage expression.
+ * @param source_raw Lowered C array storage expression.
+ * @param array_ty Array type represented by the raw storage expressions.
+ */
+func be_emit_array_copy_to_raw_storage(self: Backend*, target_raw: string, source_raw: string, array_ty: Type*) {
+    if (ord(array_ty.kind) != ord(TY_ARRAY)) {
+        cem_emit_assignment(self.emitter, target_raw, source_raw);
+        be_emit_retain_for_copied_value(self, target_raw, array_ty);
+        return;
+    }
+
+    let idx = cem_fresh_tmp(self.emitter, "arr_i");
+    ccb_emit(self.emitter.out, "for (dea_int " + idx + " = 0; " + idx + " < " +
+        int_to_string(array_ty.array_len) + "; " + idx + " = " + idx + " + 1) {");
+    ccb_indent(self.emitter.out);
+    let inner = array_ty.inner as Type*;
+    if (ord(inner.kind) == ord(TY_ARRAY)) {
+        be_emit_array_copy_to_raw_storage(self, target_raw + "[" + idx + "]", source_raw + "[" + idx + "]", inner);
+    } else {
+        cem_emit_assignment(self.emitter, target_raw + "[" + idx + "]", source_raw + "[" + idx + "]");
+        be_emit_retain_for_copied_value(self, target_raw + "[" + idx + "]", inner);
+    }
+    ccb_dedent(self.emitter.out);
+    ccb_emit(self.emitter.out, "}");
+}
+
+/**
+ * Emit a scalar-fill array constructor into a temporary.
+ *
+ * @param self Backend state to update.
+ * @param value_expr Fill value expression id.
+ * @param expected Target array type.
+ * @return Temporary array value.
+ */
+func be_emit_array_fill_value(self: Backend*, value_expr: ExprId, expected: Type*) -> string {
+    let tmp = cem_fresh_tmp(self.emitter, "arr");
+    cem_emit_temp_decl(self.emitter, cem_emit_type(expected), tmp, "((" + cem_emit_type(expected) + "){0})");
+    let value_tmp = cem_fresh_tmp(self.emitter, "fill");
+    cem_emit_temp_decl(self.emitter, cem_emit_type(expected.inner as Type*), value_tmp,
+        be_emit_owned_expr_with_expected_type(self, value_expr, expected.inner as Type*));
+    let idx = cem_fresh_tmp(self.emitter, "arr_i");
+    ccb_emit(self.emitter.out, "for (dea_int " + idx + " = 0; " + idx + " < " +
+        int_to_string(expected.array_len) + "; " + idx + " = " + idx + " + 1) {");
+    ccb_indent(self.emitter.out);
+    let inner = expected.inner as Type*;
+    if (ord(inner.kind) == ord(TY_ARRAY)) {
+        be_emit_array_copy_to_raw_storage(self, tmp + ".data[" + idx + "]", value_tmp + ".data", inner);
+    } else {
+        cem_emit_assignment(self.emitter, tmp + ".data[" + idx + "]", value_tmp);
+        be_emit_retain_for_copied_value(self, tmp + ".data[" + idx + "]", inner);
+    }
+    ccb_dedent(self.emitter.out);
+    ccb_emit(self.emitter.out, "}");
+    cem_emit_value_cleanup(self.emitter, value_tmp, expected.inner as Type*);
+    return tmp;
+}
+
+/**
  * Emit one expression with implicit conversion to an expected type.
  *
  * @param self Backend state to inspect.
@@ -1094,6 +1277,9 @@ func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: 
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
     if (ord(expr.kind) == ord(EX_NULL)) {
         return cem_emit_null_literal(expected, false);
+    }
+    if (ord(expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
+        return be_emit_array_literal_value(self, expr_id, expected);
     }
 
     with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
@@ -1114,6 +1300,9 @@ func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expe
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
     if (ord(expr.kind) == ord(EX_NULL)) {
         return be_emit_expr_with_expected_type(self, expr_id, expected);
+    }
+    if (ord(expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
+        return be_emit_array_literal_value(self, expr_id, expected);
     }
 
     with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
@@ -1224,6 +1413,10 @@ func be_find_variant_decl(self: Backend*, module_name: string, enum_name: string
  */
 func be_collect_value_type_dependencies(ty: Type*, deps: StringSet*) {
     if (ord(ty.kind) == ord(TY_POINTER)) {
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        be_collect_value_type_dependencies(ty.inner as Type*, deps);
         return;
     }
     if (ord(ty.kind) == ord(TY_NULLABLE)) {
@@ -1422,6 +1615,7 @@ func be_emit_type_definitions(self: Backend*) {
                 cem_emit_struct(self.emitter, module_name, decl as StructDecl*, struct_info as StructInfo*);
                 with (let emitted_ty = type_new_struct(module_name, type_name) => type_free(emitted_ty)) {
                     cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty);
+                    cem_emit_array_wrappers_for_defined_type(self.emitter, emitted_ty);
                 }
             } else {
                 let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, module_name, type_name);
@@ -1433,6 +1627,7 @@ func be_emit_type_definitions(self: Backend*) {
                 cem_emit_enum(self.emitter, module_name, enum_decl as EnumDecl*, enum_info as EnumInfo*);
                 with (let emitted_ty2 = type_new_enum(module_name, type_name) => type_free(emitted_ty2)) {
                     cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty2);
+                    cem_emit_array_wrappers_for_defined_type(self.emitter, emitted_ty2);
                 }
             }
         }
@@ -1521,6 +1716,12 @@ func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type:
         EX_STRING => { return cem_emit_const_string_literal(expr.text_value); }
         EX_NULL => { return cem_emit_null_literal(expected_type, true); }
         EX_VAR_REF => { return be_try_emit_bare_variant_static_initializer(self, expr_id, expected_type); }
+        EX_ARRAY_LITERAL => {
+            if (ord(expected_type.kind) == ord(TY_ARRAY)) {
+                return be_emit_array_literal_value(self, expr_id, expected_type);
+            }
+            return null;
+        }
         EX_CALL => { return be_try_emit_const_constructor(self, expr_id, expected_type); }
         _ => {
             return null;
@@ -1989,19 +2190,26 @@ func be_emit_lvalue(self: Backend*, expr_id: ExprId) -> string {
         EX_INDEX => {
             let base_has_effects = be_has_side_effects(self, expr.expr_a);
             let index_has_effects = be_has_side_effects(self, expr.expr_b);
-            if (base_has_effects || index_has_effects) {
+            with (let base_ty_for_index = be_expr_type(self, expr.expr_a) => type_free_opt(base_ty_for_index)) {
+                if (base_ty_for_index == null) {
+                    return be_ice_string("[ICE-1244] missing type for index base");
+                }
                 let final_base = be_emit_expr(self, expr.expr_a);
                 let final_index = be_emit_expr(self, expr.expr_b);
 
-                if (base_has_effects) {
-                    with (let base_ty = be_expr_type(self, expr.expr_a) => type_free_opt(base_ty)) {
-                        if (base_ty == null) {
-                            return be_ice_string("[ICE-1244] missing type for index base");
-                        }
-                        let base_temp = cem_fresh_tmp(self.emitter, "base");
-                        cem_emit_temp_decl(self.emitter, cem_emit_type(base_ty as Type*), base_temp, final_base);
-                        final_base = base_temp;
+                let raw_array_base = false;
+                let base_expr = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+                if (ord(base_expr.kind) == ord(EX_INDEX)) {
+                    with (let nested_base_ty = be_expr_type(self, base_expr.expr_a) => type_free_opt(nested_base_ty)) {
+                        raw_array_base = nested_base_ty != null &&
+                            ord((nested_base_ty as Type*).kind) == ord(TY_ARRAY);
                     }
+                }
+
+                if (base_has_effects && !raw_array_base) {
+                    let base_temp = cem_fresh_tmp(self.emitter, "base");
+                    cem_emit_temp_decl(self.emitter, cem_emit_type(base_ty_for_index as Type*), base_temp, final_base);
+                    final_base = base_temp;
                 }
 
                 if (index_has_effects) {
@@ -2010,7 +2218,7 @@ func be_emit_lvalue(self: Backend*, expr_id: ExprId) -> string {
                     final_index = idx_temp;
                 }
 
-                return cem_emit_index_lvalue(final_base, final_index);
+                return be_emit_checked_index_lvalue(self, final_base, final_index, base_ty_for_index as Type*, raw_array_base);
             }
         }
         EX_PAREN => {
@@ -2554,6 +2762,27 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
             return tmp;
         }
 
+        if (ord(base_ty.kind) == ord(TY_ARRAY)) {
+            if (arg_count == 0) {
+                cem_emit_zero_init(self.emitter, tmp, c_base);
+                return tmp;
+            }
+            let arg_id = id_vec_get(expr.ids as VectorBase*, 0);
+            let arg_expr = expr_arena_get(be_current_expr_arena(self), arg_id);
+            if (ord(arg_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+                with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                    if (arg_ty != null && type_equals(arg_ty as Type*, base_ty.inner as Type*)) {
+                        cem_emit_pointer_assignment(self.emitter, tmp, be_emit_array_fill_value(self, arg_id, base_ty));
+                        return tmp;
+                    }
+                }
+                cem_emit_pointer_assignment(self.emitter, tmp, be_emit_array_literal_value(self, arg_id, base_ty));
+                return tmp;
+            }
+            cem_emit_pointer_assignment(self.emitter, tmp, be_emit_array_fill_value(self, arg_id, base_ty));
+            return tmp;
+        }
+
         if (ord(base_ty.kind) == ord(TY_STRUCT)) {
             let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, base_ty.module_name, base_ty.name);
             if (info == null) {
@@ -2688,7 +2917,7 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
         EX_BINARY => { return be_emit_binary_op(self, expr_id); }
         EX_CALL => { return be_emit_call(self, expr_id); }
         EX_INDEX => {
-            return cem_emit_index_lvalue(be_emit_expr(self, expr.expr_a), be_emit_expr(self, expr.expr_b));
+            return be_emit_lvalue(self, expr_id);
         }
         EX_FIELD => {
             with (let obj_ty = be_expr_type(self, expr.expr_a) => type_free_opt(obj_ty)) {
@@ -2769,6 +2998,30 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
         }
         EX_TYPE => {
             return be_ice_string("[ICE-9149] bare type expression cannot be emitted directly");
+        }
+        EX_ARRAY_LITERAL => {
+            return be_ice_string("[ICE-9150] array literal requires contextual emission");
+        }
+        EX_ARRAY_CONSTRUCTOR => {
+            with (let arr_ty = be_expr_type(self, expr_id) => type_free_opt(arr_ty)) {
+                if (arr_ty == null || ord((arr_ty as Type*).kind) != ord(TY_ARRAY)) {
+                    return be_ice_string("[ICE-9151] array constructor missing array type");
+                }
+                if (expr.ids == null || vec_size(expr.ids as VectorBase*) != 1) {
+                    return be_ice_string("[ICE-9152] invalid array constructor arity after type checking");
+                }
+                let arg_id = id_vec_get(expr.ids as VectorBase*, 0);
+                let arg_expr = expr_arena_get(be_current_expr_arena(self), arg_id);
+                if (ord(arg_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+                    with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                        if (arg_ty != null && type_equals(arg_ty as Type*, (arr_ty as Type*).inner as Type*)) {
+                            return be_emit_array_fill_value(self, arg_id, arr_ty as Type*);
+                        }
+                    }
+                    return be_emit_array_literal_value(self, arg_id, arr_ty as Type*);
+                }
+                return be_emit_array_fill_value(self, arg_id, arr_ty as Type*);
+            }
         }
         EX_NEW => {
             return be_emit_new_expr(self, expr_id);
@@ -3052,6 +3305,11 @@ func be_emit_drop_stmt(self: Backend*, stmt: StmtNode*) {
         be_emit_struct_cleanup(self, c_name, pointee);
     } else if (ord(pointee.kind) == ord(TY_ENUM)) {
         be_emit_enum_cleanup(self, c_name, pointee);
+    } else if (ord(pointee.kind) == ord(TY_ARRAY)) {
+        cem_emit_if_header(self.emitter, cem_emit_pointer_null_check(c_name, "!="));
+        cem_emit_block_start(self.emitter);
+        be_emit_value_cleanup(self, "*" + c_name, pointee);
+        cem_emit_block_end(self.emitter);
     } else if (analysis_is_arc_type(pointee)) {
         cem_emit_if_header(self.emitter, cem_emit_pointer_null_check(c_name, "!="));
         cem_emit_block_start(self.emitter);
@@ -3900,6 +4158,8 @@ func backend_generate(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogCo
         cem_emit_section_comment(self.emitter, "Optional wrapper types (builtins / early)");
         cem_emit_optional_wrappers(self.emitter, true);
         be_emit_type_definitions(self);
+        cem_emit_section_comment(self.emitter, "Array wrapper types");
+        cem_emit_array_wrappers(self.emitter);
         cem_emit_section_comment(self.emitter, "Optional wrapper types (late)");
         cem_emit_optional_wrappers(self.emitter, false);
         cem_emit_section_comment(self.emitter, "Function pointer typedefs");

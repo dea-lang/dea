@@ -1,0 +1,18 @@
+module typing_fixed_array_err;
+
+type A = int[3][4];
+
+func main() -> int {
+    let zero: int[0] = [];
+    let bare = [];
+    let over: int[1] = [1, 2];
+    let mismatch: int[1] = ["x"];
+    let bad_target = int[1]*(0);
+    let arity = int[1]();
+    let arity_new = new int[1](1, 2);
+    let fill_mismatch = int[2]("x");
+    let unknown = Missing[2](0);
+    let builtin_type_value = int[3][4][5];
+    let alias_type_value = A[5];
+    return 0;
+}

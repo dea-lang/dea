@@ -51,6 +51,7 @@ _rt_narrow_dea_ushort
 _rt_new_dea_string
 _rt_panic
 _rt_panic_fmt
+_rt_panic_oob
 _rt_pid_to_dea_int
 _rt_print
 _rt_realloc_string

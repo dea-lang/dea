@@ -21,6 +21,7 @@ enum TypeKind {
     TY_ENUM;
     TY_POINTER;
     TY_NULLABLE;
+    TY_ARRAY;
     TY_FUNC;
     TY_NULL;
 }
@@ -33,6 +34,7 @@ struct Type {
     module_name: string;
     name: string;
     inner: Type*?;
+    array_len: int;
     params: VectorBase*?; // Type*
     result: Type*?;
     is_unsafe: bool;
@@ -121,7 +123,7 @@ func type_param_vec_free(items: VectorBase*?) {
  */
 func type_new(kind: TypeKind, module_name: string, name: string, inner: Type*?, params: VectorBase*?,
               result: Type*?, is_unsafe: bool) -> Type* {
-    return new Type(kind, module_name, name, inner, params, result, is_unsafe);
+    return new Type(kind, module_name, name, inner, 0, params, result, is_unsafe);
 }
 
 /**
@@ -303,6 +305,37 @@ func type_new_nullable(inner: Type*) -> Type* {
 }
 
 /**
+ * Wrap a type in a fixed-size array type.
+ *
+ * @param inner Element type.
+ * @param length Positive element count.
+ * @return New array type.
+ */
+func type_new_array(inner: Type*, length: int) -> Type* {
+    let result = type_new(TY_ARRAY, "", "", inner, null, null, false);
+    result.array_len = length;
+    return result;
+}
+
+/**
+ * Append a dimension to the innermost end of an adjacent array chain.
+ *
+ * @param ty Existing type.
+ * @param length Dimension length to append.
+ * @return Type with the dimension appended in source order.
+ */
+func type_append_array_dimension(ty: Type*, length: int) -> Type* {
+    if (ord(ty.kind) != ord(TY_ARRAY)) {
+        return type_new_array(ty, length);
+    }
+    let outer_len = ty.array_len;
+    let inner = ty.inner as Type*;
+    ty.inner = null;
+    drop ty;
+    return type_new_array(type_append_array_dimension(inner, length), outer_len);
+}
+
+/**
  * Create a function type.
  *
  * @param params Owned vector of parameter types.
@@ -366,7 +399,8 @@ func type_contains_builtin_real(self: Type*) -> bool {
     if (type_is_builtin(self, "float") || type_is_builtin(self, "double")) {
         return true;
     }
-    if (ord(self.kind) == ord(TY_POINTER) || ord(self.kind) == ord(TY_NULLABLE)) {
+    if (ord(self.kind) == ord(TY_POINTER) || ord(self.kind) == ord(TY_NULLABLE) ||
+        ord(self.kind) == ord(TY_ARRAY)) {
         return type_contains_builtin_real(self.inner as Type*);
     }
     if (ord(self.kind) == ord(TY_FUNC)) {
@@ -421,6 +455,9 @@ func type_clone(self: Type*) -> Type* {
     if (ord(self.kind) == ord(TY_NULLABLE)) {
         return type_new_nullable(type_clone(self.inner as Type*));
     }
+    if (ord(self.kind) == ord(TY_ARRAY)) {
+        return type_new_array(type_clone(self.inner as Type*), self.array_len);
+    }
 
     let params = vec_create(sizeof(void*), 2);
     let src_params = self.params as VectorBase*;
@@ -460,6 +497,9 @@ func type_equals(a: Type*?, b: Type*?) -> bool {
     if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE)) {
         return type_equals(left.inner, right.inner);
     }
+    if (ord(left.kind) == ord(TY_ARRAY)) {
+        return left.array_len == right.array_len && type_equals(left.inner, right.inner);
+    }
 
     let left_params = left.params as VectorBase*;
     let right_params = right.params as VectorBase*;
@@ -495,6 +535,22 @@ func type_format(self: Type*) -> string {
     }
     if (ord(self.kind) == ord(TY_POINTER)) {
         return type_format(self.inner as Type*) + "*";
+    }
+    if (ord(self.kind) == ord(TY_ARRAY)) {
+        with (let dims = sv_create(4) => sv_free(dims)) {
+            let cur = self;
+            while (ord(cur.kind) == ord(TY_ARRAY)) {
+                sv_push(dims, "[" + int_to_string(cur.array_len) + "]");
+                cur = cur.inner as Type*;
+            }
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, type_format(cur));
+                for (let i = 0; i < sv_size(dims); i = i + 1) {
+                    sb_append(sb, sv_get(dims, i));
+                }
+                return sb_to_string(sb);
+            }
+        }
     }
     if (ord(self.kind) == ord(TY_NULLABLE)) {
         if (ord((self.inner as Type*).kind) == ord(TY_FUNC)) {

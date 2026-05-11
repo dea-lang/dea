@@ -94,7 +94,7 @@ CASES = {
         },
         "expected": "[SIG-0020] cyclic type alias involving 'A' in module 'main'",
     },
-    "par-9401-array-type-syntax": {
+    "par-0620-array-type-syntax": {
         "files": {
             "main": """\
                 module main;
@@ -104,7 +104,10 @@ CASES = {
                 }
             """,
         },
-        "expected": "[PAR-9401] array types not yet supported",
+        "expected": {
+            "l0": "[PAR-9401] array types not yet supported",
+            "l1": "[PAR-0620] expected integer length in array type",
+        },
     },
     "typ-0211-nullable-indexing": {
         "files": {

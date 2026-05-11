@@ -491,6 +491,15 @@ func sig_expr_is_const_initializer(tables: SignatureTables*, nr: NameResolution*
         EX_STRING => { return true; }
         EX_BOOL => { return true; }
         EX_NULL => { return true; }
+        EX_ARRAY_LITERAL => {
+            let ids = expr.ids as VectorBase*;
+            for (let i = 0; i < vec_size(ids); i = i + 1) {
+                if (!sig_expr_is_const_initializer(tables, nr, env, arena, id_vec_get(ids, i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
         EX_VAR_REF => {
             let sym = tr_symbol_lookup(nr, env, expr.text_value, expr.module_path, expr.name_qualifier);
             if (sym == null) {

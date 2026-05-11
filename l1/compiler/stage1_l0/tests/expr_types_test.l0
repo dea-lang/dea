@@ -1129,6 +1129,31 @@ func test_typing_string_concat_err() {
     }
     sp_free(sp);
 }
+
+/**
+ * Tests fixed-size array semantic diagnostics.
+ */
+func test_typing_fixed_array_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_fixed_array_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_fixed_array_err");
+        assert(has_diag_code(result, "TYP-0800"), "expected invalid array length diagnostic");
+        assert(has_diag_code(result, "TYP-0801"), "expected bare array literal diagnostic");
+        assert(has_diag_code(result, "TYP-0802"), "expected overlong array literal diagnostic");
+        assert(has_diag_code(result, "TYP-0803"), "expected array literal element mismatch diagnostic");
+        assert(has_diag_code(result, "TYP-0804"), "expected non-array constructor target diagnostic");
+        assert(has_diag_code(result, "TYP-0805"), "expected array constructor/allocation arity diagnostic");
+        assert(has_diag_code(result, "TYP-0806"), "expected array fill mismatch diagnostic");
+        assert(has_diag_code(result, "TYP-0807"), "expected unknown array constructor target diagnostic");
+        assert(has_diag_code(result, "TYP-0151"), "expected type-name-as-value diagnostic");
+        assert(!has_diag_code(result, "TYP-0159"), "builtin type-as-value should not report unknown identifier");
+        assert(!has_diag_code(result, "TYP-0279"), "invalid array length should not add unknown-type cascade");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
 func main() {
     test_typing_ok();
     test_typing_err();
@@ -1197,5 +1222,6 @@ func main() {
     test_typing_is_intrinsic_ok();
     test_typing_is_intrinsic_qualified_ok();
     test_typing_is_intrinsic_err();
+    test_typing_fixed_array_err();
     printl_s("expr_types_test: all tests passed");
 }

@@ -380,5 +380,9 @@ func analysis_has_arc_data(self: AnalysisResult*, ty: Type*) -> bool {
         return analysis_has_arc_data(self, inner);
     }
 
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        return analysis_has_arc_data(self, ty.inner as Type*);
+    }
+
     return false;
 }

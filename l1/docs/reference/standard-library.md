@@ -46,6 +46,10 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 
 ### `std.array`
 
+L1 also has a language-level fixed-size array primitive `T[N]`. The `std.array` module remains the low-level untyped
+runtime-backed storage abstraction used by existing containers and raw-memory helpers; it is not the representation of
+`T[N]`.
+
 **Imports:** `sys.rt`, `sys.memory`, `std.assert`, `std.string`
 
 | Type/Function | Signature                                                             | Description                                        |

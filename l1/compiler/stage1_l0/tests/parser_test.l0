@@ -119,11 +119,71 @@ func test_parser_message_omits_embedded_code() {
 }
 
 /**
- * Tests array-type syntax rejection wording.
+ * Tests array-type syntax length diagnostics.
  */
 func test_array_type_syntax_message() {
     let src = "module main; func main() -> int { let x: int[] = 0; return x; }";
-    expect_error_code_and_message(src, "PAR-9401", "array types not yet supported");
+    expect_error_code_and_message(src, "PAR-0620", "expected integer length in array type");
+}
+
+/**
+ * Tests array literal and array constructor delimiter diagnostics.
+ */
+func test_array_expr_syntax_messages() {
+    expect_error_code(
+        "module main; func main() -> int { let x: int[2] = [1, 2; return 0; }",
+        "PAR-0622");
+    expect_error_code(
+        "module main; func main() -> int { let x = int[2](1, 2; return 0; }",
+        "PAR-0623");
+}
+
+/**
+ * Tests fixed-size array type suffixes, literals, and constructors parse.
+ */
+func test_fixed_array_syntax_ok() {
+    let src = "module main; func main(p: int*[2], q: int[2]*) -> int { let a: int[2][3] = [[1, 2, 3], [4, 5, 6]]; let b = int[3]([1]); let c = int[3](7); return a[1][2] + b[0] + c[1]; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected fixed-size array syntax to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let param0 = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(param0.type_ref.suffixes != null, "Expected ordered suffixes on int*[2]");
+    assert(vec_size(param0.type_ref.suffixes as VectorBase*) == 2, "Expected two suffixes on int*[2]");
+    let suffix0 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*;
+    let suffix1 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*;
+    assert(ord(suffix0.kind) == ord(TS_POINTER), "Expected pointer suffix first");
+    assert(ord(suffix1.kind) == ord(TS_ARRAY), "Expected array suffix second");
+    assert(suffix1.array_len == 2, "Expected array length 2");
+    parse_result_free(result);
+}
+
+/**
+ * Tests mixed array and pointer suffixes keep source order.
+ */
+func test_fixed_array_complex_suffix_order_ok() {
+    let src = "module main; func main(p: string[10]*[20]*[30]) -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected complex fixed-size array suffix syntax to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let param0 = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(param0.type_ref.suffixes != null, "Expected ordered suffixes on string[10]*[20]*[30]");
+    assert(vec_size(param0.type_ref.suffixes as VectorBase*) == 5,
+        "Expected five suffixes on string[10]*[20]*[30]");
+    let suffix0 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*;
+    let suffix1 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*;
+    let suffix2 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 2) as TypeSuffix*;
+    let suffix3 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 3) as TypeSuffix*;
+    let suffix4 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 4) as TypeSuffix*;
+    assert(ord(suffix0.kind) == ord(TS_ARRAY) && suffix0.array_len == 10, "Expected [10] first");
+    assert(ord(suffix1.kind) == ord(TS_POINTER), "Expected pointer second");
+    assert(ord(suffix2.kind) == ord(TS_ARRAY) && suffix2.array_len == 20, "Expected [20] third");
+    assert(ord(suffix3.kind) == ord(TS_POINTER), "Expected pointer fourth");
+    assert(ord(suffix4.kind) == ord(TS_ARRAY) && suffix4.array_len == 30, "Expected [30] fifth");
+    parse_result_free(result);
 }
 
 /**
@@ -795,6 +855,7 @@ func test_top_level_multi_error_collection() {
 func main() {
     test_parser_message_omits_embedded_code();
     test_array_type_syntax_message();
+    test_array_expr_syntax_messages();
     test_fixed_array_syntax_ok();
     test_fixed_array_complex_suffix_order_ok();
     test_ordered_pointer_nullable_suffix_syntax_ok();

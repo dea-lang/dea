@@ -390,16 +390,22 @@ Generated C is expected to compile under `cc -std=c99 -pedantic-errors`. The LBI
 `$`-in-identifier extensions, GNU statement expressions, or any other non-ISO feature for symbol naming or linkage
 selection.
 
+## Implementation Notes
+
+- Fixed-size array wrapper names are implemented with the type-component grammar in this document. Examples include
+  `__deaA1024_h` for `byte[1024]`, `__deaA2_A3_i` for `int[2][3]`, and `__deaA2_A3_Pi` for `int*[2][3]`.
+- Adjacent array dimensions lower to one wrapper with contiguous row-major C storage, for example `int[2][3]` has a
+  single `data[2][3]` field.
+
 ## Compatibility Notes
 
-The compact type-sigil grammar is compatible as a type-key extension, but not as a literal replacement for existing
-public link names.
+The compact type-sigil grammar is compatible as a type-key extension and is used for array wrapper names, but it is not
+a literal replacement for existing public link names.
 
 Compatible without implementation changes:
 
 - Compact one-letter builtin type codes for future type keys.
 - Recursive `P`, `Q`, `F`, and `X` type components.
-- `_`-terminated fixed-size array dimensions for future array wrapper names.
 - Treating `unsafe` as type-level in L1 while keeping the current C representation for function pointers.
 - Distinguishing `S` (struct) from `E` (enum) in type-component nominal-type references while keeping `S` for both in
   the link-name layer.
