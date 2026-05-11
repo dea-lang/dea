@@ -99,16 +99,13 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   verification, and external-library linking.
 - Initiative [0003-c-ffi][c-ffi] adds the typed C boundary: `extern "C"` declarations, `cstr`, and the closed FFI-safe
   surface.
-- Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe] adds fixed-size array primitives and the
-  function-level `unsafe` marker for raw-memory contracts. Its completed Phase 2 pointer-indexing work is documented by
-  Feature [2026-05-09-raw-pointer-indexing-semantics-noref][pointer-indexing], and its in-progress Phase 3 fixed-size
-  array work is tracked by Feature [2026-05-10-fixed-size-array-primitive-noref][fixed-arrays] (reopened for
-  post-implementation testing and fixes).
 
 ## Completed initiatives
 
 - Initiative [0002-runtime-static-library][runtime-library] split the L1 runtime from header-only inclusion into public
   headers plus normal and traced static archives.
+- Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe] added the function-level `unsafe` marker for
+  raw-memory contracts, pointer-indexing, and fixed-size arrays.
 
 ## Active standalone plans
 
@@ -134,11 +131,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   non-variadic C boundary.
 - Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] carves OS/process helpers and RNG out of
   `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c` CUs.
-- Feature [2026-05-08-unsafe-function-marker-noref][unsafe-marker] adds the `unsafe func` marker and unsafe function
-  pointer types.
-- Feature [2026-05-11-ordered-type-suffix-constructors-noref][ordered-type-suffixes] relaxes pointer/nullable type
-  suffixes into ordered left-to-right type constructors, a prerequisite for restarting fixed-size arrays on the right
-  semantic model.
 - Refactor [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] collapses the two-layer LBI scheme into a
   single recursive grammar, replacing the broad-`S` link-name layer with `N` / `S` / `E` / `I` terminals plus trailing
   type components for function signatures.
@@ -160,10 +152,10 @@ surface.
   a slice-typed parameter. C variadic FFI remains a sibling tranche under Initiative [0003-c-ffi][c-ffi].
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
-- Fixed-size typed arrays, pointer-indexing finalization, and the function-level unsafe marker for raw-memory contracts
-  are tracked by Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. Dynamic buffers, shared buffers,
-  slices, address-of (`&`), and broader pointer arithmetic remain backlog items. Current `std.array` / `std.vector`
-  storage remains the library-level dynamic/container layer rather than a replacement for `T[N]`.
+- Fixed-size typed arrays `T[N]`, raw-pointer indexing `ptr[i]` inside `unsafe func`, and the function-level `unsafe`
+  marker shipped under Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. Dynamic buffers, shared
+  buffers, slices, address-of (`&`), and broader pointer arithmetic remain backlog items. Current `std.array` /
+  `std.vector` storage remains the library-level dynamic/container layer rather than a replacement for `T[N]`.
 - `_` struct-member semantics are tracked by Feature
   [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members], which fixes `_ : StructType` as a single
   first-position anonymous embedded struct member and defines its construction, field-access, layout, and ABI rules.
@@ -224,7 +216,6 @@ update to be promoted to an initiative or plan:
 [embedded-members]: ../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [ffi-cstr]: ../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
-[fixed-arrays]: ../work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
@@ -237,9 +228,7 @@ update to be promoted to an initiative or plan:
 [named-arguments]: ../work/plans/features/2026-04-22-named-arguments-noref.md
 [nullable-equality]: ../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
-[ordered-type-suffixes]: ../work/plans/features/closed/2026-05-11-ordered-type-suffix-constructors-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
-[pointer-indexing]: ../work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
@@ -253,7 +242,6 @@ update to be promoted to an initiative or plan:
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
 [unified-lbi-mangling]: ../work/plans/refactors/2026-05-11-unified-lbi-mangling-noref.md
-[unsafe-marker]: ../work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md
 [variadic-functions]: ../work/plans/features/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
 [wide-int]: ../work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md

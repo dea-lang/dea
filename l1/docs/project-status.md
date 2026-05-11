@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-04-28
+Version: 2026-05-11
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -70,16 +70,19 @@ checks, including:
   imports
 - structured control flow including `if`, `while`, `for`, `match`, `case`, and `with` / `cleanup`, with single-statement
   `while`, `for`, and `match` bodies accepted under the current body-local scope/cleanup rules
-- function pointer types, indirect calls, same-signature function pointer identity comparisons, and nullable function
-  pointers
+- function pointer types, indirect calls, same-signature function pointer identity comparisons, nullable function
+  pointers, and `unsafe func` declarations plus unsafe/plain function-pointer distinctions
 - fixed-width integer builtins `tiny`, `short`, `ushort`, `int`, `uint`, `long`, and `ulong`, with contextual wide
   integer literals carried through the bigint path when they exceed bootstrap `int`
 - integer bitwise operators `&`, `|`, `^`, `~`, `<<`, and `>>`
 - builtin `float` and `double`, real literals, the current narrow numeric conversion rules, and backend-validated
   floating-point lowering
+- fixed-size arrays `T[N]`, ordered pointer/nullable/array type suffixes, contextual array literals and fill
+  constructors, checked array indexing, `sizeof(T[N])`, and `new T[N]` / `drop`
 - explicit nullability, `T` to `T?` wrapping, integer casts to nullable integer targets, `new` / `drop`, ARC-managed
   `string`, casts, postfix `expr?`, string value comparisons, same-type `T?` equality, same-type pointer identity
   equality, and `is(x, Variant)` enum tag checks
+- raw-pointer indexing `ptr[i]` inside `unsafe func`, with direct unchecked lowering on non-null sized pointer bases
 
 The stdlib currently includes the core bootstrap modules for I/O, strings, text, paths, filesystem access, time,
 randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.math`, L1-only
@@ -145,7 +148,7 @@ These remain true today:
 
 1. There is no implemented `stage2_l1` compiler yet.
 2. Backend output is one C translation unit.
-3. Arrays/slices are not implemented as general language features.
+3. Fixed-size arrays `T[N]` are implemented, but dynamic arrays/buffers and slices are not general language features.
 4. Address-of (`&`) and generics are not part of the current active language surface.
 
 ## Near-Term Direction
