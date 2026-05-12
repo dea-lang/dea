@@ -205,7 +205,7 @@ def assert_provenance_helper_contract() -> None:
             host="Darwin 24.6.0 x86_64",
             compiler_banner="gcc-15 (Homebrew GCC 15.2.0_1) 15.2.0",
             release_version="1.0.0.dev0",
-            source_url="https://github.com/googlielmo/dea-lang-l0",
+            source_url="https://github.com/googlielmo/dea-lang",
             has_embedded_version=True,
         )
     )

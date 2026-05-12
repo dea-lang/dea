@@ -162,7 +162,7 @@ def main() -> int:
             "0123456789abcdef0123456789abcdef01234567",
             "0123456",
             "?? VERSION",
-            "https://github.com/googlielmo/dea-lang-l0",
+            "https://github.com/googlielmo/dea-lang",
         ],
     ):
         clean_version_only, _ = collect_stage2_build_provenance(REPO_ROOT, env)

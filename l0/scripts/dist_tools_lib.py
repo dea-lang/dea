@@ -358,7 +358,7 @@ def _derive_build_id(env: dict[str, str], commit_short: str, build_stamp: str) -
     return f"local-{build_stamp}"
 
 
-_DEFAULT_SOURCE_URL = "https://github.com/googlielmo/dea-lang-l0"
+_DEFAULT_SOURCE_URL = "https://github.com/googlielmo/dea-lang"
 
 
 def _source_url(repo_root: Path, git_env: dict[str, str], env: dict[str, str]) -> str:

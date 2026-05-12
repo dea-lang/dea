@@ -201,13 +201,13 @@ def test_export_markdown_tree_shows_release_tag(tmp_path: Path) -> None:
         tab_icon="fas fa-book",
         tab_order=5,
         html_site_url="https://example.com/api/",
-        pdf_url="https://github.com/googlielmo/dea-lang-l0/releases/download/v0.9.1/refman.pdf",
+        pdf_url="https://github.com/googlielmo/dea-lang/releases/download/v0.9.1/refman.pdf",
         release_tag="v0.9.1",
     )
 
     tab = (output_dir / "_tabs/api.md").read_text(encoding="utf-8")
     assert "**Release v0.9.1**" in tab
-    assert "[PDF reference](https://github.com/googlielmo/dea-lang-l0/releases/download/v0.9.1/refman.pdf)" in tab
+    assert "[PDF reference](https://github.com/googlielmo/dea-lang/releases/download/v0.9.1/refman.pdf)" in tab
     # Release tag appears before the links.
     tag_pos = tab.index("**Release v0.9.1**")
     link_pos = tab.index("[Standalone HTML reference]")
