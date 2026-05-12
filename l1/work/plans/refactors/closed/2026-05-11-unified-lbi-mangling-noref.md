@@ -3,7 +3,15 @@
 ## Unify the LBI mangling scheme into a single recursive grammar
 
 - Date: 2026-05-11
-- Status: Draft
+- Status: Completed
+- Completion Date: 2026-05-12
+- Completion Notes:
+  - Collapsed the two-layer LBI into a single unified recursive grammar.
+  - Functions now encode full signatures into link names.
+  - Enums use the `E` sigil, plain bindings use `N`.
+  - Implemented a demangler in `util.demangler` with exhaustive tests.
+  - Updated `abi.md` to reflect only the unified scheme.
+  - All Stage 1 tests passed.
 - Title: Unify the LBI mangling scheme into a single recursive grammar
 - Kind: Refactor
 - Severity: High

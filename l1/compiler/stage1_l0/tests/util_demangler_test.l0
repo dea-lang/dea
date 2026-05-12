@@ -1,0 +1,50 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module util_demangler_test;
+
+import std.assert;
+import std.io;
+import std.string;
+
+import util.demangler;
+
+func test_demangler_basic() {
+    printl_s("test_demangler_basic...");
+    assert((demangle_lbi("__deaM4mainN3sumF2iii") as string) == "main::sum(int, int) -> int", "basic function mismatch");
+    assert((demangle_lbi("__deaM4mainS5Point") as string) == "main::Point", "struct mismatch");
+    assert((demangle_lbi("__deaM4mainE5Color") as string) == "main::Color", "enum mismatch");
+    assert((demangle_lbi("__deaM4mainN6answer") as string) == "main::answer", "let mismatch");
+    assert((demangle_lbi("__deaM4mainI4init") as string) == "main::@init", "lifecycle mismatch");
+}
+
+func test_demangler_nested_modules() {
+    printl_s("test_demangler_nested_modules...");
+    assert((demangle_lbi("__deaM3std11collections4listN4pushF1vv") as string) == "std.collections.list::push(void) -> void",
+        "nested module mismatch");
+}
+
+func test_demangler_complex_types() {
+    printl_s("test_demangler_complex_types...");
+    assert((demangle_lbi("__deaM4mainN5applyF3F2iiiiii") as string) == "main::apply((int, int) -> int, int, int) -> int",
+        "complex type mismatch");
+    assert((demangle_lbi("__deaM4mainN4sortF1A10_iv") as string) == "main::sort(int[10]) -> void", "array type mismatch");
+    assert((demangle_lbi("__deaM4demo4mainN5pointF0PM4demo4mainS5Point") as string) == "demo.main::point() -> demo.main.Point*",
+        "nominal type pointer mismatch");
+    assert((demangle_lbi("__deaM4mainN4findF1Qcv") as string) == "main::find(string?) -> void", "nullable type mismatch");
+}
+
+func test_demangler_enum_variants() {
+    printl_s("test_demangler_enum_variants...");
+    assert((demangle_lbi("__deaM4mainE5Maybe_Some") as string) == "main::Maybe.Some", "enum variant mismatch");
+}
+
+func main() {
+    test_demangler_basic();
+    test_demangler_nested_modules();
+    test_demangler_complex_types();
+    test_demangler_enum_variants();
+    printl_s("util_demangler_test: all tests passed");
+}

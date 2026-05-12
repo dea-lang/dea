@@ -410,14 +410,136 @@ func cem_mangle_lbi_section(module_name: string, sigil: string, component: strin
 }
 
 /**
- * Canonical mangler for source-level LBI symbols.
+ * Encode a type as an ABI type component.
  *
- * @param module_name Module name in dotted source form (for example `std.math`).
- * @param symbol_name Source-level symbol name.
- * @return Mangled LBI name (for example `__deaM3std4mathS3abs`).
+ * @param ty Type to encode.
+ * @param cb Destination character buffer.
  */
-func cem_mangle_lbi(module_name: string, symbol_name: string) -> string {
-    return cem_mangle_lbi_section(module_name, "S", symbol_name);
+func cem_mangle_type_component_to_cb(ty: Type*, cb: CharBuffer*) {
+    let kind = ord(ty.kind);
+    if (kind == ord(TY_BUILTIN)) {
+        if (ty.name == "tiny")   { cb_append_s(cb, "a"); return; }
+        if (ty.name == "byte")   { cb_append_s(cb, "h"); return; }
+        if (ty.name == "short")  { cb_append_s(cb, "s"); return; }
+        if (ty.name == "ushort") { cb_append_s(cb, "t"); return; }
+        if (ty.name == "int")    { cb_append_s(cb, "i"); return; }
+        if (ty.name == "uint")   { cb_append_s(cb, "j"); return; }
+        if (ty.name == "long")   { cb_append_s(cb, "l"); return; }
+        if (ty.name == "ulong")  { cb_append_s(cb, "m"); return; }
+        if (ty.name == "float")  { cb_append_s(cb, "f"); return; }
+        if (ty.name == "double") { cb_append_s(cb, "d"); return; }
+        if (ty.name == "bool")   { cb_append_s(cb, "z"); return; }
+        if (ty.name == "string") { cb_append_s(cb, "c"); return; }
+        if (ty.name == "void")   { cb_append_s(cb, "v"); return; }
+        // Fallback for non-canonical builtins
+        cb_append_s(cb, "B");
+        cb_append_s(cb, int_to_string(len_s(ty.name)));
+        cb_append_s(cb, ty.name);
+        return;
+    }
+    if (kind == ord(TY_STRUCT)) {
+        cb_append_s(cb, "M");
+        cb_append_s(cb, cem_mangle_module_path_components(ty.module_name));
+        cb_append_s(cb, "S");
+        cb_append_s(cb, int_to_string(len_s(ty.name)));
+        cb_append_s(cb, ty.name);
+        return;
+    }
+    if (kind == ord(TY_ENUM)) {
+        cb_append_s(cb, "M");
+        cb_append_s(cb, cem_mangle_module_path_components(ty.module_name));
+        cb_append_s(cb, "E");
+        cb_append_s(cb, int_to_string(len_s(ty.name)));
+        cb_append_s(cb, ty.name);
+        return;
+    }
+    if (kind == ord(TY_POINTER)) {
+        cb_append_s(cb, "P");
+        cem_mangle_type_component_to_cb(ty.inner as Type*, cb);
+        return;
+    }
+    if (kind == ord(TY_NULLABLE)) {
+        cb_append_s(cb, "Q");
+        cem_mangle_type_component_to_cb(ty.inner as Type*, cb);
+        return;
+    }
+    if (kind == ord(TY_ARRAY)) {
+        cb_append_s(cb, "A");
+        cb_append_s(cb, int_to_string(ty.array_len));
+        cb_append_s(cb, "_");
+        cem_mangle_type_component_to_cb(ty.inner as Type*, cb);
+        return;
+    }
+    if (kind == ord(TY_FUNC)) {
+        if (ty.is_unsafe) {
+            cb_append_s(cb, "X");
+        }
+        cb_append_s(cb, "F");
+        let params = ty.params as VectorBase*;
+        cb_append_s(cb, int_to_string(vec_size(params)));
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            cem_mangle_type_component_to_cb(*(vec_get(params, i) as Type**), cb);
+        }
+        cem_mangle_type_component_to_cb(ty.result as Type*, cb);
+        return;
+    }
+}
+
+/**
+ * Encode a type as an ABI type component string.
+ *
+ * @param ty Type to encode.
+ * @return Mangled type component.
+ */
+func cem_mangle_type_component(ty: Type*) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        cem_mangle_type_component_to_cb(ty, cb);
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Mangler for value-like LBI symbols (functions, let/const bindings).
+ *
+ * @param module_name Module name in dotted source form.
+ * @param value_name Symbol name.
+ * @param ty Optional type for functions (to append the type component).
+ * @return Mangled LBI name with 'N' sigil.
+ */
+func cem_mangle_lbi_value(module_name: string, value_name: string, ty: Type*?) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        cb_append_s(cb, "__deaM");
+        cb_append_s(cb, cem_mangle_module_path_components(module_name));
+        cb_append_s(cb, "N");
+        cb_append_s(cb, int_to_string(len_s(value_name)));
+        cb_append_s(cb, value_name);
+        if (ty != null) {
+            cem_mangle_type_component_to_cb(ty as Type*, cb);
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Mangler for struct types.
+ *
+ * @param module_name Module name.
+ * @param struct_name Struct name.
+ * @return Mangled LBI name with 'S' sigil.
+ */
+func cem_mangle_lbi_struct(module_name: string, struct_name: string) -> string {
+    return cem_mangle_lbi_section(module_name, "S", struct_name);
+}
+
+/**
+ * Mangler for enum types.
+ *
+ * @param module_name Module name.
+ * @param enum_name Enum name.
+ * @return Mangled LBI name with 'E' sigil.
+ */
+func cem_mangle_lbi_enum(module_name: string, enum_name: string) -> string {
+    return cem_mangle_lbi_section(module_name, "E", enum_name);
 }
 
 /**
@@ -452,7 +574,7 @@ func cem_mangle_module_path_components(module_name: string) -> string {
  * @return Mangled C struct name.
  */
 func cem_mangle_struct_name(module_name: string, struct_name: string) -> string {
-    return cem_mangle_lbi(module_name, struct_name);
+    return cem_mangle_lbi_struct(module_name, struct_name);
 }
 
 /**
@@ -463,7 +585,7 @@ func cem_mangle_struct_name(module_name: string, struct_name: string) -> string 
  * @return Mangled C enum name.
  */
 func cem_mangle_enum_name(module_name: string, enum_name: string) -> string {
-    return cem_mangle_lbi(module_name, enum_name);
+    return cem_mangle_lbi_enum(module_name, enum_name);
 }
 
 /**
@@ -471,10 +593,11 @@ func cem_mangle_enum_name(module_name: string, enum_name: string) -> string {
  *
  * @param module_name Defining module name.
  * @param func_name Function name.
+ * @param func_type Function type to encode.
  * @return Mangled C function name.
  */
-func cem_mangle_function_name(module_name: string, func_name: string) -> string {
-    return cem_mangle_lbi(module_name, func_name);
+func cem_mangle_function_name(module_name: string, func_name: string, func_type: Type*) -> string {
+    return cem_mangle_lbi_value(module_name, func_name, func_type);
 }
 
 /**
@@ -485,7 +608,7 @@ func cem_mangle_function_name(module_name: string, func_name: string) -> string 
  * @return Mangled C identifier.
  */
 func cem_mangle_let_name(module_name: string, let_name: string) -> string {
-    return cem_mangle_lbi(module_name, let_name);
+    return cem_mangle_lbi_value(module_name, let_name, null);
 }
 
 /**
@@ -1322,7 +1445,7 @@ func cem_emit_function_declaration(self: CEmitter*, module_name: string, decl: F
     if (decl.is_extern) {
         c_name = "(" + decl.name + ")";
     } else {
-        c_name = cem_mangle_function_name(module_name, decl.name);
+        c_name = cem_mangle_function_name(module_name, decl.name, func_type);
     }
 
     let c_return_type = cem_emit_type(func_type.result as Type*);
@@ -1344,7 +1467,7 @@ func cem_emit_function_declaration(self: CEmitter*, module_name: string, decl: F
  * @param is_exported Whether the function is exported.
  */
 func cem_emit_function_definition_header(self: CEmitter*, module_name: string, decl: FuncDecl*, func_type: Type*, is_exported: bool) {
-    let c_name = cem_mangle_function_name(module_name, decl.name);
+    let c_name = cem_mangle_function_name(module_name, decl.name, func_type);
     let c_return_type = cem_emit_type(func_type.result as Type*);
     let params_str = cem_function_params(decl, func_type);
     let static_prefix = "static ";
@@ -1389,7 +1512,7 @@ func cem_emit_function_definition_footer(self: CEmitter*) {
  * @param global_init_name Hidden init-chain function name when `call_global_init` is true.
  */
 func cem_emit_main_wrapper(self: CEmitter*, entry_module: string, func_type: Type*, call_global_init: bool, global_init_name: string) {
-    let mangled_name = cem_mangle_function_name(entry_module, "main");
+    let mangled_name = cem_mangle_function_name(entry_module, "main", func_type);
     let c_return_type = cem_emit_type(func_type.result as Type*);
 
     ccb_emit(self.out, "/* C entry point wrapper */");

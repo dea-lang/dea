@@ -2655,14 +2655,14 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                     return be_ice_string("[ICE-2270] regular function call is missing declaration pointer");
                 }
                 let decl = (callee_sym as Symbol*).decl_ptr as FuncDecl*;
+                let func_ty = sig_lookup_func_type(self.result.signatures as SignatureTables*,
+                    (callee_sym as Symbol*).module_name, (callee_sym as Symbol*).name);
                 if (decl.is_extern) {
                     c_func_name = (callee_sym as Symbol*).name;
                 } else {
-                    c_func_name = cem_mangle_function_name((callee_sym as Symbol*).module_name, (callee_sym as Symbol*).name);
+                    c_func_name = cem_mangle_function_name((callee_sym as Symbol*).module_name, (callee_sym as Symbol*).name, func_ty as Type*);
                 }
 
-                let func_ty = sig_lookup_func_type(self.result.signatures as SignatureTables*,
-                    (callee_sym as Symbol*).module_name, (callee_sym as Symbol*).name);
                 with (let sb = sb_create() => sb_free(sb)) {
                     let arg_count = 0;
                     if (expr.ids != null) {
@@ -2884,7 +2884,9 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                 if (decl.is_extern) {
                     return cem_emit_var_ref((sym as Symbol*).name);
                 }
-                return cem_emit_var_ref(cem_mangle_function_name((sym as Symbol*).module_name, (sym as Symbol*).name));
+                let func_ty = sig_lookup_func_type(self.result.signatures as SignatureTables*,
+                    (sym as Symbol*).module_name, (sym as Symbol*).name);
+                return cem_emit_var_ref(cem_mangle_function_name((sym as Symbol*).module_name, (sym as Symbol*).name, func_ty as Type*));
             }
 
             if (ord((sym as Symbol*).kind) == ord(SYM_LET)) {

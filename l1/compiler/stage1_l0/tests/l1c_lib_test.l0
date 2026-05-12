@@ -416,7 +416,7 @@ func test_run_function_pointer_build_and_keep_c() {
     assert(c_text != null, "function_pointer_main kept C file should exist");
     assert(contains_s(c_text as string, "typedef dea_int (*dea_func_int_int_int)(dea_int, dea_int);"),
         "function pointer typedef missing");
-    assert(contains_s(c_text as string, "dea_func_int_int_int op = __deaM21function_pointer_mainS3add;"),
+    assert(contains_s(c_text as string, "dea_func_int_int_int op = __deaM21function_pointer_mainN3addF2iii;"),
         "function pointer local declaration mismatch");
     assert(contains_s(c_text as string, "(op == other)"), "function pointer equality lowering mismatch");
     assert(contains_s(c_text as string, "_rt_panic(\"call through null function pointer\")"),
@@ -695,9 +695,9 @@ func test_run_const_build_and_keep_c() {
 
     let c_text = read_file(c_path);
     assert(c_text != null, "const_main kept C file should exist");
-    assert(contains_s(c_text as string, "const struct __deaM10const_mainS4Pair __deaM10const_mainS4pair = { .left = 1, .right = 2 };"),
+    assert(contains_s(c_text as string, "const struct __deaM10const_mainS4Pair __deaM10const_mainN4pair = { .left = 1, .right = 2 };"),
         "const_main struct const lowering mismatch");
-    assert(contains_s(c_text as string, "const dea_int __deaM10const_mainS6answer = 20;"),
+    assert(contains_s(c_text as string, "const dea_int __deaM10const_mainN6answer = 20;"),
         "const_main scalar const lowering mismatch");
 
     rt_delete_file(out_path);
@@ -728,23 +728,23 @@ func test_run_nonconstant_top_level_let_build_and_keep_c() {
 
     let c_text = read_file(c_path);
     assert(c_text != null, "toplet_init_main kept C file should exist");
-    assert(contains_s(c_text as string, "dea_int __deaM15toplet_init_depS4BASE = 0;"),
+    assert(contains_s(c_text as string, "dea_int __deaM15toplet_init_depN4BASE = 0;"),
         "toplet_init_main dep zero-init mismatch");
-    assert(contains_s(c_text as string, "dea_int __deaM16toplet_init_mainS6ANSWER = 0;"),
+    assert(contains_s(c_text as string, "dea_int __deaM16toplet_init_mainN6ANSWER = 0;"),
         "toplet_init_main main zero-init mismatch");
     assert(contains_s(c_text as string, "static void __deaM15toplet_init_depI4init(void)"),
         "toplet_init_main dep init function missing");
-    assert(contains_s(c_text as string, "__deaM15toplet_init_depS4BASE = __deaM15toplet_init_depS4seed();"),
+    assert(contains_s(c_text as string, "__deaM15toplet_init_depN4BASE = __deaM15toplet_init_depN4seedF0i();"),
         "toplet_init_main dep init assignment mismatch");
     assert(contains_s(c_text as string, "static void __deaM16toplet_init_mainI4init(void)"),
         "toplet_init_main main init function missing");
-    assert(contains_s(c_text as string, "__deaM16toplet_init_mainS6ANSWER = __deaM16toplet_init_mainS4bump(__deaM15toplet_init_depS8get_base());"),
+    assert(contains_s(c_text as string, "__deaM16toplet_init_mainN6ANSWER = __deaM16toplet_init_mainN4bumpF1ii(__deaM15toplet_init_depN8get_baseF0i());"),
         "toplet_init_main main init assignment mismatch");
     assert(contains_s(c_text as string,
         "static void _dea_init_modules(void)\n{\n    __deaM15toplet_init_depI4init();\n    __deaM16toplet_init_mainI4init();\n}\n"),
         "toplet_init_main global init order mismatch");
     assert(contains_s(c_text as string,
-        "_rt_init_args(argc, argv);\n    _dea_init_modules();\n    int dea_exit_code = (int) __deaM16toplet_init_mainS4main();\n    return dea_exit_code;"),
+        "_rt_init_args(argc, argv);\n    _dea_init_modules();\n    int dea_exit_code = (int) __deaM16toplet_init_mainN4mainF0i();\n    return dea_exit_code;"),
         "toplet_init_main wrapper init call mismatch");
 
     rt_delete_file(out_path);
@@ -814,9 +814,9 @@ func test_run_float_build_and_keep_c() {
     assert(contains_s(c_text as string, "#include <float.h>"), "float_main float contract header missing");
     assert(contains_s(c_text as string, "#if FLT_RADIX != 2"), "float_main float radix guard missing");
     assert(contains_s(c_text as string, "__FAST_MATH__"), "float_main fast-math guard missing");
-    assert(contains_s(c_text as string, "double __deaM10float_mainS5widen(float x)"), "float_main widen signature mismatch");
+    assert(contains_s(c_text as string, "double __deaM10float_mainN5widenF1fd(float x)"), "float_main widen signature mismatch");
     assert(contains_s(c_text as string, "float seed = 1.0f;"), "float_main float literal lowering mismatch");
-    assert(contains_s(c_text as string, "double total = ((__deaM10float_mainS5widen(seed) + 1.5) + 1.5);"),
+    assert(contains_s(c_text as string, "double total = ((__deaM10float_mainN5widenF1fd(seed) + 1.5) + 1.5);"),
         "float_main double arithmetic lowering mismatch");
 
     rt_delete_file(out_path);

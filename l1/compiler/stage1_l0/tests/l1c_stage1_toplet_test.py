@@ -301,9 +301,9 @@ def test_toplet_string_reassignment_arc(artifact_dir: Path) -> None:
     """
 
     c_code = run_gen("toplet_string_reassignment_gen", source, artifact_dir)
-    assert_true("dea_string __deaM4mainS8greeting" in c_code, "missing top-level string declaration", artifact_dir)
+    assert_true("dea_string __deaM4mainN8greeting" in c_code, "missing top-level string declaration", artifact_dir)
     assert_true(
-        c_code.count("rt_string_release(__deaM4mainS8greeting);") >= 2,
+        c_code.count("rt_string_release(__deaM4mainN8greeting);") >= 2,
         "expected top-level string reassignment releases",
         artifact_dir,
     )

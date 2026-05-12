@@ -1,0 +1,205 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module util.demangler;
+
+import std.string;
+import std.text;
+
+struct Cursor {
+    pos: int;
+}
+
+/**
+ * Demangle a Unified LBI name into a human-readable representation.
+ *
+ * @param mangled Mangled LBI name (e.g., "__deaM4mainN3sumF2iii").
+ * @return Human-readable string or null if not a valid LBI name.
+ */
+func demangle_lbi(mangled: string) -> string? {
+    if (!starts_with_s(mangled, "__deaM")) {
+        return null;
+    }
+
+    with (let c = new Cursor(6) => drop c,
+          let out = cb_create() => cb_free(out)) {
+        // Parse module section
+        if (!demangle_module_section(mangled, c, out)) {
+            return null;
+        }
+
+        cb_append_s(out, "::");
+
+        if (c.pos >= len_s(mangled)) {
+            return null;
+        }
+
+        let sigil = char_at_s(mangled, c.pos);
+        c.pos = c.pos + 1;
+
+        case (sigil) {
+            'N' => {
+                // Value/Function
+                if (!demangle_name_with_length(mangled, c, out)) { return null; }
+                if (c.pos < len_s(mangled) && char_at_s(mangled, c.pos) == 'F') {
+                    // Function signature
+                    if (!demangle_function_signature(mangled, c, out)) { return null; }
+                }
+            }
+            'S' => {
+                // Struct
+                if (!demangle_name_with_length(mangled, c, out)) { return null; }
+            }
+            'E' => {
+                // Enum
+                if (!demangle_name_with_length(mangled, c, out)) { return null; }
+            }
+            'I' => {
+                // Lifecycle
+                cb_append_s(out, "@");
+                if (!demangle_name_with_length(mangled, c, out)) { return null; }
+            }
+        }
+        if (sigil != 'N' && sigil != 'S' && sigil != 'E' && sigil != 'I') {
+            return null;
+        }
+
+        if (c.pos != len_s(mangled)) {
+            // Check for enum variant tag suffix
+            if (char_at_s(mangled, c.pos) == '_') {
+                cb_append_s(out, ".");
+                cb_append_s(out, slice_s(mangled, c.pos + 1, len_s(mangled)));
+                c.pos = len_s(mangled);
+            } else {
+                // Garbage at the end
+                return null;
+            }
+        }
+
+        return cb_to_string(out);
+    }
+}
+
+func demangle_module_section(mangled: string, c: Cursor*, out: CharBuffer*) -> bool {
+    let first = true;
+    while (c.pos < len_s(mangled) && is_digit(char_at_s(mangled, c.pos))) {
+        if (!first) {
+            cb_append_s(out, ".");
+        }
+        if (!demangle_name_with_length(mangled, c, out)) {
+            return false;
+        }
+        first = false;
+    }
+    return !first;
+}
+
+func demangle_name_with_length(mangled: string, c: Cursor*, out: CharBuffer*) -> bool {
+    let len = parse_int_prefix(mangled, c);
+    if (len <= 0 || c.pos + len > len_s(mangled)) {
+        return false;
+    }
+    cb_append_s(out, slice_s(mangled, c.pos, c.pos + len));
+    c.pos = c.pos + len;
+    return true;
+}
+
+func demangle_function_signature(mangled: string, c: Cursor*, out: CharBuffer*) -> bool {
+    if (c.pos >= len_s(mangled) || char_at_s(mangled, c.pos) != 'F') {
+        return false;
+    }
+    c.pos = c.pos + 1;
+
+    let arity = parse_int_prefix(mangled, c);
+    cb_append_s(out, "(");
+    for (let i = 0; i < arity; i = i + 1) {
+        if (i > 0) {
+            cb_append_s(out, ", ");
+        }
+        if (!demangle_type_component(mangled, c, out)) {
+            return false;
+        }
+    }
+    cb_append_s(out, ") -> ");
+    if (!demangle_type_component(mangled, c, out)) {
+        return false;
+    }
+    return true;
+}
+
+func demangle_type_component(mangled: string, c: Cursor*, out: CharBuffer*) -> bool {
+    if (c.pos >= len_s(mangled)) {
+        return false;
+    }
+    let sigil = char_at_s(mangled, c.pos);
+    c.pos = c.pos + 1;
+
+    case (sigil) {
+        'a' => { cb_append_s(out, "tiny"); return true; }
+        'h' => { cb_append_s(out, "byte"); return true; }
+        's' => { cb_append_s(out, "short"); return true; }
+        't' => { cb_append_s(out, "ushort"); return true; }
+        'i' => { cb_append_s(out, "int"); return true; }
+        'j' => { cb_append_s(out, "uint"); return true; }
+        'l' => { cb_append_s(out, "long"); return true; }
+        'm' => { cb_append_s(out, "ulong"); return true; }
+        'f' => { cb_append_s(out, "float"); return true; }
+        'd' => { cb_append_s(out, "double"); return true; }
+        'z' => { cb_append_s(out, "bool"); return true; }
+        'c' => { cb_append_s(out, "string"); return true; }
+        'v' => { cb_append_s(out, "void"); return true; }
+        'P' => {
+            if (!demangle_type_component(mangled, c, out)) { return false; }
+            cb_append_s(out, "*");
+            return true;
+        }
+        'Q' => {
+            if (!demangle_type_component(mangled, c, out)) { return false; }
+            cb_append_s(out, "?");
+            return true;
+        }
+        'A' => {
+            let dim = parse_int_prefix(mangled, c);
+            if (c.pos >= len_s(mangled) || char_at_s(mangled, c.pos) != '_') { return false; }
+            c.pos = c.pos + 1;
+            if (!demangle_type_component(mangled, c, out)) { return false; }
+            cb_append_s(out, "[");
+            cb_append_s(out, int_to_string(dim));
+            cb_append_s(out, "]");
+            return true;
+        }
+        'M' => {
+            if (!demangle_module_section(mangled, c, out)) { return false; }
+            if (c.pos >= len_s(mangled)) { return false; }
+            let inner_sigil = char_at_s(mangled, c.pos);
+            c.pos = c.pos + 1;
+            cb_append_s(out, ".");
+            if (!demangle_name_with_length(mangled, c, out)) { return false; }
+            return true;
+        }
+        'F' => {
+            c.pos = c.pos - 1; // Backtrack
+            return demangle_function_signature(mangled, c, out);
+        }
+        'X' => {
+            cb_append_s(out, "unsafe ");
+            return demangle_type_component(mangled, c, out);
+        }
+        'B' => {
+            return demangle_name_with_length(mangled, c, out);
+        }
+    }
+
+    return false;
+}
+
+func parse_int_prefix(s: string, c: Cursor*) -> int {
+    let result = 0;
+    while (c.pos < len_s(s) && is_digit(char_at_s(s, c.pos))) {
+        result = result * 10 + ((char_at_s(s, c.pos) as int) - ('0' as int));
+        c.pos = c.pos + 1;
+    }
+    return result;
+}
