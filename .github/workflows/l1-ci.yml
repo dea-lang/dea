@@ -18,47 +18,104 @@ on:
       - l1/**
   workflow_dispatch:
     inputs:
+      platform:
+        description: Platform matrix selection
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - linux
+          - macos-intel
+          - macos-arm64
+          - windows-ucrt64
       c_compiler:
-        description: C compiler to use for the L1 runtime build
+        description: C compiler to use for manual Linux or Windows validation runs
         required: true
         default: gcc
         type: choice
         options:
           - gcc
           - clang
-      run_slow_traces:
-        description: Include intentionally slow ARC/memory trace tests
+      make_target:
+        description: Make target to run
         required: true
-        default: false
-        type: boolean
+        default: test-all
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  select-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - name: Select matrix
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          default_matrix = [
+              {
+                  "runner": "ubuntu-latest",
+                  "os": "linux",
+                  "arch": "x86_64",
+                  "c_compiler": "gcc",
+                  "platform": "linux",
+              },
+              {
+                  "runner": "macos-15-intel",
+                  "os": "darwin",
+                  "arch": "x86_64",
+                  "c_compiler": "clang",
+                  "platform": "macos-intel",
+              },
+              {
+                  "runner": "macos-latest",
+                  "os": "darwin",
+                  "arch": "arm64",
+                  "c_compiler": "clang",
+                  "platform": "macos-arm64",
+              },
+              {
+                  "runner": "windows-latest",
+                  "os": "windows",
+                  "arch": "x86_64",
+                  "c_compiler": "gcc",
+                  "platform": "windows-ucrt64",
+              },
+          ]
+
+          event_name = os.environ["EVENT_NAME"]
+          requested_platform = os.environ.get("INPUT_PLATFORM", "all").strip() or "all"
+          selected = default_matrix
+          if event_name == "workflow_dispatch":
+              if requested_platform == "all":
+                  selected = default_matrix
+              else:
+                  selected = [entry for entry in default_matrix if entry["platform"] == requested_platform]
+                  if not selected:
+                      raise SystemExit(f"unknown workflow_dispatch platform selection: {requested_platform}")
+
+          github_output = os.environ["GITHUB_OUTPUT"]
+          with open(github_output, "a", encoding="utf-8") as handle:
+              handle.write(f"matrix={json.dumps({'include': selected}, separators=(',', ':'))}\n")
+          PY
+
   bootstrap:
-    name: bootstrap (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ matrix.c_compiler }})
-    runs-on: ${{ matrix.runner }}
+    needs: select-matrix
+    name: bootstrap (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ github.event_name == 'workflow_dispatch' && (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            os: linux
-            arch: x86_64
-            c_compiler: gcc
-          - runner: macos-15-intel
-            os: darwin
-            arch: x86_64
-            c_compiler: clang
-          - runner: macos-latest
-            os: darwin
-            arch: arm64
-            c_compiler: clang
-          - runner: windows-latest
-            os: windows
-            arch: x86_64
-            c_compiler: gcc
+      matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
     defaults:
       run:
         working-directory: l1
@@ -67,15 +124,27 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Python
+        if: runner.os != 'Windows'
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
+      - name: Select C compiler
+        id: select-cc
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.c_compiler }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up uv
+        if: runner.os != 'Windows'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-suffix: l1-ci-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.c_compiler }}-py3.14-ws
+          cache-suffix: l1-ci-${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}-py3.14-ws
 
       - name: Install Linux build toolchain
         if: runner.os == 'Linux'
@@ -102,112 +171,49 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          printf 'platform=%s\n' 'windows-ucrt64'
+          printf 'platform=%s\n' '${{ matrix.platform }}'
           printf 'MSYSTEM=%s\n' "${MSYSTEM:-}"
           pwd
           printf 'GITHUB_WORKSPACE=%s\n' "${GITHUB_WORKSPACE:-}"
           command -v python
           python -VV
+          command -v uv || true
+          uv --version || true
           command -v make
-          command -v gcc
-          gcc --version | head -n 1
-          clang --version | head -n 1
+          command -v "${{ steps.select-cc.outputs.value }}"
+          "${{ steps.select-cc.outputs.value }}" --version | head -n 1
 
-      - name: Select C compiler
-        id: select-cc
+      - name: Select Make target
+        id: select-make-target
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.c_compiler }}" >> "$GITHUB_OUTPUT"
+            echo "value=${{ inputs.make_target }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
+            echo "value=test-all" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build L1 Stage 1 compiler via upstream L0 Stage 2
+      - name: Run Make target
         if: runner.os != 'Windows'
         env:
           L0_CC: ${{ steps.select-cc.outputs.value }}
           L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
-        run: |
-          make build-stage1
+        run: make ${{ steps.select-make-target.outputs.value }}
 
-      - name: Build L1 Stage 1 compiler via upstream L0 Stage 2
+      - name: Run Make target
         if: runner.os == 'Windows'
         shell: msys2 {0}
         env:
           L0_CC: ${{ steps.select-cc.outputs.value }}
           L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
           PYTHON: python
-        run: |
-          make build-stage1
-
-      - name: Run L1 Stage 1 implementation tests
-        if: runner.os != 'Windows'
-        env:
-          L0_CC: ${{ steps.select-cc.outputs.value }}
-          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
-        run: |
-          make test-stage1
-
-      - name: Run L1 Stage 1 implementation tests
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        env:
-          L0_CC: ${{ steps.select-cc.outputs.value }}
-          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
-          PYTHON: python
-        run: |
-          make test-stage1
-
-      - name: Run L1 Stage 1 ARC/memory trace checks
-        if: runner.os != 'Windows'
-        env:
-          L0_CC: ${{ steps.select-cc.outputs.value }}
-          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_slow_traces }}" = "true" ]; then
-            make test-stage1-trace-all
-          else
-            make test-stage1-trace
-          fi
-
-      - name: Run L1 Stage 1 ARC/memory trace checks
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        env:
-          L0_CC: ${{ steps.select-cc.outputs.value }}
-          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
-          PYTHON: python
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_slow_traces }}" = "true" ]; then
-            make test-stage1-trace-all
-          else
-            make test-stage1-trace
-          fi
-
-      - name: Validate L1 examples
-        if: runner.os != 'Windows'
-        env:
-          L0_CC: ${{ steps.select-cc.outputs.value }}
-          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
-        run: |
-          make check-examples
-
-      - name: Validate L1 examples
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        env:
-          L0_CC: ${{ steps.select-cc.outputs.value }}
-          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
-          PYTHON: python
-        run: |
-          make check-examples
+        run: make ${{ steps.select-make-target.outputs.value }}
 
       - name: Upload workdir artifact
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: l1-workdir-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.select-cc.outputs.value }}
+          name: l1-workdir-${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}
           path: |
             .github/workflows/l1-ci.yml
             l1
