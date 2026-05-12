@@ -52,6 +52,23 @@ Monorepo releases use level-prefixed tags only:
 
 Bare `v*` tags are therefore a closed pre-monorepo namespace. New monorepo releases should not dual-tag with bare `v*`.
 
+## Release-line Gating Policy
+
+L0 stable releases (`l0-v*`) and L0 snapshots (`l0-snapshot-*`) are the only currently active release workflows. L1
+release namespaces (`l1-v*` and `l1-snapshot-*`) remain reserved but are not yet active.
+
+The following conditions must be met before the first L1 release or snapshot workflow is added:
+
+1. The L1 install/dist artifact contract must be defined and stable through the L1 bootstrap productization plan
+   (`l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md`) or a successor.
+2. The artifact must be smoke-testable from a clean install prefix, producing a working `l1c` launcher.
+3. Release notes, tag gating, and smoke-test flow must be documented and reproducible in CI.
+4. The existing `l1-v*` and `l1-snapshot-*` tag namespaces must not be used for any other purpose before the first
+   deliberately prepared L1 release or snapshot.
+
+An `l1-release.yml` or `l1-snapshot.yml` workflow that does not meet these conditions is not valid to add. L1 CI
+validation (via `l1-ci.yml`) remains bootstrap-only until the above prerequisites exist.
+
 ## Working In `l0/`
 
 Dea/L0 works as a self-contained project inside [`l0/`](l0/). From the monorepo root, `cd l0` before running build,

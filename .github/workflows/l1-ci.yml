@@ -1,0 +1,216 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: L1 CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/l1-ci.yml
+      - tools/**
+      - l1/**
+  pull_request:
+    paths:
+      - .github/workflows/l1-ci.yml
+      - tools/**
+      - l1/**
+  workflow_dispatch:
+    inputs:
+      c_compiler:
+        description: C compiler to use for the L1 runtime build
+        required: true
+        default: gcc
+        type: choice
+        options:
+          - gcc
+          - clang
+      run_slow_traces:
+        description: Include intentionally slow ARC/memory trace tests
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: bootstrap (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ matrix.c_compiler }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86_64
+            c_compiler: gcc
+          - runner: macos-15-intel
+            os: darwin
+            arch: x86_64
+            c_compiler: clang
+          - runner: macos-latest
+            os: darwin
+            arch: arm64
+            c_compiler: clang
+          - runner: windows-latest
+            os: windows
+            arch: x86_64
+            c_compiler: gcc
+    defaults:
+      run:
+        working-directory: l1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-suffix: l1-ci-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.c_compiler }}-py3.14-ws
+
+      - name: Install Linux build toolchain
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang make
+
+      - name: Set up MSYS2 UCRT64 toolchain
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: >-
+            make
+            diffutils
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-uv
+
+      - name: Show Windows environment
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          printf 'platform=%s\n' 'windows-ucrt64'
+          printf 'MSYSTEM=%s\n' "${MSYSTEM:-}"
+          pwd
+          printf 'GITHUB_WORKSPACE=%s\n' "${GITHUB_WORKSPACE:-}"
+          command -v python
+          python -VV
+          command -v make
+          command -v gcc
+          gcc --version | head -n 1
+          clang --version | head -n 1
+
+      - name: Select C compiler
+        id: select-cc
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.c_compiler }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build L1 Stage 1 compiler via upstream L0 Stage 2
+        if: runner.os != 'Windows'
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+        run: |
+          make build-stage1
+
+      - name: Build L1 Stage 1 compiler via upstream L0 Stage 2
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+          PYTHON: python
+        run: |
+          make build-stage1
+
+      - name: Run L1 Stage 1 implementation tests
+        if: runner.os != 'Windows'
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+        run: |
+          make test-stage1
+
+      - name: Run L1 Stage 1 implementation tests
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+          PYTHON: python
+        run: |
+          make test-stage1
+
+      - name: Run L1 Stage 1 ARC/memory trace checks
+        if: runner.os != 'Windows'
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_slow_traces }}" = "true" ]; then
+            make test-stage1-trace-all
+          else
+            make test-stage1-trace
+          fi
+
+      - name: Run L1 Stage 1 ARC/memory trace checks
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+          PYTHON: python
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_slow_traces }}" = "true" ]; then
+            make test-stage1-trace-all
+          else
+            make test-stage1-trace
+          fi
+
+      - name: Validate L1 examples
+        if: runner.os != 'Windows'
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+        run: |
+          make check-examples
+
+      - name: Validate L1 examples
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+          PYTHON: python
+        run: |
+          make check-examples
+
+      - name: Upload workdir artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-workdir-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.select-cc.outputs.value }}
+          path: |
+            .github/workflows/l1-ci.yml
+            l1
+            !l1/.git/**
+          if-no-files-found: warn
+          retention-days: 2

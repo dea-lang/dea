@@ -121,13 +121,24 @@ ARC/memory trace checks, and example checks. Linux portability is exercised via 
 
 Validation is currently centered on:
 
+- automated CI via `l1-ci.yml` in the monorepo `.github/workflows/` — triggers on `push`/`pull_request` for `l1/` and
+  `tools/` changes, with `workflow_dispatch` for manual C compiler selection and opt-in slow trace coverage
+
 - `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
+
+- `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
+
 - `make test-stage1-trace` for default ARC/memory trace validation across the `.l0` implementation tests
+
 - `make test-stage1-trace-all` for opt-in slow trace coverage, including nested-compiler cases such as
   `math_runtime_compile_test`
+
 - `make check-examples` for warning-free latest-stage `--check` coverage across `examples/*.l1`
+
 - `make test-all` as the combined local Stage 1 validation entry point
+
 - `make test-docker` as the Linux container reference path for runtime/build-driver portability
+
 - keeping the stdlib/runtime tree usable by the bootstrap compiler
 
 Current Stage 1 validation does not include an end-to-end exact generated-C golden-file diff suite.

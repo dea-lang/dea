@@ -66,6 +66,17 @@ Its repository status today is:
   value-type helper surface,
 - not yet an install/dist/release-bearing product.
 
+L1 bootstrap CI validation is now automated through the `l1-ci.yml` GitHub Actions workflow, which covers:
+
+- building the L1 Stage 1 compiler via an explicit upstream L0 Stage 2 compiler on Linux, macOS, and Windows,
+- running L1 Stage 1 implementation tests and default ARC/memory trace checks,
+- validating `examples/*.l1` sources, and
+- providing `workflow_dispatch` inputs for manual C compiler selection and opt-in slow trace coverage.
+
+L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not yet active and will only be added when the L1
+install/dist artifact contract is defined, stable, and smoke-testable. See `MONOREPO.md` for the full release-line
+gating policy.
+
 ## Release Model
 
 The Dea monorepo uses separate release lines for each language level:

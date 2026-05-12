@@ -3,7 +3,8 @@
 ## Define the first L1 CI and release-line workflow policy
 
 - Date: 2026-04-02
-- Status: Draft
+- Status: Closed
+- Closed: 2026-05-12
 - Title: Define the first L1 CI and release-line workflow policy
 - Kind: Tooling
 - Scope: Shared
@@ -118,6 +119,31 @@ These workflows must consume the stabilized install/dist artifact contract rathe
 - broad cross-level generalization of every L0 workflow
 - any change to current L0 release ownership
 - changing the monorepo rule that bare `v*` tags are historical only
+
+## Closing Note
+
+Closed on 2026-05-12. All four phases of the plan have been addressed:
+
+- **Phase 1 (L1 bootstrap CI):** Created `.github/workflows/l1-ci.yml` with a four-platform Linux/macOS/Windows matrix
+  (ubuntu-latest, macos-15-intel, macos-latest, windows-latest) that prepares the upstream L0 Stage 2 compiler, builds
+  the L1 Stage 1 compiler, runs implementation tests, default ARC/memory trace checks, and example validation. Windows
+  steps run through MSYS2 UCRT64. Uploads workdir artifact on failure.
+- **Phase 2 (Manual controls):** The workflow accepts `workflow_dispatch` inputs for `c_compiler` (gcc/clang) and
+  `run_slow_traces` (boolean for opt-in slow trace coverage). The matrix stays narrow (Linux/macOS only) and does not
+  copy the full L0 matrix.
+- **Phase 3 (Release-line gating policy):** Added a `## Release-line Gating Policy` section to `MONOREPO.md` that
+  defines four prerequisite conditions for adding L1 release/snapshot workflows. Updated `docs/project-status.md` to
+  reference the CI workflow and the gating policy. Updated `l1/docs/project-status.md` to list the CI workflow in the
+  validation section.
+- **Phase 4 (Release/snapshot workflows deferred):** Explicitly omitted; no `l1-release.yml` or `l1-snapshot.yml` was
+  created. The gating policy and existing tag namespace reservation (`l1-v*`, `l1-snapshot-*`) remain the only release
+  automation for L1 today.
+
+Verification criteria met: (1) the CI workflow sources the upstream L0 compiler explicitly via `make use-dev-stage2`
+with `L0_CC`; (2) workflow triggers align with `push`/`pull_request` for `l1/` and `tools/` paths plus
+`workflow_dispatch`; (3) release-line docs (`MONOREPO.md`, `docs/project-status.md`, `l1/docs/project-status.md`) are
+consistent and do not claim L1 is release-bearing; (4) `l1-v*` / `l1-snapshot-*` namespaces remain reserved and unused
+by any workflow; (5) policy is consistent across all three doc sites.
 
 ## Verification Criteria
 
