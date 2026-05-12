@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
 module typing_dea_local_shadow;
 
 enum Flag {

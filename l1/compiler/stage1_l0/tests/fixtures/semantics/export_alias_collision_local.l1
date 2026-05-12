@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
 module export_alias_collision_local;
 
 import export_list_dep as chosen;

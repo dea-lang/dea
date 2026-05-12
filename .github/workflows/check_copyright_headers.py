@@ -12,7 +12,7 @@ from pathlib import Path
 
 COPYRIGHT_RE = re.compile(r"Copyright\s*\(c\)\s*\d{4}(?:-\d{4})?\b")
 SHELL_SHEBANG_RE = re.compile(r"^#!.*\b(?:bash|sh|zsh)\b")
-TARGET_SUFFIXES = {".c", ".h", ".l0", ".py", ".sh"}
+TARGET_SUFFIXES = {".c", ".h", ".l0", ".l1", ".py", ".sh"}
 MAX_SCAN_LINES = 80
 EXCLUDED_PREFIXES = (
     "tools/",

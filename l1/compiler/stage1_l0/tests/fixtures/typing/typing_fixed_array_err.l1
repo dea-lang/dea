@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
 module typing_fixed_array_err;
 
 type A = int[3][4];
