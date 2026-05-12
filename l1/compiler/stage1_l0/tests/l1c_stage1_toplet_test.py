@@ -29,6 +29,17 @@ class TopletFailure(RuntimeError):
     """Raised when one Stage 1 toplet regression fails."""
 
 
+def resolve_tool(base: Path) -> Path:
+    """Return a host-compatible launcher path for one tool base path."""
+
+    if os.name == "nt":
+        for candidate in (base.with_suffix(".cmd"), base.with_suffix(".exe"), base):
+            if candidate.is_file():
+                return candidate
+        return base.with_suffix(".cmd")
+    return base
+
+
 def read_text(path: Path) -> str:
     """Read one text file with replacement for invalid bytes."""
 
@@ -41,7 +52,7 @@ def stage1_compiler() -> Path:
     build_dir = Path(os.environ.get("L1_BUILD_DIR", "build/dea"))
     if not build_dir.is_absolute():
         build_dir = L1_ROOT / build_dir
-    return build_dir / "bin" / "l1c-stage1"
+    return resolve_tool(build_dir / "bin" / "l1c-stage1")
 
 
 def parse_arc_lines(stderr: str) -> list[dict[str, str]]:

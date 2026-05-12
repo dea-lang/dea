@@ -25,6 +25,17 @@ class CleanupPolicyIceFailure(RuntimeError):
     """Raised when one cleanup-policy ICE regression fails."""
 
 
+def resolve_tool(base: Path) -> Path:
+    """Return a host-compatible launcher path for one tool base path."""
+
+    if os.name == "nt":
+        for candidate in (base.with_suffix(".cmd"), base.with_suffix(".exe"), base):
+            if candidate.is_file():
+                return candidate
+        return base.with_suffix(".cmd")
+    return base
+
+
 def read_text(path: Path) -> str:
     """Read one text file with replacement for invalid bytes."""
 
@@ -36,8 +47,8 @@ def bootstrap_compiler() -> Path:
 
     override = os.environ.get("L1_BOOTSTRAP_L0C")
     if override:
-        return Path(override)
-    return REPO_ROOT / "l0" / "build" / "dea" / "bin" / "l0c-stage2"
+        return resolve_tool(Path(override))
+    return resolve_tool(REPO_ROOT / "l0" / "build" / "dea" / "bin" / "l0c-stage2")
 
 
 def fail(message: str, artifact_dir: Path) -> None:

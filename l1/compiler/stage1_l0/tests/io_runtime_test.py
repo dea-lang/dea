@@ -18,14 +18,22 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 L1_ROOT = REPO_ROOT / "l1"
 
 
+def resolve_tool(base: Path) -> Path:
+    """Return a host-compatible launcher path for one tool base path."""
+
+    if os.name == "nt":
+        for candidate in (base.with_suffix(".cmd"), base.with_suffix(".exe"), base):
+            if candidate.is_file():
+                return candidate
+        return base.with_suffix(".cmd")
+    return base
+
+
 def compiler_path() -> Path:
     build_dir = Path(os.environ.get("L1_BUILD_DIR", "build/dea"))
     if not build_dir.is_absolute():
         build_dir = L1_ROOT / build_dir
-    compiler = build_dir / "bin" / "l1c-stage1"
-    if compiler.is_file():
-        return compiler
-    return build_dir / "bin" / "l1c-stage1.cmd"
+    return resolve_tool(build_dir / "bin" / "l1c-stage1")
 
 
 def run_mode(mode: str, stdin_text: str = "") -> subprocess.CompletedProcess[str]:
