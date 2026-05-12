@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-05-11
+Version: 2026-05-12
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -199,6 +199,7 @@ Current backend validation is centered on the copied bootstrap test suite under 
 - `c_emitter_test.l0`
 - `driver_test.l0`
 - `build_driver_test.l0`
+- `l1c_lib_test.l0`
 
 Ownership and trace-oriented validation also uses:
 

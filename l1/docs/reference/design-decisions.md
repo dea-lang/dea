@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-05-11
+Version: 2026-05-12
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -86,6 +86,8 @@ Current policy:
   bootstrap tree
 - copied implementation and docs are allowed to retain historical internal names when those names are merely bootstrap
   artifacts rather than user-facing semantics
+- live L1-owned compiler helpers and tests should use L1-oriented names such as `l1c_*` / `l1c_lib_test` when the
+  subject is the L1 compiler, even if the implementation source language remains `.l0`
 
 Rationale:
 

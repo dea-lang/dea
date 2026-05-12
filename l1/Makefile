@@ -35,7 +35,7 @@ RUNTIME_PUBLIC_HEADERS := $(RUNTIME_INCLUDE_DIR)/dea_rt.h $(RUNTIME_INCLUDE_DIR)
 RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all check-examples test-all test-docker print-l1-build-dir clean docker
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all check-examples test-all test-docker print-l1-build-dir clean docker
 
 help:
 	@printf '%s\n' \
@@ -66,6 +66,10 @@ help:
 		'                     Explicit upstream L0 Stage 2 compiler wrapper or native binary.' \
 		'  TESTS=""' \
 		'                     Optional Stage 1 test names for `test-stage1` and trace targets; forwarded by `make docker` when set.' \
+		'  L0_CC=<compiler>' \
+		'                     Upstream L0 C compiler used by `l0c-stage2` when building Stage 1 and running `.l0` implementation tests.' \
+		'  L1_CC=<compiler>' \
+		'                     C compiler used by `l1c --build/--run` for L1 fixture snippets; also defaults `L1_RUNTIME_CC` when set.' \
 		'  L1_RUNTIME_CC=<compiler>' \
 		'                     Runtime archive C compiler (defaults to `L1_CC`, then clang/gcc/cc, then `CC`). Example: `make clean-runtime runtime L1_RUNTIME_CC=gcc-15`.' \
 		'  L1_TRACE_TEST_JOBS=<n>' \
@@ -182,13 +186,31 @@ else
 endif
 	@printf '\n------------------------------------------------------------------------------\n'
 
-test-stage1: venv build-stage1
+_print-test-compiler-env:
+	@resolve_cc() { \
+		env_name="$$1"; shift; \
+		env_value="$$(printenv "$$env_name" 2>/dev/null || true)"; \
+		if [ -n "$$env_value" ]; then printf '%s' "$$env_value"; return 0; fi; \
+		for candidate in "$$@"; do \
+			if command -v "$$candidate" >/dev/null 2>&1; then printf '%s' "$$candidate"; return 0; fi; \
+		done; \
+		if [ -n "$${CC:-}" ]; then printf '%s' "$$CC"; return 0; fi; \
+		printf '%s' '<none>'; \
+	}; \
+	l0_cc="$$(resolve_cc L0_CC tcc gcc clang cc)"; \
+	l1_cc="$$(resolve_cc L1_CC tcc gcc clang cc)"; \
+	printf '%s\n' 'L1 test compiler environment:'; \
+	printf '  L0_CC=%s  (L0 compiler used by the upstream l0c-stage2 for .l0 test harnesses)\n' "$$l0_cc"; \
+	printf '  L1_CC=%s  (C compiler used by l1c --build/--run for L1 fixture snippets)\n' "$$l1_cc"; \
+	printf '  L1_RUNTIME_CC=%s  (C compiler used for repo-local L1 runtime archives)\n' "$(L1_RUNTIME_CC)"
+
+test-stage1: venv build-stage1 _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_tests.py $(TESTS)
 
-test-stage1-trace: venv build-stage1
+test-stage1-trace: venv build-stage1 _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py $(TESTS)
 
-test-stage1-trace-all: venv build-stage1
+test-stage1-trace-all: venv build-stage1 _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --include-slow $(TESTS)
 
 check-examples: build-stage1

@@ -69,7 +69,7 @@ func prepared_input_free_opt(self: PreparedInput*?) {
  * @param dst Destination collector.
  * @param src Source collector.
  */
-func l0c_copy_collector(dst: DiagCollector*, src: DiagCollector*) {
+func l1c_copy_collector(dst: DiagCollector*, src: DiagCollector*) {
     for (let i = 0; i < diag_count(src); i = i + 1) {
         diag_copy(dst, diag_get(src, i));
     }
@@ -82,7 +82,7 @@ func l0c_copy_collector(dst: DiagCollector*, src: DiagCollector*) {
  * @param sys_roots Effective system-root vector.
  * @param project_roots Effective project-root vector.
  */
-func l0c_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_roots: StringVector*) {
+func l1c_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_roots: StringVector*) {
     log_info(cfg, "System root(s): " + sp_format_root_list(sys_roots));
     log_info(cfg, "Project root(s): " + sp_format_root_list(project_roots));
 }
@@ -95,7 +95,7 @@ func l0c_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_
  * @param cfg Logging configuration.
  * @return Prepared input bundle, or `null` if normalization fails.
  */
-func l0c_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*) -> PreparedInput*? {
+func l1c_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*) -> PreparedInput*? {
     with (
         let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
         let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
@@ -106,7 +106,7 @@ func l0c_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*
 
         let entry_module = sp_normalize_entry_target(entry_target, project_roots, diags)?;
         sp_apply_default_project_roots(project_roots);
-        l0c_log_effective_roots(cfg, sys_roots, project_roots);
+        l1c_log_effective_roots(cfg, sys_roots, project_roots);
         let sp = sp_build_from_roots(project_roots, sys_roots);
         return new PreparedInput(entry_module, sp);
     }
@@ -118,7 +118,7 @@ func l0c_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*
  * @param path Source path owning the token.
  * @param tok Token to print.
  */
-func l0c_print_token(path: string, tok: Token) {
+func l1c_print_token(path: string, tok: Token) {
     with (let sb = sb_create() => sb_free(sb)) {
         sb_append(sb, path);
         sb_append(sb, ":");
@@ -137,7 +137,7 @@ func l0c_print_token(path: string, tok: Token) {
  * @param module_name Module being printed.
  * @param path Source path for the module.
  */
-func l0c_print_module_token_header(module_name: string, path: string) {
+func l1c_print_module_token_header(module_name: string, path: string) {
     with (let sb = sb_create() => sb_free(sb)) {
         sb_append(sb, "=== Tokens for module ");
         sb_append(sb, module_name);
@@ -156,7 +156,7 @@ func l0c_print_module_token_header(module_name: string, path: string) {
  * @param diags Diagnostic collector for I/O and lexing errors.
  * @return Process-style status code.
  */
-func l0c_dump_tokens_for_path(path: string, include_eof: bool, diags: DiagCollector*) -> int {
+func l1c_dump_tokens_for_path(path: string, include_eof: bool, diags: DiagCollector*) -> int {
     let text_opt = read_file(path);
     if (text_opt == null) {
         diag_error(diags, "l1c", "L1C-0040", "cannot read source file: " + path, path, 0, 0, 0, 0);
@@ -167,7 +167,7 @@ func l0c_dump_tokens_for_path(path: string, include_eof: bool, diags: DiagCollec
     let ls = ls_create(us_strip_utf8_bom(text), path);
     let toks = tokenize(ls);
     if (toks == null) {
-        l0c_copy_collector(diags, ls.diags);
+        l1c_copy_collector(diags, ls.diags);
         ls_free(ls);
         return 1;
     }
@@ -178,7 +178,7 @@ func l0c_dump_tokens_for_path(path: string, include_eof: bool, diags: DiagCollec
         if (!include_eof && ord(tok.token_type) == ord(TT_EOF)) {
             continue;
         }
-        l0c_print_token(path, tok);
+        l1c_print_token(path, tok);
     }
 
     tv_free(tv);
@@ -193,9 +193,9 @@ func l0c_dump_tokens_for_path(path: string, include_eof: bool, diags: DiagCollec
  * @param cfg Logging configuration.
  * @return Process-style status code.
  */
-func l0c_cmd_check(opts: CliOptions*, cfg: LogConfig*) -> int {
+func l1c_cmd_check(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let diags = diag_create() => diag_free(diags)) {
-        let prepared = l0c_prepare_input(opts, diags, cfg);
+        let prepared = l1c_prepare_input(opts, diags, cfg);
         if (prepared == null) {
             dp_print_collector(diags);
             return 1;
@@ -224,9 +224,9 @@ func l0c_cmd_check(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @param cfg Logging configuration.
  * @return Process-style status code.
  */
-func l0c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
+func l1c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let diags = diag_create() => diag_free(diags)) {
-        let prepared = l0c_prepare_input(opts, diags, cfg);
+        let prepared = l1c_prepare_input(opts, diags, cfg);
         if (prepared == null) {
             dp_print_collector(diags);
             return 1;
@@ -252,9 +252,9 @@ func l0c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
                         continue;
                     }
 
-                    l0c_print_module_token_header(name, (unit as DriverUnit*).path);
+                    l1c_print_module_token_header(name, (unit as DriverUnit*).path);
 
-                    let one_rc = l0c_dump_tokens_for_path((unit as DriverUnit*).path, opts.include_eof, diags);
+                    let one_rc = l1c_dump_tokens_for_path((unit as DriverUnit*).path, opts.include_eof, diags);
                     if (one_rc != 0) {
                         rc = one_rc;
                     }
@@ -289,7 +289,7 @@ func l0c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
         let path = path_opt as string;
         prepared_input_free(prep);
         prepared = null;
-        let rc = l0c_dump_tokens_for_path(path, opts.include_eof, diags);
+        let rc = l1c_dump_tokens_for_path(path, opts.include_eof, diags);
         dp_print_collector(diags);
         return rc;
     }
@@ -302,9 +302,9 @@ func l0c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @param cfg Logging configuration.
  * @return Process-style status code.
  */
-func l0c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
+func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let diags = diag_create() => diag_free(diags)) {
-        let prepared = l0c_prepare_input(opts, diags, cfg);
+        let prepared = l1c_prepare_input(opts, diags, cfg);
         if (prepared == null) {
             dp_print_collector(diags);
             return 1;
@@ -351,9 +351,9 @@ func l0c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @param cfg Logging configuration.
  * @return Process-style status code.
  */
-func l0c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
+func l1c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let diags = diag_create() => diag_free(diags)) {
-        let prepared = l0c_prepare_input(opts, diags, cfg);
+        let prepared = l1c_prepare_input(opts, diags, cfg);
         if (prepared == null) {
             dp_print_collector(diags);
             return 1;
@@ -481,9 +481,9 @@ func l0c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @param cfg Logging configuration.
  * @return Process-style status code.
  */
-func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
+func l1c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let diags = diag_create() => diag_free(diags)) {
-        let prepared = l0c_prepare_input(opts, diags, cfg);
+        let prepared = l1c_prepare_input(opts, diags, cfg);
         if (prepared == null) {
             dp_print_collector(diags);
             return 1;
@@ -590,7 +590,7 @@ func l0c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @param dst Destination vector for parsed option words.
  * @param raw Raw options string, or `null`.
  */
-func l0c_append_c_option_words(dst: StringVector*, raw: string?) {
+func l1c_append_c_option_words(dst: StringVector*, raw: string?) {
     bd_append_c_option_words(dst, raw);
 }
 
@@ -601,7 +601,7 @@ func l0c_append_c_option_words(dst: StringVector*, raw: string?) {
  * @param cli_opts Options from `--c-options`.
  * @return Parsed option words in final order.
  */
-func l0c_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVector* {
+func l1c_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVector* {
     return bd_merge_c_option_words(env_opts, cli_opts);
 }
 
@@ -611,7 +611,7 @@ func l0c_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVec
  * @param opts Parsed CLI options.
  * @return Parsed option words in final order.
  */
-func l0c_collect_c_option_words(opts: CliOptions*) -> StringVector* {
+func l1c_collect_c_option_words(opts: CliOptions*) -> StringVector* {
     return bd_collect_c_option_words(opts);
 }
 
@@ -626,9 +626,9 @@ func l0c_collect_c_option_words(opts: CliOptions*) -> StringVector* {
  * @param cfg Logging configuration.
  * @return Process-style status code.
  */
-func l0c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
+func l1c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let diags = diag_create() => diag_free(diags)) {
-        let prepared = l0c_prepare_input(opts, diags, cfg);
+        let prepared = l1c_prepare_input(opts, diags, cfg);
         if (prepared == null) {
             dp_print_collector(diags);
             return 1;
@@ -715,7 +715,7 @@ func l0c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @param cfg Logging configuration.
  * @return Process-style status code.
  */
-func l0c_cmd_nyi(mode: CliMode, cfg: LogConfig*) -> int {
+func l1c_cmd_nyi(mode: CliMode, cfg: LogConfig*) -> int {
     with (let diags = diag_create() => diag_free(diags)) {
         diag_error(
             diags,
@@ -778,10 +778,10 @@ func run_with_argv(argv: StringVector*) -> int {
         let rc = 1;
         match (opts.mode) {
             CM_CHECK => {
-                rc = l0c_cmd_check(opts, cfg);
+                rc = l1c_cmd_check(opts, cfg);
             }
             CM_TOK => {
-                rc = l0c_cmd_tok(opts, cfg);
+                rc = l1c_cmd_tok(opts, cfg);
             }
             CM_RUN => {
                 rc = bd_cmd_run(opts, cfg);
@@ -790,16 +790,16 @@ func run_with_argv(argv: StringVector*) -> int {
                 rc = bd_cmd_build(opts, cfg);
             }
             CM_GEN => {
-                rc = l0c_cmd_gen(opts, cfg);
+                rc = l1c_cmd_gen(opts, cfg);
             }
             CM_AST => {
-                rc = l0c_cmd_ast(opts, cfg);
+                rc = l1c_cmd_ast(opts, cfg);
             }
             CM_SYM => {
-                rc = l0c_cmd_sym(opts, cfg);
+                rc = l1c_cmd_sym(opts, cfg);
             }
             CM_TYPE => {
-                rc = l0c_cmd_type(opts, cfg);
+                rc = l1c_cmd_type(opts, cfg);
             }
         }
 

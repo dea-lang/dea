@@ -27,10 +27,10 @@ struct __deaM3sys4realS8RtIntOut { dea_int val; };
 #endif
 
 /* Constants */
-static inline dea_float rt_real_get_nan_f() { return (dea_float)NAN; }
-static inline dea_double rt_real_get_nan_d() { return (dea_double)NAN; }
-static inline dea_float rt_real_get_inf_f() { return (dea_float)INFINITY; }
-static inline dea_double rt_real_get_inf_d() { return (dea_double)INFINITY; }
+static inline dea_float rt_real_get_nan_f(void) { return (dea_float)NAN; }
+static inline dea_double rt_real_get_nan_d(void) { return (dea_double)NAN; }
+static inline dea_float rt_real_get_inf_f(void) { return (dea_float)INFINITY; }
+static inline dea_double rt_real_get_inf_d(void) { return (dea_double)INFINITY; }
 
 /* Phase 1: Classification */
 static inline dea_bool rt_real_is_nan_f(dea_float x) { return isnan((float)x); }

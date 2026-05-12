@@ -3,7 +3,7 @@
  * Copyright (c) 2026 gwz
  */
 
-module l0c_lib_test;
+module l1c_lib_test;
 
 import sys.rt;
 
@@ -31,6 +31,15 @@ func fixture_root() -> string {
  */
 func semantics_fixture_root() -> string {
     return "compiler/stage1_l0/tests/fixtures/semantics";
+}
+
+/**
+ * Returns the interface-fixture directory used by module-interface tests.
+ *
+ * @return The interface fixture directory for `.l1m` emission tests.
+ */
+func interface_fixture_root() -> string {
+    return "compiler/stage1_l0/tests/fixtures/interface";
 }
 
 /**
@@ -82,11 +91,11 @@ func run_keep_c_c_path() -> string {
  * Tests test_check_ok.
  */
 func test_check_ok() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--check");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--check should succeed for ok_main");
@@ -97,11 +106,11 @@ func test_check_ok() {
  * Tests test_check_cycle_fails.
  */
 func test_check_cycle_fails() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--check");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "cycle_a");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "cycle_a");
 
         let rc = run_with_argv(argv);
         assert(rc == 1, "--check should fail for cycle_a");
@@ -112,11 +121,11 @@ func test_check_cycle_fails() {
  * Tests test_check_semantic_failure.
  */
 func test_check_semantic_failure() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--check");
-        vs_push(argv, "-P");
-        vs_push(argv, semantics_fixture_root());
-        vs_push(argv, "infer_fail_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "-P");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "infer_fail_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 1, "--check should fail for semantic errors");
@@ -127,12 +136,12 @@ func test_check_semantic_failure() {
  * Tests test_tok_ok.
  */
 func test_tok_ok() {
-    with (let argv = vs_create(10) => vs_free(argv)) {
-        vs_push(argv, "--tok");
-        vs_push(argv, "--include-eof");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(10) => sv_free(argv)) {
+        sv_push(argv, "--tok");
+        sv_push(argv, "--include-eof");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--tok should succeed for ok_main");
@@ -143,12 +152,12 @@ func test_tok_ok() {
  * Tests test_gen_ok_stdout.
  */
 func test_gen_ok_stdout() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--gen");
-        vs_push(argv, "--no-line-directives");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--gen should succeed for ok_main");
@@ -162,14 +171,14 @@ func test_gen_ok_output_file() {
     let out_path = gen_output_path();
     rt_delete_file(out_path);
 
-    with (let argv = vs_create(10) => vs_free(argv)) {
-        vs_push(argv, "--gen");
-        vs_push(argv, "--no-line-directives");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(10) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--gen --output should succeed for ok_main");
@@ -190,16 +199,16 @@ func test_gen_trace_defines() {
     let out_path = gen_output_path();
     rt_delete_file(out_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--gen");
-        vs_push(argv, "--no-line-directives");
-        vs_push(argv, "--trace-arc");
-        vs_push(argv, "--trace-memory");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--gen with trace flags should succeed");
@@ -218,10 +227,10 @@ func test_gen_trace_defines() {
  * Tests test_parse_error_exit_code.
  */
 func test_parse_error_exit_code() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--check");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 2, "CLI parse/validation errors should return 2");
@@ -237,13 +246,13 @@ func test_default_build_mode_succeeds() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "default build mode should succeed for ok_main");
@@ -260,11 +269,11 @@ func test_default_build_mode_succeeds() {
  * Tests test_run_exit_code_passthrough.
  */
 func test_run_exit_code_passthrough() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "exit_seven");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "exit_seven");
 
         let rc = run_with_argv(argv);
         assert(rc == 7, "--run should return the child program exit code");
@@ -280,14 +289,14 @@ func test_run_keep_c_output_file() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--run --keep-c should succeed for ok_main");
@@ -303,11 +312,11 @@ func test_run_keep_c_output_file() {
  * Tests cleanup-block return precedence in `--run` mode.
  */
 func test_run_cleanup_return_precedence() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "cleanup_return_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "cleanup_return_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 11, "cleanup block should override the body return value");
@@ -318,11 +327,11 @@ func test_run_cleanup_return_precedence() {
  * Tests chained postfix-try short-circuiting in `--run` mode.
  */
 func test_run_try_chain_short_circuits() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "try_chain_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "try_chain_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 12, "nested try chain should short-circuit before later calls run");
@@ -333,11 +342,11 @@ func test_run_try_chain_short_circuits() {
  * Tests qualified enum variant execution when imports are shadowed locally.
  */
 func test_run_shadowed_qualified_variant() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, semantics_fixture_root());
-        vs_push(argv, "shadow_warn_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "shadow_warn_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 13, "qualified imported enum variants should still run under RES-0021 warnings");
@@ -353,14 +362,14 @@ func test_run_bitwise_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "bitwise_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "bitwise_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 29, "--run --keep-c should compile and execute bitwise_main");
@@ -390,14 +399,14 @@ func test_run_function_pointer_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "function_pointer_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "function_pointer_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 42, "--run --keep-c should compile and execute function_pointer_main");
@@ -428,14 +437,14 @@ func test_run_string_equality_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "string_equality_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "string_equality_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 23, "--run --keep-c should compile and execute string_equality_main");
@@ -463,14 +472,14 @@ func test_run_pointer_identity_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "pointer_identity_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "pointer_identity_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--run --keep-c should compile and execute pointer_identity_main with exit 0");
@@ -489,14 +498,14 @@ func test_run_nullable_identity_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "nullable_identity_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "nullable_identity_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--run should succeed for nullable_identity_main");
@@ -517,11 +526,11 @@ func test_run_nullable_identity_build_and_keep_c() {
  * Tests optional wrapper typedef ordering for user-defined value payloads.
  */
 func test_run_optional_struct_field_order_builds() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "optional_struct_field_order_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "optional_struct_field_order_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "optional struct wrapper typedef should be emitted before dependent type definitions");
@@ -537,14 +546,14 @@ func test_run_same_type_struct_cast_builds() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "same_type_struct_cast_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "same_type_struct_cast_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "same-type struct cast should compile and execute under pedantic C99");
@@ -565,11 +574,11 @@ func test_run_same_type_struct_cast_builds() {
  * Tests `std.types` optional-string unwrap through a value-match scrutinee.
  */
 func test_run_std_types_opt_string_builds() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "std_types_opt_string_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "std_types_opt_string_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "std.types optional-string unwrap should retain the match scrutinee correctly");
@@ -580,11 +589,11 @@ func test_run_std_types_opt_string_builds() {
  * Tests single-statement `while`, `for`, `match`, and `case` execution in `--run` mode.
  */
 func test_run_single_statement_bodies() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "single_stmt_bodies_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "single_stmt_bodies_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 23, "single_stmt_bodies_main should execute successfully");
@@ -600,14 +609,14 @@ func test_run_string_relational_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "string_relational_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "string_relational_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 23, "--run --keep-c should compile and execute string_relational_main");
@@ -640,14 +649,14 @@ func test_run_string_concat_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "string_concat_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "string_concat_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 23, "--run --keep-c should compile and execute string_concat_main");
@@ -671,14 +680,14 @@ func test_run_const_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "const_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "const_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 23, "--run --keep-c should compile and execute const_main");
@@ -704,14 +713,14 @@ func test_run_nonconstant_top_level_let_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "toplet_init_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "toplet_init_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 23, "--run --keep-c should compile and execute toplet_init_main");
@@ -751,14 +760,14 @@ func test_run_module_lifecycle_name_collision_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "init_collision_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "init_collision_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 3, "--run --keep-c should compile and execute init_collision_main");
@@ -787,14 +796,14 @@ func test_run_float_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "float_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "float_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 17, "--run --keep-c should compile and execute float_main");
@@ -823,14 +832,14 @@ func test_run_float_ops_build_and_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "float_ops_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "float_ops_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 21, "--run --keep-c should compile and execute float_ops_main");
@@ -861,13 +870,13 @@ func test_build_float_zero_division_keep_c() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(12) => vs_free(argv)) {
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "float_zero_div_main");
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "float_zero_div_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "default build mode should succeed for float_zero_div_main");
@@ -892,15 +901,15 @@ func test_build_float_rejects_invalid_math_mode_option() {
     rt_delete_file(out_path);
     rt_delete_file(c_path);
 
-    with (let argv = vs_create(14) => vs_free(argv)) {
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "--output");
-        vs_push(argv, out_path);
-        vs_push(argv, "--keep-c");
-        vs_push(argv, "--c-options");
-        vs_push(argv, "-fno-signed-zeros");
-        vs_push(argv, "float_main");
+    with (let argv = sv_create(14) => sv_free(argv)) {
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "--c-options");
+        sv_push(argv, "-fno-signed-zeros");
+        sv_push(argv, "float_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 1, "float_main should reject invalid signed-zero-breaking C options");
@@ -914,12 +923,12 @@ func test_build_float_rejects_invalid_math_mode_option() {
  * Tests test_merge_c_option_words_cli_last.
  */
 func test_merge_c_option_words_cli_last() {
-    with (let words = l0c_merge_c_option_words("-DENV_ONE   -DENV_TWO", "-DCLI_ONE -DCLI_TWO") => vs_free(words)) {
-        assert(vs_size(words) == 4, "expected 4 merged C option words");
-        assert(vs_get(words, 0) == "-DENV_ONE", "env option #1 should come first");
-        assert(vs_get(words, 1) == "-DENV_TWO", "env option #2 should come before CLI options");
-        assert(vs_get(words, 2) == "-DCLI_ONE", "cli option #1 should come after env options");
-        assert(vs_get(words, 3) == "-DCLI_TWO", "cli option #2 should come last");
+    with (let words = l1c_merge_c_option_words("-DENV_ONE   -DENV_TWO", "-DCLI_ONE -DCLI_TWO") => sv_free(words)) {
+        assert(sv_size(words) == 4, "expected 4 merged C option words");
+        assert(sv_get(words, 0) == "-DENV_ONE", "env option #1 should come first");
+        assert(sv_get(words, 1) == "-DENV_TWO", "env option #2 should come before CLI options");
+        assert(sv_get(words, 2) == "-DCLI_ONE", "cli option #1 should come after env options");
+        assert(sv_get(words, 3) == "-DCLI_TWO", "cli option #2 should come last");
     }
 }
 
@@ -927,13 +936,13 @@ func test_merge_c_option_words_cli_last() {
  * Tests test_merge_c_option_words_ignores_empty_inputs.
  */
 func test_merge_c_option_words_ignores_empty_inputs() {
-    with (let empty_words = l0c_merge_c_option_words("   \t  ", null) => vs_free(empty_words)) {
-        assert(vs_size(empty_words) == 0, "blank env options should produce no words");
+    with (let empty_words = l1c_merge_c_option_words("   \t  ", null) => sv_free(empty_words)) {
+        assert(sv_size(empty_words) == 0, "blank env options should produce no words");
     }
 
-    with (let cli_words = l0c_merge_c_option_words(null, "  -DCLI_ONLY\t") => vs_free(cli_words)) {
-        assert(vs_size(cli_words) == 1, "single CLI option should be preserved");
-        assert(vs_get(cli_words, 0) == "-DCLI_ONLY", "CLI option text mismatch");
+    with (let cli_words = l1c_merge_c_option_words(null, "  -DCLI_ONLY\t") => sv_free(cli_words)) {
+        assert(sv_size(cli_words) == 1, "single CLI option should be preserved");
+        assert(sv_get(cli_words, 0) == "-DCLI_ONLY", "CLI option text mismatch");
     }
 }
 
@@ -941,11 +950,11 @@ func test_merge_c_option_words_ignores_empty_inputs() {
  * Tests test_type_ok.
  */
 func test_type_ok() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--type");
-        vs_push(argv, "-P");
-        vs_push(argv, semantics_fixture_root());
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--type");
+        sv_push(argv, "-P");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--type should succeed for ok_main");
@@ -956,11 +965,11 @@ func test_type_ok() {
  * Tests test_sym_ok.
  */
 func test_sym_ok() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--sym");
-        vs_push(argv, "-P");
-        vs_push(argv, semantics_fixture_root());
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--sym");
+        sv_push(argv, "-P");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--sym should succeed for ok_main");
@@ -971,12 +980,12 @@ func test_sym_ok() {
  * Tests test_sym_all_modules_ok.
  */
 func test_sym_all_modules_ok() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--sym");
-        vs_push(argv, "--all-modules");
-        vs_push(argv, "-P");
-        vs_push(argv, semantics_fixture_root());
-        vs_push(argv, "ok_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--sym");
+        sv_push(argv, "--all-modules");
+        sv_push(argv, "-P");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "ok_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "--sym --all-modules should succeed for ok_main");
@@ -984,11 +993,11 @@ func test_sym_all_modules_ok() {
 }
 
 func test_run_real_classify() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "real_classify_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_classify_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "real_classify_main failed");
@@ -996,11 +1005,11 @@ func test_run_real_classify() {
 }
 
 func test_run_real_basic() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "real_basic_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_basic_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "real_basic_main failed");
@@ -1008,11 +1017,11 @@ func test_run_real_basic() {
 }
 
 func test_run_real_round() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "real_round_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_round_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "real_round_main failed");
@@ -1020,11 +1029,11 @@ func test_run_real_round() {
 }
 
 func test_run_real_decompose() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "real_decompose_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_decompose_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "real_decompose_main failed");
@@ -1032,11 +1041,11 @@ func test_run_real_decompose() {
 }
 
 func test_run_real_transcendental() {
-    with (let argv = vs_create(8) => vs_free(argv)) {
-        vs_push(argv, "--run");
-        vs_push(argv, "-P");
-        vs_push(argv, fixture_root());
-        vs_push(argv, "real_transcendental_main");
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_transcendental_main");
 
         let rc = run_with_argv(argv);
         assert(rc == 0, "real_transcendental_main failed");
@@ -1137,5 +1146,5 @@ func main() {
     test_run_fixed_array_oob_fails();
     test_run_trace_fixed_array_arc_paths();
     test_run_trace_fixed_array_nested_return();
-    printl_s("l0c_lib_test: all tests passed");
+    printl_s("l1c_lib_test: all tests passed");
 }

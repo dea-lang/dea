@@ -7,7 +7,9 @@ retargeted to the Dea/L1 public interface.
 
 The implementation sources in this subtree remain `.l0`, and the copied implementation test suite is also `.l0`. Those
 tests are exercised through the upstream `l0c-stage2` bootstrap compiler rather than through `l1c` itself. The fixture
-programs and copied L1 stdlib modules that those tests compile as L1-language inputs now use the `.l1` extension.
+programs and copied L1 stdlib modules that those tests compile as L1-language inputs now use the `.l1` extension. Test
+names describe the L1 compiler subject where applicable, such as `l1c_lib_test.l0`, even when the test source is written
+in L0.
 
 Stage 1 validation here is limited to those `.l0` implementation tests and their focused backend/emitter assertions.
 Committed full-file generated-C golden checks are intentionally out of scope for the current Stage 1 bootstrap contract.
