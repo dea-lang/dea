@@ -46,16 +46,16 @@ produces a link error if a value is called as a function or vice-versa across mo
 
 ### Examples
 
-| Source                                     | Mangled                     |
-| ------------------------------------------ | --------------------------- |
-| `main::main` (`func() -> void`)            | `__deaM4mainN4mainF0v`      |
-| `std.math::abs` (`func(int) -> int`)       | `__deaM3std4mathN3absF1ii`  |
-| `std.io::prints` (`func(string) -> void`)  | `__deaM3std2ioN6printsF1cv` |
-| `demo.main::Point` (struct)                | `__deaM4demo4mainS5Point`   |
-| `demo.main::Color` (enum)                  | `__deaM4demo4mainE5Color`   |
-| `demo.main::static` (`let` named `static`) | `__deaM4demo4mainN6static`  |
-| `unsafe func(int*) -> void` exported       | `__deaM<...>N<name>XF1Piv`  |
-| module lifecycle `demo.main::init`         | `__deaM4demo4mainI4init`    |
+| Source                                     | Mangled                       |
+| ------------------------------------------ | ----------------------------- |
+| `main::main` (`func() -> void`)            | `__deaM4mainN4mainF0v`        |
+| `std.integer::abs` (`func(int) -> int`)    | `__deaM3std7integerN3absF1ii` |
+| `std.io::prints` (`func(string) -> void`)  | `__deaM3std2ioN6printsF1cv`   |
+| `demo.main::Point` (struct)                | `__deaM4demo4mainS5Point`     |
+| `demo.main::Color` (enum)                  | `__deaM4demo4mainE5Color`     |
+| `demo.main::static` (`let` named `static`) | `__deaM4demo4mainN6static`    |
+| `unsafe func(int*) -> void` exported       | `__deaM<...>N<name>XF1Piv`    |
+| module lifecycle `demo.main::init`         | `__deaM4demo4mainI4init`      |
 
 ## Type Components
 

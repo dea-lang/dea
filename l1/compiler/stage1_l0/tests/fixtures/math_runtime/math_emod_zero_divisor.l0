@@ -5,7 +5,7 @@
 
 module math_emod_zero_divisor;
 
-import std.math;
+import std.integer;
 
 func main() -> int {
     emod(1, 0);

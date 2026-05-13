@@ -102,7 +102,7 @@ scheme specified in [`l1/docs/specs/compiler/abi.md`][abi]:
 
 - Source symbols use `__deaM<seg_len><seg>...S<sym_len><sym>`.
 - Compiler-generated module lifecycle symbols use `__deaM<seg_len><seg>...I<life_len><life>`.
-- **Canonical source form:** the input to mangling is the module's dotted path (for example `std.math`), not its
+- **Canonical source form:** the input to mangling is the module's dotted path (for example `std.integer`), not its
   filesystem path. The compiler does not see `/` or platform path separators at the mangling stage.
 - **Module path encoding:** each dotted module segment becomes one length-prefixed component in the `M` section. No
   character substitution or `$`-in-identifier compiler extension is required.
@@ -110,8 +110,8 @@ scheme specified in [`l1/docs/specs/compiler/abi.md`][abi]:
   length and the following component is unambiguous.
 - **Stability:** this normalization is part of the LBI ABI and is stable across stages. Stage 2 must produce
   byte-identical mangled names for the same source surface.
-- Example: `std.math::abs` becomes `__deaM3std4mathS3abs`.
-- Example: module lifecycle `std.math::init` becomes `__deaM3std4mathI4init`.
+- Example: `std.integer::abs` becomes `__deaM3std7integerS3abs`.
+- Example: module lifecycle `std.integer::init` becomes `__deaM3std7integerI4init`.
 - The scheme is chosen now so later overloading, generics, and additional module lifecycle entries can extend it without
   breaking existing object names.
 - Declarations inside an `extern "C"` block bypass mangling and are emitted with their declared C spelling.

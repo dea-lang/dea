@@ -5,7 +5,7 @@
 
 module math_div_ui_zero_divisor;
 
-import std.math;
+import std.integer;
 
 func main() -> int {
     let one: uint = 1;

@@ -211,11 +211,11 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 | `err_print_bi`      | `func(b: bool, x: int) -> void`                          | Prints two values separated by space.                                               |
 | `err_print_bb`      | `func(b1: bool, b2: bool) -> void`                       | Prints two values separated by space.                                               |
 
-### `std.math`
+### `std.integer`
 
 **Imports:** `std.assert`
 
-Shared integer helper module. Floating-point helpers stay out of `std.math`.
+Shared integer helper module. Floating-point helpers stay out of `std.integer`.
 
 | Function      | Signature                               | Description                                                                                               |
 | ------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -328,7 +328,7 @@ Shared integer helper module. Floating-point helpers stay out of `std.math`.
 
 ### `std.text`
 
-**Imports:** `std.string`, `std.math`, `std.assert`, `std.vector`
+**Imports:** `std.string`, `std.integer`, `std.assert`, `std.vector`
 
 | Type/Function                                       | Signature                                                                                           | Description                                                                                               |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -352,7 +352,7 @@ Shared integer helper module. Floating-point helpers stay out of `std.math`.
 
 ### `std.time`
 
-**Imports:** `sys.rt`, `std.math`
+**Imports:** `sys.rt`, `std.integer`
 
 | Type/Function            | Signature                                                                                                                                                                   | Description                                                    |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |

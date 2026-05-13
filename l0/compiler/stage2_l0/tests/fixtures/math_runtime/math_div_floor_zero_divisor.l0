@@ -5,7 +5,7 @@
 
 module math_div_floor_zero_divisor;
 
-import std.math;
+import std.integer;
 
 func main() -> int {
     div_floor(1, 0);

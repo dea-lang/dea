@@ -59,8 +59,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   surface, scoped runtime helper inclusion, and math-library linkage gating.
 - Feature [2026-04-13-l1-uint-long-ulong-bigint-builtins-noref][wide-int] added `uint`, `long`, and `ulong` through
   contextual bigint literals.
-- Feature [2026-04-14-l1-std-math-wide-integer-followup-noref][wide-math] added L1-only `std.math` helper families for
-  `uint`, `long`, and `ulong`.
+- Feature [2026-04-14-l1-std-math-wide-integer-followup-noref][wide-math] added L1-only `std.integer` helper families
+  for `uint`, `long`, and `ulong`.
 - Feature [2026-04-18-l1-bitwise-operators-noref][bitwise-operators] added `&`, `|`, `^`, `~`, `<<`, and `>>` with
   parser precedence, integer typing, and direct C lowering.
 - Feature [2026-04-18-string-equality-operators-noref][string-equality] wired `==` and `!=` over `string` operands

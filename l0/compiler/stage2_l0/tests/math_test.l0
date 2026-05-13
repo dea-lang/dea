@@ -7,7 +7,7 @@ module math_test;
 
 import std.assert;
 import std.io;
-import std.math;
+import std.integer;
 import std.text;
 import std.vector;
 

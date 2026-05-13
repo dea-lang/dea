@@ -5,7 +5,7 @@
 
 module math_div_ceil_unrepresentable;
 
-import std.math;
+import std.integer;
 
 func main() -> int {
     div_ceil(-2147483648, -1);

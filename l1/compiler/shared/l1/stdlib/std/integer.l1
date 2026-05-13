@@ -6,7 +6,7 @@
 /**
  * This module provides integer-focused mathematical utility functions.
  */
-module std.math;
+module std.integer;
 
 import std.assert;
 

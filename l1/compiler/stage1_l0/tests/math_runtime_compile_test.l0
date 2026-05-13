@@ -77,11 +77,11 @@ func test_runtime_failures() {
 }
 
 /**
- * Tests the L1-only wide integer std.math fixture through the Stage 1 compiler.
+ * Tests the L1-only wide integer std.integer fixture through the Stage 1 compiler.
  */
 func test_l1_wide_integer_fixture() {
     printl_s("== L1 wide integer fixture ==");
-    mrt_expect_run_success("wide_math_main", "uint/long/ulong std.math helpers");
+    mrt_expect_run_success("wide_math_main", "uint/long/ulong std.integer helpers");
 }
 
 /**

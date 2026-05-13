@@ -68,7 +68,7 @@ The current implemented language surface covers the core bootstrap subset used t
   equality/ordering operators, and the `+` string concatenation operator.
 
 The standard library now includes the core runtime-facing and bootstrap-facing modules for I/O, strings, text, paths,
-filesystem access, the shared integer helper surface in `std.math`, time, randomness, assertions, optionals, and the
+filesystem access, the shared integer helper surface in `std.integer`, time, randomness, assertions, optionals, and the
 current container set. Use [l0/docs/reference/standard-library.md](reference/standard-library.md) for the canonical
 module-by-module reference.
 

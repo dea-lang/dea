@@ -264,11 +264,11 @@ The bootstrap compiler keeps integer behavior defined rather than inheriting hos
 
 That policy is part of the language contract even though the current implementation is lowered through C.
 
-At the stdlib layer, integer helper contracts belong in `std.math`; copied modules such as `std.time` may consume those
-helpers, but they should not own general-purpose arithmetic utilities. The unsuffixed helper names remain the shared
-`int` surface. L1-only `uint`, `long`, and `ulong` helpers use explicit `_ui`, `_l`, and `_ul` suffixes so wider fixed
-widths do not shadow or blur the shared API. Signed `long` helpers follow the same checked representability policy as
-the `int` helpers, while unsigned helpers use plain `div_*` / `mod_*` names and omit signed-only concepts such as
+At the stdlib layer, integer helper contracts belong in `std.integer`; copied modules such as `std.time` may consume
+those helpers, but they should not own general-purpose arithmetic utilities. The unsuffixed helper names remain the
+shared `int` surface. L1-only `uint`, `long`, and `ulong` helpers use explicit `_ui`, `_l`, and `_ul` suffixes so wider
+fixed widths do not shadow or blur the shared API. Signed `long` helpers follow the same checked representability policy
+as the `int` helpers, while unsigned helpers use plain `div_*` / `mod_*` names and omit signed-only concepts such as
 `sign`, `abs`, `ediv`, and `emod`.
 
 Floating-point helpers belong in `std.real` with their runtime C FFI backed by `sys.real`. Explicit `_f` and `_d`

@@ -243,12 +243,12 @@ numeric helpers use `_ui`, `_l`, `_ul`, `_f`, and `_d` suffixes for `uint`, `lon
 | `err_print_bi`      | `func(b: bool, x: int) -> void`                          | Prints two values separated by space.                                               |
 | `err_print_bb`      | `func(b1: bool, b2: bool) -> void`                       | Prints two values separated by space.                                               |
 
-### `std.math`
+### `std.integer`
 
 **Imports:** `std.assert`
 
 Integer helper module. The unsuffixed surface is the shared `int` API; L1-only fixed-width helpers use explicit `_ui`,
-`_l`, and `_ul` suffixes for `uint`, `long`, and `ulong`. Floating-point helpers stay out of `std.math`.
+`_l`, and `_ul` suffixes for `uint`, `long`, and `ulong`. Floating-point helpers stay out of `std.integer`.
 
 | Function      | Signature                               | Description                                                                                               |
 | ------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -490,7 +490,7 @@ The `modf_*` and `frexp_*` helpers return small named result structs:
 
 ### `std.text`
 
-**Imports:** `std.string`, `std.math`, `std.assert`, `std.vector`
+**Imports:** `std.string`, `std.integer`, `std.assert`, `std.vector`
 
 | Type/Function                                       | Signature                                                                                           | Description                                                                                               |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -520,7 +520,7 @@ The `modf_*` and `frexp_*` helpers return small named result structs:
 
 ### `std.time`
 
-**Imports:** `sys.rt`, `std.math`
+**Imports:** `sys.rt`, `std.integer`
 
 | Type/Function            | Signature                                                                                                                                                                   | Description                                                    |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |

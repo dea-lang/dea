@@ -75,10 +75,10 @@ Current L1 Binary Interface (LBI) naming policy is:
 
 - All user-defined symbols (structs, enums, functions, and top-level bindings) use the tagged-section encoding
   `__deaM<seg_len><seg>...S<sym_len><sym>`, where the `M` section length-prefixes each module-path segment and the `S`
-  section length-prefixes the symbol name (e.g. `std.math::abs` → `__deaM3std4mathS3abs`).
+  section length-prefixes the symbol name (e.g. `std.integer::abs` → `__deaM3std7integerS3abs`).
 - Compiler-generated module lifecycle helpers use the same `M` module section plus an `I` lifecycle section (e.g. module
-  `std.math` lifecycle `init` → `__deaM3std4mathI4init`). This avoids collisions between dotted and underscored module
-  names while keeping lifecycle helpers distinct from source-level `S` symbols.
+  `std.integer` lifecycle `init` → `__deaM3std7integerI4init`). This avoids collisions between dotted and underscored
+  module names while keeping lifecycle helpers distinct from source-level `S` symbols.
 - The encoding uses only ISO C99 identifier characters; no GCC `$`-in-identifier extension is required. See
   `l1/docs/specs/compiler/abi.md` for the normative spec.
 - Exported symbols keep global linkage in generated C and the resulting object file.

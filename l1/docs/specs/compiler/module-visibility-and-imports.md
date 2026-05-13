@@ -17,7 +17,7 @@ The link-symbol spelling and C storage-class consequences are specified separate
 Each `.l1` source file declares exactly one module:
 
 ```dea
-module std.math;
+module std.integer;
 ```
 
 The module's dotted source path is its canonical identity for import resolution and LBI mangling. Filesystem paths,
@@ -83,8 +83,8 @@ used `export *;`, an explicit allowlist, or the implicit default.
 An interface file begins with:
 
 ```dea
-module interface std.math;
-fingerprint "0000000000000000";
+module interface std.integer;
+fingerprint "";
 ```
 
 The remaining declarations are the exported surface needed by importers:
@@ -103,9 +103,9 @@ fingerprint computed over that public surface.
 L1 supports three import forms:
 
 ```dea
-import std.math;
-import std.math as math;
-import abs, pi from std.math;
+import std.integer;
+import std.integer as math;
+import abs, pi from std.integer;
 ```
 
 Grammar:
@@ -125,10 +125,10 @@ A plain import opens the provider's exported names into the consumer's unqualifi
 lookup through the provider module path:
 
 ```dea
-import std.math;
+import std.integer;
 
 func main() -> int {
-    return abs(-4) + std.math::abs(-5);
+    return abs(-4) + std.integer::abs(-5);
 }
 ```
 
@@ -140,7 +140,7 @@ modules and preserve the existing qualified-name disambiguation surface.
 An alias import binds the provider module under a local namespace only:
 
 ```dea
-import std.math as math;
+import std.integer as math;
 
 func main() -> int {
     return math::abs(-4);
@@ -151,14 +151,14 @@ An alias import does not introduce the provider's exported names as unqualified 
 `abs(-4)` is unresolved unless another import or local declaration supplies `abs`.
 
 Aliases are local to the importing module. They do not change the provider module's canonical identity, `.l1m` path,
-fingerprint, or LBI-mangled link names. `math::abs` still binds to the provider-owned symbol for `std.math::abs`.
+fingerprint, or LBI-mangled link names. `math::abs` still binds to the provider-owned symbol for `std.integer::abs`.
 
 ## Selective Imports
 
 A selective import binds only the named exports as unqualified imported symbols:
 
 ```dea
-import abs, pi from std.math;
+import abs, pi from std.integer;
 
 func circumference(radius: int) -> int {
     return 2 * pi * abs(radius);
@@ -166,8 +166,8 @@ func circumference(radius: int) -> int {
 ```
 
 Every selected name must be exported by the provider. Selective imports do not bind a qualified namespace, so
-`std.math::abs` is not made available by the statement above. Use a separate open or alias import when qualified access
-is also desired.
+`std.integer::abs` is not made available by the statement above. Use a separate open or alias import when qualified
+access is also desired.
 
 Selective imports are ordinary imported bindings in the consumer's scope. Collisions with local declarations, aliases,
 or other imported names are diagnosed by name resolution using the same deterministic ambiguity rules as other imports.
@@ -177,12 +177,12 @@ or other imported names are diagnosed by name resolution using the same determin
 Import forms do not combine in one statement. These are intentionally separate:
 
 ```dea
-import std.math as math;
-import abs from std.math;
+import std.integer as math;
+import abs from std.integer;
 ```
 
-There is no syntax for `import abs from std.math as math;`, wildcard selective imports, import-time renaming, or grouped
-imports from multiple modules.
+There is no syntax for `import abs from std.integer as math;`, wildcard selective imports, import-time renaming, or
+grouped imports from multiple modules.
 
 ## Resolution Rules
 
@@ -208,8 +208,8 @@ The export set also controls generated C linkage:
 - non-exported top-level functions and storage use internal linkage where the backend can represent that with `static`;
 - imported declarations reference provider-owned LBI names.
 
-For example, `import std.math as m;` followed by `m::abs(-1)` still calls the LBI symbol for `std.math::abs`, such as
-`__deaM3std4mathS3abs`. The local alias `m` is not encoded into generated C symbol names.
+For example, `import std.integer as m;` followed by `m::abs(-1)` still calls the LBI symbol for `std.integer::abs`, such
+as `__deaM3std7integerS3abs`. The local alias `m` is not encoded into generated C symbol names.
 
 Struct and enum type definitions have no C storage class. Their exported-vs-private status determines whether they are
 present in the public interface, while LBI naming gives generated C type spellings deterministic module identity.
@@ -220,7 +220,7 @@ This visibility and import model does not introduce:
 
 - packages, registries, lock files, or dependency manifests;
 - import-time renaming of individual symbols;
-- wildcard selective imports such as `import * from std.math;`;
+- wildcard selective imports such as `import * from std.integer;`;
 - per-declaration visibility modifiers;
 - access to non-exported declarations through friend, internal, or package scopes;
 - C FFI visibility controls.

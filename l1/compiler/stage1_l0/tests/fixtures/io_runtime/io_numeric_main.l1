@@ -6,7 +6,7 @@
 module io_numeric_main;
 
 import std.io;
-import std.math;
+import std.integer;
 import std.string;
 import std.system;
 import std.text;

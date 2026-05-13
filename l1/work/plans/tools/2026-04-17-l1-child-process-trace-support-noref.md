@@ -38,7 +38,7 @@ analyzed independently.
 ## Current State
 
 1. `run_trace_tests.py` traces one top-level `.l0` test process at a time.
-2. `math_test.l0` contains pure `std.math` helper checks and is suitable for the default trace suite.
+2. `math_test.l0` contains pure `std.integer` helper checks and is suitable for the default trace suite.
 3. `math_runtime_compile_test.l0` contains nested compile/run fixture checks and is intentionally slow under trace.
 4. Nested `run_with_argv(...)` calls compile child fixtures in-process, so parent trace logs include compiler pipeline
    allocations and cleanup for those nested compiles.
@@ -68,7 +68,7 @@ analyzed independently.
 
 ## Non-Goals
 
-- changing `std.math` behavior
+- changing `std.integer` behavior
 - changing normal `make test-stage1` fixture semantics
 - making slow child trace fixtures part of `make test-all`
 - merging parent and child trace logs into one analyzer input

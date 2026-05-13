@@ -6,7 +6,7 @@
 module wide_math_main;
 
 import std.assert;
-import std.math;
+import std.integer;
 
 func expect_bool(label: string, actual: bool, expected: bool) {
     assert(actual == expected, label);

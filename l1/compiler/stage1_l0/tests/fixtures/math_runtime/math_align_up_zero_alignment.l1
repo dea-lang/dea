@@ -5,7 +5,7 @@
 
 module math_align_up_zero_alignment;
 
-import std.math;
+import std.integer;
 
 func main() -> int {
     align_up(8, 0);

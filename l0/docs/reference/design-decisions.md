@@ -128,8 +128,9 @@ Policy:
 - `byte` is 8-bit semantics,
 - runtime helpers enforce defined behavior for overflow/division/mod edge cases.
 
-At the stdlib layer, shared integer helper contracts belong in `std.math`; modules such as `std.time` may consume those
-helpers, but they should not own general-purpose arithmetic utilities. The `std.math` surface remains integer-focused.
+At the stdlib layer, shared integer helper contracts belong in `std.integer`; modules such as `std.time` may consume
+those helpers, but they should not own general-purpose arithmetic utilities. The `std.integer` surface remains
+integer-focused.
 
 Implementation details of generated helpers and typedef mapping are canonical in
 [reference/c-backend-design.md](c-backend-design.md) and `compiler/shared/runtime/l0_runtime.h`.

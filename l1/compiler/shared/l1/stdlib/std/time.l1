@@ -6,7 +6,7 @@
 module std.time;
 
 import sys.rt;
-import std.math;
+import std.integer;
 
 /**
  * Represents wall clock time in seconds and nanoseconds since the Unix epoch.

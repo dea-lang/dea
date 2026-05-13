@@ -79,7 +79,7 @@ func expect_min_error_count(source: string, expected_min: int) {
  * Tests that parser diagnostic messages do not duplicate their structured code.
  */
 func test_parser_message_omits_embedded_code() {
-    let result = parse_module_source("module main; import std.io std.math ;", "./hello.l0");
+    let result = parse_module_source("module main; import std.io std.integer ;", "./hello.l0");
     assert(parse_has_errors(result), "Expected parse error");
     let diag = parse_diag_get(result, 0);
     assert(diag.code == "PAR-0321", "Expected import semicolon diagnostic code");

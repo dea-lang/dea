@@ -8,7 +8,7 @@ def test_math_surface_runtime(codegen_single, compile_and_run, tmp_path):
         """
         module math_surface_runtime;
 
-        import std.math;
+        import std.integer;
         import std.io;
 
         func print_i_opt(x: int?) {
@@ -124,7 +124,7 @@ def test_math_emod_zero_divisor_panics(codegen_single, compile_and_run, tmp_path
         """
         module math_emod_zero_divisor_panics;
 
-        import std.math;
+        import std.integer;
 
         func main() -> int {
             emod(1, 0);
@@ -147,7 +147,7 @@ def test_math_div_floor_zero_divisor_panics(codegen_single, compile_and_run, tmp
         """
         module math_div_floor_zero_divisor_panics;
 
-        import std.math;
+        import std.integer;
 
         func main() -> int {
             div_floor(1, 0);
@@ -170,7 +170,7 @@ def test_math_div_ceil_unrepresentable_panics(codegen_single, compile_and_run, t
         """
         module math_div_ceil_unrepresentable_panics;
 
-        import std.math;
+        import std.integer;
 
         func main() -> int {
             div_ceil(-2147483648, -1);
@@ -193,7 +193,7 @@ def test_math_align_up_zero_alignment_panics(codegen_single, compile_and_run, tm
         """
         module math_align_up_zero_alignment_panics;
 
-        import std.math;
+        import std.integer;
 
         func main() -> int {
             align_up(8, 0);
@@ -216,7 +216,7 @@ def test_math_clamp_invalid_bounds_panics(codegen_single, compile_and_run, tmp_p
         """
         module math_clamp_invalid_bounds_panics;
 
-        import std.math;
+        import std.integer;
 
         func main() -> int {
             clamp(5, 10, 0);

@@ -5,7 +5,7 @@
 
 module math_clamp_invalid_bounds;
 
-import std.math;
+import std.integer;
 
 func main() -> int {
     clamp(5, 10, 0);

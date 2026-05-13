@@ -375,7 +375,7 @@ func cem_is_c_keyword(name: string) -> bool {
  * the final section identifies the symbol category. The full normative spec
  * lives in `l1/docs/specs/compiler/abi.md`.
  *
- * @param module_name Module name in dotted source form (for example `std.math`).
+ * @param module_name Module name in dotted source form (for example `std.integer`).
  * @param sigil One-character LBI section sigil.
  * @param component Section component.
  * @return Mangled LBI name.

@@ -85,11 +85,12 @@ checks, including:
 - raw-pointer indexing `ptr[i]` inside `unsafe func`, with direct unchecked lowering on non-null sized pointer bases
 
 The stdlib currently includes the core bootstrap modules for I/O, strings, text, paths, filesystem access, time,
-randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.math`, L1-only
-`_ui` / `_l` / `_ul` `std.math` families for `uint`, `long`, and `ulong`, wide integer string conversions in `std.text`,
-`std.real` for floating-point classification, module-level real constants (`PI`, `E`, `NAN`, `INFINITY`, and `_F`
-variants), basic math functions, `std.io` numeric print plus integer token-read helpers for the implemented fixed-width
-integer family, and the `std.types` `Value` enum plus optionality/type-query helpers for built-in value types.
+randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.integer`, L1-only
+`_ui` / `_l` / `_ul` `std.integer` families for `uint`, `long`, and `ulong`, wide integer string conversions in
+`std.text`, `std.real` for floating-point classification, module-level real constants (`PI`, `E`, `NAN`, `INFINITY`, and
+`_F` variants), basic math functions, `std.io` numeric print plus integer token-read helpers for the implemented
+fixed-width integer family, and the `std.types` `Value` enum plus optionality/type-query helpers for built-in value
+types.
 
 ## Delivery and Validation
 

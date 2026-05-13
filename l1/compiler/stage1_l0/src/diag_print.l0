@@ -9,7 +9,7 @@ import sys.rt;
 
 import std.fs;
 import std.io;
-import std.math;
+import std.integer;
 import std.string;
 import std.text;
 import std.vector;
