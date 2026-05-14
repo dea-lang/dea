@@ -81,7 +81,11 @@ venv: _check-python
 		if [ -x "$(VENV_PYTHON)" ]; then \
 			printf '%s\n' 'make venv: syncing existing ./.venv with uv $(VENV_QUIET_LABEL)'; \
 		fi; \
-		UV_PROJECT_ENVIRONMENT="$(VENV_DIR)" uv sync $(VENV_UV_FLAGS) --all-groups; \
+		uv_project_environment="$(VENV_DIR)"; \
+		if [ "$(OS)" = "Windows_NT" ] && command -v cygpath >/dev/null 2>&1; then \
+			uv_project_environment="$$(cygpath -w "$(VENV_DIR)")"; \
+		fi; \
+		UV_PROJECT_ENVIRONMENT="$$uv_project_environment" uv sync $(VENV_UV_FLAGS) --all-groups; \
 	elif [ -x "$(VENV_PYTHON)" ]; then \
 		printf '%s\n' 'make venv: refreshing existing ./.venv with pip $(VENV_QUIET_LABEL)'; \
 		"$(VENV_PYTHON)" -m pip install $(VENV_PIP_FLAGS) $$("$(VENV_PYTHON)" -c "$(PIP_DEPS_CMD)"); \

@@ -1,0 +1,309 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: Unified CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ci.yml
+      - .github/workflows/l0-ci.yml
+      - .github/workflows/l1-ci.yml
+      - Makefile
+      - tools/**
+      - l0/**
+      - l1/**
+  pull_request:
+    paths:
+      - .github/workflows/ci.yml
+      - .github/workflows/l0-ci.yml
+      - .github/workflows/l1-ci.yml
+      - Makefile
+      - tools/**
+      - l0/**
+      - l1/**
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform matrix selection
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - linux
+          - macos-intel
+          - macos-arm64
+          - windows-ucrt64
+      c_compiler:
+        description: C compiler to use for manual Linux or Windows validation runs
+        required: true
+        default: gcc
+        type: choice
+        options:
+          - gcc
+          - clang
+      l0_make_target:
+        description: L0 make target to run
+        required: true
+        default: test-all
+        type: string
+      l1_make_target:
+        description: L1 make target to run
+        required: true
+        default: test-all
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  route-levels:
+    runs-on: ubuntu-latest
+    outputs:
+      run_l0: ${{ steps.route.outputs.run_l0 }}
+      run_l1: ${{ steps.route.outputs.run_l1 }}
+      run_any: ${{ steps.route.outputs.run_any }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Decide level routing
+        id: route
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          run_l0=false
+          run_l1=false
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_l0=true
+            run_l1=true
+          else
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              base_sha="$PR_BASE_SHA"
+              head_sha="$PR_HEAD_SHA"
+            else
+              base_sha="$BEFORE_SHA"
+              head_sha="$PUSH_SHA"
+            fi
+
+            if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
+              run_l0=true
+              run_l1=true
+            elif ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 || \
+                 ! git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
+              echo "Diff endpoints unavailable; running both levels."
+              run_l0=true
+              run_l1=true
+            else
+              changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+              shared=false
+
+              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|\.github/workflows/|Makefile)'; then
+                shared=true
+              fi
+              if printf '%s\n' "$changed_files" | grep -Eq '^l0/'; then
+                run_l0=true
+              fi
+              if printf '%s\n' "$changed_files" | grep -Eq '^l1/'; then
+                run_l1=true
+              fi
+              if [ "$shared" = true ]; then
+                run_l0=true
+                run_l1=true
+              fi
+            fi
+          fi
+
+          run_any=false
+          if [ "$run_l0" = true ] || [ "$run_l1" = true ]; then
+            run_any=true
+          fi
+
+          {
+            echo "run_l0=$run_l0"
+            echo "run_l1=$run_l1"
+            echo "run_any=$run_any"
+          } >> "$GITHUB_OUTPUT"
+
+  select-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - name: Select matrix
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          default_matrix = [
+              {
+                  "runner": "ubuntu-latest",
+                  "os": "linux",
+                  "arch": "x86_64",
+                  "c_compiler": "gcc",
+                  "platform": "linux",
+              },
+              {
+                  "runner": "macos-15-intel",
+                  "os": "darwin",
+                  "arch": "x86_64",
+                  "c_compiler": "clang",
+                  "platform": "macos-intel",
+              },
+              {
+                  "runner": "macos-latest",
+                  "os": "darwin",
+                  "arch": "arm64",
+                  "c_compiler": "clang",
+                  "platform": "macos-arm64",
+              },
+              {
+                  "runner": "windows-latest",
+                  "os": "windows",
+                  "arch": "x86_64",
+                  "c_compiler": "gcc",
+                  "platform": "windows-ucrt64",
+              },
+          ]
+
+          event_name = os.environ["EVENT_NAME"]
+          requested_platform = os.environ.get("INPUT_PLATFORM", "all").strip() or "all"
+          selected = default_matrix
+          if event_name == "workflow_dispatch":
+              if requested_platform == "all":
+                  selected = default_matrix
+              else:
+                  selected = [entry for entry in default_matrix if entry["platform"] == requested_platform]
+                  if not selected:
+                      raise SystemExit(f"unknown workflow_dispatch platform selection: {requested_platform}")
+
+          github_output = os.environ["GITHUB_OUTPUT"]
+          with open(github_output, "a", encoding="utf-8") as handle:
+              handle.write(f"matrix={json.dumps({'include': selected}, separators=(',', ':'))}\n")
+          PY
+
+  unified:
+    needs:
+      - route-levels
+      - select-matrix
+    if: needs.route-levels.outputs.run_any == 'true'
+    name: unified (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ github.event_name == 'workflow_dispatch' && (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Select C compiler
+        id: select-cc
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.c_compiler }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up uv
+        if: runner.os != 'Windows'
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-suffix: unified-ci-${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}-py3.14-ws
+
+      - name: Install Linux build toolchain
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang make
+
+      - name: Set up MSYS2 UCRT64 toolchain
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: >-
+            make
+            diffutils
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-uv
+
+      - name: Show Windows environment
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          printf 'platform=%s\n' '${{ matrix.platform }}'
+          printf 'MSYSTEM=%s\n' "${MSYSTEM:-}"
+          pwd
+          printf 'GITHUB_WORKSPACE=%s\n' "${GITHUB_WORKSPACE:-}"
+          command -v python
+          python -VV
+          command -v uv || true
+          uv --version || true
+          command -v make
+          command -v "${{ steps.select-cc.outputs.value }}"
+          "${{ steps.select-cc.outputs.value }}" --version | head -n 1
+
+      - name: Select L0 Make target
+        id: select-l0-target
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.l0_make_target }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=test-all" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Select L1 Make target
+        id: select-l1-target
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.l1_make_target }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=test-all" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run L0 CI delegate
+        if: needs.route-levels.outputs.run_l0 == 'true'
+        uses: ./.github/actions/l0-ci
+        with:
+          make_target: ${{ steps.select-l0-target.outputs.value }}
+          c_compiler: ${{ steps.select-cc.outputs.value }}
+          artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}
+
+      - name: Run L1 CI delegate
+        if: needs.route-levels.outputs.run_l1 == 'true'
+        uses: ./.github/actions/l1-ci
+        with:
+          make_target: ${{ steps.select-l1-target.outputs.value }}
+          c_compiler: ${{ steps.select-cc.outputs.value }}
+          artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}

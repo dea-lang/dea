@@ -1,0 +1,46 @@
+name: L1 CI Delegate
+
+description: Run L1 CI target for the current runner environment.
+
+inputs:
+  make_target:
+    description: Make target to run in l1/
+    required: true
+  c_compiler:
+    description: C compiler selection
+    required: true
+  artifact_name_suffix:
+    description: Artifact suffix (usually platform-compiler)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Run L1 Make target
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        L0_CC: ${{ inputs.c_compiler }}
+        L1_RUNTIME_CC: ${{ inputs.c_compiler }}
+      run: make -C l1 ${{ inputs.make_target }}
+
+    - name: Run L1 Make target (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      env:
+        L0_CC: ${{ inputs.c_compiler }}
+        L1_RUNTIME_CC: ${{ inputs.c_compiler }}
+        PYTHON: python
+      run: make -C l1 ${{ inputs.make_target }}
+
+    - name: Upload L1 workdir artifact
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: l1-workdir-${{ inputs.artifact_name_suffix }}
+        path: |
+          .github/workflows/l1-ci.yml
+          l1
+          !l1/.git/**
+        if-no-files-found: warn
+        retention-days: 2

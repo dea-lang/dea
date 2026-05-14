@@ -4,18 +4,23 @@
 name: L0 CI
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/l0-ci.yml
-      - tools/**
-      - l0/**
-  pull_request:
-    paths:
-      - .github/workflows/l0-ci.yml
-      - tools/**
-      - l0/**
+  workflow_call:
+    inputs:
+      platform:
+        description: Platform matrix selection
+        required: false
+        default: all
+        type: string
+      c_compiler:
+        description: C compiler to use for manual Linux or Windows validation runs
+        required: false
+        default: gcc
+        type: string
+      make_target:
+        description: Make target to run
+        required: false
+        default: test-all
+        type: string
   workflow_dispatch:
     inputs:
       platform:
@@ -44,6 +49,9 @@ on:
         required: true
         default: test-all
         type: string
+
+permissions:
+  contents: read
 
 jobs:
   select-matrix:
@@ -129,14 +137,14 @@ jobs:
           event_name = os.environ["EVENT_NAME"]
           requested_platform = os.environ.get("INPUT_PLATFORM", "all").strip() or "all"
           selected = default_matrix
-          if event_name == "workflow_dispatch":
+          if event_name in {"workflow_dispatch", "workflow_call"}:
               dispatch_matrix = default_matrix + manual_only_matrix
               if requested_platform == "all":
                   selected = dispatch_matrix
               else:
                   selected = [entry for entry in dispatch_matrix if entry["platform"] == requested_platform]
                   if not selected:
-                      raise SystemExit(f"unknown workflow_dispatch platform selection: {requested_platform}")
+                      raise SystemExit(f"unknown platform selection: {requested_platform}")
 
           github_output = os.environ["GITHUB_OUTPUT"]
           with open(github_output, "a", encoding="utf-8") as handle:
@@ -145,14 +153,11 @@ jobs:
 
   test-all:
     needs: select-matrix
-    name: test-all (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ github.event_name == 'workflow_dispatch' && (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
+    name: test-all (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
-        working-directory: l0
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -167,7 +172,7 @@ jobs:
         id: select-cc
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && { [ "${{ matrix.os }}" = "linux" ] || [ "${{ matrix.os }}" = "windows" ]; }; then
+          if [ "${{ matrix.os }}" = "linux" ] || [ "${{ matrix.os }}" = "windows" ]; then
             echo "value=${{ inputs.c_compiler }}" >> "$GITHUB_OUTPUT"
           else
             echo "value=${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
@@ -228,38 +233,9 @@ jobs:
           command -v "${{ steps.select-cc.outputs.value }}"
           "${{ steps.select-cc.outputs.value }}" --version | head -n 1
 
-      - name: Select Make target
-        id: select-make-target
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.make_target }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=test-all" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run Make target
-        if: matrix.os != 'windows'
-        env:
-          L0_CC: ${{ steps.select-cc.outputs.value }}
-        run: make ${{ steps.select-make-target.outputs.value }}
-
-      - name: Run Make target
-        if: matrix.os == 'windows'
-        shell: msys2 {0}
-        env:
-          DEA_DEBUG_VENV: "1"
-          L0_CC: ${{ steps.select-cc.outputs.value }}
-          PYTHON: python
-        run: make ${{ steps.select-make-target.outputs.value }}
-
-      - name: Upload workdir artifact
-        if: always()
-        uses: actions/upload-artifact@v6
+      - name: Run L0 CI delegate
+        uses: ./.github/actions/l0-ci
         with:
-          name: workdir-${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}
-          path: |
-            l0
-            !l0/.git/**
-          if-no-files-found: warn
-          retention-days: 2
+          make_target: ${{ inputs.make_target }}
+          c_compiler: ${{ steps.select-cc.outputs.value }}
+          artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}

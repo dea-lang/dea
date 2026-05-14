@@ -1,0 +1,44 @@
+name: L0 CI Delegate
+
+description: Run L0 CI target for the current runner environment.
+
+inputs:
+  make_target:
+    description: Make target to run in l0/
+    required: true
+  c_compiler:
+    description: C compiler selection
+    required: true
+  artifact_name_suffix:
+    description: Artifact suffix (usually platform-compiler)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Run L0 Make target
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        L0_CC: ${{ inputs.c_compiler }}
+      run: make -C l0 ${{ inputs.make_target }}
+
+    - name: Run L0 Make target (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      env:
+        DEA_DEBUG_VENV: "1"
+        L0_CC: ${{ inputs.c_compiler }}
+        PYTHON: python
+      run: make -C l0 ${{ inputs.make_target }}
+
+    - name: Upload L0 workdir artifact
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: l0-workdir-${{ inputs.artifact_name_suffix }}
+        path: |
+          l0
+          !l0/.git/**
+        if-no-files-found: warn
+        retention-days: 2
