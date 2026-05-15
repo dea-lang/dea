@@ -7,19 +7,64 @@ and any future proposals.
 
 ## Layout
 
-- `initiatives/` for multiphase, cross-cutting bodies of work that sequence and motivate future plans
+- `initiatives/` for multiphase, cross-cutting bodies of work that sequence and motivate future plans (see "Initiatives
+  and plans" below)
 - `plans/` for L1-local execution plans and operational work tracking
 - `proposals/` for future in-discussion L1 changes if that tree becomes necessary
-
-Active documents live at the category root. Realized, superseded, or otherwise closed documents move into
-`<category>/closed/` with cross-references updated.
 
 Use `l1/work/` only for material owned by the L1 subtree. If work spans `l0/` and `l1/`, prefer a single shared document
 under the repository-root `work/` tree with explicit targets rather than separate local follow-ups.
 
+Plan categories:
+
+- `plans/features/`: user-facing language, compiler, or standard-library features
+- `plans/tools/`: repository tooling and operational workflows
+- `plans/refactors/`: internal restructures that preserve current external behavior
+- `plans/bug-fixes/`: defect fixes in any subsystem
+
+Each plan category uses:
+
+- active plans at the category root
+- closed plans under `<category>/closed/`
+- plan attachments under `<category>/attachments/` when needed
+
+Active documents live at the category root. Realized, superseded, or otherwise closed documents move into
+`<category>/closed/` with cross-references updated.
+
+When closing a plan, `git mv` it (or `mv` it if not yet tracked) into the corresponding `closed/` subdirectory, then
+grep for its filename across `l1/docs/`, `l1/work/`, and any shared root docs/work files and update cross-references.
+
+## Plan Template
+
+```markdown
+# [Bug Fix | Feature | Refactor | Tool] Plan
+
+## [Short Title]
+
+- Date: YYYY-MM-DD
+- Status: [Draft | In Progress | Closed (fixed/implemented)]
+- Title: [Full descriptive title]
+- Kind: [Bug Fix | Feature | Refactor | Tooling]
+- Severity: [Low | Medium | High | Critical]
+- Stage: [1 | 2 | Shared]
+- Subsystem: [Subsystem name]
+- Modules:
+  - `path/to/module.l1`
+- Test modules:
+  - `path/to/test_module.l1`
+- Repro: [Reproduction command or path] (optional)
+
+## Summary
+
+...
+```
+
+Accepted proposals should graduate into `l1/docs/specs/`, `l1/docs/reference/`, or `l1/docs/implementation/` rather than
+remaining under `l1/work/`.
+
 ## Initiatives and plans
 
-Use an initiative (`l1/work/initiatives/NNNN-*.md`) for a coordinated, multi-phase body of work with a defined scope and
+Use an initiative (`l1/work/initiatives/NNNN-*.md`) for a coordinated, multiphase body of work with a defined scope and
 end state. Use a plan (`l1/work/plans/<kind>/<slug>.md`) for a single change or work item with a defined start and end.
 Plans are often spawned by an initiative phase, but can also stand alone for work that does not warrant an initiative.
 
