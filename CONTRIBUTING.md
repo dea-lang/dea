@@ -43,15 +43,15 @@ absent, `make venv` falls back to `python -m venv` plus `pip install` of the sam
 After running `make venv`, install the monorepo hooks once from the repository root:
 
 ```bash
-uv run --directory l0 --group dev pre-commit install -c .pre-commit-config.yaml
+uv run --group dev pre-commit install -c .pre-commit-config.yaml
 ```
 
 Two hooks run on every commit:
 
 - **mdformat** -- auto-formats all `.md` files (line wrap 120, numbered lists, GitHub Flavored Markdown). If it
   reformats a file, stage the changes and commit again.
-- **copyright-headers** -- checks that tracked `.c`, `.h`, `.l0`, `.py`, `.sh` files have a copyright notice in the
-  first 80 lines.
+- **copyright-headers** -- checks that tracked `.c`, `.h`, `.l0`, `.l1`, `.py`, `.sh` files have a copyright notice in
+  the first 80 lines.
 
 ### Building the compiler(s)
 

@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-05-12
+Version: 2026-05-19
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -73,12 +73,15 @@ For `--build` / `--run`, that generated unit now compiles against `dea_rt.h` and
 
 Current L1 Binary Interface (LBI) naming policy is:
 
-- All user-defined symbols (structs, enums, functions, and top-level bindings) use the tagged-section encoding
-  `__deaM<seg_len><seg>...S<sym_len><sym>`, where the `M` section length-prefixes each module-path segment and the `S`
-  section length-prefixes the symbol name (e.g. `std.integer::abs` → `__deaM3std7integerS3abs`).
-- Compiler-generated module lifecycle helpers use the same `M` module section plus an `I` lifecycle section (e.g. module
-  `std.integer` lifecycle `init` → `__deaM3std7integerI4init`). This avoids collisions between dotted and underscored
-  module names while keeping lifecycle helpers distinct from source-level `S` symbols.
+- Value symbols use the tagged-section encoding `__deaM<seg_len><seg>...N<sym_len><sym>[type-component]`, where the `M`
+  section length-prefixes each module-path segment and the `N` terminal length-prefixes the value name. Functions append
+  their function type component, so `std.integer::abs` with type `func(int) -> int` mangles as
+  `__deaM3std7integerN3absF1ii`; plain `let` and `const` bindings omit the type component.
+- Struct and enum type symbols use `S` and `E` terminals, for example `demo.main::Point` → `__deaM4demo4mainS5Point` and
+  `demo.main::Color` → `__deaM4demo4mainE5Color`.
+- Compiler-generated module lifecycle helpers use the same `M` module section plus an `I` lifecycle section, for example
+  module `std.integer` lifecycle `init` → `__deaM3std7integerI4init`. This avoids collisions between dotted and
+  underscored module names while keeping lifecycle helpers distinct from source-level value and nominal type symbols.
 - The encoding uses only ISO C99 identifier characters; no GCC `$`-in-identifier extension is required. See
   `l1/docs/specs/compiler/abi.md` for the normative spec.
 - Exported symbols keep global linkage in generated C and the resulting object file.

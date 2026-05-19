@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-05-12
+Version: 2026-05-19
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 

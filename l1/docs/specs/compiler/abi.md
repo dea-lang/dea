@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-05-12
+Version: 2026-05-19
 
 Status: Finalized
 

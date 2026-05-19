@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-05-11
+Version: 2026-05-19
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -43,9 +43,10 @@ The current compiler also synthesizes the implicit `dea` prelude module for lang
 intrinsic supports payload-ignoring enum tag comparison, including qualified variant references and enum-returning call
 expressions in first position.
 
-Generated C now uses LBI `__deaM...S...` names for L1-defined source symbols and `__deaM...I...` names for
-compiler-generated module lifecycle helpers. Module export manifests drive external vs. internal linkage for top-level
-functions, lets, and consts in the current backend.
+Generated C uses the unified recursive LBI grammar: value symbols use `__deaM...N...` terminals with function type
+components where needed, nominal types use `S` / `E`, and compiler-generated module lifecycle helpers use
+`__deaM...I...` names. Module export manifests drive external vs. internal linkage for top-level functions, lets, and
+consts in the current backend.
 
 ### Runtime and Standard Library
 
@@ -122,10 +123,9 @@ ARC/memory trace checks, and example checks. Linux portability is exercised via 
 
 Validation is currently centered on:
 
-- automated CI via `l1-ci.yml` in the monorepo `.github/workflows/` — triggers on `push`/`pull_request` for `l1/` and
-  `tools/` changes, with `workflow_dispatch` for manual C compiler selection and opt-in slow trace coverage
-
-- `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
+- automated CI via `.github/workflows/ci.yml`, which routes L1-relevant `push`/`pull_request` changes into the reusable
+  `l1-ci.yml` workflow; `workflow_dispatch` remains available for platform selection, manual C compiler selection, and
+  opt-in slow trace coverage
 
 - `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
 

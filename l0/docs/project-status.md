@@ -1,6 +1,6 @@
 # L0 Project Status
 
-Version: 2026-05-08
+Version: 2026-05-19
 
 This document summarizes what is implemented in this repository today and what defines the current Dea/L0 `1.0.0`
 release.

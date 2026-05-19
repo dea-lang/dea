@@ -1,6 +1,6 @@
 # Dea/L1 Module Visibility and Imports
 
-Version: 2026-04-28
+Version: 2026-05-19
 
 Status: Finalized
 

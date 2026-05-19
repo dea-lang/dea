@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-04-26
+Version: 2026-05-19
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -61,17 +61,20 @@ Its repository status today is:
 - using `.l1` as the current L1 source surface for the copied L1 stdlib, example programs, and bootstrap test fixtures,
 - carrying implemented post-L0 language work such as wider numeric types, real literals, bitwise operators, top-level
   `const`, string value comparisons, nullable/pointer identity equality, the `is(...)` enum tag intrinsic, function
-  pointer types, and single-statement `while` / `for` / `match` bodies,
+  pointer types, `unsafe func`, raw-pointer indexing inside unsafe functions, fixed-size arrays, and single-statement
+  `while` / `for` / `match` bodies,
 - shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
   value-type helper surface,
 - not yet an install/dist/release-bearing product.
 
-L1 bootstrap CI validation is now automated through the `l1-ci.yml` GitHub Actions workflow, which covers:
+L1 bootstrap CI validation is now automated through the unified `ci.yml` GitHub Actions workflow, which routes
+L1-relevant changes into the reusable `l1-ci.yml` delegate. That path covers:
 
 - building the L1 Stage 1 compiler via an explicit upstream L0 Stage 2 compiler on Linux, macOS, and Windows,
 - running L1 Stage 1 implementation tests and default ARC/memory trace checks,
 - validating `examples/*.l1` sources, and
-- providing `workflow_dispatch` inputs for manual C compiler selection and opt-in slow trace coverage.
+- providing `workflow_dispatch` inputs for platform selection, manual C compiler selection, and opt-in slow trace
+  coverage.
 
 L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not yet active and will only be added when the L1
 install/dist artifact contract is defined, stable, and smoke-testable. See `MONOREPO.md` for the full release-line

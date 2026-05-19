@@ -28,10 +28,11 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   implemented behavior.
 - Any future `stage2_l1` implementation should preserve the L1 language/runtime decisions documented in
   [design-decisions] unless the reference set is deliberately updated.
-- L1-defined source symbols currently use the broad-`S` `__deaM...S...` LBI spelling; Refactor
-  [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] will replace this with `N` / `S` / `E` terminals once it
-  lands. Compiler-generated module lifecycle helpers use `__deaM...I...`. Runtime/public helper families retain their
-  documented `dea_*`, `DEA_*`, `rt_*`, and `_rt_*` roles. Historical `l0_*` names are not part of the current L1 ABI.
+- L1-defined source symbols use the unified recursive LBI grammar from
+  [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling]: value symbols use `N` terminals with trailing function
+  type components where needed, nominal types use `S` / `E`, and compiler-generated module lifecycle helpers use `I`.
+  Runtime/public helper families retain their documented `dea_*`, `DEA_*`, `rt_*`, and `_rt_*` roles. Historical `l0_*`
+  names are not part of the current L1 ABI.
 - The first L1 productization steps should remain bootstrap-oriented until a later plan explicitly makes L1 a release
   line.
 
@@ -90,6 +91,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   plus alias and selective import resolution for the separate-compilation initiative.
 - Feature [2026-04-24-lbi-symbol-mangling-and-linkage-noref][symbol-linkage] adopted tagged-section LBI names for source
   symbols and module lifecycle helpers plus export-driven backend linkage.
+- Refactor [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] collapsed the two-layer LBI scheme into a
+  single recursive grammar, replacing the broad-`S` link-name layer with `N` / `S` / `E` / `I` terminals plus trailing
+  type components for function signatures.
 
 </details>
 
@@ -131,9 +135,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   non-variadic C boundary.
 - Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] carves OS/process helpers and RNG out of
   `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c` CUs.
-- Refactor [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] collapses the two-layer LBI scheme into a
-  single recursive grammar, replacing the broad-`S` link-name layer with `N` / `S` / `E` / `I` terminals plus trailing
-  type components for function signatures.
 - Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices] adds Stage 1 slice types `T[]`,
   `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
 
@@ -246,7 +247,7 @@ update to be promoted to an initiative or plan:
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
-[unified-lbi-mangling]: ../work/plans/refactors/2026-05-11-unified-lbi-mangling-noref.md
+[unified-lbi-mangling]: ../work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md
 [variadic-functions]: ../work/plans/features/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
 [wide-int]: ../work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md

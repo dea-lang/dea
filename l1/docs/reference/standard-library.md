@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-05-11
+Version: 2026-05-19
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
