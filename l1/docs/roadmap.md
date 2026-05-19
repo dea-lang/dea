@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-05-11
+Version: 2026-05-19
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -134,6 +134,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Refactor [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] collapses the two-layer LBI scheme into a
   single recursive grammar, replacing the broad-`S` link-name layer with `N` / `S` / `E` / `I` terminals plus trailing
   type components for function signatures.
+- Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices] adds Stage 1 slice types `T[]`,
+  `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
 
 ## Backlog
 
@@ -153,9 +155,11 @@ surface.
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
 - Fixed-size typed arrays `T[N]`, raw-pointer indexing `ptr[i]` inside `unsafe func`, and the function-level `unsafe`
-  marker shipped under Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. Dynamic buffers, shared
-  buffers, slices, address-of (`&`), and broader pointer arithmetic remain backlog items. Current `std.array` /
-  `std.vector` storage remains the library-level dynamic/container layer rather than a replacement for `T[N]`.
+  marker shipped under Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. First-class slice types
+  `T[]`, `len`, and `slice` are tracked by Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices].
+  Dynamic buffers, shared buffers, address-of (`&`), and broader pointer arithmetic remain backlog items. Current
+  `std.array` / `std.vector` storage remains the library-level dynamic/container layer rather than a replacement for
+  `T[N]`.
 - `_` struct-member semantics are tracked by Feature
   [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members], which fixes `_ : StructType` as a single
   first-position anonymous embedded struct member and defines its construction, field-access, layout, and ABI rules.
@@ -237,6 +241,7 @@ update to be promoted to an initiative or plan:
 [separate-compilation]: ../work/initiatives/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
+[stage1-slices]: ../work/plans/features/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
