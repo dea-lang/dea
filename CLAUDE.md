@@ -75,6 +75,33 @@ level directory first.
 - Plans spawned by an initiative carry a `Parent Initiative:` field in their metadata block pointing at the initiative
   file using the repo-root path. Standalone plans omit this field. Keep `Open plans:` / `Closed plans:` in the
   initiative in sync whenever a plan is opened or closed.
+- ADR-style decision records live in `docs/decisions/` (Dea-wide), `l0/docs/decisions/` (L0-specific), and
+  `l1/docs/decisions/` (L1-specific). Each ADR links the decision to the closed plans that shaped it and the current
+  docs where it is normatively recorded. ADR numbers are never reused; superseded ADRs stay in place with updated
+  status.
+
+### ADR Maintenance
+
+**When to create a new ADR:** after closing a plan that introduced or confirmed a lasting design decision with
+architectural significance. The ADR number is the next unused number in the relevant `decisions/` directory.
+
+**Lifecycle steps:**
+
+1. Create `NNNN-slug.md` with metadata bullets (`- Decision date:`, `- Last edited:`, `- Status:`), all required
+   sections (Context, Decision, Rationale, Consequences, Related Plans, Current Docs), and resolve all links before
+   committing.
+2. Add a row to the corresponding `decisions/INDEX.md`.
+3. If the new ADR supersedes an existing one: update the old ADR's `Status:` to
+   `Superseded by [ADR-NNNN](NNNN-slug.md) (YYYY-MM-DD)` and add a `- Supersedes: [ADR-XXXX](XXXX-slug.md)` bullet to
+   the new ADR's metadata block.
+
+**INDEX.md policy:** each `decisions/INDEX.md` is the only file that tracks which ADRs exist in its scope; it must be
+kept in sync manually whenever an ADR is added or superseded. A superseded ADR stays in the index with its updated
+status; the next new ADR takes the next sequential number.
+
+**Em-dash and n-dash policy:** use ASCII punctuation only. Choose the form that fits the local context: colon (`:`) to
+introduce an explanation or list, parentheses for a parenthetical aside, semicolon (`;`) for a contrast, comma (`,`) for
+a simple annotation. Do not use `--` (double-hyphen) unless none of the above fit naturally.
 
 ## Git Conventions
 

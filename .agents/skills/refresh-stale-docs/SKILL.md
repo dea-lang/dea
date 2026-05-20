@@ -21,6 +21,8 @@ Start with live docs only:
 - subtree `README.md` files
 - internal guidance files such as `CLAUDE.md`, `AGENTS.md`, and `.github/copilot-instructions.md` when the task includes
   internal docs
+- `docs/decisions/INDEX.md`, `l0/docs/decisions/INDEX.md`, `l1/docs/decisions/INDEX.md`: verify each table row matches
+  an ADR file present in the directory; flag any gap or orphan row
 
 Do not sweep `work/plans/**` or archived docs unless the task explicitly asks for lifecycle artifacts.
 

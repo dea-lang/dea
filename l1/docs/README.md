@@ -17,6 +17,8 @@ while Dea-wide lifecycle artifacts live under the root `work/` tree.
 - `reference/` for L1-local bootstrap and implementation references
 - `specs/` for future L1-local specifications
 - `implementation/` for future accepted implementation notes if needed
+- `decisions/` for ADR-style records linking design decisions to the closed plans that shaped them and the current docs
+  where they are normatively recorded
 
 Use `l1/work/plans/` for L1-local plans. If L1 work is actually shared with L0 or the monorepo, prefer one shared
 root-owned plan under `work/plans/` instead of opening an L1-only follow-up plan for a mechanical downstream port.

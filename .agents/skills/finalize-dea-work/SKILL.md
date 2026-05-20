@@ -31,6 +31,13 @@ work.
 - update `Status: Completed`, completion notes, and final repro/validation commands
 - future follow-up work stays as a draft plan in the correct kind, for example `tools` for test-runner/tooling work
 
+2a. Check for ADR-worthy decisions:
+
+If the plan introduced or confirmed a design decision with lasting architectural significance, check whether a matching
+ADR exists in `docs/decisions/`, `l0/docs/decisions/`, or `l1/docs/decisions/`. If not, flag the gap in the handoff and
+note that a new ADR may be warranted. If a new ADR is needed, create it (with metadata, all required sections, and
+resolved links) and update the corresponding `decisions/INDEX.md` in the same commit.
+
 3. Refresh docs affected by shipped behavior:
 
 - update relevant `Version: YYYY-MM-DD` metadata when editing reference/status docs

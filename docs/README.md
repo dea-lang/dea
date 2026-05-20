@@ -38,3 +38,14 @@ Examples:
 - future cross-level release or compatibility policy
 
 Language-specific specs live in the owning subtree such as `l0/docs/specs/`.
+
+## Decisions
+
+Root ADRs live under `docs/decisions/` and record Dea-wide architectural decisions — decisions that span both language
+levels or belong to the project as a whole.
+
+Each ADR links the decision to the closed plans that shaped it and the current docs where it is normatively recorded.
+ADRs complement the `design-decisions.md` reference files (stable aggregates) and the closed plans in `work/plans/`
+(execution history); they do not replace either.
+
+Level-specific ADRs live in the owning subtree: `l0/docs/decisions/` and `l1/docs/decisions/`.

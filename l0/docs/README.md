@@ -10,6 +10,8 @@ This directory is organized by document intent first, then subsystem.
 - `specs/`: normative contracts and behavioral specifications.
 - `implementation/`: implementation-oriented specs and design notes.
 - `attic/`: superseded or obsolete documents when archival storage is needed.
+- `decisions/`: ADR-style records linking design decisions to the closed plans that shaped them and the current docs
+  where they are normatively recorded.
 
 Lifecycle artifacts do not live in `docs/`. Use the sibling `../work/` tree for:
 
