@@ -829,12 +829,13 @@ def write_distribution_version_file(layout: PrefixLayout, provenance: Stage2Buil
 
 
 def copy_distribution_extras(layout: PrefixLayout) -> None:
-    """Copy README, examples, and reference docs into the distribution tree."""
+    """Copy README, examples, and docs into the distribution tree."""
 
     user_docs_dir = REPO_ROOT / "docs" / "user"
-    user_doc_map = {"README.md": layout.prefix_dir / "README.md"}
-    if is_windows_host():
-        user_doc_map["README-WINDOWS.md"] = layout.prefix_dir / "README-WINDOWS.md"
+    user_doc_map = {
+        "README.md": layout.prefix_dir / "README.md",
+        "README-WINDOWS.md": layout.prefix_dir / "README-WINDOWS.md",
+    }
     for source_name, destination in user_doc_map.items():
         source = user_docs_dir / source_name
         if not source.is_file():
@@ -845,26 +846,10 @@ def copy_distribution_extras(layout: PrefixLayout) -> None:
     if examples_src.is_dir():
         copy_tree(examples_src, layout.prefix_dir / "examples")
 
-    status_src = REPO_ROOT / "docs" / "project-status.md"
-    if not status_src.is_file():
-        raise FileNotFoundError(f"missing distribution project status doc: {status_src}")
-    copy_file(status_src, layout.prefix_dir / "docs" / "project-status.md")
-
-    ref_src = REPO_ROOT / "docs" / "reference"
-    ref_dst = layout.prefix_dir / "docs" / "reference"
-    reference_docs = (
-        "architecture.md",
-        "c-backend-design.md",
-        "design-decisions.md",
-        "grammar.md",
-        "ownership.md",
-        "standard-library.md",
-    )
-    for name in reference_docs:
-        source = ref_src / name
-        if not source.is_file():
-            raise FileNotFoundError(f"missing distribution reference doc: {source}")
-        copy_file(source, ref_dst / name)
+    docs_src = REPO_ROOT / "docs"
+    if not docs_src.is_dir():
+        raise FileNotFoundError(f"missing distribution docs directory: {docs_src}")
+    copy_tree(docs_src, layout.prefix_dir / "docs")
 
 
 def distribution_archive_format() -> str:

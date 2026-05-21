@@ -166,6 +166,18 @@ def assert_missing(path: Path) -> None:
         fail(f"did not expect path: {path}")
 
 
+def assert_same_file_tree(source: Path, destination: Path) -> None:
+    source_files = sorted(path.relative_to(source) for path in source.rglob("*") if path.is_file())
+    destination_files = sorted(path.relative_to(destination) for path in destination.rglob("*") if path.is_file())
+    if source_files != destination_files:
+        source_only = sorted(set(source_files) - set(destination_files))
+        destination_only = sorted(set(destination_files) - set(source_files))
+        fail(
+            f"file tree mismatch for {source} -> {destination}: "
+            f"missing={source_only}, unexpected={destination_only}"
+        )
+
+
 def clean_env() -> dict[str, str]:
     env: dict[str, str] = {}
     for name in ("PATH", "Path"):
@@ -275,17 +287,16 @@ def main() -> int:
             assert_exists(dist_dir / "bin" / "l0-env.cmd")
         assert_exists(dist_dir / "VERSION")
         assert_exists(dist_dir / "README.md")
-        if is_windows_host():
-            assert_exists(dist_dir / "README-WINDOWS.md")
-        else:
-            assert_missing(dist_dir / "README-WINDOWS.md")
+        assert_exists(dist_dir / "README-WINDOWS.md")
         assert_exists(dist_dir / "shared" / "l0" / "stdlib" / "std" / "io.l0")
+        assert_exists(dist_dir / "docs" / "README.md")
         assert_exists(dist_dir / "docs" / "project-status.md")
         assert_exists(dist_dir / "docs" / "reference" / "grammar.md")
-        assert_missing(dist_dir / "docs" / "reference" / "project-status.md")
-        assert_missing(dist_dir / "docs" / "reference" / "blog-poll-workflow.yml")
-        assert_missing(dist_dir / "docs" / "reference" / "grammar" / "l0.md")
-        assert_missing(dist_dir / "docs" / "user")
+        assert_exists(dist_dir / "docs" / "specs" / "compiler" / "cli-contract.md")
+        assert_exists(dist_dir / "docs" / "specs" / "runtime" / "trace.md")
+        assert_exists(dist_dir / "docs" / "user" / "README.md")
+        assert_exists(dist_dir / "docs" / "user" / "README-WINDOWS.md")
+        assert_same_file_tree(REPO_ROOT / "docs", dist_dir / "docs")
         assert_missing(dist_dir / "CONTRIBUTING.md")
         assert_exists(dist_dir / "shared" / "runtime" / "l0_runtime.h")
         assert_exists(archive_path)
@@ -314,16 +325,15 @@ def main() -> int:
             assert_exists(unpacked_dist / "bin" / "l0-env.cmd")
         assert_exists(unpacked_dist / "VERSION")
         assert_exists(unpacked_dist / "README.md")
-        if is_windows_host():
-            assert_exists(unpacked_dist / "README-WINDOWS.md")
-        else:
-            assert_missing(unpacked_dist / "README-WINDOWS.md")
+        assert_exists(unpacked_dist / "README-WINDOWS.md")
+        assert_exists(unpacked_dist / "docs" / "README.md")
         assert_exists(unpacked_dist / "docs" / "project-status.md")
         assert_exists(unpacked_dist / "docs" / "reference" / "grammar.md")
-        assert_missing(unpacked_dist / "docs" / "reference" / "project-status.md")
-        assert_missing(unpacked_dist / "docs" / "reference" / "blog-poll-workflow.yml")
-        assert_missing(unpacked_dist / "docs" / "reference" / "grammar" / "l0.md")
-        assert_missing(unpacked_dist / "docs" / "user")
+        assert_exists(unpacked_dist / "docs" / "specs" / "compiler" / "cli-contract.md")
+        assert_exists(unpacked_dist / "docs" / "specs" / "runtime" / "trace.md")
+        assert_exists(unpacked_dist / "docs" / "user" / "README.md")
+        assert_exists(unpacked_dist / "docs" / "user" / "README-WINDOWS.md")
+        assert_same_file_tree(REPO_ROOT / "docs", unpacked_dist / "docs")
         assert_missing(unpacked_dist / "CONTRIBUTING.md")
         assert_exists(unpacked_dist / "shared" / "l0" / "stdlib" / "std" / "io.l0")
         assert_contains(unpacked_dist / "bin" / "l0-env.sh", 'export L0_HOME="${PREFIX_DIR}"')
