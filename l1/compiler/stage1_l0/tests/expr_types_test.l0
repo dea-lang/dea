@@ -857,6 +857,35 @@ func test_typing_call_err() {
 }
 
 /**
+ * Tests valid named argument bindings.
+ */
+func test_typing_named_args_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_named_args_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_named_args_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests named argument diagnostics (unknown, duplicate, missing).
+ */
+func test_typing_named_args_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_named_args_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_named_args_err");
+        assert(count_diag_code(result, "TYP-0762") == 2, "expected 2 unknown argument errors (TYP-0762)");
+        assert(count_diag_code(result, "TYP-0763") == 2, "expected 2 duplicate argument errors (TYP-0763)");
+        assert(count_diag_code(result, "TYP-0764") == 6, "expected 6 missing argument errors (TYP-0764)");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests `match` exhaustiveness and missing-return flow diagnostics.
  */
 func test_typing_match_flow_err() {
@@ -1066,6 +1095,7 @@ func test_typing_is_intrinsic_err() {
         assert(count_diag_code(result, "TYP-0246") == 1, "expected one `is` first-argument diagnostic");
         assert(count_diag_code(result, "TYP-0247") == 2, "expected two `is` variant-reference diagnostics");
         assert(count_diag_code(result, "TYP-0248") == 1, "expected one `is` enum-mismatch diagnostic");
+        assert(count_diag_code(result, "TYP-0760") == 3, "expected three intrinsic named-argument diagnostics");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -1194,6 +1224,9 @@ func main() {
     test_typing_cast_int_to_byte_overflow();
     test_typing_bitwise_ok();
     test_typing_bitwise_err();
+    test_typing_call_err();
+    test_typing_named_args_ok();
+    test_typing_named_args_err();
     test_typing_small_int_ok();
     test_typing_small_int_err();
     test_typing_small_int_literal_overflow();

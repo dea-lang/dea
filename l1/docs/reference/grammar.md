@@ -436,7 +436,10 @@ PostfixOp           ::=     "(" ( ArgList )? ")"    (* function call *)
 
 ArgList             ::=     Arg ( "," Arg )*
 
-Arg                 ::=     TypeExpr
+Arg                 ::=     Ident ":" ArgValue
+                      |     ArgValue
+
+ArgValue            ::=     TypeExpr
                       |     Expr
 
 TypeExpr            ::=     BuiltinTypeName TypeSuffix*
@@ -475,6 +478,9 @@ Notes:
 - The `?` type suffix denotes nullable types in the `Type` grammar.
 - `?` as a postfix operator is the **null propagation operator** (also known as the **try operator**).
 - `TypeExpr` allows types in argument position for intrinsics such as `sizeof(int*)` a.k.a. `dea::sizeof(int*)`.
+- Call and `new` argument lists must be all positional or all named. Named arguments are accepted for function calls,
+  struct constructors, and enum-variant constructors; labels are checked semantically against the required parameter,
+  field, or payload names.
 - Array literals require a contextual `T[N]` type. Short literals zero/default-pad trailing elements; overlong literals
   are rejected.
 - Array constructors are restricted to array type calls such as `int[3]([1, 2])` or `byte[1024](0xFF)`. Fill arguments

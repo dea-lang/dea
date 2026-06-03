@@ -733,6 +733,11 @@ func test_unsafe_function_syntax_err() {
     expect_error_code("module main; type Bad = unsafe int;", "PAR-0601");
 }
 
+func test_mixed_named_args() {
+    expect_error_code("module main; func foo() { bar(1, b: 2); }", "PAR-0550");
+    expect_error_code("module main; func foo() { new Point(x: 1, 2); }", "PAR-0550");
+}
+
 /**
  * Tests that `is(value, Variant)` parses as an ordinary call with a bare variant argument.
  */

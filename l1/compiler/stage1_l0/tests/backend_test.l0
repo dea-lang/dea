@@ -792,6 +792,53 @@ func test_backend_generate_intrinsics_use_analyzed_target_types() {
 }
 
 /**
+ * Tests out-of-order named argument lowering through source-order temporaries.
+ */
+func test_backend_generate_named_args_use_source_order_temporaries() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Pair {");
+        sv_push(lines, "    first: int;");
+        sv_push(lines, "    second: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "enum Choice {");
+        sv_push(lines, "    Pick(left: int, right: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func value(v: int) -> int { return v; }");
+        sv_push(lines, "func combine(a: int, b: int) -> int { return a - b; }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let call = combine(b: value(3), a: value(10));");
+        sv_push(lines, "    let pair = Pair(second: value(20), first: value(10));");
+        sv_push(lines, "    let choice = Pick(right: value(2), left: value(1));");
+        sv_push(lines, "    return call + pair.first + ord(choice);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for named-argument lowering fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "dea_int dea_arg_"),
+            "out-of-order named arguments should materialize source-order temporaries");
+        assert(contains_s(generated, "__deaM4demo4mainN7combineF2iii(dea_arg_") &&
+               contains_s(generated, ", dea_arg_"),
+            "out-of-order named function call should use reordered temporaries");
+        assert(contains_s(generated, ".first = dea_arg_") && contains_s(generated, ".second = dea_arg_"),
+            "out-of-order named struct constructor should use reordered temporaries");
+        assert(contains_s(generated, ".left = dea_arg_") && contains_s(generated, ".right = dea_arg_"),
+            "out-of-order named enum constructor should use reordered temporaries");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests that user functions named like intrinsics are not lowered as `dea` intrinsics.
  */
 func test_backend_generate_dea_intrinsics_respect_symbol_origin() {
@@ -1638,6 +1685,7 @@ func main() {
     test_backend_generate_drop_statement();
     test_backend_generate_new_and_try_lowering();
     test_backend_generate_intrinsics_use_analyzed_target_types();
+    test_backend_generate_named_args_use_source_order_temporaries();
     test_backend_generate_dea_intrinsics_respect_symbol_origin();
     test_backend_generate_is_with_call_expr_and_qualified_variant();
     test_backend_generate_string_copy_retains();

@@ -2521,12 +2521,70 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
         }
         with (let field_inits = sv_create(8) => sv_free(field_inits)) {
             let struct_info = info as StructInfo*;
-            for (let i = 0; i < vec_size(struct_info.fields); i = i + 1) {
-                let field = ptr_vec_get(struct_info.fields, i) as StructFieldInfo*;
-                sv_push(field_inits, field.name);
-                sv_push(field_inits,
-                    be_emit_owned_expr_with_expected_type(self, id_vec_get(expr.ids as VectorBase*, i), field.field_type));
+            let arg_count = 0;
+            if (expr.ids != null) arg_count = vec_size(expr.ids as VectorBase*);
+            
+            let expected_names: StringVector*? = null;
+            let is_out_of_order = false;
+            if (expr.arg_labels != null) {
+                expected_names = sv_create(arg_count);
+                for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                    sv_push(expected_names as StringVector*, (ptr_vec_get(struct_info.fields, p_idx) as StructFieldInfo*).name);
+                }
+                for (let k = 0; k < arg_count; k = k + 1) {
+                    if (sv_get(expected_names as StringVector*, k) != sv_get(expr.arg_labels as StringVector*, k)) {
+                        is_out_of_order = true;
+                        break;
+                    }
+                }
             }
+
+            with (let c_arg_tmps = sv_create(arg_count) => sv_free(c_arg_tmps)) {
+                for (let i = 0; i < arg_count; i = i + 1) {
+                    let arg_id = id_vec_get(expr.ids as VectorBase*, i);
+                    let param_index = i;
+                    if (expected_names != null) {
+                        let label = sv_get(expr.arg_labels as StringVector*, i);
+                        for (let j = 0; j < arg_count; j = j + 1) {
+                            if (sv_get(expected_names as StringVector*, j) == label) {
+                                param_index = j;
+                                break;
+                            }
+                        }
+                    }
+
+                    let field = ptr_vec_get(struct_info.fields, param_index) as StructFieldInfo*;
+                    let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field.field_type);
+                    
+                    if (is_out_of_order) {
+                        with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                            if (arg_ty != null) {
+                                let tmp = cem_fresh_tmp(self.emitter, "arg");
+                                cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
+                                c_arg = tmp;
+                            }
+                        }
+                    }
+                    sv_push(c_arg_tmps, c_arg);
+                }
+
+                for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                    let source_index = p_idx;
+                    if (expected_names != null) {
+                        let expected_label = sv_get(expected_names as StringVector*, p_idx);
+                        for (let i = 0; i < arg_count; i = i + 1) {
+                            if (sv_get(expr.arg_labels as StringVector*, i) == expected_label) {
+                                source_index = i;
+                                break;
+                            }
+                        }
+                    }
+                    let field = ptr_vec_get(struct_info.fields, p_idx) as StructFieldInfo*;
+                    sv_push(field_inits, field.name);
+                    sv_push(field_inits, sv_get(c_arg_tmps, source_index));
+                }
+            }
+            if (expected_names != null) sv_free(expected_names as StringVector*);
             return cem_emit_struct_constructor_for_type(result_ty, field_inits);
         }
     }
@@ -2547,13 +2605,70 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
         }
         with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
             let info2 = variant_info as EnumVariantInfo*;
-            for (let i = 0; i < vec_size(info2.field_types); i = i + 1) {
-                let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
-                sv_push(payload_inits, field_decl.name);
-                sv_push(payload_inits,
-                    be_emit_owned_expr_with_expected_type(self, id_vec_get(expr.ids as VectorBase*, i),
-                        ptr_vec_get(info2.field_types, i) as Type*));
+            let arg_count = 0;
+            if (expr.ids != null) arg_count = vec_size(expr.ids as VectorBase*);
+
+            let expected_names: StringVector*? = null;
+            let is_out_of_order = false;
+            if (expr.arg_labels != null) {
+                expected_names = sv_create(arg_count);
+                for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                    sv_push(expected_names as StringVector*, (ptr_vec_get((variant_decl as EnumVariant*).fields, p_idx) as FieldDecl*).name);
+                }
+                for (let k = 0; k < arg_count; k = k + 1) {
+                    if (sv_get(expected_names as StringVector*, k) != sv_get(expr.arg_labels as StringVector*, k)) {
+                        is_out_of_order = true;
+                        break;
+                    }
+                }
             }
+
+            with (let c_arg_tmps = sv_create(arg_count) => sv_free(c_arg_tmps)) {
+                for (let i = 0; i < arg_count; i = i + 1) {
+                    let arg_id = id_vec_get(expr.ids as VectorBase*, i);
+                    let param_index = i;
+                    if (expected_names != null) {
+                        let label = sv_get(expr.arg_labels as StringVector*, i);
+                        for (let j = 0; j < arg_count; j = j + 1) {
+                            if (sv_get(expected_names as StringVector*, j) == label) {
+                                param_index = j;
+                                break;
+                            }
+                        }
+                    }
+
+                    let field_ty = ptr_vec_get(info2.field_types, param_index) as Type*;
+                    let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field_ty);
+                    
+                    if (is_out_of_order) {
+                        with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                            if (arg_ty != null) {
+                                let tmp = cem_fresh_tmp(self.emitter, "arg");
+                                cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
+                                c_arg = tmp;
+                            }
+                        }
+                    }
+                    sv_push(c_arg_tmps, c_arg);
+                }
+
+                for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                    let source_index = p_idx;
+                    if (expected_names != null) {
+                        let expected_label = sv_get(expected_names as StringVector*, p_idx);
+                        for (let i = 0; i < arg_count; i = i + 1) {
+                            if (sv_get(expr.arg_labels as StringVector*, i) == expected_label) {
+                                source_index = i;
+                                break;
+                            }
+                        }
+                    }
+                    let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, p_idx) as FieldDecl*;
+                    sv_push(payload_inits, field_decl.name);
+                    sv_push(payload_inits, sv_get(c_arg_tmps, source_index));
+                }
+            }
+            if (expected_names != null) sv_free(expected_names as StringVector*);
             return cem_emit_variant_constructor_for_type(result_ty, variant_name, payload_inits);
         }
     }
@@ -2668,30 +2783,77 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                     if (expr.ids != null) {
                         arg_count = vec_size(expr.ids as VectorBase*);
                     }
-                    for (let i = 0; i < arg_count; i = i + 1) {
-                        if (i > 0) {
-                            sb_append(sb, ", ");
+                    let expected_names: StringVector*? = null;
+                    let is_out_of_order = false;
+                    if (expr.arg_labels != null) {
+                        expected_names = sv_create(arg_count);
+                        for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                            sv_push(expected_names as StringVector*, (ptr_vec_get(decl.params, p_idx) as Param*).name);
                         }
-                        let arg_id = id_vec_get(expr.ids as VectorBase*, i);
-                        if (func_ty != null && vec_size((func_ty as Type*).params as VectorBase*) == arg_count) {
-                            let param_ty = ptr_vec_get((func_ty as Type*).params as VectorBase*, i) as Type*;
-                            let c_arg = be_emit_expr_with_expected_type(self, arg_id, param_ty);
+                        for (let k = 0; k < arg_count; k = k + 1) {
+                            if (sv_get(expected_names as StringVector*, k) != sv_get(expr.arg_labels as StringVector*, k)) {
+                                is_out_of_order = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    with (let c_arg_tmps = sv_create(arg_count) => sv_free(c_arg_tmps)) {
+                        for (let i = 0; i < arg_count; i = i + 1) {
+                            let arg_id = id_vec_get(expr.ids as VectorBase*, i);
+                            
+                            let param_index = i;
+                            if (expected_names != null) {
+                                let label = sv_get(expr.arg_labels as StringVector*, i);
+                                for (let j = 0; j < arg_count; j = j + 1) {
+                                    if (sv_get(expected_names as StringVector*, j) == label) {
+                                        param_index = j;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            let param_ty: Type*? = null;
+                            if (func_ty != null && vec_size((func_ty as Type*).params as VectorBase*) == arg_count) {
+                                param_ty = ptr_vec_get((func_ty as Type*).params as VectorBase*, param_index) as Type*;
+                            }
+
+                            let c_arg = "";
+                            if (param_ty != null) {
+                                c_arg = be_emit_expr_with_expected_type(self, arg_id, param_ty as Type*);
+                            } else {
+                                c_arg = be_emit_expr(self, arg_id);
+                            }
+
                             with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
                                 if (arg_ty != null && be_should_materialize_arc_temp(self, arg_id, arg_ty as Type*)) {
                                     c_arg = be_materialize_arc_temp(self, c_arg, arg_ty as Type*);
                                 }
-                                sb_append(sb, c_arg);
-                            }
-                        } else {
-                            let c_arg2 = be_emit_expr(self, arg_id);
-                            with (let arg_ty2 = be_expr_type(self, arg_id) => type_free_opt(arg_ty2)) {
-                                if (arg_ty2 != null && be_should_materialize_arc_temp(self, arg_id, arg_ty2 as Type*)) {
-                                    c_arg2 = be_materialize_arc_temp(self, c_arg2, arg_ty2 as Type*);
+                                if (is_out_of_order && arg_ty != null) {
+                                    let tmp = cem_fresh_tmp(self.emitter, "arg");
+                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
+                                    c_arg = tmp;
                                 }
-                                sb_append(sb, c_arg2);
                             }
+                            sv_push(c_arg_tmps, c_arg);
+                        }
+
+                        for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                            if (p_idx > 0) sb_append(sb, ", ");
+                            let source_index = p_idx;
+                            if (expected_names != null) {
+                                let expected_label = sv_get(expected_names as StringVector*, p_idx);
+                                for (let i = 0; i < arg_count; i = i + 1) {
+                                    if (sv_get(expr.arg_labels as StringVector*, i) == expected_label) {
+                                        source_index = i;
+                                        break;
+                                    }
+                                }
+                            }
+                            sb_append(sb, sv_get(c_arg_tmps, source_index));
                         }
                     }
+                    if (expected_names != null) sv_free(expected_names as StringVector*);
                     return be_emit_direct_function_call(self, c_func_name, sb_to_string(sb));
                 }
             }
@@ -2789,12 +2951,68 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
                 return be_ice_string("[ICE-1210] missing StructInfo for " + base_ty.module_name + "." + base_ty.name);
             }
             with (let field_inits = sv_create(8) => sv_free(field_inits)) {
-                for (let i = 0; i < arg_count; i = i + 1) {
-                    let field = ptr_vec_get((info as StructInfo*).fields, i) as StructFieldInfo*;
-                    sv_push(field_inits, field.name);
-                    sv_push(field_inits,
-                        be_emit_owned_expr_with_expected_type(self, id_vec_get(expr.ids as VectorBase*, i), field.field_type));
+                let expected_names: StringVector*? = null;
+                let is_out_of_order = false;
+                if (expr.arg_labels != null) {
+                    expected_names = sv_create(arg_count);
+                    for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                        sv_push(expected_names as StringVector*, (ptr_vec_get((info as StructInfo*).fields, p_idx) as StructFieldInfo*).name);
+                    }
+                    for (let k = 0; k < arg_count; k = k + 1) {
+                        if (sv_get(expected_names as StringVector*, k) != sv_get(expr.arg_labels as StringVector*, k)) {
+                            is_out_of_order = true;
+                            break;
+                        }
+                    }
                 }
+
+                with (let c_arg_tmps = sv_create(arg_count) => sv_free(c_arg_tmps)) {
+                    for (let i = 0; i < arg_count; i = i + 1) {
+                        let arg_id = id_vec_get(expr.ids as VectorBase*, i);
+                        let param_index = i;
+                        if (expected_names != null) {
+                            let label = sv_get(expr.arg_labels as StringVector*, i);
+                            for (let j = 0; j < arg_count; j = j + 1) {
+                                if (sv_get(expected_names as StringVector*, j) == label) {
+                                    param_index = j;
+                                    break;
+                                }
+                            }
+                        }
+
+                        let field = ptr_vec_get((info as StructInfo*).fields, param_index) as StructFieldInfo*;
+                        let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field.field_type);
+                        
+                        if (is_out_of_order) {
+                            with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                                if (arg_ty != null) {
+                                    let tmp = cem_fresh_tmp(self.emitter, "arg");
+                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
+                                    c_arg = tmp;
+                                }
+                            }
+                        }
+                        sv_push(c_arg_tmps, c_arg);
+                    }
+
+                    for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                        let source_index = p_idx;
+                        if (expected_names != null) {
+                            let expected_label = sv_get(expected_names as StringVector*, p_idx);
+                            for (let i = 0; i < arg_count; i = i + 1) {
+                                if (sv_get(expr.arg_labels as StringVector*, i) == expected_label) {
+                                    source_index = i;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        let field = ptr_vec_get((info as StructInfo*).fields, p_idx) as StructFieldInfo*;
+                        sv_push(field_inits, field.name);
+                        sv_push(field_inits, sv_get(c_arg_tmps, source_index));
+                    }
+                }
+                if (expected_names != null) sv_free(expected_names as StringVector*);
                 cem_emit_struct_init_from_fields(self.emitter, tmp, base_ty, field_inits);
                 return tmp;
             }
@@ -2815,13 +3033,69 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
                 return be_ice_string("[ICE-1220] new enum allocation missing variant symbol");
             }
             with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
-                for (let i = 0; i < arg_count; i = i + 1) {
-                    let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
-                    let field_ty = ptr_vec_get((variant_info as EnumVariantInfo*).field_types, i) as Type*;
-                    sv_push(payload_inits, field_decl.name);
-                    sv_push(payload_inits,
-                        be_emit_owned_expr_with_expected_type(self, id_vec_get(expr.ids as VectorBase*, i), field_ty));
+                let expected_names: StringVector*? = null;
+                let is_out_of_order = false;
+                if (expr.arg_labels != null) {
+                    expected_names = sv_create(arg_count);
+                    for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                        sv_push(expected_names as StringVector*, (ptr_vec_get((variant_decl as EnumVariant*).fields, p_idx) as FieldDecl*).name);
+                    }
+                    for (let k = 0; k < arg_count; k = k + 1) {
+                        if (sv_get(expected_names as StringVector*, k) != sv_get(expr.arg_labels as StringVector*, k)) {
+                            is_out_of_order = true;
+                            break;
+                        }
+                    }
                 }
+
+                with (let c_arg_tmps = sv_create(arg_count) => sv_free(c_arg_tmps)) {
+                    for (let i = 0; i < arg_count; i = i + 1) {
+                        let arg_id = id_vec_get(expr.ids as VectorBase*, i);
+                        let param_index = i;
+                        if (expected_names != null) {
+                            let label = sv_get(expr.arg_labels as StringVector*, i);
+                            for (let j = 0; j < arg_count; j = j + 1) {
+                                if (sv_get(expected_names as StringVector*, j) == label) {
+                                    param_index = j;
+                                    break;
+                                }
+                            }
+                        }
+
+                        let field_ty = ptr_vec_get((variant_info as EnumVariantInfo*).field_types, param_index) as Type*;
+                        let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field_ty);
+                        
+                        if (is_out_of_order) {
+                            with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                                if (arg_ty != null) {
+                                    let tmp = cem_fresh_tmp(self.emitter, "arg");
+                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
+                                    c_arg = tmp;
+                                }
+                            }
+                        }
+                        sv_push(c_arg_tmps, c_arg);
+                    }
+
+                    for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
+                        let source_index = p_idx;
+                        if (expected_names != null) {
+                            let expected_label = sv_get(expected_names as StringVector*, p_idx);
+                            for (let i = 0; i < arg_count; i = i + 1) {
+                                if (sv_get(expr.arg_labels as StringVector*, i) == expected_label) {
+                                    source_index = i;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, p_idx) as FieldDecl*;
+                        sv_push(payload_inits, field_decl.name);
+                        sv_push(payload_inits, sv_get(c_arg_tmps, source_index));
+                    }
+                }
+                if (expected_names != null) sv_free(expected_names as StringVector*);
+
                 cem_emit_enum_variant_init(self.emitter, tmp, base_ty, variant_name, payload_inits);
                 return tmp;
             }

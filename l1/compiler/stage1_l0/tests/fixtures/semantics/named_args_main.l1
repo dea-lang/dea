@@ -1,0 +1,58 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module named_args_main;
+
+import std.assert;
+
+func sub(a: int, b: int) -> int {
+    return a - b;
+}
+
+struct Counter {
+    value: int;
+}
+
+struct Record {
+    first: int;
+    second: int;
+}
+
+enum Result {
+    Value(v: int, context: int);
+}
+
+func mark(counter: Counter*, expected: int, val: int) -> int {
+    assert(counter.value == expected, "named argument source evaluation order");
+    counter.value = counter.value + 1;
+    return val;
+}
+
+func main() -> int {
+    let x = sub(a: 10, b: 3);
+    assert(x == 7, "in order named call");
+
+    let y = sub(b: 3, a: 10);
+    assert(y == 7, "out of order named call");
+
+    let counter = new Counter(0);
+    let z = sub(b: mark(counter, 0, 3), a: mark(counter, 1, 10));
+    assert(z == 7, "out of order named call evaluation");
+
+    let rec1 = new Record(first: 10, second: 20);
+    assert(rec1.first == 10 && rec1.second == 20, "in order struct");
+
+    let rec2 = new Record(second: 20, first: 10);
+    assert(rec2.first == 10 && rec2.second == 20, "out of order struct");
+
+    let res = Value(context: 99, v: 42);
+    match (res) {
+        Value(v, ctx) => {
+            assert(v == 42 && ctx == 99, "out of order enum");
+        }
+    }
+
+    return 0;
+}

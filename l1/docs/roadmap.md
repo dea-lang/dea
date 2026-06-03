@@ -117,8 +117,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-04-22-named-arguments-noref][named-arguments] adds `name: value` call-site arguments for functions and
-  constructors.
 - Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
   first-position anonymous embedded struct member with promoted field access.
 - Feature [2026-04-24-module-interface-emission-noref][interface-emission] introduces deterministic textual `.l1m`
@@ -164,9 +162,9 @@ surface.
 - `_` struct-member semantics are tracked by Feature
   [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members], which fixes `_ : StructType` as a single
   first-position anonymous embedded struct member and defines its construction, field-access, layout, and ABI rules.
-- Named arguments for functions and constructors are tracked by Feature
-  [2026-04-22-named-arguments-noref][named-arguments].
-- Literal struct/enum syntax using `{}` and named fields. Constructor-call syntax exists today; literal syntax does not.
+- Named arguments for function calls and struct/enum constructor calls are implemented by Feature
+  [2026-04-22-named-arguments-noref][named-arguments]. Literal struct/enum syntax using `{}` and named fields remains
+  future work; constructor-call syntax exists today.
 - Compiler-generated `hash(T)` for struct and enum values, including its relationship to `sys.hash`, `std.hashmap`, and
   ABI stability.
 - Diagnostic UX improvements: fuller messages, fix-it hints, parse recovery, and dedicated diagnostics for common
@@ -230,7 +228,7 @@ update to be promoted to an initiative or plan:
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md
 [module-init]: ../work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md
-[named-arguments]: ../work/plans/features/2026-04-22-named-arguments-noref.md
+[named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md
 [nullable-equality]: ../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md

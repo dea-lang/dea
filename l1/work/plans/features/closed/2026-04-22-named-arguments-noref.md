@@ -3,7 +3,7 @@
 ## Add named arguments for functions and constructors
 
 - Date: 2026-04-22
-- Status: Draft
+- Status: Completed
 - Title: Add named arguments for functions and constructors
 - Kind: Feature
 - Severity: Medium

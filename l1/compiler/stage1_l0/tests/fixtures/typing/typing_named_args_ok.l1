@@ -1,0 +1,44 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_named_args_ok;
+
+func foo(alpha: int, beta: string, gamma: bool) -> int {
+    if (gamma) {
+        return alpha;
+    }
+    return 0;
+}
+
+struct Config {
+    debug: bool;
+    retries: int;
+    url: string;
+}
+
+enum Status {
+    Ok;
+    Error(code: int, msg: string);
+}
+
+func test_ok() {
+    // In-order
+    foo(alpha: 1, beta: "test", gamma: true);
+    
+    // Out-of-order
+    foo(gamma: false, beta: "test", alpha: 42);
+    
+    // Struct in-order
+    new Config(debug: true, retries: 3, url: "http");
+    
+    // Struct out-of-order
+    new Config(url: "https", retries: 5, debug: false);
+    
+    // Enum variant in-order
+    new Error(code: 404, msg: "Not found");
+    
+    // Enum variant out-of-order
+    new Error(msg: "Internal", code: 500);
+}

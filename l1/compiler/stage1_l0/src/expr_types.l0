@@ -2902,6 +2902,117 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
     return null;
 }
 
+func etc_get_call_param_names(self: ExpressionTypeChecker*, callee: ExprNode*) -> StringVector*? {
+    if (ord(callee.kind) == ord(EX_VAR_REF)) {
+        let sym = etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
+        if (sym != null && ord((sym as Symbol*).kind) == ord(SYM_FUNC)) {
+            let decl_ptr = (sym as Symbol*).decl_ptr;
+            if (decl_ptr != null) {
+                let func_decl = decl_ptr as FuncDecl*;
+                let params = func_decl.params;
+                let count = vec_size(params);
+                let names = sv_create(count);
+                for (let i_cp = 0; i_cp < count; i_cp = i_cp + 1) {
+                    sv_push(names, (ptr_vec_get(params, i_cp) as Param*).name);
+                }
+                return names;
+            }
+        }
+    }
+    return null;
+}
+
+func etc_get_struct_field_names(self: ExpressionTypeChecker*, base: Type*) -> StringVector*? {
+    let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, base.module_name, base.name);
+    if (info != null) {
+        let fields = (info as StructInfo*).fields;
+        let count = vec_size(fields);
+        let names = sv_create(count);
+        for (let i_sf = 0; i_sf < count; i_sf = i_sf + 1) {
+            sv_push(names, (ptr_vec_get(fields, i_sf) as StructFieldInfo*).name);
+        }
+        return names;
+    }
+    return null;
+}
+
+func etc_get_enum_variant_field_names(self: ExpressionTypeChecker*, target_ref: TypeRef*) -> StringVector*? {
+    let sym = etc_lookup_symbol(self, target_ref.name, target_ref.module_path, target_ref.name_qualifier);
+    if (sym != null && ord((sym as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
+        let decl_ptr = (sym as Symbol*).decl_ptr;
+        if (decl_ptr != null) {
+            let variant_decl = decl_ptr as EnumVariant*;
+            let fields = variant_decl.fields;
+            let count = vec_size(fields);
+            let names = sv_create(count);
+            for (let i_ev = 0; i_ev < count; i_ev = i_ev + 1) {
+                sv_push(names, (ptr_vec_get(fields, i_ev) as FieldDecl*).name);
+            }
+            return names;
+        }
+    }
+    return null;
+}
+
+func etc_resolve_named_args(self: ExpressionTypeChecker*, span: Span, expected_names: StringVector*, given_labels: StringVector*, given_args: VectorBase*) -> VectorBase*? {
+    let count = vec_size(expected_names);
+    if (vec_size(given_labels) != vec_size(given_args)) {
+        etc_diag_error(self, "TYP-0761", "internal error: named argument label count mismatch",
+            (self.current_unit as DriverUnit*).path, span);
+        return null;
+    }
+    
+    let result = id_vec_create(count);
+    let errors = false;
+    
+    for (let i_r1 = 0; i_r1 < count; i_r1 = i_r1 + 1) {
+        let expected_label = sv_get(expected_names, i_r1);
+        let found_id = invalid_expr_id();
+        let found_count = 0;
+        
+        for (let i_r2 = 0; i_r2 < vec_size(given_labels); i_r2 = i_r2 + 1) {
+            if (sv_get(given_labels, i_r2) == expected_label) {
+                found_id = id_vec_get(given_args, i_r2);
+                found_count = found_count + 1;
+            }
+        }
+        
+        if (found_count == 0) {
+            etc_diag_error(self, "TYP-0764", "missing required named argument '" + expected_label + "'",
+                (self.current_unit as DriverUnit*).path, span);
+            errors = true;
+        } else if (found_count > 1) {
+            etc_diag_error(self, "TYP-0763", "duplicate named argument '" + expected_label + "'",
+                (self.current_unit as DriverUnit*).path, span);
+            errors = true;
+        }
+        
+        id_vec_push(result, found_id);
+    }
+    
+    for (let i_r3 = 0; i_r3 < vec_size(given_labels); i_r3 = i_r3 + 1) {
+        let given_label = sv_get(given_labels, i_r3);
+        let is_known = false;
+        for (let i_r4 = 0; i_r4 < count; i_r4 = i_r4 + 1) {
+            if (sv_get(expected_names, i_r4) == given_label) {
+                is_known = true;
+                break;
+            }
+        }
+        if (!is_known) {
+            etc_diag_error(self, "TYP-0762", "unknown named argument '" + given_label + "'",
+                (self.current_unit as DriverUnit*).path, span);
+            errors = true;
+        }
+    }
+    
+    if (errors) {
+        id_vec_free(result);
+        return null;
+    }
+    return result;
+}
+
 /**
  * Infers the type for a call.
  *
@@ -2915,12 +3026,27 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
     if (ord(callee.kind) == ord(EX_VAR_REF)) {
         let callee_sym = etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
         if (dea_is_intrinsic_symbol(callee_sym, "sizeof")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'sizeof' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return type_builtin_int();
+            }
             return etc_infer_sizeof_intrinsic(self, expr_id, expr);
         }
         if (dea_is_intrinsic_symbol(callee_sym, "ord")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'ord' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return type_builtin_int();
+            }
             return etc_infer_ord_intrinsic(self, expr);
         }
         if (dea_is_intrinsic_symbol(callee_sym, "is")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'is' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return type_builtin_bool();
+            }
             return etc_infer_is_intrinsic(self, expr);
         }
         with (let local_callee_ty = etc_lookup_local(self, callee.text_value) => etc_type_free_opt(local_callee_ty)) {
@@ -2969,6 +3095,24 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
         let arg_count = 0;
         if (args != null) arg_count = vec_size(args);
         
+        let resolved_args: VectorBase*? = null;
+        if (expr.arg_labels != null && args != null) {
+            let expected_names = etc_get_call_param_names(self, callee);
+            if (expected_names == null) {
+                etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                type_free(c_ty);
+                return null;
+            }
+            resolved_args = etc_resolve_named_args(self, expr.span, expected_names as StringVector*, expr.arg_labels as StringVector*, args);
+            sv_free_opt(expected_names);
+            if (resolved_args == null) {
+                type_free(c_ty);
+                return null;
+            }
+            args = resolved_args as VectorBase*;
+        }
+        
         if (arg_count != vec_size(params)) {
             etc_diag_error(self, "TYP-0183", "function call argument count mismatch",
                 (self.current_unit as DriverUnit*).path, expr.span);
@@ -2987,6 +3131,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                 }
             }
         }
+        if (resolved_args != null) id_vec_free(resolved_args as VectorBase*);
         let res = type_clone(c_ty.result as Type*);
         type_free(c_ty);
         return res;
@@ -2999,6 +3144,24 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
             let args2 = expr.ids as VectorBase*;
             let arg_count2 = 0;
             if (args2 != null) arg_count2 = vec_size(args2);
+            
+            let resolved_args2: VectorBase*? = null;
+            if (expr.arg_labels != null && args2 != null) {
+                let expected_names2 = etc_get_struct_field_names(self, c_ty);
+                if (expected_names2 == null) {
+                    etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                        (self.current_unit as DriverUnit*).path, expr.span);
+                    type_free(c_ty);
+                    return null;
+                }
+                resolved_args2 = etc_resolve_named_args(self, expr.span, expected_names2 as StringVector*, expr.arg_labels as StringVector*, args2);
+                sv_free_opt(expected_names2);
+                if (resolved_args2 == null) {
+                    type_free(c_ty);
+                    return null;
+                }
+                args2 = resolved_args2 as VectorBase*;
+            }
             
             if (arg_count2 != vec_size(fields)) {
                 etc_diag_error(self, "TYP-0191", "struct constructor field count mismatch",
@@ -3018,6 +3181,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                     }
                 }
             }
+            if (resolved_args2 != null) id_vec_free(resolved_args2 as VectorBase*);
         }
         return c_ty;
     }
@@ -3041,6 +3205,38 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                             let arg_count3 = 0;
                             if (args3 != null) arg_count3 = vec_size(args3);
                             
+                            let resolved_args3: VectorBase*? = null;
+                            if (expr.arg_labels != null && args3 != null) {
+                                // Since we parsed callee_expr, we can just look up the target_ref from the AST or we can look up the EnumVariant field names
+                                let sym2 = etc_lookup_symbol(self, callee_expr.text_value, callee_expr.module_path, callee_expr.name_qualifier);
+                                let expected_names3: StringVector*? = null;
+                                if (sym2 != null && ord((sym2 as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
+                                    let decl_ptr3 = (sym2 as Symbol*).decl_ptr;
+                                    if (decl_ptr3 != null) {
+                                        let variant_decl3 = decl_ptr3 as EnumVariant*;
+                                        let fields3 = variant_decl3.fields;
+                                        expected_names3 = sv_create(vec_size(fields3));
+                                        for (let k = 0; k < vec_size(fields3); k = k + 1) {
+                                            sv_push(expected_names3 as StringVector*, (ptr_vec_get(fields3, k) as FieldDecl*).name);
+                                        }
+                                    }
+                                }
+                                
+                                if (expected_names3 == null) {
+                                    etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                                        (self.current_unit as DriverUnit*).path, expr.span);
+                                    type_free(c_ty);
+                                    return null;
+                                }
+                                resolved_args3 = etc_resolve_named_args(self, expr.span, expected_names3 as StringVector*, expr.arg_labels as StringVector*, args3);
+                                sv_free(expected_names3 as StringVector*);
+                                if (resolved_args3 == null) {
+                                    type_free(c_ty);
+                                    return null;
+                                }
+                                args3 = resolved_args3 as VectorBase*;
+                            }
+                            
                             if (arg_count3 != vec_size(fields2)) {
                                 etc_diag_error(self, "TYP-0201", "enum variant constructor field count mismatch",
                                     (self.current_unit as DriverUnit*).path, expr.span);
@@ -3059,6 +3255,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                                     }
                                 }
                             }
+                            if (resolved_args3 != null) id_vec_free(resolved_args3 as VectorBase*);
                             break;
                         }
                     }
@@ -3587,18 +3784,37 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             }
 
                             let field_count = vec_size(variant.field_types);
+                            
+                            let args = expr.ids as VectorBase*;
+                            let resolved_args: VectorBase*? = null;
+                            if (expr.arg_labels != null && args != null) {
+                                let expected_names = etc_get_enum_variant_field_names(self, target_ref);
+                                if (expected_names == null) {
+                                    etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                                        unit.path, expr.span);
+                                    return null;
+                                }
+                                resolved_args = etc_resolve_named_args(self, expr.span, expected_names as StringVector*, expr.arg_labels as StringVector*, args);
+                                sv_free_opt(expected_names);
+                                if (resolved_args == null) {
+                                    return null;
+                                }
+                                args = resolved_args as VectorBase*;
+                            }
+                            
                             if (arg_count != field_count) {
                                 etc_diag_error(self, "TYP-0201",
                                     "enum variant constructor field count mismatch",
                                     unit.path, expr.span);
                             }
                             for (let j = 0; j < arg_count; j = j + 1) {
-                                let arg_ty = etc_infer_expr(self, id_vec_get(expr.ids as VectorBase*, j));
+                                let arg_id = id_vec_get(args as VectorBase*, j);
+                                let arg_ty = etc_infer_expr(self, arg_id);
                                 if (arg_ty != null) {
                                     if (j < field_count) {
                                         let field_ty = ptr_vec_get(variant.field_types, j) as Type*;
                                         if (ord(etc_check_assign_expr(self, field_ty, arg_ty as Type*,
-                                            id_vec_get(expr.ids as VectorBase*, j), unit.path, expr.span)) ==
+                                            arg_id, unit.path, expr.span)) ==
                                             ord(ASSIGN_REJECT)) {
                                             etc_diag_error(self, "TYP-0314",
                                                 "enum variant constructor field type mismatch",
@@ -3608,6 +3824,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                     type_free(arg_ty as Type*);
                                 }
                             }
+                            if (resolved_args != null) id_vec_free(resolved_args as VectorBase*);
                             break;
                         }
                     }
@@ -3641,18 +3858,39 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             } else {
                                 let fields = (info as StructInfo*).fields;
                                 let field_count = vec_size(fields);
+                                
+                                let args2 = expr.ids as VectorBase*;
+                                let resolved_args2: VectorBase*? = null;
+                                if (expr.arg_labels != null && args2 != null) {
+                                    let expected_names2 = etc_get_struct_field_names(self, base);
+                                    if (expected_names2 == null) {
+                                        etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                                            unit.path, expr.span);
+                                        type_free(base);
+                                        return null;
+                                    }
+                                    resolved_args2 = etc_resolve_named_args(self, expr.span, expected_names2 as StringVector*, expr.arg_labels as StringVector*, args2);
+                                    sv_free_opt(expected_names2);
+                                    if (resolved_args2 == null) {
+                                        type_free(base);
+                                        return null;
+                                    }
+                                    args2 = resolved_args2 as VectorBase*;
+                                }
+                                
                                 if (arg_count > 0 && arg_count != field_count) {
                                     etc_diag_error(self, "TYP-0283",
                                         "struct '" + base.name + "' argument count mismatch",
                                         unit.path, expr.span);
                                 }
                                 for (let i = 0; i < arg_count; i = i + 1) {
-                                    let arg_ty = etc_infer_expr(self, id_vec_get(expr.ids as VectorBase*, i));
+                                    let arg_id2 = id_vec_get(args2 as VectorBase*, i);
+                                    let arg_ty = etc_infer_expr(self, arg_id2);
                                     if (arg_ty != null) {
                                         if (i < field_count) {
                                             let field = ptr_vec_get(fields, i) as StructFieldInfo*;
                                             if (ord(etc_check_assign_expr(self, field.field_type, arg_ty as Type*,
-                                                id_vec_get(expr.ids as VectorBase*, i), unit.path, expr.span)) ==
+                                                arg_id2, unit.path, expr.span)) ==
                                                 ord(ASSIGN_REJECT)) {
                                                 etc_diag_error(self, "TYP-0316",
                                                     "field '" + field.name + "' of struct initializer type mismatch",
@@ -3662,6 +3900,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                         type_free(arg_ty as Type*);
                                     }
                                 }
+                                if (resolved_args2 != null) id_vec_free(resolved_args2 as VectorBase*);
                             }
                         } else {
                             if (arg_count > 1) {

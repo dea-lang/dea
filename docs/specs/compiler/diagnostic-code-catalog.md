@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-05-19
+Version: 2026-06-03
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -188,6 +188,7 @@ and reuse supplement for applying this registry within L0.
 | `PAR-0545` | L1+     | Expected 'from' after selective import list                              |
 | `PAR-0546` | L1+     | Expected imported module name after 'from'                               |
 | `PAR-0547` | L1+     | Expected import alias after 'as'                                         |
+| `PAR-0550` | L1+     | Cannot mix named and positional arguments in one call or allocation      |
 | `PAR-0560` | L1+     | Expected `module` keyword at start of interface file                     |
 | `PAR-0561` | L1+     | Expected `interface` keyword in module interface declaration             |
 | `PAR-0562` | L1+     | Expected module name in interface file header                            |
@@ -411,6 +412,11 @@ and reuse supplement for applying this registry within L0.
 | `TYP-0701` | All     | Explicit nullable-pointer-to-pointer cast is provably null at compile time                             |
 | `TYP-0702` | All     | Integer literal outside `int` requires a contextual integer type                                       |
 | `TYP-0703` | All     | Integer literal outside `int` cannot be used in this contextual type                                   |
+| `TYP-0760` | L1+     | Named arguments are not accepted by this callee or intrinsic                                           |
+| `TYP-0761` | L1+     | Internal error: named argument label count mismatch                                                    |
+| `TYP-0762` | L1+     | Unknown named argument                                                                                 |
+| `TYP-0763` | L1+     | Duplicate named argument                                                                               |
+| `TYP-0764` | L1+     | Missing required named argument                                                                        |
 | `TYP-0780` | L1+     | Unsafe/plain function type mismatch                                                                    |
 | `TYP-0800` | L1+     | Array length must be a positive `int` literal                                                          |
 | `TYP-0801` | L1+     | Array literal requires a contextual array type                                                         |

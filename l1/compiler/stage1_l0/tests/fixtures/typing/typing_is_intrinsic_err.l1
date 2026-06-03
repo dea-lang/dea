@@ -21,5 +21,8 @@ func main(c: Color) -> bool {
     let bad_variant = is(c, Color);
     let bad_owner = is(c, On);
     let bad_call = is(c, RGB(0, 0, 0));
+    let named_sizeof = sizeof(target: int);
+    let named_ord = ord(value: c);
+    let named_is = is(value: c, variant: Red);
     return arity || bad_value || bad_variant || bad_owner || bad_call;
 }

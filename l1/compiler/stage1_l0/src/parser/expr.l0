@@ -509,11 +509,31 @@ func ps_parse_postfix_expr(self: ParserState*) -> ExprId? {
 
     while (true) {
         if (ps_match(self, ord(TT_LPAREN))) {
-            with (let args: VectorBase*? = id_vec_create(4) => id_vec_free(args)) {
+            with (let args: VectorBase*? = id_vec_create(4) => id_vec_free(args),
+                  let labels: StringVector*? = sv_create(4) => sv_free_opt(labels)) {
+                let any_named = false;
+                let any_pos = false;
                 if (!ps_check(self, ord(TT_RPAREN))) {
                     while (true) {
+                        let label: string = "";
+                        if (tok_is_ident(ps_peek(self)) && tok_is(tv_get(self.tokens, self.index + 1), ord(TT_COLON))) {
+                            label = token_ident_text(ps_peek(self)) as string;
+                            ps_advance(self); // consume ident
+                            ps_advance(self); // consume colon
+                            any_named = true;
+                        } else {
+                            any_pos = true;
+                        }
+                        
+                        if (any_named && any_pos) {
+                            ps_emit_error(self, "PAR-0550", "cannot mix named and positional arguments", ps_peek(self));
+                            return null;
+                        }
+
                         let arg = ps_parse_call_argument(self)?;
                         id_vec_push(args as VectorBase*, arg);
+                        sv_push(labels as StringVector*, label);
+
                         if (!ps_match(self, ord(TT_COMMA))) {
                             break;
                         }
@@ -525,6 +545,10 @@ func ps_parse_postfix_expr(self: ParserState*) -> ExprId? {
                 node.expr_a = current;
                 node.ids = args as VectorBase*;
                 args = null;
+                if (any_named) {
+                    node.arg_labels = labels as StringVector*;
+                    labels = null;
+                }
                 current = expr_arena_add(self.expr_arena, node);
                 continue;
             }
@@ -631,13 +655,34 @@ func ps_parse_primary_expr(self: ParserState*) -> ExprId? {
     if (ps_match(self, ord(TT_NEW))) {
         let parsed_type = ps_parse_type(self)?;
         with (let type_ref: TypeRef*? = parsed_type => type_ref_free(type_ref),
-              let args: VectorBase*? = null => id_vec_free(args)) {
+              let args: VectorBase*? = null => id_vec_free(args),
+              let labels: StringVector*? = null => sv_free_opt(labels)) {
+            let any_named = false;
             if (ps_match(self, ord(TT_LPAREN))) {
                 args = id_vec_create(4);
+                labels = sv_create(4);
+                let any_pos = false;
                 if (!ps_check(self, ord(TT_RPAREN))) {
                     while (true) {
+                        let label: string = "";
+                        if (tok_is_ident(ps_peek(self)) && tok_is(tv_get(self.tokens, self.index + 1), ord(TT_COLON))) {
+                            label = token_ident_text(ps_peek(self)) as string;
+                            ps_advance(self); // consume ident
+                            ps_advance(self); // consume colon
+                            any_named = true;
+                        } else {
+                            any_pos = true;
+                        }
+
+                        if (any_named && any_pos) {
+                            ps_emit_error(self, "PAR-0550", "cannot mix named and positional arguments", ps_peek(self));
+                            return null;
+                        }
+
                         let arg = ps_parse_call_argument(self)?;
                         id_vec_push(args as VectorBase*, arg);
+                        sv_push(labels as StringVector*, label);
+
                         if (!ps_match(self, ord(TT_COMMA))) {
                             break;
                         }
@@ -652,6 +697,10 @@ func ps_parse_primary_expr(self: ParserState*) -> ExprId? {
                 node.ids = id_vec_create(0);
             } else {
                 node.ids = args as VectorBase*;
+                if (any_named) {
+                    node.arg_labels = labels as StringVector*;
+                    labels = null;
+                }
             }
             type_ref = null;
             args = null;

@@ -88,6 +88,24 @@ func run_keep_c_c_path() -> string {
 }
 
 /**
+ * Returns the base output path used by the named-argument runtime fixture.
+ *
+ * @return Requested output base path for the named-argument runtime test.
+ */
+func named_args_output_path() -> string {
+    return "compiler/stage1_l0/tests/.tmp-named-args";
+}
+
+/**
+ * Returns the kept-C path used by the named-argument runtime fixture.
+ *
+ * @return Output C path for the named-argument runtime test.
+ */
+func named_args_c_output_path() -> string {
+    return "compiler/stage1_l0/tests/.tmp-named-args.c";
+}
+
+/**
  * Tests test_check_ok.
  */
 func test_check_ok() {
@@ -351,6 +369,32 @@ func test_run_shadowed_qualified_variant() {
         let rc = run_with_argv(argv);
         assert(rc == 13, "qualified imported enum variants should still run under RES-0021 warnings");
     }
+}
+
+/**
+ * Tests named-argument runtime behavior through the command-line harness.
+ */
+func test_run_named_args_main() {
+    let out_path = named_args_output_path();
+    let c_path = named_args_c_output_path();
+    rt_delete_file(out_path);
+    rt_delete_file(c_path);
+
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "named_args_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "named_args_main should run with exit 0");
+    }
+
+    rt_delete_file(out_path);
+    rt_delete_file(c_path);
 }
 
 /**
@@ -1116,6 +1160,7 @@ func main() {
     test_run_cleanup_return_precedence();
     test_run_try_chain_short_circuits();
     test_run_shadowed_qualified_variant();
+    test_run_named_args_main();
     test_run_bitwise_build_and_keep_c();
     test_run_function_pointer_build_and_keep_c();
     test_run_string_equality_build_and_keep_c();

@@ -226,6 +226,7 @@ Current policy:
   are shadowed
 - shadowing uses the normal name-resolution rules and warning behavior rather than bespoke intrinsic-specific fallback
 - `dea::is(value, Variant)` compares enum tags only and does not evaluate or synthesize payload values for `Variant`
+- `sizeof`, `ord`, and `is` do not accept named arguments
 
 Rationale:
 
@@ -234,6 +235,25 @@ Rationale:
 - preserve ergonomic unqualified use for bootstrap-stage code while keeping an explicit disambiguation path
 - leave room for future compiler-owned type aliases and other prelude-level symbols without introducing a synthetic
   source file
+
+## 10.1 Named Arguments
+
+Function calls, struct constructors, and enum-variant constructors may use named arguments in the form `name: value`.
+
+Current policy:
+
+- an argument list must be entirely positional or entirely named
+- every required parameter, struct field, or enum payload label must appear exactly once
+- source evaluation order is preserved even when named arguments are lowered into declaration order for calls and
+  constructors
+- compiler intrinsics such as `sizeof`, `ord`, and `is` do not accept labels
+- function-pointer calls do not accept named arguments because the pointer type does not carry source parameter names
+
+Rationale:
+
+- make the call-site rule deterministic without optional/default-argument semantics
+- preserve side-effect order independently of backend reordering needs
+- keep compiler-owned intrinsics separate from user-defined functions that happen to use the same names
 
 ## 11. Integer and Failure Semantics
 

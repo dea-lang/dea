@@ -466,6 +466,7 @@ struct ExprNode {
     expr_c: ExprId;
 
     ids: VectorBase*?;        // int entries, typically call/new args
+    arg_labels: StringVector*?; // string entries, for call/new named arguments
     type_ref: TypeRef*?;
     module_path: StringVector*?;
     name_qualifier: StringVector*?;
@@ -496,6 +497,7 @@ func expr_node_create(kind: ExprKind, span: Span) -> ExprNode* {
         invalid_expr_id(),
         invalid_expr_id(),
         invalid_expr_id(),
+        null,
         null,
         null,
         null,
@@ -1042,6 +1044,7 @@ func expr_node_free(self: ExprNode*) {
     type_ref_free(self.type_ref);
     sv_free_opt(self.module_path);
     sv_free_opt(self.name_qualifier);
+    sv_free_opt(self.arg_labels);
     drop self;
 }
 
