@@ -175,7 +175,7 @@ func cli_emit_warning(diags: DiagCollector*, code: string, message: string) {
  * @return Stable compiler identity text for help and `--version`.
  */
 func cli_compiler_identity_text() -> string {
-    return "Dea language / L1 compiler";
+    return "Dea language / L1 compiler (Stage 1)";
 }
 
 /**

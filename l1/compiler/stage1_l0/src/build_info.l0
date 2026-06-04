@@ -76,7 +76,7 @@ func build_info_release_version() -> string {
  * Return the compiler identity with version suffix when provenance is embedded.
  *
  * @param identity Stable Stage 1 compiler identity line.
- * @return Identity with version (e.g., `"Dea language / L1 compiler 1.2.3"`) when available,
+ * @return Identity with version (e.g., `"Dea language / L1 compiler (Stage 1) 1.2.3"`) when available,
  *         or plain identity for fallback builds.
  */
 func build_info_identity_with_version(identity: string) -> string {
