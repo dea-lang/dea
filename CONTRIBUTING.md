@@ -213,6 +213,4 @@ contributions, regardless of the tools used.
 
 ## Code of Conduct
 
-Assume good faith, be kind, and focus on technical substance. Abusive or harassing content will be removed.
-
-Report concerns to: googlielmo@gmail.com
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
