@@ -43,9 +43,14 @@ resolved links) and update the corresponding `decisions/INDEX.md` in the same co
 - update relevant `Version: YYYY-MM-DD` metadata when editing reference/status docs
 - do not document draft-only future behavior as shipped
 
-4. Run relevant validation before the commit:
+4. Run relevant validation before the commit. Scope the run to the level(s) actually touched (determine touched paths
+   from the same `git status --short`/diff review used in step 1 and the Required-context section):
 
-- For code changes: run repo-root `make clean test-all` before any commit (executes in all `lN` directories).
+- For code changes confined to `l0/`: run `make -C l0 clean test-all`.
+- For code changes confined to `l1/`: run `make -C l1 clean test-all`.
+- For cross-cutting code changes (touching more than one level, or touching shared/root paths such as `scripts/`,
+  `tools/`, root `pyproject.toml`, `uv.lock`, root config, or the root `Makefile`): run the full repo-root
+  `make clean test-all` (executes in all `lN` directories).
 - For docs-only changes: run `git diff --check`; run docs tooling when the edited docs have a generator/check target
 
 5. Stage explicitly. Use `git add -u <scope>` plus explicit new files. Re-check `git status --short`.
