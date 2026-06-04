@@ -52,7 +52,7 @@ func validate_retry_count(retries: int) -> Unit? {
 func parse_retry_count(text: string) -> int? {
     let retries: int = string_to_int(text)?;
     validate_retry_count(retries)?;
-    return retries as int?;
+    return retries;
 }
 
 /**

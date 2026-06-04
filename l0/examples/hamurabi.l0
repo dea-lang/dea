@@ -121,34 +121,19 @@ func print_report(state: GameState*) {
     printl();
     print_s("Hamurabi: I beg to report to you, ");
     printl();
-    print_s("In year ");
-    print_i(state.year);
-    print_s(", ");
-    print_i(state.starved);
-    print_s(" people starved, ");
-    print_i(state.immigrants);
-    printl_s(" came to the city.");
+    printl_s("In year " + int_to_string(state.year) + ", " +
+             int_to_string(state.starved) + " people starved, " +
+             int_to_string(state.immigrants) + " came to the city.");
 
     if (state.plague_flag > 0) {
         printl_s("A horrible plague struck! Half the people died.");
     }
 
-    print_s("Population is now ");
-    print_i(state.population);
-    printl();
-    print_s("The city now owns ");
-    print_i(state.acres);
-    printl_s(" acres.");
-    print_s("You harvested ");
-    print_i(state.bushels_per_acre);
-    printl_s(" bushels per acre.");
-    print_s("Rats ate ");
-    print_i(state.rats_ate);
-    printl_s(" bushels.");
-    print_s("You now have ");
-    print_i(state.bushels);
-    print_s(" bushels in store.");
-    printl();
+    printl_s("Population is now " + int_to_string(state.population));
+    printl_s("The city now owns " + int_to_string(state.acres) + " acres.");
+    printl_s("You harvested " + int_to_string(state.bushels_per_acre) + " bushels per acre.");
+    printl_s("Rats ate " + int_to_string(state.rats_ate) + " bushels.");
+    printl_s("You now have " + int_to_string(state.bushels) + " bushels in store.");
 }
 
 /**
@@ -159,7 +144,7 @@ func print_report(state: GameState*) {
  *         (negative or too long), or null on EOF.
  */
 func get_int_input(prompt: string) -> int? {
-    let RETRY = -1 as int?; // sentinel for retry
+    let RETRY: int? = -1; // sentinel for retry
     print_s(prompt);
     let line: string = read_line()?; // propagate null on EOF
     if (is_empty_s(line) || len_s(line) > 6) {
@@ -183,51 +168,45 @@ func get_int_input(prompt: string) -> int? {
 func handle_land_trading(state: GameState*) -> bool? {
     state.land_value = rand_int_range(17, 27);
     printl();
-    print_s("Land is trading at ");
-    print_i(state.land_value);
-    printl_s(" bushels per acre.");
+    printl_s("Land is trading at " + int_to_string(state.land_value) + " bushels per acre.");
 
     let buy: int = get_int_input("How many acres do you wish to buy? ")?;
 
     if (buy < 0) {
         printl_s("Hamurabi: Think again. You have only");
-        print_i(state.bushels);
-        printl_s(" bushels of grain. Now then,");
-        return false as bool?;
+        printl_s(int_to_string(state.bushels) + " bushels of grain. Now then,");
+        return false;
     }
 
     if (buy > 0) {
         let cost: int = state.land_value * buy;
         if (cost > state.bushels) {
             printl_s("Hamurabi: Think again. You have only");
-            print_i(state.bushels);
-            printl_s(" bushels of grain. Now then,");
-            return false as bool?;
+            printl_s(int_to_string(state.bushels) + " bushels of grain. Now then,");
+            return false;
         }
         state.acres = state.acres + buy;
         state.bushels = state.bushels - cost;
-        return true as bool?;
+        return true;
     }
 
     let sell: int = get_int_input("How many acres do you wish to sell? ")?;
 
     if (sell < 0) {
         printl_s("Hamurabi: Think again. You own only");
-        print_i(state.acres);
-        printl_s(" acres. Now then,");
-        return false as bool?;
+        printl_s(int_to_string(state.acres) + " acres. Now then,");
+        return false;
     }
 
     if (sell > state.acres) {
         printl_s("Hamurabi: Think again. You own only");
-        print_i(state.acres);
-        printl_s(" acres. Now then,");
-        return false as bool?;
+        printl_s(int_to_string(state.acres) + " acres. Now then,");
+        return false;
     }
 
     state.acres = state.acres - sell;
     state.bushels = state.bushels + (state.land_value * sell);
-    return true as bool?;
+    return true;
 }
 
 /**
@@ -237,7 +216,7 @@ func handle_land_trading(state: GameState*) -> bool? {
  * @return The number of bushels allocated for feeding, or null on error.
  */
 func handle_feeding(state: GameState*) -> int? {
-    let RETRY = -1 as int?; // sentinel for retry
+    let RETRY: int? = -1; // sentinel for retry
     printl();
     let feed: int = get_int_input("How many bushels do you wish to feed your people? ")?;
 
@@ -249,12 +228,11 @@ func handle_feeding(state: GameState*) -> int? {
 
     if (feed > state.bushels) {
         printl_s("Hamurabi: Think again. You have only");
-        print_i(state.bushels);
-        printl_s(" bushels of grain. Now then,");
+        printl_s(int_to_string(state.bushels) + " bushels of grain. Now then,");
         return RETRY;
     }
 
-    return feed as int?;
+    return feed;
 }
 
 /**
@@ -265,7 +243,7 @@ func handle_feeding(state: GameState*) -> int? {
  * @return The number of acres planted, or null on error.
  */
 func handle_planting(state: GameState*, fed_bushels: int) -> int? {
-    let RETRY = -1 as int?; // sentinel for retry
+    let RETRY: int? = -1; // sentinel for retry
     printl();
     let remaining: int = state.bushels - fed_bushels;
     let plant: int = get_int_input("How many acres do you wish to plant with seed? ")?;
@@ -278,28 +256,25 @@ func handle_planting(state: GameState*, fed_bushels: int) -> int? {
 
     if (plant > state.acres) {
         printl_s("Hamurabi: Think again. You own only");
-        print_i(state.acres);
-        printl_s(" acres. Now then,");
+        printl_s(int_to_string(state.acres) + " acres. Now then,");
         return RETRY;
     }
 
     let seed_needed: int = plant / 2;
     if (seed_needed > remaining) {
         printl_s("But you have only");
-        print_i(remaining);
-        printl_s(" bushels of grain. Now then,");
+        printl_s(int_to_string(remaining) + " bushels of grain. Now then,");
         return RETRY;
     }
 
     let workers_needed: int = plant / 10;
     if (workers_needed > state.population) {
         printl_s("But you have only");
-        print_i(state.population);
-        printl_s(" people to tend the fields! Now then,");
+        printl_s(int_to_string(state.population) + " people to tend the fields! Now then,");
         return RETRY;
     }
 
-    return plant as int?;
+    return plant;
 }
 
 /**
@@ -372,9 +347,7 @@ func simulate_year(state: GameState*, fed_bushels: int, planted_acres: int) {
 func check_impeachment(state: GameState*) -> bool {
     if (state.impeachment_count > 0) {
         printl();
-        print_s("You starved ");
-        print_i(state.starved);
-        printl_s(" people in one year!!!");
+        printl_s("You starved " + int_to_string(state.starved) + " people in one year!!!");
         printl_s("Due to this extreme mismanagement you have not only");
         printl_s("been impeached and thrown out of office but you have");
         printl_s("also been declared national fink!!!!");
@@ -391,20 +364,15 @@ func check_impeachment(state: GameState*) -> bool {
 func final_report(state: GameState*) {
     print_report(state);
     printl();
-    print_s("In your 10-year term of office, ");
-    print_i(state.total_deaths);
-    printl_s(" percent of the");
+    printl_s("In your 10-year term of office, " + int_to_string(state.total_deaths) + " percent of the");
     printl_s("population starved per year on the average, i.e. a total of");
-    print_i(state.total_deaths);
-    print_s(" people died!! ");
-    printl();
+    printl_s(int_to_string(state.total_deaths) + " people died!! ");
 
     let acres_per_person: int = 0;
     if (state.population > 0) {
         acres_per_person = state.acres / state.population;
-        print_s("You started with 10 acres per person and ended with ");
-        print_i(acres_per_person);
-        printl_s(" acres per person.");
+        printl_s("You started with 10 acres per person and ended with " +
+                 int_to_string(acres_per_person) + " acres per person.");
         printl();
     }
 
@@ -426,8 +394,7 @@ func final_report(state: GameState*) {
     if (acres_per_person < 9) {
         printl_s("Your performance could have been somewhat better, but");
         printl_s("really wasn't too bad at all. ");
-        print_i(rand_int(state.population * 8) / 10);
-        printl_s(" people");
+        printl_s(int_to_string(rand_int(state.population * 8) / 10) + " people");
         printl_s("dearly like to see you assassinated but we all have our");
         printl_s("trivial problems.");
         return;
@@ -435,8 +402,7 @@ func final_report(state: GameState*) {
 
     if (acres_per_person < 10) {
         let fans: int = (state.population * 9) / 10;
-        print_i(fans);
-        printl_s(" people");
+        printl_s(int_to_string(fans) + " people");
         printl_s("dearly like to see you assassinated but we all have our");
         printl_s("trivial problems.");
         return;
@@ -488,11 +454,11 @@ func run_game(state: GameState*) -> bool? {
         simulate_year(state, fed, planted);
 
         if (check_impeachment(state)) {
-            return false as bool?; // impeached!
+            return false; // impeached!
         }
     }
 
-    return true as bool?; // completed successfully
+    return true; // completed successfully
 }
 
 /**
@@ -521,11 +487,11 @@ func main() {
         // EOF or error
         printl();
     }
-    else if ((success as bool) == true) {
+    else if (success as bool) {
         // completed successfully
         final_report(state);
     }
-    // otherwise impeached and already handled
+    // otherwise impeached, already handled in run_game
 
     so_long(state);
 }
