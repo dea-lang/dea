@@ -105,6 +105,8 @@ def main() -> int:
         fail(f"unexpected compiler banner: {provenance.compiler_banner!r}")
     if not provenance.has_embedded_version:
         fail("expected embedded version output to remain enabled without git metadata")
+    if provenance.release_version != "dev":
+        fail(f"expected 'dev' release version without git, got {provenance.release_version!r}")
 
     gha_env = local_fallback_env()
     gha_env.update(

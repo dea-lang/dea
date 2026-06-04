@@ -412,7 +412,7 @@ def collect_stage2_build_provenance(repo_root: Path, env: dict[str, str]) -> tup
     build_id = _derive_build_id(env, commit_short, build_stamp)
     release_version = env.get("DEA_DIST_VERSION", "").strip()
     if not release_version:
-        release_version = f"dev-{commit_short}"
+        release_version = "dev" if commit_short == "unknown" else f"dev-{commit_short}"
 
     source_url = _source_url(repo_root, git_env, env)
 
