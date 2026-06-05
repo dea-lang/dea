@@ -165,8 +165,25 @@ class NameResolver:
         """
         m = env.module
 
+        opened_modules: set[str] = set()
+
         for imp in m.imports:
             imported_mod_name = imp.name
+
+            # A second `import X;` for an already-opened module is redundant.
+            # Warn once and skip re-opening so the symbols are not re-merged.
+            if imported_mod_name in opened_modules:
+                env.diagnostics.append(
+                    diag_from_node(
+                        kind="warning",
+                        message=f"[RES-0036] duplicated 'import {imported_mod_name}'",
+                        module_name=env.name,
+                        filename=env.module.filename,
+                        node=imp,
+                    )
+                )
+                continue
+            opened_modules.add(imported_mod_name)
 
             imported_env = self.module_envs.get(imported_mod_name)
             if imported_env is None:

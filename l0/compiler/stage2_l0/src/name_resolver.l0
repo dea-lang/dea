@@ -487,6 +487,19 @@ func nr_open_imports(nr: NameResolution*, env: ModuleEnv*, diags: DiagCollector*
     let mod = env.module_ptr;
     for (let i = 0; i < vec_size(mod.imports); i = i + 1) {
         let imp = ptr_vec_get(mod.imports, i) as Import*;
+        // A second `import X;` for an already-opened module is redundant. Warn
+        // once and skip re-opening so its symbols are not merged a second time
+        // (which would otherwise be misreported as cross-module ambiguity).
+        if (ss_has(env.imported_modules, imp.name)) {
+            nr_span_diag_warn(
+                diags,
+                "RES-0036",
+                "duplicated 'import " + imp.name + "'",
+                env.module_ptr.filename,
+                imp.span
+            );
+            continue;
+        }
         ss_add(env.imported_modules, imp.name);
         let imported_env = nr_env_find(nr, imp.name);
         if (imported_env == null) {

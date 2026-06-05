@@ -295,12 +295,14 @@ func ps_parse_module(self: ParserState*) -> Module*? {
 
     with (let imports: VectorBase*? = ptr_vec_create(4) => import_vec_free(imports),
           let decls: VectorBase*? = ptr_vec_create(8) => top_level_decl_vec_free(decls)) {
-        while (ps_match(self, ord(TT_IMPORT))) {
+        while (ps_check(self, ord(TT_IMPORT))) {
+            let imp_start = ps_span_start(self);
+            ps_advance(self);
             let first = ps_expect_ident(self, "PAR-0320", "expected imported module name")?;
             let first_imp = token_ident_text(first) as string;
             let imp_name = parse_dotted_name_rest(self, first_imp)?;
             ps_expect(self, ord(TT_SEMI), "PAR-0321", "expected ';' after import")?;
-            let imp = new Import(imp_name);
+            let imp = new Import(imp_name, ps_extend_span(self, imp_start));
             ptr_vec_push(imports as VectorBase*, imp as void*);
         }
 

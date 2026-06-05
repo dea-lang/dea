@@ -277,12 +277,14 @@ class Parser:
             module_name = ".".join(mod_parts)
 
             imports: List[Import] = []
-            while self._match(TokenKind.IMPORT):
+            while self._check(TokenKind.IMPORT):
+                imp_start = self._span_start()
+                self._advance()
                 first = self._expect(TokenKind.IDENT, "[PAR-0320] expected imported module name")
                 parts = self._get_dotted_module_name(first)
 
                 self._expect_semicolon("[PAR-0321] expected ';' after import")
-                imports.append(Import(".".join(parts)))
+                imports.append(Import(".".join(parts), span=self._extend_span(imp_start)))
         except _ParseSyncException:
             # Failed to parse module header. Return an empty module to allow driver to collect errors.
             return Module("unknown", [], [], span=self._extend_span(start), filename=filename)

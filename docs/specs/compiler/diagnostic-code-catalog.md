@@ -280,7 +280,7 @@ and reuse supplement for applying this registry within L0.
 | `RES-0033` | L1+   | Duplicate import alias in the same module                                            |
 | `RES-0034` | L1+   | Name is used both as an import alias and as a visible symbol in the same module      |
 | `RES-0035` | L1+   | Redundant selective import names symbols already imported from the same module       |
-| `RES-0036` | L1+   | Duplicate open import declaration for the same module                                |
+| `RES-0036` | All   | Duplicate open import declaration for the same module                                |
 
 ## Signature Analysis and Type Resolution for Type Declarations, Type Aliases, and Type References
 

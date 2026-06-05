@@ -167,6 +167,7 @@ DIAGNOSTIC_CODE_FAMILIES = {
         "RES-0021",
         "RES-0022",
         "RES-0029",
+        "RES-0036",
     ],
     "SIG": [
         "SIG-0010",

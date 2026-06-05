@@ -447,3 +447,59 @@ def test_qualified_enum_variant_runtime_survives_import_shadow_warning(tmp_path,
     c_code = Backend(result).generate()
     success, _stdout, stderr = compile_and_run(c_code, tmp_path)
     assert success, stderr
+
+
+def test_duplicate_open_import_warns_once_without_ambiguity(tmp_path, compile_and_run):
+    """
+    Importing the same module twice is redundant, not ambiguous.
+
+    A single RES-0036 warning is emitted, no RES-0022 ambiguity flood appears,
+    and symbols from the duplicated module remain usable.
+    """
+    proj_root = tmp_path / "project"
+    proj_root.mkdir()
+
+    _write(
+        proj_root,
+        "helper.l0",
+        """
+        module helper;
+
+        func foo() -> int { return 1; }
+        """,
+    )
+
+    _write(
+        proj_root,
+        "main.l0",
+        """
+        module main;
+        import helper;
+        import helper;
+
+        func main() -> int { return foo() - 1; }
+        """,
+    )
+
+    paths = SourceSearchPaths()
+    paths.add_project_root(proj_root)
+
+    driver = L0Driver(search_paths=paths)
+    result = driver.analyze("main")
+
+    assert not result.has_errors(), [d.message for d in result.diagnostics]
+
+    res_0036 = [d for d in result.diagnostics if "RES-0036" in d.message]
+    assert len(res_0036) == 1
+    assert res_0036[0].kind == "warning"
+    assert "duplicated 'import helper'" in res_0036[0].message
+    # The warning points at the redundant (second) import line, not the module.
+    assert (res_0036[0].line, res_0036[0].column) == (4, 1)
+
+    # The duplicate must not be misreported as cross-module ambiguity.
+    assert not any("RES-0022" in d.message for d in result.diagnostics)
+
+    # foo stays resolvable through the (de-duplicated) import.
+    c_code = Backend(result).generate()
+    success, _stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, stderr

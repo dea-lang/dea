@@ -12,7 +12,7 @@ from l0_driver import L0Driver
 
 # Codes that produce warnings, not errors.  Skip has_errors() assertion.
 WARNING_CODES = {
-    "RES-0020", "RES-0021", "RES-0022",
+    "RES-0020", "RES-0021", "RES-0022", "RES-0036",
     "TYP-0021", "TYP-0022", "TYP-0023", "TYP-0024", "TYP-0025",
     "TYP-0030", "TYP-0031", "TYP-0105",
 }
@@ -649,6 +649,7 @@ MULTI_MODULE_TRIGGERS = {
     "RES-0020": "extern-shadow",
     "RES-0021": "import-shadow",
     "RES-0022": "ambiguous-import",
+    "RES-0036": "duplicate-import",
     "TYP-0023": "shadow-imported-variant",
     "TYP-0024": "shadow-ambiguous",
     "TYP-0154": "not-imported-varref",
@@ -708,6 +709,19 @@ def _analyze_with_driver(tmp_path: Path, mode: str):
             module main;
             import helper;
             func foo() -> int { return 2; }
+        """))
+        return driver.analyze("main")
+
+    if mode == "duplicate-import":
+        (tmp_path / "helper.l0").write_text(dedent("""\
+            module helper;
+            func foo() -> int { return 1; }
+        """))
+        (tmp_path / "main.l0").write_text(dedent("""\
+            module main;
+            import helper;
+            import helper;
+            func bar() -> int { return foo(); }
         """))
         return driver.analyze("main")
 

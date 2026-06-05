@@ -195,6 +195,44 @@ func test_import_shadow_warning_keeps_qualified_variant_lookup_available() {
 }
 
 /**
+ * Tests test_duplicate_open_import_reports_warning.
+ */
+func test_duplicate_open_import_reports_warning() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        let state = driver_analyze_entry(sp, "dupimp_main", cfg);
+        let names = nr_resolve(state, diags);
+
+        assert(!driver_has_errors(state), "expected no driver errors");
+        assert(count_diag_code(diags, "RES-0036") == 1, "expected one RES-0036 duplicated-import warning");
+        // A repeated import of the same module is redundant, not ambiguous.
+        assert(count_diag_code(diags, "RES-0022") == 0, "expected no RES-0022 ambiguity warning");
+
+        // The warning points at the redundant (second) import line, not the module.
+        let saw_loc = false;
+        for (let i = 0; i < diag_count(diags); i = i + 1) {
+            let d = diag_get(diags, i);
+            if (d.code == "RES-0036") {
+                assert(d.line == 9, "expected RES-0036 on the duplicate import line");
+                assert(d.column == 1, "expected RES-0036 at column 1");
+                saw_loc = true;
+            }
+        }
+        assert(saw_loc, "expected to inspect the RES-0036 diagnostic");
+
+        let env = nr_env_find(names, "dupimp_main");
+        assert(env != null, "expected dupimp_main env");
+        // The duplicated module's symbol must stay usable.
+        assert(nr_module_env_all(env as ModuleEnv*, "dep_value") != null, "expected dep_value to remain visible");
+
+        nr_free(names);
+        driver_state_free(state);
+    }
+    sp_free(sp);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -202,5 +240,6 @@ func main() {
     test_ambiguous_import_reports_warning();
     test_duplicate_top_level_reports_error();
     test_import_shadow_warning_keeps_qualified_variant_lookup_available();
+    test_duplicate_open_import_reports_warning();
     printl_s("name_resolver_test: all tests passed");
 }

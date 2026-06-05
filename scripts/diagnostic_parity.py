@@ -67,6 +67,10 @@ def write_multi_module(root: Path, stage: str, mode: str) -> str:
         w("b", "module b;\nfunc foo() -> int { return 2; }\n")
         w("main", "module main;\nimport a;\nimport b;\nfunc bar() -> int { return 0; }\n")
         return "main"
+    if mode == "duplicate-import":
+        w("helper", "module helper;\nfunc foo() -> int { return 1; }\n")
+        w("main", "module main;\nimport helper;\nimport helper;\nfunc bar() -> int { return foo(); }\n")
+        return "main"
     if mode == "shadow-imported-variant":
         w("colors", "module colors;\nenum Color { Red(); Green(); }\n")
         w("main", "module main;\nimport colors;\nfunc foo() -> int { let Red: int = 1; return Red; }\n")

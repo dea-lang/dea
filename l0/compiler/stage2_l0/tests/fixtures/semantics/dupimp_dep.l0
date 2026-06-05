@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module dupimp_dep;
+
+/**
+ * Exports a value used to confirm the duplicated import stays usable.
+ *
+ * @return `7`.
+ */
+func dep_value() -> int {
+    return 7;
+}

@@ -152,6 +152,7 @@ struct TypeRef {
  */
 struct Import {
     name: string;
+    span: Span;
 }
 
 /**
