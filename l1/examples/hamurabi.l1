@@ -1,0 +1,491 @@
+    /* SPDX-License-Identifier: CC0-1.0
+       Copyright (c) 2025-2026 gwz
+       Dedicated to the public domain via CC0 1.0. */
+
+    /*
+
+    ===========================================================================
+    HAMURABI - Ancient Sumeria Resource Management
+    ===========================================================================
+
+    A faithful port to Dea of the classic BASIC game that taught a generation
+    to program.
+
+    HISTORY:
+      1968 - "The Sumer Game" by Doug Dyment, written in FOCAL for the PDP-8
+             at Digital Equipment Corporation as a demonstration of the new
+             FOCAL language created by Richard Merrill
+
+    c.1971 - David H. Ahl ported the game to BASIC, adding the 10-year
+             performance assessment and keeping Dyment's "Hamurabi" spelling
+
+      1973 - Published in "101 BASIC Computer Games" by DEC
+
+      1978 - Republished in "BASIC Computer Games" by Creative Computing,
+             which became the first computer book to sell one million copies
+
+      2022 - David H. Ahl generously placed all his classic computing
+             publications into the public domain
+
+      2025 - This Dea/L0 implementation
+
+    DEDICATION:
+      This port is dedicated to David H. Ahl (1939-) and Doug Dyment, pioneers
+      who understood that the real power of computing comes from sharing code
+      and knowledge freely. Ahl's books didn't just teach syntax - they taught
+      a generation that computers could be personal, creative, and fun.
+
+      Thank you, Dave, for creating Creative Computing magazine from your
+      home in Morristown, NJ, for publishing the games that filled our early
+      computers with life, and for releasing your life's work into the public
+      domain so new generations can learn, build, and be inspired.
+
+      And thank you, Doug, for creating a game so elegant in its simplicity
+      and so rich in its lessons that it has been ported to hundreds of
+      platforms across six decades.
+
+    THIS IMPLEMENTATION:
+      This Dea/L0 port attempts to faithfully recreate the 1978 BASIC version,
+      preserving the original messages, game mechanics, and even the bugs
+      that became features. It serves as both a tribute to the original and
+      a demonstration of the Dea language: itself a project in the spirit of
+      those early computing pioneers who believed in building tools that were
+      understandable, explicit, and free of hidden complexity.
+
+    LICENSE:
+      Following David Ahl's example, this implementation is released into the
+      public domain. Use it, learn from it, improve it, teach with it.
+
+    "Try your hand at governing ancient Sumeria for a ten-year term of office."
+
+    ===========================================================================
+
+                                                                             */
+
+module hamurabi;
+
+import std.io;
+import std.string;
+import std.text;
+import std.rand;
+import std.system;
+
+/**
+ * Represents the state of the game.
+ */
+struct GameState {
+    year: int;
+    population: int;
+    acres: int;
+    bushels: int;
+    bushels_per_acre: int;
+    rats_ate: int;
+    immigrants: int;
+    starved: int;
+    land_value: int;
+    plague_flag: int;
+    total_deaths: int;
+    impeachment_count: int;
+}
+
+/**
+ * Initializes and returns a new GameState.
+ *
+ * @return A pointer to the newly allocated GameState.
+ */
+func init_game() -> GameState* {
+    return new GameState(
+        year: 0,
+        population: 95,
+        acres: 1000,
+        bushels: 2800,
+        bushels_per_acre: 3,
+        rats_ate: 200,
+        immigrants: 5,
+        starved: 0,
+        land_value: 0,
+        plague_flag: 0,
+        total_deaths: 0,
+        impeachment_count: 0
+    );
+}
+
+/**
+ * Prints the annual report of the city's status.
+ *
+ * @param state The pointer to the current GameState.
+ */
+func print_report(state: GameState*) {
+    printl();
+    printl();
+    print_s("Hamurabi: I beg to report to you, ");
+    printl();
+    printl_s("In year " + int_to_string(state.year) + ", " +
+            int_to_string(state.starved) + " people starved, " +
+            int_to_string(state.immigrants) + " came to the city.");
+
+    if (state.plague_flag > 0) {
+        printl_s("A horrible plague struck! Half the people died.");
+    }
+
+    printl_s("Population is now " + int_to_string(state.population));
+    printl_s("The city now owns " + int_to_string(state.acres) + " acres.");
+    printl_s("You harvested " + int_to_string(state.bushels_per_acre) + " bushels per acre.");
+    printl_s("Rats ate " + int_to_string(state.rats_ate) + " bushels.");
+    printl_s("You now have " + int_to_string(state.bushels) + " bushels in store.");
+}
+
+/**
+ * Prompts the user for integer input.
+ *
+ * @param prompt The string prompt to display.
+ * @return The integer value entered by the user, -1 if the input is invalid
+ *         (negative or too long), or null on EOF.
+ */
+func get_int_input(prompt: string) -> int? {
+    let RETRY: int? = -1; // sentinel for retry
+    print_s(prompt);
+    let line: string = read_line()?; // propagate null on EOF
+    if (is_empty_s(line) || len_s(line) > 6) {
+        // Empty input (just Enter) or too long
+        return RETRY;
+    }
+
+    let n = string_to_int(line);
+    if (n == null || (n as int) < 0) {
+        // parse error or negative number
+        return RETRY;
+    }
+    return n;
+}
+
+/**
+ * Handles the logic for buying and selling land.
+ *
+ * @param state The pointer to the current GameState.
+ * @return true if a transaction occurred, false if cancelled, null on error.
+ */
+func handle_land_trading(state: GameState*) -> bool? {
+    state.land_value = rand_int_range(min: 17, max: 27);
+    printl();
+    printl_s("Land is trading at " + int_to_string(state.land_value) + " bushels per acre.");
+
+    let buy: int = get_int_input(prompt: "How many acres do you wish to buy? ")?;
+
+    if (buy < 0) {
+        printl_s("Hamurabi: Think again. You have only");
+        printl_s(int_to_string(state.bushels) + " bushels of grain. Now then,");
+        return false;
+    }
+
+    if (buy > 0) {
+        let cost: int = state.land_value * buy;
+        if (cost > state.bushels) {
+            printl_s("Hamurabi: Think again. You have only");
+            printl_s(int_to_string(state.bushels) + " bushels of grain. Now then,");
+            return false;
+        }
+        state.acres = state.acres + buy;
+        state.bushels = state.bushels - cost;
+        return true;
+    }
+
+    let sell: int = get_int_input(prompt: "How many acres do you wish to sell? ")?;
+
+    if (sell < 0) {
+        printl_s("Hamurabi: Think again. You own only");
+        printl_s(int_to_string(state.acres) + " acres. Now then,");
+        return false;
+    }
+
+    if (sell > state.acres) {
+        printl_s("Hamurabi: Think again. You own only");
+        printl_s(int_to_string(state.acres) + " acres. Now then,");
+        return false;
+    }
+
+    state.acres = state.acres - sell;
+    state.bushels = state.bushels + (state.land_value * sell);
+    return true;
+}
+
+/**
+ * Handles the logic for feeding the population.
+ *
+ * @param state The pointer to the current GameState.
+ * @return The number of bushels allocated for feeding, or null on error.
+ */
+func handle_feeding(state: GameState*) -> int? {
+    let RETRY: int? = -1; // sentinel for retry
+    printl();
+    let feed: int = get_int_input(prompt: "How many bushels do you wish to feed your people? ")?;
+
+    if (feed < 0) {
+        printl_s("Hamurabi: I cannot do what you wish.");
+        printl_s("Get yourself another steward!!!!!");
+        return RETRY;
+    }
+
+    if (feed > state.bushels) {
+        printl_s("Hamurabi: Think again. You have only");
+        printl_s(int_to_string(state.bushels) + " bushels of grain. Now then,");
+        return RETRY;
+    }
+
+    return feed;
+}
+
+/**
+ * Handles the logic for planting seeds.
+ *
+ * @param state The pointer to the current GameState.
+ * @param fed_bushels The number of bushels already allocated for feeding.
+ * @return The number of acres planted, or null on error.
+ */
+func handle_planting(state: GameState*, fed_bushels: int) -> int? {
+    let RETRY: int? = -1; // sentinel for retry
+    printl();
+    let remaining: int = state.bushels - fed_bushels;
+    let plant: int = get_int_input(prompt: "How many acres do you wish to plant with seed? ")?;
+
+    if (plant < 0) {
+        printl_s("Hamurabi: I cannot do what you wish.");
+        printl_s("Get yourself another steward!!!!!");
+        return RETRY;
+    }
+
+    if (plant > state.acres) {
+        printl_s("Hamurabi: Think again. You own only");
+        printl_s(int_to_string(state.acres) + " acres. Now then,");
+        return RETRY;
+    }
+
+    let seed_needed: int = plant / 2;
+    if (seed_needed > remaining) {
+        printl_s("But you have only");
+        printl_s(int_to_string(remaining) + " bushels of grain. Now then,");
+        return RETRY;
+    }
+
+    let workers_needed: int = plant / 10;
+    if (workers_needed > state.population) {
+        printl_s("But you have only");
+        printl_s(int_to_string(state.population) + " people to tend the fields! Now then,");
+        return RETRY;
+    }
+
+    return plant;
+}
+
+/**
+ * Simulates a single year's harvest, plague, rats, and population changes.
+ *
+ * @param state The pointer to the current GameState.
+ * @param fed_bushels The number of bushels allocated for feeding.
+ * @param planted_acres The number of acres planted.
+ */
+func simulate_year(state: GameState*, fed_bushels: int, planted_acres: int) {
+    let rand_c: int = rand_int_range(min: 1, max: 6);
+    state.bushels_per_acre = rand_c;
+    let harvest: int = planted_acres * rand_c;
+
+    state.bushels = state.bushels - fed_bushels - (planted_acres / 2) + harvest;
+
+    let rat_rand: int = rand_int_range(min: 1, max: 6);
+    if (rat_rand == 3) {
+        printl_s("*** A bountiful harvest!");
+        state.rats_ate = 0;
+    } else {
+        printl_s("*** Rats are running wild!!");
+        state.rats_ate = state.bushels / rat_rand;
+    }
+
+    state.bushels = state.bushels - state.rats_ate;
+
+    let fed_people: int = fed_bushels / 20;
+
+    let plague_rand: int = rand_int(max: 20);
+    if (plague_rand < 3) {
+        printl_s("*** Horror, a 15% chance of plague");
+        state.plague_flag = 1;
+        state.population = state.population / 2;
+    } else {
+        state.plague_flag = 0;
+    }
+
+    if (fed_people >= state.population) {
+        state.starved = 0;
+    } else {
+        state.starved = state.population - fed_people;
+        state.total_deaths = state.total_deaths + state.starved;
+        state.population = fed_people;
+    }
+
+    if (state.population == 0) {
+        // everyone died
+        state.impeachment_count = state.impeachment_count + 1;
+        return;
+    }
+
+    if (state.starved > (45 * state.population) / 100) {
+        state.impeachment_count = state.impeachment_count + 1;
+    }
+
+    let imm_rand: int = rand_int_range(min: 1, max: 6);
+    state.immigrants = imm_rand * (20 * state.acres + state.bushels) / state.population / 100 + 1;
+    state.population = state.population + state.immigrants;
+
+    state.year = state.year + 1;
+}
+
+/**
+ * Checks if the player has been impeached due to mismanagement.
+ *
+ * @param state The pointer to the current GameState.
+ * @return true if impeached, false otherwise.
+ */
+func check_impeachment(state: GameState*) -> bool {
+    if (state.impeachment_count > 0) {
+        printl();
+        printl_s("You starved " + int_to_string(state.starved) + " people in one year!!!");
+        impeachment_sentence();
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Prints the impeachment sentence for extreme mismanagement.
+ */
+func impeachment_sentence() {
+    printl_s("Due to this extreme mismanagement you have not only");
+    printl_s("been impeached and thrown out of office but you have");
+    printl_s("also been declared national fink!!!!");
+}
+
+func double_to_cents_string(value: double) -> string {
+    let cents: int = ((value * 100.0) + 0.5) as int;
+    let whole: int = cents / 100;
+    let frac: int = cents % 100;
+    let frac_text: string = int_to_string(frac);
+    if (frac < 10) {
+        frac_text = "0" + frac_text;
+    }
+    return int_to_string(whole) + "." + frac_text;
+}
+
+func final_report(state: GameState*) {
+    print_report(state);
+    printl();
+
+    let starve_pct: double = ((state.total_deaths * 100) as double) / 950.0;
+    printl_s("In your 10-year term of office, " + double_to_cents_string(value: starve_pct) + " percent of the");
+    printl_s("population starved per year on the average, i.e. a total of");
+    printl_s(int_to_string(state.total_deaths) + " people died!! ");
+
+    let acres_per_person: double = 0.0;
+    if (state.population > 0) {
+        acres_per_person = (state.acres as double) / (state.population as double);
+        printl_s("You started with 10 acres per person and ended with " +
+                double_to_cents_string(value: acres_per_person) + " acres per person.");
+        printl();
+    }
+
+    if (starve_pct > 33.0) {
+        impeachment_sentence();
+        return;
+    }
+
+    if (starve_pct > 10.0 || acres_per_person < 9.0) {
+        printl_s("Your heavy-handed performance smacks of Nero and Ivan IV.");
+        printl_s("The people (remaining) find you an unpleasant ruler, and,");
+        printl_s("frankly, hate your guts!!");
+        return;
+    }
+
+    if (starve_pct > 3.0 || acres_per_person < 10.0) {
+        printl_s("Your performance could have been somewhat better, but");
+        printl_s("really wasn't too bad at all. "+ int_to_string(rand_int(state.population * 8) / 10) + " people");
+        printl_s("dearly like to see you assassinated but we all have our");
+        printl_s("trivial problems.");
+        return;
+    }
+
+    printl_s("A fantastic performance!!! Charlemagne, Disraeli, and");
+    printl_s("Jefferson combined could not have done better!");
+}
+
+/**
+ * Exits the game and cleans up state.
+ */
+func print_so_long() {
+    printl();
+    printl_s("So long for now.");
+    printl();
+}
+
+/**
+ * Runs the main game loop for a 10-year term.
+ *
+ * @param state The pointer to the current GameState.
+ * @return true if completed successfully, false if impeached, null on EOF or error.
+ */
+func run_game(state: GameState*) -> bool? {
+    while (state.year < 10) {
+        print_report(state);
+
+        let success: bool = false;
+        while (!success) {
+            success = handle_land_trading(state)?;
+        }
+
+        let fed: int = -1;
+        while (fed < 0) {
+            fed = handle_feeding(state)?;
+        }
+
+        let planted: int = -1;
+        while (planted < 0) {
+            planted = handle_planting(state: state, fed_bushels: fed)?;
+        }
+
+        simulate_year(state: state, fed_bushels: fed, planted_acres: planted);
+
+        if (check_impeachment(state)) {
+            return false; // impeached!
+        }
+    }
+
+    return true; // completed successfully
+}
+
+/**
+ * Main entry point for the Hamurabi game.
+ */
+func main() -> int {
+    rand_seed(seed: 0); // Seed random number generator; 0 = system time (always different)
+
+    print_s("\033[3J\033[H\033[2J"); // Clear screen ANSI escape codes
+
+    printl_s("                                HAMURABI");
+    printl_s("               CREATIVE COMPUTING  MORRISTOWN, NEW JERSEY");
+    printl_s("                      WITH THANKS TO  DAVID H. AHL");
+    printl();
+    printl();
+    printl();
+    printl_s("TRY YOUR HAND AT GOVERNING ANCIENT SUMERIA");
+    printl_s("FOR A TEN-YEAR TERM OF OFFICE.");
+    printl();
+
+    with (let state: GameState* = init_game() => drop state) {
+        let success = run_game(state);
+        if (success != null && success as bool) {
+            // completed successfully
+            final_report(state);
+        }
+        // if null, EOF occurred; if false, impeached (handled in run_game)
+    }
+
+    print_so_long();
+    return 0;
+}
