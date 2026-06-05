@@ -84,6 +84,24 @@ func test_typing_ok() {
 }
 
 /**
+ * Tests that for-loop variables are scoped to their loop.
+ *
+ * Sibling and deeper-but-disjoint reuse of `i` must not be reported as
+ * shadowing; only the genuinely nested inner `i` warns, so exactly one
+ * `TYP-0021` is expected.
+ */
+func test_typing_for_loop_scope() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_for_loop_scope", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_for_loop_scope");
+        assert(count_diag_code(result, "TYP-0021") == 1, "expected exactly one TYP-0021 (genuine nested shadow only)");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests test_typing_err.
  */
 func test_typing_err() {
@@ -642,6 +660,7 @@ func test_typing_drop_flow_err() {
  */
 func main() {
     test_typing_ok();
+    test_typing_for_loop_scope();
     test_typing_err();
     test_typing_alias_struct_constructor_ok();
     test_typing_alias_value_err();

@@ -121,6 +121,54 @@ def test_continue_inside_for_loop_ok(analyze_single):
     assert not result.has_errors()
 
 
+def test_for_loop_variable_scope_does_not_leak_to_siblings(analyze_single):
+    """Oracle pin: loop variables are loop-scoped; sibling reuse is not shadowing."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func f() -> int {
+            let total = 0;
+            for (let i: int = 0; i < 3; i = i + 1) {
+                total = total + i;
+            }
+            while (0 < 1) {
+                for (let i: int = 0; i < 3; i = i + 1) {
+                    total = total + i;
+                }
+                break;
+            }
+            return total;
+        }
+        """,
+    )
+
+    assert not result.has_errors()
+    assert not any("TYP-0021" in d.message for d in result.diagnostics)
+
+
+def test_for_loop_genuine_nested_shadow_warns(analyze_single):
+    """A genuinely nested loop variable shadows the outer one exactly once."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func f() -> int {
+            let total = 0;
+            for (let i: int = 0; i < 3; i = i + 1) {
+                for (let i: int = 0; i < 2; i = i + 1) {
+                    total = total + i;
+                }
+            }
+            return total;
+        }
+        """,
+    )
+
+    assert not result.has_errors()
+    assert sum("TYP-0021" in d.message for d in result.diagnostics) == 1
+
+
 def test_no_unreachable_warning_after_conditional_continue(analyze_single):
     """Conditional continue should not mark following statements unreachable."""
     result = analyze_single(
