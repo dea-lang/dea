@@ -896,8 +896,8 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
         bd_prepared_input_free(prep);
         prepared = null;
 
+        dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
         if (analysis_has_errors(result)) {
-            dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
             analysis_result_free(result);
             return 1;
         }

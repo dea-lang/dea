@@ -94,6 +94,35 @@ def test_build_warns_when_entry_main_return_type_is_not_preferred(tmp_path, monk
     assert "[L0C-0013]" in capsys.readouterr().err
 
 
+def test_build_surfaces_analysis_warning_for_duplicate_import(tmp_path, monkeypatch, capsys):
+    # Oracle pin: a non-fatal analysis warning must reach stderr in `--build`
+    # mode, not only in `--check`.
+    _write_module(
+        tmp_path,
+        "dep",
+        """
+        module dep;
+        func dep_value() -> int { return 0; }
+        """,
+    )
+    _write_module(
+        tmp_path,
+        "app.main",
+        """
+        module app.main;
+        import dep;
+        import dep;
+        func main() -> int { return dep_value(); }
+        """,
+    )
+    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
+
+    rc = cmd_build(_build_args(tmp_path, "app.main"))
+
+    assert rc == 0
+    assert "[RES-0036] duplicated 'import dep'" in capsys.readouterr().err
+
+
 def test_codegen_stdout_preserves_single_trailing_newline(monkeypatch, capsys):
     class _FakeBackend:
         def __init__(self, result):
