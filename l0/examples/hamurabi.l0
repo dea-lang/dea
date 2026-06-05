@@ -1,66 +1,66 @@
-   /* SPDX-License-Identifier: CC0-1.0
-      Copyright (c) 2025-2026 gwz
-      Dedicated to the public domain via CC0 1.0. */
+    /* SPDX-License-Identifier: CC0-1.0
+       Copyright (c) 2025-2026 gwz
+       Dedicated to the public domain via CC0 1.0. */
 
-   /*
+    /*
 
-   ===========================================================================
-   HAMURABI - Ancient Sumeria Resource Management
-   ===========================================================================
+    ===========================================================================
+    HAMURABI - Ancient Sumeria Resource Management
+    ===========================================================================
 
-   A faithful port to Dea of the classic BASIC game that taught a generation
-   to program.
+    A faithful port to Dea of the classic BASIC game that taught a generation
+    to program.
 
-   HISTORY:
-     1968 - "The Sumer Game" by Doug Dyment, written in FOCAL for the PDP-8
-            at Digital Equipment Corporation as a demonstration of the new
-            FOCAL language created by Richard Merrill
+    HISTORY:
+      1968 - "The Sumer Game" by Doug Dyment, written in FOCAL for the PDP-8
+             at Digital Equipment Corporation as a demonstration of the new
+             FOCAL language created by Richard Merrill
 
-   c.1971 - David H. Ahl ported the game to BASIC, adding the 10-year
-            performance assessment and keeping Dyment's "Hamurabi" spelling
+    c.1971 - David H. Ahl ported the game to BASIC, adding the 10-year
+             performance assessment and keeping Dyment's "Hamurabi" spelling
 
-     1973 - Published in "101 BASIC Computer Games" by DEC
+      1973 - Published in "101 BASIC Computer Games" by DEC
 
-     1978 - Republished in "BASIC Computer Games" by Creative Computing,
-            which became the first computer book to sell one million copies
+      1978 - Republished in "BASIC Computer Games" by Creative Computing,
+             which became the first computer book to sell one million copies
 
-     2022 - David H. Ahl generously placed all his classic computing
-            publications into the public domain
+      2022 - David H. Ahl generously placed all his classic computing
+             publications into the public domain
 
-     2025 - This Dea/L0 implementation
+      2025 - This Dea/L0 implementation
 
-   DEDICATION:
-     This port is dedicated to David H. Ahl (1939-) and Doug Dyment, pioneers
-     who understood that the real power of computing comes from sharing code
-     and knowledge freely. Ahl's books didn't just teach syntax - they taught
-     a generation that computers could be personal, creative, and fun.
+    DEDICATION:
+      This port is dedicated to David H. Ahl (1939-) and Doug Dyment, pioneers
+      who understood that the real power of computing comes from sharing code
+      and knowledge freely. Ahl's books didn't just teach syntax - they taught
+      a generation that computers could be personal, creative, and fun.
 
-     Thank you, Dave, for creating Creative Computing magazine from your
-     home in Morristown, NJ, for publishing the games that filled our early
-     computers with life, and for releasing your life's work into the public
-     domain so new generations can learn, build, and be inspired.
+      Thank you, Dave, for creating Creative Computing magazine from your
+      home in Morristown, NJ, for publishing the games that filled our early
+      computers with life, and for releasing your life's work into the public
+      domain so new generations can learn, build, and be inspired.
 
-     And thank you, Doug, for creating a game so elegant in its simplicity
-     and so rich in its lessons that it has been ported to hundreds of
-     platforms across six decades.
+      And thank you, Doug, for creating a game so elegant in its simplicity
+      and so rich in its lessons that it has been ported to hundreds of
+      platforms across six decades.
 
-   THIS IMPLEMENTATION:
-     This Dea/L0 port attempts to faithfully recreate the 1978 BASIC version,
-     preserving the original messages, game mechanics, and even the bugs
-     that became features. It serves as both a tribute to the original and
-     a demonstration of the Dea language: itself a project in the spirit of
-     those early computing pioneers who believed in building tools that were
-     understandable, explicit, and free of hidden complexity.
+    THIS IMPLEMENTATION:
+      This Dea/L0 port attempts to faithfully recreate the 1978 BASIC version,
+      preserving the original messages, game mechanics, and even the bugs
+      that became features. It serves as both a tribute to the original and
+      a demonstration of the Dea language: itself a project in the spirit of
+      those early computing pioneers who believed in building tools that were
+      understandable, explicit, and free of hidden complexity.
 
-   LICENSE:
-     Following David Ahl's example, this implementation is released into the
-     public domain. Use it, learn from it, improve it, teach with it.
+    LICENSE:
+      Following David Ahl's example, this implementation is released into the
+      public domain. Use it, learn from it, improve it, teach with it.
 
-   "Try your hand at governing ancient Sumeria for a ten-year term of office."
+    "Try your hand at governing ancient Sumeria for a ten-year term of office."
 
-   ===========================================================================
+    ===========================================================================
 
-                                                                            */
+                                                                             */
 
 module hamurabi;
 
@@ -122,8 +122,8 @@ func print_report(state: GameState*) {
     print_s("Hamurabi: I beg to report to you, ");
     printl();
     printl_s("In year " + int_to_string(state.year) + ", " +
-             int_to_string(state.starved) + " people starved, " +
-             int_to_string(state.immigrants) + " came to the city.");
+            int_to_string(state.starved) + " people starved, " +
+            int_to_string(state.immigrants) + " came to the city.");
 
     if (state.plague_flag > 0) {
         printl_s("A horrible plague struck! Half the people died.");
@@ -151,6 +151,7 @@ func get_int_input(prompt: string) -> int? {
         // Empty input (just Enter) or too long
         return RETRY;
     }
+
     let n = string_to_int(line);
     if (n == null || (n as int) < 0) {
         // parse error or negative number
@@ -163,7 +164,7 @@ func get_int_input(prompt: string) -> int? {
  * Handles the logic for buying and selling land.
  *
  * @param state The pointer to the current GameState.
- * @return True if a transaction occurred, false if cancelled, null on error.
+ * @return true if a transaction occurred, false if cancelled, null on error.
  */
 func handle_land_trading(state: GameState*) -> bool? {
     state.land_value = rand_int_range(17, 27);
@@ -342,18 +343,25 @@ func simulate_year(state: GameState*, fed_bushels: int, planted_acres: int) {
  * Checks if the player has been impeached due to mismanagement.
  *
  * @param state The pointer to the current GameState.
- * @return True if impeached, false otherwise.
+ * @return true if impeached, false otherwise.
  */
 func check_impeachment(state: GameState*) -> bool {
     if (state.impeachment_count > 0) {
         printl();
         printl_s("You starved " + int_to_string(state.starved) + " people in one year!!!");
-        printl_s("Due to this extreme mismanagement you have not only");
-        printl_s("been impeached and thrown out of office but you have");
-        printl_s("also been declared national fink!!!!");
+        impeachment_sentence();
         return true;
     }
     return false;
+}
+
+/**
+ * Prints the impeachment sentence for extreme mismanagement.
+ */
+func impeachment_sentence() {
+    printl_s("Due to this extreme mismanagement you have not only");
+    printl_s("been impeached and thrown out of office but you have");
+    printl_s("also been declared national fink!!!!");
 }
 
 /**
@@ -364,7 +372,9 @@ func check_impeachment(state: GameState*) -> bool {
 func final_report(state: GameState*) {
     print_report(state);
     printl();
-    printl_s("In your 10-year term of office, " + int_to_string(state.total_deaths) + " percent of the");
+
+    let starve_pct: int = (state.total_deaths * 100) / 950;
+    printl_s("In your 10-year term of office, " + int_to_string(starve_pct) + " percent of the");
     printl_s("population starved per year on the average, i.e. a total of");
     printl_s(int_to_string(state.total_deaths) + " people died!! ");
 
@@ -376,33 +386,21 @@ func final_report(state: GameState*) {
         printl();
     }
 
-    let starve_pct: int = (state.total_deaths * 100) / 950;
-
     if (starve_pct > 33) {
-        printl_s("A fantastic performance!!! Charlemagne, Disraeli, and");
-        printl_s("Jefferson combined could not have done better!");
+        impeachment_sentence();
         return;
     }
 
-    if (starve_pct > 10) {
+    if (starve_pct > 10 || acres_per_person < 9) {
         printl_s("Your heavy-handed performance smacks of Nero and Ivan IV.");
         printl_s("The people (remaining) find you an unpleasant ruler, and,");
         printl_s("frankly, hate your guts!!");
         return;
     }
 
-    if (acres_per_person < 9) {
+    if (starve_pct > 3 || acres_per_person < 10) {
         printl_s("Your performance could have been somewhat better, but");
-        printl_s("really wasn't too bad at all. ");
-        printl_s(int_to_string(rand_int(state.population * 8) / 10) + " people");
-        printl_s("dearly like to see you assassinated but we all have our");
-        printl_s("trivial problems.");
-        return;
-    }
-
-    if (acres_per_person < 10) {
-        let fans: int = (state.population * 9) / 10;
-        printl_s(int_to_string(fans) + " people");
+        printl_s("really wasn't too bad at all. "+ int_to_string(rand_int(state.population * 8) / 10) + " people");
         printl_s("dearly like to see you assassinated but we all have our");
         printl_s("trivial problems.");
         return;
@@ -430,7 +428,7 @@ func so_long(state: GameState*) {
  * Runs the main game loop for a 10-year term.
  *
  * @param state The pointer to the current GameState.
- * @return True if completed successfully, false if impeached, null on EOF or error.
+ * @return true if completed successfully, false if impeached, null on EOF or error.
  */
 func run_game(state: GameState*) -> bool? {
      while (state.year < 10) {
@@ -479,19 +477,15 @@ func main() {
     printl_s("FOR A TEN-YEAR TERM OF OFFICE.");
     printl();
 
-
-    let state: GameState* = init_game();
-
-    let success = run_game(state);
-    if (success == null) {
-        // EOF or error
-        printl();
+    with (let state: GameState* = init_game()) {
+        let success = run_game(state);
+        if (success != null && success as bool) {
+            // completed successfully
+            final_report(state);
+        }
+        // if null, EOF occurred; if false, impeached (handled in run_game)
     }
-    else if (success as bool) {
-        // completed successfully
-        final_report(state);
+    cleanup {
+        so_long(state);
     }
-    // otherwise impeached, already handled in run_game
-
-    so_long(state);
 }
