@@ -2830,9 +2830,9 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                                     c_arg = be_materialize_arc_temp(self, c_arg, arg_ty as Type*);
                                 }
                                 if (is_out_of_order && arg_ty != null) {
-                                    let tmp = cem_fresh_tmp(self.emitter, "arg");
-                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
-                                    c_arg = tmp;
+                                    let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
+                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), arg_tmp, c_arg);
+                                    c_arg = arg_tmp;
                                 }
                             }
                             sv_push(c_arg_tmps, c_arg);
@@ -2986,9 +2986,9 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
                         if (is_out_of_order) {
                             with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
                                 if (arg_ty != null) {
-                                    let tmp = cem_fresh_tmp(self.emitter, "arg");
-                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
-                                    c_arg = tmp;
+                                    let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
+                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), arg_tmp, c_arg);
+                                    c_arg = arg_tmp;
                                 }
                             }
                         }
@@ -3068,9 +3068,9 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
                         if (is_out_of_order) {
                             with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
                                 if (arg_ty != null) {
-                                    let tmp = cem_fresh_tmp(self.emitter, "arg");
-                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
-                                    c_arg = tmp;
+                                    let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
+                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), arg_tmp, c_arg);
+                                    c_arg = arg_tmp;
                                 }
                             }
                         }
