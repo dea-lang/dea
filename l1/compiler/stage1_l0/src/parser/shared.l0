@@ -96,6 +96,28 @@ func ps_emit_error(self: ParserState*, code: string, message: string, tok: Token
 }
 
 /**
+ * Emit a non-fatal parser warning anchored to a token.
+ *
+ * @param self Parser state collecting diagnostics.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param tok Token whose span should be highlighted.
+ */
+func ps_emit_warning(self: ParserState*, code: string, message: string, tok: Token) {
+    diag_warn(
+        self.diags,
+        "Parser",
+        code,
+        message,
+        self.filename,
+        tok.line,
+        tok.column,
+        tok.line,
+        tok.column + token_width(tok)
+    );
+}
+
+/**
  * Report whether the parser has recorded any errors.
  *
  * @param self Parser state to inspect.

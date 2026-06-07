@@ -122,6 +122,8 @@ DIAGNOSTIC_CODE_FAMILIES = {
         "PAR-0239",
         "PAR-0240",
         "PAR-0241",
+        "PAR-0242",
+        "PAR-0243",
         "PAR-0300",
         "PAR-0310",
         "PAR-0311",

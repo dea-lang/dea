@@ -222,6 +222,131 @@ def test_parse_case_arm_body_is_single_stmt():
     assert not isinstance(stmt.else_arm.body, Block)
 
 
+def test_parse_case_with_wildcard_default():
+    """`_ =>` is the canonical default arm and yields the same AST as `else`."""
+    src = """
+    module test;
+    func main() {
+        case (42) {
+            1 => { return; }
+            _ => { return; }
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(src)
+    stmt = mod.decls[0].body.stmts[0]
+    assert isinstance(stmt, CaseStmt)
+    assert len(stmt.arms) == 1
+    assert stmt.else_arm is not None
+    assert isinstance(stmt.else_arm, CaseElse)
+    # The canonical spelling is not deprecated, so no PAR-0242 warning.
+    assert not any("PAR-0242" in d.message for d in parser.diagnostics)
+
+
+def test_parse_case_only_wildcard_default():
+    src = """
+    module test;
+    func main() {
+        case (42) {
+            _ => { return; }
+        }
+    }
+    """
+    stmt = get_func_body_stmt(src)
+    assert isinstance(stmt, CaseStmt)
+    assert len(stmt.arms) == 0
+    assert stmt.else_arm is not None
+
+
+def test_parse_case_wildcard_single_stmt():
+    src = """
+    module test;
+    func main() -> int {
+        case (42) {
+            1 => return 1;
+            _ => return 0;
+        }
+    }
+    """
+    stmt = get_func_body_stmt(src)
+    assert isinstance(stmt, CaseStmt)
+    assert not isinstance(stmt.else_arm.body, Block)
+
+
+def test_parse_case_else_emits_deprecation_warning():
+    """A deprecated `else` default arm still parses but warns with PAR-0242."""
+    src = """
+    module test;
+    func main() {
+        case (42) {
+            1 => { return; }
+            else { return; }
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(src)
+    stmt = mod.decls[0].body.stmts[0]
+    assert isinstance(stmt, CaseStmt)
+    assert stmt.else_arm is not None
+    warnings = [d for d in parser.diagnostics if "PAR-0242" in d.message]
+    assert len(warnings) == 1
+    assert warnings[0].kind == "warning"
+
+
+def test_parse_case_ambiguous_if_else_rewrites_accepted():
+    """The two disambiguating rewrites for PAR-0243 both parse cleanly."""
+    braced = """
+    module test;
+    func main() -> int {
+        case (42) {
+            1 => { if (true) return 1; else return 0; }
+        }
+        return 0;
+    }
+    """
+    mod, parser = parse_module_with_parser(braced)
+    assert not any("PAR-0243" in d.message for d in parser.diagnostics)
+
+    wildcard = """
+    module test;
+    func main() -> int {
+        case (42) {
+            1 => if (true) return 1;
+            _ => return 0;
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(wildcard)
+    assert not any("PAR-0243" in d.message for d in parser.diagnostics)
+
+
+def test_parse_case_default_arm_if_else_body_accepted():
+    """A default-arm body may be an unbraced if-else; only value arms are guarded."""
+    wildcard = """
+    module test;
+    func main() -> int {
+        case (42) {
+            1 => { return 1; }
+            _ => if (true) return 2; else return 3;
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(wildcard)
+    assert not any("PAR-0243" in d.message for d in parser.diagnostics)
+
+    else_chain = """
+    module test;
+    func main() -> int {
+        case (42) {
+            1 => { return 1; }
+            else if (true) return 2; else return 3;
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(else_chain)
+    assert not any("PAR-0243" in d.message for d in parser.diagnostics)
+
+
 # ============================================================================
 # Parser tests: error cases
 # ============================================================================
@@ -364,6 +489,63 @@ def test_parse_case_invalid_literal():
     """
     mod, parser = parse_module_with_parser(src)
     assert any("PAR-0241" in d.message for d in parser.diagnostics)
+
+
+def test_parse_case_wildcard_missing_arrow():
+    src = """
+    module test;
+    func main() {
+        case (42) {
+            _ { return; }
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(src)
+    assert any("PAR-0235" in d.message for d in parser.diagnostics)
+
+
+def test_parse_case_duplicate_default_mixed():
+    """A second default in any `_`/`else` combination is PAR-0236."""
+    src = """
+    module test;
+    func main() {
+        case (42) {
+            _ => { return; }
+            else { return; }
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(src)
+    assert any("PAR-0236" in d.message for d in parser.diagnostics)
+
+
+def test_parse_case_value_arm_after_wildcard():
+    src = """
+    module test;
+    func main() {
+        case (42) {
+            _ => { return; }
+            1 => { return; }
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(src)
+    assert any("PAR-0234" in d.message for d in parser.diagnostics)
+
+
+def test_parse_case_ambiguous_if_else():
+    """An unbraced `if` arm body followed by `else` is PAR-0243."""
+    src = """
+    module test;
+    func main() -> int {
+        case (42) {
+            1 => if (true) return 1;
+            else return 0;
+        }
+    }
+    """
+    mod, parser = parse_module_with_parser(src)
+    assert any("PAR-0243" in d.message for d in parser.diagnostics)
 
 
 # ============================================================================

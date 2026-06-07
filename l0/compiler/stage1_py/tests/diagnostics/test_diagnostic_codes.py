@@ -12,6 +12,7 @@ from l0_driver import L0Driver
 
 # Codes that produce warnings, not errors.  Skip has_errors() assertion.
 WARNING_CODES = {
+    "PAR-0242",
     "RES-0020", "RES-0021", "RES-0022", "RES-0036",
     "TYP-0021", "TYP-0022", "TYP-0023", "TYP-0024", "TYP-0025",
     "TYP-0030", "TYP-0031", "TYP-0105",
@@ -154,6 +155,8 @@ PAR_TRIGGERS = {
     "PAR-0237": "module main; func main() -> int { case (42) { else => return 0; } }",
     "PAR-0240": "module main; func main() -> int { case (42) { } return 0; }",
     "PAR-0241": "module main; func main() -> int { case (42) { x => { return 0; } } }",
+    "PAR-0242": "module main; func main() -> int { case (42) { 1 => { return 1; } else { return 0; } } }",
+    "PAR-0243": "module main; func main() -> int { case (42) { 1 => if (true) return 1; else return 0; } }",
     "PAR-0300": "module main.; func main() -> int { return 0; }",
     "PAR-0310": "import std.io;",
     "PAR-0311": "module ;",
