@@ -202,9 +202,10 @@ REPO_ROOT="$(cd -- "${{SCRIPT_DIR}}/{repo_relative_from_bin}" && pwd -P)"
 MONOREPO_ROOT="$(cd -- "${{REPO_ROOT}}/.." && pwd -P)"
 export {home_var_name}="${{REPO_ROOT}}/compiler"
 
-if [[ -f "${{MONOREPO_ROOT}}/.venv/bin/activate" ]]; then
+repo_venv="${{MONOREPO_ROOT}}/.venv"
+if [[ -f "${{repo_venv}}/bin/activate" && "${{VIRTUAL_ENV:-}}" != "${{repo_venv}}" ]]; then
     # shellcheck source=/dev/null
-    . "${{MONOREPO_ROOT}}/.venv/bin/activate"
+    . "${{repo_venv}}/bin/activate"
 fi
 
 case ":${{PATH}}:" in

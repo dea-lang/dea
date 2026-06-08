@@ -35,7 +35,7 @@ RUNTIME_PUBLIC_HEADERS := $(RUNTIME_INCLUDE_DIR)/dea_rt.h $(RUNTIME_INCLUDE_DIR)
 RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all check-examples test-all test-docker print-l1-build-dir clean docker
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples test-all test-docker print-l1-build-dir clean docker
 
 help:
 	@printf '%s\n' \
@@ -51,6 +51,7 @@ help:
 		'  test-stage1-trace  Run default L1 Stage 1 ARC/memory trace checks; skips intentionally slow trace tests.' \
 		'  test-stage1-trace-all' \
 		'                     Run L1 Stage 1 ARC/memory trace checks including intentionally slow trace tests.' \
+		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
 		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 1 compiler; fail on warnings or errors.' \
 		'  clean              Remove repo-local build artifacts under `build/*`.' \
 		'  clean-runtime      Remove only repo-local runtime build products under `$(L1_BUILD_DIR)`.' \
@@ -213,10 +214,13 @@ test-stage1-trace: venv build-stage1 _print-test-compiler-env
 test-stage1-trace-all: venv build-stage1 _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --include-slow $(TESTS)
 
+test-env: venv
+	"$(VENV_PYTHON)" ./tests/test_env_stackability.py
+
 check-examples: build-stage1
 	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L1_BUILD_DIR)/bin/l1c-stage1" --examples-dir examples --extension .l1 --label "L1 Stage 1"
 
-test-all: test-stage1 test-stage1-trace check-examples
+test-all: test-stage1 test-stage1-trace test-env check-examples
 
 test-docker:
 	$(MAKE) docker CMD=test-all
