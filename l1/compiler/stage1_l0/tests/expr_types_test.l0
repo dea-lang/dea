@@ -940,8 +940,9 @@ func test_typing_loop_control_err() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_loop_control_err", cfg);
         assert(analysis_has_errors(result), "expected typing errors for typing_loop_control_err");
-        assert(has_diag_code(result, "TYP-0110"), "expected break-outside-loop error");
-        assert(has_diag_code(result, "TYP-0120"), "expected continue-outside-loop error");
+        assert(count_diag_code(result, "TYP-0110") == 2, "expected top-level and inline-cleanup break-outside-loop errors");
+        assert(count_diag_code(result, "TYP-0120") == 2, "expected top-level and inline-cleanup continue-outside-loop errors");
+        assert(!has_diag_code(result, "TYP-0030"), "did not expect unreachable-code warning after invalid loop control");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -955,7 +956,7 @@ func test_typing_unreachable_warn_ok() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_unreachable_warn_ok", cfg);
         assert(!analysis_has_errors(result), "did not expect typing errors for typing_unreachable_warn_ok");
-        assert(count_diag_code(result, "TYP-0030") == 1, "expected one generic unreachable-code warning");
+        assert(count_diag_code(result, "TYP-0030") == 2, "expected generic unreachable-code warnings after break and continue");
         assert(count_diag_code(result, "TYP-0031") == 1, "expected one unreachable-after-return warning");
         analysis_result_free(result);
     }

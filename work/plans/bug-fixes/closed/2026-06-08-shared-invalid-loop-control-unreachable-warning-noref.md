@@ -3,7 +3,7 @@
 ## Shared invalid loop-control unreachable warning
 
 - Date: 2026-06-08
-- Status: Draft
+- Status: Completed
 - Title: Stop invalid loop-control statements from poisoning unreachable-state analysis
 - Kind: Bug Fix
 - Scope: Shared
@@ -17,9 +17,9 @@
 - Porting rule: Fix the L0 Stage 1 behavior first, then port the same loop-depth guard mechanically to L0 Stage 2 and L1
   Stage 1
 - Target status:
-  - L0 Stage 1: Pending
-  - L0 Stage 2: Pending
-  - L1 Stage 1: Pending
+  - L0 Stage 1: Completed
+  - L0 Stage 2: Completed
+  - L1 Stage 1: Completed
 - Subsystem: Statement analysis / Control flow / Warnings
 - Modules: `l0/compiler/stage1_py/l0_expr_types.py`, `l0/compiler/stage2_l0/src/expr_types.l0`,
   `l1/compiler/stage1_l0/src/expr_types.l0`

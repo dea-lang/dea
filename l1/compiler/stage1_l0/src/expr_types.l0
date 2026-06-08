@@ -1905,14 +1905,16 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
         ST_BREAK => {
             if (self.loop_depth < 1) {
                 etc_diag_error(self, "TYP-0110", "'break' statement not within a loop", unit.path, stmt.span);
+            } else {
+                self.next_stmt_unreachable = true;
             }
-            self.next_stmt_unreachable = true;
         }
         ST_CONTINUE => {
             if (self.loop_depth < 1) {
                 etc_diag_error(self, "TYP-0120", "'continue' statement not within a loop", unit.path, stmt.span);
+            } else {
+                self.next_stmt_unreachable = true;
             }
-            self.next_stmt_unreachable = true;
         }
     }
     

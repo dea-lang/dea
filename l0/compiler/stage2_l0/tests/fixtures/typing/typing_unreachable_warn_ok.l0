@@ -26,6 +26,17 @@ func warn_after_break() -> int {
 }
 
 /**
+ * Triggers TYP-0030 after a loop continue.
+ */
+func warn_after_continue() -> int {
+    while (true) {
+        continue;
+        let z: int = 0; // TYP-0030
+    }
+    return 0;
+}
+
+/**
  * Keeps later statements reachable after conditional loop control.
  */
 func no_warn_after_conditional_continue() -> int {

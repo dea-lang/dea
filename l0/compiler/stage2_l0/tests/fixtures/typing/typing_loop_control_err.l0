@@ -20,3 +20,21 @@ func err_continue_outside_loop() -> int {
     continue; // TYP-0120
     return 0;
 }
+
+/**
+ * Triggers a `break`-outside-loop error from inline cleanup.
+ */
+func err_break_inline_cleanup_outside_loop() -> int {
+    with (let x: int = 0 => break) {
+    }
+    return 0;
+}
+
+/**
+ * Triggers a `continue`-outside-loop error from inline cleanup.
+ */
+func err_continue_inline_cleanup_outside_loop() -> int {
+    with (let x: int = 0 => continue) {
+    }
+    return 0;
+}

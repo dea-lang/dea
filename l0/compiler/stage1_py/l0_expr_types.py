@@ -801,13 +801,15 @@ class ExpressionTypeChecker:
         if isinstance(stmt, BreakStmt):
             if self._breakable_loop_depth < 1:
                 self._error(stmt, "[TYP-0110] 'break' statement not within a loop")
-            self._next_stmt_unreachable = True
+            else:
+                self._next_stmt_unreachable = True
             return None
 
         if isinstance(stmt, ContinueStmt):
             if self._breakable_loop_depth < 1:
                 self._error(stmt, "[TYP-0120] 'continue' statement not within a loop")
-            self._next_stmt_unreachable = True
+            else:
+                self._next_stmt_unreachable = True
             return None
 
         # Unknown (should not happen if AST is well-formed)

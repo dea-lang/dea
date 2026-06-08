@@ -28,6 +28,7 @@ def test_typechecker_break_outside_loop(analyze_single):
 
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0110")
+    assert not has_error_code(result.diagnostics, "TYP-0030")
 
 
 def test_typechecker_continue_outside_loop(analyze_single):
@@ -45,6 +46,7 @@ def test_typechecker_continue_outside_loop(analyze_single):
 
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0120")
+    assert not has_error_code(result.diagnostics, "TYP-0030")
 
 
 def test_break_inside_while_loop_ok(analyze_single):
@@ -121,6 +123,26 @@ def test_continue_inside_for_loop_ok(analyze_single):
     assert not result.has_errors()
 
 
+def test_unreachable_warning_after_unconditional_continue(analyze_single):
+    """Unconditional continue should mark the following statement unreachable."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func f() -> int {
+            while (true) {
+                continue;
+                let x: int = 0;
+            }
+            return 0;
+        }
+        """,
+    )
+
+    assert not result.has_errors()
+    assert has_error_code(result.diagnostics, "TYP-0030")
+
+
 def test_for_loop_variable_scope_does_not_leak_to_siblings(analyze_single):
     """Oracle pin: loop variables are loop-scoped; sibling reuse is not shadowing."""
     result = analyze_single(
@@ -187,6 +209,44 @@ def test_no_unreachable_warning_after_conditional_continue(analyze_single):
         """,
     )
 
+    assert not has_error_code(result.diagnostics, "TYP-0030")
+
+
+def test_break_in_with_inline_cleanup_outside_loop(analyze_single):
+    """Invalid inline cleanup break should not poison later reachability."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func f() -> int {
+            with (let x: int = 0 => break) {
+            }
+            return 0;
+        }
+        """,
+    )
+
+    assert result.has_errors()
+    assert has_error_code(result.diagnostics, "TYP-0110")
+    assert not has_error_code(result.diagnostics, "TYP-0030")
+
+
+def test_continue_in_with_inline_cleanup_outside_loop(analyze_single):
+    """Invalid inline cleanup continue should not poison later reachability."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func f() -> int {
+            with (let x: int = 0 => continue) {
+            }
+            return 0;
+        }
+        """,
+    )
+
+    assert result.has_errors()
+    assert has_error_code(result.diagnostics, "TYP-0120")
     assert not has_error_code(result.diagnostics, "TYP-0030")
 
 
