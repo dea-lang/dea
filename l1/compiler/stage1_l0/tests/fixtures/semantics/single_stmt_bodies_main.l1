@@ -23,7 +23,7 @@ func scope_demo(flag: bool, n: int) -> int {
 
     case (total) {
         0 => let case_local: int = 1;
-        else let case_else_local: int = 2;
+        _ => let case_else_local: int = 2;
     }
 
     match (make_some(total)) {

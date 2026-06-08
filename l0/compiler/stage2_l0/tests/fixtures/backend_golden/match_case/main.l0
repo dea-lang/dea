@@ -18,7 +18,7 @@ func main() -> int {
         0 => {
             total = 1;
         }
-        else {
+        _ => {
             total = 2;
         }
     }

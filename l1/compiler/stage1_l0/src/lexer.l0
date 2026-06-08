@@ -394,7 +394,7 @@ func ls_next_token(self: LexerState*) -> Token? {
                     ls_advance(self);
                     return Token(TT_EQEQ, start_index, start_line, start_column);
                 }
-                else return Token(TT_EQ, start_index, start_line, start_column);
+                _ => return Token(TT_EQ, start_index, start_line, start_column);
             }
         }
 
@@ -416,7 +416,7 @@ func ls_next_token(self: LexerState*) -> Token? {
                     ls_advance(self);
                     return Token(TT_LSHIFT, start_index, start_line, start_column);
                 }
-                else return Token(TT_LT, start_index, start_line, start_column);
+                _ => return Token(TT_LT, start_index, start_line, start_column);
             }
         }
 
@@ -430,7 +430,7 @@ func ls_next_token(self: LexerState*) -> Token? {
                     ls_advance(self);
                     return Token(TT_RSHIFT, start_index, start_line, start_column);
                 }
-                else return Token(TT_GT, start_index, start_line, start_column);
+                _ => return Token(TT_GT, start_index, start_line, start_column);
             }
         }
 
@@ -462,7 +462,7 @@ func ls_next_token(self: LexerState*) -> Token? {
 
         '%' => return Token(TT_MODULO, start_index, start_line, start_column);
 
-        else {
+        _ => {
             // If we reach here, it's an unrecognized character
             ls_emit_error(self, "LEX-0040", "unexpected character '" + byte_to_s(c) + "'", start_line, start_column, start_line, start_column + 1);
             return null;
@@ -548,7 +548,7 @@ func ls_read_string_literal(self: LexerState*, start_index: int, start_line: int
                     }
                     continue;
                 }
-                else {
+                _ => {
                     cb_append(cb, c);
                     cb_append(vb, ls_advance(self));
                 }
@@ -872,7 +872,7 @@ func ls_skip_whitespace_and_comments(self: LexerState*) -> Unit? {
                         ls_advance(self);
                     }
                 }
-                else break; // Not a comment
+                _ => break; // Not a comment
             }
         } else break; // Other non-whitespace, non-comment character
     }

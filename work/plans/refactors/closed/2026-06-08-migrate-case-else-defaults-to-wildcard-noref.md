@@ -3,7 +3,7 @@
 ## Migrate in-tree `case` default `else` arms to `_ =>`
 
 - Date: 2026-06-08
-- Status: Draft
+- Status: Completed
 - Title: Migrate every in-tree `case`-default `else` arm to the canonical `_ =>` spelling
 - Kind: Refactor
 - Scope: Shared
@@ -60,3 +60,10 @@ coupled migration.
 
 1. Removing `else` as a `case` default or retiring `PAR-0242`/`0243` (the grammar-removal plans).
 2. Any parser, grammar, catalog, or ADR change.
+
+## Completion Notes
+
+- Swept all L0 and L1 source files using `PAR-0242` warnings.
+- Canonicalized all instances of `else` within `case` statements to `_ =>`.
+- Validated via successful L0 (`make test-all`) and L1 (`make test-stage1`) suites with zero regressions or deprecation
+  warnings emitted.

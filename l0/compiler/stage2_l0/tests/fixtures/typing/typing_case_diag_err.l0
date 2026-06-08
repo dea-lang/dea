@@ -14,7 +14,7 @@ struct Point {
  */
 func err_case_bad_scrutinee(p: Point) -> int {
     case (p) {
-        else { return 0; }
+        _ => { return 0; }
     }
 }
 
@@ -24,7 +24,7 @@ func err_case_bad_scrutinee(p: Point) -> int {
 func err_case_literal_type_mismatch(x: int) -> int {
     case (x) {
         "hello" => { return 1; }
-        else { return 0; }
+        _ => { return 0; }
     }
 }
 
@@ -35,6 +35,6 @@ func err_case_duplicate_literal(x: int) -> int {
     case (x) {
         1 => { return 1; }
         1 => { return 2; }
-        else { return 0; }
+        _ => { return 0; }
     }
 }

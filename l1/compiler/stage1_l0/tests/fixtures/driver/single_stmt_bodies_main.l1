@@ -28,6 +28,6 @@ func main() -> int {
 
     case (total) {
         23 => return total;
-        else return 0;
+        _ => return 0;
     }
 }

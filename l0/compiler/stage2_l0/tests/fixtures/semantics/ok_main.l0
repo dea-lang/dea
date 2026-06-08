@@ -37,7 +37,7 @@ func scope_demo(flag: bool) -> int {
             let case_local: int = 11;
             top = case_local;
         }
-        else {
+        _ => {
             let case_else_local: int = 12;
             top = case_else_local;
         }

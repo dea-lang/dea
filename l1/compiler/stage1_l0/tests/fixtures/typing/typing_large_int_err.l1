@@ -47,7 +47,7 @@ func bad_case_bigint_context(x: string) -> int {
         2147483648 => { // TYP-0703
             return 1;
         }
-        else {
+        _ => {
             return 0;
         }
     }

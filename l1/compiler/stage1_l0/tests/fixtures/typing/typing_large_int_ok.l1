@@ -41,13 +41,13 @@ func contextual_literals() -> long {
     case (a) {
         4294967295 => {
         }
-        else {
+        _ => {
         }
     }
     case (e) {
         0o1777777777777777777777 => {
         }
-        else {
+        _ => {
         }
     }
     return take_long(c) + take_uint(a) + d + (b as long);
