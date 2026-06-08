@@ -490,7 +490,8 @@ func ps_at_stmt_start(self: ParserState*) -> bool {
            ps_check(self, ord(TT_DROP)) ||
            ps_check(self, ord(TT_MATCH)) ||
            ps_check(self, ord(TT_CASE)) ||
-           ps_check(self, ord(TT_WITH));
+           ps_check(self, ord(TT_WITH)) ||
+           ps_check(self, ord(TT_LBRACE));
 }
 
 /**

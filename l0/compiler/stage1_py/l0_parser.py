@@ -516,7 +516,7 @@ class Parser:
             # If we hit a statement-starting keyword, we are synced.
             if kind in (TokenKind.LET, TokenKind.IF, TokenKind.WHILE, TokenKind.FOR, TokenKind.RETURN,
                         TokenKind.BREAK, TokenKind.CONTINUE, TokenKind.DROP, TokenKind.MATCH, 
-                        TokenKind.CASE, TokenKind.WITH):
+                        TokenKind.CASE, TokenKind.WITH, TokenKind.LBRACE):
                 return
             self._advance()
 
@@ -662,7 +662,7 @@ class Parser:
         """Parse a 'return' statement."""
         start = self._span_start()
         self._expect(TokenKind.RETURN, "[PAR-0150] expected 'return'")
-        if self._check(TokenKind.SEMI):
+        if self._check(TokenKind.SEMI) or self._check(TokenKind.RPAREN) or self._check(TokenKind.RBRACE):
             return ReturnStmt(None, span=self._extend_span(start))
         value = self._parse_expr()
         return ReturnStmt(value, span=self._extend_span(start))

@@ -159,7 +159,7 @@ func ps_parse_return_stmt(self: ParserState*) -> StmtId? {
     // Parse the value before creating the node so a failed expression does not
     // leak an arena-less StmtNode (matters once block-level recovery continues).
     let value = invalid_expr_id();
-    if (!ps_check(self, ord(TT_SEMI))) {
+    if (!ps_check(self, ord(TT_SEMI)) && !ps_check(self, ord(TT_RPAREN)) && !ps_check(self, ord(TT_RBRACE))) {
         value = ps_parse_expr(self)?;
     }
     let node = stmt_node_create(ST_RETURN, ps_extend_span(self, start));
