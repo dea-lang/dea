@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-05-19
+Version: 2026-06-08
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -135,6 +135,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c` CUs.
 - Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices] adds Stage 1 slice types `T[]`,
   `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
+- Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] makes Stage 1 `case` arm
+  literals follow equality comparability rules with warning-only always-false integer arms.
 
 ## Backlog
 
@@ -212,6 +214,7 @@ update to be promoted to an initiative or plan:
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
+[case-builtin-literals]: ../work/plans/bug-fixes/2026-06-08-stage1-case-builtin-literal-support-noref.md
 [child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-driver]: ../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
