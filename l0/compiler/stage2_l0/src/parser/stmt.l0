@@ -95,9 +95,20 @@ func ps_parse_block(self: ParserState*) -> StmtId? {
     ps_expect(self, ord(TT_LBRACE), "PAR-0090", "expected '{' to start block")?;
 
     with (let stmts: VectorBase*? = id_vec_create(8) => id_vec_free(stmts)) {
-        while (!ps_check(self, ord(TT_RBRACE))) {
-            let stmt = ps_parse_stmt(self)?;
-            id_vec_push(stmts as VectorBase*, stmt);
+        while (!ps_check(self, ord(TT_RBRACE)) && !ps_at_end(self)) {
+            let before = self.index;
+            let maybe_stmt = ps_parse_stmt(self);
+            if (maybe_stmt != null) {
+                // Guarded non-null above; `as int` unwraps the optional StmtId.
+                id_vec_push(stmts as VectorBase*, maybe_stmt as int);
+            } else {
+                // Recover within the block so a statement error does not unwind
+                // to the top-level loop (which would emit a spurious PAR-0020).
+                ps_sync_stmt(self);
+                if (self.index == before && !ps_at_end(self)) {
+                    ps_advance(self);
+                }
+            }
         }
 
         ps_expect(self, ord(TT_RBRACE), "PAR-0091", "expected '}' after block")?;
@@ -145,11 +156,14 @@ func ps_parse_return_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
     ps_expect(self, ord(TT_RETURN), "PAR-0150", "expected 'return'")?;
 
-    let node = stmt_node_create(ST_RETURN, ps_extend_span(self, start));
+    // Parse the value before creating the node so a failed expression does not
+    // leak an arena-less StmtNode (matters once block-level recovery continues).
+    let value = invalid_expr_id();
     if (!ps_check(self, ord(TT_SEMI))) {
-        node.expr_a = ps_parse_expr(self)?;
-        node.span = ps_extend_span(self, start);
+        value = ps_parse_expr(self)?;
     }
+    let node = stmt_node_create(ST_RETURN, ps_extend_span(self, start));
+    node.expr_a = value;
     return stmt_arena_add(self.stmt_arena, node);
 }
 
@@ -565,6 +579,65 @@ func ps_parse_case_value_arm_body(self: ParserState*) -> StmtId? {
 }
 
 /**
+ * Report whether the current token can start a `case` arm.
+ *
+ * @param self Parser state to inspect.
+ * @return True if the current token is a likely arm boundary.
+ */
+func ps_at_case_arm_start(self: ParserState*) -> bool {
+    return ps_check(self, ord(TT_UNDERSCORE)) ||
+           ps_check(self, ord(TT_ELSE)) ||
+           ps_check_int(self) ||
+           ps_check_byte(self) ||
+           ps_check_string(self) ||
+           ps_check(self, ord(TT_TRUE)) ||
+           ps_check(self, ord(TT_FALSE));
+}
+
+/**
+ * Skip one malformed or forbidden `case` arm.
+ *
+ * Starts at the offending arm token, consumes at least one token, and stops
+ * before the next likely arm or the enclosing `case` close.
+ *
+ * @param self Parser state to resynchronize.
+ */
+func ps_sync_case_invalid_arm(self: ParserState*) {
+    let depth = 0;
+    let consumed = false;
+    let boundary_ready = false;
+    while (!ps_at_end(self)) {
+        if (consumed && depth == 0 && ps_check(self, ord(TT_RBRACE))) {
+            return;
+        }
+        if (consumed && boundary_ready && depth == 0 && ps_at_case_arm_start(self)) {
+            return;
+        }
+
+        let tok = ps_advance(self);
+        consumed = true;
+
+        if (tok_is(tok, ord(TT_LBRACE)) || tok_is(tok, ord(TT_LPAREN)) || tok_is(tok, ord(TT_LBRACKET))) {
+            depth = depth + 1;
+        } else {
+            if (tok_is(tok, ord(TT_RBRACE)) || tok_is(tok, ord(TT_RPAREN)) || tok_is(tok, ord(TT_RBRACKET))) {
+                if (depth == 0) {
+                    return;
+                }
+                depth = depth - 1;
+                if (depth == 0 && tok_is(tok, ord(TT_RBRACE))) {
+                    boundary_ready = true;
+                }
+            } else {
+                if (depth == 0 && tok_is(tok, ord(TT_SEMI))) {
+                    boundary_ready = true;
+                }
+            }
+        }
+    }
+}
+
+/**
  * Parse a `case` statement.
  *
  * @param self Parser state to advance.
@@ -582,12 +655,13 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
           let else_arm: CaseElse*? = null => drop else_arm) {
         let seen_default = false;
 
-        while (!ps_check(self, ord(TT_RBRACE))) {
+        while (!ps_check(self, ord(TT_RBRACE)) && !ps_at_end(self)) {
             // Canonical wildcard default arm: `_ => Stmt`.
             if (ps_check(self, ord(TT_UNDERSCORE))) {
                 if (seen_default) {
                     ps_emit_error(self, "PAR-0236", "duplicate default arm in 'case' statement", ps_peek(self));
-                    return null;
+                    ps_sync_case_invalid_arm(self);
+                    continue;
                 }
 
                 let wild_start = ps_span_start(self);
@@ -603,7 +677,8 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
             if (ps_check(self, ord(TT_ELSE))) {
                 if (seen_default) {
                     ps_emit_error(self, "PAR-0236", "duplicate default arm in 'case' statement", ps_peek(self));
-                    return null;
+                    ps_sync_case_invalid_arm(self);
+                    continue;
                 }
 
                 let else_tok = ps_peek(self);
@@ -624,7 +699,8 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
 
             if (seen_default) {
                 ps_emit_error(self, "PAR-0234", "value arm cannot appear after the default arm in 'case' statement", ps_peek(self));
-                return null;
+                ps_sync_case_invalid_arm(self);
+                continue;
             }
 
             let arm_start = ps_span_start(self);
@@ -698,6 +774,16 @@ func ps_parse_simple_stmt(self: ParserState*) -> StmtId? {
  * @return Parsed statement id, or `null` on error.
  */
 func ps_parse_stmt(self: ParserState*) -> StmtId? {
+    // Orphaned keywords: `if` eagerly consumes its `else` and `with` consumes its
+    // `cleanup`, so reaching one here means it has no matching parent statement.
+    if (ps_check(self, ord(TT_ELSE))) {
+        ps_emit_error(self, "PAR-0123", "'else' without matching 'if'", ps_peek(self));
+        return null;
+    }
+    if (ps_check(self, ord(TT_CLEANUP))) {
+        ps_emit_error(self, "PAR-0506", "'cleanup' without matching 'with'", ps_peek(self));
+        return null;
+    }
     if (ps_check(self, ord(TT_LBRACE))) {
         return ps_parse_block(self);
     }

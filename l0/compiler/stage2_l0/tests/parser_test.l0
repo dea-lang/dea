@@ -152,6 +152,114 @@ func expect_diag_code_present(source: string, expected: string) {
 }
 
 /**
+ * Parses source and asserts that no diagnostic carries `forbidden`.
+ *
+ * @param source The module source to parse.
+ * @param forbidden The diagnostic code that must not appear.
+ */
+func expect_diag_code_absent(source: string, forbidden: string) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == forbidden) {
+            printl_ss("unexpected diagnostic code:", forbidden);
+            assert(false, "Did not expect diagnostic code " + forbidden);
+        }
+        i = i + 1;
+    }
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that exactly `expected_count` diagnostics carry `expected`.
+ *
+ * @param source The module source to parse.
+ * @param expected The diagnostic code to count.
+ * @param expected_count The exact expected count.
+ */
+func expect_diag_code_count(source: string, expected: string, expected_count: int) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let found = 0;
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == expected) {
+            found = found + 1;
+        }
+        i = i + 1;
+    }
+    if (found != expected_count) {
+        printl_ss("diagnostic code:", expected);
+        printl_si("actual count:", found);
+        assert(false, "Unexpected diagnostic count");
+    }
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that the `occurrence`th diagnostic with `expected`
+ * appears on `expected_line`.
+ *
+ * @param source The module source to parse.
+ * @param expected The diagnostic code to find.
+ * @param occurrence Zero-based occurrence index for repeated codes.
+ * @param expected_line The expected 1-based line number.
+ */
+func expect_diag_code_line(source: string, expected: string, occurrence: int, expected_line: int) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let seen = 0;
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == expected) {
+            if (seen == occurrence) {
+                if (diag.line != expected_line) {
+                    printl_ss("diagnostic code:", expected);
+                    printl_si("actual line:", diag.line);
+                    assert(false, "Unexpected diagnostic line");
+                }
+                parse_result_free(result);
+                return;
+            }
+            seen = seen + 1;
+        }
+        i = i + 1;
+    }
+    printl_ss("missing diagnostic code:", expected);
+    assert(false, "Expected diagnostic line");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that an orphaned `else` is diagnosed as PAR-0123, not the generic error.
+ */
+func test_stray_else_reports_par0123() {
+    expect_error_code("module main; func main() -> int { else return 0; }", "PAR-0123");
+}
+
+/**
+ * Tests that an orphaned `cleanup` is diagnosed as PAR-0506.
+ */
+func test_stray_cleanup_reports_par0506() {
+    expect_error_code("module main; func main() -> int { cleanup return 0; }", "PAR-0506");
+}
+
+/**
+ * Tests that a failed in-body statement recovers without a spurious top-level
+ * PAR-0020 cascade.
+ */
+func test_stray_else_does_not_cascade_to_top_level() {
+    let src = "module main; func main() -> int { else let x: int = 1; return x; }";
+    expect_diag_code_present(src, "PAR-0123");
+    expect_diag_code_absent(src, "PAR-0020");
+    expect_diag_code_absent(src, "PAR-0225");
+}
+
+/**
  * Tests test_case_empty_error.
  */
 func test_case_empty_error() {
@@ -207,6 +315,33 @@ func test_case_default_arm_if_else_body_ok() {
     expect_ok(wildcard);
     let else_chain = "module main; func main() -> int { case (1) { 1 => { return 1; } else if (true) return 2; else return 3; } }";
     expect_ok(else_chain);
+}
+
+/**
+ * Tests that invalid arms after a default recover inside the current `case`.
+ */
+func test_case_default_recovery_stays_inside_case() {
+    let src = "module main;\n" +
+        "func main() -> int {\n" +
+        "    case (1) {\n" +
+        "        else { return 0; }\n" +
+        "        \"a\" => { return 1; }\n" +
+        "        _ => 2;\n" +
+        "        else 3;\n" +
+        "    }\n" +
+        "    printl_s(\"ok\");\n" +
+        "    return 0;\n" +
+        "}\n";
+    expect_diag_code_present(src, "PAR-0242");
+    expect_diag_code_present(src, "PAR-0234");
+    expect_diag_code_count(src, "PAR-0236", 2);
+    expect_diag_code_absent(src, "PAR-0225");
+    expect_diag_code_absent(src, "PAR-0123");
+    expect_diag_code_absent(src, "PAR-0020");
+    expect_diag_code_line(src, "PAR-0242", 0, 4);
+    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0236", 0, 6);
+    expect_diag_code_line(src, "PAR-0236", 1, 7);
 }
 
 /**
@@ -323,6 +458,9 @@ func main() {
     test_reserved_variable_name_error();
     test_reserved_operator_error();
     test_with_mixed_forms_error();
+    test_stray_else_reports_par0123();
+    test_stray_cleanup_reports_par0506();
+    test_stray_else_does_not_cascade_to_top_level();
     test_case_empty_error();
     test_case_wildcard_default_ok();
     test_case_else_deprecation_warning();
@@ -330,6 +468,7 @@ func main() {
     test_case_wildcard_missing_arrow_error();
     test_case_ambiguous_if_else_error();
     test_case_default_arm_if_else_body_ok();
+    test_case_default_recovery_stays_inside_case();
     test_expr_precedence_postfix_and_qualified_type_ok();
     test_postfix_chain_ok();
     test_type_expr_call_arg_ok();

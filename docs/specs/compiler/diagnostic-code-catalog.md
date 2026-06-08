@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-06-07
+Version: 2026-06-08
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -119,6 +119,7 @@ and reuse supplement for applying this registry within L0.
 | `PAR-0120` | All     | Expected 'if'                                                            |
 | `PAR-0121` | All     | Expected '(' after 'if'                                                  |
 | `PAR-0122` | All     | Expected ')' after condition                                             |
+| `PAR-0123` | All     | `'else'` without a matching `'if'`                                       |
 | `PAR-0130` | All     | Expected 'while'                                                         |
 | `PAR-0131` | All     | Expected '('                                                             |
 | `PAR-0132` | All     | Expected ')'                                                             |
@@ -182,6 +183,7 @@ and reuse supplement for applying this registry within L0.
 | `PAR-0503` | All     | 'with': all items must use '=>' or none                                  |
 | `PAR-0504` | All     | 'with': cannot have both '=>' and cleanup block                          |
 | `PAR-0505` | All     | 'with': cleanup block required when '=>' is not used                     |
+| `PAR-0506` | All     | `'cleanup'` without a matching `'with'`                                  |
 | `PAR-0540` | L1+     | Expected exported name or '\*' in export manifest                        |
 | `PAR-0541` | L1+     | Expected ';' after export manifest                                       |
 | `PAR-0542` | L1+     | Export manifest is not allowed after imports or declarations             |

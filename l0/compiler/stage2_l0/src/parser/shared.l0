@@ -474,6 +474,51 @@ func ps_sync_top_level(self: ParserState*) {
 }
 
 /**
+ * Report whether the current token can start a statement.
+ *
+ * @param self Parser state to inspect.
+ * @return True if the current token is a statement-start keyword.
+ */
+func ps_at_stmt_start(self: ParserState*) -> bool {
+    return ps_check(self, ord(TT_LET)) ||
+           ps_check(self, ord(TT_IF)) ||
+           ps_check(self, ord(TT_WHILE)) ||
+           ps_check(self, ord(TT_FOR)) ||
+           ps_check(self, ord(TT_RETURN)) ||
+           ps_check(self, ord(TT_BREAK)) ||
+           ps_check(self, ord(TT_CONTINUE)) ||
+           ps_check(self, ord(TT_DROP)) ||
+           ps_check(self, ord(TT_MATCH)) ||
+           ps_check(self, ord(TT_CASE)) ||
+           ps_check(self, ord(TT_WITH));
+}
+
+/**
+ * Recover after a failed statement by advancing to the next statement boundary.
+ *
+ * Skips to and consumes the next `;`, or stops before a `}`, a statement-start
+ * keyword, a top-level start, or end of input. This keeps a single in-body
+ * statement error from unwinding to the top-level loop.
+ *
+ * @param self Parser state to resynchronize.
+ */
+func ps_sync_stmt(self: ParserState*) {
+    while (!ps_at_end(self)) {
+        if (ps_check(self, ord(TT_SEMI))) {
+            ps_advance(self);
+            return;
+        }
+        if (ps_check(self, ord(TT_RBRACE))) {
+            return;
+        }
+        if (ps_at_stmt_start(self) || ps_is_top_level_start(self)) {
+            return;
+        }
+        ps_advance(self);
+    }
+}
+
+/**
  * Require the current token to have a specific kind.
  *
  * @param self Parser state to inspect.

@@ -502,6 +502,12 @@ class Parser:
 
     def _parse_stmt(self) -> Stmt:
         """Parse a single statement."""
+        # Orphaned keywords: `if` eagerly consumes its `else` and `with` consumes
+        # its `cleanup`, so reaching one here means it has no matching parent.
+        if self._check(TokenKind.ELSE):
+            self._error_bail("[PAR-0123] 'else' without matching 'if'", self._peek())
+        if self._check(TokenKind.CLEANUP):
+            self._error_bail("[PAR-0506] 'cleanup' without matching 'with'", self._peek())
         if self._check(TokenKind.LBRACE):
             return self._parse_block()
         elif self._check(TokenKind.IF):
@@ -725,13 +731,15 @@ class Parser:
         else_arm: Optional[CaseElse] = None
         seen_default = False
 
-        while not self._check(TokenKind.RBRACE):
+        while not self._check(TokenKind.RBRACE) and not self._at_end():
             # Canonical wildcard default arm: `_ => Stmt`. The default arm body is
             # not dangling-else guarded: a trailing 'else' is unambiguous here
             # because a second case default would be a duplicate (PAR-0236).
             if self._check(TokenKind.UNDERSCORE):
                 if seen_default:
-                    self._error_bail("[PAR-0236] duplicate default arm in 'case' statement", self._peek())
+                    self._error("[PAR-0236] duplicate default arm in 'case' statement", self._peek())
+                    self._sync_case_invalid_arm()
+                    continue
                 default_start = self._span_start()
                 self._advance()  # consume '_'
                 self._expect(TokenKind.ARROW_MATCH, "[PAR-0235] expected '=>' in 'case' arm")
@@ -742,7 +750,9 @@ class Parser:
             # Deprecated 'else' default arm (no '=>'); removed in a later phase.
             if self._check(TokenKind.ELSE):
                 if seen_default:
-                    self._error_bail("[PAR-0236] duplicate default arm in 'case' statement", self._peek())
+                    self._error("[PAR-0236] duplicate default arm in 'case' statement", self._peek())
+                    self._sync_case_invalid_arm()
+                    continue
                 else_tok = self._advance()  # consume 'else'
                 self._warning(
                     "[PAR-0242] deprecated 'else' default arm in 'case'; use '_ =>' instead", else_tok)
@@ -755,9 +765,11 @@ class Parser:
                 continue
             # Value arm: `CaseLiteral => Stmt`.
             if seen_default:
-                self._error_bail(
+                self._error(
                     "[PAR-0234] value arm cannot appear after the default arm in 'case' statement",
                     self._peek())
+                self._sync_case_invalid_arm()
+                continue
             arm_start = self._span_start()
             literal = self._parse_case_literal()
             self._expect(TokenKind.ARROW_MATCH, "[PAR-0235] expected '=>' in 'case' arm")
@@ -770,6 +782,43 @@ class Parser:
             self._error_bail("[PAR-0240] 'case' statement must have at least one arm", self._peek())
 
         return CaseStmt(expr, arms, else_arm, span=self._extend_span(start))
+
+    def _at_case_arm_start(self) -> bool:
+        """Return True if the current token can begin a case arm."""
+        return self._peek().kind in (
+            TokenKind.UNDERSCORE,
+            TokenKind.ELSE,
+            TokenKind.INT,
+            TokenKind.BYTE,
+            TokenKind.STRING,
+            TokenKind.TRUE,
+            TokenKind.FALSE,
+        )
+
+    def _sync_case_invalid_arm(self) -> None:
+        """Skip a malformed or forbidden case arm without leaving the case."""
+        depth = 0
+        consumed = False
+        boundary_ready = False
+        while not self._at_end():
+            if consumed and depth == 0 and self._check(TokenKind.RBRACE):
+                return
+            if consumed and boundary_ready and depth == 0 and self._at_case_arm_start():
+                return
+
+            tok = self._advance()
+            consumed = True
+
+            if tok.kind in (TokenKind.LBRACE, TokenKind.LPAREN, TokenKind.LBRACKET):
+                depth += 1
+            elif tok.kind in (TokenKind.RBRACE, TokenKind.RPAREN, TokenKind.RBRACKET):
+                if depth == 0:
+                    return
+                depth -= 1
+                if depth == 0 and tok.kind is TokenKind.RBRACE:
+                    boundary_ready = True
+            elif depth == 0 and tok.kind is TokenKind.SEMI:
+                boundary_ready = True
 
     def _parse_case_value_arm_body(self) -> Stmt:
         """Parse a 'case' value-arm body, guarding the dangling-'else' ambiguity.

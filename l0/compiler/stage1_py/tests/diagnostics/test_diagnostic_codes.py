@@ -124,6 +124,7 @@ PAR_TRIGGERS = {
     "PAR-0112": "module main; func main() -> int { let x: int 0; return 0; }",
     "PAR-0121": "module main; func main() -> int { if true { return 1; } return 0; }",
     "PAR-0122": "module main; func main() -> int { if (true { return 1; } }",
+    "PAR-0123": "module main; func main() -> int { else return 0; }",
     "PAR-0131": "module main; func main() -> int { while true { return 1; } return 0; }",
     "PAR-0132": "module main; func main() -> int { while (true { return 1; } }",
     "PAR-0141": "module main; func main() -> int { for let i: int = 0; i < 3; i = i + 1 { return 0; } }",
@@ -200,6 +201,7 @@ PAR_TRIGGERS = {
             }
         }
     """),
+    "PAR-0506": "module main; func main() -> int { cleanup return 0; }",
 }
 
 DRV_TRIGGERS = {

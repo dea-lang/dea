@@ -79,6 +79,7 @@ DIAGNOSTIC_CODE_FAMILIES = {
         "PAR-0120",
         "PAR-0121",
         "PAR-0122",
+        "PAR-0123",
         "PAR-0130",
         "PAR-0131",
         "PAR-0132",
@@ -139,6 +140,7 @@ DIAGNOSTIC_CODE_FAMILIES = {
         "PAR-0503",
         "PAR-0504",
         "PAR-0505",
+        "PAR-0506",
     ],
     "DRV": [
         "DRV-0010",
