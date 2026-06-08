@@ -1286,6 +1286,163 @@ def test_with_early_return_cleanup_order(artifact_dir: Path) -> None:
     assert_equal(stdout, "body\ninner\nouter\n", "with cleanup order stdout mismatch", artifact_dir)
 
 
+def test_with_inline_return_header_runs_cleanup(artifact_dir: Path) -> None:
+    """A committed return from an inline with header must run that item's cleanup."""
+
+    stdout, _stderr, _report, _arc = run_case(
+        "with_inline_return_header_runs_cleanup",
+        """
+        module main;
+        import std.io;
+
+        func helper() -> int {
+            with (return 42 => printl_s("leaving")) {
+            }
+            return 0;
+        }
+
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "leaving\n42\n", "inline return header cleanup stdout mismatch", artifact_dir)
+
+
+def test_with_inline_return_header_evaluates_value_before_cleanup(artifact_dir: Path) -> None:
+    """A return header value must be evaluated before the paired inline cleanup."""
+
+    stdout, _stderr, _report, _arc = run_case(
+        "with_inline_return_header_evaluates_value_before_cleanup",
+        """
+        module main;
+        import std.io;
+
+        func value() -> int {
+            printl_s("value");
+            return 3;
+        }
+
+        func helper() -> int {
+            with (return value() => printl_s("cleanup")) {
+            }
+            return 0;
+        }
+
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "value\ncleanup\n3\n", "inline return header value order mismatch", artifact_dir)
+
+
+def test_with_inline_return_header_cleanup_return_overrides(artifact_dir: Path) -> None:
+    """A return in inline cleanup must override a pending with-header return."""
+
+    stdout, _stderr, _report, _arc = run_case(
+        "with_inline_return_header_cleanup_return_overrides",
+        """
+        module main;
+        import std.io;
+
+        func helper() -> int {
+            with (return 42 => return 7) {
+            }
+            return 0;
+        }
+
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "7\n", "inline cleanup return precedence mismatch", artifact_dir)
+
+
+def test_with_inline_return_header_preserves_lifo_order(artifact_dir: Path) -> None:
+    """Inline cleanup must remain LIFO when a later header item returns."""
+
+    stdout, _stderr, _report, _arc = run_case(
+        "with_inline_return_header_preserves_lifo_order",
+        """
+        module main;
+        import std.io;
+
+        func helper() -> int {
+            with (let a: int = 1 => printl_s("a"),
+                  return 0 => printl_s("b")) {
+            }
+            return 1;
+        }
+
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "b\na\n0\n", "inline return header LIFO cleanup order mismatch", artifact_dir)
+
+
+def test_with_inline_break_header_runs_cleanup(artifact_dir: Path) -> None:
+    """A committed break from an inline with header must run that item's cleanup."""
+
+    stdout, _stderr, _report, _arc = run_case(
+        "with_inline_break_header_runs_cleanup",
+        """
+        module main;
+        import std.io;
+
+        func main() -> int {
+            let result: int = 1;
+            while (true) {
+                with (break => result = 0) {
+                }
+            }
+            printl_i(result);
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "0\n", "inline break header cleanup stdout mismatch", artifact_dir)
+
+
+def test_with_inline_continue_header_runs_cleanup(artifact_dir: Path) -> None:
+    """A committed continue from an inline with header must run that item's cleanup."""
+
+    stdout, _stderr, _report, _arc = run_case(
+        "with_inline_continue_header_runs_cleanup",
+        """
+        module main;
+        import std.io;
+
+        func main() -> int {
+            let result: int = 1;
+            let count: int = 0;
+            while (count < 1) {
+                count = count + 1;
+                with (continue => result = 0) {
+                }
+                result = 2;
+            }
+            printl_i(result);
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "0\n", "inline continue header cleanup stdout mismatch", artifact_dir)
+
+
 def test_with_header_try_failure_runs_prior_inline_cleanup(artifact_dir: Path) -> None:
     """A later header `?` failure must run prior successful inline cleanup and skip the body."""
 
@@ -1407,6 +1564,12 @@ def main() -> int:
         test_param_reassign_with_header_and_cleanup_safe,
         test_leak_freedom_balance,
         test_with_early_return_cleanup_order,
+        test_with_inline_return_header_runs_cleanup,
+        test_with_inline_return_header_evaluates_value_before_cleanup,
+        test_with_inline_return_header_cleanup_return_overrides,
+        test_with_inline_return_header_preserves_lifo_order,
+        test_with_inline_break_header_runs_cleanup,
+        test_with_inline_continue_header_runs_cleanup,
         test_with_header_try_failure_runs_prior_inline_cleanup,
         test_with_cleanup_block_header_try_failure_nullable_vars,
     ]

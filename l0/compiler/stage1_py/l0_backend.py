@@ -18,7 +18,7 @@ The backend contains zero knowledge of target language syntax.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Set, NoReturn, Tuple, Any
+from typing import List, Optional, Dict, Set, NoReturn, Tuple, Any, Callable
 
 from l0_analysis import AnalysisResult, VarRefResolution
 from l0_ast import (
@@ -1318,13 +1318,17 @@ class Backend:
         self.emitter.emit_block_end()
         return None
 
-    def _emit_return(self, stmt: ReturnStmt) -> Any:
+    def _emit_return(self, stmt: ReturnStmt, before_cleanup: Optional[Callable[[], None]] = None) -> Any:
         """Emit a return statement with cleanup.
 
         Args:
             stmt: The ReturnStmt AST node.
+            before_cleanup: Optional hook to run after the return value is
+                evaluated and before scope cleanup is emitted.
         """
         if stmt.value is None:
+            if before_cleanup is not None:
+                before_cleanup()
             if self._current_scope is not None:
                 self._emit_cleanup_for_return()
             self.emitter.emit_return_stmt(None)
@@ -1345,6 +1349,9 @@ class Backend:
             # expression emission are visible to cleanup scheduling.
             c_value = emit_return_value(stmt.value, self._current_func_result)
 
+            if before_cleanup is not None:
+                before_cleanup()
+
             needs_cleanup = (self._current_scope is not None
                              and self._scope_chain_has_cleanup())
             if needs_cleanup:
@@ -1360,6 +1367,31 @@ class Backend:
         # Mark subsequent code as unreachable
         self._next_stmt_unreachable = True
         return None
+
+    def _register_inline_with_cleanup(self, scope: ScopeContext, item: "WithItem") -> None:
+        """Register one inline with-item cleanup in LIFO order."""
+        if item.cleanup is None:
+            return
+        assert scope.with_cleanup_inline is not None
+        scope.with_cleanup_inline.insert(0, item.cleanup)
+
+    def _emit_inline_with_header_item(self, item: "WithItem", module_name: str, scope: ScopeContext) -> None:
+        """Emit one inline with header item and register its cleanup at the committed point."""
+        if item.cleanup is None:
+            self._emit_stmt(item.init, module_name)
+            return
+
+        if isinstance(item.init, ReturnStmt):
+            self._emit_return(item.init, before_cleanup=lambda: self._register_inline_with_cleanup(scope, item))
+            return
+
+        if isinstance(item.init, (BreakStmt, ContinueStmt)):
+            self._register_inline_with_cleanup(scope, item)
+            self._emit_stmt(item.init, module_name)
+            return
+
+        self._emit_stmt(item.init, module_name)
+        self._register_inline_with_cleanup(scope, item)
 
     def _emit_condition_branch(self, expr: Expr, true_label: str, false_label: str) -> None:
         """Emit control flow for one condition expression with short-circuit semantics.
@@ -2297,12 +2329,10 @@ class Backend:
                 else:
                     self._emit_let(item.init, module_name)
             else:
-                self._emit_stmt(item.init, module_name)
-
-            if stmt.cleanup_body is None and item.cleanup is not None:
-                assert with_scope.with_cleanup_inline is not None
-                # LIFO order: latest successful item cleans first.
-                with_scope.with_cleanup_inline.insert(0, item.cleanup)
+                if stmt.cleanup_body is None:
+                    self._emit_inline_with_header_item(item, module_name, with_scope)
+                else:
+                    self._emit_stmt(item.init, module_name)
 
         # Emit body as a nested block so its declarations get their own
         # C scope (mirrors L0 scoping rules).

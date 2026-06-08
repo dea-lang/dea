@@ -2158,6 +2158,18 @@ func be_emit_with_cleanup_from_scope(self: Backend*, scope: ScopeContext*) {
 }
 
 /**
+ * Register one inline `with` cleanup item in LIFO order.
+ *
+ * @param scope Scope carrying inline cleanup state.
+ * @param item Parsed with item whose cleanup should be registered.
+ */
+func be_register_inline_with_cleanup(scope: ScopeContext*, item: WithItem*) {
+    if (item.has_cleanup && item.cleanup_stmt >= 0) {
+        sc_push_inline_cleanup(scope, item.cleanup_stmt);
+    }
+}
+
+/**
  * Emit cleanup required before returning from the current function.
  *
  * @param self Backend state to update.
@@ -2217,6 +2229,54 @@ func be_emit_cleanup_for_loop_exit(self: Backend*, is_break: bool) {
         }
         scope = cur.parent;
     }
+}
+
+/**
+ * Emit a return statement, optionally registering one inline with-item cleanup first.
+ *
+ * @param self Backend state to update.
+ * @param stmt Parsed return statement.
+ * @param inline_scope Optional with scope for a committed inline header return.
+ * @param inline_cleanup Cleanup statement to register when inline_scope is present.
+ */
+func be_emit_return_stmt_with_inline_cleanup(
+    self: Backend*,
+    stmt: StmtNode*,
+    inline_scope: ScopeContext*?,
+    inline_cleanup: StmtId
+) {
+    if (stmt.expr_a >= 0) {
+        if (self.current_func_result == null) {
+            be_ice("[ICE-1293] backend missing current function result type");
+        }
+        let returned_var = be_lookup_owned_local_name(self, stmt.expr_a);
+        let c_value = "";
+        if (returned_var != null) {
+            c_value = be_emit_expr_with_expected_type(self, stmt.expr_a, self.current_func_result as Type*);
+        } else {
+            c_value = be_emit_owned_expr_with_expected_type(self, stmt.expr_a, self.current_func_result as Type*);
+        }
+        if (inline_scope != null && inline_cleanup >= 0) {
+            sc_push_inline_cleanup(inline_scope as ScopeContext*, inline_cleanup);
+        }
+        if (be_scope_chain_has_cleanup(self)) {
+            let ret_tmp = cem_fresh_tmp(self.emitter, "ret");
+            cem_emit_temp_decl(self.emitter, cem_emit_type(self.current_func_result as Type*), ret_tmp, c_value);
+            be_emit_cleanup_for_return(self, returned_var);
+            cem_emit_return_stmt(self.emitter, ret_tmp);
+        } else {
+            cem_emit_return_stmt(self.emitter, c_value);
+        }
+    } else {
+        if (inline_scope != null && inline_cleanup >= 0) {
+            sc_push_inline_cleanup(inline_scope as ScopeContext*, inline_cleanup);
+        }
+        if (be_scope_chain_has_cleanup(self)) {
+            be_emit_cleanup_for_return(self, null);
+        }
+        cem_emit_return_void_stmt(self.emitter);
+    }
+    self.next_stmt_unreachable = true;
 }
 
 /**
@@ -2498,6 +2558,35 @@ func be_emit_case_stmt(self: Backend*, stmt: StmtNode*) {
 }
 
 /**
+ * Emit one inline `with` header item and register cleanup at the committed point.
+ *
+ * @param self Backend state to update.
+ * @param item Parsed inline with item.
+ * @param with_scope Scope carrying inline cleanup state.
+ */
+func be_emit_inline_with_header_item(self: Backend*, item: WithItem*, with_scope: ScopeContext*) {
+    let init_stmt = stmt_arena_get(be_current_stmt_arena(self), item.init);
+    if (!item.has_cleanup || item.cleanup_stmt < 0) {
+        be_emit_stmt(self, item.init);
+        return;
+    }
+
+    if (ord(init_stmt.kind) == ord(ST_RETURN)) {
+        be_emit_return_stmt_with_inline_cleanup(self, init_stmt, with_scope, item.cleanup_stmt);
+        return;
+    }
+
+    if (ord(init_stmt.kind) == ord(ST_BREAK) || ord(init_stmt.kind) == ord(ST_CONTINUE)) {
+        be_register_inline_with_cleanup(with_scope, item);
+        be_emit_stmt(self, item.init);
+        return;
+    }
+
+    be_emit_stmt(self, item.init);
+    be_register_inline_with_cleanup(with_scope, item);
+}
+
+/**
  * Emit a `with` statement.
  *
  * @param self Backend state to update.
@@ -2538,10 +2627,7 @@ func be_emit_with_stmt(self: Backend*, stmt: StmtNode*) {
     } else {
         for (let i = 0; i < vec_size(items); i = i + 1) {
             let item = ptr_vec_get(items, i) as WithItem*;
-            be_emit_stmt(self, item.init);
-            if (item.has_cleanup && item.cleanup_stmt >= 0) {
-                sc_push_inline_cleanup(with_scope, item.cleanup_stmt);
-            }
+            be_emit_inline_with_header_item(self, item, with_scope);
         }
     }
 
@@ -2874,32 +2960,7 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
             self.next_stmt_unreachable = false;
         }
         ST_RETURN => {
-            if (stmt.expr_a >= 0) {
-                if (self.current_func_result == null) {
-                    be_ice("[ICE-1293] backend missing current function result type");
-                }
-                let returned_var = be_lookup_owned_local_name(self, stmt.expr_a);
-                let c_value = "";
-                if (returned_var != null) {
-                    c_value = be_emit_expr_with_expected_type(self, stmt.expr_a, self.current_func_result as Type*);
-                } else {
-                    c_value = be_emit_owned_expr_with_expected_type(self, stmt.expr_a, self.current_func_result as Type*);
-                }
-                if (be_scope_chain_has_cleanup(self)) {
-                    let ret_tmp = cem_fresh_tmp(self.emitter, "ret");
-                    cem_emit_temp_decl(self.emitter, cem_emit_type(self.current_func_result as Type*), ret_tmp, c_value);
-                    be_emit_cleanup_for_return(self, returned_var);
-                    cem_emit_return_stmt(self.emitter, ret_tmp);
-                } else {
-                    cem_emit_return_stmt(self.emitter, c_value);
-                }
-            } else {
-                if (be_scope_chain_has_cleanup(self)) {
-                    be_emit_cleanup_for_return(self, null);
-                }
-                cem_emit_return_void_stmt(self.emitter);
-            }
-            self.next_stmt_unreachable = true;
+            be_emit_return_stmt_with_inline_cleanup(self, stmt, null, invalid_stmt_id());
         }
         ST_DROP => {
             be_emit_drop_stmt(self, stmt);

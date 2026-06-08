@@ -739,6 +739,134 @@ def test_codegen_with_expr_header_cleanup_return_overrides_body_return(codegen_s
     assert stdout == "1\n"
 
 
+def test_codegen_with_inline_return_header_runs_cleanup(codegen_single, compile_and_run, tmp_path):
+    """Inline cleanup runs when a with-header item returns."""
+    c_code, diags = codegen_single("main", """
+        module main;
+        import std.io;
+        func helper() -> int {
+            with (return 42 => printl_s("leaving")) {
+            }
+            return 0;
+        }
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+    """)
+    assert c_code is not None, [d.message for d in diags]
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"Program should exit 0: stderr={stderr}"
+    assert stdout == "leaving\n42\n"
+
+
+def test_codegen_with_inline_return_header_evaluates_value_before_cleanup(codegen_single, compile_and_run, tmp_path):
+    """A return header value is evaluated before its inline cleanup."""
+    c_code, diags = codegen_single("main", """
+        module main;
+        import std.io;
+        func value() -> int {
+            printl_s("value");
+            return 3;
+        }
+        func helper() -> int {
+            with (return value() => printl_s("cleanup")) {
+            }
+            return 0;
+        }
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+    """)
+    assert c_code is not None, [d.message for d in diags]
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"Program should exit 0: stderr={stderr}"
+    assert stdout == "value\ncleanup\n3\n"
+
+
+def test_codegen_with_inline_return_header_cleanup_return_overrides(codegen_single, compile_and_run, tmp_path):
+    """A return in inline cleanup overrides a pending with-header return."""
+    c_code, diags = codegen_single("main", """
+        module main;
+        import std.io;
+        func helper() -> int {
+            with (return 42 => return 7) {
+            }
+            return 0;
+        }
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+    """)
+    assert c_code is not None, [d.message for d in diags]
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"Program should exit 0: stderr={stderr}"
+    assert stdout == "7\n"
+
+
+def test_codegen_with_inline_return_header_preserves_lifo_order(codegen_single, compile_and_run, tmp_path):
+    """Inline cleanup remains LIFO when a later header item returns."""
+    c_code, diags = codegen_single("main", """
+        module main;
+        import std.io;
+        func helper() -> int {
+            with (let a: int = 1 => printl_s("a"),
+                  return 0 => printl_s("b")) {
+            }
+            return 1;
+        }
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+    """)
+    assert c_code is not None, [d.message for d in diags]
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"Program should exit 0: stderr={stderr}"
+    assert stdout == "b\na\n0\n"
+
+
+def test_codegen_with_inline_break_header_runs_cleanup(codegen_single, compile_and_run, tmp_path):
+    """Inline cleanup runs before a with-header break exits the loop."""
+    c_code, diags = codegen_single("main", """
+        module main;
+        func main() -> int {
+            let result: int = 1;
+            while (true) {
+                with (break => result = 0) {
+                }
+            }
+            return result;
+        }
+    """)
+    assert c_code is not None, [d.message for d in diags]
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"Program should exit 0: stderr={stderr}"
+
+
+def test_codegen_with_inline_continue_header_runs_cleanup(codegen_single, compile_and_run, tmp_path):
+    """Inline cleanup runs before a with-header continue exits the iteration."""
+    c_code, diags = codegen_single("main", """
+        module main;
+        func main() -> int {
+            let result: int = 1;
+            let count: int = 0;
+            while (count < 1) {
+                count = count + 1;
+                with (continue => result = 0) {
+                }
+                result = 2;
+            }
+            return result;
+        }
+    """)
+    assert c_code is not None, [d.message for d in diags]
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"Program should exit 0: stderr={stderr}"
+
+
 def test_codegen_with_inline_cleanup_return_compiles_and_runs(codegen_single, compile_and_run, tmp_path):
     """Return inside inline cleanup should compile and run with expected result."""
     c_code, diags = codegen_single("main", """
