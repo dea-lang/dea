@@ -430,9 +430,15 @@ func lc_visit_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
             lc_visit_scoped_stmt(env, stmt.stmt_a, body_scope);
         }
         ST_FOR => {
-            lc_visit_stmt(env, stmt.stmt_a, scope);
-            lc_visit_stmt(env, stmt.stmt_b, scope);
-            let body_scope = lc_scope_create(scope);
+            // The loop header (init and step) lives in its own scope so the
+            // loop variable does not leak into the enclosing block and is not
+            // seen as an outer local by later sibling loops.
+            let header_scope = lc_scope_create(scope);
+            lc_scope_track(env, header_scope);
+            lc_scope_set_block(env, stmt_id, header_scope);
+            lc_visit_stmt(env, stmt.stmt_a, header_scope);
+            lc_visit_stmt(env, stmt.stmt_b, header_scope);
+            let body_scope = lc_scope_create(header_scope);
             lc_scope_track(env, body_scope);
             lc_visit_scoped_stmt(env, stmt.stmt_c, body_scope);
         }

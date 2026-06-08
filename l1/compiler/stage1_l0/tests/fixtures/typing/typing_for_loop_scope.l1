@@ -1,0 +1,39 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_for_loop_scope;
+
+/**
+ * Exercises for-loop variable scoping.
+ *
+ * Reusing `i` in sibling or deeper-but-disjoint loops must not warn, because
+ * the loop variable is scoped to its own loop header. Only the genuinely
+ * nested inner `i` shadows an outer in-scope `i`, so exactly one `TYP-0021`
+ * is expected.
+ *
+ * @return Accumulated total.
+ */
+func f() -> int {
+    let total = 0;
+
+    for (let i = 0; i < 3; i = i + 1) {
+        total = total + i;
+    }
+
+    while (0 < 1) {
+        for (let i = 0; i < 3; i = i + 1) {
+            total = total + i;
+        }
+        break;
+    }
+
+    for (let i = 0; i < 3; i = i + 1) {
+        for (let i = 0; i < 2; i = i + 1) {
+            total = total + i;
+        }
+    }
+
+    return total;
+}

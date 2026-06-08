@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module dup_import_main;
+
+import std.io;
+import std.io;
+
+/**
+ * Main entry point: emits a line so build/run output can be checked while a
+ * `RES-0036` duplicate-import warning is present.
+ *
+ * @return `0`.
+ */
+func main() -> int {
+    printl_s("dup-import-ok");
+    return 0;
+}
