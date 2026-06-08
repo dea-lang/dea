@@ -99,7 +99,7 @@ def main() -> int:
         BUILD_TESTS_ROOT.mkdir(parents=True, exist_ok=True)
         dist_dir_path = Path(tempfile.mkdtemp(prefix="l0_stage2_envdist.", dir=BUILD_TESTS_ROOT))
         dist_dir_rel = repo_relative(dist_dir_path)
-        run(["make", "venv", f"DEA_BUILD_DIR={dist_dir_rel}", "install-dev-stage2"])
+        run(["make", f"DEA_BUILD_DIR={dist_dir_rel}", "install-dev-stage2"])
         run(["make", f"PREFIX={native_path(prefix_dir)}", "install"])
         run_trace_after_activation(prefix_dir, dist_dir_rel, trace_log)
         assert_contains(trace_log, "exit_code=0")
