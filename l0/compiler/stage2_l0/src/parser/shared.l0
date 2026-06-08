@@ -668,6 +668,11 @@ func token_text_for_width(tok: Token) -> string {
  * @return Width of the token text in bytes.
  */
 func token_width(tok: Token) -> int {
+    match (tok.token_type) {
+        TT_BYTE(t, v) => { return len_s(t) + 2; }
+        TT_STRING(t, v) => { return len_s(t) + 2; }
+        _ => {}
+    }
     return len_s(token_text_for_width(tok));
 }
 

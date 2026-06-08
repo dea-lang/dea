@@ -235,6 +235,48 @@ func expect_diag_code_line(source: string, expected: string, occurrence: int, ex
 }
 
 /**
+ * Parses source and asserts that the `occurrence`th diagnostic has the expected span.
+ *
+ * @param source The module source to parse.
+ * @param expected The diagnostic code to find.
+ * @param occurrence Zero-based occurrence index for repeated codes.
+ * @param line The expected 1-based start line.
+ * @param column The expected 1-based start column.
+ * @param line_end The expected 1-based end line.
+ * @param column_end The expected exclusive end column.
+ */
+func expect_diag_code_span(source: string, expected: string, occurrence: int,
+                           line: int, column: int, line_end: int, column_end: int) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let seen = 0;
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == expected) {
+            if (seen == occurrence) {
+                if (diag.line != line || diag.column != column ||
+                    diag.line_end != line_end || diag.column_end != column_end) {
+                    printl_ss("diagnostic code:", expected);
+                    printl_si("actual line:", diag.line);
+                    printl_si("actual column:", diag.column);
+                    printl_si("actual line_end:", diag.line_end);
+                    printl_si("actual column_end:", diag.column_end);
+                    assert(false, "Unexpected diagnostic span");
+                }
+                parse_result_free(result);
+                return;
+            }
+            seen = seen + 1;
+        }
+        i = i + 1;
+    }
+    printl_ss("missing diagnostic code:", expected);
+    assert(false, "Expected diagnostic span");
+    parse_result_free(result);
+}
+
+/**
  * Tests that an orphaned `else` is diagnosed as PAR-0123, not the generic error.
  */
 func test_stray_else_reports_par0123() {
@@ -342,6 +384,26 @@ func test_case_default_recovery_stays_inside_case() {
     expect_diag_code_line(src, "PAR-0234", 0, 5);
     expect_diag_code_line(src, "PAR-0236", 0, 6);
     expect_diag_code_line(src, "PAR-0236", 1, 7);
+    expect_diag_code_span(src, "PAR-0242", 0, 4, 9, 4, 13);
+    expect_diag_code_span(src, "PAR-0234", 0, 5, 9, 5, 12);
+    expect_diag_code_span(src, "PAR-0236", 0, 6, 9, 6, 10);
+    expect_diag_code_span(src, "PAR-0236", 1, 7, 9, 7, 13);
+}
+
+/**
+ * Tests that byte literal case-arm diagnostics include quote delimiters in spans.
+ */
+func test_case_default_recovery_byte_literal_span() {
+    let src = "module main;\n" +
+        "func main() -> int {\n" +
+        "    case (1) {\n" +
+        "        _ => 0;\n" +
+        "        'a' => 1;\n" +
+        "    }\n" +
+        "    return 0;\n" +
+        "}\n";
+    expect_diag_code_present(src, "PAR-0234");
+    expect_diag_code_span(src, "PAR-0234", 0, 5, 9, 5, 12);
 }
 
 /**
@@ -469,6 +531,7 @@ func main() {
     test_case_ambiguous_if_else_error();
     test_case_default_arm_if_else_body_ok();
     test_case_default_recovery_stays_inside_case();
+    test_case_default_recovery_byte_literal_span();
     test_expr_precedence_postfix_and_qualified_type_ok();
     test_postfix_chain_ok();
     test_type_expr_call_arg_ok();

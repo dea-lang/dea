@@ -6,7 +6,7 @@ from typing import Dict, List
 
 from l0_ast import Node
 from l0_diagnostics import Diagnostic, diag_from_node, diag_from_token
-from l0_parser import Span, Token, TokenKind
+from l0_parser import Parser, Span, Token, TokenKind
 from l0c import print_diagnostic_with_snippet
 
 
@@ -220,6 +220,42 @@ def test_snippet_span_same_line(tmp_path, monkeypatch):
     carets = caret_line[len(prefix):]
     assert set(carets) == {"^"}
     assert len(carets) == expected_width
+
+
+def test_parser_token_span_renders_full_else_keyword(tmp_path, monkeypatch):
+    src = """module main;
+func main() -> int {
+    case (1) {
+        else { return 0; }
+        "a" => { return 1; }
+        _ => 2;
+        else 3;
+    }
+    printl_s("ok");
+    return 0;
+}
+"""
+    path = tmp_path / "case_else_span.l0"
+    path.write_text(src, encoding="utf-8")
+
+    parser = Parser.from_source(src)
+    parser.parse_module(filename=str(path))
+    duplicate_else_diag = next(
+        diag for diag in parser.diagnostics
+        if "[PAR-0236]" in diag.message and diag.line == 7
+    )
+
+    lines = _capture_snippet(duplicate_else_diag, monkeypatch)
+    assert len(lines) == 6
+
+    src_line = lines[3]
+    caret_line = lines[5]
+    assert src_line.endswith("        else 3;")
+
+    width = max(5, len(str(duplicate_else_diag.line)))
+    prefix = " " * width + " | " + " " * (duplicate_else_diag.column - 1)
+    carets = caret_line[len(prefix):]
+    assert carets == "^^^^"
 
 
 def test_snippet_span_multiline_end_extends_to_eol(tmp_path, monkeypatch):

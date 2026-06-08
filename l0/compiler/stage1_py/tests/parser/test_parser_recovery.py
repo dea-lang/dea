@@ -29,6 +29,11 @@ def diag_lines(diagnostics, code: str) -> list[int]:
     return [diagnostic.line for diagnostic in diagnostics if needle in diagnostic.message]
 
 
+def diags_for_code(diagnostics, code: str):
+    needle = f"[{code}]"
+    return [diagnostic for diagnostic in diagnostics if needle in diagnostic.message]
+
+
 def test_parser_recovery_from_missing_semicolon(analyze_single):
     src = """
     module main;
@@ -123,3 +128,17 @@ def test_case_default_recovery_stays_inside_case():
     assert diag_lines(parser.diagnostics, "PAR-0242") == [4]
     assert diag_lines(parser.diagnostics, "PAR-0234") == [5]
     assert diag_lines(parser.diagnostics, "PAR-0236") == [6, 7]
+
+    deprecated_else = diags_for_code(parser.diagnostics, "PAR-0242")[0]
+    assert (deprecated_else.line, deprecated_else.column) == (4, 9)
+    assert (deprecated_else.end_line, deprecated_else.end_column) == (4, 13)
+
+    value_after_default = diags_for_code(parser.diagnostics, "PAR-0234")[0]
+    assert (value_after_default.line, value_after_default.column) == (5, 9)
+    assert (value_after_default.end_line, value_after_default.end_column) == (5, 12)
+
+    duplicate_defaults = diags_for_code(parser.diagnostics, "PAR-0236")
+    assert (duplicate_defaults[0].line, duplicate_defaults[0].column) == (6, 9)
+    assert (duplicate_defaults[0].end_line, duplicate_defaults[0].end_column) == (6, 10)
+    assert (duplicate_defaults[1].line, duplicate_defaults[1].column) == (7, 9)
+    assert (duplicate_defaults[1].end_line, duplicate_defaults[1].end_column) == (7, 13)

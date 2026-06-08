@@ -100,8 +100,18 @@ class Parser:
         tok = token if token is not None else self._peek()
         line = tok.line if tok else 0
         column = tok.column if tok else 0
+        end_line = tok.line if tok else None
+        end_column = tok.column + token_len(tok) if tok else None
         self.diagnostics.append(
-            Diagnostic(kind="error", message=message, filename=self.filename, line=line, column=column))
+            Diagnostic(
+                kind="error",
+                message=message,
+                filename=self.filename,
+                line=line,
+                column=column,
+                end_line=end_line,
+                end_column=end_column,
+            ))
 
     def _warning(self, message: str, token: Optional[Token] = None) -> None:
         """Add a warning diagnostic (non-fatal).
@@ -113,8 +123,18 @@ class Parser:
         tok = token if token is not None else self._peek()
         line = tok.line if tok else 0
         column = tok.column if tok else 0
+        end_line = tok.line if tok else None
+        end_column = tok.column + token_len(tok) if tok else None
         self.diagnostics.append(
-            Diagnostic(kind="warning", message=message, filename=self.filename, line=line, column=column))
+            Diagnostic(
+                kind="warning",
+                message=message,
+                filename=self.filename,
+                line=line,
+                column=column,
+                end_line=end_line,
+                end_column=end_column,
+            ))
 
     def _error_bail(self, message: str, token: Optional[Token] = None) -> NoReturn:
         """Report an error and raise a synchronization exception.
