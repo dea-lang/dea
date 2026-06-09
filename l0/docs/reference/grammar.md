@@ -1,6 +1,6 @@
 # Dea/L<sub>0</sub> Grammar
 
-Version: 2026-06-07
+Version: 2026-06-09
 
 The following is the formal grammar for the Dea/L<sub>0</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -17,6 +17,10 @@ Digit           ::=     "0".."9"
 OctDigit        ::=     "0".."7"
 HexDigit        ::=     "0".."9" | "A".."F" | "a".."f"
 ```
+
+`Ident` is ASCII-only. `Letter` and `Digit` are limited to the ranges shown above; non-ASCII Unicode characters are not
+part of identifiers even though Dea source files are UTF-8. See
+[docs/specs/language/source-text-and-language-vocabulary.md](../../../docs/specs/language/source-text-and-language-vocabulary.md).
 
 ### 1.2 Literals
 
@@ -39,6 +43,10 @@ Hex8                ::=     Hex4 Hex4
 EscapedChar         ::=     '"' | '\' | 'n' | 't' | 'r' | "'" | Oct1to3
                       |     'u' Hex4 | 'U' Hex8 | 'x' HexDigit HexDigit*
 ```
+
+String literal payload text may contain Unicode characters encoded as UTF-8, subject to the delimiter and escape rules
+above. Comments may also contain Unicode text valid under the source encoding. Outside those free-text regions, the
+language vocabulary remains ASCII-only.
 
 ### 1.3 Keywords
 

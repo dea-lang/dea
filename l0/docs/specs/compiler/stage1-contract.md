@@ -1,6 +1,6 @@
 # L0 Stage 1 Compiler Contract
 
-Version: 2026-04-14
+Version: 2026-06-09
 
 This document is the compact Stage 1 contract and navigation index.
 
@@ -10,6 +10,8 @@ Canonical ownership:
 - Architecture and pass flow: [reference/architecture.md](../../reference/architecture.md)
 - C backend behavior and lowering details: [reference/c-backend-design.md](../../reference/c-backend-design.md)
 - Language/runtime rationale and future evolution: [reference/design-decisions.md](../../reference/design-decisions.md)
+- Shared source-text and language-vocabulary policy:
+  [docs/specs/language/source-text-and-language-vocabulary.md](../../../docs/specs/language/source-text-and-language-vocabulary.md)
 - Diagnostic code assignment and cross-stage parity: [diagnostic-code-policy.md](diagnostic-code-policy.md)
 
 ## 1. Scope
@@ -47,7 +49,7 @@ Stage 1-specific notes:
 
 ### 2.2 Source/module contract
 
-- Source encoding: UTF-8; UTF-8 BOM is accepted and stripped by the driver.
+- Source encoding: UTF-8; UTF-8 BOM is accepted and stripped by the driver. The language vocabulary remains ASCII-only.
 - Module file extension: `.l0`.
 - Module mapping: dotted name -> path segments (for example, `std.io` -> `std/io.l0`).
 - Declared `module ...;` name must match the loaded module name.

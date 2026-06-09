@@ -1,6 +1,6 @@
 # L0 Compiler Architecture
 
-Version: 2026-04-20
+Version: 2026-06-09
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
@@ -10,6 +10,8 @@ Related canonical docs:
 - Backend lowering and generated C details: [reference/c-backend-design.md](c-backend-design.md)
 - Language/runtime rationale and future evolution: [reference/design-decisions.md](design-decisions.md)
 - Compact contract/index: [specs/compiler/stage1-contract.md](../specs/compiler/stage1-contract.md)
+- Shared source-text policy:
+  [docs/specs/language/source-text-and-language-vocabulary.md](../../../docs/specs/language/source-text-and-language-vocabulary.md)
 - Shared CLI contract: [specs/compiler/cli-contract.md](../specs/compiler/cli-contract.md)
 
 ## 1. High-Level Pipeline
@@ -201,7 +203,7 @@ Main Stage 1 modules under `compiler/stage1_py/`:
 
 ## 6. Host/Toolchain Assumptions
 
-- Source decoding is UTF-8 with optional BOM stripping.
+- Source decoding is UTF-8 with optional BOM stripping; the language vocabulary remains ASCII-only.
 - Module names use identifier segments separated by dots.
 - `run` and `build` require an entry `main` function in the entry module.
 - C target is C99 and host compiler is selected from CLI/env or PATH.

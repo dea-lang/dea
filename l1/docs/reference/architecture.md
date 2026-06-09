@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-04-26
+Version: 2026-06-09
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -175,7 +175,8 @@ Main current compiler modules under `compiler/stage1_l0/src/`:
 
 ## 6. Host and Toolchain Assumptions
 
-- Source decoding is UTF-8 with optional BOM stripping.
+- Source decoding is UTF-8 with optional BOM stripping; the shared language vocabulary remains ASCII-only. See
+  [docs/specs/language/source-text-and-language-vocabulary.md](../../../docs/specs/language/source-text-and-language-vocabulary.md).
 - L1 source modules use the `.l1` extension.
 - The bootstrap compiler implementation remains `.l0` source code.
 - `--build` and `--run` require a host C99 toolchain.
