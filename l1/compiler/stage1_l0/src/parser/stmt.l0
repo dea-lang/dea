@@ -217,7 +217,7 @@ func ps_parse_let_stmt(self: ParserState*) -> StmtId? {
  * @param self Parser state to advance.
  * @return Parsed `if` statement id, or `null` on error.
  */
-func ps_parse_if_stmt(self: ParserState*, guard_dangling_else: bool) -> StmtId? {
+func ps_parse_if_stmt(self: ParserState*) -> StmtId? {
     let start = ps_span_start(self);
     ps_expect(self, ord(TT_IF), "PAR-0120", "expected 'if'")?;
     ps_expect(self, ord(TT_LPAREN), "PAR-0121", "expected '(' after 'if'")?;
@@ -227,12 +227,6 @@ func ps_parse_if_stmt(self: ParserState*, guard_dangling_else: bool) -> StmtId? 
     let then_stmt = ps_parse_stmt(self)?;
 
     let else_stmt = invalid_stmt_id();
-    if (guard_dangling_else && ps_check(self, ord(TT_ELSE))) {
-        ps_emit_error(self, "PAR-0243",
-            "ambiguous 'else' after 'if' in 'case' arm; brace the arm body or use a '_ =>' default",
-            ps_peek(self));
-        return null;
-    }
     if (ps_match(self, ord(TT_ELSE))) {
         let e = ps_parse_stmt(self)?;
         let node = stmt_node_create(ST_IF, ps_extend_span(self, start));
@@ -566,34 +560,8 @@ func ps_parse_case_literal(self: ParserState*) -> ExprId? {
     return null;
 }
 
-/**
- * Parse a `case` value-arm body, guarding the dangling-`else` ambiguity.
- *
- * When a value-arm body is an unbraced `if` whose then-branch is followed by
- * `else`, the `else` could bind to the `if` or be the still-open `case`
- * default, so it is rejected with PAR-0243. Default-arm bodies are not guarded
- * (their trailing `else` is unambiguous, the default slot being taken). All
- * other bodies parse as normal statements.
- *
- * @param self Parser state to advance.
- * @return Parsed arm-body statement id, or `null` on error.
- */
-func ps_parse_case_value_arm_body(self: ParserState*) -> StmtId? {
-    if (ps_check(self, ord(TT_IF))) {
-        return ps_parse_if_stmt(self, true);
-    }
-    return ps_parse_stmt(self);
-}
-
-/**
- * Report whether the current token can start a `case` arm.
- *
- * @param self Parser state to inspect.
- * @return True if the current token is a likely arm boundary.
- */
 func ps_at_case_arm_start(self: ParserState*) -> bool {
     return ps_check(self, ord(TT_UNDERSCORE)) ||
-           ps_check(self, ord(TT_ELSE)) ||
            ps_check_int(self) ||
            ps_check_bigint(self) ||
            ps_check_byte(self) ||
@@ -664,6 +632,12 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
         let seen_default = false;
 
         while (!ps_check(self, ord(TT_RBRACE)) && !ps_at_end(self)) {
+            if (ps_check(self, ord(TT_ELSE))) {
+                ps_emit_error(self, "PAR-0123", "'else' without matching 'if'", ps_peek(self));
+                ps_sync_case_invalid_arm(self);
+                continue;
+            }
+
             // Canonical wildcard default arm: `_ => Stmt`.
             if (ps_check(self, ord(TT_UNDERSCORE))) {
                 if (seen_default) {
@@ -681,30 +655,6 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
                 continue;
             }
 
-            // Deprecated 'else' default arm (no '=>'); removed in a later phase.
-            if (ps_check(self, ord(TT_ELSE))) {
-                if (seen_default) {
-                    ps_emit_error(self, "PAR-0236", "duplicate default arm in 'case' statement", ps_peek(self));
-                    ps_sync_case_invalid_arm(self);
-                    continue;
-                }
-
-                let else_tok = ps_peek(self);
-                ps_emit_warning(self, "PAR-0242",
-                    "deprecated 'else' default arm in 'case'; use '_ =>' instead", else_tok);
-                ps_advance(self);
-                let else_start = ps_span_start(self);
-                if (ps_match(self, ord(TT_ARROW_MATCH))) {
-                    ps_emit_error(self, "PAR-0237", "'=>' not allowed in 'else' arm", ps_peek(self));
-                    return null;
-                }
-
-                let body = ps_parse_stmt(self)?;
-                else_arm = new CaseElse(body, ps_extend_span(self, else_start));
-                seen_default = true;
-                continue;
-            }
-
             if (seen_default) {
                 ps_emit_error(self, "PAR-0234", "value arm cannot appear after the default arm in 'case' statement", ps_peek(self));
                 ps_sync_case_invalid_arm(self);
@@ -714,7 +664,7 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
             let arm_start = ps_span_start(self);
             let literal = ps_parse_case_literal(self)?;
             ps_expect(self, ord(TT_ARROW_MATCH), "PAR-0235", "expected '=>' in 'case' arm")?;
-            let body = ps_parse_case_value_arm_body(self)?;
+            let body = ps_parse_stmt(self)?;
             let arm = new CaseArm(literal, body, ps_extend_span(self, arm_start));
             ptr_vec_push(arms as VectorBase*, arm as void*);
         }
@@ -801,7 +751,7 @@ func ps_parse_stmt(self: ParserState*) -> StmtId? {
         return ps_parse_block(self);
     }
     if (ps_check(self, ord(TT_IF))) {
-        return ps_parse_if_stmt(self, false);
+        return ps_parse_if_stmt(self);
     }
     if (ps_check(self, ord(TT_MATCH))) {
         return ps_parse_match_stmt(self);

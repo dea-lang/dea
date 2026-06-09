@@ -850,7 +850,7 @@ def test_case_scrutinee_unwrap_retains(artifact_dir: Path) -> None:
             let opt: string? = concat_s("o", "k") as string?;
             case (opt as string) {
                 "ok" => { return 0; }
-                else { return 1; }
+                _ => { return 1; }
             }
         }
         """,

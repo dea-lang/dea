@@ -3,7 +3,7 @@
 ## `case` default arm `_ =>`, Phase 2 (L1): remove `else`
 
 - Date: 2026-06-08
-- Status: Draft
+- Status: Completed
 - Title: Remove `else` as a `case` default arm in L1 Stage 1
 - Kind: Feature
 - Scope: L1

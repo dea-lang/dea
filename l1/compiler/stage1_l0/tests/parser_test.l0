@@ -625,13 +625,7 @@ func test_case_wildcard_default_ok() {
     expect_ok(src);
 }
 
-/**
- * Tests that a deprecated `else` default arm emits a PAR-0242 warning.
- */
-func test_case_else_deprecation_warning() {
-    let src = "module main; func main() -> int { case (1) { 1 => { return 1; } else { return 0; } } }";
-    expect_diag_code_present(src, "PAR-0242");
-}
+
 
 /**
  * Tests that a value arm after the wildcard default is PAR-0234.
@@ -650,21 +644,27 @@ func test_case_wildcard_missing_arrow_error() {
 }
 
 /**
- * Tests that an unbraced `if` value-arm body followed by `else` is PAR-0243.
+ * Tests that an unbraced `if` value-arm body followed by `else` parses cleanly.
  */
-func test_case_ambiguous_if_else_error() {
-    let src = "module main; func main() -> int { case (1) { 1 => if (true) return 1; else return 0; } }";
-    expect_error_code(src, "PAR-0243");
+func test_case_value_arm_if_else_body_ok() {
+    let src = "module main; func main() -> int { case (1) { 1 => if (true) return 1; else return 0; _ => return 2; } }";
+    expect_ok(src);
 }
 
 /**
- * Tests that a default-arm body may be an unbraced if-else (only value arms are guarded).
+ * Tests that a stray `case`-arm `else` is PAR-0123.
+ */
+func test_case_stray_else_arm_error() {
+    let src = "module main; func main() -> int { case (1) { else return 0; } }";
+    expect_error_code(src, "PAR-0123");
+}
+
+/**
+ * Tests that a default-arm body may be an unbraced if-else.
  */
 func test_case_default_arm_if_else_body_ok() {
     let wildcard = "module main; func main() -> int { case (1) { 1 => { return 1; } _ => if (true) return 2; else return 3; } }";
     expect_ok(wildcard);
-    let else_chain = "module main; func main() -> int { case (1) { 1 => { return 1; } else if (true) return 2; else return 3; } }";
-    expect_ok(else_chain);
 }
 
 /**
@@ -674,28 +674,25 @@ func test_case_default_recovery_stays_inside_case() {
     let src = "module main;\n" +
         "func main() -> int {\n" +
         "    case (1) {\n" +
-        "        else { return 0; }\n" +
+        "        _ => { return 0; }\n" +
         "        \"a\" => { return 1; }\n" +
         "        _ => 2;\n" +
-        "        else 3;\n" +
+        "        _ => 3;\n" +
         "    }\n" +
         "    printl_s(\"ok\");\n" +
         "    return 0;\n" +
         "}\n";
-    expect_diag_code_present(src, "PAR-0242");
     expect_diag_code_present(src, "PAR-0234");
     expect_diag_code_count(src, "PAR-0236", 2);
     expect_diag_code_absent(src, "PAR-0225");
     expect_diag_code_absent(src, "PAR-0123");
     expect_diag_code_absent(src, "PAR-0020");
-    expect_diag_code_line(src, "PAR-0242", 0, 4);
     expect_diag_code_line(src, "PAR-0234", 0, 5);
     expect_diag_code_line(src, "PAR-0236", 0, 6);
     expect_diag_code_line(src, "PAR-0236", 1, 7);
-    expect_diag_code_span(src, "PAR-0242", 0, 4, 9, 4, 13);
     expect_diag_code_span(src, "PAR-0234", 0, 5, 9, 5, 12);
     expect_diag_code_span(src, "PAR-0236", 0, 6, 9, 6, 10);
-    expect_diag_code_span(src, "PAR-0236", 1, 7, 9, 7, 13);
+    expect_diag_code_span(src, "PAR-0236", 1, 7, 9, 7, 10);
 }
 
 /**
@@ -1077,7 +1074,7 @@ func test_is_intrinsic_call_and_qualified_variant_shape() {
  * Tests single-statement loop bodies, match arms, and the existing `case` arm precedent.
  */
 func test_single_statement_loop_and_match_bodies_ok() {
-    let src = "module main; enum Color { Red; Green; } func main(x: int, c: Color) -> int { while (x < 3) x = x + 1; for (; x < 4; x = x + 1) x = x + 2; match (c) { Red => return 1; _ => return 2; } case (x) { 0 => return 3; else return 4; } }";
+    let src = "module main; enum Color { Red; Green; } func main(x: int, c: Color) -> int { while (x < 3) x = x + 1; for (; x < 4; x = x + 1) x = x + 2; match (c) { Red => return 1; _ => return 2; } case (x) { 0 => return 3; _ => return 4; } }";
     let result = parse_module_source(src, "<test>");
     assert(!parse_has_errors(result), "Expected parse to succeed");
     assert(result.root_module != null, "Expected parsed module");
@@ -1154,10 +1151,10 @@ func main() {
     test_stray_else_does_not_cascade_to_top_level();
     test_case_empty_error();
     test_case_wildcard_default_ok();
-    test_case_else_deprecation_warning();
     test_case_value_arm_after_wildcard_error();
     test_case_wildcard_missing_arrow_error();
-    test_case_ambiguous_if_else_error();
+    test_case_value_arm_if_else_body_ok();
+    test_case_stray_else_arm_error();
     test_case_default_arm_if_else_body_ok();
     test_case_default_recovery_stays_inside_case();
     test_case_default_recovery_byte_literal_span();
