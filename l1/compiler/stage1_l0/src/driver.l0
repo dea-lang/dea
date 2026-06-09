@@ -237,6 +237,10 @@ func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResu
     if (toks == null) {
         return parse_lex_error_result(ls, path);
     }
+    if (diag_has_errors(ls.diags)) {
+        tv_free(toks as TokenVector);
+        return parse_lex_error_result(ls, path);
+    }
 
     let tv = toks as TokenVector;
     log_debug(cfg, "Lexed " + int_to_string(tv_len(tv)) + " token(s) from " + path);

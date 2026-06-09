@@ -51,6 +51,24 @@ func has_driver_diag_code(result: DriverState*, code: string) -> bool {
 }
 
 /**
+ * Counts diagnostics with the requested code.
+ *
+ * @param result The driver analysis result to inspect.
+ * @param code The diagnostic code to count.
+ * @return Number of diagnostics carrying `code`.
+ */
+func driver_diag_code_count(result: DriverState*, code: string) -> int {
+    let found = 0;
+    for (let i = 0; i < driver_diag_count(result); i = i + 1) {
+        let d = driver_diag_get(result, i);
+        if (d.code == code) {
+            found = found + 1;
+        }
+    }
+    return found;
+}
+
+/**
  * Tests test_transitive_import_closure_ok.
  */
 func test_transitive_import_closure_ok() {
@@ -115,6 +133,26 @@ func test_read_failure_reports_error() {
 }
 
 /**
+ * Tests test_lexer_errors_skip_parser_phase.
+ */
+func test_lexer_errors_skip_parser_phase() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry(sp, "invalid_chars", cfg);
+
+        assert(driver_has_errors(result), "expected lexer errors");
+        assert(driver_diag_code_count(result, "LEX-0040") == 3, "expected three LEX-0040 diagnostics");
+        assert(!has_driver_diag_code(result, "PAR-0310"), "did not expect parser diagnostics after lexer errors");
+        assert(driver_unit_count(result) == 1, "expected one failed unit shell after lexer errors");
+        let unit = driver_unit_get(result, 0);
+        assert(unit.parse_result.root_module == null, "expected no parsed module after lexer errors");
+
+        driver_state_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -122,5 +160,6 @@ func main() {
     test_import_cycle_reports_error();
     test_module_name_mismatch_reports_error();
     test_read_failure_reports_error();
+    test_lexer_errors_skip_parser_phase();
     printl_s("driver_test: all tests passed");
 }

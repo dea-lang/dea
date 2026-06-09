@@ -317,9 +317,12 @@ class L0Driver:
             The parsed Module object.
         """
         log_debug(self.context, f"Lexing {file_path}")
+        lex_diag_start = len(self.diagnostics)
         lexer = Lexer(text, filename=file_path, diagnostics=self.diagnostics)
         tokens = lexer.tokenize()
         log_debug(self.context, f"Lexed {len(tokens)} token(s) from {file_path}")
+        if any(diag.kind == "error" for diag in self.diagnostics[lex_diag_start:]):
+            raise ValueError("lexing failed")
 
         log_debug(self.context, f"Parsing {file_path}")
         parser = Parser(tokens, diagnostics=self.diagnostics)

@@ -508,6 +508,21 @@ func expect_diag_code_count(source: string, expected: string, expected_count: in
 }
 
 /**
+ * Tests that recovered lexer errors stop before parser entry.
+ */
+func test_lexer_errors_skip_parser_phase() {
+    let result = parse_module_source("@ $ @", "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module == null, "Expected no parsed module after lexer errors");
+    assert(parse_diag_count(result) == 3, "Expected exactly three lexer diagnostics");
+    for (let i = 0; i < parse_diag_count(result); i = i + 1) {
+        let diag = parse_diag_get(result, i);
+        assert(diag.code == "LEX-0040", "Expected only LEX-0040 diagnostics");
+    }
+    parse_result_free(result);
+}
+
+/**
  * Parses source and asserts that the `occurrence`th diagnostic with `expected`
  * appears on `expected_line`.
  *
@@ -1203,6 +1218,7 @@ func main() {
     test_is_intrinsic_call_and_qualified_variant_shape();
     test_single_statement_loop_and_match_bodies_ok();
     test_top_level_multi_error_collection();
+    test_lexer_errors_skip_parser_phase();
     test_unterminated_nested_blocks_report_par0091_once();
     test_single_unterminated_block_reports_par0091_once();
     printl_s("parser_test: all tests passed");

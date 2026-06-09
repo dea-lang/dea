@@ -52,7 +52,7 @@ and reuse supplement for applying this registry within L0.
 | `LEX-0021` | All     | Invalid char literal, expected closing single quote    |
 | `LEX-0030` | All     | Character literal must represent a single byte         |
 | `LEX-0031` | All     | Character literal hex escape out of range (0-255)      |
-| `LEX-0040` | All     | Unexpected character in source text                    |
+| `LEX-0040` | All     | invalid character in source                            |
 | `LEX-0050` | All     | Invalid hex escape sequence                            |
 | `LEX-0051` | All     | Invalid unicode escape sequence (\\u)                  |
 | `LEX-0052` | All     | Invalid unicode escape sequence (\\U)                  |

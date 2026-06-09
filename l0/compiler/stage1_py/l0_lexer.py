@@ -358,140 +358,142 @@ class Lexer:
 
     def _next_token(self) -> Token:
         """Scan and return the next token."""
-        self._skip_ws_and_comments()
-        start_line, start_col = self.line, self.column
+        while True:
+            self._skip_ws_and_comments()
+            start_line, start_col = self.line, self.column
 
-        if self._at_end():
-            return Token(TokenKind.EOF, "", start_line, start_col)
+            if self._at_end():
+                return Token(TokenKind.EOF, "", start_line, start_col)
 
-        c = self._advance()
+            c = self._advance()
 
-        # identifiers / keywords and underscore wildcard
-        if c.isalpha() or c == "_":
-            ident = [c]
-            while self._peek().isalnum() or self._peek() == "_":
-                ident.append(self._advance())
-            text = "".join(ident)
-            if text == "_":
-                kind = TokenKind.UNDERSCORE
-            else:
-                kind = KEYWORDS.get(text, TokenKind.IDENT)
-            return Token(kind, text, start_line, start_col)
+            # identifiers / keywords and underscore wildcard
+            if c.isalpha() or c == "_":
+                ident = [c]
+                while self._peek().isalnum() or self._peek() == "_":
+                    ident.append(self._advance())
+                text = "".join(ident)
+                if text == "_":
+                    kind = TokenKind.UNDERSCORE
+                else:
+                    kind = KEYWORDS.get(text, TokenKind.IDENT)
+                return Token(kind, text, start_line, start_col)
 
-        # numbers (only integers for now)
-        if c.isdigit():
-            text = self._read_number(c, start_col, start_line)
-            return Token(TokenKind.INT, text, start_line, start_col)
-
-        # strings
-        if c == '"':
-            text = self._read_string_literal()
-            return Token(TokenKind.STRING, text, start_line, start_col)
-
-        # byte / char literals
-        if c == "'":
-            text = self._read_byte_literal(start_col, start_line)
-            return Token(TokenKind.BYTE, text, start_line, start_col)
-
-        # punctuation / operators with lookahead
-
-        if c == "-":
-            if self._peek() == ">":
-                self._advance()
-                return Token(TokenKind.ARROW_FUNC, "->", start_line, start_col)
-            elif self._peek().isdigit() and self._prev_kind not in _EXPR_ENDING_TOKENS:
-                text = self._read_number(self._advance(), start_col, start_line, is_negative=True)
+            # numbers (only integers for now)
+            if c.isdigit():
+                text = self._read_number(c, start_col, start_line)
                 return Token(TokenKind.INT, text, start_line, start_col)
-            return Token(TokenKind.MINUS, c, start_line, start_col)
 
-        if c == "(":
-            return Token(TokenKind.LPAREN, c, start_line, start_col)
-        if c == ")":
-            return Token(TokenKind.RPAREN, c, start_line, start_col)
-        if c == "{":
-            return Token(TokenKind.LBRACE, c, start_line, start_col)
-        if c == "}":
-            return Token(TokenKind.RBRACE, c, start_line, start_col)
-        if c == "[":
-            return Token(TokenKind.LBRACKET, c, start_line, start_col)
-        if c == "]":
-            return Token(TokenKind.RBRACKET, c, start_line, start_col)
-        if c == ",":
-            return Token(TokenKind.COMMA, c, start_line, start_col)
-        if c == ";":
-            return Token(TokenKind.SEMI, c, start_line, start_col)
-        if c == ":":
-            if self._peek() == ":":
-                self._advance()
-                return Token(TokenKind.DOUBLE_COLON, "::", start_line, start_col)
-            return Token(TokenKind.COLON, c, start_line, start_col)
-        if c == ".":
-            return Token(TokenKind.DOT, c, start_line, start_col)
-        if c == "?":
-            return Token(TokenKind.QUESTION, c, start_line, start_col)
+            # strings
+            if c == '"':
+                text = self._read_string_literal()
+                return Token(TokenKind.STRING, text, start_line, start_col)
 
-        if c == "=":
-            nxt = self._peek()
-            if nxt == ">":
-                self._advance()
-                return Token(TokenKind.ARROW_MATCH, "=>", start_line, start_col)
-            if nxt == "=":
-                self._advance()
-                return Token(TokenKind.EQEQ, "==", start_line, start_col)
-            return Token(TokenKind.EQ, c, start_line, start_col)
+            # byte / char literals
+            if c == "'":
+                text = self._read_byte_literal(start_col, start_line)
+                return Token(TokenKind.BYTE, text, start_line, start_col)
 
-        if c == "!":
-            if self._peek() == "=":
-                self._advance()
-                return Token(TokenKind.NE, "!=", start_line, start_col)
-            return Token(TokenKind.BANG, c, start_line, start_col)
+            # punctuation / operators with lookahead
 
-        if c == "<":
-            if self._peek() == "=":
-                self._advance()
-                return Token(TokenKind.LE, "<=", start_line, start_col)
-            if self._peek() == "<":
-                self._advance()
-                return Token(TokenKind.LSHIFT, "<<", start_line, start_col)
-            return Token(TokenKind.LT, c, start_line, start_col)
+            if c == "-":
+                if self._peek() == ">":
+                    self._advance()
+                    return Token(TokenKind.ARROW_FUNC, "->", start_line, start_col)
+                elif self._peek().isdigit() and self._prev_kind not in _EXPR_ENDING_TOKENS:
+                    text = self._read_number(self._advance(), start_col, start_line, is_negative=True)
+                    return Token(TokenKind.INT, text, start_line, start_col)
+                return Token(TokenKind.MINUS, c, start_line, start_col)
 
-        if c == ">":
-            if self._peek() == "=":
-                self._advance()
-                return Token(TokenKind.GE, ">=", start_line, start_col)
-            if self._peek() == ">":
-                self._advance()
-                return Token(TokenKind.RSHIFT, ">>", start_line, start_col)
-            return Token(TokenKind.GT, c, start_line, start_col)
+            if c == "(":
+                return Token(TokenKind.LPAREN, c, start_line, start_col)
+            if c == ")":
+                return Token(TokenKind.RPAREN, c, start_line, start_col)
+            if c == "{":
+                return Token(TokenKind.LBRACE, c, start_line, start_col)
+            if c == "}":
+                return Token(TokenKind.RBRACE, c, start_line, start_col)
+            if c == "[":
+                return Token(TokenKind.LBRACKET, c, start_line, start_col)
+            if c == "]":
+                return Token(TokenKind.RBRACKET, c, start_line, start_col)
+            if c == ",":
+                return Token(TokenKind.COMMA, c, start_line, start_col)
+            if c == ";":
+                return Token(TokenKind.SEMI, c, start_line, start_col)
+            if c == ":":
+                if self._peek() == ":":
+                    self._advance()
+                    return Token(TokenKind.DOUBLE_COLON, "::", start_line, start_col)
+                return Token(TokenKind.COLON, c, start_line, start_col)
+            if c == ".":
+                return Token(TokenKind.DOT, c, start_line, start_col)
+            if c == "?":
+                return Token(TokenKind.QUESTION, c, start_line, start_col)
 
-        if c == "&":
-            if self._peek() == "&":
-                self._advance()
-                return Token(TokenKind.ANDAND, "&&", start_line, start_col)
-            return Token(TokenKind.AMP, c, start_line, start_col)
+            if c == "=":
+                nxt = self._peek()
+                if nxt == ">":
+                    self._advance()
+                    return Token(TokenKind.ARROW_MATCH, "=>", start_line, start_col)
+                if nxt == "=":
+                    self._advance()
+                    return Token(TokenKind.EQEQ, "==", start_line, start_col)
+                return Token(TokenKind.EQ, c, start_line, start_col)
 
-        if c == "|":
-            if self._peek() == "|":
-                self._advance()
-                return Token(TokenKind.OROR, "||", start_line, start_col)
-            return Token(TokenKind.PIPE, c, start_line, start_col)
+            if c == "!":
+                if self._peek() == "=":
+                    self._advance()
+                    return Token(TokenKind.NE, "!=", start_line, start_col)
+                return Token(TokenKind.BANG, c, start_line, start_col)
 
-        if c == "^":
-            return Token(TokenKind.CARET, c, start_line, start_col)
-        if c == "~":
-            return Token(TokenKind.TILDE, c, start_line, start_col)
+            if c == "<":
+                if self._peek() == "=":
+                    self._advance()
+                    return Token(TokenKind.LE, "<=", start_line, start_col)
+                if self._peek() == "<":
+                    self._advance()
+                    return Token(TokenKind.LSHIFT, "<<", start_line, start_col)
+                return Token(TokenKind.LT, c, start_line, start_col)
 
-        if c == "+":
-            return Token(TokenKind.PLUS, c, start_line, start_col)
-        if c == "*":
-            return Token(TokenKind.STAR, c, start_line, start_col)
-        if c == "/":
-            return Token(TokenKind.SLASH, c, start_line, start_col)
-        if c == "%":
-            return Token(TokenKind.MODULO, c, start_line, start_col)
+            if c == ">":
+                if self._peek() == "=":
+                    self._advance()
+                    return Token(TokenKind.GE, ">=", start_line, start_col)
+                if self._peek() == ">":
+                    self._advance()
+                    return Token(TokenKind.RSHIFT, ">>", start_line, start_col)
+                return Token(TokenKind.GT, c, start_line, start_col)
 
-        self._error(f"[LEX-0040] unexpected character {c!r} at {start_line}:{start_col}", start_line, start_col)
-        return self._next_token()
+            if c == "&":
+                if self._peek() == "&":
+                    self._advance()
+                    return Token(TokenKind.ANDAND, "&&", start_line, start_col)
+                return Token(TokenKind.AMP, c, start_line, start_col)
+
+            if c == "|":
+                if self._peek() == "|":
+                    self._advance()
+                    return Token(TokenKind.OROR, "||", start_line, start_col)
+                return Token(TokenKind.PIPE, c, start_line, start_col)
+
+            if c == "^":
+                return Token(TokenKind.CARET, c, start_line, start_col)
+            if c == "~":
+                return Token(TokenKind.TILDE, c, start_line, start_col)
+
+            if c == "+":
+                return Token(TokenKind.PLUS, c, start_line, start_col)
+            if c == "*":
+                return Token(TokenKind.STAR, c, start_line, start_col)
+            if c == "/":
+                return Token(TokenKind.SLASH, c, start_line, start_col)
+            if c == "%":
+                return Token(TokenKind.MODULO, c, start_line, start_col)
+
+            self._error(f"[LEX-0040] invalid character in source", start_line, start_col)
+            self._skip_invalid_characters()
+            continue
 
     def _read_byte_literal(self, start_col: int, start_line: int) -> str:
         """Scan a byte/character literal."""
@@ -670,3 +672,11 @@ class Lexer:
                     self._advance()
                 continue
             break
+
+    def _skip_invalid_characters(self) :
+        """Skip non-ASCII characters after LEX-0040."""
+        while True:
+            c = self._peek()
+            if c == "\0" or (" " <= c <= "~"):
+                break
+            self._advance()

@@ -15,6 +15,18 @@ def test_lexer_invalid_token_reports_span(analyze_single):
 
     diag = _first_error(result)
     assert (diag.line, diag.column) == (1, 1)
+    assert diag.message == "[LEX-0040] invalid character in source"
+
+def test_lexer_invalid_token_recovery(analyze_single):
+    result = analyze_single("main", "@ $ @")
+    assert result.has_errors()
+    lex_errors = [d for d in result.diagnostics if d.kind == "error" and d.message.startswith("[LEX-0040]")]
+    assert len(lex_errors) == 3
+    assert (lex_errors[0].line, lex_errors[0].column) == (1, 1)
+    assert (lex_errors[1].line, lex_errors[1].column) == (1, 3)
+    assert (lex_errors[2].line, lex_errors[2].column) == (1, 5)
+    assert not any(d.message.startswith("[PAR-") for d in result.diagnostics)
+    assert result.cu is None
 
 
 def test_lexer_numeric_overflow_reports_span(analyze_single):

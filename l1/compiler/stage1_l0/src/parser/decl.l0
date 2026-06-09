@@ -566,5 +566,9 @@ func impl_parse_module_source(source: string, filename: string) -> ImplParseResu
     if (toks == null) {
         return ps_lex_error_result(ls, filename);
     }
+    if (diag_has_errors(ls.diags)) {
+        tv_free(toks as TokenVector);
+        return ps_lex_error_result(ls, filename);
+    }
     return ps_tokens_result(ls, toks as TokenVector, filename);
 }

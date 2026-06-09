@@ -175,4 +175,4 @@ def test_lexer_unexpected_character():
     lexer = Lexer.from_source(src)
     lexer.tokenize()
 
-    assert any("unexpected character" in d.message for d in lexer.diagnostics)
+    assert any("invalid character in source" in d.message for d in lexer.diagnostics)

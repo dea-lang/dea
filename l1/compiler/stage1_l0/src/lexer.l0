@@ -120,6 +120,16 @@ func hex_char_to_int(c: byte) -> int {
     return -1; // Should not reach here if input is valid hex digit
 }
 
+/**
+ * Check whether a byte is a printable ASCII character (space through tilde).
+ *
+ * @param c Byte to inspect.
+ * @return `true` if `c` is a space, tab, carriage return, or newline.
+ */
+func is_printable_ascii(c: byte) -> bool {
+    return c >= 32 && c <= 126;
+}
+
 /* ---------------------------------
    Lexer State and functions
    --------------------------------- */
@@ -305,169 +315,173 @@ func tokenize(self: LexerState*) -> TokenVector? {
  * @return Next token if successful, or `null` if a lexing error occurs.
  */
 func ls_next_token(self: LexerState*) -> Token? {
-    ls_skip_whitespace_and_comments(self)?;
+    while (true) {
+        ls_skip_whitespace_and_comments(self)?;
 
-    let start_index = self.index;
-    let start_line = self.line;
-    let start_column = self.column;
+        let start_index = self.index;
+        let start_line = self.line;
+        let start_column = self.column;
 
-    if (ls_at_end(self)) {
-        return Token(TT_EOF, self.index, self.line, self.column);
+        if (ls_at_end(self)) {
+            return Token(TT_EOF, self.index, self.line, self.column);
+        }
+
+        let c = ls_advance(self);
+
+        // identifiers / keywords and underscore wildcard
+        if (is_ident_start(c)) {
+            with (let cb = cb_create() => cb_free(cb)) {
+                cb_append(cb, c);
+                while (true) {
+                    if (is_ident_part(ls_peek(self))) {
+                        cb_append(cb, ls_advance(self));
+                    } else {
+                        break;
+                    }
+                }
+                return ident_to_token(cb_to_string(cb), start_index, start_line, start_column);
+            }
+        }
+
+        // numbers (only integers for now)
+        if (is_digit(c)) {
+            return ls_read_number(self, c, false, start_index, start_line, start_column);
+        }
+
+        case(c){
+            '"' => return ls_read_string_literal(self, start_index, start_line, start_column);
+
+            '\'' => return ls_read_byte_literal(self, start_index, start_line, start_column);
+
+            // punctuation and operators with lookahead
+            '-' => {
+                if (ls_peek(self) == '>') {
+                    ls_advance(self);
+                    return Token(TT_ARROW_FUNC, start_index, start_line, start_column);
+                }
+                else if (is_digit(ls_peek(self)) && !is_expr_ending_token_type(self.prev_kind)) {
+                    // Negative number literal if we are in a unary operator context,
+                    // e.g. "f(-5)": here -5 is a negative number, but "x-5" is x MINUS 5
+                    return ls_read_number(self, ls_advance(self), true, start_index, start_line, start_column);
+                }
+                return Token(TT_MINUS, start_index, start_line, start_column);
+            }
+
+            '(' => return Token(TT_LPAREN, start_index, start_line, start_column);
+
+            ')' => return Token(TT_RPAREN, start_index, start_line, start_column);
+
+            '{' => return Token(TT_LBRACE, start_index, start_line, start_column);
+
+            '}' => return Token(TT_RBRACE, start_index, start_line, start_column);
+
+            '[' => return Token(TT_LBRACKET, start_index, start_line, start_column);
+
+            ']' => return Token(TT_RBRACKET, start_index, start_line, start_column);
+
+            ',' => return Token(TT_COMMA, start_index, start_line, start_column);
+
+            ';' => return Token(TT_SEMI, start_index, start_line, start_column);
+
+            ':' => {
+                if (ls_peek(self) == ':') {
+                    ls_advance(self);
+                    return Token(TT_DOUBLE_COLON, start_index, start_line, start_column);
+                }
+                return Token(TT_COLON, start_index, start_line, start_column);
+            }
+
+            '.' => return Token(TT_DOT, start_index, start_line, start_column);
+
+            '?' => return Token(TT_QUESTION, start_index, start_line, start_column);
+
+            '=' => {
+                case(ls_peek(self)) {
+                    '>' => {
+                        ls_advance(self);
+                        return Token(TT_ARROW_MATCH, start_index, start_line, start_column);
+                    }
+                    '=' => {
+                        ls_advance(self);
+                        return Token(TT_EQEQ, start_index, start_line, start_column);
+                    }
+                    _ => return Token(TT_EQ, start_index, start_line, start_column);
+                }
+            }
+
+            '!' => {
+                if (ls_peek(self) == '=') {
+                    ls_advance(self);
+                    return Token(TT_NE, start_index, start_line, start_column);
+                }
+                return Token(TT_BANG, start_index, start_line, start_column);
+            }
+
+            '<' => {
+                case(ls_peek(self)) {
+                     '=' => {
+                        ls_advance(self);
+                        return Token(TT_LE, start_index, start_line, start_column);
+                    }
+                    '<' => {
+                        ls_advance(self);
+                        return Token(TT_LSHIFT, start_index, start_line, start_column);
+                    }
+                    _ => return Token(TT_LT, start_index, start_line, start_column);
+                }
+            }
+
+            '>' => {
+                case(ls_peek(self)) {
+                     '=' => {
+                        ls_advance(self);
+                        return Token(TT_GE, start_index, start_line, start_column);
+                    }
+                    '>' => {
+                        ls_advance(self);
+                        return Token(TT_RSHIFT, start_index, start_line, start_column);
+                    }
+                    _ => return Token(TT_GT, start_index, start_line, start_column);
+                }
+            }
+
+            '&' => {
+                if (ls_peek(self) == '&') {
+                    ls_advance(self);
+                    return Token(TT_ANDAND, start_index, start_line, start_column);
+                }
+                return Token(TT_AMP, start_index, start_line, start_column);
+            }
+
+            '|' => {
+                if (ls_peek(self) == '|') {
+                    ls_advance(self);
+                    return Token(TT_OROR, start_index, start_line, start_column);
+                }
+                return Token(TT_PIPE, start_index, start_line, start_column);
+            }
+
+            '^' => return Token(TT_CARET, start_index, start_line, start_column);
+
+            '~' => return Token(TT_TILDE, start_index, start_line, start_column);
+
+            '+' => return Token(TT_PLUS, start_index, start_line, start_column);
+
+            '*' => return Token(TT_STAR, start_index, start_line, start_column);
+
+            '/' => return Token(TT_SLASH, start_index, start_line, start_column);
+
+            '%' => return Token(TT_MODULO, start_index, start_line, start_column);
+
+            _ => {
+                // If we reach here, it's an unrecognized character
+                ls_emit_error(self, "LEX-0040", "invalid character in source", start_line, start_column, start_line, start_column + 1);
+                ls_skip_invalid_characters(self);
+                continue;
+            }
+        }
     }
-
-    let c = ls_advance(self);
-
-    // identifiers / keywords and underscore wildcard
-    if (is_ident_start(c)) {
-        with (let cb = cb_create() => cb_free(cb)) {
-            cb_append(cb, c);
-            while (true) {
-                if (is_ident_part(ls_peek(self))) {
-                    cb_append(cb, ls_advance(self));
-                } else {
-                    break;
-                }
-            }
-            return ident_to_token(cb_to_string(cb), start_index, start_line, start_column);
-        }
-    }
-
-    // numbers (only integers for now)
-    if (is_digit(c)) {
-        return ls_read_number(self, c, false, start_index, start_line, start_column);
-    }
-
-    case(c){
-        '"' => return ls_read_string_literal(self, start_index, start_line, start_column);
-
-        '\'' => return ls_read_byte_literal(self, start_index, start_line, start_column);
-
-        // punctuation and operators with lookahead
-        '-' => {
-            if (ls_peek(self) == '>') {
-                ls_advance(self);
-                return Token(TT_ARROW_FUNC, start_index, start_line, start_column);
-            }
-            else if (is_digit(ls_peek(self)) && !is_expr_ending_token_type(self.prev_kind)) {
-                // Negative number literal if we are in a unary operator context,
-                // e.g. "f(-5)": here -5 is a negative number, but "x-5" is x MINUS 5
-                return ls_read_number(self, ls_advance(self), true, start_index, start_line, start_column);
-            }
-            return Token(TT_MINUS, start_index, start_line, start_column);
-        }
-
-        '(' => return Token(TT_LPAREN, start_index, start_line, start_column);
-
-        ')' => return Token(TT_RPAREN, start_index, start_line, start_column);
-
-        '{' => return Token(TT_LBRACE, start_index, start_line, start_column);
-
-        '}' => return Token(TT_RBRACE, start_index, start_line, start_column);
-
-        '[' => return Token(TT_LBRACKET, start_index, start_line, start_column);
-
-        ']' => return Token(TT_RBRACKET, start_index, start_line, start_column);
-
-        ',' => return Token(TT_COMMA, start_index, start_line, start_column);
-
-        ';' => return Token(TT_SEMI, start_index, start_line, start_column);
-
-        ':' => {
-            if (ls_peek(self) == ':') {
-                ls_advance(self);
-                return Token(TT_DOUBLE_COLON, start_index, start_line, start_column);
-            }
-            return Token(TT_COLON, start_index, start_line, start_column);
-        }
-
-        '.' => return Token(TT_DOT, start_index, start_line, start_column);
-
-        '?' => return Token(TT_QUESTION, start_index, start_line, start_column);
-
-        '=' => {
-            case(ls_peek(self)) {
-                '>' => {
-                    ls_advance(self);
-                    return Token(TT_ARROW_MATCH, start_index, start_line, start_column);
-                }
-                '=' => {
-                    ls_advance(self);
-                    return Token(TT_EQEQ, start_index, start_line, start_column);
-                }
-                _ => return Token(TT_EQ, start_index, start_line, start_column);
-            }
-        }
-
-        '!' => {
-            if (ls_peek(self) == '=') {
-                ls_advance(self);
-                return Token(TT_NE, start_index, start_line, start_column);
-            }
-            return Token(TT_BANG, start_index, start_line, start_column);
-        }
-
-        '<' => {
-            case(ls_peek(self)) {
-                 '=' => {
-                    ls_advance(self);
-                    return Token(TT_LE, start_index, start_line, start_column);
-                }
-                '<' => {
-                    ls_advance(self);
-                    return Token(TT_LSHIFT, start_index, start_line, start_column);
-                }
-                _ => return Token(TT_LT, start_index, start_line, start_column);
-            }
-        }
-
-        '>' => {
-            case(ls_peek(self)) {
-                 '=' => {
-                    ls_advance(self);
-                    return Token(TT_GE, start_index, start_line, start_column);
-                }
-                '>' => {
-                    ls_advance(self);
-                    return Token(TT_RSHIFT, start_index, start_line, start_column);
-                }
-                _ => return Token(TT_GT, start_index, start_line, start_column);
-            }
-        }
-
-        '&' => {
-            if (ls_peek(self) == '&') {
-                ls_advance(self);
-                return Token(TT_ANDAND, start_index, start_line, start_column);
-            }
-            return Token(TT_AMP, start_index, start_line, start_column);
-        }
-
-        '|' => {
-            if (ls_peek(self) == '|') {
-                ls_advance(self);
-                return Token(TT_OROR, start_index, start_line, start_column);
-            }
-            return Token(TT_PIPE, start_index, start_line, start_column);
-        }
-
-        '^' => return Token(TT_CARET, start_index, start_line, start_column);
-
-        '~' => return Token(TT_TILDE, start_index, start_line, start_column);
-
-        '+' => return Token(TT_PLUS, start_index, start_line, start_column);
-
-        '*' => return Token(TT_STAR, start_index, start_line, start_column);
-
-        '/' => return Token(TT_SLASH, start_index, start_line, start_column);
-
-        '%' => return Token(TT_MODULO, start_index, start_line, start_column);
-
-        _ => {
-            // If we reach here, it's an unrecognized character
-            ls_emit_error(self, "LEX-0040", "unexpected character '" + byte_to_s(c) + "'", start_line, start_column, start_line, start_column + 1);
-            return null;
-        }
-    }
+    return null;
 }
 
 /**
@@ -877,4 +891,18 @@ func ls_skip_whitespace_and_comments(self: LexerState*) -> Unit? {
         } else break; // Other non-whitespace, non-comment character
     }
     return std.unit::present(); // Success
+}
+
+/**
+ * Skips over any invalid (non-printable, non-ASCII) characters in the input after a lexing error has been emitted,
+ * until a valid character or the end of the input is reached.
+ */
+func ls_skip_invalid_characters(self: LexerState*) {
+    while (true) {
+        let c = ls_peek(self);
+        if (c == '\0' || is_printable_ascii(c)) {
+            break;
+        }
+        ls_advance(self);
+    }
 }
