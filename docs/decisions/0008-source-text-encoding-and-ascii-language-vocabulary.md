@@ -55,7 +55,8 @@ Dea source text uses a split policy:
 
 ## Related Plans
 
-None yet.
+- [l0/work/plans/bug-fixes/closed/2026-06-09-stage1-non-ascii-identifier-rejection-noref.md](../../l0/work/plans/bug-fixes/closed/2026-06-09-stage1-non-ascii-identifier-rejection-noref.md):
+  closed L0 Stage 1 conformance fix for non-ASCII identifiers
 
 ## Current Docs
 

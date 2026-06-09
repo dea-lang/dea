@@ -213,6 +213,16 @@ KEYWORDS = {
 }
 
 
+def _is_ascii_ident_start(c: str) -> bool:
+    """Return whether `c` can start an ASCII Dea identifier."""
+    return c == "_" or ("A" <= c <= "Z") or ("a" <= c <= "z")
+
+
+def _is_ascii_ident_part(c: str) -> bool:
+    """Return whether `c` can continue an ASCII Dea identifier."""
+    return _is_ascii_ident_start(c) or ("0" <= c <= "9")
+
+
 @dataclass
 class Token:
     """A single token produced by the lexer.
@@ -368,9 +378,9 @@ class Lexer:
             c = self._advance()
 
             # identifiers / keywords and underscore wildcard
-            if c.isalpha() or c == "_":
+            if _is_ascii_ident_start(c):
                 ident = [c]
-                while self._peek().isalnum() or self._peek() == "_":
+                while _is_ascii_ident_part(self._peek()):
                     ident.append(self._advance())
                 text = "".join(ident)
                 if text == "_":
@@ -634,7 +644,7 @@ class Lexer:
         text = "".join(digits)
         if is_negative:
             text = "-" + text
-        if self._peek().isalpha() or self._peek() == "_":
+        if _is_ascii_ident_start(self._peek()):
             self._error(f"[LEX-0061] invalid character '{self._peek()}' after integer literal",
                              self.line, self.column)
         value = int(text)
