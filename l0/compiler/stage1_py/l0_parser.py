@@ -73,6 +73,10 @@ class Parser:
         self.index = 0
         self.filename = filename
         self.diagnostics = diagnostics if diagnostics is not None else []
+        # Set once an unterminated block is detected at end-of-file. End-of-file
+        # is terminal: the condition is reported once and every recovery loop
+        # then stops instead of re-reporting it at each enclosing nesting level.
+        self.eof_aborted = False
 
     @classmethod
     def from_source(cls, source: str) -> "Parser":
@@ -323,7 +327,7 @@ class Parser:
             return Module("unknown", [], [], span=self._extend_span(start), filename=filename)
 
         decls: List[TopLevelDecl] = []
-        while not self._at_end():
+        while not self._at_end() and not self.eof_aborted:
             try:
                 decl = self._parse_top_level_decl()
                 if decl is not None:
@@ -335,7 +339,7 @@ class Parser:
 
     def _sync_top_level(self) -> None:
         """Skip tokens until we find the start of a new top-level declaration or EOF."""
-        while not self._at_end():
+        while not self._at_end() and not self.eof_aborted:
             kind = self._peek().kind
             if kind in (TokenKind.FUNC, TokenKind.STRUCT, TokenKind.ENUM, TokenKind.TYPE, TokenKind.EXTERN, TokenKind.LET):
                 break
@@ -492,19 +496,27 @@ class Parser:
         start = self._span_start()
         self._expect(TokenKind.LBRACE, "[PAR-0090] expected '{' to start block")
         stmts: List[Stmt] = []
-        while not self._check(TokenKind.RBRACE) and not self._at_end():
+        while not self._check(TokenKind.RBRACE) and not self._at_end() and not self.eof_aborted:
             try:
                 stmt = self._parse_stmt()
                 if stmt is not None:
                     stmts.append(stmt)
             except _ParseSyncException:
                 self._sync_stmt()
+        if self._at_end():
+            # An unterminated block at end-of-file is terminal. Report it once,
+            # mark the parser aborted, and unwind so each enclosing block does
+            # not re-report the same end-of-file condition.
+            if not self.eof_aborted:
+                self.eof_aborted = True
+                self._error(f"[PAR-0091] expected '}}' after block, got {self._peek()} instead")
+            raise _ParseSyncException()
         self._expect(TokenKind.RBRACE, "[PAR-0091] expected '}' after block")
         return Block(stmts, span=self._extend_span(start))
 
     def _sync_stmt(self) -> None:
         """Skip tokens until we reach a statement boundary or end of block."""
-        while not self._at_end():
+        while not self._at_end() and not self.eof_aborted:
             kind = self._peek().kind
             # If we hit a semicolon, consume it and we are synced for the next statement.
             if kind == TokenKind.SEMI:

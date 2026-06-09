@@ -42,6 +42,11 @@ struct ParserState {
     expr_arena: ExprArena*;
     stmt_arena: StmtArena*;
     pattern_arena: PatternArena*;
+
+    /* Set once an unterminated block is detected at end-of-file. End-of-file is
+       terminal: the condition is reported once and every recovery loop then
+       stops instead of re-reporting it at each enclosing nesting level. */
+    eof_aborted: bool;
 }
 
 /**
@@ -59,7 +64,8 @@ func ps_create(tokens: TokenVector, filename: string) -> ParserState* {
         diag_create(),
         expr_arena_create(128),
         stmt_arena_create(128),
-        pattern_arena_create(64)
+        pattern_arena_create(64),
+        false
     );
 }
 
@@ -459,7 +465,7 @@ func ps_is_top_level_start(self: ParserState*) -> bool {
  * @param self Parser state to resynchronize.
  */
 func ps_sync_top_level(self: ParserState*) {
-    while (!ps_at_end(self)) {
+    while (!ps_at_end(self) && !self.eof_aborted) {
         if (ps_is_top_level_start(self)) {
             return;
         }
@@ -504,7 +510,7 @@ func ps_at_stmt_start(self: ParserState*) -> bool {
  * @param self Parser state to resynchronize.
  */
 func ps_sync_stmt(self: ParserState*) {
-    while (!ps_at_end(self)) {
+    while (!ps_at_end(self) && !self.eof_aborted) {
         if (ps_check(self, ord(TT_SEMI))) {
             ps_advance(self);
             return;

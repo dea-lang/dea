@@ -306,7 +306,7 @@ func ps_parse_module(self: ParserState*) -> Module*? {
             ptr_vec_push(imports as VectorBase*, imp as void*);
         }
 
-        while (!ps_at_end(self)) {
+        while (!ps_at_end(self) && !self.eof_aborted) {
             let before = self.index;
             let decl = ps_parse_top_level_decl(self);
             if (decl != null) {

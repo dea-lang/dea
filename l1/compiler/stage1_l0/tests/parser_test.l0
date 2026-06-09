@@ -1124,6 +1124,25 @@ func test_top_level_multi_error_collection() {
 }
 
 /**
+ * Tests that three unclosed braces report PAR-0091 exactly once. End-of-file is
+ * terminal, so the unterminated-block condition is not re-reported at each
+ * enclosing nesting level.
+ */
+func test_unterminated_nested_blocks_report_par0091_once() {
+    expect_diag_code_count("module hello; func main() {{{", "PAR-0091", 1);
+    expect_diag_code_absent("module hello; func main() {{{", "PAR-0020");
+}
+
+/**
+ * Tests that a single unclosed brace still reports PAR-0091 exactly once, so the
+ * end-of-file fix does not over-suppress at nesting depth one.
+ */
+func test_single_unterminated_block_reports_par0091_once() {
+    expect_diag_code_count("module hello; func main() {", "PAR-0091", 1);
+    expect_diag_code_absent("module hello; func main() {", "PAR-0020");
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -1184,5 +1203,7 @@ func main() {
     test_is_intrinsic_call_and_qualified_variant_shape();
     test_single_statement_loop_and_match_bodies_ok();
     test_top_level_multi_error_collection();
+    test_unterminated_nested_blocks_report_par0091_once();
+    test_single_unterminated_block_reports_par0091_once();
     printl_s("parser_test: all tests passed");
 }

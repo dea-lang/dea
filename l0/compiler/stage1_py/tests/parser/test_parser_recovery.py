@@ -115,6 +115,29 @@ def test_stray_cleanup_reports_par0506_without_top_level_cascade(analyze_single)
     assert not has_error_code(result.diagnostics, "PAR-0020")
 
 
+def test_unterminated_nested_blocks_report_par0091_once():
+    # Three unclosed braces previously emitted PAR-0091 once per nesting level.
+    # End-of-file is terminal, so the condition is reported exactly once.
+    parser = Parser.from_source("module hello;\nfunc main() {{{\n")
+    parser.parse_module()
+
+    # Exactly one diagnostic total: one PAR-0091 and no spurious top-level cascade.
+    assert diag_code_count(parser.diagnostics, "PAR-0091") == 1
+    assert not has_error_code(parser.diagnostics, "PAR-0020")
+    assert len(parser.diagnostics) == 1
+
+
+def test_single_unterminated_block_reports_par0091_once():
+    # A single unclosed brace must still report PAR-0091 exactly once; the
+    # end-of-file fix must not over-suppress at nesting depth one.
+    parser = Parser.from_source("module hello;\nfunc main() {\n")
+    parser.parse_module()
+
+    assert diag_code_count(parser.diagnostics, "PAR-0091") == 1
+    assert not has_error_code(parser.diagnostics, "PAR-0020")
+    assert len(parser.diagnostics) == 1
+
+
 def test_case_default_recovery_stays_inside_case():
     parser = Parser.from_source(CASE_DEFAULT_RECOVERY_SRC)
     parser.parse_module()

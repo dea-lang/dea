@@ -95,7 +95,7 @@ func ps_parse_block(self: ParserState*) -> StmtId? {
     ps_expect(self, ord(TT_LBRACE), "PAR-0090", "expected '{' to start block")?;
 
     with (let stmts: VectorBase*? = id_vec_create(8) => id_vec_free(stmts)) {
-        while (!ps_check(self, ord(TT_RBRACE)) && !ps_at_end(self)) {
+        while (!ps_check(self, ord(TT_RBRACE)) && !ps_at_end(self) && !self.eof_aborted) {
             let before = self.index;
             let maybe_stmt = ps_parse_stmt(self);
             if (maybe_stmt != null) {
@@ -111,6 +111,17 @@ func ps_parse_block(self: ParserState*) -> StmtId? {
             }
         }
 
+        if (ps_at_end(self)) {
+            // An unterminated block at end-of-file is terminal. Report it once,
+            // mark the parser aborted, and unwind so each enclosing block does
+            // not re-report the same end-of-file condition.
+            if (!self.eof_aborted) {
+                self.eof_aborted = true;
+                let got = token_to_string(ps_peek(self));
+                ps_emit_error(self, "PAR-0091", "expected '}' after block, got " + got + " instead", ps_peek(self));
+            }
+            return null;
+        }
         ps_expect(self, ord(TT_RBRACE), "PAR-0091", "expected '}' after block")?;
 
         let node = stmt_node_create(ST_BLOCK, ps_extend_span(self, start));
