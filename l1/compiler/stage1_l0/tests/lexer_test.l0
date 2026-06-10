@@ -120,17 +120,87 @@ func expect_single_real(source: string, expected_sig: string, expected_exp_text:
 func expect_lex_error(source: string, expected: string) {
     let ls = ls_create(source, "<test>");
     let toks = tokenize(ls);
-    assert(toks == null, "Expected lexing to fail");
-    assert(ls_has_errors(ls), "Expected lexer diagnostics");
-    assert(diag_count(ls.diags) > 0, "Expected at least one diagnostic");
+    if (toks != null) {
+        let tv = toks as TokenVector;
+        assert(tv_len(tv) >= 1, "Expected at least one token");
+        let tok = tv_get(tv, 0);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (code != expected) {
+                    printl_ss("actual error code:", code);
+                    printl_ss("actual error message:", message);
+                    assert(false, "Unexpected lexer diagnostic code");
+                }
+            }
+            _ => {
+                printl_ss("actual token:", token_to_string(tok));
+                assert(false, "Expected lexer-error wrapper token");
+            }
+        }
+        tv_free(tv);
+    } else {
+        assert(ls_has_errors(ls), "Expected lexer diagnostics");
+        assert(diag_count(ls.diags) > 0, "Expected at least one diagnostic");
 
-    let diag = diag_get(ls.diags, 0);
-    if (diag.code != expected) {
-        printl_ss("actual error code:", diag.code);
-        printl_ss("actual error message:", diag.message);
-        assert(false, "Unexpected lexer diagnostic code");
+        let diag = diag_get(ls.diags, 0);
+        if (diag.code != expected) {
+            printl_ss("actual error code:", diag.code);
+            printl_ss("actual error message:", diag.message);
+            assert(false, "Unexpected lexer diagnostic code");
+        }
     }
 
+    ls_free(ls);
+}
+
+/**
+ * Lexes source and asserts the first two tokens are lexer-error wrappers.
+ *
+ * @param source Source text to lex.
+ * @param expected_first Expected diagnostic code for token 0.
+ * @param expected_second Expected diagnostic code for token 1.
+ */
+func expect_two_lex_error_tokens(source: string, expected_first: string, expected_second: string) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected recoverable lexing to succeed");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 3, "Expected two lexer-error tokens plus EOF");
+
+    let tok0 = tv_get(tv, 0);
+    let tok1 = tv_get(tv, 1);
+    let tok2 = tv_get(tv, 2);
+
+    match (tok0.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            assert(code == expected_first, "Unexpected first lexer diagnostic code");
+        }
+        _ => {
+            printl_ss("actual token 0:", token_to_string(tok0));
+            assert(false, "Expected first token to be a lexer-error wrapper");
+        }
+    }
+
+    match (tok1.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            assert(code == expected_second, "Unexpected second lexer diagnostic code");
+        }
+        _ => {
+            printl_ss("actual token 1:", token_to_string(tok1));
+            assert(false, "Expected second token to be a lexer-error wrapper");
+        }
+    }
+
+    match (tok2.token_type) {
+        TT_EOF => {}
+        _ => {
+            printl_ss("actual token 2:", token_to_string(tok2));
+            assert(false, "Expected EOF after queued lexer-error wrappers");
+        }
+    }
+
+    tv_free(tv);
     ls_free(ls);
 }
 
@@ -277,6 +347,24 @@ func test_real_literals_err() {
 }
 
 /**
+ * Tests malformed literals that recover as lexer-error wrapper tokens.
+ */
+func test_literal_recovery_errors() {
+    expect_lex_error("\"unterminated", "LEX-0010");
+    expect_lex_error("\"\\xGG\"", "LEX-0050");
+    expect_lex_error("\"\\q\"", "LEX-0059");
+    expect_lex_error("'a", "LEX-0021");
+    expect_lex_error("'\\u0100'", "LEX-0030");
+}
+
+/**
+ * Tests one malformed literal can emit multiple lexer-error wrapper tokens.
+ */
+func test_recoverable_lexer_errors_can_queue_multiple_wrappers() {
+    expect_two_lex_error_tokens("\"\\q\n", "LEX-0059", "LEX-0010");
+}
+
+/**
  * Tests keyword tokenization for `const`.
  */
 func test_const_keyword_tokenization() {
@@ -336,6 +424,8 @@ func main() {
     test_prefixed_int_literals_overflow();
     test_real_literals_ok();
     test_real_literals_err();
+    test_literal_recovery_errors();
+    test_recoverable_lexer_errors_can_queue_multiple_wrappers();
     test_const_keyword_tokenization();
     test_real_literal_boundaries();
     test_small_integer_builtin_words();

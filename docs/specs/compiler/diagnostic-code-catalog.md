@@ -45,6 +45,11 @@ and reuse supplement for applying this registry within L0.
 
 ## Lexical Analysis
 
+Recoverable lexer diagnostics may be carried by lexer-error wrapper tokens with parser-visible logical recovery tokens.
+The diagnostic code meanings below do not change when a diagnostic is deferred into a wrapper. `LEX-0040` uses a
+no-recovery wrapper that the parser skips logically. `LEX-0070` is trivia and remains an unrecoverable block-comment
+diagnostic.
+
 | Code       | Level   | Meaning                                                |
 | ---------- | ------- | ------------------------------------------------------ |
 | `LEX-0010` | All     | Unterminated string literal                            |

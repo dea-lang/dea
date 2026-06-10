@@ -200,17 +200,131 @@ func expect_diag_code_count(source: string, expected: string, expected_count: in
 }
 
 /**
- * Tests that recovered lexer errors stop before parser entry.
+ * Counts diagnostics with the given code in a parse result.
+ *
+ * @param result Parse result to inspect.
+ * @param code Diagnostic code to count.
+ * @return Number of diagnostics carrying `code`.
  */
-func test_lexer_errors_skip_parser_phase() {
-    let result = parse_module_source("@ $ @", "<test>");
-    assert(parse_has_errors(result), "Expected lexer errors");
-    assert(result.root_module == null, "Expected no parsed module after lexer errors");
-    assert(parse_diag_count(result) == 3, "Expected exactly three lexer diagnostics");
+func count_diag_code(result: ParseResult*, code: string) -> int {
+    let found = 0;
     for (let i = 0; i < parse_diag_count(result); i = i + 1) {
         let diag = parse_diag_get(result, i);
-        assert(diag.code == "LEX-0040", "Expected only LEX-0040 diagnostics");
+        if (diag.code == code) {
+            found = found + 1;
+        }
     }
+    return found;
+}
+
+/**
+ * Tests that deferred lexer errors are emitted by the parser, which then
+ * continues and reports the missing module header exactly once.
+ */
+func test_lexer_errors_recover_into_parser() {
+    let result = parse_module_source("@ $ @", "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module == null, "Expected no parsed module without a module header");
+    assert(count_diag_code(result, "LEX-0040") == 3, "Expected exactly three LEX-0040 diagnostics");
+    assert(count_diag_code(result, "PAR-0310") == 1, "Expected one missing-module-header diagnostic");
+    assert(parse_diag_count(result) == 4, "Expected no cascading diagnostics");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that a module with invalid characters inside declarations still
+ * parses: the lexer errors are reported and the parse completes cleanly.
+ */
+func test_lexer_error_tokens_keep_module_parse() {
+    let result = parse_module_source(
+        "module main;\n\nfunc main() -> int {\n    let café: int = 1;\n    return café;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0040") == 2, "Expected two LEX-0040 diagnostics");
+    assert(parse_diag_count(result) == 2, "Expected no parser diagnostics");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that one contiguous run of invalid characters yields one diagnostic
+ * whose span is measured in code points.
+ */
+func test_lexer_error_run_has_codepoint_span() {
+    let result = parse_module_source(
+        "module main;\n⚽⚽⚽\nfunc main() -> int {\n    return 0;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0040") == 1, "Expected one LEX-0040 for the whole run");
+    assert(parse_diag_count(result) == 1, "Expected no parser diagnostics");
+    let diag = parse_diag_get(result, 0);
+    assert(diag.line == 2, "Expected the run on line 2");
+    assert(diag.column == 1, "Expected the run to start at column 1");
+    assert(diag.line_end == 2, "Expected the span to stay on line 2");
+    assert(diag.column_end == 4, "Expected a three-code-point span");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that parser backtracking over a lexer-error token does not duplicate
+ * its diagnostic.
+ */
+func test_lexer_error_not_duplicated_across_backtracking() {
+    let result = parse_module_source(
+        "module main;\n\nfunc main() -> int {\n    let x: int = 1;\n    return x ⚽⚽;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0040") == 1, "Expected exactly one LEX-0040 diagnostic");
+    assert(parse_diag_count(result) == 1, "Expected no parser diagnostics");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that an unknown escape before newline preserves both lexer diagnostics.
+ */
+func test_queued_lexer_errors_preserve_escape_then_unterminated_string() {
+    let result = parse_module_source(
+        "module main;\nfunc main() -> int {\n    let s: string = \"\\q\n    return 0;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0059") == 1, "Expected one unknown-escape diagnostic");
+    assert(count_diag_code(result, "LEX-0010") == 1, "Expected one unterminated-string diagnostic");
+    assert(count_diag_code(result, "PAR-0100") == 1, "Expected one missing-semicolon parser diagnostic");
+    assert(parse_diag_count(result) == 3, "Expected exactly two lexer diagnostics plus one parser diagnostic");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that an invalid hex escape before newline preserves both lexer diagnostics.
+ */
+func test_queued_lexer_errors_preserve_hex_then_unterminated_string() {
+    let result = parse_module_source(
+        "module main;\nfunc main() -> int {\n    let s: string = \"\\x\n    return 0;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0050") == 1, "Expected one invalid-hex-escape diagnostic");
+    assert(count_diag_code(result, "LEX-0010") == 1, "Expected one unterminated-string diagnostic");
+    assert(count_diag_code(result, "PAR-0100") == 1, "Expected one missing-semicolon parser diagnostic");
+    assert(parse_diag_count(result) == 3, "Expected exactly two lexer diagnostics plus one parser diagnostic");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that multibyte string content does not shift the reported column of
+ * a following invalid character: columns count code points, not bytes.
+ */
+func test_lexer_unicode_string_keeps_following_columns() {
+    let result = parse_module_source(
+        "module main;\nfunc main() -> int {\n    let s: string = \"☕☕\"; ⚽\n    return 0;\n}\n",
+        "<test>");
+    assert(count_diag_code(result, "LEX-0040") == 1, "Expected one LEX-0040 diagnostic");
+    let diag = parse_diag_get(result, 0);
+    assert(diag.line == 3, "Expected the invalid character on line 3");
+    assert(diag.column == 27, "Expected a code-point column for the invalid character");
     parse_result_free(result);
 }
 
@@ -579,7 +693,13 @@ func main() {
     test_enum_variant_field_error();
     test_new_expr_bad_arg_error();
     test_top_level_multi_error_collection();
-    test_lexer_errors_skip_parser_phase();
+    test_lexer_errors_recover_into_parser();
+    test_lexer_error_tokens_keep_module_parse();
+    test_lexer_error_run_has_codepoint_span();
+    test_lexer_error_not_duplicated_across_backtracking();
+    test_queued_lexer_errors_preserve_escape_then_unterminated_string();
+    test_queued_lexer_errors_preserve_hex_then_unterminated_string();
+    test_lexer_unicode_string_keeps_following_columns();
     test_unterminated_nested_blocks_report_par0091_once();
     test_single_unterminated_block_reports_par0091_once();
     printl_s("parser_test: all tests passed");

@@ -6,22 +6,40 @@ import pytest
 from l0_lexer import Lexer, TokenKind
 
 
+def deferred_messages(tokens):
+    messages = []
+    for token in tokens:
+        diagnostics = token.diagnostics if token.diagnostics is not None else []
+        if not diagnostics and token.diagnostic is not None:
+            diagnostics = [token.diagnostic]
+        messages.extend(d.message for d in diagnostics)
+    return messages
+
+
 def test_int_literal_above_32bit_range_raises():
     src = "2147483648"
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("exceeds 32-bit signed range" in d.message for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert any("exceeds 32-bit signed range" in message for message in deferred_messages(tokens))
+    assert tokens[0].kind is TokenKind.LEXER_ERROR
+    assert tokens[0].recovery is not None
+    assert tokens[0].recovery.kind is TokenKind.INT
 
 
 def test_int_literal_below_32bit_range_raises():
     src = "-2147483649"
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("exceeds 32-bit signed range" in d.message for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert any("exceeds 32-bit signed range" in message for message in deferred_messages(tokens))
+    assert tokens[0].kind is TokenKind.LEXER_ERROR
+    assert tokens[0].recovery is not None
+    assert tokens[0].recovery.kind is TokenKind.INT
 
 
 def test_common_tokenization_cases_and_comments():
@@ -85,12 +103,15 @@ def test_unterminated_string_literal_raises_with_location():
     src = 'let msg = "unterminated\nnext line'
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("unterminated string literal" in d.message for d in lexer.diagnostics)
-    err = next(d for d in lexer.diagnostics if "unterminated" in d.message)
+    assert lexer.diagnostics == []
+    err = next(d for t in tokens for d in (t.diagnostics or []) if "unterminated" in d.message)
     assert err.line == 1
     assert err.column == 24
+    assert tokens[3].kind is TokenKind.LEXER_ERROR
+    assert tokens[3].recovery is not None
+    assert tokens[3].recovery.kind is TokenKind.STRING
 
 
 def test_line_and_column_increment_across_newlines_and_comments():
@@ -113,9 +134,10 @@ def test_lexer_invalid_hex_escape_non_hex():
     src = '"\\xGG"'
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("invalid hex escape sequence" in d.message for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert any("invalid hex escape sequence" in message for message in deferred_messages(tokens))
 
 
 def test_lexer_invalid_unicode_escape_incomplete():
@@ -123,9 +145,10 @@ def test_lexer_invalid_unicode_escape_incomplete():
     src = '"\\u12"'  # Only 2 hex digits, needs 4
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("invalid unicode escape sequence (\\u)" in d.message for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert any("invalid unicode escape sequence (\\u)" in message for message in deferred_messages(tokens))
 
 
 def test_lexer_invalid_unicode_escape_long_incomplete():
@@ -133,9 +156,10 @@ def test_lexer_invalid_unicode_escape_long_incomplete():
     src = '"\\U1234567"'  # Only 7 hex digits, needs 8
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("invalid unicode escape sequence (\\U)" in d.message for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert any("invalid unicode escape sequence (\\U)" in message for message in deferred_messages(tokens))
 
 
 def test_lexer_unknown_escape_sequence():
@@ -143,9 +167,10 @@ def test_lexer_unknown_escape_sequence():
     src = '"\\q"'
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("unknown escape sequence" in d.message for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert any("unknown escape sequence" in message for message in deferred_messages(tokens))
 
 
 def test_lexer_octal_escape_out_of_range():
@@ -153,9 +178,10 @@ def test_lexer_octal_escape_out_of_range():
     src = '"\\777"'  # 0o777 = 511 > 255
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("octal escape sequence out of range" in d.message for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert any("octal escape sequence out of range" in message for message in deferred_messages(tokens))
 
 
 def test_lexer_unterminated_block_comment():
@@ -169,10 +195,13 @@ def test_lexer_unterminated_block_comment():
 
 
 def test_lexer_unexpected_character():
-    """Test that unexpected character raises error."""
+    """Test that an unexpected character yields a deferred lexer-error token."""
     src = "@"
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any("invalid character in source" in d.message for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert tokens[0].kind is TokenKind.LEXER_ERROR
+    assert tokens[0].diagnostic is not None
+    assert "invalid character in source" in tokens[0].diagnostic.message

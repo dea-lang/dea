@@ -1,6 +1,6 @@
 # L0 Compiler Architecture
 
-Version: 2026-06-09
+Version: 2026-06-10
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
@@ -101,13 +101,18 @@ implemented Stage 2 CLI modes are `--check`, `--tok`, `--sym`, `--type`, `--ast`
 ### 2.1 Lexer (`l0_lexer.py`)
 
 - Converts UTF-8 source text to `Token` list.
-- Tracks `line`/`column`.
+- Tracks `line`/`column`; columns count Unicode code points.
 - Handles keywords, literals, operators, punctuation, and comment skipping.
-- Emits `LexerError` for lexical failures.
+- Wraps recoverable lexer diagnostics in `LEXER_ERROR` tokens with optional logical recovery tokens. Invalid-character
+  runs (`LEX-0040`) have no recovery token and are skipped logically; malformed literals and integer diagnostics recover
+  as literal tokens where possible.
+- Keeps unterminated block comments (`LEX-0070`) as unrecoverable trivia diagnostics.
 
 ### 2.2 Parser (`l0_parser.py`)
 
 - Recursive-descent parser producing `l0_ast.py` dataclass nodes.
+- Reads tokens through logical accessors: wrappers with recovery behave as the recovered token, wrappers without
+  recovery are skipped, and each wrapped lexer diagnostic is emitted once.
 - Parses module header, imports, declarations, statements, expressions, and type refs.
 - Assignment is statement-only syntax (`AssignStmt`).
 - Emits `ParseError` for parse failures.

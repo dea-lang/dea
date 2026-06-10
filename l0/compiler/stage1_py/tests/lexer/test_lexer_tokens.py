@@ -121,3 +121,17 @@ def test_lexer_invalid_literals_and_tokens(analyze_single, src, code):
     result = analyze_single("main", src)
     assert result.has_errors()
     assert has_error_code(result.diagnostics, code)
+
+
+def test_lexer_error_token_carries_deferred_diagnostic():
+    lexer = Lexer.from_source("⚽⚽ x")
+    tokens = lexer.tokenize()
+    # The lexer defers the diagnostic into the token instead of emitting it.
+    assert lexer.diagnostics == []
+    assert tokens[0].kind == TokenKind.LEXER_ERROR
+    assert tokens[0].text == "⚽⚽"
+    diag = tokens[0].diagnostic
+    assert diag is not None
+    assert diag.message == "[LEX-0040] invalid character in source"
+    assert (diag.line, diag.column, diag.end_line, diag.end_column) == (1, 1, 1, 3)
+    assert tokens[1].kind == TokenKind.IDENT

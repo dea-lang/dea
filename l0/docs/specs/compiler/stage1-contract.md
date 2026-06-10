@@ -1,6 +1,6 @@
 # L0 Stage 1 Compiler Contract
 
-Version: 2026-06-09
+Version: 2026-06-10
 
 This document is the compact Stage 1 contract and navigation index.
 
@@ -74,6 +74,8 @@ These names are externally relevant for contributors; details live in code.
 - `text`
 - `line`
 - `column`
+- `diagnostic` / `diagnostics` (only set on `LEXER_ERROR` wrapper tokens)
+- `recovery` (optional parser-visible logical token for recoverable lexer diagnostics)
 
 Token kind enum: `TokenKind`. Important current names include:
 
@@ -81,6 +83,10 @@ Token kind enum: `TokenKind`. Important current names include:
 - logical operators: `ANDAND`, `OROR`, `BANG`
 - reserved tokens: `AMP`, `PIPE`, `CARET`, `TILDE`, `LSHIFT`, `RSHIFT`, `FUTURE_EXTENSION`
 - `CLEANUP` keyword token for `with ... cleanup`.
+- `LEXER_ERROR`: lexer diagnostic wrapper with a full diagnostic span and optional logical recovery token. The lexer
+  does not emit recoverable wrapper diagnostics directly; the parser emits each wrapper diagnostic once. Wrappers with
+  recovery behave as that recovered token to parser decisions, and wrappers without recovery are skipped. Lexer errors
+  do not gate the parser phase, but accumulated errors still gate later semantic and codegen phases.
 
 ### 3.2 AST model (`l0_ast.py`)
 

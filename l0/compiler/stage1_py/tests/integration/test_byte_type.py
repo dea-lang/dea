@@ -14,6 +14,15 @@ from l0_parser import Parser
 from l0_types import BuiltinType
 
 
+def token_diagnostics(tokens):
+    diagnostics = []
+    for token in tokens:
+        diagnostics.extend(token.diagnostics or [])
+        if token.diagnostics is None and token.diagnostic is not None:
+            diagnostics.append(token.diagnostic)
+    return diagnostics
+
+
 # ============================================================================
 # Lexer tests
 # ============================================================================
@@ -117,9 +126,13 @@ def test_lexer_byte_literal_unterminated_raises():
     src = "'a"
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert has_error_code(lexer.diagnostics, "LEX-0021")
+    assert lexer.diagnostics == []
+    assert has_error_code(token_diagnostics(tokens), "LEX-0021")
+    assert tokens[0].kind is TokenKind.LEXER_ERROR
+    assert tokens[0].recovery is not None
+    assert tokens[0].recovery.kind is TokenKind.BYTE
 
 
 def test_lexer_byte_literal_empty_raises():
@@ -127,9 +140,10 @@ def test_lexer_byte_literal_empty_raises():
     src = "''"
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert any(d.kind == "error" for d in lexer.diagnostics)
+    assert lexer.diagnostics == []
+    assert any(d.kind == "error" for d in token_diagnostics(tokens))
 
 
 def test_lexer_byte_literal_multi_byte_raises():
@@ -138,9 +152,10 @@ def test_lexer_byte_literal_multi_byte_raises():
     src = "'\u00e9'"  # é (2 bytes in UTF-8)
 
     lexer = Lexer.from_source(src)
-    lexer.tokenize()
+    tokens = lexer.tokenize()
 
-    assert has_error_code(lexer.diagnostics, "LEX-0030")
+    assert lexer.diagnostics == []
+    assert has_error_code(token_diagnostics(tokens), "LEX-0030")
 
 
 def test_lexer_byte_literal_location():

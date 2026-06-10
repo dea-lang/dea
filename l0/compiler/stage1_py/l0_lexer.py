@@ -88,9 +88,11 @@ class TokenKind(Enum):
         LSHIFT: '<<' (reserved)
         RSHIFT: '>>' (reserved)
         FUTURE_EXTENSION: Placeholder for future tokens.
+        LEXER_ERROR: Lexer diagnostic wrapper with an optional recovery token.
     """
     # Special
     EOF = auto()
+    LEXER_ERROR = auto()
 
     IDENT = auto()
     UNDERSCORE = auto()
@@ -232,11 +234,20 @@ class Token:
         text: The literal text of the token.
         line: 1-based line number in source.
         column: 1-based column number in source.
+        diagnostic: Deferred diagnostic carried by LEXER_ERROR tokens; kept
+            for compatibility with existing single-diagnostic callers.
+        diagnostics: Deferred diagnostics carried by LEXER_ERROR tokens; the
+            parser emits them when it consumes or skips the wrapper.
+        recovery: Optional parser-visible logical token for recoverable lexer
+            diagnostics.
     """
     kind: TokenKind
     text: str
     line: int
     column: int
+    diagnostic: Optional[Diagnostic] = None
+    diagnostics: Optional[List[Diagnostic]] = None
+    recovery: Optional["Token"] = None
 
     def __repr__(self) -> str:
         """Returns a string representation of the token."""
@@ -320,6 +331,29 @@ class Lexer:
         """Add an error diagnostic."""
         self.diagnostics.append(Diagnostic(kind="error", message=message, filename=self.filename, line=line, column=column))
 
+    def _lexer_error_token(self, text: str, line: int, column: int, diagnostics: List[Diagnostic],
+                           recovery: Optional[Token] = None) -> Token:
+        """Build a deferred lexer-error wrapper token."""
+        first = diagnostics[0] if diagnostics else None
+        return Token(
+            TokenKind.LEXER_ERROR,
+            text,
+            line,
+            column,
+            diagnostic=first,
+            diagnostics=diagnostics,
+            recovery=recovery,
+        )
+
+    def _wrap_new_diagnostics(self, diagnostic_start: int, text: str, line: int, column: int,
+                              recovery: Token) -> Token:
+        """Move newly emitted recoverable diagnostics into a wrapper token."""
+        if len(self.diagnostics) == diagnostic_start:
+            return recovery
+        deferred = self.diagnostics[diagnostic_start:]
+        del self.diagnostics[diagnostic_start:]
+        return self._lexer_error_token(text, line, column, deferred, recovery)
+
     def _at_end(self) -> bool:
         """Check if all input has been scanned."""
         return self.index >= self.length
@@ -368,142 +402,177 @@ class Lexer:
 
     def _next_token(self) -> Token:
         """Scan and return the next token."""
-        while True:
-            self._skip_ws_and_comments()
-            start_line, start_col = self.line, self.column
+        self._skip_ws_and_comments()
+        start_line, start_col = self.line, self.column
 
-            if self._at_end():
-                return Token(TokenKind.EOF, "", start_line, start_col)
+        if self._at_end():
+            return Token(TokenKind.EOF, "", start_line, start_col)
 
-            c = self._advance()
+        c = self._advance()
 
-            # identifiers / keywords and underscore wildcard
-            if _is_ascii_ident_start(c):
-                ident = [c]
-                while _is_ascii_ident_part(self._peek()):
-                    ident.append(self._advance())
-                text = "".join(ident)
-                if text == "_":
-                    kind = TokenKind.UNDERSCORE
-                else:
-                    kind = KEYWORDS.get(text, TokenKind.IDENT)
-                return Token(kind, text, start_line, start_col)
+        # identifiers / keywords and underscore wildcard
+        if _is_ascii_ident_start(c):
+            ident = [c]
+            while _is_ascii_ident_part(self._peek()):
+                ident.append(self._advance())
+            text = "".join(ident)
+            if text == "_":
+                kind = TokenKind.UNDERSCORE
+            else:
+                kind = KEYWORDS.get(text, TokenKind.IDENT)
+            return Token(kind, text, start_line, start_col)
 
-            # numbers (only integers for now)
-            if c.isdigit():
-                text = self._read_number(c, start_col, start_line)
-                return Token(TokenKind.INT, text, start_line, start_col)
+        # numbers (only integers for now)
+        if c.isdigit():
+            diagnostic_start = len(self.diagnostics)
+            text = self._read_number(c, start_col, start_line)
+            return self._wrap_new_diagnostics(
+                diagnostic_start,
+                text,
+                start_line,
+                start_col,
+                Token(TokenKind.INT, text, start_line, start_col),
+            )
 
-            # strings
-            if c == '"':
-                text = self._read_string_literal()
-                return Token(TokenKind.STRING, text, start_line, start_col)
+        # strings
+        if c == '"':
+            diagnostic_start = len(self.diagnostics)
+            text = self._read_string_literal()
+            return self._wrap_new_diagnostics(
+                diagnostic_start,
+                text,
+                start_line,
+                start_col,
+                Token(TokenKind.STRING, text, start_line, start_col),
+            )
 
-            # byte / char literals
-            if c == "'":
-                text = self._read_byte_literal(start_col, start_line)
-                return Token(TokenKind.BYTE, text, start_line, start_col)
+        # byte / char literals
+        if c == "'":
+            diagnostic_start = len(self.diagnostics)
+            text = self._read_byte_literal(start_col, start_line)
+            return self._wrap_new_diagnostics(
+                diagnostic_start,
+                text,
+                start_line,
+                start_col,
+                Token(TokenKind.BYTE, text, start_line, start_col),
+            )
 
-            # punctuation / operators with lookahead
+        # punctuation / operators with lookahead
 
-            if c == "-":
-                if self._peek() == ">":
-                    self._advance()
-                    return Token(TokenKind.ARROW_FUNC, "->", start_line, start_col)
-                elif self._peek().isdigit() and self._prev_kind not in _EXPR_ENDING_TOKENS:
-                    text = self._read_number(self._advance(), start_col, start_line, is_negative=True)
-                    return Token(TokenKind.INT, text, start_line, start_col)
-                return Token(TokenKind.MINUS, c, start_line, start_col)
+        if c == "-":
+            if self._peek() == ">":
+                self._advance()
+                return Token(TokenKind.ARROW_FUNC, "->", start_line, start_col)
+            elif self._peek().isdigit() and self._prev_kind not in _EXPR_ENDING_TOKENS:
+                diagnostic_start = len(self.diagnostics)
+                text = self._read_number(self._advance(), start_col, start_line, is_negative=True)
+                return self._wrap_new_diagnostics(
+                    diagnostic_start,
+                    text,
+                    start_line,
+                    start_col,
+                    Token(TokenKind.INT, text, start_line, start_col),
+                )
+            return Token(TokenKind.MINUS, c, start_line, start_col)
 
-            if c == "(":
-                return Token(TokenKind.LPAREN, c, start_line, start_col)
-            if c == ")":
-                return Token(TokenKind.RPAREN, c, start_line, start_col)
-            if c == "{":
-                return Token(TokenKind.LBRACE, c, start_line, start_col)
-            if c == "}":
-                return Token(TokenKind.RBRACE, c, start_line, start_col)
-            if c == "[":
-                return Token(TokenKind.LBRACKET, c, start_line, start_col)
-            if c == "]":
-                return Token(TokenKind.RBRACKET, c, start_line, start_col)
-            if c == ",":
-                return Token(TokenKind.COMMA, c, start_line, start_col)
-            if c == ";":
-                return Token(TokenKind.SEMI, c, start_line, start_col)
-            if c == ":":
-                if self._peek() == ":":
-                    self._advance()
-                    return Token(TokenKind.DOUBLE_COLON, "::", start_line, start_col)
-                return Token(TokenKind.COLON, c, start_line, start_col)
-            if c == ".":
-                return Token(TokenKind.DOT, c, start_line, start_col)
-            if c == "?":
-                return Token(TokenKind.QUESTION, c, start_line, start_col)
+        if c == "(":
+            return Token(TokenKind.LPAREN, c, start_line, start_col)
+        if c == ")":
+            return Token(TokenKind.RPAREN, c, start_line, start_col)
+        if c == "{":
+            return Token(TokenKind.LBRACE, c, start_line, start_col)
+        if c == "}":
+            return Token(TokenKind.RBRACE, c, start_line, start_col)
+        if c == "[":
+            return Token(TokenKind.LBRACKET, c, start_line, start_col)
+        if c == "]":
+            return Token(TokenKind.RBRACKET, c, start_line, start_col)
+        if c == ",":
+            return Token(TokenKind.COMMA, c, start_line, start_col)
+        if c == ";":
+            return Token(TokenKind.SEMI, c, start_line, start_col)
+        if c == ":":
+            if self._peek() == ":":
+                self._advance()
+                return Token(TokenKind.DOUBLE_COLON, "::", start_line, start_col)
+            return Token(TokenKind.COLON, c, start_line, start_col)
+        if c == ".":
+            return Token(TokenKind.DOT, c, start_line, start_col)
+        if c == "?":
+            return Token(TokenKind.QUESTION, c, start_line, start_col)
 
-            if c == "=":
-                nxt = self._peek()
-                if nxt == ">":
-                    self._advance()
-                    return Token(TokenKind.ARROW_MATCH, "=>", start_line, start_col)
-                if nxt == "=":
-                    self._advance()
-                    return Token(TokenKind.EQEQ, "==", start_line, start_col)
-                return Token(TokenKind.EQ, c, start_line, start_col)
+        if c == "=":
+            nxt = self._peek()
+            if nxt == ">":
+                self._advance()
+                return Token(TokenKind.ARROW_MATCH, "=>", start_line, start_col)
+            if nxt == "=":
+                self._advance()
+                return Token(TokenKind.EQEQ, "==", start_line, start_col)
+            return Token(TokenKind.EQ, c, start_line, start_col)
 
-            if c == "!":
-                if self._peek() == "=":
-                    self._advance()
-                    return Token(TokenKind.NE, "!=", start_line, start_col)
-                return Token(TokenKind.BANG, c, start_line, start_col)
+        if c == "!":
+            if self._peek() == "=":
+                self._advance()
+                return Token(TokenKind.NE, "!=", start_line, start_col)
+            return Token(TokenKind.BANG, c, start_line, start_col)
 
-            if c == "<":
-                if self._peek() == "=":
-                    self._advance()
-                    return Token(TokenKind.LE, "<=", start_line, start_col)
-                if self._peek() == "<":
-                    self._advance()
-                    return Token(TokenKind.LSHIFT, "<<", start_line, start_col)
-                return Token(TokenKind.LT, c, start_line, start_col)
+        if c == "<":
+            if self._peek() == "=":
+                self._advance()
+                return Token(TokenKind.LE, "<=", start_line, start_col)
+            if self._peek() == "<":
+                self._advance()
+                return Token(TokenKind.LSHIFT, "<<", start_line, start_col)
+            return Token(TokenKind.LT, c, start_line, start_col)
 
-            if c == ">":
-                if self._peek() == "=":
-                    self._advance()
-                    return Token(TokenKind.GE, ">=", start_line, start_col)
-                if self._peek() == ">":
-                    self._advance()
-                    return Token(TokenKind.RSHIFT, ">>", start_line, start_col)
-                return Token(TokenKind.GT, c, start_line, start_col)
+        if c == ">":
+            if self._peek() == "=":
+                self._advance()
+                return Token(TokenKind.GE, ">=", start_line, start_col)
+            if self._peek() == ">":
+                self._advance()
+                return Token(TokenKind.RSHIFT, ">>", start_line, start_col)
+            return Token(TokenKind.GT, c, start_line, start_col)
 
-            if c == "&":
-                if self._peek() == "&":
-                    self._advance()
-                    return Token(TokenKind.ANDAND, "&&", start_line, start_col)
-                return Token(TokenKind.AMP, c, start_line, start_col)
+        if c == "&":
+            if self._peek() == "&":
+                self._advance()
+                return Token(TokenKind.ANDAND, "&&", start_line, start_col)
+            return Token(TokenKind.AMP, c, start_line, start_col)
 
-            if c == "|":
-                if self._peek() == "|":
-                    self._advance()
-                    return Token(TokenKind.OROR, "||", start_line, start_col)
-                return Token(TokenKind.PIPE, c, start_line, start_col)
+        if c == "|":
+            if self._peek() == "|":
+                self._advance()
+                return Token(TokenKind.OROR, "||", start_line, start_col)
+            return Token(TokenKind.PIPE, c, start_line, start_col)
 
-            if c == "^":
-                return Token(TokenKind.CARET, c, start_line, start_col)
-            if c == "~":
-                return Token(TokenKind.TILDE, c, start_line, start_col)
+        if c == "^":
+            return Token(TokenKind.CARET, c, start_line, start_col)
+        if c == "~":
+            return Token(TokenKind.TILDE, c, start_line, start_col)
 
-            if c == "+":
-                return Token(TokenKind.PLUS, c, start_line, start_col)
-            if c == "*":
-                return Token(TokenKind.STAR, c, start_line, start_col)
-            if c == "/":
-                return Token(TokenKind.SLASH, c, start_line, start_col)
-            if c == "%":
-                return Token(TokenKind.MODULO, c, start_line, start_col)
+        if c == "+":
+            return Token(TokenKind.PLUS, c, start_line, start_col)
+        if c == "*":
+            return Token(TokenKind.STAR, c, start_line, start_col)
+        if c == "/":
+            return Token(TokenKind.SLASH, c, start_line, start_col)
+        if c == "%":
+            return Token(TokenKind.MODULO, c, start_line, start_col)
 
-            self._error(f"[LEX-0040] invalid character in source", start_line, start_col)
-            self._skip_invalid_characters()
-            continue
+        text = c + self._collect_invalid_characters()
+        diag = Diagnostic(
+            kind="error",
+            message="[LEX-0040] invalid character in source",
+            filename=self.filename,
+            line=start_line,
+            column=start_col,
+            end_line=self.line,
+            end_column=self.column,
+        )
+        return self._lexer_error_token(text, start_line, start_col, [diag])
 
     def _read_byte_literal(self, start_col: int, start_line: int) -> str:
         """Scan a byte/character literal."""
@@ -683,10 +752,16 @@ class Lexer:
                 continue
             break
 
-    def _skip_invalid_characters(self) :
-        """Skip non-ASCII characters after LEX-0040."""
+    def _collect_invalid_characters(self) -> str:
+        """Consume the rest of an invalid-character run and return its text.
+
+        The run stops at printable ASCII or whitespace, so a diagnostic span
+        never crosses a line break.
+        """
+        chars: List[str] = []
         while True:
             c = self._peek()
-            if c == "\0" or (" " <= c <= "~"):
+            if c == "\0" or c in ("\t", "\n", "\r") or (" " <= c <= "~"):
                 break
-            self._advance()
+            chars.append(self._advance())
+        return "".join(chars)

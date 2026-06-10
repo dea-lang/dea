@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-06-09
+Version: 2026-06-10
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -73,12 +73,17 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.1 Lexer (`lexer.l0`, `tokens.l0`)
 
 - Converts UTF-8 source text to token streams.
-- Tracks source locations for diagnostics.
+- Tracks source locations for diagnostics; columns count Unicode code points.
 - Recognizes keywords, literals, punctuation, and operators.
+- Wraps recoverable lexer diagnostics in `TT_LEXER_ERROR` tokens with optional logical recovery payloads.
+  Invalid-character runs (`LEX-0040`) have no recovery payload and are skipped logically; malformed literals and numeric
+  diagnostics recover as literal tokens where possible.
 
 ### 2.2 Parser (`parser.l0`, `ast.l0`)
 
 - Produces the current AST for modules, declarations, statements, and expressions.
+- Reads tokens through logical accessors: wrappers with recovery behave as the recovered token, wrappers without
+  recovery are skipped, and each wrapped lexer diagnostic is emitted once.
 - Enforces statement-vs-expression syntax boundaries such as assignment remaining statement-only.
 
 ### 2.3 Name Resolution (`name_resolver.l0`, `symbols.l0`)
@@ -141,10 +146,11 @@ Important analysis tables include:
 1. The current L1 compiler is bootstrap-only and implemented in Dea/L0.
 2. Import closure construction is explicit and checked before later semantic passes.
 3. Source locations are propagated for diagnostics.
-4. Diagnostic columns follow a logical-source contract: every non-newline source byte, including ASCII horizontal tabs,
-   advances the stored column by exactly one. Snippet rendering normalizes displayed source lines to the same model
-   (each tab is printed as a single space) so the caret underline and the displayed line always agree, independent of
-   terminal tab-stop behavior. Unicode display-width handling is out of scope for this contract.
+4. Diagnostic columns follow a logical-source contract: every non-newline Unicode code point, including ASCII horizontal
+   tabs, advances the stored column by exactly one; UTF-8 continuation bytes do not advance it. Snippet rendering
+   normalizes displayed source lines to the same model (each tab is printed as a single space) so the caret underline
+   and the displayed line always agree, independent of terminal tab-stop behavior. Unicode display-width handling is out
+   of scope for this contract.
 5. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
 6. Generated output is currently one C99 translation unit.
 7. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in the

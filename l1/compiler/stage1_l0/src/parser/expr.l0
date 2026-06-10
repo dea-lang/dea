@@ -516,7 +516,7 @@ func ps_parse_postfix_expr(self: ParserState*) -> ExprId? {
                 if (!ps_check(self, ord(TT_RPAREN))) {
                     while (true) {
                         let label: string = "";
-                        if (tok_is_ident(ps_peek(self)) && tok_is(tv_get(self.tokens, self.index + 1), ord(TT_COLON))) {
+                        if (tok_is_ident(ps_peek(self)) && tok_is(ps_peek_logical_ahead(self, 1), ord(TT_COLON))) {
                             label = token_ident_text(ps_peek(self)) as string;
                             ps_advance(self); // consume ident
                             ps_advance(self); // consume colon
@@ -665,7 +665,7 @@ func ps_parse_primary_expr(self: ParserState*) -> ExprId? {
                 if (!ps_check(self, ord(TT_RPAREN))) {
                     while (true) {
                         let label: string = "";
-                        if (tok_is_ident(ps_peek(self)) && tok_is(tv_get(self.tokens, self.index + 1), ord(TT_COLON))) {
+                        if (tok_is_ident(ps_peek(self)) && tok_is(ps_peek_logical_ahead(self, 1), ord(TT_COLON))) {
                             label = token_ident_text(ps_peek(self)) as string;
                             ps_advance(self); // consume ident
                             ps_advance(self); // consume colon

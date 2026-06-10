@@ -16,6 +16,18 @@ import std.linear_map;
 import util.numbers;
 
 /**
+ * Non-recursive logical token payload used by lexer-error wrappers.
+ */
+enum TokenRecovery {
+    TR_NONE;
+    TR_INT(text: string, value: int);
+    TR_BIGINT(text: string, base: int);
+    TR_REALNUM(sig: string, exp_text: string, is_float: bool);
+    TR_BYTE(text: string, value: byte);
+    TR_STRING(text: string, value: string);
+}
+
+/**
  * Defines the TokenType enumeration.
  */
 enum TokenType {
@@ -101,6 +113,11 @@ enum TokenType {
     TT_RSHIFT;          // >>
 
     TT_FUTURE_EXTENSION;  // placeholder for future tokens
+
+    // Lexer diagnostic wrapper. The run start position lives in the Token
+    // fields; the payload carries the diagnostic end span and optional logical
+    // recovery token.
+    TT_LEXER_ERROR(code: string, message: string, line_end: int, column_end: int, recovery: TokenRecovery);
 }
 
 /**
@@ -200,6 +217,62 @@ func token_to_string(token: Token) -> string {
         TT_RSHIFT => { return ">>"; }
 
         TT_FUTURE_EXTENSION => { return "<future-extension>"; }
+
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            return "lex-error(" + code + ", recovery=" + token_recovery_to_string(recovery) + ")";
+        }
+    }
+}
+
+/**
+ * Render a logical recovery payload.
+ *
+ * @param recovery Recovery payload to format.
+ * @return Human-readable recovery token spelling.
+ */
+func token_recovery_to_string(recovery: TokenRecovery) -> string {
+    match (recovery) {
+        TR_NONE => { return "none"; }
+        TR_INT(t, v) => { return "int(" + t + ")"; }
+        TR_BIGINT(t, b) => { return "bigint(" + bigint_to_string(t, b) + ")"; }
+        TR_REALNUM(s, e, ff) => { return "real(" + realnum_to_string(s, e, ff) + ")"; }
+        TR_BYTE(t, v) => { return "byte(" + t + ")"; }
+        TR_STRING(t, v) => { return "string(" + t + ")"; }
+    }
+}
+
+/**
+ * Return whether a lexer-error wrapper has a parser-visible recovery token.
+ *
+ * @param recovery Recovery payload to inspect.
+ * @return `true` if the payload represents a logical token.
+ */
+func token_recovery_is_some(recovery: TokenRecovery) -> bool {
+    match (recovery) {
+        TR_NONE => { return false; }
+        _ => { return true; }
+    }
+}
+
+/**
+ * Build the logical token represented by a lexer-error recovery payload.
+ *
+ * @param wrapper Physical lexer-error token.
+ * @return Logical recovered token, or the wrapper when there is no recovery.
+ */
+func token_recovered(wrapper: Token) -> Token {
+    match (wrapper.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            match (recovery) {
+                TR_INT(t, v) => { return Token(TT_INT(t, v), wrapper.index, wrapper.line, wrapper.column); }
+                TR_BIGINT(t, b) => { return Token(TT_BIGINT(t, b), wrapper.index, wrapper.line, wrapper.column); }
+                TR_REALNUM(s, e, ff) => { return Token(TT_REALNUM(s, e, ff), wrapper.index, wrapper.line, wrapper.column); }
+                TR_BYTE(t, v) => { return Token(TT_BYTE(t, v), wrapper.index, wrapper.line, wrapper.column); }
+                TR_STRING(t, v) => { return Token(TT_STRING(t, v), wrapper.index, wrapper.line, wrapper.column); }
+                TR_NONE => { return wrapper; }
+            }
+        }
+        _ => { return wrapper; }
     }
 }
 
@@ -412,6 +485,40 @@ func token_release_payload(token: Token) {
             rt_string_release(text);
         }
         TT_STRING(text, value) => {
+            rt_string_release(text);
+            rt_string_release(value);
+        }
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            rt_string_release(code);
+            rt_string_release(message);
+            token_recovery_release_payload(recovery);
+        }
+        _ => {
+        }
+    }
+}
+
+/**
+ * Release ARC-managed payload strings held by a token recovery payload.
+ *
+ * @param recovery Recovery payload whose strings should be released.
+ */
+func token_recovery_release_payload(recovery: TokenRecovery) {
+    match (recovery) {
+        TR_INT(text, value) => {
+            rt_string_release(text);
+        }
+        TR_BIGINT(text, base) => {
+            rt_string_release(text);
+        }
+        TR_REALNUM(sig, exp_text, is_float) => {
+            rt_string_release(sig);
+            rt_string_release(exp_text);
+        }
+        TR_BYTE(text, value) => {
+            rt_string_release(text);
+        }
+        TR_STRING(text, value) => {
             rt_string_release(text);
             rt_string_release(value);
         }

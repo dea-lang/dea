@@ -11,6 +11,7 @@ import std.unit;
 import std.text;
 import std.vector;
 import util.diag;
+import util.intset;
 
 import tokens;
 import ast;
@@ -36,6 +37,7 @@ struct ImplParseResult {
 struct ParserState {
     tokens: TokenVector;
     index: int;
+    last_token: Token;
     filename: string;
     diags: DiagCollector*;
 
@@ -47,6 +49,11 @@ struct ParserState {
        terminal: the condition is reported once and every recovery loop then
        stops instead of re-reporting it at each enclosing nesting level. */
     eof_aborted: bool;
+
+    /* Token indices whose deferred lexer diagnostic was already emitted.
+       Backtracking restores `index`, so the cursor can re-cross a
+       TT_LEXER_ERROR token; the guard keeps the diagnostic single-shot. */
+    emitted_lex_errors: IntSet*;
 }
 
 /**
@@ -60,12 +67,14 @@ func ps_create(tokens: TokenVector, filename: string) -> ParserState* {
     return new ParserState(
         tokens,
         0,
+        tv_get(tokens, 0),
         filename,
         diag_create(),
         expr_arena_create(128),
         stmt_arena_create(128),
         pattern_arena_create(64),
-        false
+        false,
+        iset_create()
     );
 }
 
@@ -75,6 +84,7 @@ func ps_create(tokens: TokenVector, filename: string) -> ParserState* {
  * @param self Parser state to free.
  */
 func ps_destroy(self: ParserState*) {
+    iset_free(self.emitted_lex_errors);
     drop self;
 }
 
@@ -212,11 +222,104 @@ func tok_is_future_extension(tok: Token) -> bool {
 /**
  * Return the current lookahead token.
  *
+ * TT_LEXER_ERROR wrappers are interpreted as logical tokens. Wrappers with
+ * recovery are exposed as that token; wrappers without recovery are skipped.
+ *
  * @param self Parser state to inspect.
  * @return Token at the current parse position.
  */
 func ps_peek(self: ParserState*) -> Token {
-    return tv_get(self.tokens, self.index);
+    return ps_logical_token_at_cursor(self);
+}
+
+/**
+ * Emit and step over any TT_LEXER_ERROR tokens at the cursor.
+ *
+ * @param self Parser state to advance.
+ */
+func ps_skip_lexer_errors(self: ParserState*) {
+    ps_logical_token_at_cursor(self);
+}
+
+/**
+ * Return the logical current token and skip unrecoverable lexer wrappers.
+ *
+ * @param self Parser state to inspect.
+ * @return Logical current token.
+ */
+func ps_logical_token_at_cursor(self: ParserState*) -> Token {
+    while (true) {
+        let tok = tv_get(self.tokens, self.index);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (iset_add(self.emitted_lex_errors, self.index)) {
+                    diag_error(self.diags, "Lexer", code, message, self.filename,
+                               tok.line, tok.column, line_end, column_end);
+                }
+                if (token_recovery_is_some(recovery)) {
+                    return token_recovered(tok);
+                }
+                self.index = self.index + 1;
+            }
+            _ => { return tok; }
+        }
+    }
+    return tv_get(self.tokens, tv_len(self.tokens) - 1);
+}
+
+/**
+ * Return a logical lookahead token without moving the parser cursor.
+ *
+ * @param self Parser state to inspect.
+ * @param offset Logical token offset from the current cursor.
+ * @return Logical lookahead token.
+ */
+func ps_peek_logical_ahead(self: ParserState*, offset: int) -> Token {
+    let physical = self.index;
+    let logical = 0;
+    let n = tv_len(self.tokens);
+    while (physical < n) {
+        let tok = tv_get(self.tokens, physical);
+        let visible = true;
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (token_recovery_is_some(recovery)) {
+                    tok = token_recovered(tok);
+                } else {
+                    visible = false;
+                }
+            }
+            _ => {}
+        }
+        if (visible) {
+            if (logical == offset) {
+                return tok;
+            }
+            logical = logical + 1;
+        }
+        physical = physical + 1;
+    }
+    return tv_get(self.tokens, n - 1);
+}
+
+/**
+ * Emit deferred lexer diagnostics that parsing never reached.
+ *
+ * @param self Parser state whose physical token stream should be scanned.
+ */
+func ps_emit_remaining_lexer_errors(self: ParserState*) {
+    for (let i = 0; i < tv_len(self.tokens); i = i + 1) {
+        let tok = tv_get(self.tokens, i);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (iset_add(self.emitted_lex_errors, i)) {
+                    diag_error(self.diags, "Lexer", code, message, self.filename,
+                               tok.line, tok.column, line_end, column_end);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /**
@@ -226,10 +329,7 @@ func ps_peek(self: ParserState*) -> Token {
  * @return Last consumed token, or the first token if nothing has been consumed yet.
  */
 func ps_last(self: ParserState*) -> Token {
-    if (self.index > 0) {
-        return tv_get(self.tokens, self.index - 1);
-    }
-    return tv_get(self.tokens, 0);
+    return self.last_token;
 }
 
 /**
@@ -253,6 +353,7 @@ func ps_advance(self: ParserState*) -> Token {
     if (!ps_at_end(self)) {
         self.index = self.index + 1;
     }
+    self.last_token = tok;
     return tok;
 }
 
@@ -789,19 +890,16 @@ func ps_try_parse_qualified_name(self: ParserState*) -> QualifiedNameResult*? {
     }
 
     // Lookahead without building strings: parse only if we truly have ModulePath::Name.
-    let i = self.index;
-    let n = tv_len(self.tokens);
-
-    let look = i + 1; // after first identifier
-    while (look < n && tok_is(tv_get(self.tokens, look), ord(TT_DOT))) {
+    let look = 1; // after first identifier
+    while (tok_is(ps_peek_logical_ahead(self, look), ord(TT_DOT))) {
         look = look + 1;
-        if (look >= n || !tok_is_ident(tv_get(self.tokens, look))) {
+        if (!tok_is_ident(ps_peek_logical_ahead(self, look))) {
             return null;
         }
         look = look + 1;
     }
 
-    if (look >= n || !tok_is(tv_get(self.tokens, look), ord(TT_DOUBLE_COLON))) {
+    if (!tok_is(ps_peek_logical_ahead(self, look), ord(TT_DOUBLE_COLON))) {
         return null;
     }
 

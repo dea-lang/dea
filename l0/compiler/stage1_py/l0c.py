@@ -805,6 +805,22 @@ def cmd_ast(args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_token_dump_text(tok) -> str:
+    """Return token payload text for `--tok` output."""
+    if tok.kind is TokenKind.LEXER_ERROR:
+        diagnostics = tok.diagnostics if tok.diagnostics is not None else []
+        code = "LEX-????"
+        if diagnostics:
+            code = diagnostics[0].message.split("]", 1)[0].lstrip("[")
+        elif tok.diagnostic is not None:
+            code = tok.diagnostic.message.split("]", 1)[0].lstrip("[")
+        recovery = "none"
+        if tok.recovery is not None:
+            recovery = f"{tok.recovery.kind.name.lower()}({tok.recovery.text!r})"
+        return f"lex-error({code}, recovery={recovery})"
+    return repr(tok.text)
+
+
 def _dump_tokens_for_file(path: Path, include_eof: bool, context=None) -> int:
     """Dump lexer tokens for a single file.
 
@@ -841,7 +857,7 @@ def _dump_tokens_for_file(path: Path, include_eof: bool, context=None) -> int:
         # Format: file:line:col: KIND  'text'
         print(
             f"{path}:{tok.line}:{tok.column}:\t"
-            f"{tok.kind.name:<12} {tok.text!r}"
+            f"{tok.kind.name:<12} {_format_token_dump_text(tok)}"
         )
     return 0
 

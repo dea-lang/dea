@@ -341,6 +341,7 @@ func ps_parse_module(self: ParserState*) -> Module*? {
 func impl_parse_module_tokens(tokens: TokenVector, filename: string) -> ImplParseResult* {
     let ps = ps_create(tokens, filename);
     let mod = ps_parse_module(ps);
+    ps_emit_remaining_lexer_errors(ps);
 
     let result = new ImplParseResult(
         mod,
@@ -418,10 +419,6 @@ func impl_parse_module_source(source: string, filename: string) -> ImplParseResu
     let ls = ls_create(source, filename);
     let toks = tokenize(ls);
     if (toks == null) {
-        return ps_lex_error_result(ls, filename);
-    }
-    if (diag_has_errors(ls.diags)) {
-        tv_free(toks as TokenVector);
         return ps_lex_error_result(ls, filename);
     }
     return ps_tokens_result(ls, toks as TokenVector, filename);

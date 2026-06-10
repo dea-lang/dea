@@ -77,6 +77,11 @@ class Parser:
         # is terminal: the condition is reported once and every recovery loop
         # then stops instead of re-reporting it at each enclosing nesting level.
         self.eof_aborted = False
+        # Token indices whose deferred lexer diagnostic was already emitted.
+        # Backtracking restores `index`, so the cursor can re-cross a
+        # LEXER_ERROR token; the guard keeps the diagnostic single-shot.
+        self._emitted_lex_errors: set[int] = set()
+        self._last_token = tokens[0] if tokens else Token(TokenKind.EOF, "", 0, 0)
 
     @classmethod
     def from_source(cls, source: str) -> "Parser":
@@ -167,12 +172,47 @@ class Parser:
         self._error_bail(f"{error_code} unexpected '{tok.text}' in {context}", tok)
 
     def _peek(self) -> Token:
-        """Return the current token without advancing."""
+        """Return the current token without advancing.
+
+        Lexer-error wrappers are interpreted as logical tokens. A wrapper with
+        recovery is exposed as that recovered token; a wrapper without recovery
+        is skipped. Deferred diagnostics are emitted once per physical token.
+        """
+        return self._logical_token_at_cursor()
+
+    def _emit_lexer_error(self, index: int, tok: Token) -> None:
+        """Emit deferred lexer diagnostics for a physical token once."""
+        if index in self._emitted_lex_errors:
+            return
+        self._emitted_lex_errors.add(index)
+        diagnostics = tok.diagnostics if tok.diagnostics is not None else []
+        if not diagnostics and tok.diagnostic is not None:
+            diagnostics = [tok.diagnostic]
+        self.diagnostics.extend(diagnostics)
+
+    def _logical_token_at_cursor(self) -> Token:
+        """Return the logical current token, skipping unrecoverable wrappers."""
+        while self.tokens[self.index].kind is TokenKind.LEXER_ERROR:
+            tok = self.tokens[self.index]
+            self._emit_lexer_error(self.index, tok)
+            if tok.recovery is not None:
+                return tok.recovery
+            self.index += 1
         return self.tokens[self.index]
+
+    def _skip_lexer_errors(self) -> None:
+        """Emit and step over unrecoverable LEXER_ERROR tokens at the cursor."""
+        self._logical_token_at_cursor()
+
+    def _emit_remaining_lexer_errors(self) -> None:
+        """Emit deferred lexer diagnostics that parsing never reached."""
+        for index, tok in enumerate(self.tokens):
+            if tok.kind is TokenKind.LEXER_ERROR:
+                self._emit_lexer_error(index, tok)
 
     def _last(self) -> Token:
         """Return the previously advanced token."""
-        return self.tokens[self.index - 1 if self.index > 0 else 0]
+        return self._last_token
 
     def _at_end(self) -> bool:
         """Check if at the end of the token stream."""
@@ -183,6 +223,7 @@ class Parser:
         tok = self._peek()
         if not self._at_end():
             self.index += 1
+        self._last_token = tok
         return tok
 
     def _check(self, kind: TokenKind) -> bool:
@@ -324,6 +365,7 @@ class Parser:
                 imports.append(Import(".".join(parts), span=self._extend_span(imp_start)))
         except _ParseSyncException:
             # Failed to parse module header. Return an empty module to allow driver to collect errors.
+            self._emit_remaining_lexer_errors()
             return Module("unknown", [], [], span=self._extend_span(start), filename=filename)
 
         decls: List[TopLevelDecl] = []
@@ -335,6 +377,7 @@ class Parser:
             except _ParseSyncException:
                 self._sync_top_level()
 
+        self._emit_remaining_lexer_errors()
         return Module(module_name, imports, decls, span=self._extend_span(start), filename=filename)
 
     def _sync_top_level(self) -> None:
@@ -950,7 +993,7 @@ class Parser:
         expr = self._parse_and_expr()
         self._check_reserved_binary_op()
         while self._match(TokenKind.OROR):
-            op_tok = self.tokens[self.index - 1]
+            op_tok = self._last()
             right = self._parse_and_expr()
             self._check_reserved_binary_op()
             expr = BinaryOp(op_tok.text, expr, right, span=self._extend_span(start))
@@ -962,7 +1005,7 @@ class Parser:
         expr = self._parse_equality_expr()
         self._check_reserved_binary_op()
         while self._match(TokenKind.ANDAND):
-            op_tok = self.tokens[self.index - 1]
+            op_tok = self._last()
             right = self._parse_equality_expr()
             self._check_reserved_binary_op()
             expr = BinaryOp(op_tok.text, expr, right, span=self._extend_span(start))
@@ -973,7 +1016,7 @@ class Parser:
         start = self._span_start()
         expr = self._parse_rel_expr()
         while self._match(TokenKind.EQEQ, TokenKind.NE):
-            op_tok = self.tokens[self.index - 1]
+            op_tok = self._last()
             right = self._parse_rel_expr()
             expr = BinaryOp(op_tok.text, expr, right, span=self._extend_span(start))
         return expr
@@ -983,7 +1026,7 @@ class Parser:
         start = self._span_start()
         expr = self._parse_add_expr()
         while self._match(TokenKind.LT, TokenKind.GT, TokenKind.LE, TokenKind.GE):
-            op_tok = self.tokens[self.index - 1]
+            op_tok = self._last()
             right = self._parse_add_expr()
             expr = BinaryOp(op_tok.text, expr, right, span=self._extend_span(start))
         return expr
@@ -993,7 +1036,7 @@ class Parser:
         start = self._span_start()
         expr = self._parse_mul_expr()
         while self._match(TokenKind.PLUS, TokenKind.MINUS):
-            op_tok = self.tokens[self.index - 1]
+            op_tok = self._last()
             right = self._parse_mul_expr()
             expr = BinaryOp(op_tok.text, expr, right, span=self._extend_span(start))
         return expr
@@ -1003,7 +1046,7 @@ class Parser:
         start = self._span_start()
         expr = self._parse_unary_expr()
         while self._match(TokenKind.STAR, TokenKind.SLASH, TokenKind.MODULO):
-            op_tok = self.tokens[self.index - 1]
+            op_tok = self._last()
             right = self._parse_unary_expr()
             expr = BinaryOp(op_tok.text, expr, right, span=self._extend_span(start))
         return expr
@@ -1013,7 +1056,7 @@ class Parser:
         start = self._span_start()
         # prefix unary operators: !, -, *
         if self._match(TokenKind.BANG, TokenKind.MINUS, TokenKind.STAR):
-            op_tok = self.tokens[self.index - 1]
+            op_tok = self._last()
             operand = self._parse_unary_expr()
             return UnaryOp(op_tok.text, operand, span=self._extend_span(start))
         # reserved prefix operator: ~ (bitwise NOT)

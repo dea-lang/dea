@@ -13,6 +13,7 @@ import std.vector;
 import std.linear_map;
 
 import util.diag;
+import util.strings;
 
 import tokens;
 
@@ -146,6 +147,9 @@ struct LexerState {
     column: int;
     prev_kind: TokenType;
     diags: DiagCollector*;
+    pending_errors: DiagnosticVector*;
+    queued_tokens: TokenVector;
+    queued_index: int;
 }
 
 /**
@@ -164,7 +168,10 @@ func ls_create(source: string, filename: string) -> LexerState* {
         1,
         1,
         TT_EOF,
-        diag_create()
+        diag_create(),
+        dgv_create(),
+        tv_create(),
+        0
     );
     return self;
 }
@@ -195,11 +202,148 @@ func ls_emit_error(self: LexerState*, code: string, message: string, line: int, 
 }
 
 /**
+ * Queue a physical token for later emission by `ls_next_token`.
+ *
+ * @param self Lexer state collecting queued tokens.
+ * @param token Token to queue.
+ */
+func ls_queue_token(self: LexerState*, token: Token) {
+    tv_push(self.queued_tokens, token);
+}
+
+/**
+ * Return whether previously queued tokens remain to be emitted.
+ *
+ * @param self Lexer state to inspect.
+ * @return `true` when queued tokens remain.
+ */
+func ls_has_queued_tokens(self: LexerState*) -> bool {
+    return self.queued_index < tv_len(self.queued_tokens);
+}
+
+/**
+ * Return the next queued token and transfer ownership out of the queue.
+ *
+ * @param self Lexer state to inspect.
+ * @return Next queued token.
+ */
+func ls_take_queued_token(self: LexerState*) -> Token {
+    let slot = vec_get(self.queued_tokens.vec, self.queued_index) as Token*;
+    let token = *slot;
+    *slot = Token(TT_EOF, 0, 0, 0);
+    self.queued_index = self.queued_index + 1;
+    if (!ls_has_queued_tokens(self)) {
+        tv_free(self.queued_tokens);
+        self.queued_tokens = tv_create();
+        self.queued_index = 0;
+    }
+    return token;
+}
+
+/**
+ * Store a recoverable lexer diagnostic for the token currently being scanned.
+ */
+func ls_defer_recoverable_error(self: LexerState*, code: string, message: string, line: int, column: int, line_end: int, column_end: int) {
+    dgv_push(self.pending_errors, Diagnostic("", code, Error, message, "", line, column, line_end, column_end));
+}
+
+/**
+ * Clear pending recoverable diagnostic state before scanning a token.
+ */
+func ls_clear_pending_error(self: LexerState*) {
+    for (let i = 0; i < dgv_length(self.pending_errors); i = i + 1) {
+        let diag = dgv_get(self.pending_errors, i);
+        diag.phase = "";
+        diag.code = "";
+        diag.message = "";
+        diag.filename = "";
+    }
+    self.pending_errors.length = 0;
+}
+
+/**
+ * Queue all pending recoverable diagnostics as unrecoverable lexer-error tokens.
+ *
+ * @param self Lexer state to drain.
+ * @param start_index Physical token start offset.
+ */
+func ls_queue_pending_errors(self: LexerState*, start_index: int) {
+    for (let i = 0; i < dgv_length(self.pending_errors); i = i + 1) {
+        let diag = dgv_get(self.pending_errors, i);
+        ls_queue_token(
+            self,
+            Token(TT_LEXER_ERROR(diag.code, diag.message, diag.line_end, diag.column_end, TR_NONE),
+                  start_index, diag.line, diag.column)
+        );
+    }
+    ls_clear_pending_error(self);
+}
+
+/**
+ * Queue pending recoverable diagnostics and a final recoverable wrapper token.
+ *
+ * @param self Lexer state to drain.
+ * @param start_index Physical token start offset.
+ * @param start_line Physical token start line.
+ * @param start_column Physical token start column.
+ * @param recovery Logical recovery payload for the final wrapper.
+ * @return First queued token.
+ */
+func ls_queue_pending_recovery(self: LexerState*, start_index: int, start_line: int, start_column: int,
+                               recovery: TokenRecovery) -> Token {
+    let count = dgv_length(self.pending_errors);
+    for (let i = 0; i < count - 1; i = i + 1) {
+        let diag = dgv_get(self.pending_errors, i);
+        ls_queue_token(
+            self,
+            Token(TT_LEXER_ERROR(diag.code, diag.message, diag.line_end, diag.column_end, TR_NONE),
+                  start_index, diag.line, diag.column)
+        );
+    }
+    let final_diag = dgv_get(self.pending_errors, count - 1);
+    ls_queue_token(
+        self,
+        Token(TT_LEXER_ERROR(final_diag.code, final_diag.message, final_diag.line_end, final_diag.column_end, recovery),
+              start_index, start_line, start_column)
+    );
+    ls_clear_pending_error(self);
+    return ls_take_queued_token(self);
+}
+
+/**
+ * Queue pending recoverable diagnostics followed by a terminal recoverable wrapper token.
+ *
+ * @param self Lexer state to drain.
+ * @param start_index Physical token start offset.
+ * @param start_line Physical token start line.
+ * @param start_column Physical token start column.
+ * @param code Terminal diagnostic code.
+ * @param message Terminal diagnostic message.
+ * @param line_end Terminal diagnostic end line.
+ * @param column_end Terminal diagnostic end column.
+ * @param recovery Logical recovery payload for the final wrapper.
+ * @return First queued token.
+ */
+func ls_queue_terminal_recovery(self: LexerState*, start_index: int, start_line: int, start_column: int,
+                                code: string, message: string, line_end: int, column_end: int,
+                                recovery: TokenRecovery) -> Token {
+    ls_queue_pending_errors(self, start_index);
+    ls_queue_token(
+        self,
+        Token(TT_LEXER_ERROR(code, message, line_end, column_end, recovery), start_index, start_line, start_column)
+    );
+    return ls_take_queued_token(self);
+}
+
+/**
  * Free a lexer state and its diagnostics.
  *
  * @param self Lexer state to free.
  */
 func ls_free(self: LexerState*) {
+    ls_clear_pending_error(self);
+    dgv_free(self.pending_errors);
+    tv_free(self.queued_tokens);
     diag_free(self.diags);
     drop self;
 }
@@ -243,6 +387,10 @@ func ls_peek_next(self: LexerState*) -> byte {
 /**
  * Consume and return the current source byte.
  *
+ * The column advances once per Unicode code point, not per byte: UTF-8
+ * continuation bytes do not bump it, so positions stay aligned with the
+ * code-point columns reported by the L0 Stage 1 Python frontend.
+ *
  * @param self Lexer state to advance.
  * @return Byte that was current before advancing.
  */
@@ -253,7 +401,7 @@ func ls_advance(self: LexerState*) -> byte {
         if (current_char == '\n') {
             self.line = self.line + 1;
             self.column = 1;
-        } else {
+        } else if (!us_is_utf8_continuation(current_char)) {
             self.column = self.column + 1;
         }
     }
@@ -315,173 +463,177 @@ func tokenize(self: LexerState*) -> TokenVector? {
  * @return Next token if successful, or `null` if a lexing error occurs.
  */
 func ls_next_token(self: LexerState*) -> Token? {
-    while (true) {
-        ls_skip_whitespace_and_comments(self)?;
+    if (ls_has_queued_tokens(self)) {
+        return ls_take_queued_token(self);
+    }
+    ls_skip_whitespace_and_comments(self)?;
+    ls_clear_pending_error(self);
 
-        let start_index = self.index;
-        let start_line = self.line;
-        let start_column = self.column;
+    let start_index = self.index;
+    let start_line = self.line;
+    let start_column = self.column;
 
-        if (ls_at_end(self)) {
-            return Token(TT_EOF, self.index, self.line, self.column);
-        }
+    if (ls_at_end(self)) {
+        return Token(TT_EOF, self.index, self.line, self.column);
+    }
 
-        let c = ls_advance(self);
+    let c = ls_advance(self);
 
-        // identifiers / keywords and underscore wildcard
-        if (is_ident_start(c)) {
-            with (let cb = cb_create() => cb_free(cb)) {
-                cb_append(cb, c);
-                while (true) {
-                    if (is_ident_part(ls_peek(self))) {
-                        cb_append(cb, ls_advance(self));
-                    } else {
-                        break;
-                    }
-                }
-                return ident_to_token(cb_to_string(cb), start_index, start_line, start_column);
-            }
-        }
-
-        // numbers (only integers for now)
-        if (is_digit(c)) {
-            return ls_read_number(self, c, false, start_index, start_line, start_column);
-        }
-
-        case(c){
-            '"' => return ls_read_string_literal(self, start_index, start_line, start_column);
-
-            '\'' => return ls_read_byte_literal(self, start_index, start_line, start_column);
-
-            // punctuation and operators with lookahead
-            '-' => {
-                if (ls_peek(self) == '>') {
-                    ls_advance(self);
-                    return Token(TT_ARROW_FUNC, start_index, start_line, start_column);
-                }
-                else if (is_digit(ls_peek(self)) && !is_expr_ending_token_type(self.prev_kind)) {
-                    // Negative number literal if we are in a unary operator context,
-                    // e.g. "f(-5)": here -5 is a negative number, but "x-5" is x MINUS 5
-                    return ls_read_number(self, ls_advance(self), true, start_index, start_line, start_column);
-                }
-                return Token(TT_MINUS, start_index, start_line, start_column);
-            }
-
-            '(' => return Token(TT_LPAREN, start_index, start_line, start_column);
-
-            ')' => return Token(TT_RPAREN, start_index, start_line, start_column);
-
-            '{' => return Token(TT_LBRACE, start_index, start_line, start_column);
-
-            '}' => return Token(TT_RBRACE, start_index, start_line, start_column);
-
-            '[' => return Token(TT_LBRACKET, start_index, start_line, start_column);
-
-            ']' => return Token(TT_RBRACKET, start_index, start_line, start_column);
-
-            ',' => return Token(TT_COMMA, start_index, start_line, start_column);
-
-            ';' => return Token(TT_SEMI, start_index, start_line, start_column);
-
-            ':' => {
-                if (ls_peek(self) == ':') {
-                    ls_advance(self);
-                    return Token(TT_DOUBLE_COLON, start_index, start_line, start_column);
-                }
-                return Token(TT_COLON, start_index, start_line, start_column);
-            }
-
-            '.' => return Token(TT_DOT, start_index, start_line, start_column);
-
-            '?' => return Token(TT_QUESTION, start_index, start_line, start_column);
-
-            '=' => {
-                case(ls_peek(self)) {
-                    '>' => {
-                        ls_advance(self);
-                        return Token(TT_ARROW_MATCH, start_index, start_line, start_column);
-                    }
-                    '=' => {
-                        ls_advance(self);
-                        return Token(TT_EQEQ, start_index, start_line, start_column);
-                    }
-                    _ => return Token(TT_EQ, start_index, start_line, start_column);
+    // identifiers / keywords and underscore wildcard
+    if (is_ident_start(c)) {
+        with (let cb = cb_create() => cb_free(cb)) {
+            cb_append(cb, c);
+            while (true) {
+                if (is_ident_part(ls_peek(self))) {
+                    cb_append(cb, ls_advance(self));
+                } else {
+                    break;
                 }
             }
-
-            '!' => {
-                if (ls_peek(self) == '=') {
-                    ls_advance(self);
-                    return Token(TT_NE, start_index, start_line, start_column);
-                }
-                return Token(TT_BANG, start_index, start_line, start_column);
-            }
-
-            '<' => {
-                case(ls_peek(self)) {
-                     '=' => {
-                        ls_advance(self);
-                        return Token(TT_LE, start_index, start_line, start_column);
-                    }
-                    '<' => {
-                        ls_advance(self);
-                        return Token(TT_LSHIFT, start_index, start_line, start_column);
-                    }
-                    _ => return Token(TT_LT, start_index, start_line, start_column);
-                }
-            }
-
-            '>' => {
-                case(ls_peek(self)) {
-                     '=' => {
-                        ls_advance(self);
-                        return Token(TT_GE, start_index, start_line, start_column);
-                    }
-                    '>' => {
-                        ls_advance(self);
-                        return Token(TT_RSHIFT, start_index, start_line, start_column);
-                    }
-                    _ => return Token(TT_GT, start_index, start_line, start_column);
-                }
-            }
-
-            '&' => {
-                if (ls_peek(self) == '&') {
-                    ls_advance(self);
-                    return Token(TT_ANDAND, start_index, start_line, start_column);
-                }
-                return Token(TT_AMP, start_index, start_line, start_column);
-            }
-
-            '|' => {
-                if (ls_peek(self) == '|') {
-                    ls_advance(self);
-                    return Token(TT_OROR, start_index, start_line, start_column);
-                }
-                return Token(TT_PIPE, start_index, start_line, start_column);
-            }
-
-            '^' => return Token(TT_CARET, start_index, start_line, start_column);
-
-            '~' => return Token(TT_TILDE, start_index, start_line, start_column);
-
-            '+' => return Token(TT_PLUS, start_index, start_line, start_column);
-
-            '*' => return Token(TT_STAR, start_index, start_line, start_column);
-
-            '/' => return Token(TT_SLASH, start_index, start_line, start_column);
-
-            '%' => return Token(TT_MODULO, start_index, start_line, start_column);
-
-            _ => {
-                // If we reach here, it's an unrecognized character
-                ls_emit_error(self, "LEX-0040", "invalid character in source", start_line, start_column, start_line, start_column + 1);
-                ls_skip_invalid_characters(self);
-                continue;
-            }
+            return ident_to_token(cb_to_string(cb), start_index, start_line, start_column);
         }
     }
-    return null;
+
+    // numbers (only integers for now)
+    if (is_digit(c)) {
+        return ls_read_number(self, c, false, start_index, start_line, start_column);
+    }
+
+    case(c){
+        '"' => return ls_read_string_literal(self, start_index, start_line, start_column);
+
+        '\'' => return ls_read_byte_literal(self, start_index, start_line, start_column);
+
+        // punctuation and operators with lookahead
+        '-' => {
+            if (ls_peek(self) == '>') {
+                ls_advance(self);
+                return Token(TT_ARROW_FUNC, start_index, start_line, start_column);
+            }
+            else if (is_digit(ls_peek(self)) && !is_expr_ending_token_type(self.prev_kind)) {
+                // Negative number literal if we are in a unary operator context,
+                // e.g. "f(-5)": here -5 is a negative number, but "x-5" is x MINUS 5
+                return ls_read_number(self, ls_advance(self), true, start_index, start_line, start_column);
+            }
+            return Token(TT_MINUS, start_index, start_line, start_column);
+        }
+
+        '(' => return Token(TT_LPAREN, start_index, start_line, start_column);
+
+        ')' => return Token(TT_RPAREN, start_index, start_line, start_column);
+
+        '{' => return Token(TT_LBRACE, start_index, start_line, start_column);
+
+        '}' => return Token(TT_RBRACE, start_index, start_line, start_column);
+
+        '[' => return Token(TT_LBRACKET, start_index, start_line, start_column);
+
+        ']' => return Token(TT_RBRACKET, start_index, start_line, start_column);
+
+        ',' => return Token(TT_COMMA, start_index, start_line, start_column);
+
+        ';' => return Token(TT_SEMI, start_index, start_line, start_column);
+
+        ':' => {
+            if (ls_peek(self) == ':') {
+                ls_advance(self);
+                return Token(TT_DOUBLE_COLON, start_index, start_line, start_column);
+            }
+            return Token(TT_COLON, start_index, start_line, start_column);
+        }
+
+        '.' => return Token(TT_DOT, start_index, start_line, start_column);
+
+        '?' => return Token(TT_QUESTION, start_index, start_line, start_column);
+
+        '=' => {
+            case(ls_peek(self)) {
+                '>' => {
+                    ls_advance(self);
+                    return Token(TT_ARROW_MATCH, start_index, start_line, start_column);
+                }
+                '=' => {
+                    ls_advance(self);
+                    return Token(TT_EQEQ, start_index, start_line, start_column);
+                }
+                _ => return Token(TT_EQ, start_index, start_line, start_column);
+            }
+        }
+
+        '!' => {
+            if (ls_peek(self) == '=') {
+                ls_advance(self);
+                return Token(TT_NE, start_index, start_line, start_column);
+            }
+            return Token(TT_BANG, start_index, start_line, start_column);
+        }
+
+        '<' => {
+            case(ls_peek(self)) {
+                 '=' => {
+                    ls_advance(self);
+                    return Token(TT_LE, start_index, start_line, start_column);
+                }
+                '<' => {
+                    ls_advance(self);
+                    return Token(TT_LSHIFT, start_index, start_line, start_column);
+                }
+                _ => return Token(TT_LT, start_index, start_line, start_column);
+            }
+        }
+
+        '>' => {
+            case(ls_peek(self)) {
+                 '=' => {
+                    ls_advance(self);
+                    return Token(TT_GE, start_index, start_line, start_column);
+                }
+                '>' => {
+                    ls_advance(self);
+                    return Token(TT_RSHIFT, start_index, start_line, start_column);
+                }
+                _ => return Token(TT_GT, start_index, start_line, start_column);
+            }
+        }
+
+        '&' => {
+            if (ls_peek(self) == '&') {
+                ls_advance(self);
+                return Token(TT_ANDAND, start_index, start_line, start_column);
+            }
+            return Token(TT_AMP, start_index, start_line, start_column);
+        }
+
+        '|' => {
+            if (ls_peek(self) == '|') {
+                ls_advance(self);
+                return Token(TT_OROR, start_index, start_line, start_column);
+            }
+            return Token(TT_PIPE, start_index, start_line, start_column);
+        }
+
+        '^' => return Token(TT_CARET, start_index, start_line, start_column);
+
+        '~' => return Token(TT_TILDE, start_index, start_line, start_column);
+
+        '+' => return Token(TT_PLUS, start_index, start_line, start_column);
+
+        '*' => return Token(TT_STAR, start_index, start_line, start_column);
+
+        '/' => return Token(TT_SLASH, start_index, start_line, start_column);
+
+        '%' => return Token(TT_MODULO, start_index, start_line, start_column);
+
+        _ => {
+            // Unrecognized character: defer the diagnostic into a
+            // lexer-error token covering the whole invalid run; the
+            // parser emits it when it skips the token.
+            ls_skip_invalid_characters(self);
+            return Token(
+                TT_LEXER_ERROR("LEX-0040", "invalid character in source", self.line, self.column, TR_NONE),
+                start_index, start_line, start_column);
+        }
+    }
 }
 
 /**
@@ -506,17 +658,30 @@ func ls_read_byte_literal(self: LexerState*, start_index: int, start_line: int, 
             cb_append_s(cb, esc.escape_str);
             // We know the following is safe because ls_read_valid_char_escape checks the range for single-byte escapes
             byte_value = esc.char_value as byte;
+            if (dgv_length(self.pending_errors) > 0) {
+                let byte_str = cb_to_string(cb);
+                return ls_queue_pending_recovery(self, start_index, start_line, start_column,
+                                                 TR_BYTE(byte_str, byte_value));
+            }
         } else if (c == '\0' || c == '\n') {
-            ls_emit_error(self, "LEX-0020", "unterminated byte literal", start_line, start_column, start_line, start_column + 1);
-            return null;
+            return Token(
+                TT_LEXER_ERROR("LEX-0020", "unterminated byte literal", start_line, start_column + 1, TR_BYTE("\\0", 0 as byte)),
+                start_index, start_line, start_column);
         } else {
             byte_value = ls_advance(self);
             cb_append(cb, byte_value);
         }
 
         if (ls_peek(self) != '\'') {
-            ls_emit_error(self, "LEX-0021", "invalid byte literal, expected closing single quote", start_line, start_column, self.line, self.column);
-            return null; // Invalid byte literal
+            let byte_str = cb_to_string(cb);
+            if (dgv_length(self.pending_errors) > 0) {
+                return ls_queue_terminal_recovery(self, start_index, start_line, start_column,
+                                                  "LEX-0021", "invalid byte literal, expected closing single quote",
+                                                  self.line, self.column, TR_BYTE(byte_str, byte_value));
+            }
+            return Token(
+                TT_LEXER_ERROR("LEX-0021", "invalid byte literal, expected closing single quote", self.line, self.column, TR_BYTE(byte_str, byte_value)),
+                start_index, start_line, start_column);
         }
         ls_advance(self); // consume closing quote
 
@@ -543,8 +708,16 @@ func ls_read_string_literal(self: LexerState*, start_index: int, start_line: int
         while (true) {
             let c = ls_peek(self);
             if (c == '\0' || c == '\n') { // EOF or newline before closing quote
-                ls_emit_error(self, "LEX-0010", "unterminated string literal", start_line, start_column, self.line, self.column);
-                return null; // Unterminated string
+                let lit_value = cb_to_string(cb);
+                let str_value = cb_to_string(vb);
+                if (dgv_length(self.pending_errors) > 0) {
+                    return ls_queue_terminal_recovery(self, start_index, start_line, start_column,
+                                                      "LEX-0010", "unterminated string literal",
+                                                      self.line, self.column, TR_STRING(lit_value, str_value));
+                }
+                return Token(
+                    TT_LEXER_ERROR("LEX-0010", "unterminated string literal", self.line, self.column, TR_STRING(lit_value, str_value)),
+                    start_index, start_line, start_column);
             }
             case (c) {
                 '"' => {
@@ -570,6 +743,10 @@ func ls_read_string_literal(self: LexerState*, start_index: int, start_line: int
         }
         let lit_value = cb_to_string(cb); // the literal string value as it appears in the source
         let str_value = cb_to_string(vb); // the actual string value with escape sequences processed
+        if (dgv_length(self.pending_errors) > 0) {
+            return ls_queue_pending_recovery(self, start_index, start_line, start_column,
+                                             TR_STRING(lit_value, str_value));
+        }
         return Token(TT_STRING(lit_value, str_value), start_index, start_line, start_column);
     }
 }
@@ -614,12 +791,15 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
                 }
             }
             if (hex_digits < 1) {
-                ls_emit_error(self, "LEX-0050", "invalid hexadecimal escape sequence", self.line, self.column, self.line, self.column);
-                return null;
+                ls_defer_recoverable_error(self, "LEX-0050", "invalid hexadecimal escape sequence",
+                                           self.line, self.column, self.line, self.column);
+                return EscapedChar(cb_to_string(cb), 0);
             }
             if (single_byte && char_value > 255) {
-                ls_emit_error(self, "LEX-0031", "character literal hexadecimal escape out of range (0-255): '\\x" + int_to_string_base(char_value, 16) + "'", self.line, self.column, self.line, self.column);
-                return null;
+                ls_defer_recoverable_error(self, "LEX-0031",
+                                           "character literal hexadecimal escape out of range (0-255): '\\x" + int_to_string_base(char_value, 16) + "'",
+                                           self.line, self.column, self.line, self.column);
+                return EscapedChar(cb_to_string(cb), 0);
             }
         }
         else if (c == 'u' || c == 'U') {
@@ -645,18 +825,21 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
                     sb_append(sb, "invalid Unicode escape sequence, expected ");
                     sb_append_int(sb, required_digits);
                     sb_append(sb, " hex digits");
-                    ls_emit_error(self, error_code, sb_to_string(sb), self.line, self.column, self.line, self.column);
+                    ls_defer_recoverable_error(self, error_code, sb_to_string(sb),
+                                               self.line, self.column, self.line, self.column);
                 }
-                return null;
+                return EscapedChar(cb_to_string(cb), 0);
             }
             if (char_value > 1114111) { // 0x10FFFF
-                ls_emit_error(self, "LEX-0054", "Unicode code point out of range (must be <= 0x10FFFF)", self.line, self.column, self.line, self.column);
-                return null;
+                ls_defer_recoverable_error(self, "LEX-0054", "Unicode code point out of range (must be <= 0x10FFFF)",
+                                           self.line, self.column, self.line, self.column);
+                return EscapedChar(cb_to_string(cb), 0);
             }
             if (single_byte) {
                 if (char_value > 127) {
-                    ls_emit_error(self, "LEX-0030", "character literal must represent a single byte", self.line, self.column, self.line, self.column);
-                    return null;
+                    ls_defer_recoverable_error(self, "LEX-0030", "character literal must represent a single byte",
+                                               self.line, self.column, self.line, self.column);
+                    return EscapedChar(cb_to_string(cb), 0);
                 }
                 // For single-byte character literals, convert to the \xHH form
                 let hex_str = int_to_string_base(char_value, 16);
@@ -677,14 +860,16 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
                 octal_digits = octal_digits + 1;
                 char_value = char_value * 8 + (digit - '0');
                 if (char_value > 255) {
-                    ls_emit_error(self, "LEX-0053", "octal escape sequence out of range (must be <= 377)", self.line, self.column, self.line, self.column);
-                    return null;
+                    ls_defer_recoverable_error(self, "LEX-0053", "octal escape sequence out of range (must be <= 377)",
+                                               self.line, self.column, self.line, self.column);
+                    return EscapedChar(cb_to_string(cb), 0);
                 }
             }
         }
         else {
-            ls_emit_error(self, "LEX-0059", "unknown escape sequence '\\" + byte_to_s(c) + "'", self.line, self.column, self.line, self.column);
-            return null;
+            ls_defer_recoverable_error(self, "LEX-0059", "unknown escape sequence '\\" + byte_to_s(c) + "'",
+                                       self.line, self.column, self.line, self.column);
+            return EscapedChar(cb_to_string(cb), 0);
         }
 
         let escape_str = cb_to_string(cb);
@@ -730,8 +915,10 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
             cb_append(cb, first_char);
             cb_append(cb, ls_advance(self));
             if (!is_hex_digit(ls_peek(self))) {
-                ls_emit_error(self, "LEX-0062", "invalid hexadecimal literal, expected at least one hex digit after '0x'", start_line, start_column, self.line, self.column);
-                return null;
+                return Token(
+                    TT_LEXER_ERROR("LEX-0062", "invalid hexadecimal literal, expected at least one hex digit after '0x'",
+                                   self.line, self.column, TR_INT("0", 0)),
+                    start_index, start_line, start_column);
             }
             while (is_hex_digit(ls_peek(self))) {
                 cb_append(vb, to_lower(ls_peek(self)));
@@ -742,8 +929,10 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
             cb_append(cb, first_char);
             cb_append(cb, ls_advance(self));
             if (!is_binary_digit(ls_peek(self))) {
-                ls_emit_error(self, "LEX-0063", "invalid binary literal, expected at least one binary digit after '0b'", start_line, start_column, self.line, self.column);
-                return null;
+                return Token(
+                    TT_LEXER_ERROR("LEX-0063", "invalid binary literal, expected at least one binary digit after '0b'",
+                                   self.line, self.column, TR_INT("0", 0)),
+                    start_index, start_line, start_column);
             }
             while (is_binary_digit(ls_peek(self))) {
                 cb_append(vb, ls_peek(self));
@@ -754,8 +943,10 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
             cb_append(cb, first_char);
             cb_append(cb, ls_advance(self));
             if (!is_octal_digit(ls_peek(self))) {
-                ls_emit_error(self, "LEX-0064", "invalid octal literal, expected at least one octal digit after '0o'", start_line, start_column, self.line, self.column);
-                return null;
+                return Token(
+                    TT_LEXER_ERROR("LEX-0064", "invalid octal literal, expected at least one octal digit after '0o'",
+                                   self.line, self.column, TR_INT("0", 0)),
+                    start_index, start_line, start_column);
             }
             while (is_octal_digit(ls_peek(self))) {
                 cb_append(vb, ls_peek(self));
@@ -782,8 +973,10 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
                         cb_append(eb, ls_advance(self)); // consume optional '+' or '-'
                     }
                     if (!is_digit(ls_peek(self))) {
-                        ls_emit_error(self, "LEX-0065", "invalid real literal, expected digits after exponent marker", start_line, start_column, self.line, self.column);
-                        return null;
+                        return Token(
+                            TT_LEXER_ERROR("LEX-0065", "invalid real literal, expected digits after exponent marker",
+                                           self.line, self.column, TR_REALNUM(cb_to_string(cb), cb_to_string(eb), false)),
+                            start_index, start_line, start_column);
                     }
                     while (is_digit(ls_peek(self))) {
                         cb_append(eb, ls_advance(self));
@@ -805,11 +998,15 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
             if (is_ident_part(next_c)) {
                 if (!is_float && (next_c == 'd' || next_c == 'D')) {
                     // special-case error message for 'd'/'D' suffix
-                    ls_emit_error(self, "LEX-0067", "invalid suffix '" + byte_to_s(next_c) + "' after real literal; only 'f' is supported", self.line, self.column, self.line, self.column + 1);
-                    return null;
+                    return Token(
+                        TT_LEXER_ERROR("LEX-0067", "invalid suffix '" + byte_to_s(next_c) + "' after real literal; only 'f' is supported",
+                                       self.line, self.column + 1, TR_REALNUM(cb_to_string(cb), cb_to_string(eb), is_float)),
+                        start_index, start_line, start_column);
                 }
-                ls_emit_error(self, "LEX-0066", "invalid character '" + byte_to_s(next_c) + "' after real literal", self.line, self.column, self.line, self.column + 1);
-                return null;
+                return Token(
+                    TT_LEXER_ERROR("LEX-0066", "invalid character '" + byte_to_s(next_c) + "' after real literal",
+                                   self.line, self.column + 1, TR_REALNUM(cb_to_string(cb), cb_to_string(eb), is_float)),
+                    start_index, start_line, start_column);
             }
 
             let significand = cb_to_string(cb); // significand part includes the optional leading '-' and the optional decimal point
@@ -826,11 +1023,15 @@ func ls_read_number(self: LexerState*, first_char: byte, is_negative: bool,
             if (is_ident_part(next_c)) {
                 if ((next_c == 'f' || next_c == 'F') && base == 10) {
                     // special-case error message for 'd'/'D' suffix
-                    ls_emit_error(self, "LEX-0068", "invalid suffix '" + byte_to_s(next_c) + "' after integer literal; use " + number_str + ".0f for a float", self.line, self.column, self.line, self.column + 1);
-                    return null;
+                    return Token(
+                        TT_LEXER_ERROR("LEX-0068", "invalid suffix '" + byte_to_s(next_c) + "' after integer literal; use " + number_str + ".0f for a float",
+                                       self.line, self.column + 1, TR_INT(number_str, 0)),
+                        start_index, start_line, start_column);
                 }
-                ls_emit_error(self, "LEX-0061", "invalid character '" + byte_to_s(ls_peek(self)) + "' after integer literal", self.line, self.column, self.line, self.column + 1);
-                return null;
+                return Token(
+                    TT_LEXER_ERROR("LEX-0061", "invalid character '" + byte_to_s(ls_peek(self)) + "' after integer literal",
+                                   self.line, self.column + 1, TR_INT(number_str, 0)),
+                    start_index, start_line, start_column);
             }
 
             // Parse as 32-bit signed integer; overflow yields a bigint token.
@@ -894,13 +1095,14 @@ func ls_skip_whitespace_and_comments(self: LexerState*) -> Unit? {
 }
 
 /**
- * Skips over any invalid (non-printable, non-ASCII) characters in the input after a lexing error has been emitted,
- * until a valid character or the end of the input is reached.
+ * Skips over the rest of an invalid-character run after the first invalid byte
+ * has been consumed. The run stops at printable ASCII or whitespace, so the
+ * resulting diagnostic span never crosses a line break.
  */
 func ls_skip_invalid_characters(self: LexerState*) {
     while (true) {
         let c = ls_peek(self);
-        if (c == '\0' || is_printable_ascii(c)) {
+        if (c == '\0' || c == '\t' || c == '\r' || c == '\n' || is_printable_ascii(c)) {
             break;
         }
         ls_advance(self);

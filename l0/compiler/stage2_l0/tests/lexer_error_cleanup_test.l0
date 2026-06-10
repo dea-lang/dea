@@ -9,15 +9,38 @@ import std.assert;
 import std.io;
 
 import lexer;
+import tokens;
 
 /**
- * Verifies that lexing failure cleans up the partially built token vector.
+ * Verifies that recoverable lexing failure cleans up the partially built token vector.
  */
 func main() {
     let ls = ls_create("0x", "<test>");
     let toks = tokenize(ls);
-    assert(toks == null, "Expected lexing to fail");
-    assert(ls_has_errors(ls), "Expected lexer diagnostics");
+    assert(toks != null, "Expected recoverable lexing error token");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) >= 1, "Expected lexer error token");
+
+    let first = tv_get(tv, 0);
+    match (first.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            match (recovery) {
+                TR_INT(text, value) => {
+                    assert(text == "0", "Expected integer recovery text for cleaned-up partial token");
+                    assert(value == 0, "Expected integer recovery value for cleaned-up partial token");
+                }
+                _ => {
+                    assert(false, "Expected integer recovery payload");
+                }
+            }
+        }
+        _ => {
+            assert(false, "Expected lexer-error wrapper token");
+        }
+    }
+
+    tv_free(tv);
     ls_free(ls);
     printl_s("lexer_error_cleanup_test: all tests passed");
 }
