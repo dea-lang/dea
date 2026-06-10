@@ -1,0 +1,350 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Open-addressing hash set of integers with linear probing, modeled on
+ * `StringSet` in `std.hashset`. Keys hash to themselves, so no separate
+ * hash array is kept and no ARC management is needed.
+ */
+module util.intset;
+
+import sys.memory;
+
+import std.assert;
+import std.array;
+
+/* Slot states — same values as std.hashset */
+let ISET_EMPTY: byte = 0;
+let ISET_OCCUPIED: byte = 1;
+let ISET_TOMBSTONE: byte = 2;
+
+let ISET_DEFAULT_CAP: int = 16;
+
+/**
+ * Compute a non-negative slot index from a key and a power-of-2 capacity.
+ *
+ * @param key The key value.
+ * @param cap The capacity of the set.
+ * @return The calculated slot index.
+ */
+func _iset_slot(key: int, cap: int) -> int {
+    let r = key % cap;
+    if (r < 0) {
+        return r + cap;
+    }
+    return r;
+}
+
+/**
+ * IntSet is an open-addressing hash set of integers with linear probing.
+ * Struct-of-arrays: states, keys.
+ */
+struct IntSet {
+    capacity: int;
+    count: int;
+    tomb_count: int;
+    states: ArrayBase*;
+    keys: ArrayBase*;
+}
+
+/* ---------------------------------
+   Construction
+   --------------------------------- */
+
+/**
+ * Creates a new IntSet with default capacity.
+ *
+ * @return A pointer to the newly created IntSet.
+ */
+func iset_create() -> IntSet* {
+    return _iset_alloc(ISET_DEFAULT_CAP);
+}
+
+/**
+ * Creates a new IntSet with at least the specified capacity.
+ *
+ * @param min_cap The minimum capacity for the set.
+ * @return A pointer to the newly created IntSet.
+ */
+func iset_create_with_capacity(min_cap: int) -> IntSet* {
+    let cap = ISET_DEFAULT_CAP;
+    while (cap < min_cap) {
+        cap = cap * 2;
+    }
+    return _iset_alloc(cap);
+}
+
+/**
+ * Internal allocator for IntSet.
+ *
+ * @param cap The capacity to allocate.
+ * @return A pointer to the newly allocated IntSet.
+ */
+func _iset_alloc(cap: int) -> IntSet* {
+    let states = arr_create(sizeof(byte), cap);
+    let keys   = arr_create(sizeof(int), cap);
+    return new IntSet(cap, 0, 0, states, keys);
+}
+
+/* ---------------------------------
+   Slot accessors (internal)
+   --------------------------------- */
+
+/**
+ * Returns the state of the specified slot.
+ *
+ * @param self The pointer to the IntSet.
+ * @param i The slot index.
+ * @return The state byte of the slot.
+ */
+func _iset_get_state(self: IntSet*, i: int) -> byte {
+    return *(arr_get(self.states, i) as byte*);
+}
+
+/**
+ * Sets the state of the specified slot.
+ *
+ * @param self The pointer to the IntSet.
+ * @param i The slot index.
+ * @param s The state byte to set.
+ */
+func _iset_set_state(self: IntSet*, i: int, s: byte) {
+    let p = arr_get(self.states, i) as byte*;
+    *p = s;
+}
+
+/**
+ * Returns the key of the specified slot.
+ *
+ * @param self The pointer to the IntSet.
+ * @param i The slot index.
+ * @return The key value of the slot.
+ */
+func _iset_get_key(self: IntSet*, i: int) -> int {
+    return *(arr_get(self.keys, i) as int*);
+}
+
+/**
+ * Sets the key of the specified slot.
+ *
+ * @param self The pointer to the IntSet.
+ * @param i The slot index.
+ * @param key The key value to set.
+ */
+func _iset_set_key(self: IntSet*, i: int, key: int) {
+    let p = arr_get(self.keys, i) as int*;
+    *p = key;
+}
+
+/* ---------------------------------
+   Probing (internal)
+   --------------------------------- */
+
+/**
+ * Find the slot index of an existing key.
+ *
+ * @param self The pointer to the IntSet.
+ * @param key The key to find.
+ * @return The slot index if found, or -1 if not in the set.
+ */
+func _iset_find(self: IntSet*, key: int) -> int {
+    let cap = self.capacity;
+    let idx = _iset_slot(key, cap);
+
+    for (let i: int = 0; i < cap; i = i + 1) {
+        let state = _iset_get_state(self, idx);
+        if (state == ISET_EMPTY) {
+            return -1;
+        }
+        if (state == ISET_OCCUPIED) {
+            if (_iset_get_key(self, idx) == key) {
+                return idx;
+            }
+        }
+        idx = (idx + 1) % cap;
+    }
+    return -1;
+}
+
+/**
+ * Find the first non-occupied slot for insertion.
+ *
+ * @param self The pointer to the IntSet.
+ * @param key The key to insert.
+ * @return The available slot index.
+ */
+func _iset_find_insert(self: IntSet*, key: int) -> int {
+    let cap = self.capacity;
+    let idx = _iset_slot(key, cap);
+
+    for (let i: int = 0; i < cap; i = i + 1) {
+        if (_iset_get_state(self, idx) != ISET_OCCUPIED) {
+            return idx;
+        }
+        idx = (idx + 1) % cap;
+    }
+    assert(false, "intset: no free slot found during insert probe");
+    return -1;
+}
+
+/**
+ * Checks if the set needs to grow.
+ *
+ * @param self The pointer to the IntSet.
+ * @return True if growth is needed, false otherwise.
+ */
+func _iset_needs_grow(self: IntSet*) -> bool {
+    return (self.count + self.tomb_count) * 4 > self.capacity * 3;
+}
+
+/**
+ * Rehashes the set to a larger capacity.
+ *
+ * @param self The pointer to the IntSet.
+ */
+func _iset_rehash(self: IntSet*) {
+    let old_cap    = self.capacity;
+    let old_states = self.states;
+    let old_keys   = self.keys;
+
+    let new_cap = old_cap * 2;
+    self.capacity   = new_cap;
+    self.count      = 0;
+    self.tomb_count = 0;
+    self.states = arr_create(sizeof(byte), new_cap);
+    self.keys   = arr_create(sizeof(int), new_cap);
+
+    for (let i: int = 0; i < old_cap; i = i + 1) {
+        let sp = arr_get(old_states, i) as byte*;
+        if (*sp == ISET_OCCUPIED) {
+            let key = *(arr_get(old_keys, i) as int*);
+
+            let idx = _iset_slot(key, new_cap);
+            while (_iset_get_state(self, idx) != ISET_EMPTY) {
+                idx = (idx + 1) % new_cap;
+            }
+
+            _iset_set_state(self, idx, ISET_OCCUPIED);
+            _iset_set_key(self, idx, key);
+            self.count = self.count + 1;
+        }
+    }
+
+    arr_free(old_states);
+    arr_free(old_keys);
+}
+
+/* =================================
+   IntSet: public API
+   ================================= */
+
+/**
+ * Add an integer to the set.
+ * Returns true if the integer was newly added, false if already present.
+ *
+ * @param self The pointer to the IntSet.
+ * @param key The key to add.
+ * @return True if the integer was newly added, false otherwise.
+ */
+func iset_add(self: IntSet*, key: int) -> bool {
+    if (_iset_needs_grow(self)) {
+        _iset_rehash(self);
+    }
+
+    let found_idx = _iset_find(self, key);
+    if (found_idx >= 0) {
+        return false;
+    }
+
+    let idx = _iset_find_insert(self, key);
+    let state = _iset_get_state(self, idx);
+    if (state == ISET_TOMBSTONE) {
+        self.tomb_count = self.tomb_count - 1;
+    }
+    _iset_set_state(self, idx, ISET_OCCUPIED);
+    _iset_set_key(self, idx, key);
+    self.count = self.count + 1;
+    return true;
+}
+
+/**
+ * Check whether an integer is in the set.
+ *
+ * @param self The pointer to the IntSet.
+ * @param key The key to check.
+ * @return True if the integer is in the set, false otherwise.
+ */
+func iset_has(self: IntSet*, key: int) -> bool {
+    if (self.count == 0) {
+        return false;
+    }
+    return _iset_find(self, key) >= 0;
+}
+
+/**
+ * Remove an integer from the set.
+ * Returns true if it was found and removed.
+ *
+ * @param self The pointer to the IntSet.
+ * @param key The key to remove.
+ * @return True if found and removed, false otherwise.
+ */
+func iset_remove(self: IntSet*, key: int) -> bool {
+    if (self.count == 0) {
+        return false;
+    }
+    let idx = _iset_find(self, key);
+    if (idx < 0) {
+        return false;
+    }
+
+    _iset_set_state(self, idx, ISET_TOMBSTONE);
+    self.count = self.count - 1;
+    self.tomb_count = self.tomb_count + 1;
+    return true;
+}
+
+/**
+ * Returns the number of entries in the set.
+ *
+ * @param self The pointer to the IntSet.
+ * @return The count of elements.
+ */
+func iset_size(self: IntSet*) -> int {
+    return self.count;
+}
+
+/**
+ * Returns the current capacity of the set.
+ *
+ * @param self The pointer to the IntSet.
+ * @return The capacity.
+ */
+func iset_capacity(self: IntSet*) -> int {
+    return self.capacity;
+}
+
+/**
+ * Remove all entries from the set.
+ *
+ * @param self The pointer to the IntSet.
+ */
+func iset_clear(self: IntSet*) {
+    rt_memset(self.states.data, 0, self.capacity * sizeof(byte));
+    rt_memset(self.keys.data, 0, self.capacity * sizeof(int));
+    self.count = 0;
+    self.tomb_count = 0;
+}
+
+/**
+ * Free the set and all backing storage.
+ *
+ * @param self The pointer to the IntSet to free.
+ */
+func iset_free(self: IntSet*) {
+    arr_free(self.states);
+    arr_free(self.keys);
+    drop self;
+}

@@ -1,0 +1,96 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module intset_test;
+
+import std.io;
+import std.assert;
+
+import util.intset;
+
+/**
+ * Tests basic add, membership, and size behavior.
+ */
+func test_iset_basic() {
+    printl_s("=== Test iset_basic ===");
+
+    let s = iset_create();
+    assert(iset_size(s) == 0, "new set should be empty");
+    assert(!iset_has(s, 7), "missing key should not be found");
+
+    assert(iset_add(s, 7), "first add should report newly added");
+    assert(!iset_add(s, 7), "second add should report already present");
+    assert(iset_add(s, 0), "zero should be addable");
+    assert(iset_add(s, -3), "negative keys should be addable");
+
+    assert(iset_size(s) == 3, "set should hold three keys");
+    assert(iset_has(s, 7), "7 should be found");
+    assert(iset_has(s, 0), "0 should be found");
+    assert(iset_has(s, -3), "-3 should be found");
+    assert(!iset_has(s, 8), "8 should not be found");
+
+    iset_free(s);
+}
+
+/**
+ * Tests removal and re-insertion through tombstones.
+ */
+func test_iset_remove_reinsert() {
+    printl_s("=== Test iset_remove_reinsert ===");
+
+    let s = iset_create();
+    iset_add(s, 1);
+    iset_add(s, 2);
+    assert(iset_remove(s, 1), "existing key should be removed");
+    assert(!iset_remove(s, 1), "removed key should not be removed twice");
+    assert(!iset_has(s, 1), "removed key should not be found");
+    assert(iset_size(s) == 1, "size should drop after removal");
+
+    assert(iset_add(s, 1), "removed key should be re-insertable");
+    assert(iset_has(s, 1), "re-inserted key should be found");
+    assert(iset_size(s) == 2, "size should grow after re-insert");
+
+    iset_free(s);
+}
+
+/**
+ * Tests growth beyond the initial capacity.
+ */
+func test_iset_grow() {
+    printl_s("=== Test iset_grow ===");
+
+    let s = iset_create();
+    let initial_cap = iset_capacity(s);
+    for (let i = 0; i < 100; i = i + 1) {
+        assert(iset_add(s, i * 3), "every key should be newly added");
+    }
+    assert(iset_size(s) == 100, "set should hold one hundred keys");
+    assert(iset_capacity(s) > initial_cap, "capacity should have grown");
+    for (let i = 0; i < 100; i = i + 1) {
+        assert(iset_has(s, i * 3), "every inserted key should be found");
+        assert(!iset_has(s, i * 3 + 1), "non-inserted keys should not be found");
+    }
+
+    iset_clear(s);
+    assert(iset_size(s) == 0, "cleared set should be empty");
+    assert(!iset_has(s, 3), "cleared set should not find old keys");
+
+    iset_free(s);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    printl_s("======================================");
+    printl_s("         IntSet Test Suite");
+    printl_s("======================================\n");
+
+    test_iset_basic();
+    test_iset_remove_reinsert();
+    test_iset_grow();
+
+    printl_s("intset_test: all tests passed");
+}
