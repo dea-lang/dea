@@ -641,7 +641,7 @@ def main() -> int:
             env=self_build_env,
             artifact_dir=artifact_dir,
         )
-        if "Hello, World!" not in read_text(smoke_log):
+        if "Hello, world! This is Dea/L0." not in read_text(smoke_log):
             fail(f"third self-built compiler smoke check output mismatch: log={smoke_log}", artifact_dir)
         notice(f"final smoke passed in {format_duration(smoke_elapsed)}")
 

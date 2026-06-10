@@ -5,9 +5,73 @@
 
 module hello;
 
+import std.integer;
 import std.io;
+import std.rand;
 
-func main() -> int {
-    printl_s("Hello, World! Dea/L1 here!");
+// Top 25 languages by total speakers. Source: Babel, arXiv:2503.00865v1
+const helloWorldMessages: string[25] = [
+    "Hello, world! This is Dea/L1.",
+    "你好，世界！这是 Dea/L1。",
+    "नमस्ते, दुनिया! यह Dea/L1 है।",
+    "¡Hola, mundo! Esto es Dea/L1.",
+    "مرحبًا، يا عالم! هذا Dea/L1.",
+    "Bonjour le monde ! Ceci est Dea/L1.",
+    "হ্যালো, বিশ্ব! এটি Dea/L1।",
+    "Olá, mundo! Isto é Dea/L1.",
+    "Привет, мир! Это Dea/L1.",
+    "ہیلو، دنیا! یہ Dea/L1 ہے۔",
+    "Halo, dunia! Ini Dea/L1.",
+    "Hallo, Welt! Das ist Dea/L1.",
+    "こんにちは、世界！これは Dea/L1 です。",
+    "Hujambo, dunia! Hii ni Dea/L1.",
+    "Kumusta, mundo! Ito ay Dea/L1.",
+    "வணக்கம், உலகமே! இது Dea/L1.",
+    "Xin chào, thế giới! Đây là Dea/L1.",
+    "Merhaba, dünya! Bu Dea/L1.",
+    "Ciao, mondo! Questo è Dea/L1.",
+    "Halo, donya! Iki Dea/L1.",
+    "안녕하세요, 세계! 이것은 Dea/L1입니다.",
+    "Sannu, duniya! Wannan Dea/L1 ne.",
+    "سلام، دنیا! این Dea/L1 است.",
+    "สวัสดีโลก! นี่คือ Dea/L1",
+    "မင်္ဂလာပါ၊ ကမ္ဘာကြီး! ဤသည်မှာ Dea/L1 ဖြစ်သည်။"
+];
+
+/**
+ * Returns a random integer in the range [0, n) that is coprime to n.
+ * A number s is coprime to n if gcd(s, n) == 1, meaning they have no
+ * common factors other than 1.
+ *
+ * @param n The upper bound (exclusive).
+ * @return A random integer coprime to n.
+ */
+func random_coprime_stride(n: int) -> int {
+    if (n > 1)
+        while (true) {
+            let s = rand_dice(rolls: 1, sides: n - 1);
+            let g = gcd(s, n) as int;
+            if (g == 1) return s;
+        }
     return 0;
+}
+
+/**
+ * Prints "Hello, world!" in 25 different languages in a random order.
+ * The order is determined by a random starting index and a random
+ * coprime stride to ensure that all messages are printed without
+ * repetition.
+ *
+ * Note: Right-to-left languages may not display correctly in all
+ * terminals. Use a bidi-aware terminal for proper display.
+ */
+func main() {
+    rand_seed(0);
+    let n = 25;
+    let start = rand_int(n);
+    let step = random_coprime_stride(n);
+    for (let i = 0; i < n; i = i + 1) {
+        let index = (start + i * step) % n;
+        printl_s(helloWorldMessages[index]);
+    }
 }

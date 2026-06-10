@@ -5,12 +5,75 @@
 
 module hello;
 
+import std.integer;
 import std.io;
+import std.rand;
+
+// Top 25 languages by total speakers. Source: Babel, arXiv:2503.00865v1
+func getHelloWorldMessage(i: int) -> string {
+    case (i) {
+         0 => return "Hello, world! This is Dea/L0.";
+         1 => return "你好，世界！这是 Dea/L0。";
+         2 => return "नमस्ते, दुनिया! यह Dea/L0 है।";
+         3 => return "¡Hola, mundo! Esto es Dea/L0.";
+         4 => return "مرحبًا، يا عالم! هذا Dea/L0.";
+         5 => return "Bonjour le monde ! Ceci est Dea/L0.";
+         6 => return "হ্যালো, বিশ্ব! এটি Dea/L0।";
+         7 => return "Olá, mundo! Isto é Dea/L0.";
+         8 => return "Привет, мир! Это Dea/L0.";
+         9 => return "ہیلو، دنیا! یہ Dea/L0 ہے۔";
+        10 => return "Halo, dunia! Ini Dea/L0.";
+        11 => return "Hallo, Welt! Das ist Dea/L0.";
+        12 => return "こんにちは、世界！これは Dea/L0 です。";
+        13 => return "Hujambo, dunia! Hii ni Dea/L0.";
+        14 => return "Kumusta, mundo! Ito ay Dea/L0.";
+        15 => return "வணக்கம், உலகமே! இது Dea/L0.";
+        16 => return "Xin chào, thế giới! Đây là Dea/L0.";
+        17 => return "Merhaba, dünya! Bu Dea/L0.";
+        18 => return "Ciao, mondo! Questo è Dea/L0.";
+        19 => return "Halo, donya! Iki Dea/L0.";
+        20 => return "안녕하세요, 세계! 이것은 Dea/L0입니다.";
+        21 => return "Sannu, duniya! Wannan Dea/L0 ne.";
+        22 => return "سلام، دنیا! این Dea/L0 است.";
+        23 => return "สวัสดีโลก! นี่คือ Dea/L0";
+         _ => return "မင်္ဂလာပါ၊ ကမ္ဘာကြီး! ဤသည်မှာ Dea/L0 ဖြစ်သည်။";
+    }
+}
 
 /**
- * Main entry point for the hello world example.
+ * Returns a random integer in the range [0, n) that is coprime to n.
+ * A number s is coprime to n if gcd(s, n) == 1, meaning they have no
+ * common factors other than 1.
+ *
+ * @param n The upper bound (exclusive).
+ * @return A random integer coprime to n.
+ */
+func random_coprime_stride(n: int) -> int {
+    if (n > 1)
+        while (true) {
+            let s = rand_dice(n - 1, 1);
+            let g = gcd(s, n) as int;
+            if (g == 1) return s;
+        }
+    return 0;
+}
+
+/**
+ * Prints "Hello, world!" in 25 different languages in a random order.
+ * The order is determined by a random starting index and a random
+ * coprime stride to ensure that all messages are printed without
+ * repetition.
+ *
+ * Note: Right-to-left languages may not display correctly in all
+ * terminals. Use a bidi-aware terminal for proper display.
  */
 func main() {
-    let hello = "Hello, World!";
-    printl_s(hello);
+    rand_seed(0);
+    let n = 25;
+    let start = rand_int(n);
+    let step = random_coprime_stride(n);
+    for (let i = 0; i < n; i = i + 1) {
+        let index = (start + i * step) % n;
+        printl_s(getHelloWorldMessage(index));
+    }
 }

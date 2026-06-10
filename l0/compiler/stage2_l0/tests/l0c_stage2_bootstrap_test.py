@@ -188,12 +188,12 @@ def main() -> int:
         hello_run = run([hello_output])
         hello_out = Path(f"{hello_output}.out")
         hello_out.write_text(hello_run.stdout, encoding="utf-8")
-        assert_contains(hello_out, "Hello, World!")
+        assert_contains(hello_out, "Hello, world! This is Dea/L0.")
 
         run_output = BUILD_TESTS_ROOT / f"l0_stage2_bootstrap_run_{os.getpid()}.out"
         run_result = run([l0c, "--run", "-P", "examples", "hello"], env=clean_env())
         run_output.write_text(run_result.stdout, encoding="utf-8")
-        assert_contains(run_output, "Hello, World!")
+        assert_contains(run_output, "Hello, world! This is Dea/L0.")
 
         alt_dea_build = make_temp_dir("l0_stage2_bootstrap_keepc.", BUILD_TESTS_ROOT)
         build_stage2(repo_relative(alt_dea_build), keep_c=True)
