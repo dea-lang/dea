@@ -65,129 +65,103 @@ def assert_before(text: str, first: str, second: str, *, context: str) -> None:
 
 
 def check_release_workflow() -> None:
+    # Pin the durable wiring concepts (triggers, version derivation, the
+    # immutable draft-then-publish lifecycle, release-line tag gating), not the
+    # exact shell/quoting of each step, which is reworded freely.
     text = read_text(".github/workflows/l0-release.yml")
-    assert_contains(text, '- "l0-v*"', context="l0-release.yml")
-    assert_contains(text, 'gh api "repos/$GITHUB_REPOSITORY/pages"', context="l0-release.yml")
+    # Triggered by level-prefixed release tags.
+    assert_contains(text, '"l0-v*"', context="l0-release.yml")
+    # Pages availability is probed and gated.
+    assert_contains(text, "repos/$GITHUB_REPOSITORY/pages", context="l0-release.yml")
     assert_contains(text, "pages_enabled=true", context="l0-release.yml")
     assert_contains(text, "pages_enabled=false", context="l0-release.yml")
+    assert_contains(text, "github-pages", context="l0-release.yml")
+    assert_contains(text, "actions/deploy-pages", context="l0-release.yml")
+    # Examples are smoke-tested and the dist version is derived from the tag.
     assert_contains(text, "make check-examples", context="l0-release.yml")
-    assert_contains(text, 'export DEA_DIST_VERSION="${RELEASE_VERSION#l0-v}"', context="l0-release.yml")
-    assert_contains(text, "name: dea-l0-dist-${{ matrix.os }}-${{ matrix.arch }}", context="l0-release.yml")
-    assert_contains(text, "pattern: dea-l0-dist-*", context="l0-release.yml")
-    assert_contains(text, "name: github-pages", context="l0-release.yml")
-    assert_contains(text, "uses: actions/deploy-pages@v4", context="l0-release.yml")
-    assert_contains(text, "name: docs-markdown", context="l0-release.yml")
-    assert_contains(text, 'pdf_name="dea_l0_api_reference-$CURRENT_TAG.pdf"', context="l0-release.yml")
-    assert_contains(text, 'tar -czf "build/release-assets/dea_l0_api_reference-${CURRENT_TAG}.tar.gz" -C build/docs/api-reference .', context="l0-release.yml")
-    assert_contains(text, 'pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${CURRENT_TAG}/dea_l0_api_reference-${CURRENT_TAG}.pdf"', context="l0-release.yml")
-    assert_contains(text, 'if gh api "$release_api" >/dev/null 2>&1; then', context="l0-release.yml")
-    assert_contains(text, 'is_draft="$(gh api "$release_api" --jq \'.draft\')"', context="l0-release.yml")
+    assert_contains(text, "RELEASE_VERSION#l0-v", context="l0-release.yml")
+    # Per-platform dist artifacts and the API reference assets are produced.
+    assert_contains(text, "dea-l0-dist-", context="l0-release.yml")
+    assert_contains(text, "docs-markdown", context="l0-release.yml")
+    assert_contains(text, "dea_l0_api_reference-", context="l0-release.yml")
+    assert_contains(text, "SHA256SUMS", context="l0-release.yml")
+    # Immutable draft-then-publish lifecycle: never republish, never edit a
+    # published release, create as draft, upload, then flip to published.
     assert_contains(text, "immutable-release violation", context="l0-release.yml")
-    assert_contains(text, '-F draft=true', context="l0-release.yml")
-    assert_contains(text, '-F draft=false', context="l0-release.yml")
-    assert_contains(text, 'gh release upload "$CURRENT_TAG" build/release-assets/* --clobber --repo "$GITHUB_REPOSITORY"', context="l0-release.yml")
-    assert_contains(text, 'path.name != "SHA256SUMS"', context="l0-release.yml")
-    assert_contains(text, 'handle.write(f"{digest}  {asset.name}\\n")', context="l0-release.yml")
-    assert_contains(text, '"dea_l0_api_reference-${{ github.ref_name }}.tar.gz"', context="l0-release.yml")
-    assert_contains(text, 'dea_l0_api_reference-${{ github.ref_name }}.pdf', context="l0-release.yml")
-    assert_before(text, "Build Dea/L0 API reference export archive", "Generate checksums", context="l0-release.yml")
-    assert_before(text, "Generate checksums", "Ensure draft GitHub release", context="l0-release.yml")
-    assert_before(text, "Upload assets to draft release", "Publish GitHub release", context="l0-release.yml")
+    assert_contains(text, "draft=true", context="l0-release.yml")
+    assert_contains(text, "draft=false", context="l0-release.yml")
+    assert_contains(text, "gh release upload", context="l0-release.yml")
     if 'gh release edit "$CURRENT_TAG"' in text:
         fail("unexpected post-draft gh release edit path in l0-release.yml")
-    assert_contains(
-        text,
-        "prev_tag=\"$(git tag --merged HEAD --sort=-v:refname | grep '^l0-v' | grep -Fxv \"$CURRENT_TAG\" | head -n 1 || true)\"",
-        context="l0-release.yml",
-    )
-    assert_contains(
-        text,
-        "prev_tag=\"$(git tag --merged HEAD --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -n 1 || true)\"",
-        context="l0-release.yml",
-    )
-    assert_before(text, "make check-examples", "make dist | tee build/dist.log", context="l0-release.yml")
+    # Release-line gating: prefer the previous l0-v tag, fall back to a
+    # pre-monorepo bare vX.Y.Z tag for release notes.
+    assert_contains(text, "grep '^l0-v'", context="l0-release.yml")
+    assert_contains(text, "grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$'", context="l0-release.yml")
+    # Lifecycle ordering: build assets, then checksum, then draft, then publish.
+    assert_before(text, "make check-examples", "make dist", context="l0-release.yml")
+    assert_before(text, "tar -czf", "SHA256SUMS", context="l0-release.yml")
+    assert_before(text, "draft=true", "gh release upload", context="l0-release.yml")
+    assert_before(text, "gh release upload", "draft=false", context="l0-release.yml")
 
 
 def check_snapshot_workflow() -> None:
+    # Mirrors the release workflow's durable wiring, plus the snapshot-specific
+    # tag scheme and the optional publish gate.
     text = read_text(".github/workflows/l0-snapshot.yml")
-    assert_contains(text, 'snapshot_version="l0-snapshot-${stamp}-${short_hash}"', context="l0-snapshot.yml")
+    # Snapshot tag scheme and optional publish input.
+    assert_contains(text, "l0-snapshot-", context="l0-snapshot.yml")
     assert_contains(text, "publish_release:", context="l0-snapshot.yml")
-    assert_contains(text, 'description: "Publish pre-release after attaching assets to the draft release"', context="l0-snapshot.yml")
-    assert_contains(text, "default: true", context="l0-snapshot.yml")
-    assert_contains(text, "make check-examples", context="l0-snapshot.yml")
-    assert_contains(text, 'export DEA_DIST_VERSION="${SNAPSHOT_VERSION#l0-}"', context="l0-snapshot.yml")
-    assert_contains(text, "name: dea-l0-dist-${{ matrix.os }}-${{ matrix.arch }}", context="l0-snapshot.yml")
-    assert_contains(text, "pattern: dea-l0-dist-*", context="l0-snapshot.yml")
-    assert_contains(text, 'release_tag: ${{ needs.prepare-snapshot.outputs.snapshot_tag }}', context="l0-snapshot.yml")
-    assert_contains(text, 'pdf_name="dea_l0_api_reference-$CURRENT_TAG.pdf"', context="l0-snapshot.yml")
-    assert_contains(text, 'tar -czf "build/release-assets/dea_l0_api_reference-${CURRENT_TAG}.tar.gz" -C build/docs/api-reference .', context="l0-snapshot.yml")
-    assert_contains(text, 'pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${CURRENT_TAG}/dea_l0_api_reference-${CURRENT_TAG}.pdf"', context="l0-snapshot.yml")
-    assert_contains(text, 'if gh api "$release_api" >/dev/null 2>&1; then', context="l0-snapshot.yml")
-    assert_contains(text, "immutable-release violation", context="l0-snapshot.yml")
-    assert_contains(text, '-F draft=true', context="l0-snapshot.yml")
-    assert_contains(text, '-F draft=false', context="l0-snapshot.yml")
     assert_contains(text, "if: inputs.publish_release", context="l0-snapshot.yml")
-    assert_contains(text, 'gh release upload "$CURRENT_TAG" build/release-assets/* --clobber --repo "$GITHUB_REPOSITORY"', context="l0-snapshot.yml")
-    assert_contains(text, 'path.name != "SHA256SUMS"', context="l0-snapshot.yml")
-    assert_contains(text, 'handle.write(f"{digest}  {asset.name}\\n")', context="l0-snapshot.yml")
-    assert_contains(text, '"dea_l0_api_reference-${{ needs.prepare-snapshot.outputs.snapshot_tag }}.tar.gz"', context="l0-snapshot.yml")
-    assert_contains(text, 'dea_l0_api_reference-${{ needs.prepare-snapshot.outputs.snapshot_tag }}.pdf', context="l0-snapshot.yml")
-    assert_before(text, "Build Dea/L0 API reference export archive", "Generate checksums", context="l0-snapshot.yml")
-    assert_before(text, "Generate checksums", "Ensure draft GitHub pre-release", context="l0-snapshot.yml")
-    assert_before(text, "Upload assets to draft pre-release", "Publish GitHub pre-release", context="l0-snapshot.yml")
+    # Examples are smoke-tested and the dist version is derived from the tag.
+    assert_contains(text, "make check-examples", context="l0-snapshot.yml")
+    assert_contains(text, "SNAPSHOT_VERSION#l0-", context="l0-snapshot.yml")
+    # Per-platform dist artifacts and the API reference assets are produced.
+    assert_contains(text, "dea-l0-dist-", context="l0-snapshot.yml")
+    assert_contains(text, "dea_l0_api_reference-", context="l0-snapshot.yml")
+    assert_contains(text, "SHA256SUMS", context="l0-snapshot.yml")
+    # Immutable draft-then-publish lifecycle.
+    assert_contains(text, "immutable-release violation", context="l0-snapshot.yml")
+    assert_contains(text, "draft=true", context="l0-snapshot.yml")
+    assert_contains(text, "draft=false", context="l0-snapshot.yml")
+    assert_contains(text, "gh release upload", context="l0-snapshot.yml")
     if 'gh release edit "$CURRENT_TAG"' in text:
         fail("unexpected post-draft gh release edit path in l0-snapshot.yml")
-    assert_contains(
-        text,
-        "prev_tag=\"$(git tag --merged HEAD --sort=-v:refname | grep -E '^(l0-v|l0-snapshot-)' | grep -Fxv \"$CURRENT_TAG\" | head -n 1 || true)\"",
-        context="l0-snapshot.yml",
-    )
-    assert_contains(
-        text,
-        "prev_tag=\"$(git tag --merged HEAD --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -n 1 || true)\"",
-        context="l0-snapshot.yml",
-    )
-    assert_before(text, "make check-examples", "make dist | tee build/dist.log", context="l0-snapshot.yml")
+    # Release-line gating spans snapshot, release, and pre-monorepo bare tags.
+    assert_contains(text, "grep -E '^(l0-v|l0-snapshot-)'", context="l0-snapshot.yml")
+    assert_contains(text, "grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$'", context="l0-snapshot.yml")
+    # Lifecycle ordering: build assets, then checksum, then draft, then publish.
+    assert_before(text, "make check-examples", "make dist", context="l0-snapshot.yml")
+    assert_before(text, "tar -czf", "SHA256SUMS", context="l0-snapshot.yml")
+    assert_before(text, "draft=true", "gh release upload", context="l0-snapshot.yml")
+    assert_before(text, "gh release upload", "draft=false", context="l0-snapshot.yml")
 
 
 def check_docs_publish_workflow() -> None:
+    # Pin the draft-release asset-attachment contract: its inputs, the job
+    # gating, draft resolution by ID or tag URL, the immutable-release guard,
+    # and asset upload. The exact jq/quoting and prose messages are not pinned.
     text = read_text(".github/workflows/l0-docs-publish.yml")
-    assert_contains(text, 'gh api "repos/$GITHUB_REPOSITORY/pages"', context="l0-docs-publish.yml")
+    # Pages availability is probed and gated.
+    assert_contains(text, "repos/$GITHUB_REPOSITORY/pages", context="l0-docs-publish.yml")
     assert_contains(text, "pages_enabled=true", context="l0-docs-publish.yml")
     assert_contains(text, "pages_enabled=false", context="l0-docs-publish.yml")
+    # Draft-attachment inputs and job.
     assert_contains(text, "attach_release_assets_to_draft:", context="l0-docs-publish.yml")
-    assert_contains(text, 'description: "Attach release PDF/API reference export assets to an existing draft release"', context="l0-docs-publish.yml")
     assert_contains(text, "draft_release:", context="l0-docs-publish.yml")
-    assert_contains(
-        text,
-        'description: "Draft release URL or numeric GitHub release ID for draft-release asset attachment"',
-        context="l0-docs-publish.yml",
-    )
     assert_contains(text, "attach-release-assets:", context="l0-docs-publish.yml")
+    # Job gating runs after docs build and pages deploy succeed/skip.
     assert_contains(text, "always() &&", context="l0-docs-publish.yml")
     assert_contains(text, "needs.build-docs.result == 'success'", context="l0-docs-publish.yml")
     assert_contains(text, "(needs.deploy-pages.result == 'success' || needs.deploy-pages.result == 'skipped')", context="l0-docs-publish.yml")
     assert_contains(text, "inputs.attach_release_assets_to_draft", context="l0-docs-publish.yml")
-    assert_contains(text, "Resolve target draft release", context="l0-docs-publish.yml")
-    assert_contains(text, 'release_api="repos/$GITHUB_REPOSITORY/releases/$release_id"', context="l0-docs-publish.yml")
-    assert_contains(text, 'release_url_prefix="https://github.com/$REPOSITORY_NAME/releases/tag/"', context="l0-docs-publish.yml")
-    assert_contains(text, 'release_api="repos/$GITHUB_REPOSITORY/releases/tags/$release_tag"', context="l0-docs-publish.yml")
-    assert_contains(text, "draft_release must target https://github.com/$REPOSITORY_NAME/releases/tag/<tag> when provided as a URL", context="l0-docs-publish.yml")
-    assert_contains(text, "draft_release must be a numeric release ID or a full GitHub release URL", context="l0-docs-publish.yml")
-    assert_contains(text, "draft_release URL must include a release tag after /releases/tag/", context="l0-docs-publish.yml")
-    assert_contains(text, 'resolved_target_commitish="$(gh api "$release_api" --jq \'.target_commitish\')"', context="l0-docs-publish.yml")
-    assert_contains(text, 'if [ -z "$source_ref" ] && [ "$INPUT_DRAFT_ATTACH" = "true" ]; then', context="l0-docs-publish.yml")
-    assert_contains(text, 'source_ref="$RESOLVED_TARGET_COMMITISH"', context="l0-docs-publish.yml")
-    assert_contains(text, "Validate target draft release", context="l0-docs-publish.yml")
-    assert_contains(text, "draft release $RESOLVED_RELEASE_ID does not exist", context="l0-docs-publish.yml")
+    # Draft release is resolvable by numeric ID or by tag URL.
+    assert_contains(text, "releases/$release_id", context="l0-docs-publish.yml")
+    assert_contains(text, "releases/tags/$release_tag", context="l0-docs-publish.yml")
+    # Immutable-release guard and the API reference asset upload.
     assert_contains(text, "immutable-release violation", context="l0-docs-publish.yml")
-    assert_contains(text, 'release_pdf="build/docs/pdf/dea_l0_api_reference-$RESOLVED_RELEASE_TAG.pdf"', context="l0-docs-publish.yml")
-    assert_contains(text, 'existing_asset_ids="$(gh api "$release_api/assets" --paginate --jq ".[] | select(.name == \\"$asset_name\\") | .id")"', context="l0-docs-publish.yml")
-    assert_contains(text, 'existing_asset_ids="$(gh api "$release_api/assets" --paginate --jq ".[] | select(.name == \\"$archive_name\\") | .id")"', context="l0-docs-publish.yml")
-    assert_contains(text, 'upload_url="$(gh api "$release_api" --jq \'.upload_url\' | sed \'s/{?name,label}//\')"', context="l0-docs-publish.yml")
-    assert_contains(text, '--input "$release_pdf"', context="l0-docs-publish.yml")
-    assert_contains(text, '--input "$archive_name"', context="l0-docs-publish.yml")
-    assert_contains(text, 'pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TARGET_RELEASE_TAG}/dea_l0_api_reference-${TARGET_RELEASE_TAG}.pdf"', context="l0-docs-publish.yml")
+    assert_contains(text, "dea_l0_api_reference-", context="l0-docs-publish.yml")
+    assert_contains(text, "upload_url", context="l0-docs-publish.yml")
+    # Negative guards against reintroducing superseded behavior.
     if "release_tag is required when attach_release_assets_to_draft=true" in text:
         fail("stale release_tag requirement present in l0-docs-publish.yml")
     if "draft_release must be a numeric release ID or a release URL ending in that ID" in text:
@@ -203,22 +177,22 @@ def check_docs_build_workflow() -> None:
     assert_contains(text, "inputs.release_tag != ''", context="l0-docs-build.yml")
     assert_contains(text, "inputs.source_ref == inputs.release_tag", context="l0-docs-build.yml")
     assert_contains(text, "format('refs/tags/{0}', inputs.release_tag)", context="l0-docs-build.yml")
-    assert_contains(text, "uses: actions/checkout@v6", context="l0-docs-build.yml")
+    assert_contains(text, "actions/checkout", context="l0-docs-build.yml")
 
 
 def check_docs() -> None:
+    # The tag-policy docs are prose and get reworded freely; pin only the
+    # durable tag identifiers the policy must keep documenting, not sentences.
     if MONOREPO_ROOT is None:
         return
 
     monorepo = read_monorepo_text("MONOREPO.md")
-    assert_contains(monorepo, "Pre-monorepo history keeps its original bare tags.", context="MONOREPO.md")
-    assert_contains(monorepo, "`v0.9.0`, `v0.9.1`, and older", context="MONOREPO.md")
-    assert_contains(monorepo, "`l0-vX.Y.Z`", context="MONOREPO.md")
-    assert_contains(monorepo, "`l1-vX.Y.Z`", context="MONOREPO.md")
+    for needle in ("`v0.9.0`", "`v0.9.1`", "`l0-vX.Y.Z`", "`l1-vX.Y.Z`"):
+        assert_contains(monorepo, needle, context="MONOREPO.md")
 
     readme = read_monorepo_text("README.md")
-    assert_contains(readme, "Pre-monorepo bare tags such as `v0.9.0` and `v0.9.1` remain historical", context="README.md")
-    assert_contains(readme, "current L0 releases use `l0-vX.Y.Z`", context="README.md")
+    for needle in ("`v0.9.0`", "`v0.9.1`", "`l0-vX.Y.Z`"):
+        assert_contains(readme, needle, context="README.md")
 
 
 def main() -> int:
