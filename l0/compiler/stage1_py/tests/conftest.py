@@ -250,7 +250,7 @@ def write_l0_file(temp_project: Path):
         parts = module_name.split(".")
         file_path = temp_project.joinpath(*parts).with_suffix(".l0")
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(dedent(content), newline="\n")
+        file_path.write_text(dedent(content), encoding="utf-8", newline="\n")
         return file_path
 
     return _write
@@ -283,7 +283,7 @@ def write_l0_file_to():
         parts = module_name.split(".")
         file_path = root.joinpath(*parts).with_suffix(".l0")
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(dedent(content), newline="\n")
+        file_path.write_text(dedent(content), encoding="utf-8", newline="\n")
         return file_path
 
     return _write
@@ -358,7 +358,7 @@ def compile_and_run(runtime_dir: Path):
         exe_name = "output.exe" if os.name == "nt" else "output"
         exe_file = work_dir / exe_name
 
-        c_file.write_text(c_code)
+        c_file.write_text(c_code, encoding="utf-8")
 
         if flag_family == "msvc":
             command = [
@@ -434,7 +434,7 @@ def analyze_single(temp_project: Path, stage1_root: Path):
         parts = module_name.split(".")
         file_path = temp_project.joinpath(*parts).with_suffix(".l0")
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(dedent(src), newline="\n")
+        file_path.write_text(dedent(src), encoding="utf-8", newline="\n")
 
         driver = L0Driver()
         driver.search_paths.add_system_root(stage1_root.parent / "shared" / "l0" / "stdlib")
