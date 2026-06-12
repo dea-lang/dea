@@ -74,8 +74,8 @@ validation (via `l1-ci.yml`) remains bootstrap-only until the above prerequisite
 Dea/L0 works as a self-contained project inside [`l0/`](l0/). From the monorepo root, `cd l0` before running build,
 test, or docs commands.
 
-- Canonical project overview and quickstart: [`README.md`](README.md)
-- L0 subtree pointer: [`l0/README.md`](l0/README.md)
+- Dea-family monorepo overview: [`README.md`](README.md)
+- Canonical L0 overview and quickstart: [`l0/README.md`](l0/README.md)
 - L0 contributor guidance: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Repository security policy: [`SECURITY.md`](SECURITY.md)
 - L0 AI guidance: [`l0/CLAUDE.md`](l0/CLAUDE.md)

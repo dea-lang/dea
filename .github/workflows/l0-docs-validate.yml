@@ -8,7 +8,7 @@ on:
     paths:
       - ".github/workflows/**"
       - "README.md"
-      - "README-WINDOWS.md"
+      - "l0/README-WINDOWS.md"
       - "CONTRIBUTING.md"
       - "CLAUDE.md"
       - "THIRD_PARTY_NOTICES"
@@ -33,7 +33,7 @@ on:
     paths:
       - ".github/workflows/**"
       - "README.md"
-      - "README-WINDOWS.md"
+      - "l0/README-WINDOWS.md"
       - "CONTRIBUTING.md"
       - "CLAUDE.md"
       - "THIRD_PARTY_NOTICES"

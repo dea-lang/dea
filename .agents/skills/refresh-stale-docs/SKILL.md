@@ -42,7 +42,7 @@ Do not sweep `work/plans/**` or archived docs unless the task explicitly asks fo
 - L1 numeric/bootstrap changes: `l1/docs/reference/project-status.md`, `l1/docs/reference/design-decisions.md`,
   `l1/docs/reference/standard-library.md`, `l1/docs/reference/architecture.md`, `l1/README.md`, and
   `l1/compiler/stage1_l0/README.md`
-- L0 workflow/release/docs changes: `README.md`, `README-WINDOWS.md`, `l0/docs/user/**`,
+- L0 workflow/release/docs changes: `README.md`, `l0/README.md`, `l0/README-WINDOWS.md`, `l0/docs/user/**`,
   `l0/docs/reference/project-status.md`, `CONTRIBUTING.md`, and relevant `l0/docs/specs/**`
 - shared compiler or diagnostic changes: `docs/specs/compiler/**` and root `docs/reference/**`
 

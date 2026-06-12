@@ -1,9 +1,12 @@
 # Dea/L0 on Windows
 
-This document is the Windows-specific addendum to [README.md](README.md).
+This document is the Windows-specific addendum to [l0/README.md](README.md). It covers building, installing, and
+developing the Dea/L0 compiler from the repository on Windows.
 
-The L0 project now lives under `l0/` inside the Dea monorepo. Run the commands in this document from the `l0/` directory
-unless noted otherwise.
+Run the commands in this document from the `l0/` directory unless noted otherwise.
+
+For using a shipped Dea/L0 distribution archive on Windows (rather than the repository), see
+[l0/docs/user/README-WINDOWS.md](docs/user/README-WINDOWS.md) instead.
 
 - If you want to build, install, and use `l0c` on Windows, read the next section.
 - If you are developing Dea/L0 itself, read the developer section after that.
