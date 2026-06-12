@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from l0_analysis import AnalysisResult
 from l0_ast_printer import format_module
 from l0_backend import Backend
+from l0_compilation import CompilationUnit
 from l0_context import CompilationContext
 from l0_diagnostics import Diagnostic
 from l0_driver import L0Driver, SourceEncodingError, load_source_utf8
@@ -269,7 +270,7 @@ def build_compilation_context(args: argparse.Namespace) -> CompilationContext:
     )
 
 
-def _run_analysis(args):
+def _run_analysis(args: argparse.Namespace):
     """Run the analysis pipeline.
 
     Args:
@@ -290,7 +291,7 @@ def _run_analysis(args):
     return result, context, exit_code
 
 
-def _get_module_names(args, cu) -> List[str]:
+def _get_module_names(args: argparse.Namespace, cu: CompilationUnit) -> List[str]:
     """Get the list of module names based on the `--all-modules` flag.
 
     Args:
@@ -331,7 +332,7 @@ def _find_cc() -> Optional[str]:
     return None
 
 
-def _compiler_flag_family(compiler):
+def _compiler_flag_family(compiler: str):
     """Determine the compiler family for flag selection using a simple heuristic.
 
     Uses pattern matching to handle cases like "gcc-10" or "clang-14" on Unix
@@ -465,7 +466,7 @@ def _split_c_options(raw_options: Optional[str]) -> List[str]:
     return raw_options.split()
 
 
-def _get_optimize_flag(flag_family, extra_opts) -> Optional[str]:
+def _get_optimize_flag(flag_family: str, extra_opts: List[str]) -> Optional[str]:
     """Determine the appropriate optimization flag for the compiler family.
 
     Args:
@@ -821,7 +822,7 @@ def _format_token_dump_text(tok) -> str:
     return repr(tok.text)
 
 
-def _dump_tokens_for_file(path: Path, include_eof: bool, context=None) -> int:
+def _dump_tokens_for_file(path: Path, include_eof: bool, context: Optional[CompilationContext] = None) -> int:
     """Dump lexer tokens for a single file.
 
     Args:
@@ -1219,7 +1220,7 @@ def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.
         parser.error(f"option '{flag_name}' is valid only with modes: {modes_msg}")
 
 
-def main(argv=None) -> None:
+def main(argv: Optional[List[str]] = None) -> None:
     """Parse CLI arguments, dispatch the selected mode, and exit.
 
     Args:

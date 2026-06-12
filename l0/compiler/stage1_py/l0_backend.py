@@ -22,6 +22,7 @@ from typing import List, Optional, Dict, Set, NoReturn, Tuple, Any, Callable
 
 from l0_analysis import AnalysisResult, VarRefResolution
 from l0_ast import (
+    Node, TypeRef,
     FuncDecl, StructDecl, EnumDecl, EnumVariant, LetDecl,
     Stmt, Block, LetStmt, AssignStmt, ExprStmt, IfStmt, WhileStmt, ReturnStmt, DropStmt, MatchStmt, CaseStmt, Expr,
     IntLiteral, StringLiteral, BoolLiteral, VarRef, UnaryOp, BinaryOp, CallExpr, IndexExpr,
@@ -149,7 +150,7 @@ class Backend:
             return a.module == b.module and a.name == b.name
         return False
 
-    def _is_int_assignable(self, typ) -> bool:
+    def _is_int_assignable(self, typ: Type) -> bool:
         """Check if a type is assignable to an integer.
 
         Args:
@@ -160,7 +161,7 @@ class Backend:
         """
         return typ in (BuiltinType("int"), BuiltinType("byte"))
 
-    def _is_binary_op_enabled(self, typ) -> bool:
+    def _is_binary_op_enabled(self, typ: Type) -> bool:
         """Check if a type supports binary operations.
 
         Currently only int, byte, and bool support binary operations.
@@ -628,7 +629,7 @@ class Backend:
     # Internal compiler error handling
     # -------------------------------------------------------------------------
 
-    def ice(self, message: str, *, node=None) -> NoReturn:
+    def ice(self, message: str, *, node: Optional[Node] = None) -> NoReturn:
         """Raise an internal compiler error.
 
         Args:
@@ -646,7 +647,7 @@ class Backend:
         span = getattr(node, "span", None) if node is not None else None
         raise InternalCompilerError(message, ICELocation(filename=filename, span=span))
 
-    def _expect_expr_type(self, expr) -> Type:
+    def _expect_expr_type(self, expr: Expr) -> Type:
         """Look up an expression's type and fail if missing.
 
         Args:
@@ -663,7 +664,7 @@ class Backend:
             self.ice("[ICE-1310] missing inferred type for expression", node=expr)
         return ty
 
-    def _emit_line_directive(self, node) -> None:
+    def _emit_line_directive(self, node: Node) -> None:
         """Emit #line directive if node has span info and context allows it.
 
         Args:
@@ -3192,7 +3193,7 @@ class Backend:
     # Type resolution helpers
     # -------------------------------------------------------------------------
 
-    def _resolve_type_ref(self, tref, module_name: str):
+    def _resolve_type_ref(self, tref: TypeRef, module_name: str):
         """Resolve an AST TypeRef into an l0_types.Type.
 
         This is needed so `let x: int? = null;` uses the declared type (int?) instead of
@@ -3274,7 +3275,7 @@ class Backend:
     # Utilities
     # -------------------------------------------------------------------------
 
-    def _int_type_size(self, src_ty):
+    def _int_type_size(self, src_ty: Type):
         """Get the byte size of an integer builtin type.
 
         Args:

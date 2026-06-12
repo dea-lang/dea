@@ -8,11 +8,11 @@ All high-level orchestration logic and decisions live in the Backend.
 #  Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import Dict, List, NoReturn, Optional, Set, Tuple
+from typing import Callable, Dict, List, NoReturn, Optional, Set, Tuple
 
 from l0_analysis import AnalysisResult
 from l0_ast import (
-    EnumDecl, EnumVariant, FuncDecl, LetDecl, StructDecl,
+    EnumDecl, EnumVariant, Expr, FuncDecl, LetDecl, Node, StructDecl,
 )
 from l0_internal_error import InternalCompilerError, ICELocation
 from l0_signatures import EnumInfo, StructInfo
@@ -560,7 +560,7 @@ class CEmitter:
         self.out.emit('#include "l0_runtime.h"')
         self.out.emit()
 
-    def emit_line_directive(self, node, current_module: str) -> None:
+    def emit_line_directive(self, node: Node, current_module: str) -> None:
         """Emit #line directive for debugging generated C.
 
         Args:
@@ -689,7 +689,7 @@ class CEmitter:
         self.out.emit("#endif")
         self.out.emit()
 
-    def emit_let_declaration(self, module_name: str, decl: LetDecl, let_type: Type, let_initializer_callback) -> None:
+    def emit_let_declaration(self, module_name: str, decl: LetDecl, let_type: Type, let_initializer_callback: Callable[[Expr, Type], str]) -> None:
         """Emit a single top-level let declaration as a static variable.
 
         Args:
@@ -984,7 +984,7 @@ class CEmitter:
         self,
         enum_type: EnumType,
         c_tag_expr: str,
-        field_expr_for_variant_field,
+        field_expr_for_variant_field: Callable[[str, str], str],
         *,
         missing_info_is_ice: bool,
     ) -> None:

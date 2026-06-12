@@ -226,6 +226,8 @@ func ps_parse_let_stmt(self: ParserState*) -> StmtId? {
  * Parse an `if` statement.
  *
  * @param self Parser state to advance.
+ * @param guard_dangling_else When true, reject an `else` directly following the
+ *     `if` as an ambiguous dangling `else` (used inside `case` arms).
  * @return Parsed `if` statement id, or `null` on error.
  */
 func ps_parse_if_stmt(self: ParserState*, guard_dangling_else: bool) -> StmtId? {

@@ -828,8 +828,8 @@ class ExpressionTypeChecker:
 
     def _infer_expr(self, expr: Optional[Expr], *,
                     widening_type: Optional[Type] = None,
-                    context_code="TYP-0319",
-                    context_descriptor="expression") -> Optional[Type]:
+                    context_code: str = "TYP-0319",
+                    context_descriptor: str = "expression") -> Optional[Type]:
         """Infer the type of an expression.
 
         Args:
