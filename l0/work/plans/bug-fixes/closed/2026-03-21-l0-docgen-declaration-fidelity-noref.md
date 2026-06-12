@@ -48,8 +48,9 @@ The docs pipeline currently combines two imperfect inputs for `.l0` declarations
 That combination loses language fidelity because Doxygen XML does not preserve the full original `.l0` declaration
 surface:
 
-- Commit `1c09888` introduced explicit lowering of `.l0` function declarations in the shadow filter to satisfy Doxygen
-  strict `@param` validation. That caused the function C-syntax regression and function-side nullable loss.
+- A prior docgen strict-validation change introduced explicit lowering of `.l0` function declarations in the shadow
+  filter to satisfy Doxygen strict `@param` validation. That caused the function C-syntax regression and function-side
+  nullable loss.
 - Top-level `let` declarations and nullable struct fields were already lossy in the original docs platform, because the
   XML never preserved their full original source text.
 

@@ -30,8 +30,8 @@
 
 ## Summary
 
-Commit `43f31cb1d240d27f35998170a4446f1edc22459a` closed many native implementation gaps against the Python L0 oracle,
-but the release audit still found diagnostic-code drift in L0 Stage 2 and L1 Stage 1.
+A prior diagnostic-code parity pass closed many native implementation gaps against the Python L0 oracle, but the release
+audit still found diagnostic-code drift in L0 Stage 2 and L1 Stage 1.
 
 The remaining native gaps covered by this plan are:
 

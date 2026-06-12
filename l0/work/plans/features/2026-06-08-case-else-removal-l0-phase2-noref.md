@@ -18,7 +18,7 @@
     [work/plans/refactors/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../../../work/plans/refactors/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):
     all in-tree compiled `.l0` `case … else` defaults, including `.l0` files under `l1/`, must already be `_ =>` before
     this plan removes the `else` grammar.
-  - The committed bug-fix (`ff8fcd4f`) for `PAR-0123`. Independent of the L1 plan
+  - The committed `PAR-0123` bug-fix. Independent of the L1 plan
     ([l1/work/plans/features/2026-06-08-case-else-removal-l1-phase2-noref.md](../../../../l1/work/plans/features/2026-06-08-case-else-removal-l1-phase2-noref.md));
     intended to land second.
 - Subsystem: Parser / grammar / diagnostics / docs / ADR

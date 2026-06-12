@@ -17,10 +17,9 @@
   - `l1/compiler/shared/l1/stdlib/std/` — mirrored stdlib internals
   - `examples/` under both `l0/` and `l1/`
   - User-facing docs under `l0/docs/` and `l1/docs/`
-- Origin: `l0/work/plans/features/closed/...string-concatenation...` and the L1 predecessor landed native `+` for
-  `string` in both levels (commits `6715650` for L0, `3ea0a8b` for L1). With both levels at parity, the `concat3_s` /
-  `concat4_s` wrappers become a legacy spelling rather than a required indirection. `concat_s` itself remains the binary
-  helper that backs the operator's lowering and stays in the public stdlib surface.
+- Origin: the L0 and L1 string-concatenation feature plans landed native `+` for `string` in both levels. With both
+  levels at parity, the `concat3_s` / `concat4_s` wrappers become a legacy spelling rather than a required indirection.
+  `concat_s` itself remains the binary helper that backs the operator's lowering and stays in the public stdlib surface.
 - Porting rule: Mechanical per-site conversion. L0 Stage 2 and L1 Stage 1 call-sites convert the same way; land them in
   mirrored chunks to keep the two self-hosted trees in lockstep. Do **not** delete `concat_s` itself — it remains the
   binary runtime helper and a public stdlib entry point. `concat3_s` / `concat4_s` are removed from the stdlib surface

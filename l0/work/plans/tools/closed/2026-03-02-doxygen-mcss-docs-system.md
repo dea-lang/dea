@@ -45,10 +45,8 @@
 Implement a reproducible API documentation pipeline that generates HTML, Markdown, Doxygen XML, and normalized LaTeX for
 the Dea/L0 codebase.
 
-This document records the decisions and features implemented across the original docs-system work from:
-
-- `f2321ac` `Add automated documentation generation system using Doxygen and m.css.`
-- through `f912307` `Checkpoint docs output and wrapper polish`
+This document records the decisions and features implemented across the original docs-system work, from the initial
+Doxygen and m.css generation pipeline through the docs-output and wrapper polish.
 
 It intentionally stops before the later CI publishing automation.
 

@@ -57,6 +57,8 @@ level directory first.
 - Root `work/**` is for Dea-wide and monorepo-wide lifecycle artifacts only.
 - In Markdown links to repository files, use repository-root paths as the visible link text (for example
   `docs/specs/compiler/diagnostic-code-catalog.md`), not relative-path text such as `../../..`.
+- Do not mention commit IDs, short SHAs, or full SHAs in work plans, documentation, ADRs, or other lifecycle artifacts.
+  Refer to named plans, dates, features, bug IDs, or descriptive change names instead.
 - Shared compiler diagnostic-code registry, levels, and meanings live in
   `docs/specs/compiler/diagnostic-code-catalog.md`.
 - For shared diagnostic-code documentation, treat L0 Python Stage 1 as the current oracle for registered code
@@ -115,6 +117,8 @@ a simple annotation. Do not use `--` (double-hyphen) unless none of the above fi
 - Avoid assigning to `zsh` special parameters such as `status` in shell helpers.
 - No tag-phrases such as "for clarity" or "for consistency".
 - Use backticks for language/code identifiers in commit messages.
+- Do not mention commit IDs, short SHAs, or full SHAs in commit messages. Refer to the relevant plan, issue, feature, or
+  behavior instead.
 - No `Co-Authored-By` lines.
 
 ### Summary verb selection

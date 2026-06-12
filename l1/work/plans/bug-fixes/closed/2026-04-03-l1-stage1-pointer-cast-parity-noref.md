@@ -21,7 +21,8 @@
 
 ## Summary
 
-This work applied the same two upstream Stage 2 parity fixes from `9a337d9` and `f9458b0` to the L1 Stage 1 checker.
+This work applied the same two upstream Stage 2 parity fixes from the L0 Stage 2 explicit-cast legality fix and the L0
+Stage 2 mismatch-diagnostic split to the L1 Stage 1 checker.
 
 - `EX_CAST` now validates explicit cast legality instead of blindly returning the resolved target type
 - invalid explicit casts now report `TYP-0230`
@@ -39,19 +40,20 @@ The L1 Stage 1 checker had been seeded from the earlier L0 Stage 2 implementatio
 - `EX_CAST` resolves the target type, infers the operand type, and returns the target without legality checks
 - `ST_LET` and `ST_ASSIGN` still emit the old Stage 2-local mismatch codes
 
-That structure predated both the cast-specific validation added in `9a337d9` and the mismatch-code remap added in
-`f9458b0`, so the L1 Stage 1 port was mostly mechanical.
+That structure predated both the cast-specific validation added in the L0 Stage 2 explicit-cast legality fix and the
+mismatch-code remap added in the L0 Stage 2 mismatch-diagnostic split, so the L1 Stage 1 port was mostly mechanical.
 
 ## Scope of This Fix
 
-1. Port the L0 Stage 2 explicit cast validation logic from `9a337d9` into `l1/compiler/stage1_l0/src/expr_types.l0`.
+1. Port the L0 Stage 2 explicit cast validation logic from the L0 Stage 2 explicit-cast legality fix into
+   `l1/compiler/stage1_l0/src/expr_types.l0`.
 2. Reuse the Stage 1-oracle diagnostic codes:
    - `TYP-0230` for invalid explicit casts
    - `TYP-0310` for annotated `let` initializer mismatches
    - `TYP-0311` for assignment-statement mismatches
    - `TYP-0700` for compile-time `int -> byte` overflow
    - `TYP-0701` for compile-time-null nullable-pointer unwrap
-3. Port the L0 Stage 2 mismatch-diagnostic split from `f9458b0` into the same Stage 1 statement checker.
+3. Port the L0 Stage 2 mismatch-diagnostic split into the same Stage 1 statement checker.
 4. Add L1 Stage 1 fixture coverage for valid casts, invalid casts, overflow, null unwrap, nullable assignment-vs-cast
    behavior, and the `let` initializer versus assignment-statement code split.
 5. Keep this plan limited to the upstream parity fixes above; do not fold in unrelated diagnostic-code cleanup.

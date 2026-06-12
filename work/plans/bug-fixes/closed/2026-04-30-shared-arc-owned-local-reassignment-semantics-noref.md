@@ -202,7 +202,7 @@ the place's already-narrowed type) as fresh ARC rvalues, fabricating a synthetic
 
 The concat-refactor of [2026-04-30 closed plan][concat-plan] increased the count of those redundant-identity casts in
 `l1/compiler/stage1_l0/src/{build_driver,expr_types}.l0`, which surfaced as `mul_runtime_test`, `l0c_lib_test`, and
-later `expr_types_test` failures. The `a5ef576` source reshapes (per-branch `let probe`, in-line-into-both-arms
+later `expr_types_test` failures. The concat-refactor source reshapes (per-branch `let probe`, in-line-into-both-arms
 diagnostic, `bd_resolve_c_path` / `bd_temp_artifact_path` / `bd_temp_exe_path` / `bd_with_c_suffix` builder helpers) hid
 the trigger patterns; they did not fix the lowering.
 
@@ -214,7 +214,7 @@ Resolution:
 - Added focused regression `test_backend_generate_identity_cast_string_copy_retains` in
   `l1/compiler/stage1_l0/tests/backend_test.l0` that pins the no-alias-temp invariant for an identity cast on a
   non-nullable string place, mirroring the L0 Stage 2 `test_backend_generate_identity_cast_string_copy_retains` fixture.
-- Reverted the `a5ef576` defensive source reshapes in `l1/compiler/stage1_l0/src/build_driver.l0` and
+- Reverted the concat-refactor source reshapes in `l1/compiler/stage1_l0/src/build_driver.l0` and
   `l1/compiler/stage1_l0/src/expr_types.l0`: removed `bd_temp_artifact_path`, `bd_temp_exe_path`, `bd_resolve_c_path`;
   restored `bd_with_c_suffix` to inline `+`; restored the `bd_temp_stem` fallback to inline `+`; restored the outer
   `let probe = "";` plus conditional reassignment in `bd_find_c_compiler`; restored the
@@ -227,8 +227,8 @@ Resolution:
   the strict triple-bootstrap remains clean.
 
 The April 20 closed plan should be considered to have its L1 Stage 1 implementation delivered by this plan rather than
-by `88e7aaa`. The April 20 plan's "L1 Stage 1: Implemented" status was, at the time of closing, accurate only for the
-source-level `?` rewrites; the backend helper port required this follow-up.
+by the initial April 20 implementation. The April 20 plan's "L1 Stage 1: Implemented" status was, at the time of
+closing, accurate only for the source-level `?` rewrites; the backend helper port required this follow-up.
 
 A separate follow-up audit plan ([2026-04-30-shared-l1-backend-handler-divergence-audit][followup-plan]) was opened to
 scan the rest of the L1 Stage 1 backend.l0 helper surface for any other unported widenings that may have arrived through

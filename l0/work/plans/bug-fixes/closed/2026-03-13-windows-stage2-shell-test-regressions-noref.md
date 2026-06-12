@@ -24,8 +24,8 @@
 
 ## Summary
 
-After commits d60061a and 268ee1e (initial Windows path-handling fixes for Stage 2 shell tests), the Windows CI
-(`test-all-windows`) still fails 6 of 41 Stage 2 tests. Four distinct root causes remain.
+After the initial Windows path-handling fixes for Stage 2 shell tests, the Windows CI (`test-all-windows`) still fails 6
+of 41 Stage 2 tests. Four distinct root causes remain.
 
 ## Root Cause 1: Windows `.cmd` wrapper does not set `L0_HOME`
 
@@ -68,9 +68,9 @@ The codegen test demonstrates this clearly: the `normalize_text_file` function p
 Windows Python (which creates files at the Windows path), but `diff` on line 170 uses the original MSYS2 paths and
 reports `No such file or directory` for all `.normalized.c` files.
 
-Commit 268ee1e already applied this fix for internal L0 tests (moving from `/tmp/` to repo-local `build/` paths). The
-verbose output test (`l0c_stage2_verbose_output_test.sh` line 12) also already uses `$REPO_ROOT/build/...`. The
-remaining shell tests still use `/tmp/`.
+The earlier Windows path-handling fix already applied this change for internal L0 tests (moving from `/tmp/` to
+repo-local `build/` paths). The verbose output test (`l0c_stage2_verbose_output_test.sh` line 12) also already uses
+`$REPO_ROOT/build/...`. The remaining shell tests still use `/tmp/`.
 
 **Failing tests:** `l0c_codegen_test.sh`, `l0c_build_run_test.sh` (primary); others as secondary contributor
 
@@ -102,8 +102,8 @@ Replace `mktemp -d /tmp/...` and `/tmp/...` temp file paths with repo-local path
 - `l0c_stage2_bootstrap_test.sh` (lines 15-22: multiple temp files)
 - `l0c_stage2_install_prefix_test.sh` (lines 11-22: `PREFIX_DIR`, `PROJECT_DIR`, temp files)
 
-This follows the pattern already established by `l0c_stage2_verbose_output_test.sh` and the internal L0 tests fixed in
-268ee1e.
+This follows the pattern already established by `l0c_stage2_verbose_output_test.sh` and the earlier internal L0 test
+path-handling fix.
 
 ### Fix 3: Add `win32` platform support to triple bootstrap (RC2)
 

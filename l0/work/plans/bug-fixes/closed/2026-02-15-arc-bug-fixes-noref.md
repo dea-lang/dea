@@ -96,7 +96,7 @@ Add to `compiler/stage1_py/tests/test_l0_codegen_semantics.py`, following the pa
    released; compile+run to confirm no leak (valgrind-style verification via refcount correctness)
 3. `test_codegen_discarded_struct_with_arc_call` — if applicable: call returning struct-with-string field, discarded
 
-**Regression tests for 243fda2 (return-from-borrow):**
+**Regression tests for return-from-borrow ownership:**
 
 4. `test_codegen_return_borrowed_param_retains` — `func id_s(s: string) -> string { return s; }` → verify
    `rt_string_retain` in `id_s` body; compile+run with `let x = id_s(some_string); printl_s(x); printl_s(some_string);`

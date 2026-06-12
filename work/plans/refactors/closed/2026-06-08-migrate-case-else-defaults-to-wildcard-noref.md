@@ -13,7 +13,7 @@
   - L0
   - L1
 - Origin: Phase 1 made `_ =>` canonical and deprecated the `else` default (`PAR-0242`); this canonicalizes the sources
-- Depends on: the committed Phase 1 work (`9035e7f9`) and bug-fix (`ff8fcd4f`) — both `else` and `_ =>` are accepted.
+- Depends on: the committed Phase 1 work and `PAR-0123` bug-fix; both `else` and `_ =>` are accepted.
 - Subsystem: In-tree `.l0` / `.l1` sources, fixtures, examples
 - Modules: every `.l0` / `.l1` file that uses a `case`-default `else` (enumerated by the `PAR-0242` sweep below)
 

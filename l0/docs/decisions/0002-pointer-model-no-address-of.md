@@ -39,8 +39,8 @@ Pointer arithmetic is not part of the L0 surface. Dereference (`*expr`) and fiel
 
 - `&` remains a reserved token, kept for potential future use under a non-UB semantics with explicit lifetime
   constraints.
-- Pointer indexing syntax (`p[i]`) was removed from Stage 1 (commit `603ef67`, 2026-01-14) pending proper array-type
-  support. It is re-enabled in L1 under the `unsafe func` gate (see
+- Pointer indexing syntax (`p[i]`) was removed from Stage 1 on 2026-01-14 pending proper array-type support. It is
+  re-enabled in L1 under the `unsafe func` gate (see
   `l1/docs/decisions/0010-unsafe-marker-and-raw-pointer-indexing.md`).
 - Stage 2 type checker enforces that `&` produces a diagnostic rather than generating code.
 
