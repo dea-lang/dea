@@ -10,7 +10,7 @@ import std.io;
 import std.rand;
 
 // Top 25 languages by total speakers. Source: Babel, arXiv:2503.00865v1
-func getHelloWorldMessage(i: int) -> string {
+func get_hello_world_message(i: int) -> string {
     case (i) {
          0 => return "Hello, world! This is Dea/L0.";
          1 => return "你好，世界！这是 Dea/L0。";
@@ -74,6 +74,6 @@ func main() {
     let step = random_coprime_stride(n);
     for (let i = 0; i < n; i = i + 1) {
         let index = (start + i * step) % n;
-        printl_s(getHelloWorldMessage(index));
+        printl_s(get_hello_world_message(index));
     }
 }

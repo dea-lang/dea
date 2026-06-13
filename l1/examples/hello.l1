@@ -10,7 +10,7 @@ import std.io;
 import std.rand;
 
 // Top 25 languages by total speakers. Source: Babel, arXiv:2503.00865v1
-const helloWorldMessages: string[25] = [
+const hello_world_messages: string[25] = [
     "Hello, world! This is Dea/L1.",
     "你好，世界！这是 Dea/L1。",
     "नमस्ते, दुनिया! यह Dea/L1 है।",
@@ -72,6 +72,6 @@ func main() {
     let step = random_coprime_stride(n);
     for (let i = 0; i < n; i = i + 1) {
         let index = (start + i * step) % n;
-        printl_s(helloWorldMessages[index]);
+        printl_s(hello_world_messages[index]);
     }
 }

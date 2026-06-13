@@ -7,7 +7,8 @@ Today it contains:
 - Dea-wide current-state material, including `project-status.md`
 - Dea-wide normative specifications
 - monorepo layout and shared automation documentation once stabilized
-- Dea-wide reference documents that describe the project as a whole
+- Dea-wide reference documents that describe the project as a whole, including the
+  [docs/reference/style-guide.md](reference/style-guide.md) code style guide
 - future cross-level design and release-process documents
 
 Existing level-local stable documentation remains in the owning subtree such as `l0/docs/`.
@@ -23,6 +24,7 @@ Root reference docs live under `docs/reference/` and describe the whole Dea proj
 
 Examples:
 
+- the [docs/reference/style-guide.md](reference/style-guide.md) Dea code style guide
 - monorepo-wide release/status policy
 - cross-level architecture notes once they exist
 
