@@ -8,6 +8,7 @@
   - `l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`
   - `l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
+  - `l1/work/plans/features/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`
 - Closed plans:
   - `l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`
@@ -471,8 +472,8 @@ summarizes the chosen answer and points at the owning section.
 3. **Diagnostic family split:** keep the existing phase-based families (`PAR-*`, `RES-*`, `SIG-*`, `TYP-*`, `DRV-*`,
    `L1C-*`). New `MOD-*` or `LNK-*` families are introduced only if a concrete phase plan demonstrates the existing
    split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. The provisional reservations recorded
-   in the spawned fingerprint plan (`SIG-0240`–`SIG-0259`, `L1C-2050`–`L1C-2069`) stand and must be re-checked against
-   the live catalog at implementation time. Anchored in §2e and §Diagnostic-code registration.
+   in the spawned fingerprint plan (`SIG-0240` to `SIG-0259`, `L1C-2050` to `L1C-2069`) stand and must be re-checked
+   against the live catalog at implementation time. Anchored in §2e and §Diagnostic-code registration.
 4. **External-library manifest format:** deferred indefinitely unless and until Dea decides to adopt package management.
    Phase 3 ships with CLI flags only (`-l`, `-L`, `--rpath`, `--link-arg`, plus `-I` for interface search). No
    per-module `[link]` sidecar, no `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit this if FFI

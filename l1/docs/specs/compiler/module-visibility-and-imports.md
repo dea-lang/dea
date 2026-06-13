@@ -1,6 +1,6 @@
 # Dea/L1 Module Visibility and Imports
 
-Version: 2026-05-19
+Version: 2026-06-13
 
 Status: Finalized
 
@@ -42,13 +42,22 @@ Supported forms:
 
 ```ebnf
 ExportDecl ::= "export" "*" ";"
-             | "export" IdentList ";"
+             | "export" ExportList ";"
+
+ExportList ::= ExportItem ("," ExportItem)*
+ExportItem ::= "opaque" Ident
+             | Ident
 
 IdentList  ::= Ident ("," Ident)*
 ```
 
 There is no per-declaration `pub` or `priv` modifier in L1. Visibility is fixed at the module level by this single
 manifest.
+
+The `opaque` qualifier may prefix an exported type name (struct or enum) to export the name while hiding its layout; see
+[Type Visibility States](#type-visibility-states). `export opaque T;` is the common single-type spelling. Applying
+`opaque` to a non-type symbol, or under `export *;`, is rejected: `export *;` exports every name transparently, and
+opacity must be requested per type name.
 
 ## Export Set Computation
 
@@ -72,6 +81,68 @@ export _token;
 const _token: int = 7;
 ```
 
+## Type Visibility States
+
+A nominal type (struct or enum) has three effective states with respect to a consumer module:
+
+| State                     | Spelling          | Name visible | Layout visible |
+| ------------------------- | ----------------- | ------------ | -------------- |
+| Unexported (module-local) | _(no export)_     | no           | no             |
+| Opaque                    | `export opaque T` | yes          | no             |
+| Transparent               | `export T`        | yes          | yes            |
+
+`export T` is transparent and matches the prior behavior exactly. An importer's available operations on a type are a
+pure function of what the interface lets it see:
+
+- Naming the type or forming a pointer to it requires the name to be exported (opaque or transparent).
+- Reading or writing a field requires that field to be exported.
+- Any layout-requiring operation (by-value parameter or return, copy, assignment, `sizeof`, construction) requires every
+  field to be exported, that is, a transparent type.
+
+A hidden field hides the field's contribution to layout, not merely its name. On an opaque type an importer may name it
+and form, hold, receive, and pass pointers to it, but may not construct it, copy or assign it by value, take its
+`sizeof`, dereference it, or access its fields. These are not special-cased prohibitions; the operations are simply
+unavailable without a visible layout.
+
+### Exported-surface typing rule
+
+For any type `U` referenced by an exported item (a function signature parameter or return type, or a visible field of an
+exported aggregate):
+
+- By pointer (`U*`): `U`'s name must be exported; opaque or transparent suffices.
+- By value (direct parameter, return, field, array element, by-value enum payload): `U` must be transparent.
+- An unexported `U` in either position is an error, reported at the exporting item's definition in the defining module
+  (the module that created the leak, not the consumer).
+
+### Aggregate transitivity
+
+To export a struct `S` transparently, its by-value layout closure must be transparent: follow every by-value field edge
+(embedded structs, array elements, by-value enum payloads) and require each reached type to be transparent. The walk
+stops at pointers: a pointer field places its pointee at the frontier (the pointee's name must be exported, opaque or
+transparent) but is not descended into, because the importer never needs the pointee's layout.
+
+The check is enforced one level deep at each export; full transitivity follows by induction, since a transparent export
+is itself legal only when its by-value closure is transparent and its pointee frontier names are exported.
+
+### Enums
+
+Enum variants are the layout-determining members; the same rules apply with variants standing in for fields. Variant
+visibility is all-or-none initially: hiding all variants yields an opaque enum that can be held and pointed to but
+neither matched nor constructed.
+
+### Implementation scope
+
+A type is either transparent (no fields hidden) or fully opaque (all fields hidden, spelled `export opaque`). Mixed or
+partial field visibility is specified by this model but rejected with a not-yet-implemented diagnostic, pending a future
+field-visibility syntax. There is no "sized-opaque" rung that exports size and alignment while hiding fields; for a
+hidden type the only choices are transparent or by-pointer.
+
+### Relationship to `unsafe`
+
+Opacity is a visibility property and is not gated by `unsafe`. Holding and passing an opaque handle is safe. The unsafe
+operation in this area is forging a handle by casting a raw pointer to an opaque pointer type; `unsafe` attaches to that
+cast, not to the opacity. See [`l1/docs/decisions/0010-unsafe-marker-and-raw-pointer-indexing.md`][unsafe-adr].
+
 ## Interface Projection
 
 The effective export set defines the public `.l1m` interface surface. The export manifest itself is not emitted into the
@@ -89,7 +160,8 @@ fingerprint "";
 
 The remaining declarations are the exported surface needed by importers:
 
-- exported `struct` and `enum` definitions, including their structural layout;
+- exported transparent `struct` and `enum` definitions, including their structural layout;
+- exported opaque `struct` and `enum` types as name-only forward declarations, with no fields or variants;
 - exported function signatures without bodies;
 - exported `const` declarations with literal values;
 - exported top-level `let` declarations with type information;
@@ -211,14 +283,17 @@ The export set also controls generated C linkage:
 For example, `import std.integer as m;` followed by `m::abs(-1)` still calls the LBI symbol for `std.integer::abs`, such
 as `__deaM3std7integerS3abs`. The local alias `m` is not encoded into generated C symbol names.
 
-Struct and enum type definitions have no C storage class. Their exported-vs-private status determines whether they are
-present in the public interface, while LBI naming gives generated C type spellings deterministic module identity.
+Struct and enum type definitions have no C storage class. A type's visibility state determines its presence and form in
+the public interface: unexported types are absent, opaque types appear as name-only forward declarations, and
+transparent types appear with full layout. LBI naming gives generated C type spellings deterministic module identity.
 
 ## Non-Goals
 
 This visibility and import model does not introduce:
 
 - packages, registries, lock files, or dependency manifests;
+- mixed or partial per-field visibility, and any "sized-opaque" type that exports size and alignment while hiding
+  fields;
 - import-time renaming of individual symbols;
 - wildcard selective imports such as `import * from std.integer;`;
 - per-declaration visibility modifiers;
@@ -227,3 +302,4 @@ This visibility and import model does not introduce:
 
 [abi]: abi.md
 [initiative-0001]: ../../../work/initiatives/0001-separate-compilation-and-linking.md
+[unsafe-adr]: ../../decisions/0010-unsafe-marker-and-raw-pointer-indexing.md
