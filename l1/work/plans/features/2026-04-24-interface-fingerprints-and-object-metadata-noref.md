@@ -2,7 +2,7 @@
 
 ## Add interface fingerprints and provider-object metadata
 
-- Date: 2026-06-11
+- Date: 2026-06-13
 - Status: Draft
 - Title: Add interface fingerprints and provider-object metadata
 - Kind: Feature
@@ -48,7 +48,8 @@ This plan owns that contract end to end.
 
 ## Defaults Chosen
 
-1. The hash input is the canonicalized public surface described by Initiative `0001`, not a per-symbol ABI hash scheme.
+1. The hash input is the canonicalized effective public surface described by Initiative `0001`, not the verbatim export
+   manifest and not a per-symbol ABI hash scheme.
 2. The hash algorithm is SipHash-1-3 from the shared runtime (`l1/compiler/shared/runtime/internal/dea_siphash.h`,
    `siphash13(...)`), keyed with a fixed compile-time-constant 16-byte fingerprint key distinct from the runtime's
    randomized hash-flooding key. 64-bit digest. This decision is closed at the initiative level (Initiative 0001 §0.6).
@@ -61,7 +62,14 @@ This plan owns that contract end to end.
    `(imported module, expected dependency fingerprint)` records computed at compile time from the `.l1m` files the
    consumer read. Driver-facing verification reads from object files only; in-memory driver state is not the source of
    truth, so verification is robust across separate `--build` and `--link` invocations.
-7. The object-embedded metadata is emitted as portable C99 `const uint8_t` arrays with mangled names, anchored against
+7. Nominal type canonicalization follows effective visibility: transparent `struct` / `enum` declarations serialize full
+   canonical layout; opaque `struct` / `enum` declarations serialize the explicit opaque marker and name only;
+   unexported nominal types are absent. Changing `export T` to `export opaque T`, or the reverse, changes the public
+   surface fingerprint.
+8. `require` records remain tied to symbols directly named in the exported surface. A `require` entry for an opaque
+   nominal type records a name-level dependency and expected compatibility hash; it does not imply that the consumer has
+   provider layout visibility.
+9. The object-embedded metadata is emitted as portable C99 `const uint8_t` arrays with mangled names, anchored against
    linker dead-strip by being referenced from the module's `_dea_init`. Driver-side discovery uses symbol-table lookup
    on ELF / Mach-O / PE-COFF, which is also `tcc`-compatible. Custom object sections and platform-specific hybrids were
    rejected at the initiative level (Initiative 0001 §0.6).
@@ -80,10 +88,10 @@ This plan owns that contract end to end.
 Settle the exact canonical hash input and the fixed 16-byte fingerprint key constant. The algorithm itself is closed
 (SipHash-1-3, see Initiative 0001 §0.6); Phase 1 work is therefore:
 
-- Define the canonicalization rules over the public surface (sorted symbol order, normalized whitespace, struct/enum
-  layout serialization, exported `const` literal encoding, exported top-level `let` type encoding) and make the
-  canonicalization boundary explicit so Stage 2 parity can validate the same surface without copying incidental Stage 1
-  data structures.
+- Define the canonicalization rules over the public surface (sorted symbol order, normalized whitespace, nominal
+  visibility state, transparent struct/enum layout serialization, opaque struct/enum marker serialization, exported
+  `const` literal encoding, exported top-level `let` type encoding) and make the canonicalization boundary explicit so
+  Stage 2 parity can validate the same surface without copying incidental Stage 1 data structures.
 - Choose the fixed fingerprint key constant and record it in
   [`l1/docs/specs/compiler/abi.md`](../../../docs/specs/compiler/abi.md) once stable.
 - Choose the on-disk record layout for the object-embedded metadata (small magic + version prefix + flat little-endian
@@ -133,4 +141,5 @@ incomplete graph.
 2. Consumers reject corrupted or non-canonical `.l1m` files before semantic replay continues.
 3. The driver rejects stale importer/provider combinations before host linking.
 4. Verification behavior is covered by deterministic analysis/driver tests.
-5. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+5. Tests prove that transparent-to-opaque and opaque-to-transparent export changes produce different fingerprints.
+6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.

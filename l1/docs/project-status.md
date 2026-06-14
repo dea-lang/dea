@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-06-12
+Version: 2026-06-13
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 

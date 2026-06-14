@@ -2,7 +2,7 @@
 
 ## Add the separate-compilation driver surface
 
-- Date: 2026-06-11
+- Date: 2026-06-13
 - Status: Draft
 - Title: Add the separate-compilation driver surface
 - Kind: Feature
@@ -83,17 +83,21 @@ compilation orchestration.
 Teach the driver, name resolver, signature resolver, and backend to consume a direct imported `.l1m` for:
 
 - exported symbols,
-- public struct/enum layout,
+- transparent struct/enum layouts and opaque name-visible nominal declarations,
 - function and top-level binding signatures,
 - external declarations in generated C.
+
+Direct interface replay must preserve imported nominal visibility state. Transparent imported nominal types carry full
+layout for ordinary by-value and field operations; opaque imported nominal types are name-visible but layout-hidden and
+must support pointer-only use without requiring a full definition in the consumer CU.
 
 This phase should not expose `-I` to `--build` or `--run` as a complete workflow. Its verification should compile a
 consumer against a pre-existing direct provider interface and check generated C shape, while keeping provider-object
 linking out of scope.
 
-This phase may start with direct provider interfaces only, but it must not silently treat missing transitive
-interface dependencies as success. Until transitive `.l1m` closure loading exists, nested interface dependencies should
-either be rejected with a clear diagnostic or documented as unsupported in the specific driver entry point being tested.
+This phase may start with direct provider interfaces only, but it must not silently treat missing transitive interface
+dependencies as success. Until transitive `.l1m` closure loading exists, nested interface dependencies should either be
+rejected with a clear diagnostic or documented as unsupported in the specific driver entry point being tested.
 
 ### Phase 2: CLI option and mode design
 
@@ -153,22 +157,26 @@ provider objects or explicit external-link inputs.
 6. Emitting one compile-only object that contains multiple source modules from the import closure.
 7. Treating direct-interface replay as proof that transitive interface closure, dependency graph population, or
    provider-object discovery is complete.
+8. Defining the source-language `export opaque T` semantic diagnostics; the opaque-export plan owns by-value opaque
+   rejection and exported-surface visibility checks.
 
 ## Verification Criteria
 
-1. Direct `.l1m` imports replay into analysis and codegen without requiring the provider source.
-2. `-c` / `--compile` and `-I` / `--interface-path` parse, validate, and participate in the driver only for supported
-   modes.
-3. `-Ri` and `-Rl` resolve to `--runtime-include` and `--runtime-lib` respectively, and the old `-I` / `-L` runtime
-   short aliases are no longer accepted.
-4. `--compile` emits exactly one implementation module's object and does not smuggle source-import definitions into that
-   object.
-5. A failed object compilation does not leave a fresh `.l1m` interface artifact behind.
-6. `--build` and `--run` preserve current user-facing behavior until the fan-out tranche links all provider objects.
-7. Interfaces with transitive `require` / `link` dependencies are either resolved through the interface closure or
-   rejected with a clear diagnostic until closure loading is implemented.
-8. Implementation-tier `link` dependency records are populated before any build/run or link-verification path relies on
-   them to select provider objects.
-9. Driver tests cover invalid mode combinations, missing interface paths, direct interface imports, and successful
-   compile-only flows.
-10. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+01. Direct `.l1m` imports replay into analysis and codegen without requiring the provider source.
+02. `-c` / `--compile` and `-I` / `--interface-path` parse, validate, and participate in the driver only for supported
+    modes.
+03. `-Ri` and `-Rl` resolve to `--runtime-include` and `--runtime-lib` respectively, and the old `-I` / `-L` runtime
+    short aliases are no longer accepted.
+04. `--compile` emits exactly one implementation module's object and does not smuggle source-import definitions into
+    that object.
+05. A failed object compilation does not leave a fresh `.l1m` interface artifact behind.
+06. `--build` and `--run` preserve current user-facing behavior until the fan-out tranche links all provider objects.
+07. Interfaces with transitive `require` / `link` dependencies are either resolved through the interface closure or
+    rejected with a clear diagnostic until closure loading is implemented.
+08. Implementation-tier `link` dependency records are populated before any build/run or link-verification path relies on
+    them to select provider objects.
+09. Direct interface replay tests cover pointer-only use of imported opaque nominal types without requiring imported
+    layout, while by-value opaque rejection remains covered by the opaque-export semantic tests.
+10. Driver tests cover invalid mode combinations, missing interface paths, direct interface imports, and successful
+    compile-only flows.
+11. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.

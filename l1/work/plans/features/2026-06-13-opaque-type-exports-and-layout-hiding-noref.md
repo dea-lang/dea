@@ -54,7 +54,8 @@ an interface that names a type defined nowhere in it under separate compilation 
   - by pointer (`U*`): the pointee name must be exported (opaque or transparent);
   - by value: the type must be transparent;
   - unexported in either position is an error.
-- Project opaque types into `.l1m` as name-only forward declarations and transparent types with full layout.
+- Project opaque types into `.l1m` as explicit name-only declarations and transparent types with full layout. The
+  transparent-only Step 2 interface artifact tranche does not emit or parse opaque declarations yet.
 - Reject mixed/partial field visibility with a not-yet-implemented diagnostic.
 
 ## Implementation Phases
@@ -73,9 +74,16 @@ definition in the defining module.
 
 ### Phase 3: Interface projection
 
-Update the `.l1m` emitter so opaque types project as name-only forward declarations and transparent types project with
-full layout (the rule collapses to "project the exported fields"). Round-trip the forward declaration through the
-interface parser.
+Update the `.l1m` emitter so opaque types project as explicit name-only declarations:
+
+```dea
+opaque struct T == "";
+opaque enum E == "";
+```
+
+Transparent types continue to project with full layout (the rule collapses to "project the exported fields"). Round-trip
+the explicit opaque declarations through the interface parser, reject bodyless non-opaque declarations such as
+`struct T == "";`, and reject `opaque` before non-nominal interface declarations.
 
 ## Diagnostics
 
@@ -101,8 +109,8 @@ in `signatures.l0`. Confirm the family against the live catalog before assigning
 - `make test-stage1` and `make test-stage1-trace` pass.
 - New tests: private-type-in-public-signature is now diagnosed; opaque-pointer round trip across two modules compiles
   and runs; by-value use of an opaque type is rejected; nested-struct closure cases (by-value chain, pointer frontier,
-  unexported intermediary) behave per the rule; `.l1m` emits a forward declaration for an opaque type and the interface
-  parser reads it back.
+  unexported intermediary) behave per the rule; `.l1m` emits explicit `opaque struct` / `opaque enum` declarations and
+  the interface parser reads them back.
 - The visibility spec and ADR-0013 match the implemented behavior.
 
 [adr-0013]: ../../../docs/decisions/0013-opaque-type-exports-and-layout-hiding-visibility.md

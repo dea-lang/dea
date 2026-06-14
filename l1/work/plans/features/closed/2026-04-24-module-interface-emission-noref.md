@@ -2,7 +2,7 @@
 
 ## Add textual `.l1m` module interface emission
 
-- Date: 2026-06-12
+- Date: 2026-06-13
 - Status: Completed
 - Title: Add textual `.l1m` module interface emission
 - Kind: Feature
@@ -156,8 +156,10 @@ source-based.
 
 - Implemented deterministic `.l1m` projection from source analysis, textual emission, constrained parser round-trip, and
   the internal `--emit-interface` output mode.
+- This completion is intentionally transparent-only for nominal type declarations; explicit `.l1m` opaque declarations
+  are owned by the opaque-export implementation plan.
 - Kept ordinary imports source-based and left compile-only output, interface search paths, provider-object linking,
   fingerprint verification, and semantic `link` population to later tranches.
-- Added the interface format reference and ADR-0013 for the shipped artifact contract.
+- Added the interface format reference and ADR-0014 for the shipped artifact contract.
 - Validation: `make test-stage1 TESTS="interface_test parser_test analysis_test l1c_lib_test"`; `make test-stage1`;
   `make test-stage1 TESTS="interface_test l1c_lib_test"` after pruning later-tranche fixtures.

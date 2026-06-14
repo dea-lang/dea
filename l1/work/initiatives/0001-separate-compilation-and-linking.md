@@ -1,6 +1,6 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-06-12
+- Version: 2026-06-13
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -129,8 +129,9 @@ Each `.l1m` records the public surface of one module in canonical form:
 
 - `module interface <name>;` as the file header.
 - `fingerprint "<hash>";` immediately after the header.
-- `struct` and `enum` definitions reproduced 1:1 from the implementation so importers can recompute size and offset
-  information.
+- transparent `struct` and `enum` definitions with full layout so importers can recompute size and offset information.
+- opaque `struct` and `enum` declarations, once source-level opaque exports land, as explicit name-only interface forms
+  that expose the nominal name without exposing fields or variants.
 - `func` declarations with signature only and a terminating `;`.
 - `const` declarations with literal values inlined so importers can still constant-fold and pattern-match.
 - `let` declarations with type only.
@@ -243,8 +244,8 @@ The implementation is split across explicit tranches:
    This may expose an explicit `--emit-interface` developer mode, but it does not make `.l1m` a normal import input for
    build/run.
 2. **Direct interface import tranche:** allow the driver/analyzer/backend to consume a direct imported `.l1m` for
-   signatures, public layouts, and extern declarations. This proves interface-backed compilation of a consumer module,
-   but still does not claim full build/run orchestration.
+   signatures, transparent public layouts, opaque nominal declarations, and extern declarations. This proves
+   interface-backed compilation of a consumer module, but still does not claim full build/run orchestration.
 3. **Compile-only driver tranche:** expose `-c`/`--compile` and `-I` only once `-c` emits exactly one module's generated
    C/object plus its `.l1m`, consumes imports from interfaces, and does not leave a fresh `.l1m` behind when object
    compilation fails.
@@ -278,9 +279,10 @@ everything imported is **declared** but not defined. Per-module C output contain
 - full definitions for the module's own types, lets, and functions, with exported symbols kept global and non-exported
   symbols emitted as `static`.
 
-Struct layouts must be identical across CUs that see them. The simplest path: every importer re-emits the imported
-struct as a C declaration in its own CU, identically mangled and field-ordered. The interface file therefore carries the
-full structural layout, not just an opaque tag.
+Transparent struct layouts must be identical across CUs that see them. The simplest path: every importer re-emits the
+imported transparent struct as a C declaration in its own CU, identically mangled and field-ordered. Opaque nominal
+types instead replay as name-visible, layout-hidden declarations: consumers may name them and use pointers to them, but
+cannot emit by-value operations that require layout.
 
 A new "main wrapper" pseudo-module produces the `main(int argc, char **argv)` shim and is compiled separately when an
 executable is requested. It depends only on the entry module's interface. The driver topologically sorts the module
@@ -289,9 +291,10 @@ reaches the user `main`.
 
 ### 2c. Interface-file consistency and verification contract
 
-Each `.l1m` carries a **fingerprint** computed from the canonicalized public surface (function signatures, exported
-struct layouts, exported enum tags and payload types, exported `const` literals, exported top-level `let` types, and the
-export manifest itself). Verification is explicitly tiered:
+Each `.l1m` carries a **fingerprint** computed from the canonicalized effective public surface (function signatures,
+transparent struct layouts, transparent enum tags and payload types, explicit opaque nominal declaration markers,
+exported `const` literals, exported top-level `let` types, and exported type aliases). The export manifest spelling is
+not hashed verbatim; only the effective surface it produces participates. Verification is explicitly tiered:
 
 1. **Producer stage:** compiling `foo.l1` computes the canonicalized public surface, hashes it, and writes the result to
    `foo.l1m` as `fingerprint "<hash>";`.
@@ -416,6 +419,7 @@ Recorded near-term tranche checkpoints:
 - [x] Phase 0.1: parser support for `export` and `import ... as`.
 - [x] Phase 0.2: C emitter symbol mangling logic.
 - [x] Phase 0.3: `.l1m` interface emission and serialization.
+- [ ] Opaque export follow-up: source `export opaque`, exported-surface checks, and explicit `.l1m` opaque projection.
 - [ ] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
 - [ ] Phase 2.a.2: `-c` compile-only and `-I` interface-path support.
 - [ ] Phase 2.b: driver topological sort plus per-module `I4init` emission.
@@ -519,6 +523,9 @@ implementation tranche proves that one decision area needs additional design wor
   [`l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`][symbol-linkage]
 - Phase 0.3: `.l1m` interface emission, canonicalization, and parsing contract under
   [`l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`][interface-emission]
+- Opaque export follow-up: source-level opacity, exported-surface typing, and explicit opaque `.l1m` projection under
+  [`l1/work/plans/features/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`][opaque-exports]. Direct interface
+  replay and fingerprint canonicalization consume the nominal visibility state this plan introduces.
 - Phase 2.a.1 / 2.a.2: direct interface imports, compile-only, and interface-path driver surface under
   [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
 - Phase 2.b: multi-CU init ordering and executable wrapper behavior under
@@ -551,6 +558,7 @@ implementation tranche proves that one decision area needs additional design wor
 [module-init]: ../plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md
 [module-interface]: ../../docs/specs/compiler/module-interface-format.md
 [module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
+[opaque-exports]: ../plans/features/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [roadmap]: ../../docs/roadmap.md
 [runtime-library]: closed/0002-runtime-static-library.md
 [separate-compilation]: ../../docs/reference/separate-compilation.md

@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-06-12
+Version: 2026-06-13
 
 Status: Draft artifact contract
 
@@ -98,6 +98,10 @@ through the parser but are not produced by `mi_project`.
 Only exported declarations appear in the `.l1m` file. The source `export` manifest is not reproduced verbatim as
 `export ...;`; its effect is reflected only through which declarations are present.
 
+The current implemented tranche emits transparent exported nominal types only. Source-level `export opaque T` is
+specified in the visibility model but is not implemented yet, so this tranche does not parse or emit opaque interface
+declarations.
+
 The current `.l1m` surface includes:
 
 - exported `struct` definitions
@@ -142,6 +146,14 @@ struct Point {
 
 Field order is preserved from the analyzed source because layout is part of the imported type surface.
 
+When source-level opaque exports are implemented, opaque structs will use an explicit name-only interface form:
+
+```dea
+opaque struct Handle == "";
+```
+
+Bodyless non-opaque declarations such as `struct Handle == "";` are not the intended representation and remain rejected.
+
 ### Enums
 
 Enums are emitted structurally, including named variant payload fields:
@@ -156,6 +168,15 @@ enum Color {
 
 Variant payload fields carry the names from the analyzed source. The names appear in the textual form so consumers can
 use named-argument construct syntax; they are not part of the per-symbol hash input.
+
+When source-level opaque exports are implemented, opaque enums will use an explicit name-only interface form:
+
+```dea
+opaque enum State == "";
+```
+
+Bodyless non-opaque enum declarations such as `enum State == "";` are not the intended representation and remain
+rejected.
 
 ### Type aliases
 
@@ -248,6 +269,9 @@ The constrained `.l1m` parser accepts:
 
 It rejects ordinary source-only forms such as function bodies. Dotted module names in the header and in dependency lines
 are accepted and preserved.
+
+The parser is currently transparent-only for nominal type declarations. Future opaque support will accept explicit
+`opaque struct` and `opaque enum` declarations; opacity will not be inferred from a missing body.
 
 Parser failures use the dedicated `PAR-0560` through `PAR-0576` diagnostic range registered in
 [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog].

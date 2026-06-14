@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-06-12
+Version: 2026-06-13
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
