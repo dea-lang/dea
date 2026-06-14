@@ -1,10 +1,11 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-05-07
+- Version: 2026-06-11
 - Status: Active
 - Kind: Initiative
 - Open plans:
   - `l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`
+  - `l1/work/plans/features/2026-04-24-module-interface-emission-noref.md`
   - `l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`
   - `l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
@@ -12,7 +13,6 @@
 - Closed plans:
   - `l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`
-  - `l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`
 
 ## Summary
 
@@ -149,9 +149,16 @@ internal structures needed by compiler tests and later import plumbing. It does 
 flows to consume `.l1m` files, and any emission or round-trip surface exposed during this phase is internal or
 testing-oriented rather than the stable separate-compilation UX.
 
-Phase 2.a is the first phase where `.l1m` files become normal driver inputs. That later phase owns `-c`,
-interface-search paths, and the point where source-based monolithic import analysis is replaced by interface loading for
-user-facing compile/build/run flows.
+Phase 2.a is the first phase where `.l1m` files become normal driver inputs. That later phase is intentionally split
+into smaller tranches so the interface artifact, interface-backed analysis, CLI surface, compile-only artifact writer,
+and build/run fan-out do not land as one tangled change. In particular:
+
+1. `.l1m` artifact emission and parser round-trip can land without changing ordinary source-based `--build` or `--run`.
+2. Direct `.l1m` import replay can land as semantic/codegen plumbing before the user-facing driver exposes full
+   separate compilation.
+3. `-c` and `-I` become stable user-facing surface only when compile-only output is one implementation module plus
+   interface-backed imports, not a renamed whole-closure object.
+4. `--build` and `--run` fan-out belongs to a later orchestration tranche that links the required provider objects.
 
 ### 0.4 Boundary between L1 types and C types
 
@@ -201,7 +208,7 @@ expected default), the exact symbol-name mangling, and the canonicalization rule
 The largest piece. The current `CompilationUnit` is *the program*; in L1, a CU becomes *one compilable module*, and a
 program is a *link set* of CUs plus libraries.
 
-### 2a. Pipeline split
+### 2a. Pipeline split and tranche boundaries
 
 Today the pipeline runs name-resolution -> signatures -> locals -> expr-types -> backend over the whole closure. After
 the split:
@@ -230,8 +237,22 @@ the split:
                             cc -c -> .o
 ```
 
-The driver gains three new modes; the existing whole-program `--build`/`--run` are preserved as convenience
-orchestrators that fan out compile + link:
+The implementation is split across explicit tranches:
+
+1. **Interface artifact tranche:** project exports into `.l1m`, parse the file back, and test deterministic
+   round-trips. This may expose an explicit `--emit-interface` developer mode, but it does not make `.l1m` a normal
+   import input for build/run.
+2. **Direct interface import tranche:** allow the driver/analyzer/backend to consume a direct imported `.l1m` for
+   signatures, public layouts, and extern declarations. This proves interface-backed compilation of a consumer module,
+   but still does not claim full build/run orchestration.
+3. **Compile-only driver tranche:** expose `-c`/`--compile` and `-I` only once `-c` emits exactly one module's generated
+   C/object plus its `.l1m`, consumes imports from interfaces, and does not leave a fresh `.l1m` behind when object
+   compilation fails.
+4. **Build/run fan-out tranche:** preserve `--build` and `--run` as convenience commands by computing the module graph,
+   compiling modules individually as needed, and linking all required provider objects.
+
+The driver ultimately gains three new modes or mode families; the existing whole-program `--build`/`--run` are
+preserved as convenience orchestrators that fan out compile + link:
 
 - `-c <module>` compiles one module without linking. It emits the module's generated C, object file, and `.l1m`
   artifact.
@@ -395,7 +416,8 @@ Recorded near-term tranche checkpoints:
 - [x] Phase 0.1: parser support for `export` and `import ... as`.
 - [x] Phase 0.2: C emitter symbol mangling logic.
 - [ ] Phase 0.3: `.l1m` interface emission and serialization.
-- [ ] Phase 2.a: `-c` compile-only and `-I` interface-path support.
+- [ ] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
+- [ ] Phase 2.a.2: `-c` compile-only and `-I` interface-path support.
 - [ ] Phase 2.b: driver topological sort plus per-module `I4init` emission.
 - [ ] Phase 2.c: fingerprint hashing plus provider metadata embedding in `.o`.
 
@@ -497,7 +519,7 @@ implementation tranche proves that one decision area needs additional design wor
   [`l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`][symbol-linkage]
 - Phase 0.3: `.l1m` interface emission, canonicalization, and parsing contract under
   [`l1/work/plans/features/2026-04-24-module-interface-emission-noref.md`][interface-emission]
-- Phase 2.a: compile-only and interface-path driver surface under
+- Phase 2.a.1 / 2.a.2: direct interface imports, compile-only, and interface-path driver surface under
   [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
 - Phase 2.b: multi-CU init ordering and executable wrapper behavior under
   [`l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`][module-init]

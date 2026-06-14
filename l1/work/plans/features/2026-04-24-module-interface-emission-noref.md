@@ -2,7 +2,7 @@
 
 ## Add textual `.l1m` module interface emission
 
-- Date: 2026-04-24
+- Date: 2026-06-11
 - Status: Draft
 - Title: Add textual `.l1m` module interface emission
 - Kind: Feature
@@ -30,12 +30,16 @@
 
 Separate compilation in Initiative `0001` depends on a textual `.l1m` file that captures the public surface of one
 module in deterministic, L1-source-like form. This plan adds the interface artifact itself: what gets serialized, how it
-is ordered, and how Stage 1 reads it back for import replay.
+is ordered, and how Stage 1 reads it back into a `ModuleInterface`-style representation.
 
 Fingerprint hashing and provider-object verification are tracked separately. This plan owns the interface file shape,
-canonical ordering rules, and parse/load contract. It does not make `.l1m` files normal inputs to ordinary `--build` or
-`--run`; those user-facing driver flows continue to resolve imports from source modules until the separate-compilation
-driver-surface plan wires interface search paths into compile/build/run.
+canonical ordering rules, explicit/developer-facing interface emission, and parser round-trip contract. It does not make
+`.l1m` files normal inputs to ordinary `--build` or `--run`; those user-facing driver flows continue to resolve imports
+from source modules until later driver tranches wire interface search paths, compile-only output, and build/run fan-out.
+
+The direct-import replay path is deliberately treated as the next tranche, not as a requirement for closing this plan.
+This plan may define the in-memory structures that make replay possible, but it is complete when the artifact can be
+projected, emitted, parsed, and tested deterministically.
 
 ## Current State
 
@@ -44,6 +48,8 @@ driver-surface plan wires interface search paths into compile/build/run.
 3. There is no constrained parser mode for `module interface ...;` files.
 4. The backend and driver do not know where emitted interface files live or how they are named.
 5. Ordinary `--build` and `--run` still use source-based monolithic import analysis.
+6. Dependency sections in an interface file need a clear contract: this tranche may define and round-trip syntax, but
+   semantic population of implementation-tier link dependencies belongs to the driver/fan-out work that consumes them.
 
 ## Defaults Chosen
 
@@ -63,8 +69,8 @@ driver-surface plan wires interface search paths into compile/build/run.
 ## Goal
 
 1. Serialize the public module surface into deterministic `.l1m` text.
-2. Parse `.l1m` files back into the semantic replay structures needed for importers.
-3. Define one naming and path convention for interface artifacts.
+2. Parse `.l1m` files back into interface data structures suitable for a later semantic replay tranche.
+3. Define one naming and path convention for explicitly emitted interface artifacts.
 4. Lay the foundation for later fingerprint and link-time verification work.
 
 ## Implementation Phases
@@ -86,19 +92,21 @@ This layer should avoid leaking backend-only details so the `.l1m` format can re
 Implement a stable writer for `.l1m` files. The writer should sort by a defined canonical key and emit normalized
 whitespace so repeated runs over the same semantic surface produce byte-identical output.
 
-### Phase 3: Interface parsing and replay
+### Phase 3: Interface parsing
 
-Teach Stage 1 to parse `.l1m` in a constrained mode that accepts only interface-file constructs and replays them into
-the imported-module structures used by signatures/type resolution.
+Teach Stage 1 to parse `.l1m` in a constrained mode that accepts only interface-file constructs and reconstructs the
+serialized public surface. Semantic replay into imported-module signature/type-resolution tables belongs to the
+separate-compilation driver-surface plan.
 
-### Phase 4: Driver integration and tests
+### Phase 4: Explicit emission workflow and tests
 
-Integrate artifact write/read discovery, explicit/internal interface-emission workflows, and round-tripping into the
-driver/library surface and add regression tests for:
+Integrate an explicit/internal interface-emission workflow and round-tripping into the driver/library surface, without
+making interface discovery part of ordinary import resolution. Add regression tests for:
 
 - deterministic emission,
 - structural type replay,
 - `const` literal replay,
+- interface dependency-section round trips, if `require` or `link` syntax lands in this tranche,
 - malformed or incomplete interface files.
 
 Any `.l1m` files emitted in this phase are produced only through explicit or internal interface-emission workflows. They
@@ -120,6 +128,10 @@ source-based.
 3. External-library linking CLI.
 4. Runtime static-library packaging.
 5. Switching ordinary import resolution from source modules to `.l1m` interfaces.
+6. Exposing `-c` / `--compile` or `-I` / `--interface-path` as stable user-facing separate-compilation surface.
+7. Writing `.l1m` as a side effect of object compilation.
+8. Computing implementation-tier `link` dependency entries from function bodies or using them to drive provider-object
+   linking.
 
 ## Verification Criteria
 
@@ -129,3 +141,7 @@ source-based.
 4. The roadmap and initiative links point to this plan as the `.l1m` serialization tranche.
 5. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
 6. Ordinary `--build` and `--run` behavior remains source-based and does not require pre-existing `.l1m` files.
+7. No stale `.l1m` artifact is produced by a failing object compilation path, because object compilation is outside this
+   tranche.
+8. If dependency-section syntax is included, tests distinguish parser/emitter round-trip support from later semantic
+   population of `link` entries.

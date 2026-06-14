@@ -2,7 +2,7 @@
 
 ## Add interface fingerprints and provider-object metadata
 
-- Date: 2026-04-24
+- Date: 2026-06-11
 - Status: Draft
 - Title: Add interface fingerprints and provider-object metadata
 - Kind: Feature
@@ -43,6 +43,8 @@ This plan owns that contract end to end.
 2. There is no corruption or stale-interface check when imported module information is replayed.
 3. Provider object files do not embed any interface/version metadata for the driver to inspect before linking.
 4. The current backend/link path relies on platform linker behavior rather than explicit Dea verification.
+5. Provider-object verification depends on the driver/fan-out tranche populating the dependency graph, including
+   implementation-tier records such as `link` entries, before link preparation consumes that graph.
 
 ## Defaults Chosen
 
@@ -102,6 +104,11 @@ Each consumer object also embeds, alongside its own exported fingerprint, a list
 read. The driver pulls both producer and consumer records from object files at link preparation time and rejects
 mismatches before invoking the platform linker. Verification therefore does not depend on driver-managed in-memory state
 and remains robust across separate `--build` and `--link` invocations.
+
+This phase assumes the driver has already populated the module dependency records that identify which provider objects
+belong in the link set. If implementation-tier dependency entries such as `link` lines are still syntax-only, this phase
+must either defer provider-object verification for them or fail with a clear diagnostic rather than silently trusting an
+incomplete graph.
 
 ## Diagnostics
 

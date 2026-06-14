@@ -2,7 +2,7 @@
 
 ## Extend module initialization to the multi-CU model
 
-- Date: 2026-04-24
+- Date: 2026-06-11
 - Status: Draft
 - Title: Extend module initialization to the multi-CU model
 - Kind: Feature
@@ -20,12 +20,12 @@
   - `l1/compiler/stage1_l0/tests/backend_test.l0`
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/driver_test.l0`
-  - `l1/compiler/stage1_l0/tests/l0c_lib_test.l0`
+  - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
   - `l1/work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md`
-- Repro: `make -C l1 test-stage1 TESTS="backend_test build_driver_test driver_test l0c_lib_test"`
+- Repro: `make -C l1 test-stage1 TESTS="backend_test build_driver_test driver_test l1c_lib_test"`
 
 ## Summary
 
@@ -36,6 +36,10 @@ story.
 
 This plan adapts that existing groundwork to the multi-CU build shape without reopening the semantics of top-level `let`
 initialization itself.
+
+The driver-surface plan owns producing a complete per-module build graph and provider-object link set. This plan
+consumes that graph to define executable-wrapper initialization order; it does not make direct `.l1m` import replay or
+compile-only output complete by itself.
 
 ## Current State
 
