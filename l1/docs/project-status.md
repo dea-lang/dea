@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-06-13
+Version: 2026-06-14
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -73,8 +73,8 @@ checks, including:
 
 - functions, structs, enums, type aliases, top-level `let`, top-level `const`, and deferred module-init lowering for
   non-constant top-level `let` initializers before user `main`
-- modules/imports with qualified-name disambiguation, module-level export manifests, alias imports, and selective
-  imports
+- modules/imports with qualified-name disambiguation, module-level export manifests including opaque type exports, alias
+  imports, and selective imports
 - structured control flow including `if`, `while`, `for`, `match`, `case`, and `with` / `cleanup`, with single-statement
   `while`, `for`, and `match` bodies accepted under the current body-local scope/cleanup rules
 - function pointer types, indirect calls, same-signature function pointer identity comparisons, nullable function

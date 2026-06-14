@@ -175,6 +175,7 @@ struct TypeSuffix {
 struct ExportManifest {
     export_all: bool;
     names: StringVector*;
+    opaque_names: StringVector*;
     span: Span;
 }
 
@@ -858,6 +859,7 @@ func export_manifest_free(self: ExportManifest*?) {
     if (self != null) {
         let manifest = self as ExportManifest*;
         sv_free(manifest.names);
+        sv_free(manifest.opaque_names);
         drop manifest;
     }
 }

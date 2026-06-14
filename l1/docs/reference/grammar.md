@@ -109,7 +109,7 @@ CompilationUnit     ::=     ModuleDecl ExportDecl? ImportDecl* TopLevelDecl*
 ModuleDecl          ::=     "module" ModulePath ";"
 
 ExportDecl          ::=     "export" "*" ";"
-                      |     "export" IdentList ";"
+                      |     "export" ExportList ";"
 
 ImportDecl          ::=     "import" ModulePath ";"
                       |     "import" ModulePath "as" Ident ";"
@@ -118,6 +118,11 @@ ImportDecl          ::=     "import" ModulePath ";"
 ModulePath          ::=     Ident ("." Ident)*
 
 IdentList           ::=     Ident ("," Ident)*
+
+ExportList          ::=     ExportItem ("," ExportItem)*
+
+ExportItem          ::=     Ident
+                      |     "opaque" "{" IdentList "}"
 ```
 
 `Ident` here is the module name component (no hierarchical packages in L<sub>1</sub> beyond dot-separated modules). This
@@ -125,8 +130,11 @@ implies each module path component must be a valid identifier; hyphens and leadi
 
 Semantic notes:
 
-- `export *;` exports every top-level symbol, including names beginning with `_`. `export a, b;` exports only the named
-  top-level symbols. If no export manifest is present, all top-level names except `_`-prefixed names are exported.
+- `export *;` exports every top-level symbol transparently, including names beginning with `_`. `export a, b;` exports
+  only the named top-level symbols transparently. `export opaque { T };` exports a struct or enum name while hiding its
+  layout; `opaque` must be followed by a non-empty brace-delimited identifier list, and bare `{ ... }` is not an export
+  grouping form. If no export manifest is present, all top-level names except `_`-prefixed names are exported
+  transparently.
 - Plain `import module.path;` opens the imported module's export set into the current module and permits
   `module.path::name` lookup. `import module.path as alias;` binds only the `alias::name` namespace.
   `import a, b from module.path;` binds only the named exports as unqualified imports.

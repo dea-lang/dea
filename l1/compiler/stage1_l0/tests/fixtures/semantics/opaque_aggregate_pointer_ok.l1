@@ -3,10 +3,14 @@
  * Copyright (c) 2026 gwz
  */
 
-module export_bad_manifest;
+module opaque_aggregate_pointer_ok;
 
-export opaque { Handle }, Handle, missing;
+export opaque { Handle }, Holder;
 
 struct Handle {
     value: int;
+}
+
+struct Holder {
+    handle: Handle*;
 }

@@ -229,7 +229,8 @@ func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, env: Modu
             decl.span,
             type_new_struct(env.module_name, decl.name),
             fields as VectorBase*,
-            ""
+            "",
+            ss_has(env.opaque_exports, decl.name)
         );
         spm_put(tables.struct_infos, info.key, info as void*);
         let sym_opt = nr_module_env_local(env, decl.name);
@@ -286,7 +287,8 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, env: Module
             decl.span,
             type_new_enum(env.module_name, decl.name),
             variants as VectorBase*,
-            ""
+            "",
+            ss_has(env.opaque_exports, decl.name)
         );
         spm_put(tables.enum_infos, info.key, info as void*);
         let sym_opt = nr_module_env_local(env, decl.name);
@@ -740,6 +742,210 @@ func sig_detect_value_type_cycles(tables: SignatureTables*, diags: DiagCollector
 }
 
 /**
+ * Format a nominal type name for export-surface diagnostics.
+ *
+ * @param ty Struct or enum type.
+ * @return `module::Name` display string.
+ */
+func sig_nominal_display(ty: Type*) -> string {
+    return ty.module_name + "::" + ty.name;
+}
+
+/**
+ * Check one nominal type reference against provider export visibility.
+ *
+ * @param nr Name-resolution data containing provider export sets.
+ * @param ty Nominal type to check.
+ * @param require_transparent Whether layout visibility is required.
+ * @param diags Diagnostic collector.
+ * @param filename Source filename to report.
+ * @param span Source span to report.
+ * @return `true` if the nominal reference is visible enough.
+ */
+func sig_check_nominal_export_visibility(nr: NameResolution*, ty: Type*, require_transparent: bool,
+                                         diags: DiagCollector*, filename: string, span: Span) -> bool {
+    let provider_opt = nr_env_find(nr, ty.module_name);
+    if (provider_opt == null) {
+        return true;
+    }
+    let provider = provider_opt as ModuleEnv*;
+    if (spm_get(provider.exports, ty.name) == null) {
+        sig_diag_error(
+            diags,
+            "RES-0037",
+            "exported surface references unexported type '" + sig_nominal_display(ty) + "'",
+            filename,
+            span
+        );
+        return false;
+    }
+    if (require_transparent && ss_has(provider.opaque_exports, ty.name)) {
+        sig_diag_error(
+            diags,
+            "RES-0038",
+            "opaque type '" + sig_nominal_display(ty) + "' is used where transparent layout is required",
+            filename,
+            span
+        );
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Check every nominal type named inside an exported surface type.
+ *
+ * @param tables Signature tables for nested function signatures.
+ * @param nr Name-resolution data containing export visibility.
+ * @param ty Type tree to inspect.
+ * @param require_transparent Whether the current position requires layout.
+ * @param diags Diagnostic collector.
+ * @param filename Source filename to report.
+ * @param span Source span to report.
+ * @return `true` if all nominal references are visible enough.
+ */
+func sig_check_export_surface_type(tables: SignatureTables*, nr: NameResolution*, ty: Type*,
+                                   require_transparent: bool, diags: DiagCollector*, filename: string,
+                                   span: Span) -> bool {
+    match (ty.kind) {
+        TY_BUILTIN => { return true; }
+        TY_NULL => { return true; }
+        TY_STRUCT => {
+            return sig_check_nominal_export_visibility(nr, ty, require_transparent, diags, filename, span);
+        }
+        TY_ENUM => {
+            return sig_check_nominal_export_visibility(nr, ty, require_transparent, diags, filename, span);
+        }
+        TY_POINTER => {
+            return sig_check_export_surface_type(tables, nr, ty.inner as Type*, false, diags, filename, span);
+        }
+        TY_NULLABLE => {
+            let inner = ty.inner as Type*;
+            if (ord(inner.kind) == ord(TY_POINTER)) {
+                return sig_check_export_surface_type(tables, nr, inner, false, diags, filename, span);
+            }
+            return sig_check_export_surface_type(tables, nr, inner, require_transparent, diags, filename, span);
+        }
+        TY_ARRAY => {
+            return sig_check_export_surface_type(tables, nr, ty.inner as Type*, true, diags, filename, span);
+        }
+        TY_FUNC => {
+            let ok = true;
+            let params = ty.params as VectorBase*;
+            for (let i = 0; i < vec_size(params); i = i + 1) {
+                if (!sig_check_export_surface_type(tables, nr, ptr_vec_get(params, i) as Type*, true, diags, filename, span)) {
+                    ok = false;
+                }
+            }
+            if (!sig_check_export_surface_type(tables, nr, ty.result as Type*, true, diags, filename, span)) {
+                ok = false;
+            }
+            return ok;
+        }
+    }
+}
+
+/**
+ * Check fields of an exported transparent struct.
+ *
+ * @param tables Signature tables containing resolved field types.
+ * @param nr Name-resolution data containing export visibility.
+ * @param info Exported struct metadata.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_exported_struct_surface(tables: SignatureTables*, nr: NameResolution*, info: StructInfo*,
+                                       diags: DiagCollector*) {
+    if (info.is_opaque) {
+        return;
+    }
+    for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+        let field = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+        sig_check_export_surface_type(tables, nr, field.field_type, true, diags, info.filename, info.span);
+    }
+}
+
+/**
+ * Check variants of an exported transparent enum.
+ *
+ * @param tables Signature tables containing resolved variant payload types.
+ * @param nr Name-resolution data containing export visibility.
+ * @param info Exported enum metadata.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_exported_enum_surface(tables: SignatureTables*, nr: NameResolution*, info: EnumInfo*,
+                                     diags: DiagCollector*) {
+    if (info.is_opaque) {
+        return;
+    }
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let variant = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+            sig_check_export_surface_type(tables, nr, ptr_vec_get(variant.field_types, j) as Type*, true,
+                diags, info.filename, info.span);
+        }
+    }
+}
+
+/**
+ * Enforce that exported declarations only expose exported nominal types.
+ *
+ * @param tables Signature tables containing resolved declaration types.
+ * @param nr Name-resolution data containing export sets.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_exported_surfaces(tables: SignatureTables*, nr: NameResolution*, diags: DiagCollector*) {
+    for (let env_i = 0; env_i < nr_env_count(nr); env_i = env_i + 1) {
+        let env = nr_env_get(nr, env_i);
+        with (let keys = nr_module_env_export_keys(env) => sv_free(keys)) {
+            for (let i = 0; i < sv_size(keys); i = i + 1) {
+                let name = sv_get(keys, i);
+                let sym_opt = spm_get(env.exports, name);
+                if (sym_opt == null) {
+                    continue;
+                }
+                let sym = sym_opt as Symbol*;
+                match (sym.kind) {
+                    SYM_STRUCT => {
+                        let info_opt = sig_lookup_struct_info(tables, env.module_name, name);
+                        if (info_opt != null) {
+                            sig_check_exported_struct_surface(tables, nr, info_opt as StructInfo*, diags);
+                        }
+                    }
+                    SYM_ENUM => {
+                        let info_opt = sig_lookup_enum_info(tables, env.module_name, name);
+                        if (info_opt != null) {
+                            sig_check_exported_enum_surface(tables, nr, info_opt as EnumInfo*, diags);
+                        }
+                    }
+                    SYM_FUNC => {
+                        let ty_opt = sig_lookup_func_type(tables, env.module_name, name);
+                        if (ty_opt != null) {
+                            sig_check_export_surface_type(tables, nr, ty_opt as Type*, true, diags,
+                                env.module_ptr.filename, sym.span);
+                        }
+                    }
+                    SYM_TYPE_ALIAS => {
+                        if (sym.resolved_type != null) {
+                            sig_check_export_surface_type(tables, nr, sym.resolved_type as Type*, true, diags,
+                                env.module_ptr.filename, sym.span);
+                        }
+                    }
+                    SYM_LET => {
+                        let ty_opt = sig_lookup_let_type(tables, env.module_name, name);
+                        if (ty_opt != null) {
+                            sig_check_export_surface_type(tables, nr, ty_opt as Type*, true, diags,
+                                env.module_ptr.filename, sym.span);
+                        }
+                    }
+                    SYM_ENUM_VARIANT => {
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * Resolve top-level type signatures for parsed modules.
  *
  * @param driver_state Parsed driver state.
@@ -784,5 +990,6 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
     }
 
     sig_detect_value_type_cycles(tables, diags);
+    sig_check_exported_surfaces(tables, nr, diags);
     return tables;
 }

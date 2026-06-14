@@ -256,6 +256,44 @@ func test_emit_interface_export_star() {
 }
 
 /**
+ * Tests opaque nominal interface emission and round-trip parsing.
+ */
+func test_emit_interface_opaque_nominals() {
+    let emitted = emit_interface_for("iface_opaque");
+    assert(contains_s(emitted, "opaque struct Handle == \"\";"), "expected opaque struct declaration");
+    assert(contains_s(emitted, "opaque enum State == \"\";"), "expected opaque enum declaration");
+    assert(!contains_s(emitted, "struct Handle {"), "opaque struct must not emit fields");
+    assert(!contains_s(emitted, "enum State {"), "opaque enum must not emit variants");
+    assert(contains_s(emitted, "func make_handle(value: int) -> Handle* == \"\";"), "expected pointer-return signature");
+    assert(contains_s(emitted, "func step(handle: Handle*, state: State*) -> Handle* == \"\";"), "expected opaque pointer parameters");
+
+    let parsed = pi_parse_interface(emitted, "<iface-opaque>");
+    assert(!ipr_has_errors(parsed), "opaque interface parse should succeed");
+    let mi = parsed.interface as ModuleInterface*;
+    assert(vec_size(mi.struct_infos) == 1, "expected one opaque struct");
+    assert(vec_size(mi.enum_infos) == 1, "expected one opaque enum");
+    let struct_info = ptr_vec_get(mi.struct_infos, 0) as StructInfo*;
+    let enum_info = ptr_vec_get(mi.enum_infos, 0) as EnumInfo*;
+    assert(struct_info.is_opaque, "parsed struct must be opaque");
+    assert(enum_info.is_opaque, "parsed enum must be opaque");
+    assert(vec_size(struct_info.fields) == 0, "opaque struct must parse with no fields");
+    assert(vec_size(enum_info.variants) == 0, "opaque enum must parse with no variants");
+
+    let re_emitted = ie_emit(mi);
+    assert(re_emitted == emitted, "opaque interface must round-trip byte-for-byte");
+    ipr_free(parsed);
+}
+
+/**
+ * Tests malformed opaque interface declarations.
+ */
+func test_interface_opaque_decl_rejection() {
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nopaque func f() -> void == \"\";\n", "PAR-0572", "<opaque-func>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nstruct Handle == \"\";\n", "PAR-0572", "<bodyless-struct>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nenum State == \"\";\n", "PAR-0572", "<bodyless-enum>");
+}
+
+/**
  * Tests PAR-0562: missing module name in interface header.
  */
 func test_interface_missing_module_name() {
@@ -553,6 +591,8 @@ func main() {
     test_interface_null_type_rejection();
     test_emit_interface_implicit_default();
     test_emit_interface_export_star();
+    test_emit_interface_opaque_nominals();
+    test_interface_opaque_decl_rejection();
     test_interface_missing_module_name();
     test_interface_missing_fingerprint_keyword();
     test_interface_missing_fingerprint_string();

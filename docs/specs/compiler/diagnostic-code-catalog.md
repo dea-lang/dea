@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-06-12
+Version: 2026-06-13
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -197,6 +197,7 @@ diagnostic.
 | `PAR-0545` | L1+     | Expected 'from' after selective import list                              |
 | `PAR-0546` | L1+     | Expected imported module name after 'from'                               |
 | `PAR-0547` | L1+     | Expected import alias after 'as'                                         |
+| `PAR-0548` | L1+     | Malformed opaque export group in export manifest                         |
 | `PAR-0550` | L1+     | Cannot mix named and positional arguments in one call or allocation      |
 | `PAR-0560` | L1+     | Expected `module` keyword at start of interface file                     |
 | `PAR-0561` | L1+     | Expected `interface` keyword in module interface declaration             |
@@ -294,6 +295,9 @@ diagnostic.
 | `RES-0034` | L1+   | Name is used both as an import alias and as a visible symbol in the same module      |
 | `RES-0035` | L1+   | Redundant selective import names symbols already imported from the same module       |
 | `RES-0036` | All   | Duplicate open import declaration for the same module                                |
+| `RES-0037` | L1+   | Exported surface references an unexported type                                       |
+| `RES-0038` | L1+   | Opaque type is used where transparent layout is required                             |
+| `RES-0039` | L1+   | `opaque` export qualifier is applied to a non-type symbol                            |
 
 ## Signature Analysis and Type Resolution for Type Declarations, Type Aliases, and Type References
 

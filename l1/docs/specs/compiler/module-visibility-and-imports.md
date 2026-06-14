@@ -1,6 +1,6 @@
 # Dea/L1 Module Visibility and Imports
 
-Version: 2026-06-13
+Version: 2026-06-14
 
 Status: Finalized
 
@@ -45,7 +45,7 @@ ExportDecl ::= "export" "*" ";"
              | "export" ExportList ";"
 
 ExportList ::= ExportItem ("," ExportItem)*
-ExportItem ::= "opaque" Ident
+ExportItem ::= "opaque" "{" IdentList "}"
              | Ident
 
 IdentList  ::= Ident ("," Ident)*
@@ -54,10 +54,17 @@ IdentList  ::= Ident ("," Ident)*
 There is no per-declaration `pub` or `priv` modifier in L1. Visibility is fixed at the module level by this single
 manifest.
 
-The `opaque` qualifier may prefix an exported type name (struct or enum) to export the name while hiding its layout; see
-[Type Visibility States](#type-visibility-states). `export opaque T;` is the common single-type spelling. Applying
-`opaque` to a non-type symbol, or under `export *;`, is rejected: `export *;` exports every name transparently, and
-opacity must be requested per type name.
+The `opaque` modifier may prefix a brace-delimited list of exported type names (structs or enums) to export those names
+while hiding their layouts; see [Type Visibility States](#type-visibility-states). For example:
+
+```dea
+export opaque { T };
+export opaque { T, U }, make_t;
+```
+
+The brace group is the modifier's argument, not a general transparent grouping construct: `export { T, U };` is not
+valid. Applying `opaque` to a non-type symbol, or under `export *;`, is rejected: `export *;` exports every name
+transparently, and opacity must be requested per type name.
 
 ## Export Set Computation
 
@@ -85,11 +92,11 @@ const _token: int = 7;
 
 A nominal type (struct or enum) has three effective states with respect to a consumer module:
 
-| State                     | Spelling          | Name visible | Layout visible |
-| ------------------------- | ----------------- | ------------ | -------------- |
-| Unexported (module-local) | _(no export)_     | no           | no             |
-| Opaque                    | `export opaque T` | yes          | no             |
-| Transparent               | `export T`        | yes          | yes            |
+| State                     | Spelling              | Name visible | Layout visible |
+| ------------------------- | --------------------- | ------------ | -------------- |
+| Unexported (module-local) | _(no export)_         | no           | no             |
+| Opaque                    | `export opaque { T }` | yes          | no             |
+| Transparent               | `export T`            | yes          | yes            |
 
 `export T` is transparent and matches the prior behavior exactly. An importer's available operations on a type are a
 pure function of what the interface lets it see:
@@ -132,10 +139,10 @@ neither matched nor constructed.
 
 ### Implementation scope
 
-A type is either transparent (no fields hidden) or fully opaque (all fields hidden, spelled `export opaque`). Mixed or
-partial field visibility is specified by this model but rejected with a not-yet-implemented diagnostic, pending a future
-field-visibility syntax. There is no "sized-opaque" rung that exports size and alignment while hiding fields; for a
-hidden type the only choices are transparent or by-pointer.
+A type is either transparent (no fields hidden) or fully opaque (all fields hidden, spelled `export opaque { T }`).
+Mixed or partial field visibility is specified by this model but rejected with a not-yet-implemented diagnostic, pending
+a future field-visibility syntax. There is no "sized-opaque" rung that exports size and alignment while hiding fields;
+for a hidden type the only choices are transparent or by-pointer.
 
 ### Relationship to `unsafe`
 

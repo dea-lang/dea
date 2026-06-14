@@ -3,10 +3,14 @@
  * Copyright (c) 2026 gwz
  */
 
-module export_bad_manifest;
+module opaque_by_value_err;
 
-export opaque { Handle }, Handle, missing;
+export opaque { Handle }, consume;
 
 struct Handle {
     value: int;
+}
+
+func consume(h: Handle) -> int {
+    return 0;
 }

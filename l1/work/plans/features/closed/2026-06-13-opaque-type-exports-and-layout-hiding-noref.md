@@ -3,7 +3,7 @@
 ## Add opaque type exports and layout-hiding visibility
 
 - Date: 2026-06-13
-- Status: Draft
+- Status: Completed
 - Title: Add opaque type exports and layout-hiding visibility
 - Kind: Feature
 - Severity: High
@@ -30,11 +30,12 @@
 
 ## Summary
 
-[ADR-0013] adopts layout-hiding field visibility for L1, with opacity derived from it and `export opaque T` as sugar for
-"export the name, hide all fields." This plan implements the two endpoints of that model (transparent and fully opaque)
-plus the exported-surface typing rule that makes the `.l1m` interface self-contained. It closes the latent soundness gap
-where an exported signature can reference an unexported type, which resolves under whole-source compilation but produces
-an interface that names a type defined nowhere in it under separate compilation ([initiative 0001][initiative]).
+[ADR-0013] adopts layout-hiding field visibility for L1, with opacity derived from it and `export opaque { T }` as sugar
+for "export the name, hide all fields." This plan implements the two endpoints of that model (transparent and fully
+opaque) plus the exported-surface typing rule that makes the `.l1m` interface self-contained. It closes the latent
+soundness gap where an exported signature can reference an unexported type, which resolves under whole-source
+compilation but produces an interface that names a type defined nowhere in it under separate compilation
+([initiative 0001][initiative]).
 
 ## Current State
 
@@ -47,7 +48,7 @@ an interface that names a type defined nowhere in it under separate compilation 
 
 ## Goal
 
-- Parse `export opaque T` (the `opaque` qualifier on an exported type name) and record per-type visibility state
+- Parse `export opaque { T }` (the `opaque` modifier group on exported type names) and record per-type visibility state
   (transparent vs opaque) in the export set.
 - Enforce the exported-surface typing rule in `sig_resolve_func` and the analogous aggregate layout-closure check, one
   level deep:
@@ -87,14 +88,20 @@ the explicit opaque declarations through the interface parser, reject bodyless n
 
 ## Diagnostics
 
-New diagnostics are provisional and must be re-checked against the live [diagnostic-code catalog][diag-catalog] at
-implementation time before final numbers are assigned. These are export-surface visibility rules, nearest to the
-existing `RES-0030`..`RES-0036` export/visibility block; the alternative home is the `SIG` family, since the checks run
-in `signatures.l0`. Confirm the family against the live catalog before assigning:
+The implementation assigns these diagnostics in the existing `RES` export/visibility block:
 
-- `RES-0037` (provisional): unexported type referenced in an exported function signature or exported aggregate field.
-- `RES-0038` (provisional): opaque type used by value where a transparent type is required.
-- `RES-0039` (provisional): mixed or partial field visibility is not yet implemented.
+- `RES-0037`: unexported type referenced in an exported function signature or exported aggregate field.
+- `RES-0038`: opaque type used by value where a transparent type is required.
+- `RES-0039`: `opaque` export qualifier applied to a non-type symbol.
+
+## Completion Notes
+
+- Implemented `opaque` as a keyword in source export manifests and `.l1m` interface declarations.
+- Refined the source export spelling to grouped `export opaque { T, U }` in the follow-up refactor plan.
+- Added opaque visibility tracking to module export metadata and nominal interface metadata.
+- Enforced exported-surface visibility for functions, aliases, lets/consts, and transparent aggregate fields.
+- Rejected imported opaque layout use through field access, constructor calls, and allocation.
+- Added parser, analysis, interface round-trip, diagnostic parity, and runtime pointer-round-trip coverage.
 
 ## Non-Goals
 
@@ -113,7 +120,7 @@ in `signatures.l0`. Confirm the family against the live catalog before assigning
   the interface parser reads them back.
 - The visibility spec and ADR-0013 match the implemented behavior.
 
-[adr-0013]: ../../../docs/decisions/0013-opaque-type-exports-and-layout-hiding-visibility.md
-[diag-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[visibility-spec]: ../../../docs/specs/compiler/module-visibility-and-imports.md
+[adr-0013]: ../../../../docs/decisions/0013-opaque-type-exports-and-layout-hiding-visibility.md
+[diag-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[visibility-spec]: ../../../../docs/specs/compiler/module-visibility-and-imports.md

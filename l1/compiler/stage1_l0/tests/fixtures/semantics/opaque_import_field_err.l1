@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module opaque_import_field_err;
+
+import opaque_import_dep;
+
+func reveal(handle: Handle*) -> int {
+    return handle.value;
+}

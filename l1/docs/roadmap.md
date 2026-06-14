@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-06-13
+Version: 2026-06-14
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -96,6 +96,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Refactor [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] collapsed the two-layer LBI scheme into a
   single recursive grammar, replacing the broad-`S` link-name layer with `N` / `S` / `E` / `I` terminals plus trailing
   type components for function signatures.
+- Feature [2026-06-13-opaque-type-exports-and-layout-hiding-noref][opaque-exports] added `export opaque { T }`,
+  exported-surface visibility checks, and opaque `.l1m` nominal declarations.
 
 </details>
 
@@ -234,6 +236,7 @@ update to be promoted to an initiative or plan:
 [named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md
 [nullable-equality]: ../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
+[opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md

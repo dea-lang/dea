@@ -157,7 +157,7 @@ provider objects or explicit external-link inputs.
 6. Emitting one compile-only object that contains multiple source modules from the import closure.
 7. Treating direct-interface replay as proof that transitive interface closure, dependency graph population, or
    provider-object discovery is complete.
-8. Defining the source-language `export opaque T` semantic diagnostics; the opaque-export plan owns by-value opaque
+8. Defining the source-language `export opaque { T }` semantic diagnostics; the opaque-export plan owns by-value opaque
    rejection and exported-surface visibility checks.
 
 ## Verification Criteria

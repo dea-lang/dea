@@ -29,6 +29,7 @@ struct ModuleEnv {
     module_ptr_owned: bool;
     locals: StringPtrMap*;           // string -> Symbol*
     exports: StringPtrMap*;          // string -> Symbol* (non-owning)
+    opaque_exports: StringSet*;      // names exported opaquely
     imported: StringPtrMap*;         // string -> Symbol* (non-owning)
     all: StringPtrMap*;              // string -> Symbol* (non-owning for imported, owning via locals)
     ambiguous_imports: StringSet*;
@@ -235,6 +236,7 @@ func nr_symbol_free_map(self: StringPtrMap*) {
 func nr_module_env_free(self: ModuleEnv*) {
     nr_symbol_free_map(self.locals);
     spm_free(self.exports);
+    ss_free(self.opaque_exports);
     spm_free(self.imported);
     spm_free(self.all);
     ss_free(self.ambiguous_imports);
@@ -513,6 +515,22 @@ func nr_default_exports_name(name: string) -> bool {
 }
 
 /**
+ * Return whether a parsed export manifest marks a name as opaque.
+ *
+ * @param manifest Export manifest to inspect.
+ * @param name Exported name.
+ * @return `true` when `name` was written with the `opaque` qualifier.
+ */
+func nr_manifest_name_is_opaque(manifest: ExportManifest*, name: string) -> bool {
+    for (let i = 0; i < sv_size(manifest.opaque_names); i = i + 1) {
+        if (sv_get(manifest.opaque_names, i) == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Compute one module's exported symbol map from its manifest and locals.
  *
  * @param env Module environment being populated.
@@ -569,6 +587,20 @@ func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
                 continue;
             }
             spm_put(env.exports, export_name, sym as void*);
+            if (nr_manifest_name_is_opaque(m, export_name)) {
+                let exported_sym = sym as Symbol*;
+                if (ord(exported_sym.kind) == ord(SYM_STRUCT) || ord(exported_sym.kind) == ord(SYM_ENUM)) {
+                    ss_add(env.opaque_exports, export_name);
+                } else {
+                    nr_span_diag_error(
+                        diags,
+                        "RES-0039",
+                        "`opaque` export requires a struct or enum type; '" + export_name + "' is " + symbol_kind_name(exported_sym.kind),
+                        env.module_ptr.filename,
+                        m.span
+                    );
+                }
+            }
         }
     }
 }
@@ -901,6 +933,7 @@ func nr_make_owned_env(module_ptr: Module*, module_ptr_owned: bool) -> ModuleEnv
         module_ptr_owned,
         spm_create(),
         spm_create(),
+        ss_create(),
         spm_create(),
         spm_create(),
         ss_create(),

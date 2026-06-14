@@ -328,6 +328,70 @@ func test_export_star_ok() {
 }
 
 /**
+ * Tests arity-one opaque export groups.
+ */
+func test_export_opaque_group_arity_one_ok() {
+    let src = "module main; export opaque { Handle }; struct Handle { x: int; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected arity-one opaque export group parse success");
+    assert(result.root_module != null, "Expected parsed module");
+    let root = result.root_module as Module*;
+    assert(root.export_manifest != null, "Expected explicit export manifest");
+    let manifest = root.export_manifest as ExportManifest*;
+    assert(!manifest.export_all, "Expected export allowlist");
+    assert(sv_size(manifest.names) == 1, "Expected one exported name");
+    assert(sv_get(manifest.names, 0) == "Handle", "Expected opaque exported name");
+    assert(sv_size(manifest.opaque_names) == 1, "Expected one opaque exported name");
+    assert(sv_get(manifest.opaque_names, 0) == "Handle", "Expected first opaque export");
+    parse_result_free(result);
+}
+
+/**
+ * Tests mixed transparent and grouped opaque export-list syntax.
+ */
+func test_export_opaque_groups_ok() {
+    let src = "module main; export opaque { Handle, State }, make, opaque { Token }; struct Handle { x: int; } enum State { Ready; } struct Token { id: int; } func make() -> Handle* { return new Handle(0); }";
+    let result = parse_module_source(src, "<test>");
+    if (parse_has_errors(result)) {
+        let diag = parse_diag_get(result, 0);
+        printl_ss("unexpected parse error code:", diag.code);
+        printl_ss("unexpected parse error message:", diag.message);
+        assert(false, "Expected opaque export parse to succeed");
+    }
+    assert(result.root_module != null, "Expected parsed module");
+    let root = result.root_module as Module*;
+    assert(root.export_manifest != null, "Expected explicit export manifest");
+    let manifest = root.export_manifest as ExportManifest*;
+    assert(!manifest.export_all, "Expected export allowlist");
+    assert(sv_size(manifest.names) == 4, "Expected four exported names");
+    assert(sv_get(manifest.names, 0) == "Handle", "Expected first exported name");
+    assert(sv_get(manifest.names, 1) == "State", "Expected second exported name");
+    assert(sv_get(manifest.names, 2) == "make", "Expected third exported name");
+    assert(sv_get(manifest.names, 3) == "Token", "Expected fourth exported name");
+    assert(sv_size(manifest.opaque_names) == 3, "Expected three opaque exported names");
+    assert(sv_get(manifest.opaque_names, 0) == "Handle", "Expected first opaque export");
+    assert(sv_get(manifest.opaque_names, 1) == "State", "Expected second opaque export");
+    assert(sv_get(manifest.opaque_names, 2) == "Token", "Expected third opaque export");
+    parse_result_free(result);
+}
+
+/**
+ * Tests malformed opaque export-group syntax.
+ */
+func test_export_opaque_groups_err() {
+    expect_error_code_and_message(
+        "module main; export " + "opaque Handle; struct Handle { x: int; }",
+        "PAR-0548",
+        "expected '{' after 'opaque' in export manifest, got ident(Handle) instead"
+    );
+    expect_error_code("module main; export opaque; struct Handle { x: int; }", "PAR-0548");
+    expect_error_code("module main; export opaque {}; struct Handle { x: int; }", "PAR-0548");
+    expect_error_code("module main; export { Handle }; struct Handle { x: int; }", "PAR-0540");
+    expect_error_code("module main; export opaque { Handle; struct Handle { x: int; }", "PAR-0548");
+    expect_error_code("module main; export *, opaque { Handle }; struct Handle { x: int; }", "PAR-0541");
+}
+
+/**
  * Tests test_module_decl_error.
  */
 func test_module_decl_error() {
@@ -1286,6 +1350,9 @@ func main() {
     test_valid_module();
     test_export_and_new_import_forms_ok();
     test_export_star_ok();
+    test_export_opaque_group_arity_one_ok();
+    test_export_opaque_groups_ok();
+    test_export_opaque_groups_err();
     test_module_decl_error();
     test_reserved_variable_name_error();
     test_top_level_const_ok();

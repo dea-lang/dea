@@ -64,7 +64,7 @@ This plan owns that contract end to end.
    truth, so verification is robust across separate `--build` and `--link` invocations.
 7. Nominal type canonicalization follows effective visibility: transparent `struct` / `enum` declarations serialize full
    canonical layout; opaque `struct` / `enum` declarations serialize the explicit opaque marker and name only;
-   unexported nominal types are absent. Changing `export T` to `export opaque T`, or the reverse, changes the public
+   unexported nominal types are absent. Changing `export T` to `export opaque { T }`, or the reverse, changes the public
    surface fingerprint.
 8. `require` records remain tied to symbols directly named in the exported surface. A `require` entry for an opaque
    nominal type records a name-level dependency and expected compatibility hash; it does not imply that the consumer has

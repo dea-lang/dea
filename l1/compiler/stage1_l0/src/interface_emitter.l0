@@ -99,6 +99,14 @@ func ie_format_type(ty: Type*, module_name: string) -> string {
  * @param module_name Module being emitted.
  */
 func ie_emit_struct(sb: StringBuffer*, info: StructInfo*, module_name: string) {
+    if (info.is_opaque) {
+        sb_append(sb, "opaque struct ");
+        sb_append(sb, info.name);
+        sb_append(sb, " == \"");
+        sb_append(sb, info.iface_hash);
+        sb_append(sb, "\";");
+        return;
+    }
     sb_append(sb, "struct ");
     sb_append(sb, info.name);
     sb_append(sb, " {\n");
@@ -123,6 +131,14 @@ func ie_emit_struct(sb: StringBuffer*, info: StructInfo*, module_name: string) {
  * @param module_name Module being emitted.
  */
 func ie_emit_enum(sb: StringBuffer*, info: EnumInfo*, module_name: string) {
+    if (info.is_opaque) {
+        sb_append(sb, "opaque enum ");
+        sb_append(sb, info.name);
+        sb_append(sb, " == \"");
+        sb_append(sb, info.iface_hash);
+        sb_append(sb, "\";");
+        return;
+    }
     sb_append(sb, "enum ");
     sb_append(sb, info.name);
     sb_append(sb, " {\n");

@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module opaque_import_new_enum_err;
+
+import opaque_import_dep;
+
+func main() -> int {
+    let s = new State();
+    return 0;
+}

@@ -814,6 +814,44 @@ func etc_symbol_as_type(self: ExpressionTypeChecker*, sym: Symbol*) -> Type*? {
 }
 
 /**
+ * Return whether a nominal type is opaque from the current module.
+ *
+ * @param self Expression checker state.
+ * @param ty Nominal type to inspect.
+ * @return `true` when `ty` is exported opaquely by another module.
+ */
+func etc_is_imported_opaque_nominal(self: ExpressionTypeChecker*, ty: Type*) -> bool {
+    if (ord(ty.kind) != ord(TY_STRUCT) && ord(ty.kind) != ord(TY_ENUM)) {
+        return false;
+    }
+    if (ty.module_name == self.current_module) {
+        return false;
+    }
+    let provider = nr_env_find(self.result.names as NameResolution*, ty.module_name);
+    if (provider == null) {
+        return false;
+    }
+    return ss_has((provider as ModuleEnv*).opaque_exports, ty.name);
+}
+
+/**
+ * Emit the shared opaque-layout diagnostic for expression-level layout use.
+ *
+ * @param self Expression checker state.
+ * @param ty Opaque nominal type.
+ * @param span Source span to report.
+ */
+func etc_diag_opaque_layout_use(self: ExpressionTypeChecker*, ty: Type*, span: Span) {
+    etc_diag_error(
+        self,
+        "RES-0038",
+        "opaque type '" + ty.module_name + "::" + ty.name + "' is used where transparent layout is required",
+        (self.current_unit as DriverUnit*).path,
+        span
+    );
+}
+
+/**
  * Emit the most specific diagnostic for a failed type-reference resolution.
  *
  * Special cases preserve shared diagnostic codes for nullable `void`, ambiguous
@@ -3142,6 +3180,11 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
     if (ord(c_ty.kind) == ord(TY_STRUCT)) {
         let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, c_ty.module_name, c_ty.name);
         if (info != null) {
+            if (etc_is_imported_opaque_nominal(self, c_ty)) {
+                etc_diag_opaque_layout_use(self, c_ty, expr.span);
+                type_free(c_ty);
+                return null;
+            }
             let fields = (info as StructInfo*).fields;
             let args2 = expr.ids as VectorBase*;
             let arg_count2 = 0;
@@ -3309,6 +3352,11 @@ func etc_infer_field(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
     }
 
     if (ord(base_ty.kind) == ord(TY_STRUCT)) {
+        if (etc_is_imported_opaque_nominal(self, base_ty)) {
+            etc_diag_opaque_layout_use(self, base_ty, expr.span);
+            type_free(l_ty);
+            return null;
+        }
         let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, base_ty.module_name, base_ty.name);
         if (info != null) {
             let fields = (info as StructInfo*).fields;
@@ -3838,6 +3886,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                         target_ref, self.result.diags, seen2);
                     if (base_ty != null) {
                         let base = base_ty as Type*;
+                        let is_opaque_nominal = etc_is_imported_opaque_nominal(self, base);
                         if (ord(base.kind) == ord(TY_ARRAY)) {
                             if (arg_count > 1) {
                                 etc_diag_error(self, "TYP-0805", "array constructor or allocation has invalid arity",
@@ -3847,9 +3896,13 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                 etc_check_array_constructor_arg(self, base, arg_id, unit.path);
                             }
                         } else if (ord(base.kind) == ord(TY_ENUM)) {
-                            etc_diag_error(self, "TYP-0281",
-                                "cannot allocate enum type '" + type_format(base) + "' without a variant",
-                                unit.path, expr.span);
+                            if (is_opaque_nominal) {
+                                etc_diag_opaque_layout_use(self, base, expr.span);
+                            } else {
+                                etc_diag_error(self, "TYP-0281",
+                                    "cannot allocate enum type '" + type_format(base) + "' without a variant",
+                                    unit.path, expr.span);
+                            }
                         } else if (ord(base.kind) == ord(TY_STRUCT)) {
                             let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*,
                                 base.module_name, base.name);
@@ -3857,6 +3910,8 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                 etc_diag_error(self, "TYP-0282",
                                     "missing struct info for " + base.module_name + "." + base.name,
                                     unit.path, expr.span);
+                            } else if (is_opaque_nominal) {
+                                etc_diag_opaque_layout_use(self, base, expr.span);
                             } else {
                                 let fields = (info as StructInfo*).fields;
                                 let field_count = vec_size(fields);
@@ -3925,7 +3980,9 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             }
                         }
 
-                        if (ord(base.kind) != ord(TY_ENUM)) {
+                        if (is_opaque_nominal) {
+                            type_free(base);
+                        } else if (ord(base.kind) != ord(TY_ENUM)) {
                             ty = type_new_pointer(base);
                         } else {
                             type_free(base);

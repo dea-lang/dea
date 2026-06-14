@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module opaque_aggregate_private_err;
+
+export Holder;
+
+struct Hidden {
+    value: int;
+}
+
+struct Holder {
+    hidden: Hidden;
+}

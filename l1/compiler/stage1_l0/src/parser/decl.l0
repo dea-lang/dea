@@ -356,6 +356,78 @@ func ps_parse_ident_list_rest(self: ParserState*, first_tok: Token, code: string
 }
 
 /**
+ * Append one opaque export name to both export-name lists.
+ *
+ * @param names Destination for all exported names.
+ * @param opaque_names Destination for names exported opaquely.
+ * @param name Exported name to append.
+ */
+func ps_append_export_name(names: StringVector*, opaque_names: StringVector*, name: string) {
+    sv_push(names, name);
+    sv_push(opaque_names, name);
+}
+
+/**
+ * Parse an `opaque { ... }` export-list item.
+ *
+ * @param self Parser state to advance.
+ * @param names Destination for all exported names.
+ * @param opaque_names Destination for names exported opaquely.
+ * @return `true` if one group was parsed.
+ */
+func ps_parse_opaque_export_group(self: ParserState*, names: StringVector*, opaque_names: StringVector*) -> bool {
+    ps_advance(self); // 'opaque', guaranteed by the caller's ps_check
+    if (ps_expect(self, ord(TT_LBRACE), "PAR-0548", "expected '{' after 'opaque' in export manifest") == null) {
+        return false;
+    }
+
+    let first_opt = ps_expect_ident(self, "PAR-0548", "expected exported name in opaque export group");
+    if (first_opt == null) {
+        return false;
+    }
+    let first = first_opt as Token;
+    ps_append_export_name(names, opaque_names, token_ident_text(first) as string);
+
+    while (ps_match(self, ord(TT_COMMA))) {
+        let tok_opt = ps_expect_ident(self, "PAR-0548", "expected exported name in opaque export group");
+        if (tok_opt == null) {
+            return false;
+        }
+        let tok = tok_opt as Token;
+        ps_append_export_name(names, opaque_names, token_ident_text(tok) as string);
+    }
+
+    if (ps_expect(self, ord(TT_RBRACE), "PAR-0548", "expected '}' after opaque export group") == null) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Parse one export-list item.
+ *
+ * @param self Parser state to advance.
+ * @param names Destination for all exported names.
+ * @param opaque_names Destination for names exported opaquely.
+ * @param message Diagnostic message used when an exported name is missing.
+ * @return `true` if one item was parsed.
+ */
+func ps_parse_export_item(self: ParserState*, names: StringVector*, opaque_names: StringVector*, message: string) -> bool {
+    if (ps_check(self, ord(TT_OPAQUE))) {
+        return ps_parse_opaque_export_group(self, names, opaque_names);
+    }
+
+    let tok_opt = ps_expect_ident(self, "PAR-0540", message);
+    if (tok_opt == null) {
+        return false;
+    }
+    let tok = tok_opt as Token;
+    let name = token_ident_text(tok) as string;
+    sv_push(names, name);
+    return true;
+}
+
+/**
  * Parse an optional module export manifest.
  *
  * @param self Parser state to advance.
@@ -371,15 +443,25 @@ func ps_parse_export_manifest(self: ParserState*) -> ExportManifest*? {
 
     if (ps_match(self, ord(TT_STAR))) {
         ps_expect(self, ord(TT_SEMI), "PAR-0541", "expected ';' after export manifest")?;
-        return new ExportManifest(true, sv_create(0), ps_extend_span(self, start));
+        return new ExportManifest(true, sv_create(0), sv_create(0), ps_extend_span(self, start));
     }
 
-    let first = ps_expect_ident(self, "PAR-0540", "expected exported name or '*' after 'export'")?;
-    with (let names: StringVector*? = ps_parse_ident_list_rest(self, first, "PAR-0540",
-              "expected exported name after ','") => sv_free_opt(names)) {
+    with (let names: StringVector*? = sv_create(4) => sv_free_opt(names),
+          let opaque_names: StringVector*? = sv_create(2) => sv_free_opt(opaque_names)) {
+        if (!ps_parse_export_item(self, names as StringVector*, opaque_names as StringVector*,
+                "expected exported name or '*' after 'export'")) {
+            return null;
+        }
+        while (ps_match(self, ord(TT_COMMA))) {
+            if (!ps_parse_export_item(self, names as StringVector*, opaque_names as StringVector*,
+                    "expected exported name after ','")) {
+                return null;
+            }
+        }
         ps_expect(self, ord(TT_SEMI), "PAR-0541", "expected ';' after export manifest")?;
-        let result = new ExportManifest(false, names as StringVector*, ps_extend_span(self, start));
+        let result = new ExportManifest(false, names as StringVector*, opaque_names as StringVector*, ps_extend_span(self, start));
         names = null;
+        opaque_names = null;
         return result;
     }
 }

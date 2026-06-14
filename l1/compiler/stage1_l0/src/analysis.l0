@@ -162,7 +162,8 @@ func mi_clone_struct_info(info: StructInfo*) -> StructInfo* {
         info.span,
         type_clone(info.struct_type),
         fields,
-        info.iface_hash
+        info.iface_hash,
+        info.is_opaque
     );
 }
 
@@ -190,7 +191,8 @@ func mi_clone_enum_info(info: EnumInfo*) -> EnumInfo* {
         info.span,
         type_clone(info.enum_type),
         variants,
-        info.iface_hash
+        info.iface_hash,
+        info.is_opaque
     );
 }
 
@@ -523,9 +525,11 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                         continue;
                     }
                     let cloned_struct = mi_clone_struct_info(info_opt as StructInfo*);
-                    for (let fi = 0; fi < vec_size(cloned_struct.fields); fi = fi + 1) {
-                        let field = ptr_vec_get(cloned_struct.fields, fi) as StructFieldInfo*;
-                        mi_collect_type_refs(field.field_type, module_name, require_entries);
+                    if (!cloned_struct.is_opaque) {
+                        for (let fi = 0; fi < vec_size(cloned_struct.fields); fi = fi + 1) {
+                            let field = ptr_vec_get(cloned_struct.fields, fi) as StructFieldInfo*;
+                            mi_collect_type_refs(field.field_type, module_name, require_entries);
+                        }
                     }
                     ptr_vec_push(struct_infos, cloned_struct as void*);
                 }
@@ -535,10 +539,12 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                         continue;
                     }
                     let cloned_enum = mi_clone_enum_info(info_opt as EnumInfo*);
-                    for (let vi = 0; vi < vec_size(cloned_enum.variants); vi = vi + 1) {
-                        let variant = ptr_vec_get(cloned_enum.variants, vi) as EnumVariantInfo*;
-                        for (let vfi = 0; vfi < vec_size(variant.field_types); vfi = vfi + 1) {
-                            mi_collect_type_refs(ptr_vec_get(variant.field_types, vfi) as Type*, module_name, require_entries);
+                    if (!cloned_enum.is_opaque) {
+                        for (let vi = 0; vi < vec_size(cloned_enum.variants); vi = vi + 1) {
+                            let variant = ptr_vec_get(cloned_enum.variants, vi) as EnumVariantInfo*;
+                            for (let vfi = 0; vfi < vec_size(variant.field_types); vfi = vfi + 1) {
+                                mi_collect_type_refs(ptr_vec_get(variant.field_types, vfi) as Type*, module_name, require_entries);
+                            }
                         }
                     }
                     ptr_vec_push(enum_infos, cloned_enum as void*);

@@ -1,7 +1,7 @@
 # ADR-0013: Opaque Type Exports and Layout-Hiding Visibility
 
 - Decision date: 2026-06-13
-- Last edited: 2026-06-13
+- Last edited: 2026-06-14
 - Status: Accepted
 
 ## Context
@@ -29,17 +29,17 @@ rather than bolt a check onto the existing one.
 ## Decision
 
 Adopt layout-hiding field visibility as the underlying model, and make opacity a derived property of it rather than a
-distinct type-system primitive. `export opaque T` is introduced as sugar for "export the name, hide all fields."
+distinct type-system primitive. `export opaque { T }` is introduced as sugar for "export the name, hide all fields."
 
 ### Visibility states
 
 A nominal type has three effective states with respect to a consumer module:
 
-| State                     | Spelling          | Name visible | Layout visible |
-| ------------------------- | ----------------- | ------------ | -------------- |
-| Unexported (module-local) | _(no export)_     | no           | no             |
-| Opaque                    | `export opaque T` | yes          | no             |
-| Transparent               | `export T`        | yes          | yes            |
+| State                     | Spelling              | Name visible | Layout visible |
+| ------------------------- | --------------------- | ------------ | -------------- |
+| Unexported (module-local) | _(no export)_         | no           | no             |
+| Opaque                    | `export opaque { T }` | yes          | no             |
+| Transparent               | `export T`            | yes          | yes            |
 
 `export T` retains its current meaning exactly (transparent), so existing code is unchanged.
 
@@ -110,7 +110,7 @@ all-or-none: all variants hidden yields an opaque enum that can be held but neit
 ### Implementation scope: endpoints only
 
 A type is implemented as either transparent (no fields hidden) or fully opaque (all fields hidden, i.e.
-`export opaque`). Mixed/partial field visibility is specified but rejected with a not-yet-implemented diagnostic,
+`export opaque { T }`). Mixed/partial field visibility is specified but rejected with a not-yet-implemented diagnostic,
 pending the offset-vs-accessor decision (see Open questions). The endpoints are cheap (all-public emits the layout
 already produced today; zero-public emits only the name), while the partial case requires either emitting field offsets
 (leaks partial layout, pins ABI) or accessor thunks.
@@ -118,7 +118,8 @@ already produced today; zero-public emits only the name), while the partial case
 ## Rationale
 
 - Separate compilation is sound by construction: a type can only enter the `.l1m` surface through a deliberate
-  `export T` or `export opaque T`, so the interface never references a type it does not also define or forward-declare.
+  `export T` or `export opaque { T }`, so the interface never references a type it does not also define or
+  forward-declare.
 - Opacity is derived from visibility rather than introduced as a new type-system primitive, which keeps the type system
   unchanged and makes `export opaque` mere sugar for one point in the visibility space.
 - Layout-hiding (not name-hiding) semantics is the load-bearing property: it is what lets an opaque type project as a
@@ -138,7 +139,7 @@ already produced today; zero-public emits only the name), while the partial case
 4. Permit implicit unexported-by-pointer flow (the inference-only `f(g())` that works today). Rejected: it forces the
    compiler to emit an implicit forward declaration of a type the author never exported, breaking the property that the
    export surface is exactly and only what is written; and it is ergonomically crippled (the consumer cannot name the
-   type). `export opaque T` is the one-keyword, strictly better replacement.
+   type). `export opaque { T }` is the explicit replacement.
 5. "Sized-opaque" (export size/alignment, hide fields). Rejected/deferred: it would enable by-value embedding of a
    hidden type but pins the size as an early ABI commitment and complicates evolution. For a hidden type the only
    choices are transparent or by-pointer; there is no middle rung.
@@ -151,7 +152,7 @@ already produced today; zero-public emits only the name), while the partial case
 Positive:
 
 - Separate compilation is sound by construction; the original accidental-leak case is designed out: a type crosses a
-  boundary only via `export T` or `export opaque T`, both written deliberately.
+  boundary only via `export T` or `export opaque { T }`, both written deliberately.
 - The opaque-handle idiom is explicit, nameable, and storable on the consumer side.
 - The export surface remains fully auditable from the declarations / `.l1m`.
 - Zero migration: `export T` is unchanged.
@@ -199,8 +200,8 @@ Neutral:
 
 ## Related Plans
 
-- [l1/work/plans/features/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md][opaque-plan]: endpoints-only
-  implementation (Draft).
+- [l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md][opaque-plan]: endpoints-only
+  implementation (Completed).
 
 ## Related Initiatives
 
@@ -219,5 +220,5 @@ Neutral:
 
 [adr-0009]: 0009-module-visibility-exports-imports.md
 [initiative]: ../../work/initiatives/0001-separate-compilation-and-linking.md
-[opaque-plan]: ../../work/plans/features/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
+[opaque-plan]: ../../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [visibility-spec]: ../specs/compiler/module-visibility-and-imports.md

@@ -554,11 +554,45 @@ func pi_parse_struct_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
         let struct_type = type_new_struct(mi.module_name, name);
         let key = mi.module_name + "::" + name;
         let span = Span(0, 0, 0, 0);
-        let info = new StructInfo(key, mi.module_name, name, "", span, struct_type, fields as VectorBase*, hash_opt as string);
+        let info = new StructInfo(key, mi.module_name, name, "", span, struct_type, fields as VectorBase*, hash_opt as string, false);
         ptr_vec_push(mi.struct_infos, info as void*);
         fields = null;
         return true;
     }
+}
+
+/**
+ * Parse an opaque struct declaration.
+ *
+ * Expects: `opaque struct Name == "...";`
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `true` on success.
+ */
+func pi_parse_opaque_struct_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+    ps_advance(self); // consume `opaque`
+    if (ps_expect(self, ord(TT_STRUCT), "PAR-0572", "Expected 'struct' after 'opaque'") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    let name_tok = ps_expect_ident(self, "PAR-0573", "Expected struct name");
+    if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    let name = token_ident_text(name_tok as Token) as string;
+
+    let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0576");
+    if (hash_opt == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    let struct_type = type_new_struct(mi.module_name, name);
+    let key = mi.module_name + "::" + name;
+    let span = Span(0, 0, 0, 0);
+    let info = new StructInfo(key, mi.module_name, name, "", span, struct_type, ptr_vec_create(0), hash_opt as string, true);
+    ptr_vec_push(mi.struct_infos, info as void*);
+    return true;
 }
 
 /**
@@ -640,11 +674,45 @@ func pi_parse_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
         let enum_type = type_new_enum(mi.module_name, name);
         let key = mi.module_name + "::" + name;
         let span = Span(0, 0, 0, 0);
-        let info = new EnumInfo(key, mi.module_name, name, "", span, enum_type, variants as VectorBase*, hash_opt as string);
+        let info = new EnumInfo(key, mi.module_name, name, "", span, enum_type, variants as VectorBase*, hash_opt as string, false);
         ptr_vec_push(mi.enum_infos, info as void*);
         variants = null;
         return true;
     }
+}
+
+/**
+ * Parse an opaque enum declaration.
+ *
+ * Expects: `opaque enum Name == "...";`
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `true` on success.
+ */
+func pi_parse_opaque_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+    ps_advance(self); // consume `opaque`
+    if (ps_expect(self, ord(TT_ENUM), "PAR-0572", "Expected 'enum' after 'opaque'") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    let name_tok = ps_expect_ident(self, "PAR-0573", "Expected enum name");
+    if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    let name = token_ident_text(name_tok as Token) as string;
+
+    let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0576");
+    if (hash_opt == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    let enum_type = type_new_enum(mi.module_name, name);
+    let key = mi.module_name + "::" + name;
+    let span = Span(0, 0, 0, 0);
+    let info = new EnumInfo(key, mi.module_name, name, "", span, enum_type, ptr_vec_create(0), hash_opt as string, true);
+    ptr_vec_push(mi.enum_infos, info as void*);
+    return true;
 }
 
 /**
@@ -861,6 +929,17 @@ func pi_parse_one_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
         return false;
     }
 
+    if (ps_check(self, ord(TT_OPAQUE))) {
+        if (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_STRUCT))) {
+            return pi_parse_opaque_struct_decl(self, mi);
+        }
+        if (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_ENUM))) {
+            return pi_parse_opaque_enum_decl(self, mi);
+        }
+        ps_emit_error(self, "PAR-0572", "Expected 'struct' or 'enum' after 'opaque' in interface file", ps_peek(self));
+        ps_advance(self);
+        return pi_sync_to_semi_or_rbrace(self);
+    }
     if (ps_check(self, ord(TT_STRUCT))) {
         return pi_parse_struct_decl(self, mi);
     }

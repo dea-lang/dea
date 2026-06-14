@@ -106,11 +106,95 @@ func test_analysis_alias_imports() {
 }
 
 /**
+ * Tests opaque export-surface diagnostics and accepted pointer-only cases.
+ */
+func test_analysis_opaque_export_surfaces() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let pointer_result = analysis_analyze_entry(sp, "opaque_pointer_ok", cfg);
+        assert(!analysis_has_errors(pointer_result), "expected opaque pointer signatures to analyze");
+        analysis_result_free(pointer_result);
+    }
+
+    with (let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2) {
+        let aggregate_result = analysis_analyze_entry(sp, "opaque_aggregate_pointer_ok", cfg2);
+        assert(!analysis_has_errors(aggregate_result), "expected transparent aggregate pointer frontier to analyze");
+        analysis_result_free(aggregate_result);
+    }
+
+    with (let cfg3 = log_config_create(LL_SILENT, false) => drop cfg3) {
+        let private_result = analysis_analyze_entry(sp, "opaque_private_sig_err", cfg3);
+        assert(analysis_has_errors(private_result), "expected private type leak to fail");
+        assert(has_diag_code(private_result, "RES-0037"), "expected RES-0037 for private type leak");
+        analysis_result_free(private_result);
+    }
+
+    with (let cfg4 = log_config_create(LL_SILENT, false) => drop cfg4) {
+        let value_result = analysis_analyze_entry(sp, "opaque_by_value_err", cfg4);
+        assert(analysis_has_errors(value_result), "expected opaque by-value signature to fail");
+        assert(has_diag_code(value_result, "RES-0038"), "expected RES-0038 for opaque by-value signature");
+        analysis_result_free(value_result);
+    }
+
+    with (let cfg5 = log_config_create(LL_SILENT, false) => drop cfg5) {
+        let aggregate_value_result = analysis_analyze_entry(sp, "opaque_aggregate_by_value_err", cfg5);
+        assert(analysis_has_errors(aggregate_value_result), "expected opaque by-value field to fail");
+        assert(has_diag_code(aggregate_value_result, "RES-0038"), "expected RES-0038 for opaque by-value field");
+        analysis_result_free(aggregate_value_result);
+    }
+
+    with (let cfg6 = log_config_create(LL_SILENT, false) => drop cfg6) {
+        let aggregate_private_result = analysis_analyze_entry(sp, "opaque_aggregate_private_err", cfg6);
+        assert(analysis_has_errors(aggregate_private_result), "expected private aggregate field to fail");
+        assert(has_diag_code(aggregate_private_result, "RES-0037"), "expected RES-0037 for private aggregate field");
+        analysis_result_free(aggregate_private_result);
+    }
+
+    with (let cfg7 = log_config_create(LL_SILENT, false) => drop cfg7) {
+        let non_type_result = analysis_analyze_entry(sp, "opaque_non_type_err", cfg7);
+        assert(analysis_has_errors(non_type_result), "expected opaque non-type export to fail");
+        assert(has_diag_code(non_type_result, "RES-0039"), "expected RES-0039 for opaque non-type export");
+        analysis_result_free(non_type_result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that imported opaque types reject layout operations.
+ */
+func test_analysis_imported_opaque_layout_errors() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let field_result = analysis_analyze_entry(sp, "opaque_import_field_err", cfg);
+        assert(analysis_has_errors(field_result), "expected imported opaque field access to fail");
+        assert(has_diag_code(field_result, "RES-0038"), "expected RES-0038 for opaque field access");
+        analysis_result_free(field_result);
+    }
+
+    with (let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2) {
+        let ctor_result = analysis_analyze_entry(sp, "opaque_import_constructor_err", cfg2);
+        assert(analysis_has_errors(ctor_result), "expected imported opaque constructor to fail");
+        assert(has_diag_code(ctor_result, "RES-0038"), "expected RES-0038 for opaque constructor");
+        analysis_result_free(ctor_result);
+    }
+
+    with (let cfg3 = log_config_create(LL_SILENT, false) => drop cfg3) {
+        let new_enum_result = analysis_analyze_entry(sp, "opaque_import_new_enum_err", cfg3);
+        assert(analysis_has_errors(new_enum_result), "expected imported opaque enum allocation to fail");
+        assert(has_diag_code(new_enum_result, "RES-0038"), "expected RES-0038 for opaque enum allocation");
+        analysis_result_free(new_enum_result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
     test_analysis_ok_main();
     test_analysis_semantic_failure();
     test_analysis_alias_imports();
+    test_analysis_opaque_export_surfaces();
+    test_analysis_imported_opaque_layout_errors();
     printl_s("analysis_test: all tests passed");
 }

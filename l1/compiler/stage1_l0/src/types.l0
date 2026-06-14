@@ -60,6 +60,7 @@ struct StructInfo {
     struct_type: Type*;
     fields: VectorBase*; // StructFieldInfo*
     iface_hash: string;
+    is_opaque: bool;
 }
 
 /**
@@ -83,6 +84,7 @@ struct EnumInfo {
     enum_type: Type*;
     variants: VectorBase*; // EnumVariantInfo*
     iface_hash: string;
+    is_opaque: bool;
 }
 
 /**

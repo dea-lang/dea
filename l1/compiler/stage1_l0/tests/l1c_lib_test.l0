@@ -587,6 +587,21 @@ func test_run_pointer_identity_build_and_keep_c() {
 }
 
 /**
+ * Tests pointer-only use of an imported opaque handle through `--run`.
+ */
+func test_run_opaque_handle_round_trip() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "opaque_handle_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "opaque_handle_main should return through the opaque handle API");
+    }
+}
+
+/**
  * Tests nullable identity equality execution in `--run --keep-c` mode.
  */
 func test_run_nullable_identity_build_and_keep_c() {
@@ -1220,6 +1235,7 @@ func main() {
     test_run_function_pointer_build_and_keep_c();
     test_run_string_equality_build_and_keep_c();
     test_run_pointer_identity_build_and_keep_c();
+    test_run_opaque_handle_round_trip();
     test_run_nullable_identity_build_and_keep_c();
     test_run_optional_struct_field_order_builds();
     test_run_std_types_opt_string_builds();

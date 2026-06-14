@@ -1,6 +1,6 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-06-13
+- Version: 2026-06-14
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -8,11 +8,11 @@
   - `l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`
   - `l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
-  - `l1/work/plans/features/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`
 - Closed plans:
   - `l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`
+  - `l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`
 
 ## Summary
 
@@ -130,8 +130,8 @@ Each `.l1m` records the public surface of one module in canonical form:
 - `module interface <name>;` as the file header.
 - `fingerprint "<hash>";` immediately after the header.
 - transparent `struct` and `enum` definitions with full layout so importers can recompute size and offset information.
-- opaque `struct` and `enum` declarations, once source-level opaque exports land, as explicit name-only interface forms
-  that expose the nominal name without exposing fields or variants.
+- opaque `struct` and `enum` declarations as explicit name-only interface forms that expose the nominal name without
+  exposing fields or variants.
 - `func` declarations with signature only and a terminating `;`.
 - `const` declarations with literal values inlined so importers can still constant-fold and pattern-match.
 - `let` declarations with type only.
@@ -419,7 +419,8 @@ Recorded near-term tranche checkpoints:
 - [x] Phase 0.1: parser support for `export` and `import ... as`.
 - [x] Phase 0.2: C emitter symbol mangling logic.
 - [x] Phase 0.3: `.l1m` interface emission and serialization.
-- [ ] Opaque export follow-up: source `export opaque`, exported-surface checks, and explicit `.l1m` opaque projection.
+- [x] Opaque export follow-up: source `export opaque { ... }`, exported-surface checks, and explicit `.l1m` opaque
+  projection.
 - [ ] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
 - [ ] Phase 2.a.2: `-c` compile-only and `-I` interface-path support.
 - [ ] Phase 2.b: driver topological sort plus per-module `I4init` emission.
@@ -524,8 +525,8 @@ implementation tranche proves that one decision area needs additional design wor
 - Phase 0.3: `.l1m` interface emission, canonicalization, and parsing contract under
   [`l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`][interface-emission]
 - Opaque export follow-up: source-level opacity, exported-surface typing, and explicit opaque `.l1m` projection under
-  [`l1/work/plans/features/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`][opaque-exports]. Direct interface
-  replay and fingerprint canonicalization consume the nominal visibility state this plan introduces.
+  [`l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`][opaque-exports]. Direct
+  interface replay and fingerprint canonicalization consume the nominal visibility state this plan introduces.
 - Phase 2.a.1 / 2.a.2: direct interface imports, compile-only, and interface-path driver surface under
   [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
 - Phase 2.b: multi-CU init ordering and executable wrapper behavior under
@@ -558,7 +559,7 @@ implementation tranche proves that one decision area needs additional design wor
 [module-init]: ../plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md
 [module-interface]: ../../docs/specs/compiler/module-interface-format.md
 [module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
-[opaque-exports]: ../plans/features/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
+[opaque-exports]: ../plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [roadmap]: ../../docs/roadmap.md
 [runtime-library]: closed/0002-runtime-static-library.md
 [separate-compilation]: ../../docs/reference/separate-compilation.md
