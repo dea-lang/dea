@@ -114,6 +114,7 @@ func sig_enum_variant_vec_temp_free(items: VectorBase*?) {
     for (let i = 0; i < vec_size(vec); i = i + 1) {
         let variant = ptr_vec_get(vec, i) as EnumVariantInfo*;
         sig_type_vec_free(variant.field_types);
+        sv_free(variant.field_names);
         drop variant;
     }
     vec_free(vec);
@@ -227,7 +228,8 @@ func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, env: Modu
             env.module_ptr.filename,
             decl.span,
             type_new_struct(env.module_name, decl.name),
-            fields as VectorBase*
+            fields as VectorBase*,
+            ""
         );
         spm_put(tables.struct_infos, info.key, info as void*);
         let sym_opt = nr_module_env_local(env, decl.name);
@@ -258,6 +260,7 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, env: Module
         for (let i = 0; i < vec_size(decl.variants); i = i + 1) {
             let variant_decl = ptr_vec_get(decl.variants, i) as EnumVariant*;
             let field_types = ptr_vec_create(vec_size(variant_decl.fields));
+            let field_names = sv_create(vec_size(variant_decl.fields));
             for (let j = 0; j < vec_size(variant_decl.fields); j = j + 1) {
                 let field_decl = ptr_vec_get(variant_decl.fields, j) as FieldDecl*;
                 let field_type = tr_resolve_type_ref(tables, nr, env, field_decl.type_ref, diags, seen as StringSet*);
@@ -266,8 +269,9 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, env: Module
                     continue;
                 }
                 ptr_vec_push(field_types, field_type as void*);
+                sv_push(field_names, field_decl.name);
             }
-            ptr_vec_push(variants as VectorBase*, new EnumVariantInfo(variant_decl.name, field_types) as void*);
+            ptr_vec_push(variants as VectorBase*, new EnumVariantInfo(variant_decl.name, field_types, field_names) as void*);
         }
 
         if (!ok) {
@@ -281,7 +285,8 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, env: Module
             env.module_ptr.filename,
             decl.span,
             type_new_enum(env.module_name, decl.name),
-            variants as VectorBase*
+            variants as VectorBase*,
+            ""
         );
         spm_put(tables.enum_infos, info.key, info as void*);
         let sym_opt = nr_module_env_local(env, decl.name);

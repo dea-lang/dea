@@ -1,0 +1,120 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module mi_utils;
+
+import std.string;
+import std.vector;
+import util.diag;
+import ast;
+import types;
+import module_interface;
+
+/**
+ * Free a function entry and all owned fields.
+ *
+ * @param self Entry to free.
+ */
+func mi_func_entry_free(self: InterfaceFuncEntry*) {
+    sv_free(self.param_names);
+    type_free(self.ty);
+    drop self;
+}
+
+/**
+ * Free a let/const entry and all owned fields.
+ *
+ * @param self Entry to free.
+ */
+func mi_let_entry_free(self: InterfaceLetEntry*) {
+    type_free(self.ty);
+    drop self;
+}
+
+/**
+ * Free a type alias entry and all owned fields.
+ *
+ * @param self Entry to free.
+ */
+func mi_alias_entry_free(self: InterfaceAliasEntry*) {
+    type_free(self.ty);
+    drop self;
+}
+
+/**
+ * Free a per-used-symbol dependency entry.
+ *
+ * @param self Entry to free.
+ */
+func mi_dep_entry_free(self: InterfaceDepEntry*) {
+    drop self;
+}
+
+/**
+ * Free a module interface and all owned entries.
+ *
+ * @param self Module interface to free.
+ */
+func mi_free(self: ModuleInterface*) {
+    for (let req_i = 0; req_i < vec_size(self.require_entries); req_i = req_i + 1) {
+        mi_dep_entry_free(ptr_vec_get(self.require_entries, req_i) as InterfaceDepEntry*);
+    }
+    vec_free(self.require_entries);
+
+    for (let link_i = 0; link_i < vec_size(self.link_entries); link_i = link_i + 1) {
+        mi_dep_entry_free(ptr_vec_get(self.link_entries, link_i) as InterfaceDepEntry*);
+    }
+    vec_free(self.link_entries);
+
+    for (let i = 0; i < vec_size(self.struct_infos); i = i + 1) {
+        struct_info_free(ptr_vec_get(self.struct_infos, i) as StructInfo*);
+    }
+    vec_free(self.struct_infos);
+
+    for (let enum_i = 0; enum_i < vec_size(self.enum_infos); enum_i = enum_i + 1) {
+        enum_info_free(ptr_vec_get(self.enum_infos, enum_i) as EnumInfo*);
+    }
+    vec_free(self.enum_infos);
+
+    for (let alias_i = 0; alias_i < vec_size(self.alias_entries); alias_i = alias_i + 1) {
+        mi_alias_entry_free(ptr_vec_get(self.alias_entries, alias_i) as InterfaceAliasEntry*);
+    }
+    vec_free(self.alias_entries);
+
+    for (let func_i = 0; func_i < vec_size(self.func_entries); func_i = func_i + 1) {
+        mi_func_entry_free(ptr_vec_get(self.func_entries, func_i) as InterfaceFuncEntry*);
+    }
+    vec_free(self.func_entries);
+
+    for (let let_i = 0; let_i < vec_size(self.let_entries); let_i = let_i + 1) {
+        mi_let_entry_free(ptr_vec_get(self.let_entries, let_i) as InterfaceLetEntry*);
+    }
+    vec_free(self.let_entries);
+
+    drop self;
+}
+
+/**
+ * Check whether an interface parse result contains errors.
+ *
+ * @param self Parse result to inspect.
+ * @return `true` when errors were encountered.
+ */
+func ipr_has_errors(self: InterfaceParseResult*) -> bool {
+    return diag_has_errors(self.diags);
+}
+
+/**
+ * Free an interface parse result and all owned fields.
+ *
+ * @param self Parse result to free.
+ */
+func ipr_free(self: InterfaceParseResult*) {
+    if (self.interface != null) {
+        mi_free(self.interface as ModuleInterface*);
+    }
+    diag_free(self.diags);
+    drop self;
+}

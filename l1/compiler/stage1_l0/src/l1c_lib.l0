@@ -345,6 +345,59 @@ func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
 }
 
 /**
+ * Execute Stage 1 `--emit-interface` mode.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_emit_interface(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let prepared = l1c_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as PreparedInput*;
+        let entry_module = prep.entry_module;
+        let result = analysis_analyze_entry(prep.search_paths, entry_module, cfg);
+        prepared_input_free(prep);
+        prepared = null;
+
+        dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let iface_text = analysis_emit_interface(result, entry_module);
+        if (iface_text == null) {
+            diag_error(diags, "l1c", "L1C-2030", "failed to project interface for module '" + entry_module + "'",
+                "", 0, 0, 0, 0);
+            dp_print_collector(diags);
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let text = iface_text as string;
+        if (opts.output != null) {
+            if (write_file(opts.output as string, text) == null) {
+                diag_error(diags, "l1c", "L1C-9511", "cannot write output file: " + (opts.output as string),
+                    opts.output as string, 0, 0, 0, 0);
+                dp_print_collector(diags);
+                analysis_result_free(result);
+                return 1;
+            }
+        } else {
+            print_s(text);
+        }
+
+        analysis_result_free(result);
+        return 0;
+    }
+}
+
+/**
  * Execute Stage 1 `--sym` mode.
  *
  * @param opts Parsed CLI options.
@@ -788,6 +841,9 @@ func run_with_argv(argv: StringVector*) -> int {
             }
             CM_BUILD => {
                 rc = bd_cmd_build(opts, cfg);
+            }
+            CM_EMIT_INTERFACE => {
+                rc = l1c_cmd_emit_interface(opts, cfg);
             }
             CM_GEN => {
                 rc = l1c_cmd_gen(opts, cfg);

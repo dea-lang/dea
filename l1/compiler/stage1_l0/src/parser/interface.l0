@@ -1,0 +1,1130 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser.interface;
+
+import std.string;
+import std.text;
+import std.vector;
+
+import util.diag;
+import util.numbers;
+import util.strings;
+
+import ast;
+import lexer;
+import module_interface;
+import mi_utils;
+import parser.decl;
+import parser.shared;
+import tokens;
+import types;
+
+/**
+ * Parsed header data for one `.l1m` file.
+ */
+struct InterfaceHeader {
+    module_name: string;
+    fingerprint: string;
+}
+
+/**
+ * Free an optional type pointer.
+ *
+ * @param ty Optional type to free.
+ */
+func pi_type_free_opt(ty: Type*?) {
+    if (ty != null) {
+        type_free(ty as Type*);
+    }
+}
+
+/**
+ * Free a vector of owned struct-field descriptors.
+ *
+ * @param fields Optional `StructFieldInfo*` vector to free.
+ */
+func pi_field_info_vec_free(fields: VectorBase*?) {
+    if (fields == null) {
+        return;
+    }
+
+    let vec = fields as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let field = ptr_vec_get(vec, i) as StructFieldInfo*;
+        type_free(field.field_type);
+        drop field;
+    }
+    vec_free(vec);
+}
+
+/**
+ * Free a vector of owned enum-variant descriptors.
+ *
+ * @param variants Optional `EnumVariantInfo*` vector to free.
+ */
+func pi_variant_info_vec_free(variants: VectorBase*?) {
+    if (variants == null) {
+        return;
+    }
+
+    let vec = variants as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let variant = ptr_vec_get(vec, i) as EnumVariantInfo*;
+        type_param_vec_free(variant.field_types);
+        sv_free(variant.field_names);
+        drop variant;
+    }
+    vec_free(vec);
+}
+
+/**
+ * Free shared parser resources owned by an interface parser state.
+ *
+ * @param self Parser state to destroy.
+ * @param free_diags Whether to free the diagnostic collector.
+ */
+func pi_destroy_state(self: ParserState*, free_diags: bool) {
+    tv_free(self.tokens);
+    expr_arena_free(self.expr_arena);
+    stmt_arena_free(self.stmt_arena);
+    pattern_arena_free(self.pattern_arena);
+    if (free_diags) {
+        diag_free(self.diags);
+    }
+    ps_destroy(self);
+}
+
+/**
+ * Convert an internal parser result into an interface parse result.
+ *
+ * Used for lexer failures so the interface parser can reuse the shared
+ * parser's diagnostic plumbing without keeping AST arenas around.
+ *
+ * @param self Internal parse result to consume.
+ * @return Interface parse result owning the diagnostics.
+ */
+func pi_result_from_impl(self: ImplParseResult*) -> InterfaceParseResult* {
+    if (self.root_module != null) {
+        module_free(self.root_module as Module*);
+    }
+    let result = new InterfaceParseResult(null, self.diags);
+    expr_arena_free(self.expr_arena);
+    stmt_arena_free(self.stmt_arena);
+    pattern_arena_free(self.pattern_arena);
+    drop self;
+    return result;
+}
+
+/**
+ * Check whether the current token is an identifier with the given text.
+ *
+ * @param self Parser state to inspect.
+ * @param text Expected identifier text.
+ * @return `true` when the lookahead matches `text`.
+ */
+func pi_check_ident_text(self: ParserState*, text: string) -> bool {
+    if (!ps_check_ident(self)) {
+        return false;
+    }
+    return (token_ident_text(ps_peek(self)) as string) == text;
+}
+
+/**
+ * Expect and consume a string-literal token.
+ *
+ * @param self Parser state to inspect.
+ * @param code Diagnostic code on mismatch.
+ * @param msg Diagnostic message prefix.
+ * @return Consumed string token, or `null` after emitting an error.
+ */
+func pi_expect_string(self: ParserState*, code: string, msg: string) -> Token? {
+    if (!ps_check_string(self)) {
+        let got = token_to_string(ps_peek(self));
+        ps_emit_error(self, code, msg + ", got " + got + " instead", ps_peek(self));
+        return null;
+    }
+    return ps_advance(self);
+}
+
+/**
+ * Parse the per-declaration hash suffix: `== "<hash>";`.
+ *
+ * Common to every exported declaration form in the new `.l1m` format.
+ * The hash string is opaque: `""` means no compatibility check is performed,
+ * and algorithm-tagged forms like `"sip13:<hex>"` are accepted but not
+ * validated by this parser.
+ *
+ * @param self Parser state.
+ * @param semi_code Diagnostic code emitted when the trailing `;` is missing.
+ * @return Hash string (possibly empty), or `null` on parse failure.
+ */
+func pi_parse_decl_hash_suffix(self: ParserState*, semi_code: string) -> string? {
+    ps_expect(self, ord(TT_EQEQ), "PAR-0574", "Expected '==' after declaration in interface file")?;
+    let hash_tok = pi_expect_string(self, "PAR-0575", "Expected hash string literal after '==' in interface declaration")?;
+    ps_expect(self, ord(TT_SEMI), semi_code, "Expected ';' after declaration in interface file")?;
+    return token_string_text(hash_tok) as string;
+}
+
+/**
+ * Parse one `require` or `link` dependency line: `<keyword> <module>::<symbol> == "<hash>";`.
+ *
+ * @param self Parser state.
+ * @return Constructed dependency entry, or `null` on parse failure.
+ */
+func pi_parse_dep_line(self: ParserState*) -> InterfaceDepEntry*? {
+    ps_advance(self); // consume `require` or `link`
+
+    let first_tok = ps_expect_ident(self, "PAR-0572", "Expected provider module name in dependency line")?;
+    let first = token_ident_text(first_tok) as string;
+    let module_name = parse_dotted_name_rest(self, first)?;
+
+    ps_expect(self, ord(TT_DOUBLE_COLON), "PAR-0572", "Expected '::' between provider module and symbol in dependency line")?;
+
+    let sym_tok = ps_expect_ident(self, "PAR-0572", "Expected provider symbol name in dependency line")?;
+    let symbol_name = token_ident_text(sym_tok) as string;
+
+    let hash = pi_parse_decl_hash_suffix(self, "PAR-0576")?;
+
+    return new InterfaceDepEntry(module_name, symbol_name, hash);
+}
+
+/**
+ * Parse the module interface header.
+ *
+ * Expects: `module interface <name>;` followed by `fingerprint "...";`
+ *
+ * @param self Parser state.
+ * @return Parsed header, or `null` on failure.
+ */
+func pi_parse_header(self: ParserState*) -> InterfaceHeader*? {
+    ps_expect(self, ord(TT_MODULE), "PAR-0560", "Expected 'module' keyword at start of interface file")?;
+
+    if (!pi_check_ident_text(self, "interface")) {
+        ps_emit_error(self, "PAR-0561", "Expected 'interface' keyword in module interface declaration", ps_peek(self));
+        return null;
+    }
+    ps_advance(self);
+
+    let name_tok = ps_expect_ident(self, "PAR-0562", "Expected module name in interface file header")?;
+    let first = token_ident_text(name_tok) as string;
+    let module_name = parse_dotted_name_rest(self, first)?;
+
+    ps_expect(self, ord(TT_SEMI), "PAR-0563", "Expected ';' after module interface declaration")?;
+
+    if (!pi_check_ident_text(self, "fingerprint")) {
+        ps_emit_error(self, "PAR-0564", "Expected 'fingerprint' declaration after module interface header", ps_peek(self));
+        return null;
+    }
+    ps_advance(self);
+
+    let fp_tok = pi_expect_string(self, "PAR-0565", "Expected string literal after 'fingerprint'")?;
+    ps_expect(self, ord(TT_SEMI), "PAR-0566", "Expected ';' after fingerprint declaration")?;
+
+    return new InterfaceHeader(module_name, token_string_text(fp_tok) as string);
+}
+
+/**
+ * Advance past tokens until a probable recovery point.
+ *
+ * @param self Parser state.
+ * @return `true` for chaining in error paths.
+ */
+func pi_sync_to_semi_or_rbrace(self: ParserState*) -> bool {
+    while (!ps_check(self, ord(TT_SEMI)) && !ps_check(self, ord(TT_RBRACE)) &&
+           !ps_check(self, ord(TT_EOF))) {
+        ps_advance(self);
+    }
+    if (ps_check(self, ord(TT_SEMI))) {
+        ps_advance(self);
+    }
+    return true;
+}
+
+/**
+ * Check whether the current token can begin an interface type.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` when the lookahead is a legal type starter.
+ */
+func pi_is_type_start(self: ParserState*) -> bool {
+    return ps_check(self, ord(TT_UNSAFE)) || ps_check(self, ord(TT_FUNC)) || ps_check(self, ord(TT_LPAREN)) ||
+        ps_check_ident(self);
+}
+
+/**
+ * Join a parsed module-path vector into dotted module text.
+ *
+ * @param path Optional module-path vector.
+ * @return Dotted module name, or the empty string.
+ */
+func pi_module_path_text(path: StringVector*?) -> string {
+    if (path == null) {
+        return "";
+    }
+
+    let parts = path as StringVector*;
+    if (sv_size(parts) == 0) {
+        return "";
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ".");
+            }
+            sb_append(sb, sv_get(parts, i));
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Apply pointer and nullable suffixes from a parsed type reference.
+ *
+ * @param base Base type to wrap.
+ * @param tref Parsed type reference carrying suffix metadata.
+ * @return Wrapped type.
+ */
+func pi_apply_type_ref_suffix(base: Type*, tref: TypeRef*) -> Type* {
+    let result = base;
+    if (tref.suffixes != null) {
+        let suffixes = tref.suffixes as VectorBase*;
+        for (let i = 0; i < vec_size(suffixes); i = i + 1) {
+            let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
+            if (ord(suffix.kind) == ord(TS_POINTER)) {
+                result = type_new_pointer(result);
+            } else if (ord(suffix.kind) == ord(TS_ARRAY)) {
+                result = type_append_array_dimension(result, suffix.array_len);
+            } else {
+                result = type_new_nullable(result);
+            }
+        }
+        return result;
+    }
+    for (let i = 0; i < tref.pointer_depth; i = i + 1) {
+        result = type_new_pointer(result);
+    }
+    if (tref.is_nullable) {
+        result = type_new_nullable(result);
+    }
+    return result;
+}
+
+/**
+ * Lower a parsed `TypeRef` tree into the interface `Type` model.
+ *
+ * Unqualified nominal names are provisionally treated as structs and are
+ * normalized against local enum/struct declarations after the full interface
+ * has been parsed.
+ *
+ * @param self Parser state for diagnostics.
+ * @param tref Parsed type reference to lower.
+ * @return Lowered type tree, or `null` on unsupported syntax.
+ */
+func pi_type_from_ref(self: ParserState*, tref: TypeRef*) -> Type*? {
+    if (tref.func_params != null) {
+        with (let params: VectorBase*? = ptr_vec_create(4) => type_param_vec_free(params),
+              let result: Type*? = null => pi_type_free_opt(result)) {
+            let parsed_params = tref.func_params as VectorBase*;
+            for (let i = 0; i < vec_size(parsed_params); i = i + 1) {
+                let param_ty = pi_type_from_ref(self, ptr_vec_get(parsed_params, i) as TypeRef*);
+                if (param_ty == null) {
+                    return null;
+                }
+                ptr_vec_push(params as VectorBase*, param_ty as void*);
+            }
+
+            result = pi_type_from_ref(self, tref.func_result as TypeRef*);
+            if (result == null) {
+                return null;
+            }
+
+            let func_ty = type_new_func(params as VectorBase*, result as Type*, tref.is_unsafe);
+            params = null;
+            result = null;
+            return pi_apply_type_ref_suffix(func_ty, tref);
+        }
+    }
+
+    if (tref.name_qualifier != null) {
+        ps_emit_error(self, "PAR-0572", "Unsupported or unexpected token in interface file", ps_last(self));
+        return null;
+    }
+
+    if (tref.name == "null") {
+        ps_emit_error(self, "PAR-0572", "Unsupported or unexpected token in interface file", ps_last(self));
+        return null;
+    }
+    if (type_is_builtin_name(tref.name)) {
+        return pi_apply_type_ref_suffix(type_new_builtin(tref.name), tref);
+    }
+    return pi_apply_type_ref_suffix(type_new_struct(pi_module_path_text(tref.module_path), tref.name), tref);
+}
+
+/**
+ * Parse a type expression using the shared parser's `TypeRef` machinery.
+ *
+ * @param self Parser state.
+ * @return Parsed type, or `null` on error.
+ */
+func pi_parse_type(self: ParserState*) -> Type*? {
+    if (!pi_is_type_start(self)) {
+        ps_emit_error(self, "PAR-0572", "Unsupported or unexpected token in interface file", ps_peek(self));
+        return null;
+    }
+
+    let parsed = ps_parse_type(self)?;
+    with (let tref: TypeRef*? = parsed => type_ref_free(tref)) {
+        return pi_type_from_ref(self, tref as TypeRef*);
+    }
+}
+
+/**
+ * Parse a call literal: `Name(args...)`.
+ *
+ * @param self Parser state.
+ * @param callee_name Already parsed callee text.
+ * @return Canonical literal text.
+ */
+func pi_parse_call_literal(self: ParserState*, callee_name: string) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, callee_name);
+        sb_append(sb, "(");
+        ps_advance(self); // consume `(`
+        let first = true;
+        while (!ps_check(self, ord(TT_RPAREN)) && !ps_check(self, ord(TT_EOF))) {
+            if (!first) {
+                sb_append(sb, ", ");
+                if (ps_expect(self, ord(TT_COMMA), "PAR-0572", "Expected ',' in literal") == null) {
+                    break;
+                }
+            }
+            first = false;
+            let arg = pi_parse_literal(self);
+            if (arg == null) {
+                break;
+            }
+            sb_append(sb, arg as string);
+        }
+        ps_expect(self, ord(TT_RPAREN), "PAR-0572", "Expected ')' in literal");
+        sb_append(sb, ")");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Parse a constant literal value.
+ *
+ * Covers the full emit-time constant subset: primitive literals,
+ * zero-field enum variant references, and struct/enum constructors.
+ *
+ * @param self Parser state.
+ * @return Canonical literal text, or `null` on failure.
+ */
+func pi_parse_literal(self: ParserState*) -> string? {
+    let tok = ps_peek(self);
+
+    if (ps_check_int(self)) {
+        ps_advance(self);
+        return token_int_text(tok);
+    }
+    if (ps_check_bigint(self)) {
+        ps_advance(self);
+        return bigint_to_string(token_bigint_text(tok) as string, token_bigint_base(tok) as int);
+    }
+    if (ps_check_real(self)) {
+        ps_advance(self);
+        return token_real_text(tok);
+    }
+    if (ps_check_byte(self)) {
+        ps_advance(self);
+        return token_byte_text(tok);
+    }
+    if (ps_check_string(self)) {
+        ps_advance(self);
+        return "\"" + (token_string_text(tok) as string) + "\"";
+    }
+    if (ps_check(self, ord(TT_TRUE))) {
+        ps_advance(self);
+        return "true";
+    }
+    if (ps_check(self, ord(TT_FALSE))) {
+        ps_advance(self);
+        return "false";
+    }
+    if (ps_check(self, ord(TT_NULL))) {
+        ps_advance(self);
+        return "null";
+    }
+
+    if (ps_check_ident(self)) {
+        let name = token_ident_text(tok) as string;
+        ps_advance(self);
+
+        let saw_dot = ps_check(self, ord(TT_DOT));
+        if (saw_dot) {
+            let dotted = parse_dotted_name_rest(self, name);
+            if (dotted == null) {
+                return null;
+            }
+            name = dotted as string;
+        }
+
+        if (ps_check(self, ord(TT_DOUBLE_COLON))) {
+            ps_advance(self);
+            let member_tok = ps_expect_ident(self, "PAR-0572", "Expected name after '::' in literal")?;
+            let qname = name + "::" + (token_ident_text(member_tok) as string);
+            if (ps_check(self, ord(TT_LPAREN))) {
+                return pi_parse_call_literal(self, qname);
+            }
+            return qname;
+        }
+
+        if (saw_dot) {
+            ps_emit_error(self, "PAR-0572", "Expected '::' after dotted module path in literal", ps_peek(self));
+            return null;
+        }
+
+        if (ps_check(self, ord(TT_LPAREN))) {
+            return pi_parse_call_literal(self, name);
+        }
+        return name;
+    }
+
+    return null;
+}
+
+/**
+ * Parse a struct declaration.
+ *
+ * Expects: `struct Name { field: Type; ... }`
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `true` on success.
+ */
+func pi_parse_struct_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+    ps_advance(self); // consume `struct`
+
+    let name_tok = ps_expect_ident(self, "PAR-0573", "Expected struct name");
+    if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    let name = token_ident_text(name_tok as Token) as string;
+
+    if (ps_expect(self, ord(TT_LBRACE), "PAR-0572", "Expected '{' after struct name") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    with (let fields: VectorBase*? = ptr_vec_create(4) => pi_field_info_vec_free(fields)) {
+        while (!ps_check(self, ord(TT_RBRACE)) && !ps_check(self, ord(TT_EOF))) {
+            let field_tok = ps_expect_ident(self, "PAR-0572", "Expected field name");
+            if (field_tok == null) {
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+            let field_name = token_ident_text(field_tok as Token) as string;
+
+            if (ps_expect(self, ord(TT_COLON), "PAR-0567", "Expected ':' after field name") == null) {
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+
+            let field_type = pi_parse_type(self);
+            if (field_type == null) {
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+
+            if (ps_expect(self, ord(TT_SEMI), "PAR-0572", "Expected ';' after field declaration") == null) {
+                type_free(field_type as Type*);
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+
+            ptr_vec_push(fields as VectorBase*, new StructFieldInfo(field_name, field_type as Type*) as void*);
+        }
+
+        ps_expect(self, ord(TT_RBRACE), "PAR-0572", "Expected '}' after struct body");
+
+        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0576");
+        if (hash_opt == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let struct_type = type_new_struct(mi.module_name, name);
+        let key = mi.module_name + "::" + name;
+        let span = Span(0, 0, 0, 0);
+        let info = new StructInfo(key, mi.module_name, name, "", span, struct_type, fields as VectorBase*, hash_opt as string);
+        ptr_vec_push(mi.struct_infos, info as void*);
+        fields = null;
+        return true;
+    }
+}
+
+/**
+ * Parse an enum declaration with unnamed variant field lists.
+ *
+ * Expects: `enum Name { Variant; Variant(Type); ... }`
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `true` on success.
+ */
+func pi_parse_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+    ps_advance(self); // consume `enum`
+
+    let name_tok = ps_expect_ident(self, "PAR-0573", "Expected enum name");
+    if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    let name = token_ident_text(name_tok as Token) as string;
+
+    if (ps_expect(self, ord(TT_LBRACE), "PAR-0572", "Expected '{' after enum name") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    with (let variants: VectorBase*? = ptr_vec_create(4) => pi_variant_info_vec_free(variants)) {
+        while (!ps_check(self, ord(TT_RBRACE)) && !ps_check(self, ord(TT_EOF))) {
+            let var_tok = ps_expect_ident(self, "PAR-0572", "Expected variant name");
+            if (var_tok == null) {
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+            let var_name = token_ident_text(var_tok as Token) as string;
+
+            with (let field_types: VectorBase*? = ptr_vec_create(2) => type_param_vec_free(field_types),
+                  let field_names: StringVector*? = sv_create(2) => sv_free_opt(field_names)) {
+                if (ps_match(self, ord(TT_LPAREN))) {
+                    while (!ps_check(self, ord(TT_RPAREN)) && !ps_check(self, ord(TT_EOF))) {
+                        if (vec_size(field_types as VectorBase*) > 0) {
+                            if (ps_expect(self, ord(TT_COMMA), "PAR-0572", "Expected ',' between variant field types") == null) {
+                                return pi_sync_to_semi_or_rbrace(self);
+                            }
+                        }
+
+                        let f_tok = ps_expect_ident(self, "PAR-0572", "Expected variant field name");
+                        if (f_tok == null) {
+                            return pi_sync_to_semi_or_rbrace(self);
+                        }
+
+                        if (ps_expect(self, ord(TT_COLON), "PAR-0572", "Expected ':' after field name") == null) {
+                            return pi_sync_to_semi_or_rbrace(self);
+                        }
+
+                        let ft = pi_parse_type(self);
+                        if (ft == null) {
+                            return pi_sync_to_semi_or_rbrace(self);
+                        }
+                        ptr_vec_push(field_types as VectorBase*, (ft as Type*) as void*);
+                        sv_push(field_names as StringVector*, token_ident_text(f_tok as Token) as string);
+                    }
+                    ps_expect(self, ord(TT_RPAREN), "PAR-0572", "Expected ')' after variant field types");
+                }
+
+                if (ps_expect(self, ord(TT_SEMI), "PAR-0572", "Expected ';' after variant declaration") == null) {
+                    return pi_sync_to_semi_or_rbrace(self);
+                }
+
+                ptr_vec_push(variants as VectorBase*, new EnumVariantInfo(var_name, field_types as VectorBase*, field_names as StringVector*) as void*);
+                field_types = null;
+                field_names = null;
+            }
+        }
+
+        ps_expect(self, ord(TT_RBRACE), "PAR-0572", "Expected '}' after enum body");
+
+        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0576");
+        if (hash_opt == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let enum_type = type_new_enum(mi.module_name, name);
+        let key = mi.module_name + "::" + name;
+        let span = Span(0, 0, 0, 0);
+        let info = new EnumInfo(key, mi.module_name, name, "", span, enum_type, variants as VectorBase*, hash_opt as string);
+        ptr_vec_push(mi.enum_infos, info as void*);
+        variants = null;
+        return true;
+    }
+}
+
+/**
+ * Parse a type alias declaration.
+ *
+ * Expects: `type Name = Type;`
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `true` on success.
+ */
+func pi_parse_alias_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+    ps_advance(self); // consume `type`
+
+    let name_tok = ps_expect_ident(self, "PAR-0573", "Expected type alias name");
+    if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    let name = token_ident_text(name_tok as Token) as string;
+
+    if (ps_expect(self, ord(TT_EQ), "PAR-0567", "Expected '=' after type alias name") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    with (let alias_type: Type*? = pi_parse_type(self) => pi_type_free_opt(alias_type)) {
+        if (alias_type == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0572");
+        if (hash_opt == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let entry = new InterfaceAliasEntry(name, alias_type as Type*, hash_opt as string);
+        ptr_vec_push(mi.alias_entries, entry as void*);
+        alias_type = null;
+        return true;
+    }
+}
+
+/**
+ * Parse a function signature declaration.
+ *
+ * Expects: `func name(params) -> ret;`
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `true` on success.
+ */
+func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, is_unsafe: bool) -> bool {
+    ps_advance(self); // consume `func`
+
+    let name_tok = ps_expect_ident(self, "PAR-0573", "Expected function name");
+    if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    let name = token_ident_text(name_tok as Token) as string;
+
+    if (ps_expect(self, ord(TT_LPAREN), "PAR-0572", "Expected '(' after function name") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    with (let param_names: StringVector*? = sv_create(4) => sv_free_opt(param_names),
+          let param_types: VectorBase*? = ptr_vec_create(4) => type_param_vec_free(param_types),
+          let ret_type: Type*? = null => pi_type_free_opt(ret_type)) {
+        while (!ps_check(self, ord(TT_RPAREN)) && !ps_check(self, ord(TT_EOF))) {
+            if (vec_size(param_types as VectorBase*) > 0) {
+                if (ps_expect(self, ord(TT_COMMA), "PAR-0572", "Expected ',' between parameters") == null) {
+                    return pi_sync_to_semi_or_rbrace(self);
+                }
+            }
+
+            let param_tok = ps_expect_ident(self, "PAR-0572", "Expected parameter name");
+            if (param_tok == null) {
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+            sv_push(param_names as StringVector*, token_ident_text(param_tok as Token) as string);
+
+            if (ps_expect(self, ord(TT_COLON), "PAR-0567", "Expected ':' after parameter name") == null) {
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+
+            let param_type = pi_parse_type(self);
+            if (param_type == null) {
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+            ptr_vec_push(param_types as VectorBase*, param_type as void*);
+        }
+
+        ps_expect(self, ord(TT_RPAREN), "PAR-0572", "Expected ')' after parameter list");
+
+        if (ps_expect(self, ord(TT_ARROW_FUNC), "PAR-0572", "Expected '->' after parameter list") == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        ret_type = pi_parse_type(self);
+        if (ret_type == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0568");
+        if (hash_opt == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let func_type = type_new_func(param_types as VectorBase*, ret_type as Type*, is_unsafe);
+        let entry = new InterfaceFuncEntry(name, param_names as StringVector*, func_type, hash_opt as string);
+        ptr_vec_push(mi.func_entries, entry as void*);
+        param_names = null;
+        param_types = null;
+        ret_type = null;
+        return true;
+    }
+}
+
+/**
+ * Parse a const declaration.
+ *
+ * Expects: `const name: Type = literal;`
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `true` on success.
+ */
+func pi_parse_const_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+    ps_advance(self); // consume `const`
+
+    let name_tok = ps_expect_ident(self, "PAR-0573", "Expected constant name");
+    if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    let name = token_ident_text(name_tok as Token) as string;
+
+    if (ps_expect(self, ord(TT_COLON), "PAR-0567", "Expected ':' after constant name") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    with (let const_type: Type*? = pi_parse_type(self) => pi_type_free_opt(const_type)) {
+        if (const_type == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        if (ps_expect(self, ord(TT_EQ), "PAR-0570", "Expected '=' in interface const declaration") == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let literal = pi_parse_literal(self);
+        if (literal == null) {
+            ps_emit_error(self, "PAR-0570", "Expected constant literal value after '=' in interface const declaration", ps_peek(self));
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0571");
+        if (hash_opt == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let entry = new InterfaceLetEntry(name, const_type as Type*, true, literal as string, hash_opt as string);
+        ptr_vec_push(mi.let_entries, entry as void*);
+        const_type = null;
+        return true;
+    }
+}
+
+/**
+ * Parse a let declaration.
+ *
+ * Expects: `let name: Type;`
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `true` on success.
+ */
+func pi_parse_let_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+    ps_advance(self); // consume `let`
+
+    let name_tok = ps_expect_ident(self, "PAR-0573", "Expected let name");
+    if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    let name = token_ident_text(name_tok as Token) as string;
+
+    if (ps_expect(self, ord(TT_COLON), "PAR-0567", "Expected ':' after let name") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+
+    with (let let_type: Type*? = pi_parse_type(self) => pi_type_free_opt(let_type)) {
+        if (let_type == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0569");
+        if (hash_opt == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+
+        let entry = new InterfaceLetEntry(name, let_type as Type*, false, "", hash_opt as string);
+        ptr_vec_push(mi.let_entries, entry as void*);
+        let_type = null;
+        return true;
+    }
+}
+
+/**
+ * Parse one top-level interface declaration.
+ *
+ * @param self Parser state.
+ * @param mi ModuleInterface being built.
+ * @return `false` at EOF; otherwise `true`.
+ */
+func pi_parse_one_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+    if (ps_check(self, ord(TT_EOF))) {
+        return false;
+    }
+
+    if (ps_check(self, ord(TT_STRUCT))) {
+        return pi_parse_struct_decl(self, mi);
+    }
+    if (ps_check(self, ord(TT_ENUM))) {
+        return pi_parse_enum_decl(self, mi);
+    }
+    if (ps_check(self, ord(TT_TYPE))) {
+        return pi_parse_alias_decl(self, mi);
+    }
+    if (ps_check(self, ord(TT_UNSAFE))) {
+        ps_advance(self);
+        if (!ps_check(self, ord(TT_FUNC))) {
+            ps_emit_error(self, "PAR-0602", "expected 'func' after 'unsafe' in interface file", ps_peek(self));
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+        return pi_parse_func_decl(self, mi, true);
+    }
+    if (ps_check(self, ord(TT_FUNC))) {
+        return pi_parse_func_decl(self, mi, false);
+    }
+    if (ps_check(self, ord(TT_CONST))) {
+        return pi_parse_const_decl(self, mi);
+    }
+    if (ps_check(self, ord(TT_LET))) {
+        return pi_parse_let_decl(self, mi);
+    }
+
+    ps_emit_error(self, "PAR-0572", "Unsupported or unexpected token in interface file", ps_peek(self));
+    ps_advance(self);
+    return true;
+}
+
+/**
+ * Return `true` if the interface defines a struct with the given name.
+ *
+ * @param mi Module interface to inspect.
+ * @param name Nominal type name.
+ * @return `true` when `name` is a local struct.
+ */
+func pi_has_struct(mi: ModuleInterface*, name: string) -> bool {
+    for (let i = 0; i < vec_size(mi.struct_infos); i = i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, i) as StructInfo*;
+        if (info.name == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return `true` if the interface defines an enum with the given name.
+ *
+ * @param mi Module interface to inspect.
+ * @param name Nominal type name.
+ * @return `true` when `name` is a local enum.
+ */
+func pi_has_enum(mi: ModuleInterface*, name: string) -> bool {
+    for (let i = 0; i < vec_size(mi.enum_infos); i = i + 1) {
+        let info = ptr_vec_get(mi.enum_infos, i) as EnumInfo*;
+        if (info.name == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Look up a cross-module nominal name in a peer ModuleInterface vector.
+ *
+ * @param peers Vector of `ModuleInterface*` peers to consult.
+ * @param ty Type carrying the qualified `module_name`/`name` to resolve.
+ * @return `true` when `ty.kind` was normalized against a matching peer.
+ */
+func pi_normalize_against_peers(peers: VectorBase*, ty: Type*) -> bool {
+    for (let p = 0; p < vec_size(peers); p = p + 1) {
+        let peer = ptr_vec_get(peers, p) as ModuleInterface*;
+        if (peer.module_name != ty.module_name) {
+            continue;
+        }
+        if (pi_has_enum(peer, ty.name)) {
+            ty.kind = TY_ENUM;
+            return true;
+        }
+        if (pi_has_struct(peer, ty.name)) {
+            ty.kind = TY_STRUCT;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Normalize one parsed type against the fully parsed local nominal tables and
+ * an optional peer interface registry.
+ *
+ * @param mi Module interface owning the type.
+ * @param ty Type to normalize in place.
+ * @param peers Optional vector of `ModuleInterface*` peers used to resolve
+ *              cross-module nominal kinds.
+ */
+func pi_normalize_type(mi: ModuleInterface*, ty: Type*, peers: VectorBase*?) {
+    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE)) {
+        pi_normalize_type(mi, ty.inner as Type*, peers);
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_FUNC)) {
+        let params = ty.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            pi_normalize_type(mi, ptr_vec_get(params, i) as Type*, peers);
+        }
+        pi_normalize_type(mi, ty.result as Type*, peers);
+        return;
+    }
+
+    if (ord(ty.kind) != ord(TY_STRUCT) && ord(ty.kind) != ord(TY_ENUM)) {
+        return;
+    }
+
+    if (ty.module_name == "") {
+        if (pi_has_enum(mi, ty.name)) {
+            ty.kind = TY_ENUM;
+            ty.module_name = mi.module_name;
+            return;
+        }
+        if (pi_has_struct(mi, ty.name)) {
+            ty.kind = TY_STRUCT;
+            ty.module_name = mi.module_name;
+        }
+        return;
+    }
+
+    if (ty.module_name == mi.module_name && pi_has_enum(mi, ty.name)) {
+        ty.kind = TY_ENUM;
+        return;
+    }
+    if (ty.module_name == mi.module_name && pi_has_struct(mi, ty.name)) {
+        ty.kind = TY_STRUCT;
+        return;
+    }
+
+    if (peers != null && ty.module_name != mi.module_name) {
+        pi_normalize_against_peers(peers as VectorBase*, ty);
+    }
+}
+
+/**
+ * Normalize every parsed type inside a module interface.
+ *
+ * @param mi Module interface to normalize in place.
+ * @param peers Optional vector of `ModuleInterface*` peers used to resolve
+ *              cross-module nominal kinds.
+ */
+func pi_normalize_interface_types(mi: ModuleInterface*, peers: VectorBase*?) {
+    for (let i = 0; i < vec_size(mi.struct_infos); i = i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, i) as StructInfo*;
+        for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+            let field = ptr_vec_get(info.fields, field_i) as StructFieldInfo*;
+            pi_normalize_type(mi, field.field_type, peers);
+        }
+    }
+
+    for (let i2 = 0; i2 < vec_size(mi.enum_infos); i2 = i2 + 1) {
+        let info2 = ptr_vec_get(mi.enum_infos, i2) as EnumInfo*;
+        for (let var_i = 0; var_i < vec_size(info2.variants); var_i = var_i + 1) {
+            let variant = ptr_vec_get(info2.variants, var_i) as EnumVariantInfo*;
+            for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                pi_normalize_type(mi, ptr_vec_get(variant.field_types, field_i2) as Type*, peers);
+            }
+        }
+    }
+
+    for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
+        pi_normalize_type(mi, (ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*).ty, peers);
+    }
+
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        pi_normalize_type(mi, (ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*).ty, peers);
+    }
+
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        pi_normalize_type(mi, (ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*).ty, peers);
+    }
+}
+
+/**
+ * Parse a `.l1m` interface file into a ModuleInterface, with peer interfaces
+ * available for cross-module nominal-kind resolution.
+ *
+ * @param text Source text of the interface file.
+ * @param filename Filename used in diagnostics.
+ * @param peers Optional vector of `ModuleInterface*` peers used to resolve
+ *              cross-module nominal kinds; pass `null` for a single-module parse.
+ * @return Parse result wrapping the interface and diagnostics.
+ */
+func pi_parse_interface_with_peers(text: string, filename: string, peers: VectorBase*?) -> InterfaceParseResult* {
+    let ls = ls_create(us_strip_utf8_bom(text), filename);
+    let toks = tokenize(ls);
+    if (toks == null) {
+        return pi_result_from_impl(ps_lex_error_result(ls, filename));
+    }
+
+    let p = ps_create(toks as TokenVector, filename);
+    toks = null;
+    ls_free(ls);
+
+    let header_opt = pi_parse_header(p);
+    if (header_opt == null) {
+        let result = new InterfaceParseResult(null, p.diags);
+        pi_destroy_state(p, false);
+        return result;
+    }
+    let header = header_opt as InterfaceHeader*;
+
+    let mi = new ModuleInterface(
+        header.module_name,
+        header.fingerprint,
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(8),
+        ptr_vec_create(8)
+    );
+    drop header;
+
+    while (pi_check_ident_text(p, "require") || pi_check_ident_text(p, "link")) {
+        let is_require = pi_check_ident_text(p, "require");
+        let dep = pi_parse_dep_line(p);
+        if (dep == null) {
+            break;
+        }
+        if (is_require) {
+            ptr_vec_push(mi.require_entries, dep as void*);
+        } else {
+            ptr_vec_push(mi.link_entries, dep as void*);
+        }
+    }
+
+    while (pi_parse_one_decl(p, mi)) {
+    }
+
+    if (ps_has_error(p)) {
+        mi_free(mi);
+        let result2 = new InterfaceParseResult(null, p.diags);
+        pi_destroy_state(p, false);
+        return result2;
+    }
+
+    pi_normalize_interface_types(mi, peers);
+
+    let result3 = new InterfaceParseResult(mi, p.diags);
+    pi_destroy_state(p, false);
+    return result3;
+}
+
+/**
+ * Parse a `.l1m` interface file into a ModuleInterface.
+ *
+ * @param text Source text of the interface file.
+ * @param filename Filename used in diagnostics.
+ * @return Parse result wrapping the interface and diagnostics.
+ */
+func pi_parse_interface(text: string, filename: string) -> InterfaceParseResult* {
+    return pi_parse_interface_with_peers(text, filename, null);
+}

@@ -499,15 +499,17 @@ func test_emitter_cleanup_and_switch_helpers() {
     ptr_vec_push(point_fields, new StructFieldInfo("name", type_builtin_string()) as void*);
     spm_put((result.signatures as SignatureTables*).struct_infos, "demo.main::Point",
         new StructInfo("demo.main::Point", "demo.main", "Point", "demo/main.l1", span_here(1, 1),
-            type_new_struct("demo.main", "Point"), point_fields) as void*);
+            type_new_struct("demo.main", "Point"), point_fields, "") as void*);
 
     let maybe_fields = ptr_vec_create(1);
     ptr_vec_push(maybe_fields, type_builtin_string() as void*);
+    let maybe_field_names = sv_create(1);
+    sv_push(maybe_field_names, "value");
     let maybe_variants = ptr_vec_create(1);
-    ptr_vec_push(maybe_variants, new EnumVariantInfo("Some", maybe_fields) as void*);
+    ptr_vec_push(maybe_variants, new EnumVariantInfo("Some", maybe_fields, maybe_field_names) as void*);
     spm_put((result.signatures as SignatureTables*).enum_infos, "demo.main::Maybe",
         new EnumInfo("demo.main::Maybe", "demo.main", "Maybe", "demo/main.l1", span_here(1, 1),
-            type_new_enum("demo.main", "Maybe"), maybe_variants) as void*);
+            type_new_enum("demo.main", "Maybe"), maybe_variants, "") as void*);
 
     let decls = ptr_vec_create(2);
     let payload_fields = ptr_vec_create(1);
@@ -741,14 +743,19 @@ func test_emitter_top_level_forms_match_stage1_shape() {
         "demo/main.l1",
         span_here(1, 1),
         type_new_struct("demo.main", "Point"),
-        point_fields
+        point_fields,
+        ""
     );
 
-    ptr_vec_push(variant_infos, new EnumVariantInfo("None", variant_none_fields) as void*);
+    ptr_vec_push(variant_infos, new EnumVariantInfo("None", variant_none_fields, sv_create(0)) as void*);
     ptr_vec_push(variant_rgb_fields, type_builtin_byte() as void*);
     ptr_vec_push(variant_rgb_fields, type_builtin_byte() as void*);
     ptr_vec_push(variant_rgb_fields, type_builtin_byte() as void*);
-    ptr_vec_push(variant_infos, new EnumVariantInfo("Rgb", variant_rgb_fields) as void*);
+    let variant_rgb_names = sv_create(3);
+    sv_push(variant_rgb_names, "red");
+    sv_push(variant_rgb_names, "green");
+    sv_push(variant_rgb_names, "blue");
+    ptr_vec_push(variant_infos, new EnumVariantInfo("Rgb", variant_rgb_fields, variant_rgb_names) as void*);
     let color_info = new EnumInfo(
         "demo.main::Color",
         "demo.main",
@@ -756,7 +763,8 @@ func test_emitter_top_level_forms_match_stage1_shape() {
         "demo/main.l1",
         span_here(1, 1),
         type_new_enum("demo.main", "Color"),
-        variant_infos
+        variant_infos,
+        ""
     );
 
     ptr_vec_push(decl_fields, new FieldDecl("x", cet_builtin_type_ref("int")) as void*);
@@ -838,6 +846,7 @@ func test_emitter_top_level_forms_match_stage1_shape() {
             type_free(ptr_vec_get(variant.field_types, j) as Type*);
         }
         vec_free(variant.field_types);
+        sv_free(variant.field_names);
         drop variant;
     }
     vec_free(color_info.variants);

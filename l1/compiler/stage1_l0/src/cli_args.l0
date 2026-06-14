@@ -18,6 +18,7 @@ import build_info;
 enum CliMode {
     CM_RUN;
     CM_BUILD;
+    CM_EMIT_INTERFACE;
     CM_GEN;
     CM_CHECK;
     CM_TOK;
@@ -188,6 +189,7 @@ func cli_mode_flag(mode: CliMode) -> string {
     match (mode) {
         CM_RUN => { return "--run"; }
         CM_BUILD => { return "--build"; }
+        CM_EMIT_INTERFACE => { return "--emit-interface"; }
         CM_GEN => { return "--gen"; }
         CM_CHECK => { return "--check"; }
         CM_TOK => { return "--tok"; }
@@ -207,6 +209,7 @@ func cli_mode_name(mode: CliMode) -> string {
     match (mode) {
         CM_RUN => { return "run"; }
         CM_BUILD => { return "build"; }
+        CM_EMIT_INTERFACE => { return "emit-interface"; }
         CM_GEN => { return "gen"; }
         CM_CHECK => { return "check"; }
         CM_TOK => { return "tok"; }
@@ -325,7 +328,8 @@ func cli_print_blank_line(to_stderr: bool) {
  */
 func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "usage: l1c [-h] [--version] [-v] [-l] [-P PROJECT_ROOT] [-S SYS_ROOT] [--run | --build |");
-    cli_print_line(to_stderr, "           --gen | --check | --tok | --ast | --sym | --type] [--output OUTPUT]");
+    cli_print_line(to_stderr, "           --emit-interface | --gen | --check | --tok | --ast | --sym | --type]");
+    cli_print_line(to_stderr, "           [--output OUTPUT]");
     cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS]");
     cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
     cli_print_line(to_stderr, "           [--no-line-directives] [--trace-arc] [--trace-memory] [--keep-c]");
@@ -359,13 +363,14 @@ func cli_print_help() {
     cli_print_line(false, "                        paths)");
     cli_print_line(false, "  --run, -r             Build and run a module");
     cli_print_line(false, "  --build               Build an executable (default mode)");
+    cli_print_line(false, "  --emit-interface      Emit the module interface (.l1m) text for the target module");
     cli_print_line(false, "  --gen, -g, --codegen  Generate C code");
     cli_print_line(false, "  --check, --analyze    Parse and analyze a module");
     cli_print_line(false, "  --tok, --tokens       Dump lexer tokens");
     cli_print_line(false, "  --ast                 Pretty-print the AST");
     cli_print_line(false, "  --sym, --symbols      Dump module-level symbols");
     cli_print_line(false, "  --type, --types       Dump resolved types");
-    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--gen', '--run')");
+    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--emit-interface', '--gen', '--run')");
     cli_print_line(false, "  --c-compiler, -c C_COMPILER");
     cli_print_line(false, "                        C compiler to use (default: $L1_CC has highest");
     cli_print_line(false, "                        precedence if set; then tcc, gcc, clang, cc from PATH,");
@@ -474,8 +479,9 @@ func cli_assign_target(opts: CliOptions*, token: string) {
 func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     let mode = opts.mode;
 
-    if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --gen, --run");
+    if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_EMIT_INTERFACE)) {
+        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --emit-interface, --gen, --run");
     }
 
     if (opts.keep_c && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
@@ -598,6 +604,11 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
             if (token == "--build") {
                 cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_BUILD);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--emit-interface") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_EMIT_INTERFACE);
                 i = i + 1;
                 continue;
             }

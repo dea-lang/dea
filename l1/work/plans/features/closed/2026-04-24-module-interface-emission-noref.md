@@ -2,8 +2,8 @@
 
 ## Add textual `.l1m` module interface emission
 
-- Date: 2026-06-11
-- Status: Draft
+- Date: 2026-06-12
+- Status: Completed
 - Title: Add textual `.l1m` module interface emission
 - Kind: Feature
 - Severity: High
@@ -11,20 +11,26 @@
 - Subsystem: Analysis / interface serialization / parser / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/analysis.l0`
-  - `l1/compiler/stage1_l0/src/parser.l0`
-  - `l1/compiler/stage1_l0/src/parser/decl.l0`
+  - `l1/compiler/stage1_l0/src/cli_args.l0`
+  - `l1/compiler/stage1_l0/src/interface_emitter.l0`
   - `l1/compiler/stage1_l0/src/l1c_lib.l0`
-  - `l1/compiler/stage1_l0/src/source_paths.l0`
+  - `l1/compiler/stage1_l0/src/mi_utils.l0`
+  - `l1/compiler/stage1_l0/src/module_interface.l0`
+  - `l1/compiler/stage1_l0/src/parser/interface.l0`
+  - `l1/compiler/stage1_l0/src/signatures.l0`
+  - `l1/compiler/stage1_l0/src/types.l0`
+  - `l1/docs/specs/compiler/module-interface-format.md`
   - `l1/docs/roadmap.md`
 - Test modules:
   - `l1/compiler/stage1_l0/tests/parser_test.l0`
   - `l1/compiler/stage1_l0/tests/analysis_test.l0`
-  - `l1/compiler/stage1_l0/tests/driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/interface_test.l0`
+  - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
-- Repro: None
+- Repro: `make test-stage1 TESTS="interface_test parser_test analysis_test l1c_lib_test"`; `make test-stage1`
 
 ## Summary
 
@@ -145,3 +151,13 @@ source-based.
    tranche.
 8. If dependency-section syntax is included, tests distinguish parser/emitter round-trip support from later semantic
    population of `link` entries.
+
+## Completion Notes
+
+- Implemented deterministic `.l1m` projection from source analysis, textual emission, constrained parser round-trip, and
+  the internal `--emit-interface` output mode.
+- Kept ordinary imports source-based and left compile-only output, interface search paths, provider-object linking,
+  fingerprint verification, and semantic `link` population to later tranches.
+- Added the interface format reference and ADR-0013 for the shipped artifact contract.
+- Validation: `make test-stage1 TESTS="interface_test parser_test analysis_test l1c_lib_test"`; `make test-stage1`;
+  `make test-stage1 TESTS="interface_test l1c_lib_test"` after pruning later-tranche fixtures.

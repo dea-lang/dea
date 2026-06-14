@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-06-08
+Version: 2026-06-12
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -212,6 +212,9 @@ diagnostic.
 | `PAR-0571` | L1+     | Expected ';' after const declaration in interface file                   |
 | `PAR-0572` | L1+     | Unsupported or unexpected token in interface file                        |
 | `PAR-0573` | L1+     | Expected identifier after keyword in interface declaration               |
+| `PAR-0574` | L1+     | Expected `==` after declaration in interface file                        |
+| `PAR-0575` | L1+     | Expected hash string literal after `==` in interface declaration         |
+| `PAR-0576` | L1+     | Expected ';' after declaration with hash suffix in interface file        |
 | `PAR-0600` | L1+     | Expected `func` or `extern` after `unsafe` in top-level declaration      |
 | `PAR-0601` | L1+     | Expected `func` after `unsafe` in function type                          |
 | `PAR-0602` | L1+     | Expected `func` after `unsafe` in interface file                         |
@@ -271,6 +274,7 @@ diagnostic.
 | `L0C-2022` | `L1C-2022` | All     | '--run' accepts exactly one target; use '--' before runtime program arguments                         |
 | `L0C-2023` | `L1C-2023` | All     | Arguments after '--' are valid only with '--run'                                                      |
 | `L0C-2024` | `L1C-2024` | All     | Multiple targets are not supported yet; pass exactly one target                                       |
+|            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                |
 | `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in Stage 1 yet                                                  |
 | `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                           |
 

@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-06-08
+Version: 2026-06-12
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -91,6 +91,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   plus alias and selective import resolution for the separate-compilation initiative.
 - Feature [2026-04-24-lbi-symbol-mangling-and-linkage-noref][symbol-linkage] adopted tagged-section LBI names for source
   symbols and module lifecycle helpers plus export-driven backend linkage.
+- Feature [2026-04-24-module-interface-emission-noref][interface-emission] added deterministic textual `.l1m` interface
+  emission, constrained parser round-trip support, and the internal `--emit-interface` mode.
 - Refactor [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] collapsed the two-layer LBI scheme into a
   single recursive grammar, replacing the broad-`S` link-name layer with `N` / `S` / `E` / `I` terminals plus trailing
   type components for function signatures.
@@ -119,8 +121,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   1 runtime fixtures.
 - Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
   first-position anonymous embedded struct member with promoted field access.
-- Feature [2026-04-24-module-interface-emission-noref][interface-emission] introduces deterministic textual `.l1m`
-  interface emission and loading.
 - Feature [2026-04-24-separate-compilation-driver-surface-noref][compile-driver] adds `-c`, `-I`, and the
   compile-orchestration driver surface for separate compilation.
 - Feature [2026-04-24-interface-fingerprints-and-object-metadata-noref][interface-fingerprints] adds `.l1m`
@@ -225,7 +225,7 @@ update to be promoted to an initiative or plan:
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
-[interface-emission]: ../work/plans/features/2026-04-24-module-interface-emission-noref.md
+[interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md

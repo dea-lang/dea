@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module iface_dotted_main;
+
+export bg_color, accent_color;
+
+import pkg.sub;
+
+const bg_color: pkg.sub::Color = pkg.sub::Red;
+const accent_color: pkg.sub::Color = pkg.sub::Rgb(255, 0, 0);

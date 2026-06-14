@@ -15,3 +15,4 @@
 | [0011](0011-fixed-size-array-policy.md)                          | Fixed-Size Array Policy                          | Accepted |
 | [0012](0012-ordered-type-suffix-constructors.md)                 | Ordered Type Suffix Constructors                 | Accepted |
 | [0013](0013-opaque-type-exports-and-layout-hiding-visibility.md) | Opaque Type Exports and Layout-Hiding Visibility | Accepted |
+| [0014](0014-module-interface-artifact.md)                        | Module Interface Artifact                        | Accepted |

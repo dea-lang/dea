@@ -6,18 +6,29 @@
 module analysis;
 
 import std.hashmap;
+import std.assert;
 import std.string;
 import std.text;
 import std.vector;
 import util.diag;
+import util.numbers;
+import util.strings;
 
+import ast;
 import driver;
 import expr_types;
+import interface_emitter;
 import locals;
+import mi_utils;
+import module_interface;
 import name_resolver;
+import parser;
 import sem_context;
 import signatures;
 import source_paths;
+import string_escape;
+import symbols;
+import type_resolve;
 import types;
 import util.log;
 
@@ -108,4 +119,461 @@ func analysis_analyze_entry(search_paths: SourceSearchPaths*, entry_module: stri
     log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
 
     return result;
+}
+
+/**
+ * Emit the `.l1m` module interface text for an analyzed module.
+ *
+ * Returns `null` if the analysis result lacks name-resolution or signature
+ * tables. Callers should check `analysis_has_errors` before calling this
+ * function.
+ *
+ * @param result Analysis result to emit the interface for.
+ * @param module_name Module whose interface to emit.
+ * @return Canonical `.l1m` text, or `null` if projection fails.
+ */
+func analysis_emit_interface(result: AnalysisResult*, module_name: string) -> string? {
+    let mi = mi_project(result, module_name);
+    if (mi == null) {
+        return null;
+    }
+    let text = ie_emit(mi as ModuleInterface*);
+    mi_free(mi as ModuleInterface*);
+    return text;
+}
+
+/**
+ * Deep-clone a StructInfo.
+ *
+ * @param info Source struct info to clone.
+ * @return New StructInfo owning cloned types.
+ */
+func mi_clone_struct_info(info: StructInfo*) -> StructInfo* {
+    let fields = ptr_vec_create(vec_size(info.fields));
+    for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+        let src = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+        ptr_vec_push(fields, new StructFieldInfo(src.name, type_clone(src.field_type)) as void*);
+    }
+    return new StructInfo(
+        info.key,
+        info.module_name,
+        info.name,
+        info.filename,
+        info.span,
+        type_clone(info.struct_type),
+        fields,
+        info.iface_hash
+    );
+}
+
+/**
+ * Deep-clone an EnumInfo.
+ *
+ * @param info Source enum info to clone.
+ * @return New EnumInfo owning cloned types.
+ */
+func mi_clone_enum_info(info: EnumInfo*) -> EnumInfo* {
+    let variants = ptr_vec_create(vec_size(info.variants));
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let src = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        let field_types = ptr_vec_create(vec_size(src.field_types));
+        for (let j = 0; j < vec_size(src.field_types); j = j + 1) {
+            ptr_vec_push(field_types, type_clone(ptr_vec_get(src.field_types, j) as Type*) as void*);
+        }
+        ptr_vec_push(variants, new EnumVariantInfo(src.name, field_types, us_sv_clone(src.field_names)) as void*);
+    }
+    return new EnumInfo(
+        info.key,
+        info.module_name,
+        info.name,
+        info.filename,
+        info.span,
+        type_clone(info.enum_type),
+        variants,
+        info.iface_hash
+    );
+}
+
+/**
+ * Abort on an internal interface-projection error from a string-returning
+ * helper.
+ *
+ * @param message ICE message to report.
+ * @return Dummy return used only to satisfy control-flow typing.
+ */
+func mi_ice_string(message: string) -> string {
+    assert(false, message);
+    return "";
+}
+
+/**
+ * Build the qualified name string for a var-ref expression.
+ *
+ * @param node Expression node of kind EX_VAR_REF.
+ * @return Qualified name as a string.
+ */
+func mi_var_ref_name(node: ExprNode*) -> string {
+    if (node.module_path == null) {
+        return node.text_value;
+    }
+    let path = node.module_path as StringVector*;
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(path); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ".");
+            }
+            sb_append(sb, sv_get(path, i));
+        }
+        sb_append(sb, "::");
+        sb_append(sb, node.text_value);
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Recursive literal formatter operating on an already-resolved arena.
+ *
+ * @param arena Expression arena.
+ * @param expr_id Expression to format.
+ * @return Canonical literal text.
+ */
+func mi_format_literal_in(arena: ExprArena*, expr_id: ExprId) -> string {
+    let node = expr_arena_get(arena, expr_id);
+    match (node.kind) {
+        EX_INT => {
+            return int_to_string(node.int_value);
+        }
+        EX_BIGINT => {
+            return bigint_to_string(node.text_value, node.base_value);
+        }
+        EX_FLOAT => {
+            return node.text_value;
+        }
+        EX_DOUBLE => {
+            return node.text_value;
+        }
+        EX_BYTE => {
+            return node.text_value;
+        }
+        EX_STRING => {
+            return "\"" + se_encode_c_string_bytes(node.text_value) + "\"";
+        }
+        EX_BOOL => {
+            if (node.bool_value) {
+                return "true";
+            }
+            return "false";
+        }
+        EX_NULL => {
+            return "null";
+        }
+        EX_VAR_REF => {
+            return mi_var_ref_name(node);
+        }
+        EX_ARRAY_LITERAL => {
+            with (let sb2 = sb_create() => sb_free(sb2)) {
+                sb_append(sb2, "[");
+                let ids2 = node.ids as VectorBase*;
+                for (let j = 0; j < vec_size(ids2); j = j + 1) {
+                    if (j > 0) {
+                        sb_append(sb2, ", ");
+                    }
+                    sb_append(sb2, mi_format_literal_in(arena, id_vec_get(ids2, j)));
+                }
+                sb_append(sb2, "]");
+                return sb_to_string(sb2);
+            }
+        }
+        EX_CALL => {
+            let callee = expr_arena_get(arena, node.expr_a);
+            let callee_name = mi_var_ref_name(callee);
+            if (node.ids == null || vec_size(node.ids as VectorBase*) == 0) {
+                return callee_name + "()";
+            }
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, callee_name);
+                sb_append(sb, "(");
+                let ids = node.ids as VectorBase*;
+                for (let i = 0; i < vec_size(ids); i = i + 1) {
+                    if (i > 0) {
+                        sb_append(sb, ", ");
+                    }
+                    sb_append(sb, mi_format_literal_in(arena, id_vec_get(ids, i)));
+                }
+                sb_append(sb, ")");
+                return sb_to_string(sb);
+            }
+        }
+        _ => {
+            return mi_ice_string("[ICE-1400] mi_format_literal_in: unsupported expression kind in interface const literal");
+        }
+    }
+}
+
+/**
+ * Format a compile-time-constant expression as its canonical literal text.
+ *
+ * @param driver_state Driver state holding parsed ASTs.
+ * @param module_name Module owning the expression.
+ * @param expr_id Expression to format.
+ * @return Canonical literal text.
+ */
+func mi_format_literal(driver_state: DriverState*, module_name: string, expr_id: ExprId) -> string {
+    let unit = driver_find_unit(driver_state, module_name) as DriverUnit*;
+    let pr = unit.parse_result;
+    let arena = pr.expr_arena;
+    return mi_format_literal_in(arena, expr_id);
+}
+
+/**
+ * Append the dotted text of a module-path vector to a string builder.
+ *
+ * @param sb Destination string builder.
+ * @param path Module-path vector to render.
+ */
+func mi_append_module_path(sb: StringBuffer*, path: StringVector*) {
+    for (let i = 0; i < sv_size(path); i = i + 1) {
+        if (i > 0) {
+            sb_append(sb, ".");
+        }
+        sb_append(sb, sv_get(path, i));
+    }
+}
+
+/**
+ * Collect cross-module nominal type references reachable from a type tree.
+ *
+ * @param ty Type tree to inspect.
+ * @param this_module Dotted name of the module being projected.
+ * @param out Destination vector of `InterfaceDepEntry*`.
+ */
+func mi_collect_type_refs(ty: Type*, this_module: string, out: VectorBase*) {
+    let kind = ord(ty.kind);
+    if (kind == ord(TY_STRUCT) || kind == ord(TY_ENUM)) {
+        if (ty.module_name != "" && ty.module_name != this_module) {
+            ptr_vec_push(out, new InterfaceDepEntry(ty.module_name, ty.name, "") as void*);
+        }
+        return;
+    }
+    if (kind == ord(TY_POINTER) || kind == ord(TY_NULLABLE) || kind == ord(TY_ARRAY)) {
+        mi_collect_type_refs(ty.inner as Type*, this_module, out);
+        return;
+    }
+    if (kind == ord(TY_FUNC)) {
+        let params = ty.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            mi_collect_type_refs(ptr_vec_get(params, i) as Type*, this_module, out);
+        }
+        mi_collect_type_refs(ty.result as Type*, this_module, out);
+    }
+}
+
+/**
+ * Collect cross-module symbol references reachable from a constant-value
+ * expression tree.
+ *
+ * @param nr Name resolution for symbol lookups.
+ * @param env Owning module environment.
+ * @param arena Expression arena owning the value tree.
+ * @param expr_id Expression to inspect.
+ * @param this_module Dotted name of the module being projected.
+ * @param out Destination vector of `InterfaceDepEntry*`.
+ */
+func mi_collect_value_refs(nr: NameResolution*, env: ModuleEnv*, arena: ExprArena*, expr_id: ExprId,
+                           this_module: string, out: VectorBase*) {
+    let node = expr_arena_get(arena, expr_id);
+    match (node.kind) {
+        EX_VAR_REF => {
+            if (node.module_path == null) {
+                return;
+            }
+            let path = node.module_path as StringVector*;
+            if (sv_size(path) == 0) {
+                return;
+            }
+            with (let sb = sb_create() => sb_free(sb)) {
+                mi_append_module_path(sb, path);
+                let mod = sb_to_string(sb);
+                if (mod == this_module) {
+                    return;
+                }
+                let sym_opt = tr_symbol_lookup(nr, env, node.text_value, node.module_path, node.name_qualifier);
+                if (sym_opt != null) {
+                    let sym = sym_opt as Symbol*;
+                    if (ord(sym.kind) == ord(SYM_ENUM_VARIANT)) {
+                        return;
+                    }
+                }
+                ptr_vec_push(out, new InterfaceDepEntry(mod, node.text_value, "") as void*);
+            }
+        }
+        EX_CALL => {
+            mi_collect_value_refs(nr, env, arena, node.expr_a, this_module, out);
+            if (node.ids != null) {
+                let ids = node.ids as VectorBase*;
+                for (let i = 0; i < vec_size(ids); i = i + 1) {
+                    mi_collect_value_refs(nr, env, arena, id_vec_get(ids, i), this_module, out);
+                }
+            }
+        }
+        EX_ARRAY_LITERAL => {
+            if (node.ids != null) {
+                let ids = node.ids as VectorBase*;
+                for (let i = 0; i < vec_size(ids); i = i + 1) {
+                    mi_collect_value_refs(nr, env, arena, id_vec_get(ids, i), this_module, out);
+                }
+            }
+        }
+        _ => {
+        }
+    }
+}
+
+/**
+ * Convenience wrapper around `mi_collect_value_refs` that looks up the
+ * source unit's expression arena via the driver state.
+ *
+ * @param nr Name resolution for symbol lookups.
+ * @param env Owning module environment.
+ * @param driver_state Driver state holding parsed ASTs.
+ * @param module_name Module owning the expression.
+ * @param expr_id Expression to inspect.
+ * @param out Destination vector of `InterfaceDepEntry*`.
+ */
+func mi_collect_value_refs_for(nr: NameResolution*, env: ModuleEnv*, driver_state: DriverState*,
+                                module_name: string, expr_id: ExprId, out: VectorBase*) {
+    let unit = driver_find_unit(driver_state, module_name) as DriverUnit*;
+    let pr = unit.parse_result;
+    mi_collect_value_refs(nr, env, pr.expr_arena, expr_id, module_name, out);
+}
+
+/**
+ * Collect parameter names from a function symbol's declaration.
+ *
+ * @param sym Function symbol.
+ * @return New StringVector containing the parameter names in declaration order.
+ */
+func mi_collect_param_names(sym: Symbol*) -> StringVector* {
+    let names = sv_create(4);
+    if (sym.decl_ptr == null) {
+        return names;
+    }
+    let decl = sym.decl_ptr as FuncDecl*;
+    for (let i = 0; i < vec_size(decl.params); i = i + 1) {
+        let param = ptr_vec_get(decl.params, i) as Param*;
+        sv_push(names, param.name);
+    }
+    return names;
+}
+
+/**
+ * Project the exported surface of an analyzed module into a ModuleInterface.
+ *
+ * @param result Analysis result to project from.
+ * @param module_name Module whose exports to project.
+ * @return Projected interface, or `null` on guard failure.
+ */
+func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface*? {
+    if (result.names == null || result.signatures == null) {
+        return null;
+    }
+
+    let nr = result.names as NameResolution*;
+    let sigs = result.signatures as SignatureTables*;
+
+    let env_opt = nr_env_find(nr, module_name);
+    if (env_opt == null) {
+        return null;
+    }
+    let env = env_opt as ModuleEnv*;
+
+    let require_entries = ptr_vec_create(4);
+    let link_entries = ptr_vec_create(4);
+    let struct_infos = ptr_vec_create(4);
+    let enum_infos = ptr_vec_create(4);
+    let alias_entries = ptr_vec_create(4);
+    let func_entries = ptr_vec_create(8);
+    let let_entries = ptr_vec_create(8);
+
+    with (let keys = nr_module_env_export_keys(env) => sv_free(keys)) {
+        sv_sort(keys);
+        for (let i = 0; i < sv_size(keys); i = i + 1) {
+            let key = sv_get(keys, i);
+            let sym_opt = spm_get(env.exports, key);
+            if (sym_opt == null) {
+                continue;
+            }
+            let sym = sym_opt as Symbol*;
+
+            match (sym.kind) {
+                SYM_ENUM_VARIANT => {
+                }
+                SYM_TYPE_ALIAS => {
+                    if (sym.resolved_type == null) {
+                        continue;
+                    }
+                    let alias_ty = type_clone(sym.resolved_type as Type*);
+                    mi_collect_type_refs(alias_ty, module_name, require_entries);
+                    let entry = new InterfaceAliasEntry(key, alias_ty, "");
+                    ptr_vec_push(alias_entries, entry as void*);
+                }
+                SYM_STRUCT => {
+                    let info_opt = sig_lookup_struct_info(sigs, module_name, key);
+                    if (info_opt == null) {
+                        continue;
+                    }
+                    let cloned_struct = mi_clone_struct_info(info_opt as StructInfo*);
+                    for (let fi = 0; fi < vec_size(cloned_struct.fields); fi = fi + 1) {
+                        let field = ptr_vec_get(cloned_struct.fields, fi) as StructFieldInfo*;
+                        mi_collect_type_refs(field.field_type, module_name, require_entries);
+                    }
+                    ptr_vec_push(struct_infos, cloned_struct as void*);
+                }
+                SYM_ENUM => {
+                    let info_opt = sig_lookup_enum_info(sigs, module_name, key);
+                    if (info_opt == null) {
+                        continue;
+                    }
+                    let cloned_enum = mi_clone_enum_info(info_opt as EnumInfo*);
+                    for (let vi = 0; vi < vec_size(cloned_enum.variants); vi = vi + 1) {
+                        let variant = ptr_vec_get(cloned_enum.variants, vi) as EnumVariantInfo*;
+                        for (let vfi = 0; vfi < vec_size(variant.field_types); vfi = vfi + 1) {
+                            mi_collect_type_refs(ptr_vec_get(variant.field_types, vfi) as Type*, module_name, require_entries);
+                        }
+                    }
+                    ptr_vec_push(enum_infos, cloned_enum as void*);
+                }
+                SYM_FUNC => {
+                    let ty_opt = sig_lookup_func_type(sigs, module_name, key);
+                    if (ty_opt == null) {
+                        continue;
+                    }
+                    let func_ty = type_clone(ty_opt as Type*);
+                    mi_collect_type_refs(func_ty, module_name, require_entries);
+                    let param_names = mi_collect_param_names(sym);
+                    let entry = new InterfaceFuncEntry(key, param_names, func_ty, "");
+                    ptr_vec_push(func_entries, entry as void*);
+                }
+                SYM_LET => {
+                    let ty_opt = sig_lookup_let_type(sigs, module_name, key);
+                    if (ty_opt == null) {
+                        continue;
+                    }
+                    let let_ty = type_clone(ty_opt as Type*);
+                    mi_collect_type_refs(let_ty, module_name, require_entries);
+                    let decl = sym.decl_ptr as LetDecl*;
+                    let is_const = decl.is_const;
+                    let literal = "";
+                    if (is_const) {
+                        literal = mi_format_literal(result.driver_state, module_name, decl.value);
+                        mi_collect_value_refs_for(nr, env, result.driver_state, module_name, decl.value, require_entries);
+                    }
+                    let entry = new InterfaceLetEntry(key, let_ty, is_const, literal, "");
+                    ptr_vec_push(let_entries, entry as void*);
+                }
+            }
+        }
+    }
+
+    return new ModuleInterface(module_name, "", require_entries, link_entries, struct_infos, enum_infos, alias_entries, func_entries, let_entries);
 }

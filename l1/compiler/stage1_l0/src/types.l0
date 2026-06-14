@@ -59,6 +59,7 @@ struct StructInfo {
     span: Span;
     struct_type: Type*;
     fields: VectorBase*; // StructFieldInfo*
+    iface_hash: string;
 }
 
 /**
@@ -67,6 +68,7 @@ struct StructInfo {
 struct EnumVariantInfo {
     name: string;
     field_types: VectorBase*; // Type*
+    field_names: StringVector*;
 }
 
 /**
@@ -80,6 +82,7 @@ struct EnumInfo {
     span: Span;
     enum_type: Type*;
     variants: VectorBase*; // EnumVariantInfo*
+    iface_hash: string;
 }
 
 /**
@@ -625,6 +628,7 @@ func enum_info_free(self: EnumInfo*) {
             type_free(ptr_vec_get(field_types, j) as Type*);
         }
         vec_free(field_types);
+        sv_free(variant.field_names);
         drop variant;
     }
     vec_free(self.variants);

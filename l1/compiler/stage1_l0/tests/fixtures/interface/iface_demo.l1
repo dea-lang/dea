@@ -1,0 +1,97 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module iface_demo;
+
+export Point, Size, Color, Dims, make_point, area, origin, scale_factor, debug_prefix, zero_color, vivid_color, current_offset;
+
+/**
+ * A 2D point with named fields.
+ */
+struct Point {
+    x: int;
+    y: int;
+}
+
+/**
+ * A size with width and height.
+ */
+struct Size {
+    width: int;
+    height: int;
+}
+
+/**
+ * An enum with zero-field and three-field variants.
+ */
+enum Color {
+    Red;
+    Green;
+    Blue;
+    Rgb(red: int, green: int, blue: int);
+}
+
+/**
+ * A type alias for Size.
+ */
+type Dims = Size;
+
+/**
+ * Create a point at the given coordinates.
+ *
+ * @param px X coordinate.
+ * @param py Y coordinate.
+ * @return A new Point.
+ */
+func make_point(px: int, py: int) -> Point {
+    return Point(px, py);
+}
+
+/**
+ * Compute the area of a size.
+ *
+ * @param s Size to measure.
+ * @return Width times height.
+ */
+func area(s: Size) -> int {
+    return s.width * s.height;
+}
+
+/**
+ * The origin point.
+ */
+const origin: Point = Point(0, 0);
+
+/**
+ * A scale factor as a float literal.
+ */
+const scale_factor: double = 2.5;
+
+/**
+ * A debug prefix string.
+ */
+const debug_prefix: string = "iface";
+
+/**
+ * A zero-field enum variant const reference.
+ */
+const zero_color: Color = Red;
+
+/**
+ * A multi-field enum variant const reference.
+ */
+const vivid_color: Color = Rgb(255, 0, 0);
+
+/**
+ * A mutable let binding.
+ */
+let current_offset: Point? = null;
+
+/**
+ * Private helper excluded from the interface manifest.
+ */
+func helper(x: int) -> int {
+    return x + 1;
+}

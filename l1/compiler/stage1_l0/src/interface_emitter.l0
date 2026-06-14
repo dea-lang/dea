@@ -1,0 +1,576 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module interface_emitter;
+
+import std.string;
+import std.text;
+import std.vector;
+
+import ast;
+import module_interface;
+import types;
+
+/**
+ * Format a type for emission in a module interface.
+ *
+ * Same-module nominal types are emitted unqualified; cross-module nominal
+ * types are fully qualified as `module::Name`. All other type kinds delegate
+ * to their structural form.
+ *
+ * @param ty Type to format.
+ * @param module_name Module being emitted (used to determine qualification).
+ * @return Formatted type string.
+ */
+func ie_format_type(ty: Type*, module_name: string) -> string {
+    match (ty.kind) {
+        TY_BUILTIN => {
+            return ty.name;
+        }
+        TY_NULL => {
+            return ty.name;
+        }
+        TY_STRUCT => {
+            if (ty.module_name == module_name) {
+                return ty.name;
+            }
+            return ty.module_name + "::" + ty.name;
+        }
+        TY_ENUM => {
+            if (ty.module_name == module_name) {
+                return ty.name;
+            }
+            return ty.module_name + "::" + ty.name;
+        }
+        TY_POINTER => {
+            return ie_format_type(ty.inner as Type*, module_name) + "*";
+        }
+        TY_NULLABLE => {
+            let inner = ty.inner as Type*;
+            if (ord(inner.kind) == ord(TY_FUNC)) {
+                return "(" + ie_format_type(inner, module_name) + ")?";
+            }
+            return ie_format_type(inner, module_name) + "?";
+        }
+        TY_ARRAY => {
+            with (let dims = sv_create(4) => sv_free(dims)) {
+                let cur = ty;
+                while (ord(cur.kind) == ord(TY_ARRAY)) {
+                    sv_push(dims, "[" + int_to_string(cur.array_len) + "]");
+                    cur = cur.inner as Type*;
+                }
+                with (let sb2 = sb_create() => sb_free(sb2)) {
+                    sb_append(sb2, ie_format_type(cur, module_name));
+                    for (let i = 0; i < sv_size(dims); i = i + 1) {
+                        sb_append(sb2, sv_get(dims, i));
+                    }
+                    return sb_to_string(sb2);
+                }
+            }
+        }
+        TY_FUNC => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                if (ty.is_unsafe) {
+                    sb_append(sb, "unsafe ");
+                }
+                sb_append(sb, "func(");
+                let params = ty.params as VectorBase*;
+                for (let i = 0; i < vec_size(params); i = i + 1) {
+                    if (i > 0) {
+                        sb_append(sb, ", ");
+                    }
+                    sb_append(sb, ie_format_type(ptr_vec_get(params, i) as Type*, module_name));
+                }
+                sb_append(sb, ") -> ");
+                sb_append(sb, ie_format_type(ty.result as Type*, module_name));
+                return sb_to_string(sb);
+            }
+        }
+    }
+}
+
+/**
+ * Emit a struct declaration into a string builder.
+ *
+ * @param sb String builder to append to.
+ * @param info Struct info to emit.
+ * @param module_name Module being emitted.
+ */
+func ie_emit_struct(sb: StringBuffer*, info: StructInfo*, module_name: string) {
+    sb_append(sb, "struct ");
+    sb_append(sb, info.name);
+    sb_append(sb, " {\n");
+    for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+        let field = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+        sb_append(sb, "  ");
+        sb_append(sb, field.name);
+        sb_append(sb, ": ");
+        sb_append(sb, ie_format_type(field.field_type, module_name));
+        sb_append(sb, ";\n");
+    }
+    sb_append(sb, "} == \"");
+    sb_append(sb, info.iface_hash);
+    sb_append(sb, "\";");
+}
+
+/**
+ * Emit an enum declaration into a string builder.
+ *
+ * @param sb String builder to append to.
+ * @param info Enum info to emit.
+ * @param module_name Module being emitted.
+ */
+func ie_emit_enum(sb: StringBuffer*, info: EnumInfo*, module_name: string) {
+    sb_append(sb, "enum ");
+    sb_append(sb, info.name);
+    sb_append(sb, " {\n");
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let variant = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        sb_append(sb, "  ");
+        sb_append(sb, variant.name);
+        if (vec_size(variant.field_types) > 0) {
+            sb_append(sb, "(");
+            for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+                if (j > 0) {
+                    sb_append(sb, ", ");
+                }
+                let field_name = sv_get(variant.field_names, j);
+                sb_append(sb, field_name);
+                sb_append(sb, ": ");
+                sb_append(sb, ie_format_type(ptr_vec_get(variant.field_types, j) as Type*, module_name));
+            }
+            sb_append(sb, ")");
+        }
+        sb_append(sb, ";\n");
+    }
+    sb_append(sb, "} == \"");
+    sb_append(sb, info.iface_hash);
+    sb_append(sb, "\";");
+}
+
+/**
+ * Emit a type alias declaration into a string builder.
+ *
+ * @param sb String builder to append to.
+ * @param entry Alias entry to emit.
+ * @param module_name Module being emitted.
+ */
+func ie_emit_alias(sb: StringBuffer*, entry: InterfaceAliasEntry*, module_name: string) {
+    sb_append(sb, "type ");
+    sb_append(sb, entry.name);
+    sb_append(sb, " = ");
+    sb_append(sb, ie_format_type(entry.ty, module_name));
+    sb_append(sb, " == \"");
+    sb_append(sb, entry.hash);
+    sb_append(sb, "\";");
+}
+
+/**
+ * Emit a function signature declaration into a string builder.
+ *
+ * @param sb String builder to append to.
+ * @param entry Function entry to emit.
+ * @param module_name Module being emitted.
+ */
+func ie_emit_func(sb: StringBuffer*, entry: InterfaceFuncEntry*, module_name: string) {
+    if (entry.ty.is_unsafe) {
+        sb_append(sb, "unsafe ");
+    }
+    sb_append(sb, "func ");
+    sb_append(sb, entry.name);
+    sb_append(sb, "(");
+    let params = entry.ty.params as VectorBase*;
+    for (let i = 0; i < vec_size(params); i = i + 1) {
+        if (i > 0) {
+            sb_append(sb, ", ");
+        }
+        sb_append(sb, sv_get(entry.param_names, i));
+        sb_append(sb, ": ");
+        sb_append(sb, ie_format_type(ptr_vec_get(params, i) as Type*, module_name));
+    }
+    sb_append(sb, ") -> ");
+    sb_append(sb, ie_format_type(entry.ty.result as Type*, module_name));
+    sb_append(sb, " == \"");
+    sb_append(sb, entry.hash);
+    sb_append(sb, "\";");
+}
+
+/**
+ * Emit a const declaration into a string builder.
+ *
+ * @param sb String builder to append to.
+ * @param entry Const entry to emit.
+ * @param module_name Module being emitted.
+ */
+func ie_emit_const(sb: StringBuffer*, entry: InterfaceLetEntry*, module_name: string) {
+    sb_append(sb, "const ");
+    sb_append(sb, entry.name);
+    sb_append(sb, ": ");
+    sb_append(sb, ie_format_type(entry.ty, module_name));
+    sb_append(sb, " = ");
+    sb_append(sb, entry.literal);
+    sb_append(sb, " == \"");
+    sb_append(sb, entry.hash);
+    sb_append(sb, "\";");
+}
+
+/**
+ * Emit a let declaration into a string builder.
+ *
+ * @param sb String builder to append to.
+ * @param entry Let entry to emit.
+ * @param module_name Module being emitted.
+ */
+func ie_emit_let(sb: StringBuffer*, entry: InterfaceLetEntry*, module_name: string) {
+    sb_append(sb, "let ");
+    sb_append(sb, entry.name);
+    sb_append(sb, ": ");
+    sb_append(sb, ie_format_type(entry.ty, module_name));
+    sb_append(sb, " == \"");
+    sb_append(sb, entry.hash);
+    sb_append(sb, "\";");
+}
+
+/**
+ * Emit one `require` or `link` dependency line.
+ *
+ * @param sb String builder to append to.
+ * @param keyword Dependency keyword (`require` or `link`).
+ * @param entry Dependency entry to emit.
+ */
+func ie_emit_dep(sb: StringBuffer*, keyword: string, entry: InterfaceDepEntry*) {
+    sb_append(sb, keyword);
+    sb_append(sb, " ");
+    sb_append(sb, entry.provider_module);
+    sb_append(sb, "::");
+    sb_append(sb, entry.symbol_name);
+    sb_append(sb, " == \"");
+    sb_append(sb, entry.hash);
+    sb_append(sb, "\";");
+}
+
+/**
+ * Render a dependency entry's canonical sort key: `<provider_module>::<symbol>`.
+ *
+ * @param entry Dependency entry to format.
+ * @return Canonical sort key string.
+ */
+func ie_dep_sort_key(entry: InterfaceDepEntry*) -> string {
+    return entry.provider_module + "::" + entry.symbol_name;
+}
+
+/**
+ * Find an `InterfaceDepEntry` in a vector by its canonical sort key.
+ *
+ * @param vec Vector of `InterfaceDepEntry*`.
+ * @param key Canonical sort key.
+ * @return Matching entry, or `null`.
+ */
+func ie_find_dep_by_key(vec: VectorBase*, key: string) -> InterfaceDepEntry*? {
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let entry = ptr_vec_get(vec, i) as InterfaceDepEntry*;
+        if (ie_dep_sort_key(entry) == key) {
+            return entry;
+        }
+    }
+    return null;
+}
+
+/**
+ * Collect sorted, deduplicated canonical keys for a dependency-entry vector.
+ *
+ * @param vec Vector of `InterfaceDepEntry*`.
+ * @return New sorted StringVector with duplicates removed.
+ */
+func ie_collect_dep_keys(vec: VectorBase*) -> StringVector* {
+    let keys = sv_create(vec_size(vec));
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let entry = ptr_vec_get(vec, i) as InterfaceDepEntry*;
+        sv_push(keys, ie_dep_sort_key(entry));
+    }
+    sv_sort(keys);
+    let unique = sv_create(sv_size(keys));
+    let prev = "";
+    for (let j = 0; j < sv_size(keys); j = j + 1) {
+        let cur = sv_get(keys, j);
+        if (j == 0 || cur != prev) {
+            sv_push(unique, cur);
+        }
+        prev = cur;
+    }
+    sv_free(keys);
+    return unique;
+}
+
+/**
+ * Find a StructInfo in the interface by name.
+ *
+ * @param mi Module interface to search.
+ * @param name Struct name to find.
+ * @return Matching StructInfo, or `null`.
+ */
+func ie_find_struct_by_name(mi: ModuleInterface*, name: string) -> StructInfo*? {
+    for (let i = 0; i < vec_size(mi.struct_infos); i = i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, i) as StructInfo*;
+        if (info.name == name) {
+            return info;
+        }
+    }
+    return null;
+}
+
+/**
+ * Find an EnumInfo in the interface by name.
+ *
+ * @param mi Module interface to search.
+ * @param name Enum name to find.
+ * @return Matching EnumInfo, or `null`.
+ */
+func ie_find_enum_by_name(mi: ModuleInterface*, name: string) -> EnumInfo*? {
+    for (let i = 0; i < vec_size(mi.enum_infos); i = i + 1) {
+        let info = ptr_vec_get(mi.enum_infos, i) as EnumInfo*;
+        if (info.name == name) {
+            return info;
+        }
+    }
+    return null;
+}
+
+/**
+ * Find an InterfaceAliasEntry in the interface by name.
+ *
+ * @param mi Module interface to search.
+ * @param name Alias name to find.
+ * @return Matching InterfaceAliasEntry, or `null`.
+ */
+func ie_find_alias_by_name(mi: ModuleInterface*, name: string) -> InterfaceAliasEntry*? {
+    for (let i = 0; i < vec_size(mi.alias_entries); i = i + 1) {
+        let entry = ptr_vec_get(mi.alias_entries, i) as InterfaceAliasEntry*;
+        if (entry.name == name) {
+            return entry;
+        }
+    }
+    return null;
+}
+
+/**
+ * Find an InterfaceFuncEntry in the interface by name.
+ *
+ * @param mi Module interface to search.
+ * @param name Function name to find.
+ * @return Matching InterfaceFuncEntry, or `null`.
+ */
+func ie_find_func_by_name(mi: ModuleInterface*, name: string) -> InterfaceFuncEntry*? {
+    for (let i = 0; i < vec_size(mi.func_entries); i = i + 1) {
+        let entry = ptr_vec_get(mi.func_entries, i) as InterfaceFuncEntry*;
+        if (entry.name == name) {
+            return entry;
+        }
+    }
+    return null;
+}
+
+/**
+ * Find an InterfaceLetEntry in the interface by name.
+ *
+ * @param mi Module interface to search.
+ * @param name Let/const name to find.
+ * @return Matching InterfaceLetEntry, or `null`.
+ */
+func ie_find_let_by_name(mi: ModuleInterface*, name: string) -> InterfaceLetEntry*? {
+    for (let i = 0; i < vec_size(mi.let_entries); i = i + 1) {
+        let entry = ptr_vec_get(mi.let_entries, i) as InterfaceLetEntry*;
+        if (entry.name == name) {
+            return entry;
+        }
+    }
+    return null;
+}
+
+/**
+ * Collect names from a pointer vector of objects with a `name` field (structs).
+ *
+ * @param vec Vector of StructInfo*.
+ * @return New sorted StringVector of names.
+ */
+func ie_collect_struct_names(vec: VectorBase*) -> StringVector* {
+    let names = sv_create(vec_size(vec));
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        sv_push(names, (ptr_vec_get(vec, i) as StructInfo*).name);
+    }
+    sv_sort(names);
+    return names;
+}
+
+/**
+ * Collect names from a pointer vector of EnumInfo.
+ *
+ * @param vec Vector of EnumInfo*.
+ * @return New sorted StringVector of names.
+ */
+func ie_collect_enum_names(vec: VectorBase*) -> StringVector* {
+    let names = sv_create(vec_size(vec));
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        sv_push(names, (ptr_vec_get(vec, i) as EnumInfo*).name);
+    }
+    sv_sort(names);
+    return names;
+}
+
+/**
+ * Collect names from a pointer vector of InterfaceAliasEntry.
+ *
+ * @param vec Vector of InterfaceAliasEntry*.
+ * @return New sorted StringVector of names.
+ */
+func ie_collect_alias_names(vec: VectorBase*) -> StringVector* {
+    let names = sv_create(vec_size(vec));
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        sv_push(names, (ptr_vec_get(vec, i) as InterfaceAliasEntry*).name);
+    }
+    sv_sort(names);
+    return names;
+}
+
+/**
+ * Collect names from a pointer vector of InterfaceFuncEntry.
+ *
+ * @param vec Vector of InterfaceFuncEntry*.
+ * @return New sorted StringVector of names.
+ */
+func ie_collect_func_names(vec: VectorBase*) -> StringVector* {
+    let names = sv_create(vec_size(vec));
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        sv_push(names, (ptr_vec_get(vec, i) as InterfaceFuncEntry*).name);
+    }
+    sv_sort(names);
+    return names;
+}
+
+/**
+ * Collect names from a pointer vector of InterfaceLetEntry with a filter.
+ *
+ * @param vec Vector of InterfaceLetEntry*.
+ * @param want_const If `true`, collect const entries; otherwise collect let entries.
+ * @return New sorted StringVector of names.
+ */
+func ie_collect_let_names(vec: VectorBase*, want_const: bool) -> StringVector* {
+    let names = sv_create(vec_size(vec));
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let entry = ptr_vec_get(vec, i) as InterfaceLetEntry*;
+        if (entry.is_const == want_const) {
+            sv_push(names, entry.name);
+        }
+    }
+    sv_sort(names);
+    return names;
+}
+
+/**
+ * Emit the full `.l1m` text for a module interface.
+ *
+ * Canonical emission order:
+ * 1. Header (`module interface <name>;` + `fingerprint "<hash>";`)
+ * 2. `require` dependency lines (surface-tier, per used symbol, sorted/deduplicated)
+ * 3. `link` dependency lines (implementation-tier, per used symbol, sorted/deduplicated)
+ * 4. Structs (sorted by name)
+ * 5. Enums (sorted by name)
+ * 6. Type aliases (sorted by name)
+ * 7. Funcs (sorted by name)
+ * 8. Consts (sorted by name)
+ * 9. Lets (sorted by name)
+ *
+ * @param mi Module interface to emit.
+ * @return Deterministic `.l1m` text.
+ */
+func ie_emit(mi: ModuleInterface*) -> string {
+    let module_name = mi.module_name;
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "module interface ");
+        sb_append(sb, module_name);
+        sb_append(sb, ";\n");
+        sb_append(sb, "fingerprint \"");
+        sb_append(sb, mi.fingerprint);
+        sb_append(sb, "\";\n");
+
+        if (vec_size(mi.require_entries) > 0) {
+            sb_append(sb, "\n");
+            with (let keys = ie_collect_dep_keys(mi.require_entries) => sv_free(keys)) {
+                for (let i = 0; i < sv_size(keys); i = i + 1) {
+                    let entry = ie_find_dep_by_key(mi.require_entries, sv_get(keys, i)) as InterfaceDepEntry*;
+                    ie_emit_dep(sb, "require", entry);
+                    sb_append(sb, "\n");
+                }
+            }
+        }
+
+        if (vec_size(mi.link_entries) > 0) {
+            sb_append(sb, "\n");
+            with (let keys = ie_collect_dep_keys(mi.link_entries) => sv_free(keys)) {
+                for (let i = 0; i < sv_size(keys); i = i + 1) {
+                    let entry = ie_find_dep_by_key(mi.link_entries, sv_get(keys, i)) as InterfaceDepEntry*;
+                    ie_emit_dep(sb, "link", entry);
+                    sb_append(sb, "\n");
+                }
+            }
+        }
+
+        with (let struct_names = ie_collect_struct_names(mi.struct_infos) => sv_free(struct_names)) {
+            for (let i = 0; i < sv_size(struct_names); i = i + 1) {
+                let info = ie_find_struct_by_name(mi, sv_get(struct_names, i)) as StructInfo*;
+                sb_append(sb, "\n");
+                ie_emit_struct(sb, info, module_name);
+                sb_append(sb, "\n");
+            }
+        }
+
+        with (let enum_names = ie_collect_enum_names(mi.enum_infos) => sv_free(enum_names)) {
+            for (let i = 0; i < sv_size(enum_names); i = i + 1) {
+                let info = ie_find_enum_by_name(mi, sv_get(enum_names, i)) as EnumInfo*;
+                sb_append(sb, "\n");
+                ie_emit_enum(sb, info, module_name);
+                sb_append(sb, "\n");
+            }
+        }
+
+        with (let alias_names = ie_collect_alias_names(mi.alias_entries) => sv_free(alias_names)) {
+            for (let i = 0; i < sv_size(alias_names); i = i + 1) {
+                let entry = ie_find_alias_by_name(mi, sv_get(alias_names, i)) as InterfaceAliasEntry*;
+                sb_append(sb, "\n");
+                ie_emit_alias(sb, entry, module_name);
+                sb_append(sb, "\n");
+            }
+        }
+
+        with (let func_names = ie_collect_func_names(mi.func_entries) => sv_free(func_names)) {
+            for (let i = 0; i < sv_size(func_names); i = i + 1) {
+                let entry = ie_find_func_by_name(mi, sv_get(func_names, i)) as InterfaceFuncEntry*;
+                sb_append(sb, "\n");
+                ie_emit_func(sb, entry, module_name);
+                sb_append(sb, "\n");
+            }
+        }
+
+        with (let const_names = ie_collect_let_names(mi.let_entries, true) => sv_free(const_names)) {
+            for (let i = 0; i < sv_size(const_names); i = i + 1) {
+                let entry = ie_find_let_by_name(mi, sv_get(const_names, i)) as InterfaceLetEntry*;
+                sb_append(sb, "\n");
+                ie_emit_const(sb, entry, module_name);
+                sb_append(sb, "\n");
+            }
+        }
+
+        with (let let_names = ie_collect_let_names(mi.let_entries, false) => sv_free(let_names)) {
+            for (let i = 0; i < sv_size(let_names); i = i + 1) {
+                let entry = ie_find_let_by_name(mi, sv_get(let_names, i)) as InterfaceLetEntry*;
+                sb_append(sb, "\n");
+                ie_emit_let(sb, entry, module_name);
+                sb_append(sb, "\n");
+            }
+        }
+
+        return sb_to_string(sb);
+    }
+}

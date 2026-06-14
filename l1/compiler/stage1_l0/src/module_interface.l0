@@ -1,0 +1,79 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module module_interface;
+
+import std.vector;
+import util.diag;
+import types;
+
+/**
+ * Represents one per-used-symbol dependency entry recorded in a `.l1m` file.
+ *
+ * The same shape is reused by both the `require` (surface-tier) group and the
+ * `link` (implementation-tier) group; the two are kept as separate vectors on
+ * `ModuleInterface` to preserve the dependency tier.
+ *
+ * `hash` is the algorithm-tagged expected provider-symbol hash, or the empty
+ * string when no compatibility check is performed yet.
+ */
+struct InterfaceDepEntry {
+    provider_module: string;
+    symbol_name: string;
+    hash: string;
+}
+
+/**
+ * Represents an exported function entry in a module interface.
+ */
+struct InterfaceFuncEntry {
+    name: string;
+    param_names: StringVector*;    // parallel to ty.params
+    ty: Type*;                     // TY_FUNC, owned
+    hash: string;                  // per-symbol hash, "" for now
+}
+
+/**
+ * Represents an exported let or const entry in a module interface.
+ */
+struct InterfaceLetEntry {
+    name: string;
+    ty: Type*;                     // owned
+    is_const: bool;
+    literal: string;               // canonical literal text; empty for non-const let
+    hash: string;                  // per-symbol hash, "" for now
+}
+
+/**
+ * Represents an exported type alias entry in a module interface.
+ */
+struct InterfaceAliasEntry {
+    name: string;
+    ty: Type*;                     // aliased type, owned clone
+    hash: string;                  // per-symbol hash, "" for now
+}
+
+/**
+ * Represents the in-memory public surface of one module.
+ */
+struct ModuleInterface {
+    module_name: string;
+    fingerprint: string;
+    require_entries: VectorBase*;  // InterfaceDepEntry* (surface-tier, per used symbol)
+    link_entries: VectorBase*;     // InterfaceDepEntry* (implementation-tier, per used symbol)
+    struct_infos: VectorBase*;     // StructInfo* (cloned, owned)
+    enum_infos: VectorBase*;       // EnumInfo* (cloned, owned)
+    alias_entries: VectorBase*;    // InterfaceAliasEntry*
+    func_entries: VectorBase*;     // InterfaceFuncEntry*
+    let_entries: VectorBase*;      // InterfaceLetEntry*
+}
+
+/**
+ * Wraps the result of parsing a module interface file.
+ */
+struct InterfaceParseResult {
+    interface: ModuleInterface*?;
+    diags: DiagCollector*;         // always owned
+}
