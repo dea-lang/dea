@@ -347,11 +347,12 @@ diagnostic.
 | `TYP-0103` | All     | No type information for enum                                                                           |
 | `TYP-0104` | All     | Non-exhaustive match                                                                                   |
 | `TYP-0105` | All     | Unreachable wildcard pattern in match: all variants of enum are already covered                        |
-| `TYP-0106` | All     | `case` scrutinee must have type `int`, `byte`, `bool`, or `string`                                     |
-| `TYP-0107` | All     | 'case' arm literal must be int, byte, bool, or string                                                  |
+| `TYP-0106` | All     | `case` scrutinee must have a builtin integer type, `float`, `double`, `bool`, or `string`              |
+| `TYP-0107` | All     | `case` arm literal cannot be compared with the scrutinee type                                          |
 | `TYP-0108` | All     | Duplicate literal value in 'case' statement                                                            |
 | `TYP-0109` | All     | Invalid escape in 'case' literal                                                                       |
 | `TYP-0110` | All     | 'break' statement not within a loop                                                                    |
+| `TYP-0111` | All     | `case` arm literal can never match the scrutinee type                                                  |
 | `TYP-0120` | All     | 'continue' statement not within a loop                                                                 |
 | `TYP-0139` | All     | Unknown statement type                                                                                 |
 | `TYP-0149` | All     | Internal error: cannot infer the type of an empty expression placeholder                               |

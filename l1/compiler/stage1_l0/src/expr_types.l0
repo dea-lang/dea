@@ -62,6 +62,16 @@ enum AssignCheckResult {
 }
 
 /**
+ * Classification of a `case` arm literal against the scrutinee type.
+ */
+enum CaseLiteralClass {
+    CASE_LIT_POSSIBLE;        // The arm can compare equal under the same rules as `==`.
+    CASE_LIT_ALWAYS_FALSE;    // Well-formed literal family, but outside the scrutinee value domain.
+    CASE_LIT_MISMATCH;        // The literal family cannot be compared with the scrutinee type.
+    CASE_LIT_BIGINT_CONTEXT;  // Bigint literal needing contextual assignability checking.
+}
+
+/**
  * Linked stack entry for guarded `with` header locals during cleanup-block checking.
  */
 struct CleanupHeaderGuard {
@@ -1205,12 +1215,12 @@ func etc_bind_pattern_types(self: ExpressionTypeChecker*, match_ty: Type*, patte
     let unit = self.current_unit as DriverUnit*;
     let pattern = pattern_arena_get(unit.parse_result.pattern_arena, pattern_id);
     if (ord(pattern.kind) != ord(PT_VARIANT)) return;
-    
+
     if (ord(match_ty.kind) != ord(TY_ENUM)) return;
-    
+
     let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
     if (info == null) return;
-    
+
     let variants = (info as EnumInfo*).variants;
     for (let i = 0; i < vec_size(variants); i = i + 1) {
         let v_info = ptr_vec_get(variants, i) as EnumVariantInfo*;
@@ -1456,7 +1466,51 @@ func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type
  * @return `true` for `int`, `byte`, `bool`, and `string`.
  */
 func etc_is_case_type(ty: Type*?) -> bool {
-    return etc_is_int(ty) || etc_is_bool(ty) || etc_is_string(ty);
+    return etc_is_int(ty) || etc_is_bool(ty) || etc_is_string(ty) || etc_is_real(ty);
+}
+
+/**
+ * Classify a `case` arm literal against the scrutinee type using `==` comparability rules.
+ *
+ * @param self Expression checker state.
+ * @param scrut_ty Scrutinee type.
+ * @param literal_expr Arm literal expression id.
+ * @param lit_ty Already-inferred type of `literal_expr`; ownership stays with the caller.
+ * @return The classification of the literal against `scrut_ty`.
+ */
+func etc_classify_case_literal(self: ExpressionTypeChecker*, scrut_ty: Type*, literal_expr: ExprId,
+                               lit_ty: Type*) -> CaseLiteralClass {
+    if (etc_is_string(scrut_ty)) {
+        if (etc_is_string(lit_ty)) return CASE_LIT_POSSIBLE;
+    } else if (etc_is_bool(scrut_ty)) {
+        if (etc_is_bool(lit_ty)) return CASE_LIT_POSSIBLE;
+    } else if (etc_is_real(scrut_ty)) {
+        if (etc_is_real(lit_ty)) return CASE_LIT_POSSIBLE;
+    } else if (etc_is_int(scrut_ty)) {
+        if (etc_is_bigint_literal_type(lit_ty)) {
+            let text = etc_bigint_expr_text(self, literal_expr);
+            let base = etc_bigint_expr_base(self, literal_expr);
+            if (text != null && base != null && bigint_fits_builtin(scrut_ty, text as string, base as int)) {
+                etc_set_bigint_expr_type(self, literal_expr, scrut_ty);
+                return CASE_LIT_POSSIBLE;
+            }
+            return CASE_LIT_ALWAYS_FALSE;
+        }
+        if (etc_is_int(lit_ty)) {
+            let const_int = etc_cast_const_int(self, literal_expr);
+            if (const_int != null && !int_value_fits_builtin(scrut_ty, const_int as int)) {
+                return CASE_LIT_ALWAYS_FALSE;
+            }
+            return CASE_LIT_POSSIBLE;
+        }
+    }
+
+    // An unmatched bigint literal (for example in a non-int scrutinee context) defers to
+    // contextual assignability checking so it yields the precise bigint diagnostic.
+    if (etc_is_bigint_literal_type(lit_ty)) {
+        return CASE_LIT_BIGINT_CONTEXT;
+    }
+    return CASE_LIT_MISMATCH;
 }
 
 /**
@@ -1470,6 +1524,8 @@ func etc_case_literal_key(expr: ExprNode*) -> string? {
         EX_INT => { return "int:" + int_to_string(expr.int_value); }
         EX_BIGINT => { return "bigint:" + int_to_string(expr.base_value) + ":" + expr.text_value; }
         EX_BYTE => { return "byte:" + int_to_string(expr.int_value); }
+        EX_FLOAT => { return "float:" + expr.text_value; }
+        EX_DOUBLE => { return "double:" + expr.text_value; }
         EX_BOOL => {
             if (expr.bool_value) return "bool:true";
             return "bool:false";
@@ -1493,7 +1549,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
     let unit = self.current_unit as DriverUnit*;
     let stmt = stmt_arena_get(unit.parse_result.stmt_arena, stmt_id);
     let flow = FLOW_FALLTHROUGH;
-    
+
     let old_scope = self.current_scope;
     let pushed_alive_scope = false;
     let pushed_decl_scope = false;
@@ -1743,7 +1799,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     etc_diag_error(
                         self,
                         "TYP-0106",
-                        "'case' scrutinee must have type 'int', 'byte', 'bool', or 'string', got '" + type_format(val_ty3 as Type*) + "'",
+                        "'case' scrutinee must have a builtin integer type, 'float', 'double', 'bool', or 'string', got '" + type_format(val_ty3 as Type*) + "'",
                         unit.path,
                         stmt.span
                     );
@@ -1754,14 +1810,29 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         let all_case_arms_return = true;
                         for (let i = 0; i < vec_size(arms2); i = i + 1) {
                             let arm2 = ptr_vec_get(arms2, i) as CaseArm*;
+                            let class_code = CASE_LIT_POSSIBLE;
                             let literal_ty = etc_infer_expr(self, arm2.literal);
                             if (literal_ty != null) {
                                 let arm_literal = expr_arena_get(unit.parse_result.expr_arena, arm2.literal);
                                 let case_literal_ok = true;
-                                if (case_ty_ok && etc_is_bigint_literal_type(literal_ty as Type*)) {
-                                    let assign_result = etc_check_assign_expr(self, val_ty3 as Type*, literal_ty as Type*,
-                                        arm2.literal, unit.path, arm_literal.span);
-                                    if (ord(assign_result) == ord(ASSIGN_REJECT)) {
+                                if (case_ty_ok) {
+                                    class_code = etc_classify_case_literal(self, val_ty3 as Type*, arm2.literal, literal_ty as Type*);
+                                    if (ord(class_code) == ord(CASE_LIT_BIGINT_CONTEXT)) {
+                                        let assign_result = etc_check_assign_expr(self, val_ty3 as Type*, literal_ty as Type*,
+                                            arm2.literal, unit.path, arm_literal.span);
+                                        if (ord(assign_result) == ord(ASSIGN_REJECT)) {
+                                            case_literal_ok = false;
+                                            etc_diag_error(
+                                                self,
+                                                "TYP-0107",
+                                                "'case' arm literal type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
+                                                unit.path,
+                                                arm_literal.span
+                                            );
+                                        } else if (ord(assign_result) == ord(ASSIGN_REPORTED)) {
+                                            case_literal_ok = false;
+                                        }
+                                    } else if (ord(class_code) == ord(CASE_LIT_MISMATCH)) {
                                         case_literal_ok = false;
                                         etc_diag_error(
                                             self,
@@ -1770,20 +1841,17 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                             unit.path,
                                             arm_literal.span
                                         );
-                                    } else if (ord(assign_result) == ord(ASSIGN_REPORTED)) {
-                                        case_literal_ok = false;
+                                    } else if (ord(class_code) == ord(CASE_LIT_ALWAYS_FALSE)) {
+                                        etc_diag_warn(
+                                            self,
+                                            "TYP-0111",
+                                            "'case' arm literal can never match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
+                                            unit.path,
+                                            arm_literal.span
+                                        );
                                     }
-                                } else if (case_ty_ok && !etc_types_equal(literal_ty as Type*, val_ty3 as Type*)) {
-                                    case_literal_ok = false;
-                                    etc_diag_error(
-                                        self,
-                                        "TYP-0107",
-                                        "'case' arm literal type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
-                                        unit.path,
-                                        arm_literal.span
-                                    );
                                 }
-                                if (case_literal_ok) {
+                                if (case_literal_ok && ord(class_code) != ord(CASE_LIT_ALWAYS_FALSE)) {
                                     let literal_key = etc_case_literal_key(arm_literal);
                                     if (literal_key != null) {
                                         let case_key = literal_key as string;
@@ -1803,7 +1871,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                 type_free(literal_ty as Type*);
                             }
                             let arm_flow2 = etc_check_stmt(self, arm2.body);
-                            if (ord(arm_flow2) != ord(FLOW_RETURNS)) {
+                            if (ord(class_code) != ord(CASE_LIT_ALWAYS_FALSE) && ord(arm_flow2) != ord(FLOW_RETURNS)) {
                                 all_case_arms_return = false;
                             }
                         }
@@ -1955,7 +2023,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             }
         }
     }
-    
+
     self.current_scope = old_scope;
     if (pushed_decl_scope) {
         etc_decl_scope_pop(self);
@@ -2091,89 +2159,6 @@ func etc_diag_bigint_context_error(self: ExpressionTypeChecker*, expr_id: ExprId
     etc_diag_error(self, "TYP-0703",
         "integer literal outside 'int' cannot be used in contextual type '" + type_format(dst) + "'",
         filename, expr.span);
-}
-
-func etc_bigint_is_negative(text: string) -> bool {
-    return len_s(text) > 0 && char_at_s(text, 0) == '-';
-}
-
-func etc_bigint_significant_digits(text: string) -> string {
-    let start = 0;
-    let n = len_s(text);
-    if (etc_bigint_is_negative(text)) {
-        start = 1;
-    }
-    while (start < n && char_at_s(text, start) == '0') {
-        start = start + 1;
-    }
-    if (start >= n) {
-        return "0";
-    }
-    return slice_s(text, start, n);
-}
-
-func etc_bigint_compare_digits(left: string, right: string) -> int {
-    let left_len = len_s(left);
-    let right_len = len_s(right);
-    if (left_len < right_len) return -1;
-    if (left_len > right_len) return 1;
-    for (let i = 0; i < left_len; i = i + 1) {
-        let left_ch = char_at_s(left, i);
-        let right_ch = char_at_s(right, i);
-        if (left_ch < right_ch) return -1;
-        if (left_ch > right_ch) return 1;
-    }
-    return 0;
-}
-
-func etc_bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
-    if (type_is_builtin(dst, "uint")) {
-        if (is_negative) return null;
-        case (base) {
-             2 => { return "11111111111111111111111111111111"; }
-             8 => { return "37777777777"; }
-            10 => { return "4294967295"; }
-            16 => { return "ffffffff"; }
-        }
-        return null;
-    }
-    if (type_is_builtin(dst, "long")) {
-        if (is_negative) {
-            case (base) {
-                 2 => { return "1000000000000000000000000000000000000000000000000000000000000000"; }
-                 8 => { return "1000000000000000000000"; }
-                10 => { return "9223372036854775808"; }
-                16 => { return "8000000000000000"; }
-            }
-            return null;
-        }
-        case (base) {
-             2 => { return "111111111111111111111111111111111111111111111111111111111111111"; }
-             8 => { return "777777777777777777777"; }
-            10 => { return "9223372036854775807"; }
-            16 => { return "7fffffffffffffff"; }
-        }
-        return null;
-    }
-    if (type_is_builtin(dst, "ulong")) {
-        if (is_negative) return null;
-        case (base) {
-             2 => { return "1111111111111111111111111111111111111111111111111111111111111111"; }
-             8 => { return "1777777777777777777777"; }
-            10 => { return "18446744073709551615"; }
-            16 => { return "ffffffffffffffff"; }
-        }
-        return null;
-    }
-    return null;
-}
-
-func etc_bigint_fits_builtin(dst: Type*, text: string, base: int) -> bool {
-    let limit = etc_bigint_limit_text(dst, base, etc_bigint_is_negative(text));
-    if (limit == null) {
-        return false;
-    }
-    return etc_bigint_compare_digits(etc_bigint_significant_digits(text), limit as string) <= 0;
 }
 
 func etc_diag_bigint_literal_range_error(self: ExpressionTypeChecker*, expr_id: ExprId, dst: Type*, filename: string) {
@@ -2387,25 +2372,6 @@ func etc_type_free_opt(ty: Type*?) {
 }
 
 /**
- * Check whether an integer value fits in a builtin integer target type.
- *
- * @param dst Destination type.
- * @param value Integer value to test.
- * @return `true` if `value` is representable by `dst`.
- */
-func etc_int_value_fits_builtin(dst: Type*, value: int) -> bool {
-    if (type_is_builtin(dst, "tiny")) return fits_in_tiny(value);
-    if (type_is_builtin(dst, "byte")) return fits_in_byte(value);
-    if (type_is_builtin(dst, "short")) return fits_in_short(value);
-    if (type_is_builtin(dst, "ushort")) return fits_in_ushort(value);
-    if (type_is_builtin(dst, "int")) return true;
-    if (type_is_builtin(dst, "uint")) return value >= 0;
-    if (type_is_builtin(dst, "long")) return true;
-    if (type_is_builtin(dst, "ulong")) return value >= 0;
-    return false;
-}
-
-/**
  * Return a human-readable range for a builtin integer type.
  *
  * @param dst Destination type.
@@ -2479,7 +2445,7 @@ func etc_check_assign_bigint_expr(self: ExpressionTypeChecker*, dst: Type*, expr
         etc_diag_bigint_context_error(self, expr_id, dst, filename);
         return ASSIGN_REPORTED;
     }
-    if (!etc_bigint_fits_builtin(dst, text as string, base as int)) {
+    if (!bigint_fits_builtin(dst, text as string, base as int)) {
         etc_diag_bigint_literal_range_error(self, expr_id, dst, filename);
         return ASSIGN_REPORTED;
     }
@@ -2523,7 +2489,7 @@ func etc_check_assign_expr(self: ExpressionTypeChecker*, dst: Type*, src: Type*,
     if (type_is_builtin(src, "int") && etc_is_int(dst) && !type_is_builtin(dst, "int")) {
         let const_int = etc_cast_const_int(self, expr_id);
         if (const_int != null) {
-            if (etc_int_value_fits_builtin(dst, const_int as int)) {
+            if (int_value_fits_builtin(dst, const_int as int)) {
                 return ASSIGN_ACCEPT;
             }
             etc_diag_int_literal_range_error(self, const_int as int, dst, filename, span);
@@ -3001,22 +2967,22 @@ func etc_resolve_named_args(self: ExpressionTypeChecker*, span: Span, expected_n
             (self.current_unit as DriverUnit*).path, span);
         return null;
     }
-    
+
     let result = id_vec_create(count);
     let errors = false;
-    
+
     for (let i_r1 = 0; i_r1 < count; i_r1 = i_r1 + 1) {
         let expected_label = sv_get(expected_names, i_r1);
         let found_id = invalid_expr_id();
         let found_count = 0;
-        
+
         for (let i_r2 = 0; i_r2 < vec_size(given_labels); i_r2 = i_r2 + 1) {
             if (sv_get(given_labels, i_r2) == expected_label) {
                 found_id = id_vec_get(given_args, i_r2);
                 found_count = found_count + 1;
             }
         }
-        
+
         if (found_count == 0) {
             etc_diag_error(self, "TYP-0764", "missing required named argument '" + expected_label + "'",
                 (self.current_unit as DriverUnit*).path, span);
@@ -3026,10 +2992,10 @@ func etc_resolve_named_args(self: ExpressionTypeChecker*, span: Span, expected_n
                 (self.current_unit as DriverUnit*).path, span);
             errors = true;
         }
-        
+
         id_vec_push(result, found_id);
     }
-    
+
     for (let i_r3 = 0; i_r3 < vec_size(given_labels); i_r3 = i_r3 + 1) {
         let given_label = sv_get(given_labels, i_r3);
         let is_known = false;
@@ -3045,7 +3011,7 @@ func etc_resolve_named_args(self: ExpressionTypeChecker*, span: Span, expected_n
             errors = true;
         }
     }
-    
+
     if (errors) {
         id_vec_free(result);
         return null;
@@ -3134,7 +3100,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
         let args = expr.ids as VectorBase*;
         let arg_count = 0;
         if (args != null) arg_count = vec_size(args);
-        
+
         let resolved_args: VectorBase*? = null;
         if (expr.arg_labels != null && args != null) {
             let expected_names = etc_get_call_param_names(self, callee);
@@ -3152,7 +3118,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
             }
             args = resolved_args as VectorBase*;
         }
-        
+
         if (arg_count != vec_size(params)) {
             etc_diag_error(self, "TYP-0183", "function call argument count mismatch",
                 (self.current_unit as DriverUnit*).path, expr.span);
@@ -3189,7 +3155,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
             let args2 = expr.ids as VectorBase*;
             let arg_count2 = 0;
             if (args2 != null) arg_count2 = vec_size(args2);
-            
+
             let resolved_args2: VectorBase*? = null;
             if (expr.arg_labels != null && args2 != null) {
                 let expected_names2 = etc_get_struct_field_names(self, c_ty);
@@ -3207,7 +3173,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                 }
                 args2 = resolved_args2 as VectorBase*;
             }
-            
+
             if (arg_count2 != vec_size(fields)) {
                 etc_diag_error(self, "TYP-0191", "struct constructor field count mismatch",
                     (self.current_unit as DriverUnit*).path, expr.span);
@@ -3249,7 +3215,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                             let args3 = expr.ids as VectorBase*;
                             let arg_count3 = 0;
                             if (args3 != null) arg_count3 = vec_size(args3);
-                            
+
                             let resolved_args3: VectorBase*? = null;
                             if (expr.arg_labels != null && args3 != null) {
                                 // Since we parsed callee_expr, we can just look up the target_ref from the AST or we can look up the EnumVariant field names
@@ -3266,7 +3232,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                                         }
                                     }
                                 }
-                                
+
                                 if (expected_names3 == null) {
                                     etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
                                         (self.current_unit as DriverUnit*).path, expr.span);
@@ -3281,7 +3247,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                                 }
                                 args3 = resolved_args3 as VectorBase*;
                             }
-                            
+
                             if (arg_count3 != vec_size(fields2)) {
                                 etc_diag_error(self, "TYP-0201", "enum variant constructor field count mismatch",
                                     (self.current_unit as DriverUnit*).path, expr.span);
@@ -3399,7 +3365,7 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
         return null;
     }
     let l_ty = left_ty as Type*;
-    
+
     if (index_ty != null) {
         if (!etc_is_int(index_ty as Type*)) {
             etc_diag_error(self, "TYP-0210", "index expects int, got " + type_format(index_ty as Type*),
@@ -3446,7 +3412,7 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
         type_free(l_ty);
         return res;
     }
-    
+
     type_free(l_ty);
     return null;
 }
@@ -3760,7 +3726,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             !type_is_builtin(nullable_target_inner as Type*, "int")) {
                             let target_inner = nullable_target_inner as Type*;
                             let const_int = etc_cast_const_int(self, expr.expr_a);
-                            if (const_int != null && !etc_int_value_fits_builtin(target_inner, const_int as int)) {
+                            if (const_int != null && !int_value_fits_builtin(target_inner, const_int as int)) {
                                 etc_diag_int_literal_range_error(self, const_int as int, target_inner, unit.path,
                                     expr.span);
                             } else if (etc_can_cast(self, target_inner, src_ty as Type*)) {
@@ -3774,7 +3740,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                         } else if (type_is_builtin(src_ty as Type*, "int") && etc_is_int(target_ty as Type*) &&
                             !type_is_builtin(target_ty as Type*, "int")) {
                             let const_int = etc_cast_const_int(self, expr.expr_a);
-                            if (const_int != null && !etc_int_value_fits_builtin(target_ty as Type*, const_int as int)) {
+                            if (const_int != null && !int_value_fits_builtin(target_ty as Type*, const_int as int)) {
                                 etc_diag_int_literal_range_error(self, const_int as int, target_ty as Type*,
                                     unit.path, expr.span);
                             } else if (etc_can_cast(self, target_ty as Type*, src_ty as Type*)) {
@@ -3834,7 +3800,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             }
 
                             let field_count = vec_size(variant.field_types);
-                            
+
                             let args = expr.ids as VectorBase*;
                             let resolved_args: VectorBase*? = null;
                             if (expr.arg_labels != null && args != null) {
@@ -3851,7 +3817,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                 }
                                 args = resolved_args as VectorBase*;
                             }
-                            
+
                             if (arg_count != field_count) {
                                 etc_diag_error(self, "TYP-0201",
                                     "enum variant constructor field count mismatch",
@@ -3915,7 +3881,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             } else {
                                 let fields = (info as StructInfo*).fields;
                                 let field_count = vec_size(fields);
-                                
+
                                 let args2 = expr.ids as VectorBase*;
                                 let resolved_args2: VectorBase*? = null;
                                 if (expr.arg_labels != null && args2 != null) {
@@ -3934,7 +3900,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                     }
                                     args2 = resolved_args2 as VectorBase*;
                                 }
-                                
+
                                 if (arg_count > 0 && arg_count != field_count) {
                                     etc_diag_error(self, "TYP-0283",
                                         "struct '" + base.name + "' argument count mismatch",
@@ -4079,15 +4045,15 @@ func etc_check_function(self: ExpressionTypeChecker*, env: FunctionEnv*) {
  */
 func expr_types_check(result: AnalysisResult*) {
     let checker = new ExpressionTypeChecker(result, "", null, null, null, null, null, ptr_vec_create(4), ptr_vec_create(4), 0, false, null);
-    
+
     for (let i = 0; i < driver_unit_count(result.driver_state); i = i + 1) {
         let unit = driver_unit_get(result.driver_state, i);
         if (unit.parse_result.root_module == null) continue;
-        
+
         checker.current_unit = unit;
         checker.current_module = (unit.parse_result.root_module as Module*).name;
         checker.current_env = nr_env_find(result.names as NameResolution*, checker.current_module) as ModuleEnv*;
-        
+
         let locals = result.locals_result as LocalsResult*;
         for (let j = 0; j < locals_env_count(locals); j = j + 1) {
             let env = locals_env_get(locals, j);
@@ -4096,7 +4062,7 @@ func expr_types_check(result: AnalysisResult*) {
             }
         }
     }
-    
+
     etc_alive_scope_stack_free(checker.alive_scopes);
     etc_alive_scope_stack_free(checker.decl_scopes);
     etc_cleanup_header_guard_stack_free(checker.cleanup_header_guard_stack);

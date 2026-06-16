@@ -38,3 +38,33 @@ func err_case_duplicate_literal(x: int) -> int {
         _ => { return 0; }
     }
 }
+
+/**
+ * Triggers TYP-0111 for an out-of-bounds literal.
+ */
+func warn_case_always_false_literal(x: byte) -> int {
+    case (x) {
+        256 => { return 1; }
+        _ => { return 0; }
+    }
+}
+
+/**
+ * Triggers TYP-0107 for a float type mismatch.
+ */
+func err_case_float_type_mismatch(x: int) -> int {
+    case (x) {
+        1.5 => { return 1; }
+        _ => { return 0; }
+    }
+}
+
+/**
+ * Triggers TYP-0107 for a real scrutinee with an integer arm.
+ */
+func err_case_real_integer_literal_mismatch(x: double) -> int {
+    case (x) {
+        1 => { return 1; }
+        _ => { return 0; }
+    }
+}

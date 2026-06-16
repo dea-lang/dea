@@ -355,6 +355,7 @@ func test_typing_case_diag_err() {
         assert(has_diag_code(result, "TYP-0106"), "expected invalid case scrutinee error");
         assert(has_diag_code(result, "TYP-0107"), "expected case literal type mismatch error");
         assert(has_diag_code(result, "TYP-0108"), "expected duplicate case literal error");
+        assert(has_diag_code(result, "TYP-0111"), "expected always-false literal warning");
         analysis_result_free(result);
     }
     sp_free(sp);

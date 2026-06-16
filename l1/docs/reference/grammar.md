@@ -344,7 +344,7 @@ CaseArm         ::=     CaseLiteral "=>" Stmt
 
 WildcardArm     ::=     "_" "=>" Stmt
 
-CaseLiteral     ::=     IntLiteral | ByteLiteral | StringLiteral | BoolLiteral
+CaseLiteral     ::=     IntLiteral | FloatLiteral | ByteLiteral | StringLiteral | BoolLiteral
 ```
 
 Patterns (current L<sub>1</sub> bootstrap subset):

@@ -528,40 +528,39 @@ func ps_parse_case_literal(self: ParserState*) -> ExprId? {
     let start = ps_span_start(self);
 
     let tok = ps_peek(self);
+
     if (ps_match_int(self)) {
         let node = expr_node_create(EX_INT, ps_extend_span(self, start));
         node.int_value = token_int_value(tok) as int;
         node.text_value = token_int_text(tok) as string;
         return expr_arena_add(self.expr_arena, node);
-    }
-
-    if (ps_match_bigint(self)) {
+    } else if (ps_match_bigint(self)) {
         let node = expr_node_create(EX_BIGINT, ps_extend_span(self, start));
         node.text_value = token_bigint_text(tok) as string;
         node.base_value = token_bigint_base(tok) as int;
         return expr_arena_add(self.expr_arena, node);
-    }
-
-    if (ps_match_byte(self)) {
+    } else if (ps_match_byte(self)) {
         let node = expr_node_create(EX_BYTE, ps_extend_span(self, start));
         node.int_value = token_byte_value(tok) as byte;
         node.text_value = token_byte_text(tok) as string;
         return expr_arena_add(self.expr_arena, node);
-    }
-
-    if (ps_match_string(self)) {
+    } else if (ps_match_real(self)) {
+        let literal_kind = EX_DOUBLE;
+        if (token_real_is_float(tok)) {
+            literal_kind = EX_FLOAT;
+        }
+        let node = expr_node_create(literal_kind, ps_extend_span(self, start));
+        node.text_value = token_real_text(tok) as string;
+        return expr_arena_add(self.expr_arena, node);
+    } else if (ps_match_string(self)) {
         let node = expr_node_create(EX_STRING, ps_extend_span(self, start));
         node.text_value = token_string_value(tok) as string;
         return expr_arena_add(self.expr_arena, node);
-    }
-
-    if (ps_match(self, ord(TT_TRUE))) {
+    } else if (ps_match(self, ord(TT_TRUE))) {
         let node = expr_node_create(EX_BOOL, ps_extend_span(self, start));
         node.bool_value = true;
         return expr_arena_add(self.expr_arena, node);
-    }
-
-    if (ps_match(self, ord(TT_FALSE))) {
+    } else if (ps_match(self, ord(TT_FALSE))) {
         let node = expr_node_create(EX_BOOL, ps_extend_span(self, start));
         node.bool_value = false;
         return expr_arena_add(self.expr_arena, node);
@@ -576,6 +575,7 @@ func ps_at_case_arm_start(self: ParserState*) -> bool {
            ps_check_int(self) ||
            ps_check_bigint(self) ||
            ps_check_byte(self) ||
+           ps_check_real(self) ||
            ps_check_string(self) ||
            ps_check(self, ord(TT_TRUE)) ||
            ps_check(self, ord(TT_FALSE));

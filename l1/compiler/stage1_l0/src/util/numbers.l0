@@ -8,6 +8,8 @@ module util.numbers;
 import std.string;
 import std.text;
 
+import types;
+
 /**
  * Convert a real number's components into a string representation.
  *
@@ -93,4 +95,141 @@ func fits_in_tiny(value: int) -> bool {
  */
 func fits_in_byte(value: int) -> bool {
     return value >= 0 && value <= 255;
+}
+
+/**
+ * Check whether a host integer value is representable by a builtin integer type.
+ *
+ * @param dst   Destination builtin integer type.
+ * @param value Host integer value.
+ * @return `true` when `value` lies inside the value domain of `dst`.
+ */
+func int_value_fits_builtin(dst: Type*, value: int) -> bool {
+    if (type_is_builtin(dst, "tiny")) return fits_in_tiny(value);
+    if (type_is_builtin(dst, "byte")) return fits_in_byte(value);
+    if (type_is_builtin(dst, "short")) return fits_in_short(value);
+    if (type_is_builtin(dst, "ushort")) return fits_in_ushort(value);
+    if (type_is_builtin(dst, "int")) return true;
+    if (type_is_builtin(dst, "uint")) return value >= 0;
+    if (type_is_builtin(dst, "long")) return true;
+    if (type_is_builtin(dst, "ulong")) return value >= 0;
+    return false;
+}
+
+/**
+ * Report whether a canonical bigint value text carries a leading minus sign.
+ *
+ * @param text Canonical bigint value digits with optional leading '-'.
+ * @return `true` when the first character is '-'.
+ */
+func bigint_is_negative(text: string) -> bool {
+    return len_s(text) > 0 && char_at_s(text, 0) == '-';
+}
+
+/**
+ * Strip the optional sign and leading zeros from a bigint value text.
+ *
+ * @param text Canonical bigint value digits with optional leading '-'.
+ * @return The significant digits, or "0" when the value is zero.
+ */
+func bigint_significant_digits(text: string) -> string {
+    let start = 0;
+    let n = len_s(text);
+    if (bigint_is_negative(text)) {
+        start = 1;
+    }
+    while (start < n && char_at_s(text, start) == '0') {
+        start = start + 1;
+    }
+    if (start >= n) {
+        return "0";
+    }
+    return slice_s(text, start, n);
+}
+
+/**
+ * Compare two unsigned digit strings of the same base by magnitude.
+ *
+ * @param left  Left significant-digit string.
+ * @param right Right significant-digit string.
+ * @return -1, 0, or 1 for `left` less than, equal to, or greater than `right`.
+ */
+func bigint_compare_digits(left: string, right: string) -> int {
+    let left_len = len_s(left);
+    let right_len = len_s(right);
+    if (left_len < right_len) return -1;
+    if (left_len > right_len) return 1;
+    for (let i = 0; i < left_len; i = i + 1) {
+        let left_ch = char_at_s(left, i);
+        let right_ch = char_at_s(right, i);
+        if (left_ch < right_ch) return -1;
+        if (left_ch > right_ch) return 1;
+    }
+    return 0;
+}
+
+/**
+ * Return the inclusive magnitude limit digits for a builtin integer type and base.
+ *
+ * @param dst         Destination builtin integer type.
+ * @param base        Numeric base (2, 8, 10, or 16).
+ * @param is_negative Whether the literal is negative, selecting the signed lower bound.
+ * @return The limit digit string, or `null` when the type/sign cannot hold a bigint magnitude.
+ */
+func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
+    if (type_is_builtin(dst, "uint")) {
+        if (is_negative) return null;
+        case (base) {
+             2 => { return "11111111111111111111111111111111"; }
+             8 => { return "37777777777"; }
+            10 => { return "4294967295"; }
+            16 => { return "ffffffff"; }
+        }
+        return null;
+    }
+    if (type_is_builtin(dst, "long")) {
+        if (is_negative) {
+            case (base) {
+                 2 => { return "1000000000000000000000000000000000000000000000000000000000000000"; }
+                 8 => { return "1000000000000000000000"; }
+                10 => { return "9223372036854775808"; }
+                16 => { return "8000000000000000"; }
+            }
+            return null;
+        }
+        case (base) {
+             2 => { return "111111111111111111111111111111111111111111111111111111111111111"; }
+             8 => { return "777777777777777777777"; }
+            10 => { return "9223372036854775807"; }
+            16 => { return "7fffffffffffffff"; }
+        }
+        return null;
+    }
+    if (type_is_builtin(dst, "ulong")) {
+        if (is_negative) return null;
+        case (base) {
+             2 => { return "1111111111111111111111111111111111111111111111111111111111111111"; }
+             8 => { return "1777777777777777777777"; }
+            10 => { return "18446744073709551615"; }
+            16 => { return "ffffffffffffffff"; }
+        }
+        return null;
+    }
+    return null;
+}
+
+/**
+ * Check whether a bigint literal magnitude fits a builtin integer type.
+ *
+ * @param dst  Destination builtin integer type.
+ * @param text Canonical bigint value digits with optional leading '-'.
+ * @param base Numeric base (2, 8, 10, or 16).
+ * @return `true` when the magnitude is within the type domain for the literal sign.
+ */
+func bigint_fits_builtin(dst: Type*, text: string, base: int) -> bool {
+    let limit = bigint_limit_text(dst, base, bigint_is_negative(text));
+    if (limit == null) {
+        return false;
+    }
+    return bigint_compare_digits(bigint_significant_digits(text), limit as string) <= 0;
 }

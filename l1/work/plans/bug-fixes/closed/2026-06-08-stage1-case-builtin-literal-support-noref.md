@@ -3,7 +3,7 @@
 ## L1 Stage 1 `case` equality-based literal support
 
 - Date: 2026-06-08
-- Status: Draft
+- Status: Completed
 - Title: Make L1 Stage 1 `case` literals follow equality comparability rules
 - Kind: Bug Fix
 - Severity: Medium

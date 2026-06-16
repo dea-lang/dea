@@ -186,6 +186,107 @@ def run_trace_ok(case_name: str, expected_rc: int, source: str, artifact_dir: Pa
     return parse_arc_lines(read_text(stderr_path))
 
 
+def test_execute_toplet_case_extended(artifact_dir: Path) -> None:
+    """End-to-end integration test containing valid floating-point cases, unsigned comparisons, and a warning-checked out-of-bounds arm."""
+    run_ok(
+        "execute_toplet_case_extended",
+        3,
+        """
+        module main;
+
+        func check_float(f: float) -> int {
+            case (f) {
+                1.0 => { return 1; }
+                -2.5 => { return 2; }
+                _ => { return 3; }
+            }
+        }
+
+        func check_uint(u: uint) -> int {
+            case (u) {
+                0 => { return 0; }
+                -1 => { return 1; }
+                _ => { return 2; }
+            }
+        }
+
+        func check_ulong(u: ulong) -> int {
+            case (u) {
+                -4294967296 => { return 1; }
+                _ => { return 2; }
+            }
+        }
+
+        func main() -> int {
+            let rc1 = check_float(-2.5f); // 2
+            let rc2 = check_uint(4294967295); // 2
+            let rc3 = check_ulong(18446744069414584320); // 2
+            return rc1 + rc2 + rc3 - 3; // 2 + 2 + 2 - 3 = 3
+        }
+        """,
+        artifact_dir,
+    )
+
+
+def test_reject_toplet_case_real_integer_arm(artifact_dir: Path) -> None:
+    """A real scrutinee must follow existing real equality and reject integer arm literals."""
+    run_check_error(
+        "reject_toplet_case_real_integer_arm",
+        "TYP-0107",
+        """
+        module main;
+
+        func check_double(d: double) -> int {
+            case (d) {
+                1 => { return 1; }
+                _ => { return 2; }
+            }
+        }
+
+        func main() -> int {
+            return check_double(1.0);
+        }
+        """,
+        artifact_dir,
+    )
+
+
+def test_generate_toplet_case_always_false_unsigned(artifact_dir: Path) -> None:
+    """Always-false unsigned case arms must not lower as wrapping C labels or comparisons."""
+    c_code = run_gen(
+        "generate_toplet_case_always_false_unsigned",
+        """
+        module main;
+
+        func check_uint(u: uint) -> int {
+            case (u) {
+                -1 => { return 1; }
+                _ => { return 2; }
+            }
+        }
+
+        func check_ulong(u: ulong) -> int {
+            case (u) {
+                -4294967296 => { return 3; }
+                _ => { return 4; }
+            }
+        }
+
+        func main() -> int {
+            return check_uint(0) + check_ulong(0);
+        }
+        """,
+        artifact_dir,
+    )
+    assert_true("case -1" not in c_code, "always-false uint arm must not lower as a switch label", artifact_dir)
+    assert_true(
+        "_scrutinee == -4294967296" not in c_code,
+        "always-false ulong arm must not compare against a negative literal",
+        artifact_dir,
+    )
+    assert_true("if (false)" in c_code, "always-false unsigned arms should lower to a safe false condition", artifact_dir)
+
+
 def test_execute_toplet_primitives(artifact_dir: Path) -> None:
     """Mirror Stage 1 primitive top-level execution coverage."""
 
@@ -347,6 +448,9 @@ def main() -> int:
     keep_artifacts = os.environ.get("KEEP_ARTIFACTS", "0") == "1"
 
     checks = [
+        test_execute_toplet_case_extended,
+        test_reject_toplet_case_real_integer_arm,
+        test_generate_toplet_case_always_false_unsigned,
         test_execute_toplet_primitives,
         test_execute_toplet_mutation,
         test_execute_toplet_struct,

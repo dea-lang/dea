@@ -499,6 +499,42 @@ func test_backend_generate_loop_exit_case_lowering() {
 }
 
 /**
+ * Tests that `case` statements on floats or narrower domains lower to if/else if.
+ */
+func test_backend_generate_case_if_else_lowering() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func check_float(f: float) -> int {");
+        sv_push(lines, "    case (f) {");
+        sv_push(lines, "        1.0f => { return 1; }");
+        sv_push(lines, "        -2.5f => { return 2; }");
+        sv_push(lines, "        _ => { return 3; }");
+        sv_push(lines, "    }");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for case/float fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(!contains_s(generated, "switch"), "float case lowering should not use switch");
+        assert(contains_s(generated, "if (_scrutinee == 1.0f)"), "expected float literal condition");
+        if (!contains_s(generated, "if (_scrutinee == -2.5f)")) {
+            printl_ss("Generated text:", generated);
+        }
+        assert(contains_s(generated, "if (_scrutinee == -2.5f)"), "expected negative float literal condition");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests test_backend_generate_match_and_with_cleanup_block.
  */
 func test_backend_generate_match_and_with_cleanup_block() {
@@ -1681,6 +1717,7 @@ func main() {
     test_backend_generate_top_level_consts();
     test_backend_generate_basic_control_flow();
     test_backend_generate_loop_exit_case_lowering();
+    test_backend_generate_case_if_else_lowering();
     test_backend_generate_match_and_with_cleanup_block();
     test_backend_generate_single_statement_loop_and_match_bodies();
     test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets();

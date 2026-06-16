@@ -25,6 +25,7 @@ import symbols;
 import type_resolve;
 import types;
 import util.log;
+import util.numbers;
 
 /**
  * Represents one Stage 1 backend generation session.
@@ -3608,6 +3609,59 @@ func be_emit_case_literal(self: Backend*, expr_id: ExprId) -> string {
     }
 }
 
+func be_case_int_literal_value(self: Backend*, expr_id: ExprId) -> int? {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) == ord(EX_INT)) {
+        return expr.int_value;
+    }
+    if (ord(expr.kind) == ord(EX_BYTE)) {
+        return expr.int_value;
+    }
+    return null;
+}
+
+func be_case_literal_is_bigint(self: Backend*, expr_id: ExprId) -> bool {
+    return be_bigint_expr_text(self, expr_id) != null && be_bigint_expr_base(self, expr_id) != null;
+}
+
+func be_case_literal_is_always_false(self: Backend*, scrutinee_ty: Type*, expr_id: ExprId) -> bool {
+    let text = be_bigint_expr_text(self, expr_id);
+    let base = be_bigint_expr_base(self, expr_id);
+    if (text != null && base != null) {
+        return !bigint_fits_builtin(scrutinee_ty, text as string, base as int);
+    }
+
+    let value = be_case_int_literal_value(self, expr_id);
+    if (value != null) {
+        return !int_value_fits_builtin(scrutinee_ty, value as int);
+    }
+    return false;
+}
+
+func be_case_needs_if_else(self: Backend*, scrutinee_ty: Type*, arms: VectorBase*) -> bool {
+    if (type_is_builtin(scrutinee_ty, "string") ||
+        type_is_builtin(scrutinee_ty, "float") ||
+        type_is_builtin(scrutinee_ty, "double") ||
+        type_is_builtin(scrutinee_ty, "tiny") ||
+        type_is_builtin(scrutinee_ty, "byte") ||
+        type_is_builtin(scrutinee_ty, "short") ||
+        type_is_builtin(scrutinee_ty, "ushort")) {
+        return true;
+    }
+
+    for (let i = 0; i < vec_size(arms); i = i + 1) {
+        let arm = ptr_vec_get(arms, i) as CaseArm*;
+        let lit_node = expr_arena_get(be_current_expr_arena(self), arm.literal);
+        if (ord(lit_node.kind) == ord(EX_FLOAT) ||
+            ord(lit_node.kind) == ord(EX_DOUBLE) ||
+            be_case_literal_is_bigint(self, arm.literal) ||
+            be_case_literal_is_always_false(self, scrutinee_ty, arm.literal)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Emit a `drop` statement.
  *
@@ -3753,10 +3807,21 @@ func be_emit_case_stmt(self: Backend*, stmt: StmtNode*) {
         }
         let unreachable_arms = 0;
 
-        if (type_is_builtin(scrutinee_ty as Type*, "string")) {
+        let needs_if_else = be_case_needs_if_else(self, scrutinee_ty as Type*, arms);
+
+        if (needs_if_else) {
             for (let i = 0; i < vec_size(arms); i = i + 1) {
                 let arm = ptr_vec_get(arms, i) as CaseArm*;
-                let cond = cem_emit_string_equals_call("_scrutinee", be_emit_case_literal(self, arm.literal));
+                let cond = "";
+                if (type_is_builtin(scrutinee_ty as Type*, "string")) {
+                    let c_literal = be_emit_case_literal(self, arm.literal);
+                    cond = cem_emit_string_equals_call("_scrutinee", c_literal);
+                } else if (be_case_literal_is_always_false(self, scrutinee_ty as Type*, arm.literal)) {
+                    cond = "false";
+                } else {
+                    let c_literal2 = be_emit_case_literal(self, arm.literal);
+                    cond = "_scrutinee == " + c_literal2;
+                }
                 if (i == 0) {
                     cem_emit_if_header(self.emitter, cond);
                 } else {

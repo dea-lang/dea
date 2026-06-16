@@ -1309,6 +1309,58 @@ func test_single_statement_loop_and_match_bodies_ok() {
 }
 
 /**
+ * Tests parsing extended case literals (negative and real literals).
+ */
+func test_case_stmt_extended_literals() {
+    let src = "module main; func foo(x: float) -> int { case (x) { -1.5 => return 1; 2.0 => return 2; _ => return 3; } }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let stmts = body.ids as VectorBase*;
+
+    let case_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    assert(ord(case_stmt.kind) == ord(ST_CASE), "Expected case statement");
+
+    let arms = case_stmt.case_arms as VectorBase*;
+    assert(vec_size(arms) == 2, "Expected two case arms");
+
+    let arm0 = ptr_vec_get(arms, 0) as CaseArm*;
+    let lit0 = expr_arena_get(result.expr_arena, arm0.literal);
+    assert(ord(lit0.kind) == ord(EX_DOUBLE) && lit0.text_value == "-1.5", "Expected negative literal");
+
+    let arm1 = ptr_vec_get(arms, 1) as CaseArm*;
+    let lit1 = expr_arena_get(result.expr_arena, arm1.literal);
+    assert(ord(lit1.kind) == ord(EX_DOUBLE), "Expected double literal");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests that a spaced negative case literal (`- 5`) is rejected.
+ *
+ * Only the adjacent literal form (`-5`) is accepted; a separated unary minus is not a `case` literal.
+ */
+func test_case_stmt_spaced_negative_rejected() {
+    let src = "module main; func foo(x: int) -> int { case (x) { - 5 => return 1; _ => return 2; } }";
+    let result = parse_module_source(src, "<test>");
+    assert(parse_has_errors(result), "Expected parse error for spaced negative case literal");
+
+    let found = false;
+    for (let i = 0; i < parse_diag_count(result); i = i + 1) {
+        if (parse_diag_get(result, i).code == "PAR-0241") {
+            found = true;
+        }
+    }
+    assert(found, "Expected PAR-0241 for spaced negative case literal");
+
+    parse_result_free(result);
+}
+
+/**
  * Tests test_top_level_multi_error_collection.
  */
 func test_top_level_multi_error_collection() {
@@ -1378,6 +1430,8 @@ func main() {
     test_prefixed_int_literals_err();
     test_postfix_chain_ok();
     test_type_expr_call_arg_ok();
+    test_case_stmt_extended_literals();
+    test_case_stmt_spaced_negative_rejected();
     test_small_integer_type_positions_ok();
     test_large_integer_type_positions_ok();
     test_bigint_literal_expr_shape();
