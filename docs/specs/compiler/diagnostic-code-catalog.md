@@ -223,6 +223,7 @@ diagnostic.
 | `PAR-0621` | L1+     | Expected '\]' after array type length                                    |
 | `PAR-0622` | L1+     | Expected '\]' after array literal                                        |
 | `PAR-0623` | L1+     | Expected ')' after array constructor arguments                           |
+| `PAR-0624` | L1+     | Inferred-length array type `[_]` is reserved for future use              |
 | `PAR-9401` | L0 only | Array types are not supported in L0                                      |
 
 ## Driver and Environment
@@ -444,6 +445,13 @@ diagnostic.
 | `TYP-0805` | L1+     | Array constructor or allocation has invalid arity                                                      |
 | `TYP-0806` | L1+     | Array scalar fill value type mismatch                                                                  |
 | `TYP-0807` | L1+     | Unknown or ambiguous array constructor target type                                                     |
+| `TYP-0808` | L1+     | `len`/`slice` operand must be a fixed array or slice                                                   |
+| `TYP-0809` | L1+     | `len` or `slice` intrinsic called with the wrong number of arguments                                   |
+| `TYP-0810` | L1+     | Slice type may not be a function return type                                                           |
+| `TYP-0811` | L1+     | Slice type may not be used as a struct field                                                           |
+| `TYP-0812` | L1+     | Slice type may not be used in a top-level `let`                                                        |
+| `TYP-0813` | L1+     | Slice type may not be used as an enum payload field                                                    |
+| `TYP-0814` | L1+     | Slice type may not be made nullable or be a pointer base (`T[]?`, `T[]*`)                              |
 | `TYP-9209` | All     | Internal error: variant does not produce enum type                                                     |
 | `TYP-9288` | All     | Internal error: 'new' outside function context                                                         |
 | `TYP-9289` | All     | Internal error: missing module environment for the current function                                    |

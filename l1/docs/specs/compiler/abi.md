@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-05-19
+Version: 2026-06-20
 
 Status: Finalized
 
@@ -65,10 +65,11 @@ structural types like array wrappers.
 ### Grammar
 
 ```ebnf
-type-component = nominal-type | modifier | array | func | builtin
+type-component = nominal-type | modifier | array | slice | func | builtin
 nominal-type   = module-section ("S" | "E") length identifier
 modifier       = ("P" | "Q" | "X") type-component
 array          = "A" dim "_" type-component
+slice          = "W" type-component
 func           = "F" arity type-component* type-component
 builtin        = "a" | "h" | "s" | "t" | "i" | "j" | "l" | "m"
                | "f" | "d" | "z" | "c" | "v"
@@ -87,11 +88,21 @@ The grammar is self-delimiting and parseable by recursive descent.
 | `S`   | Struct type leaf                   | `S<len><id>`            |
 | `E`   | Enum type leaf                     | `E<len><id>`            |
 | `A`   | Fixed-size array dimension         | `A<dim>_<elem>`         |
+| `W`   | Slice descriptor                   | `W<elem>`               |
 | `B`   | Non-canonical builtin escape hatch | `B<len><id>`            |
 | `P`   | Pointer                            | `P<component>`          |
 | `Q`   | Nullable/optional                  | `Q<component>`          |
 | `F`   | Function type                      | `F<arity><params><ret>` |
 | `X`   | Unsafe function/effect modifier    | `X<component>`          |
+
+### ABI Encoding Decision Rule
+
+Every new LBI grammar marker must be an explicitly selected single ASCII letter. Concatenated recursive components, such
+as `XF`, remain separate one-letter markers; multi-letter markers are not permitted.
+
+The exact letter, grammar position, and recursive shape for a new marker must be decided in the active implementation
+plan before compiler work begins. The implementation must not invent an encoding. The accepted ADR and this normative
+specification must record the same decision when the feature lands.
 
 ### Builtin Sigils
 
@@ -121,6 +132,12 @@ declaration `T[N1][N2]...[Nk]`:
 
 The mangled encoding mirrors this layout: dimensions are emitted outermost-first, so `T[N1][N2]...[Nk]` mangles as
 `A<N1>_A<N2>_...A<Nk>_<T>`.
+
+## Slice Parameters
+
+A fixed slice parameter `T[]` encodes as `W<T>`. `W` denotes a non-owning window over contiguous storage and keeps the
+slice component distinct from the `S` nominal struct leaf. The corresponding generated C descriptor name uses the same
+component, for example `int[]` becomes `__deaWi`.
 
 ## `unsafe` Lowering
 

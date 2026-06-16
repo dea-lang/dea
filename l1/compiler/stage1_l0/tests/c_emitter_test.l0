@@ -718,6 +718,39 @@ func test_emitter_array_wrapper_spec_names() {
 }
 
 /**
+ * Tests slice descriptor ABI wrapper names and C type spellings.
+ */
+func test_emitter_slice_wrapper_spec_names() {
+    let int_slice = type_new_slice(type_builtin_int());
+    let ptr_slice = type_new_slice(type_new_pointer(type_builtin_int()));
+    let opt_slice = type_new_slice(type_new_nullable(type_builtin_int()));
+
+    assert(cem_slice_wrapper_name_for_type(int_slice) == "__deaWi", "int[] slice wrapper ABI name mismatch");
+    assert(cem_emit_type(int_slice) == "__deaWi", "int[] slice C type mismatch");
+    assert(cem_slice_wrapper_name_for_type(ptr_slice) == "__deaWPi", "int*[] slice wrapper ABI name mismatch");
+    assert(cem_slice_wrapper_name_for_type(opt_slice) == "__deaWQi", "int?[] slice wrapper ABI name mismatch");
+
+    type_free(int_slice);
+    type_free(ptr_slice);
+    type_free(opt_slice);
+}
+
+/**
+ * Tests slice descriptor typedef emission.
+ */
+func test_emitter_slice_descriptor_emission() {
+    let emitter = cem_create();
+    let int_slice = type_new_slice(type_builtin_int());
+    cem_note_slice_wrapper(emitter, int_slice);
+    cem_emit_slice_wrappers(emitter);
+    let output = cem_get_output(emitter);
+    assert(contains_s(output, "typedef struct __deaWi { dea_int len; dea_int *data; } __deaWi;"),
+        "expected int[] slice descriptor typedef");
+    type_free(int_slice);
+    cem_free(emitter);
+}
+
+/**
  * Tests test_emitter_top_level_forms_match_stage1_shape.
  */
 func test_emitter_top_level_forms_match_stage1_shape() {
@@ -903,6 +936,8 @@ func main() {
     test_emitter_optional_wrappers_emit_early_then_late();
     test_emitter_nested_nullable_pointer_representations();
     test_emitter_array_wrapper_spec_names();
+    test_emitter_slice_wrapper_spec_names();
+    test_emitter_slice_descriptor_emission();
     test_emitter_top_level_forms_match_stage1_shape();
     test_emitter_unsafe_function_types_share_c_abi();
     printl_s("c_emitter_test: all tests passed");

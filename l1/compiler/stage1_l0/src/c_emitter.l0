@@ -49,6 +49,8 @@ struct CEmitter {
     array_emitted: StringSet*;
     func_ptrs: StringPtrMap*; // typedef name -> Type*
     func_ptr_emitted: StringSet*;
+    slice_wrappers: StringPtrMap*; // wrapper name -> Type*
+    slice_emitted: StringSet*;
     trace_arc: bool;
     trace_memory: bool;
 }
@@ -258,7 +260,7 @@ func ccb_to_string(self: CCodeBuilder*) -> string {
  */
 func cem_create() -> CEmitter* {
     return new CEmitter(null, null, ccb_create(), 0, spm_create(), ss_create(), spm_create(), ss_create(),
-        spm_create(), ss_create(), false, false);
+        spm_create(), ss_create(), spm_create(), ss_create(), false, false);
 }
 
 /**
@@ -298,6 +300,18 @@ func cem_reset_array_wrappers(self: CEmitter*) {
 }
 
 /**
+ * Clear every collected slice-wrapper entry.
+ *
+ * @param self Emitter to update.
+ */
+func cem_reset_slice_wrappers(self: CEmitter*) {
+    cem_func_ptr_map_free(self.slice_wrappers);
+    ss_free(self.slice_emitted);
+    self.slice_wrappers = spm_create();
+    self.slice_emitted = ss_create();
+}
+
+/**
  * Free a Stage 1 C emitter.
  *
  * @param self Emitter to free.
@@ -309,6 +323,8 @@ func cem_free(self: CEmitter*) {
     ss_free(self.array_emitted);
     cem_func_ptr_map_free(self.func_ptrs);
     ss_free(self.func_ptr_emitted);
+    cem_func_ptr_map_free(self.slice_wrappers);
+    ss_free(self.slice_emitted);
     ccb_free(self.out);
     drop self;
 }
@@ -467,6 +483,11 @@ func cem_mangle_type_component_to_cb(ty: Type*, cb: CharBuffer*) {
         cb_append_s(cb, "A");
         cb_append_s(cb, int_to_string(ty.array_len));
         cb_append_s(cb, "_");
+        cem_mangle_type_component_to_cb(ty.inner as Type*, cb);
+        return;
+    }
+    if (kind == ord(TY_SLICE)) {
+        cb_append_s(cb, "W");
         cem_mangle_type_component_to_cb(ty.inner as Type*, cb);
         return;
     }
@@ -808,6 +829,9 @@ func cem_type_component(typ: Type*) -> string {
     if (ord(typ.kind) == ord(TY_ARRAY)) {
         return "A" + int_to_string(typ.array_len) + "_" + cem_type_component(typ.inner as Type*);
     }
+    if (ord(typ.kind) == ord(TY_SLICE)) {
+        return "W" + cem_type_component(typ.inner as Type*);
+    }
     if (ord(typ.kind) == ord(TY_STRUCT)) {
         return "M" + cem_mangle_module_path_components(typ.module_name) + "S" +
             int_to_string(len_s(typ.name)) + typ.name;
@@ -826,6 +850,16 @@ func cem_type_component(typ: Type*) -> string {
  * @return Stable typedef name.
  */
 func cem_array_wrapper_name_for_type(typ: Type*) -> string {
+    return "__dea" + cem_type_component(typ);
+}
+
+/**
+ * Return the wrapper typedef name used for a slice type.
+ *
+ * @param typ Slice type.
+ * @return Stable typedef name.
+ */
+func cem_slice_wrapper_name_for_type(typ: Type*) -> string {
     return "__dea" + cem_type_component(typ);
 }
 
@@ -903,6 +937,9 @@ func cem_emit_type(typ: Type*) -> string {
     }
     if (ord(typ.kind) == ord(TY_ARRAY)) {
         return cem_array_wrapper_name_for_type(typ);
+    }
+    if (ord(typ.kind) == ord(TY_SLICE)) {
+        return cem_slice_wrapper_name_for_type(typ);
     }
     if (ord(typ.kind) == ord(TY_FUNC)) {
         return cem_func_ptr_name_for_type(typ);
@@ -1574,7 +1611,7 @@ func cem_note_func_ptr_typedef(self: CEmitter*, typ: Type*) {
  * @param t Type to scan.
  */
 func cem_collect_func_ptrs_from_type(self: CEmitter*, t: Type*) {
-    if (ord(t.kind) == ord(TY_ARRAY)) {
+    if (ord(t.kind) == ord(TY_ARRAY) || ord(t.kind) == ord(TY_SLICE)) {
         cem_collect_func_ptrs_from_type(self, t.inner as Type*);
         return;
     }
@@ -1607,6 +1644,19 @@ func cem_note_array_wrapper(self: CEmitter*, typ: Type*) {
 }
 
 /**
+ * Record one slice wrapper if it was not already collected.
+ *
+ * @param self Emitter to update.
+ * @param typ Slice type to store.
+ */
+func cem_note_slice_wrapper(self: CEmitter*, typ: Type*) {
+    let name = cem_slice_wrapper_name_for_type(typ);
+    if (spm_get(self.slice_wrappers, name) == null) {
+        spm_put(self.slice_wrappers, name, type_clone(typ) as void*);
+    }
+}
+
+/**
  * Recursively collect array wrappers reachable from one type.
  *
  * @param self Emitter to update.
@@ -1615,6 +1665,13 @@ func cem_note_array_wrapper(self: CEmitter*, typ: Type*) {
 func cem_collect_array_wrappers_from_type(self: CEmitter*, t: Type*) {
     if (ord(t.kind) == ord(TY_ARRAY)) {
         cem_note_array_wrapper(self, t);
+        cem_collect_array_wrappers_from_type(self, t.inner as Type*);
+        cem_collect_opt_wrappers_from_type(self, t.inner as Type*);
+        cem_collect_func_ptrs_from_type(self, t.inner as Type*);
+        return;
+    }
+    if (ord(t.kind) == ord(TY_SLICE)) {
+        cem_note_slice_wrapper(self, t);
         cem_collect_array_wrappers_from_type(self, t.inner as Type*);
         cem_collect_opt_wrappers_from_type(self, t.inner as Type*);
         cem_collect_func_ptrs_from_type(self, t.inner as Type*);
@@ -1640,7 +1697,7 @@ func cem_collect_array_wrappers_from_type(self: CEmitter*, t: Type*) {
  * @param t Type to scan.
  */
 func cem_collect_opt_wrappers_from_type(self: CEmitter*, t: Type*) {
-    if (ord(t.kind) == ord(TY_ARRAY)) {
+    if (ord(t.kind) == ord(TY_ARRAY) || ord(t.kind) == ord(TY_SLICE)) {
         cem_collect_opt_wrappers_from_type(self, t.inner as Type*);
         return;
     }
@@ -1736,6 +1793,53 @@ func cem_emit_array_wrappers(self: CEmitter*) {
         for (let i = 0; i < sv_size(names); i = i + 1) {
             let name = sv_get(names, i);
             cem_emit_array_wrapper(self, name, spm_get(self.array_wrappers, name) as Type*);
+        }
+    }
+}
+
+/**
+ * Emit one collected slice-descriptor typedef.
+ *
+ * @param self Emitter to update.
+ * @param name Wrapper name.
+ * @param typ Slice type.
+ */
+func cem_emit_slice_wrapper(self: CEmitter*, name: string, typ: Type*) {
+    if (ss_has(self.slice_emitted, name)) {
+        return;
+    }
+    if (ord(typ.kind) != ord(TY_SLICE)) {
+        return;
+    }
+    let guard = cem_upper_ascii(name) + "_DEFINED";
+    with (let sb = sb_create() => sb_free(sb)) {
+        ccb_emit(self.out, "#ifndef " + guard);
+        ccb_emit(self.out, "#define " + guard);
+        sb_append(sb, "typedef struct ");
+        sb_append(sb, name);
+        sb_append(sb, " { dea_int len; ");
+        sb_append(sb, cem_emit_type(typ.inner as Type*));
+        sb_append(sb, " *data; } ");
+        sb_append(sb, name);
+        sb_append(sb, ";");
+        ccb_emit(self.out, sb_to_string(sb));
+        ccb_emit(self.out, "#endif /* " + guard + " */");
+        ccb_emit(self.out, "");
+    }
+    ss_add(self.slice_emitted, name);
+}
+
+/**
+ * Emit every collected slice-descriptor typedef.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_slice_wrappers(self: CEmitter*) {
+    with (let names = spm_keys(self.slice_wrappers) => sv_free(names)) {
+        sv_sort(names);
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let name = sv_get(names, i);
+            cem_emit_slice_wrapper(self, name, spm_get(self.slice_wrappers, name) as Type*);
         }
     }
 }
@@ -1969,6 +2073,7 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
     cem_reset_optional_wrappers(self);
     cem_reset_func_ptr_typedefs(self);
     cem_reset_array_wrappers(self);
+    cem_reset_slice_wrappers(self);
     let analysis = cem_analysis(self);
     if (analysis.signatures == null) {
         return;

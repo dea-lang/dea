@@ -357,7 +357,8 @@ func mi_collect_type_refs(ty: Type*, this_module: string, out: VectorBase*) {
         }
         return;
     }
-    if (kind == ord(TY_POINTER) || kind == ord(TY_NULLABLE) || kind == ord(TY_ARRAY)) {
+    if (kind == ord(TY_POINTER) || kind == ord(TY_NULLABLE) || kind == ord(TY_ARRAY) ||
+        kind == ord(TY_SLICE)) {
         mi_collect_type_refs(ty.inner as Type*, this_module, out);
         return;
     }

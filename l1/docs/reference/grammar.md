@@ -90,7 +90,8 @@ Note: the current bootstrap implementation uses `&` only as the binary bitwise-A
 decision has been made yet on whether prefix address-of will become part of the L<sub>1</sub> language surface. Postfix
 indexing syntax is part of the current surface: `ptr[index]` is the raw-pointer indexing form, accepted only in
 `unsafe func` bodies, with `int` indexes and direct unchecked lowering for sized non-`void` pointee types. `arr[index]`
-on fixed-size arrays is safe, bounds checked, and also requires an `int` index.
+on fixed-size arrays and `slice[index]` on slices are safe, bounds checked before any pointer access, and also require
+an `int` index.
 
 ### 1.5 Special identifier `_`
 
@@ -229,9 +230,10 @@ UnsuffixedType      ::=     SimpleType
 SimpleType          ::=     QualifiedIdent
 FuncPointerType     ::=     ( "unsafe" )? "func" "(" TypeList? ")" "->" Type
 TypeList            ::=     Type ("," Type)*
-TypeSuffix          ::=     PointerSuffix | ArraySuffix | NullableSuffix
+TypeSuffix          ::=     PointerSuffix | ArraySuffix | SliceSuffix | NullableSuffix
 PointerSuffix       ::=     "*"
 ArraySuffix         ::=     "[" IntLiteral "]"
+SliceSuffix         ::=     "[" "]"
 NullableSuffix      ::=     "?"     (* applies to the preceding type syntactically *)
 
 QualifiedIdent      ::=     Ident
@@ -251,6 +253,9 @@ Examples (all syntactically valid types in L<sub>1</sub>):
 - `int*[2]`
 - `int[2]*`
 - `int[2][3]`
+- `int[]`
+- `int*[]`
+- `int?[]`
 - `int?`
 - `int?*`
 - `int??`
@@ -263,6 +268,11 @@ Examples (all syntactically valid types in L<sub>1</sub>):
 Fixed-size array lengths must be positive `int` literals. Adjacent array suffixes preserve source-order dimensions:
 `int[2][3]` is two rows of three `int` values. Exact semantic rules (e.g. when `?` is allowed) are enforced in the type
 checker, not in the grammar.
+
+The empty-bracket suffix `[]` is a slice type `T[]`: a non-owning view over contiguous `T` storage. The initial slice
+surface supports `T[]`, `T*[]`, and `T?[]`. Nullable-after-slice (`T[]?`) and pointer-after-slice (`T[]*`) are rejected
+in the type checker because they would weaken the non-owning escape restrictions. The inferred-length array suffix `[_]`
+is reserved for future use and is rejected by the parser; it is never treated as `T[]`.
 
 Type suffixes apply left-to-right and build an ordered constructor stack. `T?*` is a pointer to an optional `T`; `T*?`
 is an optional pointer to `T`; `T??` is an optional optional `T` and is not collapsed by the type system. `void*` is
@@ -508,5 +518,10 @@ Notes:
   path recognizes `TypeName[4]`-shaped arguments as array type expressions when the base resolves to a type name.
 - Plain identifiers like `sizeof(Point)` parse as `Expr`; the type checker resolves whether `Point` refers to a type or
   variable.
-- Calls to `sizeof`, `ord`, and `is` are parsed as ordinary function calls. Semantic analysis then resolves whether the
-  callee is one of the implicit `dea` prelude symbols or an ordinary user-defined function.
+- Calls to `sizeof`, `ord`, `is`, `len`, and `slice` are parsed as ordinary function calls. Semantic analysis then
+  resolves whether the callee is one of the implicit `dea` prelude symbols or an ordinary user-defined function.
+- `len(x)` returns the `int` length of a fixed array or slice. `slice(x)`, `slice(x, start)`, and
+  `slice(x, start, count)` build a `T[]` view over a fixed array or slice; the third argument is `count`, not an end
+  index. Slice index, `start`, and `count` operands must be `int`.
+- A fixed array `T[N]` converts to a slice `T[]` only in known slice target contexts: function arguments, annotated
+  local initialization, and assignment to an existing slice variable. There is no unconstrained C-style array decay.

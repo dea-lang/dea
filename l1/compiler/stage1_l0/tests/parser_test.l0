@@ -119,10 +119,60 @@ func test_parser_message_omits_embedded_code() {
 }
 
 /**
- * Tests array-type syntax length diagnostics.
+ * Tests that the slice type suffix `T[]` parses to a slice suffix.
+ */
+func test_slice_type_syntax_ok() {
+    let src = "module main; func use(s: int[]) -> int { return s[0]; } func main() -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected slice type syntax to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let param0 = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(param0.type_ref.suffixes != null, "Expected ordered suffixes on int[]");
+    assert(vec_size(param0.type_ref.suffixes as VectorBase*) == 1, "Expected one suffix on int[]");
+    let suffix0 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*;
+    assert(ord(suffix0.kind) == ord(TS_SLICE), "Expected slice suffix");
+    parse_result_free(result);
+}
+
+/**
+ * Tests nested pointer-before-slice and nullable-before-slice suffix ordering.
+ */
+func test_slice_nested_suffix_order_ok() {
+    let src = "module main; func use(p: int*[], q: int?[]) -> int { return 0; } func main() -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected int*[] and int?[] to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let p = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(ord((ptr_vec_get(p.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_POINTER),
+        "Expected pointer suffix before slice on int*[]");
+    assert(ord((ptr_vec_get(p.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_SLICE),
+        "Expected slice suffix after pointer on int*[]");
+    let q = ptr_vec_get(func_decl.params, 1) as Param*;
+    assert(ord((ptr_vec_get(q.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected nullable suffix before slice on int?[]");
+    assert(ord((ptr_vec_get(q.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_SLICE),
+        "Expected slice suffix after nullable on int?[]");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that the reserved inferred-length array `T[_]` is rejected.
+ */
+func test_reserved_inferred_length_array() {
+    let src = "module main; func use(s: int[_]) -> int { return 0; } func main() -> int { return 0; }";
+    expect_error_code_and_message(src, "PAR-0624",
+        "inferred-length array type '[_]' is reserved for future use");
+}
+
+/**
+ * Tests that a malformed array length still reports PAR-0620.
  */
 func test_array_type_syntax_message() {
-    let src = "module main; func main() -> int { let x: int[] = 0; return x; }";
+    let src = "module main; func main() -> int { let x: int[+] = 0; return x; }";
     expect_error_code_and_message(src, "PAR-0620", "expected integer length in array type");
 }
 
@@ -1393,6 +1443,9 @@ func test_single_unterminated_block_reports_par0091_once() {
 func main() {
     test_parser_message_omits_embedded_code();
     test_array_type_syntax_message();
+    test_slice_type_syntax_ok();
+    test_slice_nested_suffix_order_ok();
+    test_reserved_inferred_length_array();
     test_array_expr_syntax_messages();
     test_fixed_array_syntax_ok();
     test_fixed_array_complex_suffix_order_ok();

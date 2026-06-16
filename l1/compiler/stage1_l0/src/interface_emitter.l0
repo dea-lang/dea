@@ -70,6 +70,9 @@ func ie_format_type(ty: Type*, module_name: string) -> string {
                 }
             }
         }
+        TY_SLICE => {
+            return ie_format_type(ty.inner as Type*, module_name) + "[]";
+        }
         TY_FUNC => {
             with (let sb = sb_create() => sb_free(sb)) {
                 if (ty.is_unsafe) {

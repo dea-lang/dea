@@ -99,7 +99,7 @@ CASES = {
             "main": """\
                 module main;
                 func foo() -> int {
-                    let x: int[] = 0;
+                    let x: int[+] = 0;
                     return x;
                 }
             """,
@@ -107,6 +107,20 @@ CASES = {
         "expected": {
             "l0": "[PAR-9401] array types not yet supported",
             "l1": "[PAR-0620] expected integer length in array type",
+        },
+    },
+    "par-0624-reserved-inferred-length-array": {
+        "files": {
+            "main": """\
+                module main;
+                func foo() -> int {
+                    let x: int[_] = 0;
+                    return x;
+                }
+            """,
+        },
+        "expected": {
+            "l1": "[PAR-0624] inferred-length array type '[_]' is reserved for future use",
         },
     },
     "typ-0211-nullable-indexing": {

@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_slice_err;
+
+func main() -> int {
+    let a: int[3] = [1, 2, 3];
+    let bad1 = len(5);
+    let bad2 = slice(5);
+    let bad3 = slice();
+    let bad4 = slice(a, 1, 2, 3);
+    let bad5 = len(a, 1);
+    let bad6 = slice(a, "x");
+    let bad7 = slice(a, 0, "y");
+    let bad8: int[]? = a;
+    let bad9: int[]* = a;
+    return 0;
+}

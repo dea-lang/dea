@@ -275,6 +275,56 @@ func test_tr_resolve_ordered_suffix_constructors() {
 }
 
 /**
+ * Tests slice suffix resolution and the rejection of nullable-after-slice forms.
+ */
+func test_tr_resolve_slice_suffix() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "ok_main", cfg);
+        let nr = result.names as NameResolution*;
+        let tables = result.signatures as SignatureTables*;
+        let env = nr_env_find(nr, "ok_main") as ModuleEnv*;
+
+        with (let seen = ss_create() => ss_free(seen)) {
+            let slice_suffixes = ptr_vec_create(1);
+            push_suffix(slice_suffixes, TS_SLICE);
+            let slice_ref = ordered_tref("int", slice_suffixes);
+            let slice_ty = tr_resolve_type_ref(tables, nr, env, slice_ref, result.diags, seen);
+            assert(slice_ty != null, "int[] should resolve");
+            assert(ord((slice_ty as Type*).kind) == ord(TY_SLICE), "int[] should be a slice");
+            assert(type_format(slice_ty as Type*) == "int[]", "int[] should format as int[]");
+            assert(ord(((slice_ty as Type*).inner as Type*).kind) == ord(TY_BUILTIN),
+                "int[] element should be a builtin");
+            type_free(slice_ty as Type*);
+            type_ref_free(slice_ref);
+
+            let ptr_slice_suffixes = ptr_vec_create(2);
+            push_suffix(ptr_slice_suffixes, TS_POINTER);
+            push_suffix(ptr_slice_suffixes, TS_SLICE);
+            let ptr_slice_ref = ordered_tref("int", ptr_slice_suffixes);
+            let ptr_slice = tr_resolve_type_ref(tables, nr, env, ptr_slice_ref, result.diags, seen);
+            assert(ptr_slice != null, "int*[] should resolve");
+            assert(ord((ptr_slice as Type*).kind) == ord(TY_SLICE), "int*[] outer should be a slice");
+            assert(ord(((ptr_slice as Type*).inner as Type*).kind) == ord(TY_POINTER),
+                "int*[] element should be a pointer");
+            type_free(ptr_slice as Type*);
+            type_ref_free(ptr_slice_ref);
+
+            let bad_suffixes = ptr_vec_create(2);
+            push_suffix(bad_suffixes, TS_SLICE);
+            push_suffix(bad_suffixes, TS_NULLABLE);
+            let bad_ref = ordered_tref("int", bad_suffixes);
+            let bad_ty = tr_resolve_type_ref(tables, nr, env, bad_ref, result.diags, seen);
+            assert(bad_ty == null, "int[]? should be rejected");
+            type_ref_free(bad_ref);
+        }
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests module-qualified enum variant lookup when a local variant shadows imported names.
  */
 func test_tr_module_qualified_variant_lookup_survives_shadow_warning() {
@@ -312,6 +362,7 @@ func main() {
     test_tr_symbol_lookup();
     test_tr_resolve_type_ref();
     test_tr_resolve_ordered_suffix_constructors();
+    test_tr_resolve_slice_suffix();
     test_tr_module_qualified_variant_lookup_survives_shadow_warning();
     printl_s("type_resolve_test: all tests passed");
 }

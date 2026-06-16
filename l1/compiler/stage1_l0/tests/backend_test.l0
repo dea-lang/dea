@@ -1157,6 +1157,58 @@ func test_backend_generate_fixed_arrays() {
 }
 
 /**
+ * Tests slice descriptor lowering, array-to-slice conversion, and checked slice access.
+ */
+func test_backend_generate_slices() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(20) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func get_index() -> int { return 1; }");
+        sv_push(lines, "func sum(s: int[]) -> int { return s[get_index()]; }");
+        sv_push(lines, "func combine(prefix: int, s: int[]) -> int { return prefix + s[0]; }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let a: int[3] = [1, 2, 3];");
+        sv_push(lines, "    let whole: int[] = a;");
+        sv_push(lines, "    let part = slice(a, 1, 2);");
+        sv_push(lines, "    let n = len(whole);");
+        sv_push(lines, "    whole[0] = 9;");
+        sv_push(lines, "    return sum(a) + combine(s: a, prefix: 10) + whole[get_index()] + part[0] + n;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "slice fixture should analyze without errors");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "typedef struct __deaWi { dea_int len; dea_int *data; } __deaWi;"),
+            "expected int[] slice descriptor typedef");
+        assert(contains_s(generated, "((__deaWi){ .len = ((dea_int)3), .data = (a).data })"),
+            "expected array-to-slice conversion using the array length and storage");
+        assert(bt_count_substring(generated, "(__deaWi){ .len = ") >= 2,
+            "expected slice descriptors for both the conversion and the slice() call");
+        assert(contains_s(generated, "__deaWi dea_arg_"),
+            "expected out-of-order array-to-slice call argument to materialize as a slice");
+        assert(!contains_s(generated, "__deaA3_i dea_arg_"),
+            "array-to-slice call argument must not materialize as the source array type");
+        assert(contains_s(generated, "_rt_panic_oob("), "expected slice range/index bounds checks");
+        assert(contains_s(generated, ") > ((((dea_int)3)) - (dea_slice_start_"),
+            "expected three-argument slice check to compare count with remaining length");
+        assert(!contains_s(generated, ") + (dea_slice_count_"),
+            "three-argument slice range checks must not add start and count");
+        assert(contains_s(generated, ").data["), "expected slice element access through the data pointer");
+        assert(contains_s(generated, "(whole).len"), "expected len(slice) to read the descriptor length");
+        assert(contains_s(generated, "(s).len"), "expected slice index check against the descriptor length");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests fixed-size arrays with nested ARC structs and mixed pointer suffix wrappers.
  */
 func test_backend_generate_fixed_array_arc_shapes() {
@@ -1731,6 +1783,7 @@ func main() {
     test_backend_generate_identity_cast_string_copy_retains();
     test_backend_generate_pointer_indexing_contract();
     test_backend_generate_fixed_arrays();
+    test_backend_generate_slices();
     test_backend_generate_fixed_array_arc_shapes();
     test_backend_generate_string_equality_ops();
     test_backend_generate_string_concat_ops();

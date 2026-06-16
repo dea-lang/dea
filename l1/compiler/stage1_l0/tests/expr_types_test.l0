@@ -1204,6 +1204,53 @@ func test_typing_fixed_array_err() {
     sp_free(sp);
 }
 
+/**
+ * Tests slice typing, intrinsics, and contextual conversion accept valid programs.
+ */
+func test_typing_slice_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_slice_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_slice_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests slice intrinsic operand, arity, conversion, and index diagnostics.
+ */
+func test_typing_slice_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_slice_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_slice_err");
+        assert(has_diag_code(result, "TYP-0808"), "expected non-array/slice operand diagnostic");
+        assert(has_diag_code(result, "TYP-0809"), "expected slice/len arity diagnostic");
+        assert(has_diag_code(result, "TYP-0814"), "expected nullable/pointer-after-slice diagnostic");
+        assert(has_diag_code(result, "TYP-0210"), "expected non-int slice index diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests slice escape diagnostics in long-lived positions.
+ */
+func test_typing_slice_escape_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_slice_escape_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_slice_escape_err");
+        assert(has_diag_code(result, "TYP-0810"), "expected slice-return-type diagnostic");
+        assert(has_diag_code(result, "TYP-0811"), "expected slice-struct-field diagnostic");
+        assert(has_diag_code(result, "TYP-0812"), "expected slice-top-level-let diagnostic");
+        assert(has_diag_code(result, "TYP-0813"), "expected slice-enum-payload diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
 func main() {
     test_typing_ok();
     test_typing_err();
@@ -1276,5 +1323,8 @@ func main() {
     test_typing_is_intrinsic_qualified_ok();
     test_typing_is_intrinsic_err();
     test_typing_fixed_array_err();
+    test_typing_slice_ok();
+    test_typing_slice_err();
+    test_typing_slice_escape_err();
     printl_s("expr_types_test: all tests passed");
 }

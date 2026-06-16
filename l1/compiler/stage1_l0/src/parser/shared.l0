@@ -1183,7 +1183,19 @@ func ps_parse_type(self: ParserState*) -> TypeRef*? {
                 continue;
             }
             if (ps_match(self, ord(TT_LBRACKET))) {
+                if (ps_match(self, ord(TT_RBRACKET))) {
+                    let slice_suffix = new TypeSuffix(TS_SLICE, 0, ps_extend_span(self, start));
+                    ptr_vec_push(suffixes as VectorBase*, slice_suffix as void*);
+                    continue;
+                }
                 let len_tok = ps_peek(self);
+                if (ps_match(self, ord(TT_UNDERSCORE))) {
+                    ps_emit_error(self, "PAR-0624",
+                        "inferred-length array type '[_]' is reserved for future use", len_tok);
+                    ps_match(self, ord(TT_RBRACKET));
+                    type_ref_free(result);
+                    return null;
+                }
                 if (!ps_match_int(self)) {
                     ps_emit_error(self, "PAR-0620", "expected integer length in array type", len_tok);
                     type_ref_free(result);

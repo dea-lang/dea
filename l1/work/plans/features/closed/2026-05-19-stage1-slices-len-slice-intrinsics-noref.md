@@ -3,7 +3,7 @@
 ## Add Stage 1 slices, `len`, and `slice`
 
 - Date: 2026-05-19
-- Status: Draft
+- Status: Implemented
 - Title: Add Stage 1 slice types and slice intrinsics
 - Kind: Feature
 - Severity: High
@@ -19,6 +19,7 @@
   - `l1/compiler/stage1_l0/src/signatures.l0`
   - `l1/compiler/stage1_l0/src/backend.l0`
   - `l1/compiler/stage1_l0/src/c_emitter.l0`
+  - `l1/docs/specs/compiler/abi.md`
   - `l1/docs/reference/grammar.md`
   - `l1/docs/reference/design-decisions.md`
   - `l1/docs/reference/ownership.md`
@@ -37,7 +38,6 @@
 - Related:
   - `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
   - `l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md`
-  - `l1/work/plans/features/2026-04-22-variadic-functions-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro:
   `make -C l1 test-stage1 TESTS="parser_test type_resolve_test expr_types_test backend_test c_emitter_test l0c_lib_test"`
@@ -102,6 +102,10 @@ returns, struct fields, top-level lets, and heap payload fields.
 
 12. The initial implementation supports `T[]`, `T*[]`, and `T?[]`. It rejects `T[]?` and `T[]*` unless those forms can
     be implemented without weakening the escape restrictions above.
+
+13. The slice LBI type component is explicitly fixed as the single-letter `W<elem>`, producing wrapper names such as
+    `__deaWi` for `int[]`. `W` denotes a non-owning window over contiguous storage and remains distinct from the `S`
+    nominal struct leaf; the implementation must not invent a different or multi-letter ABI spelling.
 
 ## Goal
 
@@ -172,9 +176,9 @@ entire accepted slice lifetime model.
 
 ### Phase 6: C lowering
 
-Lower each slice instantiation to a deterministic descriptor typedef named from the ABI type component of the element
-type. The descriptor contains `dea_int len` and `T *data`, and descriptor copies are ordinary value copies with no
-retain, release, cleanup, or ownership transfer.
+Lower each slice instantiation to a deterministic descriptor typedef using the plan-approved `W<elem>` LBI component.
+The descriptor contains `dea_int len` and `T *data`, and descriptor copies are ordinary value copies with no retain,
+release, cleanup, or ownership transfer.
 
 Array-to-slice conversion forms a descriptor using the fixed array length and a pointer to the array's first element.
 Slice-to-slice slicing forms a descriptor using checked range arithmetic and the original data pointer. Zero-length

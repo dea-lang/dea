@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-05-11
+Version: 2026-06-16
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -63,6 +63,14 @@ Fixed-size arrays are value types. Copying an array copies the full wrapper valu
 contains ARC-managed data, generated code retains copied elements and releases overwritten or leaving-scope elements.
 Array cleanup runs elements in reverse index order, recursively applying the same rules to nested arrays, structs,
 enums, nullable non-pointers, and `string`.
+
+Slices (`T[]`) are non-owning views and carry no ownership. A slice descriptor is `{ dea_int len; T *data; }`, copied by
+value with no retain, release, or cleanup for the descriptor itself; the underlying fixed array remains the sole owner
+of the storage. Because slices never own their elements, they are restricted to locals, parameters, and call arguments
+and may not be returned or stored in long-lived locations (see [design-decisions]). Passing, assigning, or copying a
+slice emits only the descriptor copy. If the compiler materializes a fixed-array rvalue to back a slice, that backing
+temporary is still an owned array and is cleaned up by the normal array rules when its element type transitively
+contains ARC-managed data.
 
 ## 4. ARC `string` Semantics
 
@@ -212,3 +220,5 @@ Primary implementation references:
 - `compiler/shared/l1/stdlib/std/hashset.l1`
 - `compiler/shared/l1/stdlib/std/linear_map.l1`
 - `compiler/shared/runtime/include/dea_rt.h`
+
+[design-decisions]: design-decisions.md

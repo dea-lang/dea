@@ -22,6 +22,7 @@ enum TypeKind {
     TY_POINTER;
     TY_NULLABLE;
     TY_ARRAY;
+    TY_SLICE;
     TY_FUNC;
     TY_NULL;
 }
@@ -341,6 +342,53 @@ func type_append_array_dimension(ty: Type*, length: int) -> Type* {
 }
 
 /**
+ * Wrap a type in a non-owning slice type.
+ *
+ * @param inner Element type.
+ * @return New slice type.
+ */
+func type_new_slice(inner: Type*) -> Type* {
+    return type_new(TY_SLICE, "", "", inner, null, null, false);
+}
+
+/**
+ * Report whether a type is a slice constructor.
+ *
+ * @param self Type to inspect.
+ * @return `true` when `self` is `Slice(_)`.
+ */
+func type_is_slice(self: Type*) -> bool {
+    return ord(self.kind) == ord(TY_SLICE);
+}
+
+/**
+ * Return the element type of a slice type.
+ *
+ * @param self Type to inspect.
+ * @return The element type, or `null` when `self` is not a slice.
+ */
+func type_slice_element(self: Type*) -> Type*? {
+    if (ord(self.kind) != ord(TY_SLICE)) {
+        return null;
+    }
+    return self.inner;
+}
+
+/**
+ * Report whether a fixed array converts to a slice target by element identity.
+ *
+ * @param array_ty Candidate source type.
+ * @param slice_ty Candidate slice target type.
+ * @return `true` when `array_ty` is an array and `slice_ty` is a slice of the same element type.
+ */
+func type_array_to_slice_compatible(array_ty: Type*, slice_ty: Type*) -> bool {
+    if (ord(array_ty.kind) != ord(TY_ARRAY) || ord(slice_ty.kind) != ord(TY_SLICE)) {
+        return false;
+    }
+    return type_equals(array_ty.inner, slice_ty.inner);
+}
+
+/**
  * Create a function type.
  *
  * @param params Owned vector of parameter types.
@@ -405,7 +453,7 @@ func type_contains_builtin_real(self: Type*) -> bool {
         return true;
     }
     if (ord(self.kind) == ord(TY_POINTER) || ord(self.kind) == ord(TY_NULLABLE) ||
-        ord(self.kind) == ord(TY_ARRAY)) {
+        ord(self.kind) == ord(TY_ARRAY) || ord(self.kind) == ord(TY_SLICE)) {
         return type_contains_builtin_real(self.inner as Type*);
     }
     if (ord(self.kind) == ord(TY_FUNC)) {
@@ -463,6 +511,9 @@ func type_clone(self: Type*) -> Type* {
     if (ord(self.kind) == ord(TY_ARRAY)) {
         return type_new_array(type_clone(self.inner as Type*), self.array_len);
     }
+    if (ord(self.kind) == ord(TY_SLICE)) {
+        return type_new_slice(type_clone(self.inner as Type*));
+    }
 
     let params = vec_create(sizeof(void*), 2);
     let src_params = self.params as VectorBase*;
@@ -499,7 +550,8 @@ func type_equals(a: Type*?, b: Type*?) -> bool {
         return left.module_name == right.module_name && left.name == right.name;
     }
 
-    if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE)) {
+    if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE) ||
+        ord(left.kind) == ord(TY_SLICE)) {
         return type_equals(left.inner, right.inner);
     }
     if (ord(left.kind) == ord(TY_ARRAY)) {
@@ -556,6 +608,9 @@ func type_format(self: Type*) -> string {
                 return sb_to_string(sb);
             }
         }
+    }
+    if (ord(self.kind) == ord(TY_SLICE)) {
+        return type_format(self.inner as Type*) + "[]";
     }
     if (ord(self.kind) == ord(TY_NULLABLE)) {
         if (ord((self.inner as Type*).kind) == ord(TY_FUNC)) {

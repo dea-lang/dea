@@ -140,4 +140,6 @@ func dea_populate_locals(locals: StringPtrMap*, all: StringPtrMap*) {
     dea_add_intrinsic(locals, all, "sizeof", "type", null, type_builtin_int());
     dea_add_intrinsic(locals, all, "ord", "enum", null, type_builtin_int());
     dea_add_intrinsic(locals, all, "is", "enum", "variant", type_builtin_bool());
+    dea_add_intrinsic(locals, all, "len", "value", null, type_builtin_int());
+    dea_add_intrinsic(locals, all, "slice", "value", null, type_builtin_int());
 }

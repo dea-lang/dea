@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-05-19
+Version: 2026-06-16
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -136,6 +136,10 @@ build mode preserve the L1 floating-point contract.
 - fixed-size arrays lower to generated wrapper structs named with the ABI type-component layer, for example `byte[1024]`
   -> `__deaA1024_h` and `int[2][3]` -> `__deaA2_A3_i`; the wrapper contains one `data` field, and adjacent dimensions
   lower as contiguous C arrays such as `data[2][3]`
+- slices lower to generated descriptor structs named from the element ABI type-component, for example `int[]` ->
+  `__deaWi` and `int*[]` -> `__deaWPi`; each descriptor is
+  `typedef struct __deaW... { dea_int len; T *data; } __deaW...;`, and descriptor copies are ordinary value copies with
+  no retain, release, cleanup, or ownership transfer
 
 ## Statement and Expression Lowering
 
@@ -149,6 +153,7 @@ Implemented lowering currently includes:
 - checked integer arithmetic and narrowing via runtime helpers
 - contextual array literals, array constructors, `new T[N]`, `sizeof(T[N])`, whole-array value copies, and checked array
   indexing
+- `len` and `slice` intrinsics, contextual `T[N] -> T[]` conversion, and checked slice indexing
 
 ## Ownership and Cleanup Model
 
@@ -168,6 +173,11 @@ Key rules:
 - fixed-size array values lower at the wrapper boundary; flattened nested rows are raw C arrays only inside dedicated
   array helper paths
 - fixed-size array indexing emits a bounds check that calls `_rt_panic_oob(index, length)` before accessing `.data`
+- slice descriptors are non-owning and do not retain or clean up elements; fixed-array rvalues materialized as slice
+  backing storage are registered for normal scope cleanup when their element type transitively contains ARC-managed data
+- `len(slice)` reads `.len`, `len(array)` is the compile-time length, slice indexing checks `index < 0 || index >= .len`
+  with `_rt_panic_oob` before `.data[index]`, and `slice(...)` range construction checks `start`/`count` against the
+  base length before forming the descriptor (a zero-length result uses `len = 0` and `data = NULL`)
 
 See [ownership.md](ownership.md) for the language-facing ownership rules that this lowering must preserve.
 

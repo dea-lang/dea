@@ -342,6 +342,12 @@ func tr_apply_suffix(base: Type*, tref: TypeRef*, diags: DiagCollector*, filenam
         for (let i = 0; i < vec_size(suffixes); i = i + 1) {
             let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
             if (ord(suffix.kind) == ord(TS_POINTER)) {
+                if (ord(current.kind) == ord(TY_SLICE)) {
+                    type_free(current);
+                    tr_diag_error(diags, "TYP-0814", "slice type '[]' may not be a pointer base ('T[]*')",
+                        filename, suffix.span);
+                    return null;
+                }
                 current = type_new_pointer(current);
             } else if (ord(suffix.kind) == ord(TS_ARRAY)) {
                 if (suffix.array_len <= 0) {
@@ -350,10 +356,23 @@ func tr_apply_suffix(base: Type*, tref: TypeRef*, diags: DiagCollector*, filenam
                     return null;
                 }
                 current = type_append_array_dimension(current, suffix.array_len);
+            } else if (ord(suffix.kind) == ord(TS_SLICE)) {
+                if (ord(current.kind) == ord(TY_BUILTIN) && current.name == "void") {
+                    type_free(current);
+                    tr_diag_error(diags, "SIG-0011", "type 'void' cannot be a slice element", filename, tref.span);
+                    return null;
+                }
+                current = type_new_slice(current);
             } else if (ord(suffix.kind) == ord(TS_NULLABLE)) {
                 if (ord(current.kind) == ord(TY_BUILTIN) && current.name == "void") {
                     type_free(current);
                     tr_diag_error(diags, "SIG-0011", "type 'void' cannot be nullable", filename, tref.span);
+                    return null;
+                }
+                if (ord(current.kind) == ord(TY_SLICE)) {
+                    type_free(current);
+                    tr_diag_error(diags, "TYP-0814", "slice type '[]' may not be made nullable ('T[]?')",
+                        filename, suffix.span);
                     return null;
                 }
                 current = type_new_nullable(current);

@@ -194,6 +194,43 @@ func sig_make_tables() -> SignatureTables* {
 }
 
 /**
+ * Report whether a resolved type is, or transitively contains, a slice.
+ *
+ * Recursion descends into array element types so that array-of-slice forms are
+ * also detected. It does not descend into function parameter or result types,
+ * because slices are permitted as function parameters.
+ *
+ * @param ty Resolved type to inspect.
+ * @return `true` when `ty` is a slice or an array whose element contains a slice.
+ */
+func sig_type_contains_slice(ty: Type*) -> bool {
+    if (ord(ty.kind) == ord(TY_SLICE)) {
+        return true;
+    }
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        return sig_type_contains_slice(ty.inner as Type*);
+    }
+    return false;
+}
+
+/**
+ * Emit a slice-escape diagnostic when a type appears in a disallowed long-lived position.
+ *
+ * @param ty Resolved type to inspect.
+ * @param code Diagnostic code to emit.
+ * @param message Diagnostic message to emit.
+ * @param diags Diagnostic collector.
+ * @param filename Source filename to report.
+ * @param span Source span to report.
+ */
+func sig_reject_slice_escape(ty: Type*, code: string, message: string, diags: DiagCollector*, filename: string,
+                             span: Span) {
+    if (sig_type_contains_slice(ty)) {
+        sig_diag_error(diags, code, message, filename, span);
+    }
+}
+
+/**
  * Resolve one struct declaration into stored signature metadata.
  *
  * @param tables Signature tables receiving resolved struct info.
@@ -214,6 +251,9 @@ func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, env: Modu
                 ok = false;
                 continue;
             }
+            sig_reject_slice_escape(field_type as Type*, "TYP-0811",
+                "slice type may not be used as a struct field", diags, env.module_ptr.filename,
+                field_decl.type_ref.span);
             ptr_vec_push(fields as VectorBase*, new StructFieldInfo(field_decl.name, field_type as Type*) as void*);
         }
 
@@ -269,6 +309,9 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, env: Module
                     ok = false;
                     continue;
                 }
+                sig_reject_slice_escape(field_type as Type*, "TYP-0813",
+                    "slice type may not be used as an enum payload field", diags, env.module_ptr.filename,
+                    field_decl.type_ref.span);
                 ptr_vec_push(field_types, field_type as void*);
                 sv_push(field_names, field_decl.name);
             }
@@ -329,6 +372,10 @@ func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, env: Module
         let ret_type = tr_resolve_type_ref(tables, nr, env, decl.return_type, diags, seen as StringSet*);
         if (ret_type == null) {
             ok = false;
+        } else {
+            sig_reject_slice_escape(ret_type as Type*, "TYP-0810",
+                "slice type may not be a function return type", diags, env.module_ptr.filename,
+                (decl.return_type as TypeRef*).span);
         }
 
         if (!ok) {
@@ -588,6 +635,9 @@ func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleE
         return;
     }
 
+    sig_reject_slice_escape(let_type as Type*, "TYP-0812",
+        "slice type may not be used in a top-level let", diags, env.module_ptr.filename, decl.span);
+
     if (decl.is_const) {
         let unit = driver_find_unit(driver_state, env.module_name);
         if (unit == null ||
@@ -622,6 +672,9 @@ func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleE
  */
 func sig_extract_dependencies(ty: Type*, out: StringSet*) {
     if (ord(ty.kind) == ord(TY_POINTER)) {
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_SLICE)) {
         return;
     }
     if (ord(ty.kind) == ord(TY_NULLABLE)) {
@@ -827,6 +880,9 @@ func sig_check_export_surface_type(tables: SignatureTables*, nr: NameResolution*
             return sig_check_export_surface_type(tables, nr, inner, require_transparent, diags, filename, span);
         }
         TY_ARRAY => {
+            return sig_check_export_surface_type(tables, nr, ty.inner as Type*, true, diags, filename, span);
+        }
+        TY_SLICE => {
             return sig_check_export_surface_type(tables, nr, ty.inner as Type*, true, diags, filename, span);
         }
         TY_FUNC => {

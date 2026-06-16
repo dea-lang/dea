@@ -1205,6 +1205,83 @@ func etc_infer_is_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> Ty
 }
 
 /**
+ * Infer the type of one `len` intrinsic call.
+ *
+ * @param self Expression checker state.
+ * @param expr Call expression node.
+ * @return `int`, or `int` after reporting an error.
+ */
+func etc_infer_len_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type* {
+    let args = expr.ids as VectorBase*;
+    let arg_count = 0;
+    if (args != null) arg_count = vec_size(args);
+    if (arg_count != 1) {
+        etc_diag_error(self, "TYP-0809", "len expects exactly 1 argument",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return type_builtin_int();
+    }
+
+    let arg_ty = etc_infer_expr(self, id_vec_get(args, 0));
+    if (arg_ty == null) {
+        return type_builtin_int();
+    }
+    if (ord((arg_ty as Type*).kind) != ord(TY_ARRAY) && ord((arg_ty as Type*).kind) != ord(TY_SLICE)) {
+        etc_diag_error(self, "TYP-0808",
+            "len expects a fixed array or slice, got '" + type_format(arg_ty as Type*) + "'",
+            (self.current_unit as DriverUnit*).path, expr.span);
+    }
+    type_free(arg_ty as Type*);
+    return type_builtin_int();
+}
+
+/**
+ * Infer the type of one `slice` intrinsic call.
+ *
+ * @param self Expression checker state.
+ * @param expr Call expression node.
+ * @return The resulting slice type, or `null` after reporting an error.
+ */
+func etc_infer_slice_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type*? {
+    let args = expr.ids as VectorBase*;
+    let arg_count = 0;
+    if (args != null) arg_count = vec_size(args);
+    if (arg_count < 1 || arg_count > 3) {
+        etc_diag_error(self, "TYP-0809", "slice expects 1 to 3 arguments",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return null;
+    }
+
+    let src_ty = etc_infer_expr(self, id_vec_get(args, 0));
+    if (src_ty == null) {
+        return null;
+    }
+    let src = src_ty as Type*;
+    if (ord(src.kind) != ord(TY_ARRAY) && ord(src.kind) != ord(TY_SLICE)) {
+        etc_diag_error(self, "TYP-0808",
+            "slice expects a fixed array or slice, got '" + type_format(src) + "'",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        type_free(src);
+        return null;
+    }
+
+    for (let i = 1; i < arg_count; i = i + 1) {
+        let extra_ty = etc_infer_expr(self, id_vec_get(args, i));
+        if (extra_ty != null) {
+            if (!etc_is_int(extra_ty as Type*)) {
+                etc_diag_error(self, "TYP-0210",
+                    "slice index expects int, got " + type_format(extra_ty as Type*),
+                    (self.current_unit as DriverUnit*).path, expr.span);
+            }
+            type_free(extra_ty as Type*);
+        }
+    }
+
+    let result = type_new_slice(type_clone(src.inner as Type*));
+    type_free(src);
+    return result;
+}
+
+/**
  * Bind enum payload types for variables introduced by a match pattern.
  *
  * @param self Expression checker state.
@@ -2322,7 +2399,8 @@ func etc_types_equal_ignoring_func_unsafety(a: Type*?, b: Type*?) -> bool {
         return left.module_name == right.module_name && left.name == right.name;
     }
 
-    if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE)) {
+    if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE) ||
+        ord(left.kind) == ord(TY_SLICE)) {
         return etc_types_equal_ignoring_func_unsafety(left.inner, right.inner);
     }
     if (ord(left.kind) == ord(TY_ARRAY)) {
@@ -2471,6 +2549,10 @@ func etc_check_assign_expr(self: ExpressionTypeChecker*, dst: Type*, src: Type*,
         if (ord(inner_result) != ord(ASSIGN_REJECT)) {
             return inner_result;
         }
+    }
+
+    if (ord(dst.kind) == ord(TY_SLICE) && type_array_to_slice_compatible(src, dst)) {
+        return ASSIGN_ACCEPT;
     }
 
     if (etc_is_bigint_literal_type(src)) {
@@ -3055,6 +3137,22 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
             }
             return etc_infer_is_intrinsic(self, expr);
         }
+        if (dea_is_intrinsic_symbol(callee_sym, "len")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'len' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return type_builtin_int();
+            }
+            return etc_infer_len_intrinsic(self, expr);
+        }
+        if (dea_is_intrinsic_symbol(callee_sym, "slice")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'slice' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return null;
+            }
+            return etc_infer_slice_intrinsic(self, expr);
+        }
         with (let local_callee_ty = etc_lookup_local(self, callee.text_value) => etc_type_free_opt(local_callee_ty)) {
             if (local_callee_ty == null && callee_sym == null &&
                 callee.module_path == null && callee.name_qualifier == null &&
@@ -3381,7 +3479,7 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
         return null;
     }
 
-    if (ord(l_ty.kind) == ord(TY_ARRAY)) {
+    if (ord(l_ty.kind) == ord(TY_ARRAY) || ord(l_ty.kind) == ord(TY_SLICE)) {
         let res = type_clone(l_ty.inner as Type*);
         type_free(l_ty);
         return res;

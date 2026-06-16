@@ -716,6 +716,90 @@ func be_materialize_arc_temp(self: Backend*, c_expr: string, expr_type: Type*) -
 }
 
 /**
+ * Materialize one array source used as slice backing storage.
+ *
+ * @param self Backend state to update.
+ * @param c_expr Lowered array expression to store.
+ * @param expr_id Source expression id.
+ * @param array_ty Type of the stored array.
+ * @param prefix Temporary-name prefix.
+ * @return Temporary variable name.
+ */
+func be_materialize_slice_array_temp(
+    self: Backend*,
+    c_expr: string,
+    expr_id: ExprId,
+    array_ty: Type*,
+    prefix: string
+) -> string {
+    let temp = cem_fresh_tmp(self.emitter, prefix);
+    cem_emit_temp_decl(self.emitter, cem_emit_type(array_ty), temp, c_expr);
+    if (analysis_has_arc_data(self.result, array_ty)) {
+        if (self.current_scope == null) {
+            be_ice("[ICE-1312] slice backing array cleanup requires an active scope");
+        }
+        if (be_is_place_expr(self, expr_id) || be_is_unwrap_cast_from_place(self, expr_id)) {
+            be_emit_retain_for_copied_value(self, temp, array_ty);
+        }
+        sc_add_owned(self.current_scope as ScopeContext*, temp, array_ty);
+    }
+    return temp;
+}
+
+/**
+ * Finalize a lowered call argument using its post-conversion type.
+ *
+ * @param self Backend state to update.
+ * @param arg_id Source argument expression id.
+ * @param c_arg Lowered argument expression.
+ * @param lowered_ty Type of `c_arg` after contextual conversion.
+ * @param is_out_of_order Whether the argument must be stabilized for reordering.
+ * @return Lowered argument expression or a materialized temporary.
+ */
+func be_finalize_lowered_call_arg(
+    self: Backend*,
+    arg_id: ExprId,
+    c_arg: string,
+    lowered_ty: Type*,
+    is_out_of_order: bool
+) -> string {
+    let result = c_arg;
+    if (be_should_materialize_arc_temp(self, arg_id, lowered_ty)) {
+        result = be_materialize_arc_temp(self, result, lowered_ty);
+    }
+    if (is_out_of_order) {
+        let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
+        cem_emit_temp_decl(self.emitter, cem_emit_type(lowered_ty), arg_tmp, result);
+        result = arg_tmp;
+    }
+    return result;
+}
+
+/**
+ * Stabilize one reordered constructor argument using its post-conversion type.
+ *
+ * @param self Backend state to update.
+ * @param c_arg Lowered argument expression.
+ * @param lowered_ty Type of `c_arg` after contextual conversion.
+ * @param is_out_of_order Whether the argument must be stabilized for reordering.
+ * @return Lowered argument expression or a materialized temporary.
+ */
+func be_finalize_lowered_constructor_arg(
+    self: Backend*,
+    c_arg: string,
+    lowered_ty: Type*,
+    is_out_of_order: bool
+) -> string {
+    let result = c_arg;
+    if (is_out_of_order) {
+        let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
+        cem_emit_temp_decl(self.emitter, cem_emit_type(lowered_ty), arg_tmp, result);
+        result = arg_tmp;
+    }
+    return result;
+}
+
+/**
  * Report whether any scope in the current chain has pending cleanup work.
  *
  * @param self Backend state to inspect.
@@ -891,6 +975,15 @@ func be_emit_checked_index_lvalue(self: Backend*, base: string, index: string, b
         if (raw_array_base) {
             return "(" + base + ")[" + index + "]";
         }
+        return "(" + base + ").data[" + index + "]";
+    }
+    if (ord(base_ty.kind) == ord(TY_SLICE)) {
+        let len_expr = "(" + base + ").len";
+        ccb_emit(self.emitter.out, "if ((" + index + ") < 0 || (" + index + ") >= " + len_expr + ") {");
+        ccb_indent(self.emitter.out);
+        ccb_emit(self.emitter.out, "_rt_panic_oob(" + index + ", " + len_expr + ");");
+        ccb_dedent(self.emitter.out);
+        ccb_emit(self.emitter.out, "}");
         return "(" + base + ").data[" + index + "]";
     }
     return cem_emit_index_lvalue(base, index);
@@ -1267,6 +1360,44 @@ func be_emit_array_fill_value(self: Backend*, value_expr: ExprId, expected: Type
 }
 
 /**
+ * Emit a fixed-array value as a non-owning slice descriptor for a slice target.
+ *
+ * Arrays always have a positive compile-time length, so the descriptor length is
+ * the array length and the data pointer is the array's storage.
+ *
+ * @param self Backend state to update.
+ * @param expr_id Source array expression.
+ * @param array_ty Resolved array type of the source.
+ * @param slice_ty Resolved slice target type.
+ * @return Lowered slice descriptor expression.
+ */
+func be_emit_array_to_slice(self: Backend*, expr_id: ExprId, array_ty: Type*, slice_ty: Type*) -> string {
+    let arr_c = be_emit_expr(self, expr_id);
+    if (be_has_side_effects(self, expr_id)) {
+        arr_c = be_materialize_slice_array_temp(self, arr_c, expr_id, array_ty, "slice_arr");
+    }
+    return "((" + cem_emit_type(slice_ty) + "){ .len = ((dea_int)" + int_to_string(array_ty.array_len) +
+        "), .data = (" + arr_c + ").data })";
+}
+
+/**
+ * Report whether an array-to-slice conversion applies for a slice target.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Source expression.
+ * @param expected Expected destination type.
+ * @return `true` when `expected` is a slice and the source is an array.
+ */
+func be_needs_array_to_slice(self: Backend*, expr_id: ExprId, expected: Type*) -> bool {
+    if (ord(expected.kind) != ord(TY_SLICE)) {
+        return false;
+    }
+    with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
+        return natural_ty != null && ord((natural_ty as Type*).kind) == ord(TY_ARRAY);
+    }
+}
+
+/**
  * Emit one expression with implicit conversion to an expected type.
  *
  * @param self Backend state to inspect.
@@ -1281,6 +1412,11 @@ func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: 
     }
     if (ord(expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
         return be_emit_array_literal_value(self, expr_id, expected);
+    }
+    if (be_needs_array_to_slice(self, expr_id, expected)) {
+        with (let array_ty = be_expr_type(self, expr_id) => type_free_opt(array_ty)) {
+            return be_emit_array_to_slice(self, expr_id, array_ty as Type*, expected);
+        }
     }
 
     with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
@@ -1304,6 +1440,11 @@ func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expe
     }
     if (ord(expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
         return be_emit_array_literal_value(self, expr_id, expected);
+    }
+    if (be_needs_array_to_slice(self, expr_id, expected)) {
+        with (let array_ty = be_expr_type(self, expr_id) => type_free_opt(array_ty)) {
+            return be_emit_array_to_slice(self, expr_id, array_ty as Type*, expected);
+        }
     }
 
     with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
@@ -2556,16 +2697,7 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
 
                     let field = ptr_vec_get(struct_info.fields, param_index) as StructFieldInfo*;
                     let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field.field_type);
-                    
-                    if (is_out_of_order) {
-                        with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
-                            if (arg_ty != null) {
-                                let tmp = cem_fresh_tmp(self.emitter, "arg");
-                                cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
-                                c_arg = tmp;
-                            }
-                        }
-                    }
+                    c_arg = be_finalize_lowered_constructor_arg(self, c_arg, field.field_type, is_out_of_order);
                     sv_push(c_arg_tmps, c_arg);
                 }
 
@@ -2640,16 +2772,7 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
 
                     let field_ty = ptr_vec_get(info2.field_types, param_index) as Type*;
                     let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field_ty);
-                    
-                    if (is_out_of_order) {
-                        with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
-                            if (arg_ty != null) {
-                                let tmp = cem_fresh_tmp(self.emitter, "arg");
-                                cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), tmp, c_arg);
-                                c_arg = tmp;
-                            }
-                        }
-                    }
+                    c_arg = be_finalize_lowered_constructor_arg(self, c_arg, field_ty, is_out_of_order);
                     sv_push(c_arg_tmps, c_arg);
                 }
 
@@ -2710,6 +2833,101 @@ func be_emit_is_intrinsic(self: Backend*, expr: ExprNode*) -> string {
 }
 
 /**
+ * Emit one `slice` intrinsic call as a slice descriptor compound literal.
+ *
+ * Generated C evaluates the source, start, and count operands in argument order,
+ * performs range checks via `_rt_panic_oob` before any pointer arithmetic, and
+ * yields a descriptor whose `data` is `NULL` when the resulting length is zero.
+ *
+ * @param self Backend state to update.
+ * @param expr Call expression node.
+ * @param expr_id Call expression id.
+ * @return Lowered slice descriptor expression.
+ */
+func be_emit_slice_descriptor(self: Backend*, expr: ExprNode*, expr_id: ExprId) -> string {
+    let args = expr.ids as VectorBase*;
+    let argc = vec_size(args);
+    let src_id = id_vec_get(args, 0);
+
+    let result_c = "";
+    with (let result_ty = be_expr_type(self, expr_id) => type_free_opt(result_ty)) {
+        if (result_ty == null || ord((result_ty as Type*).kind) != ord(TY_SLICE)) {
+            return be_ice_string("[ICE-2272] missing slice result type");
+        }
+        result_c = cem_emit_type(result_ty as Type*);
+    }
+
+    with (let src_ty = be_expr_type(self, src_id) => type_free_opt(src_ty)) {
+        if (src_ty == null) {
+            return be_ice_string("[ICE-2273] missing slice source type");
+        }
+        let src_is_array = ord((src_ty as Type*).kind) == ord(TY_ARRAY);
+        if (!src_is_array && ord((src_ty as Type*).kind) != ord(TY_SLICE)) {
+            return be_ice_string("[ICE-2274] slice source is neither array nor slice");
+        }
+        let elem_c = cem_emit_type((src_ty as Type*).inner as Type*);
+
+        let src_ref = be_emit_expr(self, src_id);
+        if (be_has_side_effects(self, src_id)) {
+            if (src_is_array) {
+                src_ref = be_materialize_slice_array_temp(self, src_ref, src_id, src_ty as Type*, "slice_src");
+            } else {
+                let src_temp = cem_fresh_tmp(self.emitter, "slice_src");
+                cem_emit_temp_decl(self.emitter, cem_emit_type(src_ty as Type*), src_temp, src_ref);
+                src_ref = src_temp;
+            }
+        }
+
+        let base_len = "(" + src_ref + ").len";
+        if (src_is_array) {
+            base_len = "((dea_int)" + int_to_string((src_ty as Type*).array_len) + ")";
+        }
+        let base_data = "(" + src_ref + ").data";
+
+        let start_c = "((dea_int)0)";
+        if (argc >= 2) {
+            let start_temp = cem_fresh_tmp(self.emitter, "slice_start");
+            cem_emit_temp_decl(self.emitter, "dea_int", start_temp, be_emit_expr(self, id_vec_get(args, 1)));
+            start_c = start_temp;
+        }
+        let count_c = "";
+        if (argc >= 3) {
+            let count_temp = cem_fresh_tmp(self.emitter, "slice_count");
+            cem_emit_temp_decl(self.emitter, "dea_int", count_temp, be_emit_expr(self, id_vec_get(args, 2)));
+            count_c = count_temp;
+        }
+
+        let len_init = base_len;
+        if (argc == 2) {
+            ccb_emit(self.emitter.out, "if ((" + start_c + ") < 0 || (" + start_c + ") > " + base_len + ") {");
+            ccb_indent(self.emitter.out);
+            ccb_emit(self.emitter.out, "_rt_panic_oob(" + start_c + ", " + base_len + ");");
+            ccb_dedent(self.emitter.out);
+            ccb_emit(self.emitter.out, "}");
+            len_init = "((" + base_len + ") - (" + start_c + "))";
+        } else if (argc == 3) {
+            let remaining_c = "((" + base_len + ") - (" + start_c + "))";
+            ccb_emit(self.emitter.out, "if ((" + start_c + ") < 0 || (" + start_c + ") > " + base_len + ") {");
+            ccb_indent(self.emitter.out);
+            ccb_emit(self.emitter.out, "_rt_panic_oob(" + start_c + ", " + base_len + ");");
+            ccb_dedent(self.emitter.out);
+            ccb_emit(self.emitter.out, "}");
+            ccb_emit(self.emitter.out, "if ((" + count_c + ") < 0 || (" + count_c + ") > " + remaining_c + ") {");
+            ccb_indent(self.emitter.out);
+            ccb_emit(self.emitter.out, "_rt_panic_oob(" + count_c + ", " + remaining_c + ");");
+            ccb_dedent(self.emitter.out);
+            ccb_emit(self.emitter.out, "}");
+            len_init = count_c;
+        }
+
+        let len_temp = cem_fresh_tmp(self.emitter, "slice_len");
+        cem_emit_temp_decl(self.emitter, "dea_int", len_temp, len_init);
+        let data_c = "((" + len_temp + ") == 0 ? (" + elem_c + " *)0 : (" + base_data + ") + (" + start_c + "))";
+        return "((" + result_c + "){ .len = " + len_temp + ", .data = " + data_c + " })";
+    }
+}
+
+/**
  * Emit one call expression.
  *
  * @param self Backend state to inspect.
@@ -2749,6 +2967,27 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
 
         if (dea_is_intrinsic_symbol(callee_sym, "is") && expr.ids != null && vec_size(expr.ids as VectorBase*) == 2) {
             return be_emit_is_intrinsic(self, expr);
+        }
+
+        if (dea_is_intrinsic_symbol(callee_sym, "len") && expr.ids != null && vec_size(expr.ids as VectorBase*) == 1) {
+            let len_arg_id = id_vec_get(expr.ids as VectorBase*, 0);
+            with (let len_arg_ty = be_expr_type(self, len_arg_id) => type_free_opt(len_arg_ty)) {
+                if (len_arg_ty == null) {
+                    return be_ice_string("[ICE-2271] missing type for len argument");
+                }
+                if (ord((len_arg_ty as Type*).kind) == ord(TY_ARRAY)) {
+                    return "((dea_int)" + int_to_string((len_arg_ty as Type*).array_len) + ")";
+                }
+                if (ord((len_arg_ty as Type*).kind) == ord(TY_SLICE)) {
+                    return "(" + be_emit_expr(self, len_arg_id) + ").len";
+                }
+                return be_ice_string("[ICE-2271] len argument is neither array nor slice");
+            }
+        }
+
+        if (dea_is_intrinsic_symbol(callee_sym, "slice") && expr.ids != null &&
+            vec_size(expr.ids as VectorBase*) >= 1 && vec_size(expr.ids as VectorBase*) <= 3) {
+            return be_emit_slice_descriptor(self, expr, expr_id);
         }
 
         if (dea_is_symbol(callee_sym)) {
@@ -2826,14 +3065,15 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                                 c_arg = be_emit_expr(self, arg_id);
                             }
 
-                            with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
-                                if (arg_ty != null && be_should_materialize_arc_temp(self, arg_id, arg_ty as Type*)) {
-                                    c_arg = be_materialize_arc_temp(self, c_arg, arg_ty as Type*);
-                                }
-                                if (is_out_of_order && arg_ty != null) {
-                                    let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
-                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), arg_tmp, c_arg);
-                                    c_arg = arg_tmp;
+                            if (param_ty != null) {
+                                c_arg = be_finalize_lowered_call_arg(self, arg_id, c_arg, param_ty as Type*,
+                                    is_out_of_order);
+                            } else {
+                                with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                                    if (arg_ty != null) {
+                                        c_arg = be_finalize_lowered_call_arg(self, arg_id, c_arg, arg_ty as Type*,
+                                            is_out_of_order);
+                                    }
                                 }
                             }
                             sv_push(c_arg_tmps, c_arg);
@@ -2983,16 +3223,7 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
 
                         let field = ptr_vec_get((info as StructInfo*).fields, param_index) as StructFieldInfo*;
                         let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field.field_type);
-                        
-                        if (is_out_of_order) {
-                            with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
-                                if (arg_ty != null) {
-                                    let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
-                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), arg_tmp, c_arg);
-                                    c_arg = arg_tmp;
-                                }
-                            }
-                        }
+                        c_arg = be_finalize_lowered_constructor_arg(self, c_arg, field.field_type, is_out_of_order);
                         sv_push(c_arg_tmps, c_arg);
                     }
 
@@ -3065,16 +3296,7 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
 
                         let field_ty = ptr_vec_get((variant_info as EnumVariantInfo*).field_types, param_index) as Type*;
                         let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field_ty);
-                        
-                        if (is_out_of_order) {
-                            with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
-                                if (arg_ty != null) {
-                                    let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
-                                    cem_emit_temp_decl(self.emitter, cem_emit_type(arg_ty as Type*), arg_tmp, c_arg);
-                                    c_arg = arg_tmp;
-                                }
-                            }
-                        }
+                        c_arg = be_finalize_lowered_constructor_arg(self, c_arg, field_ty, is_out_of_order);
                         sv_push(c_arg_tmps, c_arg);
                     }
 
@@ -4562,6 +4784,8 @@ func backend_generate(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogCo
         be_emit_type_definitions(self);
         cem_emit_section_comment(self.emitter, "Array wrapper types");
         cem_emit_array_wrappers(self.emitter);
+        cem_emit_section_comment(self.emitter, "Slice descriptor types");
+        cem_emit_slice_wrappers(self.emitter);
         cem_emit_section_comment(self.emitter, "Optional wrapper types (late)");
         cem_emit_optional_wrappers(self.emitter, false);
         cem_emit_section_comment(self.emitter, "Function pointer typedefs");

@@ -1177,6 +1177,53 @@ func test_run_fixed_array_oob_fails() {
 }
 
 /**
+ * Tests end-to-end execution of slices, len, and slice intrinsics.
+ */
+func test_run_slice_ok() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "slice_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "slice_main should succeed");
+    }
+}
+
+/**
+ * Tests that out-of-bounds slice indexing panics through `_rt_panic_oob`.
+ */
+func test_run_slice_oob_fails() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "slice_oob_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc != 0, "slice_oob_main should fail through _rt_panic_oob");
+    }
+}
+
+/**
+ * Tests traced execution confirms non-owning string slices emit no spurious release.
+ */
+func test_run_trace_slice_non_owning() {
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "slice_trace_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced slice_trace_main should succeed without double free");
+    }
+}
+
+/**
  * Tests traced execution for fixed-size array ARC assignment paths.
  */
 func test_run_trace_fixed_array_arc_paths() {
@@ -1260,6 +1307,9 @@ func main() {
     test_run_real_decompose();
     test_run_real_transcendental();
     test_run_fixed_array_oob_fails();
+    test_run_slice_ok();
+    test_run_slice_oob_fails();
+    test_run_trace_slice_non_owning();
     test_run_trace_fixed_array_arc_paths();
     test_run_trace_fixed_array_nested_return();
     printl_s("l1c_lib_test: all tests passed");

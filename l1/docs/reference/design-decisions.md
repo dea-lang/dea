@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-05-19
+Version: 2026-06-16
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -137,6 +137,28 @@ broadcasts that row across the ten outer elements.
 Array indexing is safe: generated code evaluates the base and index once, checks `index < 0 || index >= N`, and calls
 `_rt_panic_oob(index, N)` on failure. Raw pointer indexing remains the unsafe, unchecked operation described above.
 
+## 7.2 Slice Policy
+
+Slices are first-class non-owning views spelled `T[]`. A slice is a descriptor `{ dea_int len; T *data; }` copied by
+value with no retain, release, or cleanup for the descriptor itself; ownership of the pointed-to storage stays with the
+underlying fixed array. Compiler-materialized fixed-array rvalues used as slice backing storage still follow normal
+array cleanup rules when their element type transitively contains ARC-managed data. The initial surface supports `T[]`,
+`T*[]`, and `T?[]`; `T[]?` and `T[]*` are rejected so the non-owning escape restrictions are not weakened. The
+inferred-length form `T[_]` is reserved and rejected by the parser, never `T[]`.
+
+Because slices do not own their storage and this stage has no borrow or lifetime analysis, they are accepted only as
+local variables, parameters, and call arguments. They are rejected as function return types, returned expressions,
+struct fields, top-level `let` bindings, and enum (heap) payload fields.
+
+A fixed array `T[N]` converts to `T[]` only in known slice target contexts: function arguments, annotated local
+initialization, and assignment to an existing slice variable. There is no unconstrained `T[N] -> T[]` decay, keeping
+ownership explicit. The conversion forms a descriptor from the array length and a pointer to the array's storage.
+
+`len(x)` returns the `int` length of a fixed array or slice. `slice(x)`, `slice(x, start)`, and `slice(x, start, count)`
+build a `T[]` over a fixed array or slice; the third argument is `count`, not an end index. Index, `start`, and `count`
+operands must be `int`. Slice indexing and slice-range construction are bounds-checked with `_rt_panic_oob` before any
+pointer arithmetic or dereference, and a zero-length result uses `len = 0` and `data = NULL`.
+
 - `ptr[index] = value` follows the same slot-replacement ARC discipline as other ordinary assignments when `T`
   transitively contains ARC-managed data
 
@@ -213,20 +235,21 @@ Current contents:
 - `dea::sizeof`
 - `dea::ord`
 - `dea::is`
+- `dea::len`
+- `dea::slice`
 
 Current policy:
 
 - `dea` is a virtual module owned by the compiler, not a source file loaded from disk
 - `dea` is opened into every module automatically
 - `dea` has the lowest import precedence, so user locals and explicit imports shadow it normally
-- `dea::sizeof`, `dea::ord`, and `dea::is` remain the stable qualified escape hatch when user code intentionally reuses
-  those names
+- `dea::sizeof`, `dea::ord`, `dea::is`, `dea::len`, and `dea::slice` remain the stable qualified escape hatch when user
+  code intentionally reuses those names
 - this behavior does not change the surface grammar: `dea` is a semantic prelude mechanism, not a special import syntax
-- qualified `dea::sizeof`, `dea::ord`, and `dea::is` are always available even when unqualified `sizeof`, `ord`, or `is`
-  are shadowed
+- qualified `dea::*` intrinsics are always available even when the unqualified names are shadowed
 - shadowing uses the normal name-resolution rules and warning behavior rather than bespoke intrinsic-specific fallback
 - `dea::is(value, Variant)` compares enum tags only and does not evaluate or synthesize payload values for `Variant`
-- `sizeof`, `ord`, and `is` do not accept named arguments
+- `sizeof`, `ord`, `is`, `len`, and `slice` do not accept named arguments
 
 Rationale:
 

@@ -298,6 +298,8 @@ func pi_apply_type_ref_suffix(base: Type*, tref: TypeRef*) -> Type* {
                 result = type_new_pointer(result);
             } else if (ord(suffix.kind) == ord(TS_ARRAY)) {
                 result = type_append_array_dimension(result, suffix.array_len);
+            } else if (ord(suffix.kind) == ord(TS_SLICE)) {
+                result = type_new_slice(result);
             } else {
                 result = type_new_nullable(result);
             }

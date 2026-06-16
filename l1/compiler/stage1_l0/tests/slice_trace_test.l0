@@ -1,0 +1,44 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_trace_test;
+
+import std.assert;
+import std.vector;
+
+import l1c_lib;
+
+/**
+ * Return the driver fixture directory.
+ *
+ * @return Driver fixture root used by `--run` tests.
+ */
+func fixture_root() -> string {
+    return "compiler/stage1_l0/tests/fixtures/driver";
+}
+
+/**
+ * Test traced execution of slice descriptors backed by ARC arrays.
+ */
+func test_run_trace_slice_backing_arrays() {
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "slice_trace_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced slice_trace_main should succeed");
+    }
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_run_trace_slice_backing_arrays();
+}

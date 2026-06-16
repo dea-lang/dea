@@ -1,7 +1,7 @@
 # ADR-0008: LBI Symbol Mangling
 
 - Decision date: 2026-04-24
-- Last edited: 2026-05-20
+- Last edited: 2026-06-20
 - Status: Accepted
 
 ## Context
@@ -18,6 +18,8 @@ Key properties:
 - Each exported L1 symbol is mangled into a unique C identifier encoding the module path, function name, and signature.
 - The mangling grammar is recursive and handles nested types, pointers, nullable types, array types, and function
   pointer types.
+- Every grammar marker is one ASCII letter, and the exact letter, grammar position, and recursive shape of a new marker
+  must be explicitly selected in its implementation plan before compiler work begins.
 - The emitter reserves the `dea_*` / `DEA_*` namespace (from [ADR-0002][adr-abi]) and the historical `l0_*` namespace in
   user-identifier mangling to prevent collisions.
 - Linkage is export-driven: a symbol is exported only when it appears in the module's export manifest.
@@ -39,12 +41,14 @@ source-significant order.
 - All L1 object files follow the LBI mangling scheme; any change to the scheme is an ABI break.
 - The normative specification in `l1/docs/specs/compiler/abi.md` is the single source of truth for the mangling
   algorithm.
+- Compiler implementations may not invent LBI encodings or introduce multi-letter markers.
 - Mangling is validated by the test suite; golden fixtures are regenerated when the scheme changes intentionally.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md][lbi-mangling]
 - [l1/work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md][lbi-unified]
+- [l1/work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md][slices]
 
 ## Current Docs
 
@@ -55,3 +59,4 @@ source-significant order.
 [lbi-mangling]: ../../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
 [lbi-unified]: ../../work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md
 [runtime-lib]: ../../initiatives/closed/0002-runtime-static-library.md
+[slices]: ../../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md

@@ -158,6 +158,7 @@ enum TypeSuffixKind {
     TS_POINTER;
     TS_NULLABLE;
     TS_ARRAY;
+    TS_SLICE;
 }
 
 /**
