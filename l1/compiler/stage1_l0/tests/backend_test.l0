@@ -1102,7 +1102,7 @@ func test_backend_generate_pointer_indexing_contract() {
 func test_backend_generate_fixed_arrays() {
     with (let filenames = sv_create(1) => sv_free(filenames),
           let sources = sv_create(1) => sv_free(sources),
-          let lines = sv_create(20) => sv_free(lines),
+          let lines = sv_create(24) => sv_free(lines),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
           let opts = cg_options_create() => cg_options_free(opts)) {
         opts.emit_line_directives = false;
@@ -1112,13 +1112,17 @@ func test_backend_generate_fixed_arrays() {
         sv_push(lines, "unsafe func read_row(p: int[3]*, i: int, j: int) -> int { return p[i][j]; }");
         sv_push(lines, "func main() -> int {");
         sv_push(lines, "    let a: int[3] = [1, 2];");
+        sv_push(lines, "    let p: int[3] = ((([9, 8, 7])));");
         sv_push(lines, "    let z: int[3] = [];");
         sv_push(lines, "    let b = int[3](7);");
         sv_push(lines, "    let m: int[2][3] = [[1, 2, 3], [4, 5, 6]];");
+        sv_push(lines, "    let pm: int[2][3] = ((([([9, 8, 7]), (([6, 5, 4]))])));");
         sv_push(lines, "    let filled = int[2][3]([8, 9]);");
+        sv_push(lines, "    let filled_paren = int[2][3]((([6, 7])));");
         sv_push(lines, "    let heap = new int[2][3]([4, 5]);");
+        sv_push(lines, "    let heap_paren = new int[2][3]((([2, 3])));");
         sv_push(lines, "    let opt_arr: int[3]? = a;");
-        sv_push(lines, "    return a[get_index()] + z[0] + b[2] + m[get_index()][get_index()] + filled[1][0] + (*heap)[1][1] + sizeof(int[3]) + sizeof(a[0]);");
+        sv_push(lines, "    return a[get_index()] + p[0] + z[0] + b[2] + m[get_index()][get_index()] + pm[0][0] + filled[1][0] + filled_paren[1][0] + (*heap)[1][1] + (*heap_paren)[1][1] + sizeof(int[3]) + sizeof(a[0]);");
         sv_push(lines, "}");
         sv_push(sources, bt_source(lines));
 
@@ -1136,6 +1140,8 @@ func test_backend_generate_fixed_arrays() {
             "expected int[3] wrapper before nullable int[3] wrapper");
         assert(contains_s(generated, "__deaA3_i a = ((__deaA3_i){.data = {1, 2}});"),
             "expected contextual array literal initializer");
+        assert(contains_s(generated, "__deaA3_i p = ((__deaA3_i){.data = {9, 8, 7}});"),
+            "expected parenthesized contextual array literal initializer");
         assert(contains_s(generated, "__deaA3_i z = ((__deaA3_i){.data = {0}});"),
             "expected C99-compatible empty array literal initializer");
         assert(contains_s(generated, "__deaA2_A3_i filled = dea_arr_"),

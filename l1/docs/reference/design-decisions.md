@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-06-16
+Version: 2026-06-17
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -128,11 +128,16 @@ source-significant across pointer, nullable, and array suffixes: `T*[N]` is an a
 to an array, `T?*` is a pointer to optional storage, and `T*?` is an optional pointer. Adjacent dimensions preserve
 C-like source order, so `int[2][3]` is two rows of three `int` values.
 
-Array literals (`[a, b]`) are contextual only. They are accepted when the target type is a fixed-size array, reject
-overlong element lists, and zero/default-pad omitted trailing elements. Array constructor expressions are restricted to
-array type calls with one argument, either `T[N]([ ... ])` or `T[N](value)` for fill. The fill value has the element
-type `T`, and `T` may itself be an array type: `int[10][20]([1, 2, 3])` contextually builds one `int[20]` row and
-broadcasts that row across the ten outer elements.
+Array literals (`[a, b]`) are contextual only and have no standalone type. They are accepted only when the expected type
+is a fixed-size array `T[N]`, reject overlong element lists, and zero/default-pad omitted trailing elements. Expected
+fixed-size array contexts include annotated locals, assignments, function parameters, struct constructor fields, enum
+payload fields, `new` initializer fields, return expressions, and explicit array constructors. A slice target `T[]` is
+not an array-literal context; users must first create a fixed array value, then use an approved fixed-array-to-slice
+conversion context.
+
+Array constructor expressions are restricted to array type calls with one argument, either `T[N]([ ... ])` or
+`T[N](value)` for fill. The fill value has the element type `T`, and `T` may itself be an array type:
+`int[10][20]([1, 2, 3])` contextually builds one `int[20]` row and broadcasts that row across the ten outer elements.
 
 Array indexing is safe: generated code evaluates the base and index once, checks `index < 0 || index >= N`, and calls
 `_rt_panic_oob(index, N)` on failure. Raw pointer indexing remains the unsafe, unchecked operation described above.

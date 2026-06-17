@@ -796,6 +796,36 @@ func test_typing_large_int_literal_overflow() {
 }
 
 /**
+ * Tests contextual fixed-array literals in assignment-like typed contexts.
+ */
+func test_typing_contextual_array_literals_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_contextual_array_literals_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_contextual_array_literals_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests rejected non-contextual and invalid contextual array literals.
+ */
+func test_typing_contextual_array_literals_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_contextual_array_literals_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_contextual_array_literals_err");
+        assert(count_diag_code(result, "TYP-0801") == 3, "expected standalone and slice-call literals to report TYP-0801");
+        assert(has_diag_code(result, "TYP-0802"), "expected overlong function argument to report TYP-0802");
+        assert(has_diag_code(result, "TYP-0803"), "expected element mismatch function argument to report TYP-0803");
+        assert(!has_diag_code(result, "TYP-0312"), "did not expect secondary function-call mismatch diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests rejected implicit narrowing and invalid casts for floating-point builtins.
  */
 func test_typing_float_err() {
@@ -1300,6 +1330,8 @@ func main() {
     test_typing_large_int_ok();
     test_typing_large_int_err();
     test_typing_large_int_literal_overflow();
+    test_typing_contextual_array_literals_ok();
+    test_typing_contextual_array_literals_err();
     test_typing_float_ok();
     test_typing_float_err();
     test_typing_string_concat_ok();

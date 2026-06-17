@@ -312,6 +312,27 @@ func be_expr_type(self: Backend*, expr_id: ExprId) -> Type*? {
     return analysis_get_expr_type(self.result, self.current_module as string, expr_id);
 }
 
+/**
+ * Return the inner expression after removing any parenthesized wrappers.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression id to unwrap.
+ * @return The first non-parenthesized expression id.
+ */
+func be_unwrap_paren_expr_id(self: Backend*, expr_id: ExprId) -> ExprId {
+    let current = expr_id;
+    let done = false;
+    while (!done) {
+        let expr = expr_arena_get(be_current_expr_arena(self), current);
+        if (ord(expr.kind) == ord(EX_PAREN)) {
+            current = expr.expr_a;
+        } else {
+            done = true;
+        }
+    }
+    return current;
+}
+
 func be_bigint_expr_text(self: Backend*, expr_id: ExprId) -> string? {
     if (expr_id < 0) {
         return null;
@@ -1285,10 +1306,11 @@ func be_emit_array_literal_data_initializer(self: Backend*, expr_id: ExprId, exp
                 sb_append(sb, ", ");
             }
             let elem_id = id_vec_get(ids, i);
-            let elem_expr = expr_arena_get(be_current_expr_arena(self), elem_id);
+            let elem_literal_id = be_unwrap_paren_expr_id(self, elem_id);
+            let elem_expr = expr_arena_get(be_current_expr_arena(self), elem_literal_id);
             let elem_ty = expected.inner as Type*;
             if (ord(elem_ty.kind) == ord(TY_ARRAY) && ord(elem_expr.kind) == ord(EX_ARRAY_LITERAL)) {
-                sb_append(sb, be_emit_array_literal_data_initializer(self, elem_id, elem_ty));
+                sb_append(sb, be_emit_array_literal_data_initializer(self, elem_literal_id, elem_ty));
             } else {
                 sb_append(sb, be_emit_owned_expr_with_expected_type(self, elem_id, elem_ty));
             }
@@ -1410,8 +1432,10 @@ func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: 
     if (ord(expr.kind) == ord(EX_NULL)) {
         return cem_emit_null_literal(expected, false);
     }
-    if (ord(expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
-        return be_emit_array_literal_value(self, expr_id, expected);
+    let literal_id = be_unwrap_paren_expr_id(self, expr_id);
+    let literal_expr = expr_arena_get(be_current_expr_arena(self), literal_id);
+    if (ord(literal_expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
+        return be_emit_array_literal_value(self, literal_id, expected);
     }
     if (be_needs_array_to_slice(self, expr_id, expected)) {
         with (let array_ty = be_expr_type(self, expr_id) => type_free_opt(array_ty)) {
@@ -1438,8 +1462,10 @@ func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expe
     if (ord(expr.kind) == ord(EX_NULL)) {
         return be_emit_expr_with_expected_type(self, expr_id, expected);
     }
-    if (ord(expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
-        return be_emit_array_literal_value(self, expr_id, expected);
+    let literal_id = be_unwrap_paren_expr_id(self, expr_id);
+    let literal_expr = expr_arena_get(be_current_expr_arena(self), literal_id);
+    if (ord(literal_expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
+        return be_emit_array_literal_value(self, literal_id, expected);
     }
     if (be_needs_array_to_slice(self, expr_id, expected)) {
         with (let array_ty = be_expr_type(self, expr_id) => type_free_opt(array_ty)) {
@@ -1846,6 +1872,11 @@ func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type:
     let bigint_init = be_emit_typed_bigint_expr(self, expr_id, expected_type);
     if (bigint_init != null) {
         return bigint_init;
+    }
+    let literal_id = be_unwrap_paren_expr_id(self, expr_id);
+    let literal_expr = expr_arena_get(be_current_expr_arena(self), literal_id);
+    if (ord(literal_expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected_type.kind) == ord(TY_ARRAY)) {
+        return be_emit_array_literal_value(self, literal_id, expected_type);
     }
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
     match (expr.kind) {
@@ -3171,15 +3202,17 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
                 return tmp;
             }
             let arg_id = id_vec_get(expr.ids as VectorBase*, 0);
-            let arg_expr = expr_arena_get(be_current_expr_arena(self), arg_id);
+            let literal_arg_id = be_unwrap_paren_expr_id(self, arg_id);
+            let arg_expr = expr_arena_get(be_current_expr_arena(self), literal_arg_id);
             if (ord(arg_expr.kind) == ord(EX_ARRAY_LITERAL)) {
-                with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                with (let arg_ty = be_expr_type(self, literal_arg_id) => type_free_opt(arg_ty)) {
                     if (arg_ty != null && type_equals(arg_ty as Type*, base_ty.inner as Type*)) {
-                        cem_emit_pointer_assignment(self.emitter, tmp, be_emit_array_fill_value(self, arg_id, base_ty));
+                        cem_emit_pointer_assignment(self.emitter, tmp,
+                            be_emit_array_fill_value(self, literal_arg_id, base_ty));
                         return tmp;
                     }
                 }
-                cem_emit_pointer_assignment(self.emitter, tmp, be_emit_array_literal_value(self, arg_id, base_ty));
+                cem_emit_pointer_assignment(self.emitter, tmp, be_emit_array_literal_value(self, literal_arg_id, base_ty));
                 return tmp;
             }
             cem_emit_pointer_assignment(self.emitter, tmp, be_emit_array_fill_value(self, arg_id, base_ty));
@@ -3510,14 +3543,15 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                     return be_ice_string("[ICE-9152] invalid array constructor arity after type checking");
                 }
                 let arg_id = id_vec_get(expr.ids as VectorBase*, 0);
-                let arg_expr = expr_arena_get(be_current_expr_arena(self), arg_id);
+                let literal_arg_id = be_unwrap_paren_expr_id(self, arg_id);
+                let arg_expr = expr_arena_get(be_current_expr_arena(self), literal_arg_id);
                 if (ord(arg_expr.kind) == ord(EX_ARRAY_LITERAL)) {
-                    with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
+                    with (let arg_ty = be_expr_type(self, literal_arg_id) => type_free_opt(arg_ty)) {
                         if (arg_ty != null && type_equals(arg_ty as Type*, (arr_ty as Type*).inner as Type*)) {
-                            return be_emit_array_fill_value(self, arg_id, arr_ty as Type*);
+                            return be_emit_array_fill_value(self, literal_arg_id, arr_ty as Type*);
                         }
                     }
-                    return be_emit_array_literal_value(self, arg_id, arr_ty as Type*);
+                    return be_emit_array_literal_value(self, literal_arg_id, arr_ty as Type*);
                 }
                 return be_emit_array_fill_value(self, arg_id, arr_ty as Type*);
             }

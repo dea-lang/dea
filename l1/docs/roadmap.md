@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-06-15
+Version: 2026-06-17
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -139,6 +139,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c` CUs.
 - Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices] adds Stage 1 slice types `T[]`,
   `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
+- Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] makes Stage 1 check array
+  literals against expected fixed-size array contexts before standalone inference.
 
 ## Backlog
 
@@ -220,6 +222,7 @@ update to be promoted to an initiative or plan:
 [child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-driver]: ../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
+[contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md

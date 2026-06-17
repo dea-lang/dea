@@ -1674,27 +1674,13 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         if (type_is_builtin(ann_ty as Type*, "void")) {
                             etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", unit.path, stmt.span);
                         } else {
-                            let init_expr = expr_arena_get(unit.parse_result.expr_arena, stmt.expr_a);
-                            if (ord((ann_ty as Type*).kind) == ord(TY_ARRAY) &&
-                                ord(init_expr.kind) == ord(EX_ARRAY_LITERAL)) {
-                                let array_result = etc_check_array_literal_expr(self, ann_ty as Type*, stmt.expr_a,
+                            let assign_result = etc_check_expr_against_expected(self, ann_ty as Type*, stmt.expr_a,
+                                unit.path, stmt.span);
+                            if (ord(assign_result) == ord(ASSIGN_REJECT)) {
+                                etc_diag_error(self, "TYP-0310", "initializer for '" + stmt.name + "' type mismatch",
                                     unit.path, stmt.span);
-                                if (ord(array_result) == ord(ASSIGN_ACCEPT)) {
-                                    declare_local = true;
-                                }
-                            } else {
-                            let val_ty = etc_infer_expr(self, stmt.expr_a);
-                            if (val_ty != null) {
-                                let assign_result = etc_check_assign_expr(self, ann_ty as Type*, val_ty as Type*,
-                                    stmt.expr_a, unit.path, stmt.span);
-                                if (ord(assign_result) == ord(ASSIGN_REJECT)) {
-                                    etc_diag_error(self, "TYP-0310", "initializer for '" + stmt.name + "' type mismatch: " + type_format(ann_ty as Type*) + " and " + type_format(val_ty as Type*),
-                                        unit.path, stmt.span);
-                                } else if (ord(assign_result) == ord(ASSIGN_ACCEPT)) {
-                                    declare_local = true;
-                                }
-                                type_free(val_ty as Type*);
-                            }
+                            } else if (ord(assign_result) == ord(ASSIGN_ACCEPT)) {
+                                declare_local = true;
                             }
                         }
                         type_free(ann_ty as Type*);
@@ -1737,20 +1723,18 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             etc_alive_revive_assignment_target(self, stmt.expr_a);
             let const_target_name_opt = etc_assignment_const_target_name(self, stmt.expr_a);
             let left_ty = etc_infer_expr(self, stmt.expr_a);
-            let right_ty = etc_infer_expr(self, stmt.expr_b);
             if (const_target_name_opt != null) {
                 let const_target_name = const_target_name_opt as string;
                 const_target_name_opt = null;
                 etc_diag_error(self, "TYP-0360",
                     "cannot assign to const '" + const_target_name + "'", unit.path, stmt.span);
-            } else if (left_ty != null && right_ty != null) {
-                if (ord(etc_check_assign_expr(self, left_ty as Type*, right_ty as Type*, stmt.expr_b,
+            } else if (left_ty != null) {
+                if (ord(etc_check_expr_against_expected(self, left_ty as Type*, stmt.expr_b,
                     unit.path, stmt.span)) == ord(ASSIGN_REJECT)) {
                     etc_diag_error(self, "TYP-0311", "assignment type mismatch", unit.path, stmt.span);
                 }
             }
             if (left_ty != null) type_free(left_ty as Type*);
-            if (right_ty != null) type_free(right_ty as Type*);
         }
         ST_IF => {
             let cond_ty = etc_infer_expr(self, stmt.expr_a);
@@ -2034,13 +2018,10 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         etc_diag_error(self, "TYP-0315", "return type mismatch: expected " + type_format(expected), unit.path, stmt.span);
                     }
                 } else {
-                    let ret_ty = etc_infer_expr(self, stmt.expr_a);
-                    if (ret_ty != null) {
-                        if (ord(etc_check_assign_expr(self, expected, ret_ty as Type*, stmt.expr_a,
-                            unit.path, stmt.span)) == ord(ASSIGN_REJECT)) {
-                            etc_diag_error(self, "TYP-0315", "return type mismatch: expected " + type_format(expected) + ", got " + type_format(ret_ty as Type*), unit.path, stmt.span);
-                        }
-                        type_free(ret_ty as Type*);
+                    if (ord(etc_check_expr_against_expected(self, expected, stmt.expr_a,
+                        unit.path, stmt.span)) == ord(ASSIGN_REJECT)) {
+                        etc_diag_error(self, "TYP-0315", "return type mismatch: expected " + type_format(expected),
+                            unit.path, stmt.span);
                     }
                 }
             }
@@ -3223,15 +3204,11 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
         } else {
             for (let i = 0; i < arg_count; i = i + 1) {
                 let arg_id = id_vec_get(args as VectorBase*, i);
-                let arg_ty = etc_infer_expr(self, arg_id);
-                if (arg_ty != null) {
-                    let p_ty = *(vec_get(params, i) as Type**);
-                    if (ord(etc_check_assign_expr(self, p_ty, arg_ty as Type*, arg_id,
-                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
-                        etc_diag_error(self, "TYP-0312", "function call argument type mismatch",
-                            (self.current_unit as DriverUnit*).path, expr.span);
-                    }
-                    type_free(arg_ty as Type*);
+                let p_ty = *(vec_get(params, i) as Type**);
+                if (ord(etc_check_expr_against_expected(self, p_ty, arg_id,
+                    (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                    etc_diag_error(self, "TYP-0312", "function call argument type mismatch",
+                        (self.current_unit as DriverUnit*).path, expr.span);
                 }
             }
         }
@@ -3278,15 +3255,11 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
             } else {
                 for (let i = 0; i < arg_count2; i = i + 1) {
                     let arg_id2 = id_vec_get(args2 as VectorBase*, i);
-                    let arg_ty2 = etc_infer_expr(self, arg_id2);
-                    if (arg_ty2 != null) {
-                        let f_info = ptr_vec_get(fields, i) as StructFieldInfo*;
-                        if (ord(etc_check_assign_expr(self, f_info.field_type, arg_ty2 as Type*, arg_id2,
-                            (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
-                            etc_diag_error(self, "TYP-0313", "struct constructor field type mismatch",
-                                (self.current_unit as DriverUnit*).path, expr.span);
-                        }
-                        type_free(arg_ty2 as Type*);
+                    let f_info = ptr_vec_get(fields, i) as StructFieldInfo*;
+                    if (ord(etc_check_expr_against_expected(self, f_info.field_type, arg_id2,
+                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                        etc_diag_error(self, "TYP-0313", "struct constructor field type mismatch",
+                            (self.current_unit as DriverUnit*).path, expr.span);
                     }
                 }
             }
@@ -3352,15 +3325,11 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                             } else {
                                 for (let j = 0; j < arg_count3; j = j + 1) {
                                     let arg_id3 = id_vec_get(args3 as VectorBase*, j);
-                                    let arg_ty3 = etc_infer_expr(self, arg_id3);
-                                    if (arg_ty3 != null) {
-                                        let f_ty = ptr_vec_get(fields2, j) as Type*;
-                                        if (ord(etc_check_assign_expr(self, f_ty, arg_ty3 as Type*, arg_id3,
-                                            (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
-                                            etc_diag_error(self, "TYP-0314", "enum variant constructor field type mismatch",
-                                                (self.current_unit as DriverUnit*).path, expr.span);
-                                        }
-                                        type_free(arg_ty3 as Type*);
+                                    let f_ty = ptr_vec_get(fields2, j) as Type*;
+                                    if (ord(etc_check_expr_against_expected(self, f_ty, arg_id3,
+                                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                                        etc_diag_error(self, "TYP-0314", "enum variant constructor field type mismatch",
+                                            (self.current_unit as DriverUnit*).path, expr.span);
                                     }
                                 }
                             }
@@ -3531,6 +3500,65 @@ func etc_check_array_literal_expr(self: ExpressionTypeChecker*, dst: Type*, expr
 }
 
 /**
+ * Return the inner expression after removing any parenthesized wrappers.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Expression id to unwrap.
+ * @return The first non-parenthesized expression id.
+ */
+func etc_unwrap_paren_expr_id(self: ExpressionTypeChecker*, expr_id: ExprId) -> ExprId {
+    let unit = self.current_unit as DriverUnit*;
+    let current = expr_id;
+    let done = false;
+    while (!done) {
+        let expr = expr_arena_get(unit.parse_result.expr_arena, current);
+        if (ord(expr.kind) == ord(EX_PAREN)) {
+            current = expr.expr_a;
+        } else {
+            done = true;
+        }
+    }
+    return current;
+}
+
+/**
+ * Check an expression against an expected typed context.
+ *
+ * Array literals are contextual only: fixed-size array expectations are
+ * checked before standalone inference, while every other expected type rejects
+ * the literal without materializing a temporary array. Parentheses are
+ * transparent for the contextual array check.
+ *
+ * @param self Expression checker state.
+ * @param expected Expected target type.
+ * @param expr_id Expression id to check.
+ * @param filename Source filename.
+ * @param span Diagnostic span.
+ * @return Assignability result for the typed context.
+ */
+func etc_check_expr_against_expected(self: ExpressionTypeChecker*, expected: Type*, expr_id: ExprId, filename: string,
+                                     span: Span) -> AssignCheckResult {
+    let unit = self.current_unit as DriverUnit*;
+    let literal_id = etc_unwrap_paren_expr_id(self, expr_id);
+    let expr = expr_arena_get(unit.parse_result.expr_arena, literal_id);
+    if (ord(expr.kind) == ord(EX_ARRAY_LITERAL)) {
+        if (ord(expected.kind) == ord(TY_ARRAY)) {
+            return etc_check_array_literal_expr(self, expected, literal_id, filename, expr.span);
+        }
+        etc_diag_error(self, "TYP-0801", "array literal requires a contextual array type", filename, expr.span);
+        return ASSIGN_REPORTED;
+    }
+
+    let actual = etc_infer_expr(self, expr_id);
+    if (actual == null) {
+        return ASSIGN_REPORTED;
+    }
+    let result = etc_check_assign_expr(self, expected, actual as Type*, expr_id, filename, span);
+    type_free(actual as Type*);
+    return result;
+}
+
+/**
  * Check an array literal against a contextual array target.
  *
  * @param self Expression checker state.
@@ -3563,9 +3591,11 @@ func etc_check_array_literal_expr_mode(self: ExpressionTypeChecker*, dst: Type*,
     for (let i = 0; i < vec_size(ids); i = i + 1) {
         let elem_id = id_vec_get(ids, i);
         let elem_expr = expr_arena_get(unit.parse_result.expr_arena, elem_id);
-        if (ord(elem_ty.kind) == ord(TY_ARRAY) && ord(elem_expr.kind) == ord(EX_ARRAY_LITERAL)) {
-            let nested = etc_check_array_literal_expr_mode(self, elem_ty, elem_id, filename, elem_expr.span, report,
-                record);
+        let elem_literal_id = etc_unwrap_paren_expr_id(self, elem_id);
+        let elem_literal_expr = expr_arena_get(unit.parse_result.expr_arena, elem_literal_id);
+        if (ord(elem_ty.kind) == ord(TY_ARRAY) && ord(elem_literal_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+            let nested = etc_check_array_literal_expr_mode(self, elem_ty, elem_literal_id, filename,
+                elem_literal_expr.span, report, record);
             if (ord(nested) != ord(ASSIGN_ACCEPT)) {
                 return nested;
             }
@@ -3609,19 +3639,20 @@ func etc_check_array_literal_expr_mode(self: ExpressionTypeChecker*, dst: Type*,
 func etc_check_array_constructor_arg(self: ExpressionTypeChecker*, target: Type*, arg_id: ExprId,
                                      filename: string) -> bool {
     let unit = self.current_unit as DriverUnit*;
-    let arg_expr = expr_arena_get(unit.parse_result.expr_arena, arg_id);
+    let literal_id = etc_unwrap_paren_expr_id(self, arg_id);
+    let arg_expr = expr_arena_get(unit.parse_result.expr_arena, literal_id);
     if (ord(arg_expr.kind) == ord(EX_ARRAY_LITERAL)) {
-        let outer = etc_check_array_literal_expr_mode(self, target, arg_id, filename, arg_expr.span, false, false);
+        let outer = etc_check_array_literal_expr_mode(self, target, literal_id, filename, arg_expr.span, false, false);
         if (ord(outer) == ord(ASSIGN_ACCEPT)) {
-            etc_check_array_literal_expr_mode(self, target, arg_id, filename, arg_expr.span, true, true);
+            etc_check_array_literal_expr_mode(self, target, literal_id, filename, arg_expr.span, true, true);
             return true;
         }
         if (ord((target.inner as Type*).kind) == ord(TY_ARRAY)) {
-            let inner = etc_check_array_literal_expr_mode(self, target.inner as Type*, arg_id, filename, arg_expr.span,
-                true, true);
+            let inner = etc_check_array_literal_expr_mode(self, target.inner as Type*, literal_id, filename,
+                arg_expr.span, true, true);
             return ord(inner) == ord(ASSIGN_ACCEPT);
         }
-        etc_check_array_literal_expr_mode(self, target, arg_id, filename, arg_expr.span, true, true);
+        etc_check_array_literal_expr_mode(self, target, literal_id, filename, arg_expr.span, true, true);
         return false;
     }
 
@@ -3923,19 +3954,14 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                             }
                             for (let j = 0; j < arg_count; j = j + 1) {
                                 let arg_id = id_vec_get(args as VectorBase*, j);
-                                let arg_ty = etc_infer_expr(self, arg_id);
-                                if (arg_ty != null) {
-                                    if (j < field_count) {
-                                        let field_ty = ptr_vec_get(variant.field_types, j) as Type*;
-                                        if (ord(etc_check_assign_expr(self, field_ty, arg_ty as Type*,
-                                            arg_id, unit.path, expr.span)) ==
-                                            ord(ASSIGN_REJECT)) {
-                                            etc_diag_error(self, "TYP-0314",
-                                                "enum variant constructor field type mismatch",
-                                                unit.path, expr.span);
-                                        }
+                                if (j < field_count) {
+                                    let field_ty = ptr_vec_get(variant.field_types, j) as Type*;
+                                    if (ord(etc_check_expr_against_expected(self, field_ty, arg_id,
+                                        unit.path, expr.span)) == ord(ASSIGN_REJECT)) {
+                                        etc_diag_error(self, "TYP-0314",
+                                            "enum variant constructor field type mismatch",
+                                            unit.path, expr.span);
                                     }
-                                    type_free(arg_ty as Type*);
                                 }
                             }
                             if (resolved_args != null) id_vec_free(resolved_args as VectorBase*);
@@ -4006,19 +4032,14 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                 }
                                 for (let i = 0; i < arg_count; i = i + 1) {
                                     let arg_id2 = id_vec_get(args2 as VectorBase*, i);
-                                    let arg_ty = etc_infer_expr(self, arg_id2);
-                                    if (arg_ty != null) {
-                                        if (i < field_count) {
-                                            let field = ptr_vec_get(fields, i) as StructFieldInfo*;
-                                            if (ord(etc_check_assign_expr(self, field.field_type, arg_ty as Type*,
-                                                arg_id2, unit.path, expr.span)) ==
-                                                ord(ASSIGN_REJECT)) {
-                                                etc_diag_error(self, "TYP-0316",
-                                                    "field '" + field.name + "' of struct initializer type mismatch",
-                                                    unit.path, expr.span);
-                                            }
+                                    if (i < field_count) {
+                                        let field = ptr_vec_get(fields, i) as StructFieldInfo*;
+                                        if (ord(etc_check_expr_against_expected(self, field.field_type, arg_id2,
+                                            unit.path, expr.span)) == ord(ASSIGN_REJECT)) {
+                                            etc_diag_error(self, "TYP-0316",
+                                                "field '" + field.name + "' of struct initializer type mismatch",
+                                                unit.path, expr.span);
                                         }
-                                        type_free(arg_ty as Type*);
                                     }
                                 }
                                 if (resolved_args2 != null) id_vec_free(resolved_args2 as VectorBase*);
@@ -4030,16 +4051,12 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                                     unit.path, expr.span);
                             }
                             for (let i = 0; i < arg_count; i = i + 1) {
-                                let arg_ty2 = etc_infer_expr(self, id_vec_get(expr.ids as VectorBase*, i));
-                                if (arg_ty2 != null) {
-                                    if (i == 0 && ord(etc_check_assign_expr(self, base, arg_ty2 as Type*,
-                                        id_vec_get(expr.ids as VectorBase*, i), unit.path, expr.span)) ==
-                                        ord(ASSIGN_REJECT)) {
-                                        etc_diag_error(self, "TYP-0286",
-                                            "cannot initialize '" + type_format(base) + "' from argument type " + type_format(arg_ty2 as Type*),
-                                            unit.path, expr.span);
-                                    }
-                                    type_free(arg_ty2 as Type*);
+                                let arg_id3 = id_vec_get(expr.ids as VectorBase*, i);
+                                if (i == 0 && ord(etc_check_expr_against_expected(self, base, arg_id3,
+                                    unit.path, expr.span)) == ord(ASSIGN_REJECT)) {
+                                    etc_diag_error(self, "TYP-0286",
+                                        "cannot initialize '" + type_format(base) + "' from argument",
+                                        unit.path, expr.span);
                                 }
                             }
                         }

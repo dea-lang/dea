@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> Grammar
 
-Version: 2026-06-09
+Version: 2026-06-17
 
 The following is the formal grammar for the Dea/L<sub>1</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -507,8 +507,10 @@ Notes:
 - Call and `new` argument lists must be all positional or all named. Named arguments are accepted for function calls,
   struct constructors, and enum-variant constructors; labels are checked semantically against the required parameter,
   field, or payload names.
-- Array literals require a contextual `T[N]` type. Short literals zero/default-pad trailing elements; overlong literals
-  are rejected.
+- Array literals require an expected fixed-size array type `T[N]` and have no standalone type. Valid contexts include
+  annotated locals, assignments, function parameters, constructor fields, enum payload fields, return expressions, and
+  explicit array constructors. Short literals zero/default-pad trailing elements; overlong literals are rejected. Slice
+  targets such as `T[]` do not accept array literals directly.
 - Array constructors are restricted to array type calls such as `int[3]([1, 2])` or `byte[1024](0xFF)`. Fill arguments
   have the outer array's element type, so `int[10][20]([1, 2, 3])` broadcasts one contextually-built `int[20]` row.
 - A `TypeExpr` is syntactically unambiguous in call arguments: either a builtin type name, or an identifier (including a
