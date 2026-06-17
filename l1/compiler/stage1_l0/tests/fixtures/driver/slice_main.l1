@@ -9,12 +9,17 @@ func sum_first_two(s: int[]) -> int {
     return s[0] + s[1];
 }
 
+func string_size(s: string) -> int {
+    return len(s);
+}
+
 func main() -> int {
     let a: int[4] = [10, 20, 30, 40];
     let whole: int[] = a;
     let mid = slice(a, 1, 2);
     let tail = slice(a, 2);
     let empty = slice(a, 4, 0);
+    let hello = "hello";
     whole[0] = 11;
     if (len(whole) != 4) { return 1; }
     if (len(mid) != 2) { return 2; }
@@ -24,5 +29,9 @@ func main() -> int {
     if (tail[1] != 40) { return 6; }
     if (whole[0] != 11) { return 7; }
     if (sum_first_two(mid) != 50) { return 8; }
+    if (len(hello) != 5) { return 9; }
+    if (len("") != 0) { return 10; }
+    if (dea::len("world") != 5) { return 11; }
+    if (string_size("abc" + "d") != 4) { return 12; }
     return 0;
 }

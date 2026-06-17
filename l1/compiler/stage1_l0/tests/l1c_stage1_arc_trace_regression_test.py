@@ -1588,6 +1588,43 @@ def test_logical_expression_temp_cleanup(artifact_dir: Path) -> None:
     assert_true(max(rc_values) <= 2, f"unexpected heap refcount growth: {rc_values!r}", artifact_dir)
 
 
+def test_len_intrinsic_string_rvalue_cleanup(artifact_dir: Path) -> None:
+    """The direct `len` intrinsic must free dynamic string rvalues."""
+
+    stdout, _stderr, _report, arc = run_case(
+        "len_intrinsic_string_rvalue_cleanup",
+        """
+        module main;
+        import std.io;
+
+        func tick(flag: bool) -> string {
+            if (flag) {
+                return "he" + "llo";
+            }
+            return "x" + "y";
+        }
+
+        func main() -> int {
+            let a: int = len(tick(true));
+            let b: int = len(tick(false));
+            printl_i(a + b);
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "7\n", "len intrinsic string rvalue stdout mismatch", artifact_dir)
+
+    frees = heap_frees(arc)
+    assert_true(len(frees) >= 2, f"expected direct len string rvalues to be freed, got {frees!r}", artifact_dir)
+    for event in frees:
+        assert_true(
+            event.get("rc_before") == "1" and event.get("rc_after") == "0",
+            f"expected rc 1->0 free, got {event!r}",
+            artifact_dir,
+        )
+
+
 def test_param_reassign_twice_no_double_free(artifact_dir: Path) -> None:
     """Repeated reassignment of a borrowed string param must stay leak-free and avoid double-free behavior."""
 
@@ -2115,6 +2152,7 @@ def main() -> int:
         test_nested_concat_intermediary_freed,
         test_control_flow_condition_temp_cleanup,
         test_logical_expression_temp_cleanup,
+        test_len_intrinsic_string_rvalue_cleanup,
         test_param_reassign_twice_no_double_free,
         test_param_reassign_conditional_branch_safe,
         test_param_reassign_loop_carried_safe,

@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-06-16
+Version: 2026-06-17
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -175,9 +175,10 @@ Key rules:
 - fixed-size array indexing emits a bounds check that calls `_rt_panic_oob(index, length)` before accessing `.data`
 - slice descriptors are non-owning and do not retain or clean up elements; fixed-array rvalues materialized as slice
   backing storage are registered for normal scope cleanup when their element type transitively contains ARC-managed data
-- `len(slice)` reads `.len`, `len(array)` is the compile-time length, slice indexing checks `index < 0 || index >= .len`
-  with `_rt_panic_oob` before `.data[index]`, and `slice(...)` range construction checks `start`/`count` against the
-  base length before forming the descriptor (a zero-length result uses `len = 0` and `data = NULL`)
+- `len(slice)` reads `.len`, `len(array)` is the compile-time length, and `len(string)` calls `rt_strlen`; slice
+  indexing checks `index < 0 || index >= .len` with `_rt_panic_oob` before `.data[index]`, and `slice(...)` range
+  construction checks `start`/`count` against the base length before forming the descriptor (a zero-length result uses
+  `len = 0` and `data = NULL`)
 
 See [ownership.md](ownership.md) for the language-facing ownership rules that this lowering must preserve.
 

@@ -1239,9 +1239,10 @@ func etc_infer_len_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> T
     if (arg_ty == null) {
         return type_builtin_int();
     }
-    if (ord((arg_ty as Type*).kind) != ord(TY_ARRAY) && ord((arg_ty as Type*).kind) != ord(TY_SLICE)) {
+    if (ord((arg_ty as Type*).kind) != ord(TY_ARRAY) && ord((arg_ty as Type*).kind) != ord(TY_SLICE) &&
+        !etc_is_string(arg_ty as Type*)) {
         etc_diag_error(self, "TYP-0808",
-            "len expects a fixed array or slice, got '" + type_format(arg_ty as Type*) + "'",
+            "len expects a fixed array, slice, or string, got '" + type_format(arg_ty as Type*) + "'",
             (self.current_unit as DriverUnit*).path, expr.span);
     }
     type_free(arg_ty as Type*);

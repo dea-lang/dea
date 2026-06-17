@@ -1182,8 +1182,11 @@ func test_backend_generate_slices() {
         sv_push(lines, "    let whole: int[] = a;");
         sv_push(lines, "    let part = slice(a, 1, 2);");
         sv_push(lines, "    let n = len(whole);");
+        sv_push(lines, "    let text = \"he\" + \"llo\";");
+        sv_push(lines, "    let text_n = len(text);");
+        sv_push(lines, "    let temp_text_n = len(\"x\" + \"yz\");");
         sv_push(lines, "    whole[0] = 9;");
-        sv_push(lines, "    return sum(a) + combine(s: a, prefix: 10) + whole[get_index()] + part[0] + n;");
+        sv_push(lines, "    return sum(a) + combine(s: a, prefix: 10) + whole[get_index()] + part[0] + n + text_n + temp_text_n;");
         sv_push(lines, "}");
         sv_push(sources, bt_source(lines));
 
@@ -1208,6 +1211,8 @@ func test_backend_generate_slices() {
             "three-argument slice range checks must not add start and count");
         assert(contains_s(generated, ").data["), "expected slice element access through the data pointer");
         assert(contains_s(generated, "(whole).len"), "expected len(slice) to read the descriptor length");
+        assert(contains_s(generated, "rt_strlen(text)"), "expected len(string) to call rt_strlen");
+        assert(contains_s(generated, "rt_strlen(dea_arc_"), "expected len(string rvalue) to use a cleanup temp");
         assert(contains_s(generated, "(s).len"), "expected slice index check against the descriptor length");
 
         analysis_result_free(result);

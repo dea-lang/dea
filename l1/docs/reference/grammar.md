@@ -532,7 +532,7 @@ Notes:
   variable.
 - Calls to `sizeof`, `ord`, `is`, `len`, and `slice` are parsed as ordinary function calls. Semantic analysis then
   resolves whether the callee is one of the implicit `dea` prelude symbols or an ordinary user-defined function.
-- `len(x)` returns the `int` length of a fixed array or slice. `slice(x)`, `slice(x, start)`, and
+- `len(x)` returns the `int` length of a fixed array, slice, or string. `slice(x)`, `slice(x, start)`, and
   `slice(x, start, count)` build a `T[]` view over a fixed array or slice; the third argument is `count`, not an end
   index. Slice index, `start`, and `count` operands must be `int`.
 - A fixed array `T[N]` converts to a slice `T[]` only in known slice target contexts: function arguments, annotated

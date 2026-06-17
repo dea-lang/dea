@@ -14,6 +14,10 @@ func sum(s: int[]) -> int {
     return total;
 }
 
+func string_length(s: string) -> int {
+    return len(s);
+}
+
 func main() -> int {
     let a: int[3] = [1, 2, 3];
     let whole: int[] = a;
@@ -23,10 +27,12 @@ func main() -> int {
     let from_slice = slice(whole, 0, 2);
     let n: int = len(whole);
     let qn: int = dea::len(a);
+    let sn: int = len("hello");
+    let qsn: int = dea::len("world");
     let qs = dea::slice(a, 0);
     whole[0] = 9;
     whole = a;
     let r: int = sum(a);
     let r2: int = sum(whole);
-    return whole[0] + part[0] + len(mid) + n + qn + r + r2;
+    return whole[0] + part[0] + len(mid) + n + qn + sn + qsn + string_length("!") + r + r2;
 }

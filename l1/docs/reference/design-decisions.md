@@ -161,10 +161,10 @@ A fixed array `T[N]` converts to `T[]` only in known slice target contexts: func
 initialization, and assignment to an existing slice variable. There is no unconstrained `T[N] -> T[]` decay, keeping
 ownership explicit. The conversion forms a descriptor from the array length and a pointer to the array's storage.
 
-`len(x)` returns the `int` length of a fixed array or slice. `slice(x)`, `slice(x, start)`, and `slice(x, start, count)`
-build a `T[]` over a fixed array or slice; the third argument is `count`, not an end index. Index, `start`, and `count`
-operands must be `int`. Slice indexing and slice-range construction are bounds-checked with `_rt_panic_oob` before any
-pointer arithmetic or dereference, and a zero-length result uses `len = 0` and `data = NULL`.
+`len(x)` returns the `int` length of a fixed array, slice, or string. `slice(x)`, `slice(x, start)`, and
+`slice(x, start, count)` build a `T[]` over a fixed array or slice; the third argument is `count`, not an end index.
+Index, `start`, and `count` operands must be `int`. Slice indexing and slice-range construction are bounds-checked with
+`_rt_panic_oob` before any pointer arithmetic or dereference, and a zero-length result uses `len = 0` and `data = NULL`.
 
 - `ptr[index] = value` follows the same slot-replacement ARC discipline as other ordinary assignments when `T`
   transitively contains ARC-managed data

@@ -3013,7 +3013,14 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                 if (ord((len_arg_ty as Type*).kind) == ord(TY_SLICE)) {
                     return "(" + be_emit_expr(self, len_arg_id) + ").len";
                 }
-                return be_ice_string("[ICE-2271] len argument is neither array nor slice");
+                if (type_is_builtin(len_arg_ty as Type*, "string")) {
+                    let c_arg = be_emit_expr(self, len_arg_id);
+                    if (be_should_materialize_arc_temp(self, len_arg_id, len_arg_ty as Type*)) {
+                        c_arg = be_materialize_arc_temp(self, c_arg, len_arg_ty as Type*);
+                    }
+                    return be_emit_direct_function_call(self, "rt_strlen", c_arg);
+                }
+                return be_ice_string("[ICE-2271] len argument is neither array, slice, nor string");
             }
         }
 
