@@ -385,6 +385,48 @@ def test_execute_toplet_nested_struct(artifact_dir: Path) -> None:
     )
 
 
+def test_execute_toplet_intrinsic_initializers(artifact_dir: Path) -> None:
+    """Top-level deferred initializers must carry intrinsic metadata into code generation."""
+
+    run_ok(
+        "execute_toplet_intrinsic_initializers",
+        0,
+        """
+        module main;
+
+        struct Point {
+            x: int;
+            y: int;
+        }
+
+        enum Color {
+            Red;
+            Blue;
+        }
+
+        let arr: int[3] = [1, 2, 3];
+        let chosen: Color = Red;
+        let string_len: int = len("abc");
+        let arr_len: int = len(arr);
+        let string_size: int = sizeof("abc");
+        let point_size: int = sizeof(Point);
+        let red_ord: int = ord(Red);
+        let chosen_is_red: bool = is(chosen, Red);
+
+        func main() -> int {
+            if (string_len != 3) { return 1; }
+            if (arr_len != 3) { return 2; }
+            if (string_size <= 0) { return 3; }
+            if (point_size <= 0) { return 4; }
+            if (red_ord != 0) { return 5; }
+            if (!chosen_is_red) { return 6; }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+
 def test_toplet_string_reassignment_arc(artifact_dir: Path) -> None:
     """Top-level string reassignment must release old values and stay leak-free."""
 
@@ -455,6 +497,7 @@ def main() -> int:
         test_execute_toplet_mutation,
         test_execute_toplet_struct,
         test_execute_toplet_nested_struct,
+        test_execute_toplet_intrinsic_initializers,
         test_toplet_string_reassignment_arc,
         test_drop_toplet_pointer_diagnostic,
     ]

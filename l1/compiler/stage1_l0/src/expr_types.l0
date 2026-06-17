@@ -1780,12 +1780,8 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         if (type_is_builtin(ann_ty as Type*, "void")) {
                             etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", unit.path, stmt.span);
                         } else {
-                            let assign_result = etc_check_expr_against_expected(self, ann_ty as Type*, stmt.expr_a,
-                                unit.path, stmt.span);
-                            if (ord(assign_result) == ord(ASSIGN_REJECT)) {
-                                etc_diag_error(self, "TYP-0310", "initializer for '" + stmt.name + "' type mismatch",
-                                    unit.path, stmt.span);
-                            } else if (ord(assign_result) == ord(ASSIGN_ACCEPT)) {
+                            if (etc_check_initializer_expr(self, ann_ty as Type*, stmt.expr_a, stmt.name, unit.path,
+                                stmt.span)) {
                                 declare_local = true;
                             }
                         }
@@ -3567,12 +3563,18 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
     }
     let l_ty = left_ty as Type*;
 
+    let index_valid = true;
     if (index_ty != null) {
         if (!etc_is_int(index_ty as Type*)) {
             etc_diag_error(self, "TYP-0210", "index expects int, got " + type_format(index_ty as Type*),
                 (self.current_unit as DriverUnit*).path, expr.span);
+            index_valid = false;
         }
         type_free(index_ty as Type*);
+    }
+    if (!index_valid) {
+        type_free(l_ty);
+        return null;
     }
 
     if (ord(l_ty.kind) == ord(TY_NULLABLE)) {
@@ -3755,6 +3757,26 @@ func etc_check_array_literal_expr_mode(self: ExpressionTypeChecker*, dst: Type*,
         etc_set_expr_type(self, expr_id, dst);
     }
     return ASSIGN_ACCEPT;
+}
+
+/**
+ * Check an initializer expression against its contextual binding type.
+ *
+ * @param self Expression checker state.
+ * @param expected Contextual binding type.
+ * @param expr_id Initializer expression id.
+ * @param name Binding name used in diagnostics.
+ * @param filename Source filename.
+ * @param span Declaration span for assignment diagnostics.
+ * @return `true` when the initializer is assignable.
+ */
+func etc_check_initializer_expr(self: ExpressionTypeChecker*, expected: Type*, expr_id: ExprId, name: string,
+                                filename: string, span: Span) -> bool {
+    let assign_result = etc_check_expr_against_expected(self, expected, expr_id, filename, span);
+    if (ord(assign_result) == ord(ASSIGN_REJECT)) {
+        etc_diag_error(self, "TYP-0310", "initializer for '" + name + "' type mismatch", filename, span);
+    }
+    return ord(assign_result) == ord(ASSIGN_ACCEPT);
 }
 
 /**
@@ -4288,6 +4310,36 @@ func etc_check_function(self: ExpressionTypeChecker*, env: FunctionEnv*) {
 }
 
 /**
+ * Type-check module-scope `let` initializer expressions.
+ *
+ * Signature resolution owns top-level binding type resolution, including
+ * const-only and no-slice restrictions. This pass records expression metadata
+ * for successfully resolved bindings so backend lowering can rely on analysis.
+ *
+ * @param self Expression checker state.
+ * @param root Module whose top-level declarations should be checked.
+ */
+func etc_check_top_level_initializers(self: ExpressionTypeChecker*, root: Module*) {
+    let sigs = self.result.signatures as SignatureTables*;
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) != ord(TD_LET)) {
+            continue;
+        }
+        let decl = top.data as LetDecl*;
+        let expected = sig_lookup_let_type(sigs, root.name, decl.name);
+        if (expected == null) {
+            continue;
+        }
+        if (type_is_builtin(expected as Type*, "void")) {
+            etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", root.filename, decl.span);
+            continue;
+        }
+        etc_check_initializer_expr(self, expected as Type*, decl.value, decl.name, root.filename, decl.span);
+    }
+}
+
+/**
  * Run expression and statement type checking for the analysis result.
  *
  * @param result Analysis result to populate with expression types and diagnostics.
@@ -4300,8 +4352,11 @@ func expr_types_check(result: AnalysisResult*) {
         if (unit.parse_result.root_module == null) continue;
 
         checker.current_unit = unit;
-        checker.current_module = (unit.parse_result.root_module as Module*).name;
+        let root = unit.parse_result.root_module as Module*;
+        checker.current_module = root.name;
         checker.current_env = nr_env_find(result.names as NameResolution*, checker.current_module) as ModuleEnv*;
+
+        etc_check_top_level_initializers(checker, root);
 
         let locals = result.locals_result as LocalsResult*;
         for (let j = 0; j < locals_env_count(locals); j = j + 1) {
