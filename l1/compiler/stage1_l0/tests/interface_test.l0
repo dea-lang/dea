@@ -104,6 +104,9 @@ func test_emit_interface_deterministic() {
     assert(contains_s(first, "func area(s: Size) -> int == \"\";"), "expected exported function");
     assert(contains_s(first, "const origin: Point = Point(0, 0) == \"\";"), "expected struct const literal");
     assert(contains_s(first, "const scale_factor: double = 2.5 == \"\";"), "expected scalar const literal");
+    assert(contains_s(first, "const cast_count: int = 25 == \"\";"), "expected folded integer cast const literal");
+    assert(contains_s(first, "const cast_float: float = 2.5f == \"\";"), "expected folded real cast const literal");
+    assert(!contains_s(first, " as "), "interface const casts must serialize as folded literals");
     assert(contains_s(first, "const zero_color: Color = Red == \"\";"), "expected enum-variant const literal");
     assert(contains_s(first, "const vivid_color: Color = Rgb(255, 0, 0) == \"\";"), "expected multi-field enum const literal");
     assert(contains_s(first, "let current_offset: Point? == \"\";"), "expected exported let");
@@ -138,7 +141,7 @@ func test_interface_round_trip() {
     assert(vec_size(mi.enum_infos) == 1, "expected 1 exported enum");
     assert(vec_size(mi.alias_entries) == 1, "expected 1 exported alias");
     assert(vec_size(mi.func_entries) == 2, "expected 2 exported funcs");
-    assert(vec_size(mi.let_entries) == 6, "expected 5 consts plus 1 let");
+    assert(vec_size(mi.let_entries) == 9, "expected 8 consts plus 1 let");
 
     let re_emitted = ie_emit(mi);
     assert(re_emitted == emitted, "parser/emitter round-trip must preserve canonical text");

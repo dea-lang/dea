@@ -306,6 +306,38 @@ def test_execute_toplet_primitives(artifact_dir: Path) -> None:
     )
 
 
+def test_execute_const_referenced_array_bound(artifact_dir: Path) -> None:
+    """Scalar const references must lower before use as resolved array bounds."""
+
+    source = """
+        module main;
+
+        const Z: ulong = 25;
+        const I: int = Z as int;
+        const messages: string[I] = ["hello"];
+
+        func classify(value: int) -> int {
+            case (value) {
+                I => { return 1; }
+                _ => { return 0; }
+            }
+        }
+
+        func main() -> int {
+            return len(messages) - I + classify(I) - 1;
+        }
+    """
+    run_ok(
+        "execute_const_referenced_array_bound",
+        0,
+        source,
+        artifact_dir,
+    )
+    c_code = run_gen("generate_const_referenced_array_bound", source, artifact_dir)
+    assert_true("_rt_cast_dea_int_from_unsigned" not in c_code,
+        "const cast must fold instead of using a runtime checked-cast helper", artifact_dir)
+
+
 def test_execute_toplet_mutation(artifact_dir: Path) -> None:
     """Mirror Stage 1 mutable top-level execution coverage."""
 
@@ -494,6 +526,7 @@ def main() -> int:
         test_reject_toplet_case_real_integer_arm,
         test_generate_toplet_case_always_false_unsigned,
         test_execute_toplet_primitives,
+        test_execute_const_referenced_array_bound,
         test_execute_toplet_mutation,
         test_execute_toplet_struct,
         test_execute_toplet_nested_struct,

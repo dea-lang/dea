@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-06-18
+Version: 2026-06-19
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -98,6 +98,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   type components for function signatures.
 - Feature [2026-06-13-opaque-type-exports-and-layout-hiding-noref][opaque-exports] added `export opaque { T }`,
   exported-surface visibility checks, and opaque `.l1m` nominal declarations.
+- Feature [2026-06-18-stage1-const-scalar-casts-noref][const-scalar-casts] added statically checked integer-family,
+  `float`/`double`, and scalar identity casts to Stage 1 `const` initializers.
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
 - Bug Fix [2026-06-18-stage1-toplet-initializer-typing-noref][toplet-initializer-typing] made Stage 1 type-check
@@ -224,6 +226,7 @@ update to be promoted to an initiative or plan:
 [child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-driver]: ../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
+[const-scalar-casts]: ../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md

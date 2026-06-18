@@ -10,7 +10,7 @@ struct Point {
 }
 
 const UNSIGNED_COUNT: uint = 3;
-const POINT_COUNT: Point = 3;
+const POINT_COUNT: Point = Point(3);
 
 let unsigned_bound: int[UNSIGNED_COUNT] = [1, 2, 3];
 let aggregate_bound: int[POINT_COUNT] = [1, 2, 3];

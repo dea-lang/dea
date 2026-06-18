@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> Grammar
 
-Version: 2026-06-18
+Version: 2026-06-19
 
 The following is the formal grammar for the Dea/L<sub>1</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -215,6 +215,11 @@ ConstDecl           ::=     "const" Ident ":" Type "=" Expr ";"
 
 `const` is currently top-level only. Block-local `let` exists; block-local `const` is not part of the current accepted
 syntax.
+
+The compile-time initializer subset includes primitive literals, constant aggregate constructors, visible scalar `const`
+references, and selected scalar casts. Cast folding supports all builtin integer types with exact target-range checking,
+`float` to/from `double`, and identity casts for `bool` and `string`. Integer/real cross-casts, nullable casts, pointer
+casts, and aggregate casts remain runtime-only or unsupported in `const` initializers.
 
 ## 4. Types
 

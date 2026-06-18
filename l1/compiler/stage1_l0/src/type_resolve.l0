@@ -11,6 +11,7 @@ import std.string;
 import std.text;
 import std.vector;
 import util.diag;
+import util.numbers;
 
 import ast;
 import driver;
@@ -296,6 +297,16 @@ struct ConstValue {
 }
 
 /**
+ * Describes a precise failure encountered while evaluating a constant cast.
+ */
+struct ConstEvalFailure {
+    code: string;
+    message: string;
+    filename: string;
+    span: Span;
+}
+
+/**
  * Carries semantic context and per-evaluation cache for const evaluation.
  */
 struct ConstEvalContext {
@@ -305,6 +316,7 @@ struct ConstEvalContext {
     diags: DiagCollector*;
     cache: StringPtrMap*;
     visiting: StringSet*;
+    failure: ConstEvalFailure*?;
 }
 
 /**
@@ -352,7 +364,7 @@ func tr_const_value_free(value: ConstValue*) {
  */
 func tr_const_eval_context_create(driver_state: DriverState*, tables: SignatureTables*, nr: NameResolution*,
                                   diags: DiagCollector*) -> ConstEvalContext* {
-    return new ConstEvalContext(driver_state, tables, nr, diags, spm_create(), ss_create());
+    return new ConstEvalContext(driver_state, tables, nr, diags, spm_create(), ss_create(), null);
 }
 
 /**
@@ -368,7 +380,51 @@ func tr_const_eval_context_free(self: ConstEvalContext*) {
     }
     spm_free(self.cache);
     ss_free(self.visiting);
+    if (self.failure != null) {
+        let failure = self.failure as ConstEvalFailure*;
+        drop failure;
+    }
     drop self;
+}
+
+/**
+ * Record the first precise constant-evaluation failure.
+ *
+ * @param self Evaluation context to update.
+ * @param code Diagnostic code, or empty when another declaration or resolver owns the diagnostic.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span.
+ */
+func tr_const_eval_set_failure(self: ConstEvalContext*, code: string, message: string, filename: string, span: Span) {
+    if (self.failure == null) {
+        self.failure = new ConstEvalFailure(code, message, filename, span);
+    }
+}
+
+/**
+ * Return whether constant evaluation encountered a precise invalid expression.
+ *
+ * @param self Evaluation context to inspect.
+ * @return `true` after an invalid cast or failed cast-target resolution.
+ */
+func tr_const_eval_failed(self: ConstEvalContext*) -> bool {
+    return self.failure != null;
+}
+
+/**
+ * Emit the precise failure retained by constant evaluation.
+ *
+ * @param self Evaluation context carrying the failure.
+ */
+func tr_const_eval_report_failure(self: ConstEvalContext*) {
+    if (self.failure == null) {
+        return;
+    }
+    let failure = self.failure as ConstEvalFailure*;
+    if (failure.code != "") {
+        tr_diag_error(self.diags, failure.code, failure.message, failure.filename, failure.span);
+    }
 }
 
 /**
@@ -380,6 +436,113 @@ func tr_const_eval_context_free(self: ConstEvalContext*) {
 func tr_const_value_is_integer_like(value: ConstValue*) -> bool {
     return ord(value.kind) == ord(CV_INT) || ord(value.kind) == ord(CV_BYTE) ||
            ord(value.kind) == ord(CV_OTHER_INT);
+}
+
+/**
+ * Return whether a constant value belongs to the builtin integer family.
+ *
+ * @param value Value to inspect.
+ * @return `true` for host-sized or bigint-backed integer values.
+ */
+func tr_const_value_is_integer(value: ConstValue*) -> bool {
+    return tr_const_value_is_integer_like(value) || ord(value.kind) == ord(CV_BIGINT);
+}
+
+/**
+ * Return whether a type is one of the builtin integer types.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for builtin integer types.
+ */
+func tr_type_is_integer(ty: Type*) -> bool {
+    return ord(ty.kind) == ord(TY_BUILTIN) &&
+        (ty.name == "tiny" || ty.name == "byte" || ty.name == "short" || ty.name == "ushort" ||
+         ty.name == "int" || ty.name == "uint" || ty.name == "long" || ty.name == "ulong");
+}
+
+/**
+ * Return a human-readable builtin integer range.
+ *
+ * @param ty Integer type.
+ * @return Inclusive range text.
+ */
+func tr_builtin_int_range(ty: Type*) -> string {
+    if (ty.name == "tiny") return "-128..127";
+    if (ty.name == "byte") return "0..255";
+    if (ty.name == "short") return "-32768..32767";
+    if (ty.name == "ushort") return "0..65535";
+    if (ty.name == "int") return "-2147483648..2147483647";
+    if (ty.name == "uint") return "0..4294967295";
+    if (ty.name == "long") return "-9223372036854775808..9223372036854775807";
+    if (ty.name == "ulong") return "0..18446744073709551615";
+    return "int";
+}
+
+/**
+ * Format an integer constant value for diagnostics.
+ *
+ * @param value Integer constant value.
+ * @return Source-like value text.
+ */
+func tr_const_integer_text(value: ConstValue*) -> string {
+    if (ord(value.kind) == ord(CV_BIGINT)) {
+        return bigint_to_string(value.text_value, value.base_value);
+    }
+    return int_to_string(value.int_value);
+}
+
+/**
+ * Return whether an integer constant fits a target integer type.
+ *
+ * @param value Integer constant value.
+ * @param target Target integer type.
+ * @return `true` when the value is representable by `target`.
+ */
+func tr_const_integer_fits(value: ConstValue*, target: Type*) -> bool {
+    if (ord(value.kind) == ord(CV_BIGINT)) {
+        return bigint_fits_builtin(target, value.text_value, value.base_value);
+    }
+    return int_value_fits_builtin(target, value.int_value);
+}
+
+/**
+ * Reclassify a checked integer value for its cast target.
+ *
+ * @param value Source integer value known to fit.
+ * @param target Target integer type.
+ * @return Target-typed constant value.
+ */
+func tr_const_integer_for_target(value: ConstValue*, target: Type*) -> ConstValue* {
+    if (ord(value.kind) == ord(CV_BIGINT)) {
+        return tr_const_value_clone(value);
+    }
+    if (target.name == "int") {
+        return tr_const_value_new(CV_INT, value.int_value, false, "", 0);
+    }
+    if (target.name == "byte") {
+        return tr_const_value_new(CV_BYTE, value.int_value, false, "", 0);
+    }
+    return tr_const_value_new(CV_OTHER_INT, value.int_value, false, target.name, 0);
+}
+
+/**
+ * Normalize real-literal spelling for a target real type.
+ *
+ * @param text Canonical source spelling.
+ * @param target_name `float` or `double`.
+ * @return Spelling carrying the target type's suffix convention.
+ */
+func tr_real_text_for_target(text: string, target_name: string) -> string {
+    if (target_name == "float") {
+        if (ends_with_s(text, "f")) {
+            return text;
+        }
+        return text + "f";
+    }
+    if (ends_with_s(text, "f")) {
+        return slice_s(text, 0, len_s(text) - 1);
+    }
+    return text;
 }
 
 /**
@@ -406,6 +569,9 @@ func tr_const_value_for_type(value: ConstValue*, ty: Type*) -> ConstValue*? {
         if (tr_const_value_is_integer_like(value)) {
             return tr_const_value_new(CV_OTHER_INT, value.int_value, false, ty.name, 0);
         }
+        if (ord(value.kind) == ord(CV_BIGINT) && bigint_fits_builtin(ty, value.text_value, value.base_value)) {
+            return tr_const_value_clone(value);
+        }
     } else if (ty.name == "bool") {
         if (ord(value.kind) == ord(CV_BOOL)) {
             return tr_const_value_clone(value);
@@ -419,14 +585,14 @@ func tr_const_value_for_type(value: ConstValue*, ty: Type*) -> ConstValue*? {
             return tr_const_value_clone(value);
         }
         if (ord(value.kind) == ord(CV_DOUBLE)) {
-            return tr_const_value_new(CV_FLOAT, 0, false, value.text_value, 0);
+            return tr_const_value_new(CV_FLOAT, 0, false, tr_real_text_for_target(value.text_value, "float"), 0);
         }
         if (tr_const_value_is_integer_like(value)) {
             return tr_const_value_new(CV_FLOAT, 0, false, int_to_string(value.int_value), 0);
         }
     } else if (ty.name == "double") {
         if (ord(value.kind) == ord(CV_DOUBLE) || ord(value.kind) == ord(CV_FLOAT)) {
-            return tr_const_value_new(CV_DOUBLE, 0, false, value.text_value, 0);
+            return tr_const_value_new(CV_DOUBLE, 0, false, tr_real_text_for_target(value.text_value, "double"), 0);
         }
         if (tr_const_value_is_integer_like(value)) {
             return tr_const_value_new(CV_DOUBLE, 0, false, int_to_string(value.int_value), 0);
@@ -478,6 +644,13 @@ func tr_const_value_for_decl(value: ConstValue*, decl: LetDecl*) -> ConstValue*?
         if (tr_const_value_is_integer_like(value)) {
             return tr_const_value_new(CV_OTHER_INT, value.int_value, false, builtin, 0);
         }
+        if (ord(value.kind) == ord(CV_BIGINT)) {
+            with (let builtin_ty = type_new_builtin(builtin) => type_free(builtin_ty)) {
+                if (bigint_fits_builtin(builtin_ty, value.text_value, value.base_value)) {
+                    return tr_const_value_clone(value);
+                }
+            }
+        }
     } else if (builtin == "bool") {
         if (ord(value.kind) == ord(CV_BOOL)) {
             return tr_const_value_clone(value);
@@ -491,20 +664,86 @@ func tr_const_value_for_decl(value: ConstValue*, decl: LetDecl*) -> ConstValue*?
             return tr_const_value_clone(value);
         }
         if (ord(value.kind) == ord(CV_DOUBLE)) {
-            return tr_const_value_new(CV_FLOAT, 0, false, value.text_value, 0);
+            return tr_const_value_new(CV_FLOAT, 0, false, tr_real_text_for_target(value.text_value, "float"), 0);
         }
         if (tr_const_value_is_integer_like(value)) {
             return tr_const_value_new(CV_FLOAT, 0, false, int_to_string(value.int_value), 0);
         }
     } else if (builtin == "double") {
         if (ord(value.kind) == ord(CV_DOUBLE) || ord(value.kind) == ord(CV_FLOAT)) {
-            return tr_const_value_new(CV_DOUBLE, 0, false, value.text_value, 0);
+            return tr_const_value_new(CV_DOUBLE, 0, false, tr_real_text_for_target(value.text_value, "double"), 0);
         }
         if (tr_const_value_is_integer_like(value)) {
             return tr_const_value_new(CV_DOUBLE, 0, false, int_to_string(value.int_value), 0);
         }
     }
     return null;
+}
+
+/**
+ * Evaluate one supported scalar cast in a constant expression.
+ *
+ * @param ctx Const-evaluation context.
+ * @param env Module environment controlling type and name lookup.
+ * @param arena Expression arena containing the cast.
+ * @param expr Cast expression node.
+ * @return Owned target-typed value, or `null` when unsupported or invalid.
+ */
+func tr_const_eval_cast(ctx: ConstEvalContext*, env: ModuleEnv*, arena: ExprArena*, expr: ExprNode*) -> ConstValue*? {
+    if (expr.type_ref == null) {
+        // A parsed cast always carries a target type ref; treat its absence as a
+        // non-constant expression so the visible SIG-0200/TYP-0815 path reports it.
+        return null;
+    }
+
+    let source = tr_const_eval_expr_in_env(ctx, env, arena, expr.expr_a);
+    if (source == null) {
+        return null;
+    }
+
+    let target: Type*? = null;
+    with (let seen = ss_create() => ss_free(seen)) {
+        target = tr_resolve_type_ref(ctx.tables, ctx.nr, ctx.driver_state, env, expr.type_ref as TypeRef*,
+            ctx.diags, seen);
+    }
+    if (target == null) {
+        tr_const_value_free(source as ConstValue*);
+        tr_const_eval_set_failure(ctx, "", "", env.module_ptr.filename, expr.span);
+        return null;
+    }
+
+    let src = source as ConstValue*;
+    let dst = target as Type*;
+    let result: ConstValue*? = null;
+    if (tr_const_value_is_integer(src) && tr_type_is_integer(dst)) {
+        if (!tr_const_integer_fits(src, dst)) {
+            tr_const_eval_set_failure(
+                ctx,
+                "TYP-0700",
+                "integer constant " + tr_const_integer_text(src) + " is outside " + tr_builtin_int_range(dst) +
+                    " for target type '" + type_format(dst) + "'",
+                env.module_ptr.filename,
+                expr.span
+            );
+        } else {
+            result = tr_const_integer_for_target(src, dst);
+        }
+    } else if ((ord(src.kind) == ord(CV_FLOAT) || ord(src.kind) == ord(CV_DOUBLE)) &&
+               ord(dst.kind) == ord(TY_BUILTIN) && (dst.name == "float" || dst.name == "double")) {
+        let target_kind = CV_DOUBLE;
+        if (dst.name == "float") {
+            target_kind = CV_FLOAT;
+        }
+        result = tr_const_value_new(target_kind, 0, false, tr_real_text_for_target(src.text_value, dst.name), 0);
+    } else if (ord(src.kind) == ord(CV_BOOL) && type_is_builtin(dst, "bool")) {
+        result = tr_const_value_clone(src);
+    } else if (ord(src.kind) == ord(CV_STRING) && type_is_builtin(dst, "string")) {
+        result = tr_const_value_clone(src);
+    }
+
+    tr_const_value_free(src);
+    type_free(dst);
+    return result;
 }
 
 /**
@@ -551,6 +790,11 @@ func tr_const_eval_symbol(ctx: ConstEvalContext*, sym: Symbol*) -> ConstValue*? 
         decl.value);
     ss_remove(ctx.visiting, key);
     if (raw == null) {
+        if (ctx.failure != null) {
+            // The referenced declaration owns this diagnostic. Retain failed
+            // state to suppress a dependent SIG-0200 without reporting it again.
+            (ctx.failure as ConstEvalFailure*).code = "";
+        }
         return null;
     }
 
@@ -600,6 +844,7 @@ func tr_const_eval_expr_in_env(ctx: ConstEvalContext*, env: ModuleEnv*, arena: E
             }
             return tr_const_eval_symbol(ctx, sym as Symbol*);
         }
+        EX_CAST => { return tr_const_eval_cast(ctx, env, arena, expr); }
         _ => { return null; }
     }
 }
@@ -618,6 +863,40 @@ func tr_const_eval_expr(ctx: ConstEvalContext*, env: ModuleEnv*, expr_id: ExprId
         return null;
     }
     return tr_const_eval_expr_in_env(ctx, env, (unit as DriverUnit*).parse_result.expr_arena, expr_id);
+}
+
+/**
+ * Return whether an expression names a semantically accepted const declaration.
+ *
+ * This distinguishes non-constant expressions from constants whose value kind is
+ * intentionally unsupported by the scalar constant evaluator.
+ *
+ * @param ctx Const-evaluation context.
+ * @param env Module environment controlling name lookup.
+ * @param expr_id Expression to inspect.
+ * @return `true` when the expression names a resolved const declaration.
+ */
+func tr_expr_names_resolved_const(ctx: ConstEvalContext*, env: ModuleEnv*, expr_id: ExprId) -> bool {
+    let unit = driver_find_unit(ctx.driver_state, env.module_name);
+    if (unit == null || expr_id < 0) {
+        return false;
+    }
+    let expr = expr_arena_get((unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return tr_expr_names_resolved_const(ctx, env, expr.expr_a);
+    }
+    if (ord(expr.kind) != ord(EX_VAR_REF)) {
+        return false;
+    }
+    let sym = tr_symbol_lookup(ctx.nr, env, expr.text_value, expr.module_path, expr.name_qualifier);
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || (sym as Symbol*).decl_ptr == null) {
+        return false;
+    }
+    let decl = (sym as Symbol*).decl_ptr as LetDecl*;
+    if (!decl.is_const) {
+        return false;
+    }
+    return spm_get(ctx.tables.let_types, tr_key((sym as Symbol*).module_name, (sym as Symbol*).name)) != null;
 }
 
 /**
@@ -707,14 +986,30 @@ func tr_apply_suffix(tables: SignatureTables*, nr: NameResolution*, driver_state
                 let resolved_len = suffix.array_len;
                 if (suffix.array_len_expr >= 0) {
                     let value: ConstValue*? = null;
+                    let names_resolved_const = false;
+                    let const_eval_failed = false;
                     with (let ctx = tr_const_eval_context_create(driver_state, tables, nr, diags) =>
                           tr_const_eval_context_free(ctx)) {
                         value = tr_const_eval_expr(ctx, env, suffix.array_len_expr);
+                        if (value == null) {
+                            const_eval_failed = tr_const_eval_failed(ctx);
+                            if (!const_eval_failed) {
+                                names_resolved_const = tr_expr_names_resolved_const(ctx, env, suffix.array_len_expr);
+                            }
+                        }
                     }
                     if (value == null) {
                         type_free(current);
-                        tr_diag_error(diags, "TYP-0815", "array length expression is not a compile-time constant",
-                            filename, suffix.span);
+                        if (const_eval_failed) {
+                            return null;
+                        }
+                        if (names_resolved_const) {
+                            tr_diag_error(diags, "TYP-0816", "array length constant is not an int",
+                                filename, suffix.span);
+                        } else {
+                            tr_diag_error(diags, "TYP-0815", "array length expression is not a compile-time constant",
+                                filename, suffix.span);
+                        }
                         return null;
                     }
                     let const_value = value as ConstValue*;

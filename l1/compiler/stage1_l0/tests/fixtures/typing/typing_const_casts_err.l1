@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_const_casts_err;
+
+const TOO_LARGE: ulong = 2147483648;
+const BAD_INT: int = TOO_LARGE as int;
+const BAD_INT_COPY: int = BAD_INT as int;
+const bad_messages: string[BAD_INT] = ["hello"];
+const BAD_UINT: uint = (-1) as uint;
+
+let runtime_value: int = 25;
+const NON_CONST: int = runtime_value as int;
+
+const EXCLUDED_REAL_TO_INT: int = 1.5 as int;
+
+func main() {}

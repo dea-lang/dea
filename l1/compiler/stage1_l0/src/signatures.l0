@@ -645,6 +645,7 @@ func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleE
     if (decl.is_const) {
         let unit = driver_find_unit(driver_state, env.module_name);
         let is_const_initializer = false;
+        let const_eval_failed = false;
         if (unit != null) {
             is_const_initializer = sig_expr_is_const_initializer(tables, nr, env,
                 (unit as DriverUnit*).parse_result.expr_arena, decl.value);
@@ -655,19 +656,24 @@ func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleE
                     if (const_value != null) {
                         tr_const_value_free(const_value as ConstValue*);
                         is_const_initializer = true;
+                    } else if (tr_const_eval_failed(ctx)) {
+                        tr_const_eval_report_failure(ctx);
+                        const_eval_failed = true;
                     }
                 }
             }
         }
         if (!is_const_initializer) {
             type_free(let_type as Type*);
-            sig_diag_error(
-                diags,
-                "SIG-0200",
-                "initializer for const '" + decl.name + "' must be compile-time constant",
-                env.module_ptr.filename,
-                decl.span
-            );
+            if (!const_eval_failed) {
+                sig_diag_error(
+                    diags,
+                    "SIG-0200",
+                    "initializer for const '" + decl.name + "' must be compile-time constant",
+                    env.module_ptr.filename,
+                    decl.span
+                );
+            }
             return;
         }
     }

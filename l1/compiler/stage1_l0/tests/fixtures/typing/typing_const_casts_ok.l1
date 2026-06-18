@@ -1,0 +1,60 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_const_casts_ok;
+
+type Count = int;
+
+const SEED: ulong = 25;
+const AS_INT: int = (SEED as int);
+const AS_TINY: tiny = AS_INT as tiny;
+const AS_BYTE: byte = AS_INT as byte;
+const AS_SHORT: short = AS_INT as short;
+const AS_USHORT: ushort = AS_INT as ushort;
+const AS_UINT: uint = AS_INT as uint;
+const AS_LONG: long = AS_INT as long;
+const AS_ULONG: ulong = AS_INT as ulong;
+const AS_ALIAS: Count = (AS_ULONG as Count);
+
+const TINY_MIN: tiny = (-128) as tiny;
+const BYTE_MAX: byte = 255 as byte;
+const SHORT_MIN: short = (-32768) as short;
+const USHORT_MAX: ushort = 65535 as ushort;
+const INT_MIN: int = (-2147483648) as int;
+const INT_MIN_COPY: int = INT_MIN as int;
+const UINT_MAX: uint = 4294967295;
+const UINT_MAX_COPY: uint = UINT_MAX as uint;
+const LONG_MIN: long = (-9223372036854775808) as long;
+const LONG_MIN_COPY: long = LONG_MIN as long;
+const LONG_MAX: long = 9223372036854775807;
+const LONG_MAX_COPY: long = LONG_MAX as long;
+const ULONG_MAX: ulong = 18446744073709551615;
+const ULONG_MAX_COPY: ulong = ULONG_MAX as ulong;
+
+const REAL64: double = 1.25;
+const REAL32: float = REAL64 as float;
+const REAL64_AGAIN: double = REAL32 as double;
+const FLAG: bool = true as bool;
+const LABEL: string = "ok" as string;
+
+const messages: string[AS_ALIAS] = ["hello"];
+
+func classify(value: int) -> int {
+    case (value) {
+        AS_INT => { return 1; }
+        _ => { return 0; }
+    }
+}
+
+func exercise() -> int {
+    if (!FLAG || LABEL != "ok" || REAL32 != 1.25f || REAL64_AGAIN != 1.25) {
+        return 1;
+    }
+    if (INT_MIN_COPY != INT_MIN || UINT_MAX_COPY != UINT_MAX || LONG_MIN_COPY != LONG_MIN ||
+        LONG_MAX_COPY != LONG_MAX || ULONG_MAX_COPY != ULONG_MAX) {
+        return 2;
+    }
+    return len(messages) - AS_ALIAS + classify(AS_INT) - 1;
+}

@@ -1020,14 +1020,29 @@ func etc_try_resolve_sizeof_type_expr(self: ExpressionTypeChecker*, expr_id: Exp
         }
         let len_node = expr_arena_get(unit.parse_result.expr_arena, expr.expr_b);
         let value: ConstValue*? = null;
+        let names_resolved_const = false;
+        let const_eval_failed = false;
         with (let ctx = tr_const_eval_context_create(self.result.driver_state,
               self.result.signatures as SignatureTables*, self.result.names as NameResolution*, self.result.diags) =>
               tr_const_eval_context_free(ctx)) {
             value = tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr.expr_b);
+            if (value == null) {
+                const_eval_failed = tr_const_eval_failed(ctx);
+                if (!const_eval_failed) {
+                    names_resolved_const = tr_expr_names_resolved_const(ctx, self.current_env as ModuleEnv*, expr.expr_b);
+                }
+            }
         }
         if (value == null) {
-            etc_diag_error(self, "TYP-0815", "array length expression is not a compile-time constant",
-                unit.path, len_node.span);
+            if (const_eval_failed) {
+                return type_append_array_dimension(base_ty as Type*, 1);
+            }
+            if (names_resolved_const) {
+                etc_diag_error(self, "TYP-0816", "array length constant is not an int", unit.path, len_node.span);
+            } else {
+                etc_diag_error(self, "TYP-0815", "array length expression is not a compile-time constant",
+                    unit.path, len_node.span);
+            }
             return type_append_array_dimension(base_ty as Type*, 1);
         }
         let const_value = value as ConstValue*;

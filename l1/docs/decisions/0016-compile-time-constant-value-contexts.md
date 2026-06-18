@@ -1,7 +1,7 @@
 # ADR-0016: Compile-Time Constant Value Contexts
 
 - Decision date: 2026-06-18
-- Last edited: 2026-06-18
+- Last edited: 2026-06-19
 - Status: Accepted
 
 ## Context
@@ -16,12 +16,16 @@ L1 has explicit compile-time constant value contexts:
 
 - Fixed-size array suffixes accept `T[N]`, where `N` is a positive compile-time `int` constant expression.
 - `case` arm values accept compile-time scalar, string, and bool constant expressions comparable with the scrutinee.
-- The bootstrap source subset is literals plus visible top-level `const` references, including qualified references.
+- The bootstrap source subset is literals, visible top-level `const` references (including qualified references), and
+  selected scalar casts over compile-time-known operands.
 - Constant references are evaluated semantically, with recursive const-reference evaluation and cycle diagnostics.
+- Compile-time casts include builtin integer-to-integer casts with exact range checking, `float` to/from `double`, and
+  identity casts for `bool` and `string`.
 - A referenced `const` declaration's explicit type annotation is authoritative for value-context classification.
 - Array lengths resolve to concrete integer values before type lowering, signatures, interface emission, or backend
   work.
-- Arithmetic and general constexpr operators remain future work.
+- Integer/real cross-casts, nullable/pointer/aggregate casts, arithmetic, and general constexpr operators remain future
+  work.
 
 ## Rationale
 
@@ -39,10 +43,13 @@ L1 has explicit compile-time constant value contexts:
 - Non-const names, aggregate constants, non-`int` array bounds, non-positive array bounds, and const cycles are semantic
   diagnostics rather than parse errors when their source syntax is valid.
 - Duplicate `case` arms are detected after constant evaluation, so two different names with the same value conflict.
+- Supported scalar casts lower and serialize as folded target-typed literals; invalid integer casts emit `TYP-0700`
+  without dependent const-context diagnostics.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md][const-contexts]
+- [l1/work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md][const-casts]
 
 ## Current Docs
 
@@ -51,6 +58,7 @@ L1 has explicit compile-time constant value contexts:
 - [l1/docs/reference/grammar.md][grammar]: array suffix and `case` arm value grammar
 - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostics]: constant-value-context diagnostics
 
+[const-casts]: ../../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [const-contexts]: ../../work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md
 [design-decisions]: ../reference/design-decisions.md
 [diagnostics]: ../../../docs/specs/compiler/diagnostic-code-catalog.md

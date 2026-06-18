@@ -288,6 +288,37 @@ func test_typing_const_initializer_err() {
 }
 
 /**
+ * Tests supported compile-time scalar casts in const initializers.
+ */
+func test_typing_const_casts_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_casts_ok", cfg);
+        assert(!analysis_has_errors(result), "expected compile-time scalar casts to type-check");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests invalid and excluded const casts report precise non-cascading diagnostics.
+ */
+func test_typing_const_casts_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_casts_err", cfg);
+        assert(analysis_has_errors(result), "expected invalid const-cast diagnostics");
+        assert(count_diag_code(result, "TYP-0700") == 2, "expected two static integer range diagnostics");
+        assert(count_diag_code(result, "SIG-0200") == 2,
+            "expected non-constant and excluded cast initializers to remain unsupported");
+        assert(!has_diag_code(result, "TYP-0815"), "invalid cast should suppress non-constant array-bound cascade");
+        assert(!has_diag_code(result, "TYP-0816"), "invalid cast should suppress wrong-type array-bound cascade");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests assignment rejection for top-level `const` bindings.
  */
 func test_typing_const_assign_err() {
@@ -1282,8 +1313,9 @@ func test_typing_const_array_bound_decl_type_regression() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_const_array_bound_decl_type_regression", cfg);
         assert(analysis_has_errors(result), "expected declaration-typed array-bound errors");
-        assert(has_diag_code(result, "TYP-0815"), "expected aggregate-typed array bound to be non-evaluable");
-        assert(has_diag_code(result, "TYP-0816"), "expected unsigned array bound diagnostic");
+        assert(!has_diag_code(result, "TYP-0815"), "typed constants should not be reported as non-constant");
+        assert(count_diag_code(result, "TYP-0816") == 2,
+            "expected wrong-type diagnostics for unsigned and aggregate constants");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -1445,6 +1477,8 @@ func main() {
     test_typing_const_value_contexts_ok();
     test_typing_const_array_bounds_err();
     test_typing_const_array_bound_decl_type_regression();
+    test_typing_const_casts_ok();
+    test_typing_const_casts_err();
     test_typing_const_case_values_err();
     test_typing_slice_ok();
     test_typing_slice_err();

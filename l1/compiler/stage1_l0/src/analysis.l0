@@ -233,6 +233,44 @@ func mi_var_ref_name(node: ExprNode*) -> string {
 }
 
 /**
+ * Return whether an expression is a supported cast wrapped in parentheses.
+ *
+ * @param arena Expression arena.
+ * @param expr_id Expression to inspect.
+ * @return `true` when the expression's outer value is a cast.
+ */
+func mi_expr_is_const_cast(arena: ExprArena*, expr_id: ExprId) -> bool {
+    let node = expr_arena_get(arena, expr_id);
+    if (ord(node.kind) == ord(EX_PAREN)) {
+        return mi_expr_is_const_cast(arena, node.expr_a);
+    }
+    return ord(node.kind) == ord(EX_CAST);
+}
+
+/**
+ * Format an evaluated scalar constant as a canonical interface literal.
+ *
+ * @param value Evaluated constant value.
+ * @return Target-typed literal spelling.
+ */
+func mi_format_const_value(value: ConstValue*) -> string {
+    match (value.kind) {
+        CV_INT => { return int_to_string(value.int_value); }
+        CV_OTHER_INT => { return int_to_string(value.int_value); }
+        CV_BIGINT => { return bigint_to_string(value.text_value, value.base_value); }
+        CV_BYTE => { return int_to_string(value.int_value); }
+        CV_BOOL => {
+            if (value.bool_value) return "true";
+            return "false";
+        }
+        CV_STRING => { return "\"" + se_encode_c_string_bytes(value.text_value) + "\""; }
+        CV_FLOAT => { return value.text_value; }
+        CV_DOUBLE => { return value.text_value; }
+        CV_NULL => { return "null"; }
+    }
+}
+
+/**
  * Recursive literal formatter operating on an already-resolved arena.
  *
  * @param arena Expression arena.
@@ -572,8 +610,24 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     let is_const = decl.is_const;
                     let literal = "";
                     if (is_const) {
-                        literal = mi_format_literal(result.driver_state, module_name, decl.value);
-                        mi_collect_value_refs_for(nr, env, result.driver_state, module_name, decl.value, require_entries);
+                        let unit = driver_find_unit(result.driver_state, module_name) as DriverUnit*;
+                        let folded_cast = false;
+                        if (mi_expr_is_const_cast(unit.parse_result.expr_arena, decl.value)) {
+                            with (let ctx = tr_const_eval_context_create(result.driver_state, sigs, nr, result.diags) =>
+                                  tr_const_eval_context_free(ctx)) {
+                                let value = tr_const_eval_expr(ctx, env, decl.value);
+                                if (value != null) {
+                                    literal = mi_format_const_value(value as ConstValue*);
+                                    tr_const_value_free(value as ConstValue*);
+                                    folded_cast = true;
+                                }
+                            }
+                        }
+                        if (!folded_cast) {
+                            literal = mi_format_literal(result.driver_state, module_name, decl.value);
+                            mi_collect_value_refs_for(nr, env, result.driver_state, module_name, decl.value,
+                                require_entries);
+                        }
                     }
                     let entry = new InterfaceLetEntry(key, let_ty, is_const, literal, "");
                     ptr_vec_push(let_entries, entry as void*);

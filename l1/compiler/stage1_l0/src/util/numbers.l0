@@ -177,6 +177,53 @@ func bigint_compare_digits(left: string, right: string) -> int {
  * @return The limit digit string, or `null` when the type/sign cannot hold a bigint magnitude.
  */
 func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
+    if (type_is_builtin(dst, "tiny")) {
+        case (base) {
+             2 => { if (is_negative) return "10000000"; return "1111111"; }
+             8 => { if (is_negative) return "200"; return "177"; }
+            10 => { if (is_negative) return "128"; return "127"; }
+            16 => { if (is_negative) return "80"; return "7f"; }
+        }
+        return null;
+    }
+    if (type_is_builtin(dst, "byte")) {
+        if (is_negative) return null;
+        case (base) {
+             2 => { return "11111111"; }
+             8 => { return "377"; }
+            10 => { return "255"; }
+            16 => { return "ff"; }
+        }
+        return null;
+    }
+    if (type_is_builtin(dst, "short")) {
+        case (base) {
+             2 => { if (is_negative) return "1000000000000000"; return "111111111111111"; }
+             8 => { if (is_negative) return "100000"; return "77777"; }
+            10 => { if (is_negative) return "32768"; return "32767"; }
+            16 => { if (is_negative) return "8000"; return "7fff"; }
+        }
+        return null;
+    }
+    if (type_is_builtin(dst, "ushort")) {
+        if (is_negative) return null;
+        case (base) {
+             2 => { return "1111111111111111"; }
+             8 => { return "177777"; }
+            10 => { return "65535"; }
+            16 => { return "ffff"; }
+        }
+        return null;
+    }
+    if (type_is_builtin(dst, "int")) {
+        case (base) {
+             2 => { if (is_negative) return "10000000000000000000000000000000"; return "1111111111111111111111111111111"; }
+             8 => { if (is_negative) return "20000000000"; return "17777777777"; }
+            10 => { if (is_negative) return "2147483648"; return "2147483647"; }
+            16 => { if (is_negative) return "80000000"; return "7fffffff"; }
+        }
+        return null;
+    }
     if (type_is_builtin(dst, "uint")) {
         if (is_negative) return null;
         case (base) {

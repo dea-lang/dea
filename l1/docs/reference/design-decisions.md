@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-06-18
+Version: 2026-06-19
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -304,6 +304,8 @@ The bootstrap compiler keeps integer behavior defined rather than inheriting hos
   target is known
 - fitting integer literals may be used in narrower typed integer contexts without a runtime check, while nonliteral
   narrowing and cross-signedness conversions require an explicit cast
+- an explicit cast between builtin integer types is compile-time evaluable when its operand is a compile-time constant;
+  the value must fit the target range and never wraps
 - explicit integer casts to nullable integer targets, such as `0 as ulong?`, use the same checked conversion policy as
   casts to the inner type and then produce a present nullable value
 - binary `&`, `|`, `^`, `<<`, and `>>` use the same common-integer-type lattice as the other integer binary operators
@@ -351,6 +353,8 @@ Current conversion and typing policy stays intentionally narrow:
 - implicit `float -> int` and `double -> int` are not allowed
 - mixed integer and real binary arithmetic requires an explicit cast to a matching floating type
 - explicit numeric `as` casts among `int`, `float`, and `double` are part of the current bootstrap surface
+- `float` to/from `double` casts are compile-time evaluable for constant operands; integer/real cross-casts remain
+  outside the `const` initializer subset
 
 Direct integer literal conversion is a narrow contextual rule:
 
@@ -517,8 +521,11 @@ L1 distinguishes between two top-level binding forms:
 Current policy:
 
 - top-level `const` requires an explicit type annotation
-- top-level `const` initializers must be literals, `null`, bare zero-argument enum variants, or constructor calls whose
-  arguments are themselves constant
+- top-level `const` initializers may use literals, `null`, bare zero-argument enum variants, constructor calls whose
+  arguments are themselves constant, visible scalar `const` references, and the selected compile-time scalar casts
+  described in Sections 11 and 12
+- compile-time scalar casts cover builtin integer-to-integer casts with target-range checking, `float` to/from `double`,
+  and identity casts for `bool` and `string`; other cast families remain outside the accepted constant subset
 - scalar, string, and bool `const` values may be referenced from constant-value grammar contexts such as array bounds
   and `case` arms, with the explicit declaration type controlling semantic classification
 - top-level `const` lowers to `static const` generated C declarations under the existing `dea_*` ABI naming scheme

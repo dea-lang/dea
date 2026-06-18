@@ -1862,6 +1862,74 @@ func be_try_emit_bare_variant_static_initializer(self: Backend*, expr_id: ExprId
 }
 
 /**
+ * Evaluate one scalar constant expression in the current module.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression id to evaluate.
+ * @return Owned evaluated value, or `null` when evaluation is unsupported.
+ */
+func be_eval_const_value(self: Backend*, expr_id: ExprId) -> ConstValue*? {
+    if (self.current_env == null || self.result.signatures == null || self.result.names == null) {
+        return null;
+    }
+
+    let value: ConstValue*? = null;
+    with (let ctx = tr_const_eval_context_create(self.result.driver_state,
+          self.result.signatures as SignatureTables*, self.result.names as NameResolution*, self.result.diags) =>
+          tr_const_eval_context_free(ctx)) {
+        value = tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr_id);
+    }
+    return value;
+}
+
+/**
+ * Emit a numeric-family scalar constant as a C literal.
+ *
+ * @param value Evaluated constant value.
+ * @param expected_type Resolved binding type, used for bigint typing.
+ * @return C literal text, or `null` for non-numeric kinds (`bool`, `string`, `null`).
+ */
+func be_emit_const_scalar_numeric(value: ConstValue*, expected_type: Type*) -> string? {
+    match (value.kind) {
+        CV_INT => { return cem_emit_int_literal(value.int_value); }
+        CV_OTHER_INT => { return cem_emit_int_literal(value.int_value); }
+        CV_BIGINT => { return cem_emit_typed_bigint_literal(value.text_value, value.base_value, expected_type); }
+        CV_BYTE => { return cem_emit_byte_literal(value.int_value as byte); }
+        CV_FLOAT => { return cem_emit_real_literal(value.text_value); }
+        CV_DOUBLE => { return cem_emit_real_literal(value.text_value); }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Try to evaluate and emit a scalar constant as a static initializer.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression id to evaluate.
+ * @param expected_type Resolved binding type.
+ * @return Static scalar initializer, or `null` when evaluation is unsupported.
+ */
+func be_try_emit_evaluated_const_initializer(self: Backend*, expr_id: ExprId, expected_type: Type*) -> string? {
+    let value = be_eval_const_value(self, expr_id);
+    if (value == null) {
+        return null;
+    }
+
+    let evaluated = value as ConstValue*;
+    let result = be_emit_const_scalar_numeric(evaluated, expected_type);
+    if (result == null) {
+        match (evaluated.kind) {
+            CV_BOOL => { result = cem_emit_const_bool_literal(evaluated.bool_value); }
+            CV_STRING => { result = cem_emit_const_string_literal(evaluated.text_value); }
+            CV_NULL => { result = cem_emit_null_literal(expected_type, true); }
+            _ => {}
+        }
+    }
+    tr_const_value_free(evaluated);
+    return result;
+}
+
+/**
  * Try to emit a constant initializer for a top-level `let`.
  *
  * @param self Backend state to inspect.
@@ -1879,7 +1947,7 @@ func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type:
     if (ord(literal_expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected_type.kind) == ord(TY_ARRAY)) {
         return be_emit_array_literal_value(self, literal_id, expected_type);
     }
-    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    let expr = literal_expr;
     match (expr.kind) {
         EX_INT => { return cem_emit_int_literal(expr.int_value); }
         EX_BIGINT => { return cem_emit_typed_bigint_literal(expr.text_value, expr.base_value, expected_type); }
@@ -1889,14 +1957,21 @@ func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type:
         EX_BOOL => { return cem_emit_const_bool_literal(expr.bool_value); }
         EX_STRING => { return cem_emit_const_string_literal(expr.text_value); }
         EX_NULL => { return cem_emit_null_literal(expected_type, true); }
-        EX_VAR_REF => { return be_try_emit_bare_variant_static_initializer(self, expr_id, expected_type); }
+        EX_VAR_REF => {
+            let variant_init = be_try_emit_bare_variant_static_initializer(self, literal_id, expected_type);
+            if (variant_init != null) {
+                return variant_init;
+            }
+            return be_try_emit_evaluated_const_initializer(self, literal_id, expected_type);
+        }
         EX_ARRAY_LITERAL => {
             if (ord(expected_type.kind) == ord(TY_ARRAY)) {
-                return be_emit_array_literal_value(self, expr_id, expected_type);
+                return be_emit_array_literal_value(self, literal_id, expected_type);
             }
             return null;
         }
-        EX_CALL => { return be_try_emit_const_constructor(self, expr_id, expected_type); }
+        EX_CALL => { return be_try_emit_const_constructor(self, literal_id, expected_type); }
+        EX_CAST => { return be_try_emit_evaluated_const_initializer(self, literal_id, expected_type); }
         _ => {
             return null;
         }
@@ -3851,9 +3926,10 @@ func be_emit_pattern_bindings(self: Backend*, pattern_id: PatternId, enum_type: 
  *
  * @param self Backend state to inspect.
  * @param expr_id Literal expression id.
+ * @param expected_type Case scrutinee type.
  * @return Lowered constant expression.
  */
-func be_emit_case_literal(self: Backend*, expr_id: ExprId) -> string {
+func be_emit_case_literal(self: Backend*, expr_id: ExprId, expected_type: Type*) -> string {
     let bigint_literal = be_emit_typed_bigint_expr(self, expr_id, null);
     if (bigint_literal != null) {
         return bigint_literal as string;
@@ -3868,7 +3944,24 @@ func be_emit_case_literal(self: Backend*, expr_id: ExprId) -> string {
         EX_BOOL => { return cem_emit_bool_literal(expr.bool_value); }
         EX_STRING => { return cem_emit_string_literal(expr.text_value); }
         _ => {
-            return be_ice_string("[ICE-1194] unsupported case literal type");
+            let value = be_eval_const_value(self, expr_id);
+            if (value == null) {
+                return be_ice_string("[ICE-1194] unsupported case literal type");
+            }
+            let evaluated = value as ConstValue*;
+            let result = be_emit_const_scalar_numeric(evaluated, expected_type);
+            if (result == null) {
+                match (evaluated.kind) {
+                    CV_BOOL => { result = cem_emit_bool_literal(evaluated.bool_value); }
+                    CV_STRING => { result = cem_emit_string_literal(evaluated.text_value); }
+                    _ => {}
+                }
+            }
+            tr_const_value_free(evaluated);
+            if (result == null) {
+                return be_ice_string("[ICE-1194] unsupported null case literal");
+            }
+            return result as string;
         }
     }
 }
@@ -3881,11 +3974,32 @@ func be_case_int_literal_value(self: Backend*, expr_id: ExprId) -> int? {
     if (ord(expr.kind) == ord(EX_BYTE)) {
         return expr.int_value;
     }
+    let value = be_eval_const_value(self, expr_id);
+    if (value != null) {
+        let evaluated = value as ConstValue*;
+        let result: int? = null;
+        if (ord(evaluated.kind) == ord(CV_INT) || ord(evaluated.kind) == ord(CV_BYTE) ||
+            ord(evaluated.kind) == ord(CV_OTHER_INT)) {
+            result = evaluated.int_value;
+        }
+        tr_const_value_free(evaluated);
+        return result;
+    }
     return null;
 }
 
 func be_case_literal_is_bigint(self: Backend*, expr_id: ExprId) -> bool {
-    return be_bigint_expr_text(self, expr_id) != null && be_bigint_expr_base(self, expr_id) != null;
+    if (be_bigint_expr_text(self, expr_id) != null && be_bigint_expr_base(self, expr_id) != null) {
+        return true;
+    }
+    let value = be_eval_const_value(self, expr_id);
+    if (value == null) {
+        return false;
+    }
+    let evaluated = value as ConstValue*;
+    let result = ord(evaluated.kind) == ord(CV_BIGINT);
+    tr_const_value_free(evaluated);
+    return result;
 }
 
 func be_case_literal_is_always_false(self: Backend*, scrutinee_ty: Type*, expr_id: ExprId) -> bool {
@@ -4078,12 +4192,12 @@ func be_emit_case_stmt(self: Backend*, stmt: StmtNode*) {
                 let arm = ptr_vec_get(arms, i) as CaseArm*;
                 let cond = "";
                 if (type_is_builtin(scrutinee_ty as Type*, "string")) {
-                    let c_literal = be_emit_case_literal(self, arm.literal);
+                    let c_literal = be_emit_case_literal(self, arm.literal, scrutinee_ty as Type*);
                     cond = cem_emit_string_equals_call("_scrutinee", c_literal);
                 } else if (be_case_literal_is_always_false(self, scrutinee_ty as Type*, arm.literal)) {
                     cond = "false";
                 } else {
-                    let c_literal2 = be_emit_case_literal(self, arm.literal);
+                    let c_literal2 = be_emit_case_literal(self, arm.literal, scrutinee_ty as Type*);
                     cond = "_scrutinee == " + c_literal2;
                 }
                 if (i == 0) {
@@ -4122,7 +4236,7 @@ func be_emit_case_stmt(self: Backend*, stmt: StmtNode*) {
             cem_emit_switch_start(self.emitter, "_scrutinee");
             for (let i = 0; i < vec_size(arms); i = i + 1) {
                 let arm = ptr_vec_get(arms, i) as CaseArm*;
-                cem_emit_case_label(self.emitter, be_emit_case_literal(self, arm.literal));
+                cem_emit_case_label(self.emitter, be_emit_case_literal(self, arm.literal, scrutinee_ty as Type*));
                 cem_emit_block_start(self.emitter);
                 let arm_scope = be_push_scope(self);
                 self.next_stmt_unreachable = false;

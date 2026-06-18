@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-06-18
+Version: 2026-06-19
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -429,7 +429,7 @@ diagnostic.
 | `TYP-0316` | All     | Heap allocation initializer type mismatch                                                              |
 | `TYP-0319` | All     | Internal default code for widening-context type mismatches                                             |
 | `TYP-0360` | L1+     | Cannot assign to const binding                                                                         |
-| `TYP-0700` | All     | Integer literal is outside the target integer type range                                               |
+| `TYP-0700` | All     | Compile-time integer value is outside the target integer type range                                    |
 | `TYP-0701` | All     | Explicit nullable-pointer-to-pointer cast is provably null at compile time                             |
 | `TYP-0702` | All     | Integer literal outside `int` requires a contextual integer type                                       |
 | `TYP-0703` | All     | Integer literal outside `int` cannot be used in this contextual type                                   |
