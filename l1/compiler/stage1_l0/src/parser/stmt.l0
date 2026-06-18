@@ -519,12 +519,12 @@ func ps_parse_with_stmt(self: ParserState*) -> StmtId? {
 }
 
 /**
- * Parse a literal allowed in a `case` arm.
+ * Parse a constant value expression allowed in a `case` arm.
  *
  * @param self Parser state to advance.
- * @return Parsed literal expression id, or `null` on error.
+ * @return Parsed value expression id, or `null` on error.
  */
-func ps_parse_case_literal(self: ParserState*) -> ExprId? {
+func ps_parse_case_arm_value(self: ParserState*) -> ExprId? {
     let start = ps_span_start(self);
 
     let tok = ps_peek(self);
@@ -564,9 +564,25 @@ func ps_parse_case_literal(self: ParserState*) -> ExprId? {
         let node = expr_node_create(EX_BOOL, ps_extend_span(self, start));
         node.bool_value = false;
         return expr_arena_add(self.expr_arena, node);
+    } else if (ps_check_ident(self)) {
+        let qualified = ps_try_parse_qualified_name(self);
+        if (qualified != null) {
+            let q = qualified as QualifiedNameResult*;
+            let node = expr_node_create(EX_VAR_REF, ps_extend_span(self, start));
+            node.text_value = token_ident_text(q.name_tok) as string;
+            node.module_path = q.module_path;
+            node.name_qualifier = q.name_qualifier;
+            drop q;
+            return expr_arena_add(self.expr_arena, node);
+        }
+
+        let name_tok = ps_advance(self);
+        let node2 = expr_node_create(EX_VAR_REF, ps_extend_span(self, start));
+        node2.text_value = token_ident_text(name_tok) as string;
+        return expr_arena_add(self.expr_arena, node2);
     }
 
-    ps_emit_error(self, "PAR-0241", "expected literal in 'case' arm", tok);
+    ps_emit_error(self, "PAR-0241", "expected constant value expression in 'case' arm", tok);
     return null;
 }
 
@@ -577,6 +593,7 @@ func ps_at_case_arm_start(self: ParserState*) -> bool {
            ps_check_byte(self) ||
            ps_check_real(self) ||
            ps_check_string(self) ||
+           ps_check_ident(self) ||
            ps_check(self, ord(TT_TRUE)) ||
            ps_check(self, ord(TT_FALSE));
 }
@@ -673,7 +690,7 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
             }
 
             let arm_start = ps_span_start(self);
-            let literal = ps_parse_case_literal(self)?;
+            let literal = ps_parse_case_arm_value(self)?;
             ps_expect(self, ord(TT_ARROW_MATCH), "PAR-0235", "expected '=>' in 'case' arm")?;
             let body = ps_parse_stmt(self)?;
             let arm = new CaseArm(literal, body, ps_extend_span(self, arm_start));

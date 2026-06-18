@@ -258,6 +258,7 @@ func be_resolve_type_ref(self: Backend*, tref: TypeRef*) -> Type*? {
         return tr_resolve_type_ref(
             self.result.signatures as SignatureTables*,
             self.result.names as NameResolution*,
+            self.result.driver_state,
             be_current_env(self),
             tref,
             self.result.diags,

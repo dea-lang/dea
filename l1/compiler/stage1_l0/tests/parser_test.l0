@@ -173,7 +173,7 @@ func test_reserved_inferred_length_array() {
  */
 func test_array_type_syntax_message() {
     let src = "module main; func main() -> int { let x: int[+] = 0; return x; }";
-    expect_error_code_and_message(src, "PAR-0620", "expected integer length in array type");
+    expect_error_code_and_message(src, "PAR-0620", "expected constant integer expression in array type");
 }
 
 /**
@@ -206,6 +206,40 @@ func test_fixed_array_syntax_ok() {
     assert(ord(suffix0.kind) == ord(TS_POINTER), "Expected pointer suffix first");
     assert(ord(suffix1.kind) == ord(TS_ARRAY), "Expected array suffix second");
     assert(suffix1.array_len == 2, "Expected array length 2");
+    parse_result_free(result);
+}
+
+/**
+ * Tests named const-value grammar contexts parse in array bounds, array constructors, and `case` arms.
+ */
+func test_const_value_context_syntax_ok() {
+    let src = "module main; const N: int = 3; const OK: int = 200; func main(status: int, xs: int[N]) -> int { let b = int[N]([1, 2, 3]); case (status) { OK => return b[0]; _ => return 0; } }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected named const-value syntax to parse");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 2) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let param1 = ptr_vec_get(func_decl.params, 1) as Param*;
+    let suffix = ptr_vec_get(param1.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*;
+    assert(ord(suffix.kind) == ord(TS_ARRAY), "Expected array suffix for int[N]");
+    assert(suffix.array_len == 0, "Expected unresolved named array length before semantic resolution");
+    assert(suffix.array_len_expr >= 0, "Expected array length expression id");
+    let len_expr = expr_arena_get(result.expr_arena, suffix.array_len_expr);
+    assert(ord(len_expr.kind) == ord(EX_VAR_REF) && len_expr.text_value == "N",
+        "Expected named array length expression");
+
+    let block = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let let_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(block.ids as VectorBase*, 0));
+    let ctor_expr = expr_arena_get(result.expr_arena, let_stmt.expr_a);
+    assert(ord(ctor_expr.kind) == ord(EX_ARRAY_CONSTRUCTOR), "Expected int[N](...) to parse as array constructor");
+
+    let case_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(block.ids as VectorBase*, 1));
+    let arm = ptr_vec_get(case_stmt.case_arms as VectorBase*, 0) as CaseArm*;
+    let arm_value = expr_arena_get(result.expr_arena, arm.literal);
+    assert(ord(arm_value.kind) == ord(EX_VAR_REF) && arm_value.text_value == "OK",
+        "Expected named case arm value expression");
+
     parse_result_free(result);
 }
 
@@ -1448,6 +1482,7 @@ func main() {
     test_reserved_inferred_length_array();
     test_array_expr_syntax_messages();
     test_fixed_array_syntax_ok();
+    test_const_value_context_syntax_ok();
     test_fixed_array_complex_suffix_order_ok();
     test_ordered_pointer_nullable_suffix_syntax_ok();
     test_call_argument_indexing_is_value_expr();

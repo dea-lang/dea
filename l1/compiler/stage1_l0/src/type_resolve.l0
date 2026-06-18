@@ -6,6 +6,7 @@
 module type_resolve;
 
 import std.hashset;
+import std.hashmap;
 import std.string;
 import std.text;
 import std.vector;
@@ -269,6 +270,357 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
 }
 
 /**
+ * Defines compile-time constant value kinds known to semantic resolution.
+ */
+enum ConstValueKind {
+    CV_INT;
+    CV_OTHER_INT;
+    CV_BIGINT;
+    CV_BYTE;
+    CV_BOOL;
+    CV_STRING;
+    CV_FLOAT;
+    CV_DOUBLE;
+    CV_NULL;
+}
+
+/**
+ * Represents one evaluated compile-time constant value.
+ */
+struct ConstValue {
+    kind: ConstValueKind;
+    int_value: int;
+    bool_value: bool;
+    text_value: string;
+    base_value: int;
+}
+
+/**
+ * Carries semantic context and per-evaluation cache for const evaluation.
+ */
+struct ConstEvalContext {
+    driver_state: DriverState*;
+    tables: SignatureTables*;
+    nr: NameResolution*;
+    diags: DiagCollector*;
+    cache: StringPtrMap*;
+    visiting: StringSet*;
+}
+
+/**
+ * Create a compile-time constant value.
+ *
+ * @param kind Constant value kind.
+ * @param int_value Integer payload for integer-like values.
+ * @param bool_value Boolean payload.
+ * @param text_value Text payload for string, real, and bigint values.
+ * @param base_value Literal base for bigint values.
+ * @return New constant value.
+ */
+func tr_const_value_new(kind: ConstValueKind, int_value: int, bool_value: bool, text_value: string,
+                        base_value: int) -> ConstValue* {
+    return new ConstValue(kind, int_value, bool_value, text_value, base_value);
+}
+
+/**
+ * Clone a compile-time constant value.
+ *
+ * @param value Value to clone.
+ * @return New owned value with the same payload.
+ */
+func tr_const_value_clone(value: ConstValue*) -> ConstValue* {
+    return new ConstValue(value.kind, value.int_value, value.bool_value, value.text_value, value.base_value);
+}
+
+/**
+ * Free a compile-time constant value.
+ *
+ * @param value Value to release.
+ */
+func tr_const_value_free(value: ConstValue*) {
+    drop value;
+}
+
+/**
+ * Create a const-evaluation context.
+ *
+ * @param driver_state Parsed driver state.
+ * @param tables Signature tables available to semantic resolution.
+ * @param nr Name-resolution tables.
+ * @param diags Diagnostic collector.
+ * @return New const-evaluation context.
+ */
+func tr_const_eval_context_create(driver_state: DriverState*, tables: SignatureTables*, nr: NameResolution*,
+                                  diags: DiagCollector*) -> ConstEvalContext* {
+    return new ConstEvalContext(driver_state, tables, nr, diags, spm_create(), ss_create());
+}
+
+/**
+ * Free a const-evaluation context and cached values.
+ *
+ * @param self Context to release.
+ */
+func tr_const_eval_context_free(self: ConstEvalContext*) {
+    for (let i = 0; i < spm_capacity(self.cache); i = i + 1) {
+        if (spm_slot_occupied(self.cache, i)) {
+            tr_const_value_free(spm_slot_value(self.cache, i) as ConstValue*);
+        }
+    }
+    spm_free(self.cache);
+    ss_free(self.visiting);
+    drop self;
+}
+
+/**
+ * Return whether a constant value carries a host-sized integer payload.
+ *
+ * @param value Value to inspect.
+ * @return `true` for integer-like values.
+ */
+func tr_const_value_is_integer_like(value: ConstValue*) -> bool {
+    return ord(value.kind) == ord(CV_INT) || ord(value.kind) == ord(CV_BYTE) ||
+           ord(value.kind) == ord(CV_OTHER_INT);
+}
+
+/**
+ * Reclassify a raw initializer value using a resolved declaration type.
+ *
+ * @param value Raw evaluated initializer value.
+ * @param ty Resolved declaration type.
+ * @return New value adjusted to the declared scalar kind, or `null` when not representable.
+ */
+func tr_const_value_for_type(value: ConstValue*, ty: Type*) -> ConstValue*? {
+    if (ord(ty.kind) != ord(TY_BUILTIN)) {
+        return null;
+    }
+    if (ty.name == "int") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_INT, value.int_value, false, "", 0);
+        }
+    } else if (ty.name == "byte") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_BYTE, value.int_value, false, "", 0);
+        }
+    } else if (ty.name == "tiny" || ty.name == "short" || ty.name == "ushort" ||
+               ty.name == "uint" || ty.name == "long" || ty.name == "ulong") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_OTHER_INT, value.int_value, false, ty.name, 0);
+        }
+    } else if (ty.name == "bool") {
+        if (ord(value.kind) == ord(CV_BOOL)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (ty.name == "string") {
+        if (ord(value.kind) == ord(CV_STRING)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (ty.name == "float") {
+        if (ord(value.kind) == ord(CV_FLOAT)) {
+            return tr_const_value_clone(value);
+        }
+        if (ord(value.kind) == ord(CV_DOUBLE)) {
+            return tr_const_value_new(CV_FLOAT, 0, false, value.text_value, 0);
+        }
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_FLOAT, 0, false, int_to_string(value.int_value), 0);
+        }
+    } else if (ty.name == "double") {
+        if (ord(value.kind) == ord(CV_DOUBLE) || ord(value.kind) == ord(CV_FLOAT)) {
+            return tr_const_value_new(CV_DOUBLE, 0, false, value.text_value, 0);
+        }
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_DOUBLE, 0, false, int_to_string(value.int_value), 0);
+        }
+    }
+    return null;
+}
+
+/**
+ * Return the simple builtin type name from a const declaration annotation.
+ *
+ * @param decl Const declaration to inspect.
+ * @return Builtin type name, or empty string when the annotation is not simple.
+ */
+func tr_const_decl_builtin_name(decl: LetDecl*) -> string {
+    if (decl.type_ref == null) {
+        return "";
+    }
+    let tref = decl.type_ref as TypeRef*;
+    if (tref.module_path != null || tref.name_qualifier != null || tref.func_params != null ||
+        tref.func_result != null || tref.suffixes != null || tref.pointer_depth != 0 || tref.is_nullable) {
+        return "";
+    }
+    if (type_is_builtin_name(tref.name)) {
+        return tref.name;
+    }
+    return "";
+}
+
+/**
+ * Reclassify a raw initializer value using its const declaration annotation.
+ *
+ * @param value Raw evaluated initializer value.
+ * @param decl Const declaration carrying the explicit type annotation.
+ * @return New value adjusted to the declared scalar kind, or `null` when not representable.
+ */
+func tr_const_value_for_decl(value: ConstValue*, decl: LetDecl*) -> ConstValue*? {
+    let builtin = tr_const_decl_builtin_name(decl);
+    if (builtin == "int") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_INT, value.int_value, false, "", 0);
+        }
+    } else if (builtin == "byte") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_BYTE, value.int_value, false, "", 0);
+        }
+    } else if (builtin == "tiny" || builtin == "short" || builtin == "ushort" ||
+               builtin == "uint" || builtin == "long" || builtin == "ulong") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_OTHER_INT, value.int_value, false, builtin, 0);
+        }
+    } else if (builtin == "bool") {
+        if (ord(value.kind) == ord(CV_BOOL)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (builtin == "string") {
+        if (ord(value.kind) == ord(CV_STRING)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (builtin == "float") {
+        if (ord(value.kind) == ord(CV_FLOAT)) {
+            return tr_const_value_clone(value);
+        }
+        if (ord(value.kind) == ord(CV_DOUBLE)) {
+            return tr_const_value_new(CV_FLOAT, 0, false, value.text_value, 0);
+        }
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_FLOAT, 0, false, int_to_string(value.int_value), 0);
+        }
+    } else if (builtin == "double") {
+        if (ord(value.kind) == ord(CV_DOUBLE) || ord(value.kind) == ord(CV_FLOAT)) {
+            return tr_const_value_new(CV_DOUBLE, 0, false, value.text_value, 0);
+        }
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_DOUBLE, 0, false, int_to_string(value.int_value), 0);
+        }
+    }
+    return null;
+}
+
+/**
+ * Evaluate a const declaration symbol to a compile-time value.
+ *
+ * @param ctx Const-evaluation context.
+ * @param sym Symbol to evaluate.
+ * @return Owned constant value, or `null` when not evaluable.
+ */
+func tr_const_eval_symbol(ctx: ConstEvalContext*, sym: Symbol*) -> ConstValue*? {
+    if (ord(sym.kind) != ord(SYM_LET) || sym.decl_ptr == null) {
+        return null;
+    }
+    let decl = sym.decl_ptr as LetDecl*;
+    if (!decl.is_const) {
+        return null;
+    }
+
+    let key = tr_key(sym.module_name, sym.name);
+    let cached = spm_get(ctx.cache, key);
+    if (cached != null) {
+        return tr_const_value_clone(cached as ConstValue*);
+    }
+
+    let unit = driver_find_unit(ctx.driver_state, sym.module_name);
+    let env = nr_env_find(ctx.nr, sym.module_name);
+    if (unit == null || env == null) {
+        return null;
+    }
+
+    if (ss_has(ctx.visiting, key)) {
+        tr_diag_error(
+            ctx.diags,
+            "SIG-0201",
+            "compile-time constant cycle involving '" + sym.name + "'",
+            (unit as DriverUnit*).path,
+            sym.span
+        );
+        return null;
+    }
+
+    ss_add(ctx.visiting, key);
+    let raw = tr_const_eval_expr_in_env(ctx, env as ModuleEnv*, (unit as DriverUnit*).parse_result.expr_arena,
+        decl.value);
+    ss_remove(ctx.visiting, key);
+    if (raw == null) {
+        return null;
+    }
+
+    let resolved_type = spm_get(ctx.tables.let_types, key);
+    let value: ConstValue*? = null;
+    if (resolved_type != null) {
+        value = tr_const_value_for_type(raw as ConstValue*, resolved_type as Type*);
+    } else {
+        value = tr_const_value_for_decl(raw as ConstValue*, decl);
+    }
+    tr_const_value_free(raw as ConstValue*);
+    if (value == null) {
+        return null;
+    }
+    spm_put(ctx.cache, key, tr_const_value_clone(value as ConstValue*) as void*);
+    return value;
+}
+
+/**
+ * Evaluate an expression in a specific module environment to a compile-time value.
+ *
+ * @param ctx Const-evaluation context.
+ * @param env Module environment controlling name lookup.
+ * @param arena Expression arena containing `expr_id`.
+ * @param expr_id Expression to evaluate.
+ * @return Owned constant value, or `null` when not evaluable.
+ */
+func tr_const_eval_expr_in_env(ctx: ConstEvalContext*, env: ModuleEnv*, arena: ExprArena*, expr_id: ExprId) -> ConstValue*? {
+    if (expr_id < 0) {
+        return null;
+    }
+    let expr = expr_arena_get(arena, expr_id);
+    match (expr.kind) {
+        EX_INT => { return tr_const_value_new(CV_INT, expr.int_value, false, "", 0); }
+        EX_BIGINT => { return tr_const_value_new(CV_BIGINT, 0, false, expr.text_value, expr.base_value); }
+        EX_BYTE => { return tr_const_value_new(CV_BYTE, expr.int_value, false, expr.text_value, 0); }
+        EX_BOOL => { return tr_const_value_new(CV_BOOL, 0, expr.bool_value, "", 0); }
+        EX_STRING => { return tr_const_value_new(CV_STRING, 0, false, expr.text_value, 0); }
+        EX_FLOAT => { return tr_const_value_new(CV_FLOAT, 0, false, expr.text_value, 0); }
+        EX_DOUBLE => { return tr_const_value_new(CV_DOUBLE, 0, false, expr.text_value, 0); }
+        EX_NULL => { return tr_const_value_new(CV_NULL, 0, false, "", 0); }
+        EX_PAREN => { return tr_const_eval_expr_in_env(ctx, env, arena, expr.expr_a); }
+        EX_VAR_REF => {
+            let sym = tr_symbol_lookup(ctx.nr, env, expr.text_value, expr.module_path, expr.name_qualifier);
+            if (sym == null) {
+                return null;
+            }
+            return tr_const_eval_symbol(ctx, sym as Symbol*);
+        }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Evaluate an expression owned by a module environment to a compile-time value.
+ *
+ * @param ctx Const-evaluation context.
+ * @param env Module environment owning the expression.
+ * @param expr_id Expression to evaluate.
+ * @return Owned constant value, or `null` when not evaluable.
+ */
+func tr_const_eval_expr(ctx: ConstEvalContext*, env: ModuleEnv*, expr_id: ExprId) -> ConstValue*? {
+    let unit = driver_find_unit(ctx.driver_state, env.module_name);
+    if (unit == null) {
+        return null;
+    }
+    return tr_const_eval_expr_in_env(ctx, env, (unit as DriverUnit*).parse_result.expr_arena, expr_id);
+}
+
+/**
  * Resolve a type alias symbol to its final target type.
  *
  * @param tables Signature tables available during type resolution.
@@ -279,8 +631,8 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
  * @param seen Alias keys currently being expanded for cycle detection.
  * @return Resolved aliased type, or `null` on failure.
  */
-func tr_resolve_alias(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, sym: Symbol*, diags: DiagCollector*,
-                       seen: StringSet*) -> Type*? {
+func tr_resolve_alias(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                       sym: Symbol*, diags: DiagCollector*, seen: StringSet*) -> Type*? {
     if (sym.resolved_type != null) {
         return type_clone(sym.resolved_type as Type*);
     }
@@ -318,7 +670,8 @@ func tr_resolve_alias(tables: SignatureTables*, nr: NameResolution*, env: Module
     }
 
     let decl = sym.decl_ptr as TypeAliasDecl*;
-    let resolved = tr_resolve_type_ref(tables, nr, nr_env_find(nr, sym.module_name) as ModuleEnv*, decl.target, diags, seen);
+    let resolved = tr_resolve_type_ref(tables, nr, driver_state, nr_env_find(nr, sym.module_name) as ModuleEnv*,
+        decl.target, diags, seen);
     ss_remove(seen, key);
     if (resolved != null) {
         symbol_set_type_clone(sym, resolved as Type*);
@@ -335,7 +688,8 @@ func tr_resolve_alias(tables: SignatureTables*, nr: NameResolution*, env: Module
  * @param filename Source filename for diagnostics.
  * @return Suffixed type, or `null` if suffix validation fails.
  */
-func tr_apply_suffix(base: Type*, tref: TypeRef*, diags: DiagCollector*, filename: string) -> Type*? {
+func tr_apply_suffix(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                     base: Type*, tref: TypeRef*, diags: DiagCollector*, filename: string) -> Type*? {
     let current = base;
     if (tref.suffixes != null) {
         let suffixes = tref.suffixes as VectorBase*;
@@ -350,12 +704,36 @@ func tr_apply_suffix(base: Type*, tref: TypeRef*, diags: DiagCollector*, filenam
                 }
                 current = type_new_pointer(current);
             } else if (ord(suffix.kind) == ord(TS_ARRAY)) {
-                if (suffix.array_len <= 0) {
+                let resolved_len = suffix.array_len;
+                if (suffix.array_len_expr >= 0) {
+                    let value: ConstValue*? = null;
+                    with (let ctx = tr_const_eval_context_create(driver_state, tables, nr, diags) =>
+                          tr_const_eval_context_free(ctx)) {
+                        value = tr_const_eval_expr(ctx, env, suffix.array_len_expr);
+                    }
+                    if (value == null) {
+                        type_free(current);
+                        tr_diag_error(diags, "TYP-0815", "array length expression is not a compile-time constant",
+                            filename, suffix.span);
+                        return null;
+                    }
+                    let const_value = value as ConstValue*;
+                    if (ord(const_value.kind) != ord(CV_INT)) {
+                        tr_const_value_free(const_value);
+                        type_free(current);
+                        tr_diag_error(diags, "TYP-0816", "array length constant is not an int", filename, suffix.span);
+                        return null;
+                    }
+                    resolved_len = const_value.int_value;
+                    tr_const_value_free(const_value);
+                }
+                if (resolved_len <= 0) {
                     type_free(current);
-                    tr_diag_error(diags, "TYP-0800", "array length must be a positive int literal", filename, suffix.span);
+                    tr_diag_error(diags, "TYP-0817", "array length constant is not positive", filename, suffix.span);
                     return null;
                 }
-                current = type_append_array_dimension(current, suffix.array_len);
+                suffix.array_len = resolved_len;
+                current = type_append_array_dimension(current, resolved_len);
             } else if (ord(suffix.kind) == ord(TS_SLICE)) {
                 if (ord(current.kind) == ord(TY_BUILTIN) && current.name == "void") {
                     type_free(current);
@@ -409,27 +787,28 @@ func tr_apply_suffix(base: Type*, tref: TypeRef*, diags: DiagCollector*, filenam
  * @param seen Alias keys currently being expanded for cycle detection.
  * @return Resolved type, or `null` if resolution fails.
  */
-func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, tref: TypeRef*,
-                         diags: DiagCollector*, seen: StringSet*) -> Type*? {
+func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                         tref: TypeRef*, diags: DiagCollector*, seen: StringSet*) -> Type*? {
     if (tref.func_params != null) {
         with (let params: VectorBase*? = ptr_vec_create(vec_size(tref.func_params as VectorBase*)) => type_param_vec_free(params),
               let result: Type*? = null => tr_type_free_opt(result)) {
             let parsed_params = tref.func_params as VectorBase*;
             for (let i = 0; i < vec_size(parsed_params); i = i + 1) {
-                let param_type = tr_resolve_type_ref(tables, nr, env, ptr_vec_get(parsed_params, i) as TypeRef*, diags, seen);
+                let param_type = tr_resolve_type_ref(tables, nr, driver_state, env,
+                    ptr_vec_get(parsed_params, i) as TypeRef*, diags, seen);
                 if (param_type == null) {
                     return null;
                 }
                 ptr_vec_push(params as VectorBase*, param_type as void*);
             }
-            result = tr_resolve_type_ref(tables, nr, env, tref.func_result as TypeRef*, diags, seen);
+            result = tr_resolve_type_ref(tables, nr, driver_state, env, tref.func_result as TypeRef*, diags, seen);
             if (result == null) {
                 return null;
             }
             let func_ty = type_new_func(params as VectorBase*, result as Type*, tref.is_unsafe);
             params = null;
             result = null;
-            return tr_apply_suffix(func_ty, tref, diags, env.module_ptr.filename);
+            return tr_apply_suffix(tables, nr, driver_state, env, func_ty, tref, diags, env.module_ptr.filename);
         }
     }
 
@@ -481,7 +860,7 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
         } else {
             base = type_builtin_void();
         }
-        return tr_apply_suffix(base as Type*, tref, diags, env.module_ptr.filename);
+        return tr_apply_suffix(tables, nr, driver_state, env, base as Type*, tref, diags, env.module_ptr.filename);
     }
 
     if (tref.module_path == null && nr_module_env_is_ambiguous(env, tref.name)) {
@@ -517,7 +896,7 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
     } else if (ord(s.kind) == ord(SYM_ENUM)) {
         base = type_new_enum(s.module_name, s.name);
     } else if (ord(s.kind) == ord(SYM_TYPE_ALIAS)) {
-        base = tr_resolve_alias(tables, nr, env, s, diags, seen);
+        base = tr_resolve_alias(tables, nr, driver_state, env, s, diags, seen);
     } else {
         tr_diag_error(
             diags,
@@ -532,5 +911,5 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, env: Mod
     if (base == null) {
         return null;
     }
-    return tr_apply_suffix(base as Type*, tref, diags, env.module_ptr.filename);
+    return tr_apply_suffix(tables, nr, driver_state, env, base as Type*, tref, diags, env.module_ptr.filename);
 }

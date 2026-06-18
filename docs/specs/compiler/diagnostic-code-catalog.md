@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-06-13
+Version: 2026-06-18
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -164,10 +164,9 @@ diagnostic.
 | `PAR-0235` | All     | Expected '=>' in 'case' arm                                              |
 | `PAR-0236` | All     | Duplicate default arm in 'case' statement                                |
 | `PAR-0237` | All     | '=>' not allowed in 'else' arm                                           |
-| `PAR-0238` | All     | Expected value literal, `_`, or `else` in `case` arm                     |
 | `PAR-0239` | All     | Expected '}' after 'case' statement                                      |
 | `PAR-0240` | All     | 'case' statement must have at least one arm                              |
-| `PAR-0241` | All     | Expected literal in 'case' arm                                           |
+| `PAR-0241` | All     | Expected literal (L0) or constant value expression (L1+) in 'case' arm   |
 | `PAR-0242` | All     | Deprecated `else` default arm in `case`; use `_ =>` instead (warning)    |
 | `PAR-0243` | All     | Ambiguous `else` after `if` in `case` value arm; brace it or use `_ =>`  |
 | `PAR-0260` | L1+     | `const` declarations require an explicit type annotation                 |
@@ -219,7 +218,7 @@ diagnostic.
 | `PAR-0600` | L1+     | Expected `func` or `extern` after `unsafe` in top-level declaration      |
 | `PAR-0601` | L1+     | Expected `func` after `unsafe` in function type                          |
 | `PAR-0602` | L1+     | Expected `func` after `unsafe` in interface file                         |
-| `PAR-0620` | L1+     | Expected integer length in array type suffix                             |
+| `PAR-0620` | L1+     | Expected constant integer expression in array type suffix                |
 | `PAR-0621` | L1+     | Expected '\]' after array type length                                    |
 | `PAR-0622` | L1+     | Expected '\]' after array literal                                        |
 | `PAR-0623` | L1+     | Expected ')' after array constructor arguments                           |
@@ -313,6 +312,7 @@ diagnostic.
 | `SIG-0030` | All   | Cannot infer type for let - type annotation required for non-literal initializers |
 | `SIG-0040` | All   | Value-type cycle creates an infinitely sized type                                 |
 | `SIG-0200` | L1+   | `const` initializer must be compile-time constant                                 |
+| `SIG-0201` | L1+   | Compile-time constant cycle                                                       |
 | `SIG-9029` | All   | Internal error: a type-alias symbol does not reference a type-alias declaration   |
 
 ## Expression Type Checking, Type Inference, and Type-Related Semantic Analysis
@@ -349,11 +349,13 @@ diagnostic.
 | `TYP-0104` | All     | Non-exhaustive match                                                                                   |
 | `TYP-0105` | All     | Unreachable wildcard pattern in match: all variants of enum are already covered                        |
 | `TYP-0106` | All     | `case` scrutinee must have a builtin integer type, `float`, `double`, `bool`, or `string`              |
-| `TYP-0107` | All     | `case` arm literal cannot be compared with the scrutinee type                                          |
-| `TYP-0108` | All     | Duplicate literal value in 'case' statement                                                            |
+| `TYP-0107` | All     | `case` arm value cannot be compared with the scrutinee type                                            |
+| `TYP-0108` | All     | Duplicate `case` arm value                                                                             |
 | `TYP-0109` | All     | Invalid escape in 'case' literal                                                                       |
 | `TYP-0110` | All     | 'break' statement not within a loop                                                                    |
-| `TYP-0111` | All     | `case` arm literal can never match the scrutinee type                                                  |
+| `TYP-0111` | All     | `case` arm value can never match the scrutinee type                                                    |
+| `TYP-0112` | L1+     | `case` arm value is not a compile-time constant                                                        |
+| `TYP-0113` | L1+     | `case` arm value is an aggregate constant and cannot be used as a scalar case arm value                |
 | `TYP-0120` | All     | 'continue' statement not within a loop                                                                 |
 | `TYP-0139` | All     | Unknown statement type                                                                                 |
 | `TYP-0149` | All     | Internal error: cannot infer the type of an empty expression placeholder                               |
@@ -437,7 +439,7 @@ diagnostic.
 | `TYP-0763` | L1+     | Duplicate named argument                                                                               |
 | `TYP-0764` | L1+     | Missing required named argument                                                                        |
 | `TYP-0780` | L1+     | Unsafe/plain function type mismatch                                                                    |
-| `TYP-0800` | L1+     | Array length must be a positive `int` literal                                                          |
+| `TYP-0800` | L1+     | Array length syntax must be a positive `int` literal in legacy literal-only contexts                   |
 | `TYP-0801` | L1+     | Array literal requires a contextual array type                                                         |
 | `TYP-0802` | L1+     | Array literal has more elements than the contextual target length                                      |
 | `TYP-0803` | L1+     | Array literal element type mismatch                                                                    |
@@ -452,6 +454,9 @@ diagnostic.
 | `TYP-0812` | L1+     | Slice type may not be used in a top-level `let`                                                        |
 | `TYP-0813` | L1+     | Slice type may not be used as an enum payload field                                                    |
 | `TYP-0814` | L1+     | Slice type may not be made nullable or be a pointer base (`T[]?`, `T[]*`)                              |
+| `TYP-0815` | L1+     | Array length expression is not a compile-time constant                                                 |
+| `TYP-0816` | L1+     | Array length constant is not an `int`                                                                  |
+| `TYP-0817` | L1+     | Array length constant is not positive                                                                  |
 | `TYP-9209` | All     | Internal error: variant does not produce enum type                                                     |
 | `TYP-9288` | All     | Internal error: 'new' outside function context                                                         |
 | `TYP-9289` | All     | Internal error: missing module environment for the current function                                    |

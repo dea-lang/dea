@@ -1,0 +1,14 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_const_array_bounds_err;
+
+let N: int = 3;
+const ZERO: int = 0;
+const NAME: string = "3";
+
+let non_const_bound: int[N] = [1, 2, 3];
+let zero_bound: int[ZERO] = [];
+let wrong_type_bound: int[NAME] = [1, 2, 3];

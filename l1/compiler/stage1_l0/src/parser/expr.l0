@@ -141,11 +141,28 @@ func ps_looks_like_array_constructor_start(self: ParserState*) -> bool {
     while (ps_check(self, ord(TT_STAR)) || ps_check(self, ord(TT_QUESTION)) ||
            ps_check(self, ord(TT_LBRACKET))) {
         if (ps_match(self, ord(TT_LBRACKET))) {
-            if (!ps_check_int(self)) {
+            if (ps_check_int(self)) {
+                ps_advance(self);
+            } else if (ps_check_ident(self)) {
+                ps_advance(self);
+                while (ps_match(self, ord(TT_DOT))) {
+                    if (!ps_check_ident(self)) {
+                        self.index = saved;
+                        return false;
+                    }
+                    ps_advance(self);
+                }
+                while (ps_match(self, ord(TT_DOUBLE_COLON))) {
+                    if (!ps_check_ident(self)) {
+                        self.index = saved;
+                        return false;
+                    }
+                    ps_advance(self);
+                }
+            } else {
                 self.index = saved;
                 return false;
             }
-            ps_advance(self);
             if (!ps_match(self, ord(TT_RBRACKET))) {
                 self.index = saved;
                 return false;

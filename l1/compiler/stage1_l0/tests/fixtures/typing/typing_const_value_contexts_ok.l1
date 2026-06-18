@@ -1,0 +1,35 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_const_value_contexts_ok;
+
+const N: int = 3;
+const M: int = N;
+const OK: int = 200;
+const QUIT: string = "quit";
+
+func use_param(xs: int[M]) -> int {
+    return xs[0] + xs[1] + xs[2];
+}
+
+func status_code(status: int) -> int {
+    case (status) {
+        OK => { return 1; }
+        _ => { return 0; }
+    }
+}
+
+func command_code(cmd: string) -> int {
+    case (cmd) {
+        QUIT => { return 2; }
+        _ => { return 0; }
+    }
+}
+
+func exercise() -> int {
+    let local: int[N] = [1, 2, 3];
+    let constructed = int[M]([4, 5, 6]);
+    return use_param(local) + constructed[0] + status_code(OK) + command_code(QUIT);
+}

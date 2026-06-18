@@ -106,7 +106,7 @@ CASES = {
         },
         "expected": {
             "l0": "[PAR-9401] array types not yet supported",
-            "l1": "[PAR-0620] expected integer length in array type",
+            "l1": "[PAR-0620] expected constant integer expression in array type",
         },
     },
     "par-0624-reserved-inferred-length-array": {

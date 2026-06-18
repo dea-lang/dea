@@ -1,7 +1,7 @@
 # ADR-0011: Fixed-Size Array Policy
 
 - Decision date: 2026-05-10
-- Last edited: 2026-05-20
+- Last edited: 2026-06-18
 - Status: Accepted
 
 ## Context
@@ -11,7 +11,8 @@ kind of arrays to support first: heap-allocated dynamic slices, stack-allocated 
 
 ## Decision
 
-Fixed-size arrays are first-class value types spelled `T[N]`, where `N` is a positive `int` literal:
+Fixed-size arrays are first-class value types spelled `T[N]`, where `N` is a positive compile-time `int` constant
+expression:
 
 - Suffix order is source-significant across pointer, nullable, and array suffixes: `T*[N]` is an array of pointers;
   `T[N]*` is a pointer to an array.
@@ -43,13 +44,17 @@ Fixed-size arrays are first-class value types spelled `T[N]`, where `N` is a pos
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md][arrays]
+- [l1/work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md][const-contexts]
 - [l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md][initiative]
 
 ## Current Docs
 
 - [l1/docs/reference/design-decisions.md][design-decisions]: §7.1 (fixed-size array policy)
+- [l1/docs/reference/grammar.md][grammar]: fixed-size array suffix grammar
 
 [adr-unsafe]: 0010-unsafe-marker-and-raw-pointer-indexing.md
 [arrays]: ../../work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md
+[const-contexts]: ../../work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md
 [design-decisions]: ../reference/design-decisions.md
+[grammar]: ../reference/grammar.md
 [initiative]: ../../initiatives/closed/0004-array-primitives-and-unsafe-marker.md

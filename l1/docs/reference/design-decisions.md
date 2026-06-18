@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-06-17
+Version: 2026-06-18
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -123,10 +123,11 @@ Current bootstrap status:
 
 ## 7.1 Fixed-Size Array Policy
 
-Fixed-size arrays are first-class value types spelled `T[N]`, where `N` is a positive `int` literal. Suffix order is
-source-significant across pointer, nullable, and array suffixes: `T*[N]` is an array of pointers, `T[N]*` is a pointer
-to an array, `T?*` is a pointer to optional storage, and `T*?` is an optional pointer. Adjacent dimensions preserve
-C-like source order, so `int[2][3]` is two rows of three `int` values.
+Fixed-size arrays are first-class value types spelled `T[N]`, where `N` is a positive compile-time `int` constant
+expression. The current bootstrap source subset is an integer literal or a visible top-level `const` reference. Suffix
+order is source-significant across pointer, nullable, and array suffixes: `T*[N]` is an array of pointers, `T[N]*` is a
+pointer to an array, `T?*` is a pointer to optional storage, and `T*?` is an optional pointer. Adjacent dimensions
+preserve C-like source order, so `int[2][3]` is two rows of three `int` values.
 
 Array literals (`[a, b]`) are contextual only and have no standalone type. They are accepted only when the expected type
 is a fixed-size array `T[N]`, reject overlong element lists, and zero/default-pad omitted trailing elements. Expected
@@ -138,6 +139,7 @@ conversion context.
 Array constructor expressions are restricted to array type calls with one argument, either `T[N]([ ... ])` or
 `T[N](value)` for fill. The fill value has the element type `T`, and `T` may itself be an array type:
 `int[10][20]([1, 2, 3])` contextually builds one `int[20]` row and broadcasts that row across the ten outer elements.
+Array lengths resolve to concrete values before signature and backend lowering.
 
 Array indexing is safe: generated code evaluates the base and index once, checks `index < 0 || index >= N`, and calls
 `_rt_panic_oob(index, N)` on failure. Raw pointer indexing remains the unsafe, unchecked operation described above.
@@ -517,6 +519,8 @@ Current policy:
 - top-level `const` requires an explicit type annotation
 - top-level `const` initializers must be literals, `null`, bare zero-argument enum variants, or constructor calls whose
   arguments are themselves constant
+- scalar, string, and bool `const` values may be referenced from constant-value grammar contexts such as array bounds
+  and `case` arms, with the explicit declaration type controlling semantic classification
 - top-level `const` lowers to `static const` generated C declarations under the existing `dea_*` ABI naming scheme
 - assignment to a top-level `const` binding, including field assignment through a value-typed `const`, is rejected
 - block-local `const` is still deferred; only top-level `const` is accepted today

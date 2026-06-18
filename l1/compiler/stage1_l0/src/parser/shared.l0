@@ -1086,6 +1086,45 @@ func type_suffix_vec_free(items: VectorBase*?) {
 }
 
 /**
+ * Parse the narrow constant-expression subset accepted inside array type suffixes.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed literal or const-reference expression, or `null` on syntax error.
+ */
+func ps_parse_const_int_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let tok = ps_peek(self);
+
+    if (ps_match_int(self)) {
+        let node = expr_node_create(EX_INT, ps_extend_span(self, start));
+        node.int_value = token_int_value(tok) as int;
+        node.text_value = token_int_text(tok) as string;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_check_ident(self)) {
+        let qualified = ps_try_parse_qualified_name(self);
+        if (qualified != null) {
+            let q = qualified as QualifiedNameResult*;
+            let node = expr_node_create(EX_VAR_REF, ps_extend_span(self, start));
+            node.text_value = token_ident_text(q.name_tok) as string;
+            node.module_path = q.module_path;
+            node.name_qualifier = q.name_qualifier;
+            drop q;
+            return expr_arena_add(self.expr_arena, node);
+        }
+
+        let name_tok = ps_advance(self);
+        let node2 = expr_node_create(EX_VAR_REF, ps_extend_span(self, start));
+        node2.text_value = token_ident_text(name_tok) as string;
+        return expr_arena_add(self.expr_arena, node2);
+    }
+
+    ps_emit_error(self, "PAR-0620", "expected constant integer expression in array type", tok);
+    return null;
+}
+
+/**
  * Parse the non-suffixed base of a type reference.
  *
  * @param self Parser state to advance.
@@ -1171,20 +1210,20 @@ func ps_parse_type(self: ParserState*) -> TypeRef*? {
     with (let suffixes: VectorBase*? = ptr_vec_create(4) => type_suffix_vec_free(suffixes)) {
         while (true) {
             if (ps_match(self, ord(TT_STAR))) {
-                let suffix = new TypeSuffix(TS_POINTER, 0, ps_extend_span(self, start));
+                let suffix = new TypeSuffix(TS_POINTER, 0, invalid_expr_id(), ps_extend_span(self, start));
                 ptr_vec_push(suffixes as VectorBase*, suffix as void*);
                 result.pointer_depth = result.pointer_depth + 1;
                 continue;
             }
             if (ps_match(self, ord(TT_QUESTION))) {
-                let suffix2 = new TypeSuffix(TS_NULLABLE, 0, ps_extend_span(self, start));
+                let suffix2 = new TypeSuffix(TS_NULLABLE, 0, invalid_expr_id(), ps_extend_span(self, start));
                 ptr_vec_push(suffixes as VectorBase*, suffix2 as void*);
                 result.is_nullable = true;
                 continue;
             }
             if (ps_match(self, ord(TT_LBRACKET))) {
                 if (ps_match(self, ord(TT_RBRACKET))) {
-                    let slice_suffix = new TypeSuffix(TS_SLICE, 0, ps_extend_span(self, start));
+                    let slice_suffix = new TypeSuffix(TS_SLICE, 0, invalid_expr_id(), ps_extend_span(self, start));
                     ptr_vec_push(suffixes as VectorBase*, slice_suffix as void*);
                     continue;
                 }
@@ -1196,14 +1235,18 @@ func ps_parse_type(self: ParserState*) -> TypeRef*? {
                     type_ref_free(result);
                     return null;
                 }
-                if (!ps_match_int(self)) {
-                    ps_emit_error(self, "PAR-0620", "expected integer length in array type", len_tok);
+                let len_expr = ps_parse_const_int_expr(self);
+                if (len_expr == null) {
                     type_ref_free(result);
                     return null;
                 }
-                let length = token_int_value(len_tok) as int;
                 ps_expect(self, ord(TT_RBRACKET), "PAR-0621", "expected ']' after array length")?;
-                let suffix3 = new TypeSuffix(TS_ARRAY, length, ps_extend_span(self, start));
+                let length = 0;
+                let len_node = expr_arena_get(self.expr_arena, len_expr as ExprId);
+                if (ord(len_node.kind) == ord(EX_INT)) {
+                    length = len_node.int_value;
+                }
+                let suffix3 = new TypeSuffix(TS_ARRAY, length, len_expr as ExprId, ps_extend_span(self, start));
                 ptr_vec_push(suffixes as VectorBase*, suffix3 as void*);
                 continue;
             }

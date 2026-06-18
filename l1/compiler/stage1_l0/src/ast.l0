@@ -167,6 +167,7 @@ enum TypeSuffixKind {
 struct TypeSuffix {
     kind: TypeSuffixKind;
     array_len: int;
+    array_len_expr: ExprId;
     span: Span;
 }
 

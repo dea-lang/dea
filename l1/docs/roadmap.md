@@ -141,8 +141,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
 - Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] makes Stage 1 check array
   literals against expected fixed-size array contexts before standalone inference.
-- Feature [2026-06-17-stage1-const-value-grammar-contexts-noref][const-value-contexts] adds compile-time constant
-  expressions in array type bounds and `case` arm values, plus a central const evaluator.
 
 ## Backlog
 
@@ -224,7 +222,6 @@ update to be promoted to an initiative or plan:
 [child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-driver]: ../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
-[const-value-contexts]: ../work/plans/features/2026-06-17-stage1-const-value-grammar-contexts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md

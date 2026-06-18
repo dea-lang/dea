@@ -688,7 +688,7 @@ func etc_lookup_local(self: ExpressionTypeChecker*, name: string) -> Type*? {
             let p = l.decl_ptr as Param*;
             with (let seen = ss_create() => ss_free(seen)) {
                 return tr_resolve_type_ref(self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
-                    self.current_env as ModuleEnv*, p.type_ref, self.result.diags, seen);
+                    self.result.driver_state, self.current_env as ModuleEnv*, p.type_ref, self.result.diags, seen);
             }
         }
         LK_LOCAL => {
@@ -696,7 +696,8 @@ func etc_lookup_local(self: ExpressionTypeChecker*, name: string) -> Type*? {
             if (s.type_ref != null) {
                 with (let seen2 = ss_create() => ss_free(seen2)) {
                     return tr_resolve_type_ref(self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
-                        self.current_env as ModuleEnv*, s.type_ref as TypeRef*, self.result.diags, seen2);
+                        self.result.driver_state, self.current_env as ModuleEnv*, s.type_ref as TypeRef*,
+                        self.result.diags, seen2);
                 }
             }
             let key = etc_key(self.current_module, s.expr_a);
@@ -816,7 +817,7 @@ func etc_symbol_as_type(self: ExpressionTypeChecker*, sym: Symbol*) -> Type*? {
             }
             with (let seen = ss_create() => ss_free(seen)) {
                 return tr_resolve_alias(self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
-                    self.current_env as ModuleEnv*, sym, self.result.diags, seen);
+                    self.result.driver_state, self.current_env as ModuleEnv*, sym, self.result.diags, seen);
             }
         }
         _ => { return null; }
@@ -999,8 +1000,8 @@ func etc_try_resolve_sizeof_type_expr(self: ExpressionTypeChecker*, expr_id: Exp
     if (ord(expr.kind) == ord(EX_TYPE) && expr.type_ref != null) {
         with (let seen = ss_create() => ss_free(seen)) {
             return tr_resolve_type_ref(self.result.signatures as SignatureTables*,
-                self.result.names as NameResolution*, self.current_env as ModuleEnv*, expr.type_ref as TypeRef*,
-                self.result.diags, seen);
+                self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
+                expr.type_ref as TypeRef*, self.result.diags, seen);
         }
     }
 
@@ -1017,18 +1018,31 @@ func etc_try_resolve_sizeof_type_expr(self: ExpressionTypeChecker*, expr_id: Exp
         if (base_ty == null) {
             return null;
         }
-        let len_expr = expr_arena_get(unit.parse_result.expr_arena, expr.expr_b);
-        if (ord(len_expr.kind) != ord(EX_INT)) {
-            etc_diag_error(self, "TYP-0800", "array length must be a positive int literal",
-                unit.path, len_expr.span);
+        let len_node = expr_arena_get(unit.parse_result.expr_arena, expr.expr_b);
+        let value: ConstValue*? = null;
+        with (let ctx = tr_const_eval_context_create(self.result.driver_state,
+              self.result.signatures as SignatureTables*, self.result.names as NameResolution*, self.result.diags) =>
+              tr_const_eval_context_free(ctx)) {
+            value = tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr.expr_b);
+        }
+        if (value == null) {
+            etc_diag_error(self, "TYP-0815", "array length expression is not a compile-time constant",
+                unit.path, len_node.span);
             return type_append_array_dimension(base_ty as Type*, 1);
         }
-        if (len_expr.int_value <= 0) {
-            etc_diag_error(self, "TYP-0800", "array length must be a positive int literal",
-                unit.path, len_expr.span);
+        let const_value = value as ConstValue*;
+        if (ord(const_value.kind) != ord(CV_INT)) {
+            tr_const_value_free(const_value);
+            etc_diag_error(self, "TYP-0816", "array length constant is not an int", unit.path, len_node.span);
             return type_append_array_dimension(base_ty as Type*, 1);
         }
-        return type_append_array_dimension(base_ty as Type*, len_expr.int_value);
+        let resolved_len = const_value.int_value;
+        tr_const_value_free(const_value);
+        if (resolved_len <= 0) {
+            etc_diag_error(self, "TYP-0817", "array length constant is not positive", unit.path, len_node.span);
+            return type_append_array_dimension(base_ty as Type*, 1);
+        }
+        return type_append_array_dimension(base_ty as Type*, resolved_len);
     }
 
     return null;
@@ -1076,8 +1090,8 @@ func etc_infer_sizeof_intrinsic(self: ExpressionTypeChecker*, expr_id: ExprId, e
     if (ord(arg.kind) == ord(EX_TYPE) && arg.type_ref != null) {
         with (let seen = ss_create() => ss_free(seen)) {
             let target_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
-                self.result.names as NameResolution*, self.current_env as ModuleEnv*, arg.type_ref as TypeRef*,
-                self.result.diags, seen);
+                self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
+                arg.type_ref as TypeRef*, self.result.diags, seen);
             if (target_ty == null) {
                 return type_builtin_int();
             }
@@ -1613,6 +1627,97 @@ func etc_case_literal_key(expr: ExprNode*) -> string? {
 }
 
 /**
+ * Build a stable duplicate-detection key for an evaluated `case` arm value.
+ *
+ * @param value Evaluated compile-time constant value.
+ * @return Type-prefixed duplicate-detection key.
+ */
+func etc_case_const_value_key(value: ConstValue*) -> string {
+    match (value.kind) {
+        CV_INT => { return "int:" + int_to_string(value.int_value); }
+        CV_OTHER_INT => { return value.text_value + ":" + int_to_string(value.int_value); }
+        CV_BIGINT => { return "bigint:" + int_to_string(value.base_value) + ":" + value.text_value; }
+        CV_BYTE => { return "byte:" + int_to_string(value.int_value); }
+        CV_FLOAT => { return "float:" + value.text_value; }
+        CV_DOUBLE => { return "double:" + value.text_value; }
+        CV_BOOL => {
+            if (value.bool_value) return "bool:true";
+            return "bool:false";
+        }
+        CV_STRING => { return "string:" + value.text_value; }
+        CV_NULL => { return "null"; }
+    }
+}
+
+/**
+ * Evaluate a `case` arm value with local-name shadowing respected.
+ *
+ * @param self Expression checker state.
+ * @param ctx Const-evaluation context.
+ * @param expr_id Case arm expression id.
+ * @return Owned constant value, or `null` when not a visible const value.
+ */
+func etc_eval_case_const_value(self: ExpressionTypeChecker*, ctx: ConstEvalContext*, expr_id: ExprId) -> ConstValue*? {
+    if (expr_id < 0 || self.current_unit == null) {
+        return null;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return etc_eval_case_const_value(self, ctx, expr.expr_a);
+    }
+    if (ord(expr.kind) == ord(EX_VAR_REF) && expr.module_path == null && expr.name_qualifier == null) {
+        let local_ty = etc_lookup_local(self, expr.text_value);
+        if (local_ty != null) {
+            type_free(local_ty as Type*);
+            return null;
+        }
+    }
+    return tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr_id);
+}
+
+/**
+ * Report whether a `case` arm value names an aggregate const.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Case arm expression id.
+ * @return `true` for visible const values whose type is not allowed in scalar case arms.
+ */
+func etc_case_arm_is_aggregate_const(self: ExpressionTypeChecker*, expr_id: ExprId) -> bool {
+    if (expr_id < 0 || self.current_unit == null) {
+        return false;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return etc_case_arm_is_aggregate_const(self, expr.expr_a);
+    }
+    if (ord(expr.kind) != ord(EX_VAR_REF)) {
+        return false;
+    }
+    if (expr.module_path == null && expr.name_qualifier == null) {
+        let local_ty = etc_lookup_local(self, expr.text_value);
+        if (local_ty != null) {
+            type_free(local_ty as Type*);
+            return false;
+        }
+    }
+
+    let sym = etc_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || (sym as Symbol*).decl_ptr == null) {
+        return false;
+    }
+    let decl = (sym as Symbol*).decl_ptr as LetDecl*;
+    if (!decl.is_const) {
+        return false;
+    }
+    let ty = sig_lookup_let_type(self.result.signatures as SignatureTables*, (sym as Symbol*).module_name,
+        (sym as Symbol*).name);
+    if (ty == null) {
+        return false;
+    }
+    return !etc_is_case_type(ty as Type*);
+}
+
+/**
  * Type-check a statement and its nested statements.
  *
  * @param self Expression checker state.
@@ -1668,7 +1773,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             if (stmt.type_ref != null) {
                 with (let seen = ss_create() => ss_free(seen)) {
                     let ann_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
-                        self.result.names as NameResolution*, self.current_env as ModuleEnv*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
                         stmt.type_ref as TypeRef*, self.result.diags, seen);
                     if (ann_ty != null) {
                         if (type_is_builtin(ann_ty as Type*, "void")) {
@@ -1866,18 +1971,44 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     );
                 }
                 if (stmt.case_arms != null) {
-                    with (let seen_literals = ss_create() => ss_free(seen_literals)) {
+                    with (let seen_literals = ss_create() => ss_free(seen_literals),
+                          let const_ctx = tr_const_eval_context_create(self.result.driver_state,
+                              self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
+                              self.result.diags) => tr_const_eval_context_free(const_ctx)) {
                         let arms2 = stmt.case_arms as VectorBase*;
                         let all_case_arms_return = true;
                         for (let i = 0; i < vec_size(arms2); i = i + 1) {
                             let arm2 = ptr_vec_get(arms2, i) as CaseArm*;
                             let class_code = CASE_LIT_POSSIBLE;
+                            let arm_literal = expr_arena_get(unit.parse_result.expr_arena, arm2.literal);
+                            let case_literal_ok = true;
+                            let const_value = etc_eval_case_const_value(self, const_ctx, arm2.literal);
+                            if (const_value == null) {
+                                case_literal_ok = false;
+                                if (etc_case_arm_is_aggregate_const(self, arm2.literal)) {
+                                    etc_diag_error(self, "TYP-0113",
+                                        "case arm value is an aggregate constant and cannot be used as a scalar case arm value",
+                                        unit.path, arm_literal.span);
+                                } else {
+                                    etc_diag_error(self, "TYP-0112",
+                                        "case arm value is not a compile-time constant",
+                                        unit.path, arm_literal.span);
+                                }
+                            }
                             let literal_ty = etc_infer_expr(self, arm2.literal);
                             if (literal_ty != null) {
-                                let arm_literal = expr_arena_get(unit.parse_result.expr_arena, arm2.literal);
-                                let case_literal_ok = true;
-                                if (case_ty_ok) {
+                                if (case_literal_ok && case_ty_ok) {
                                     class_code = etc_classify_case_literal(self, val_ty3 as Type*, arm2.literal, literal_ty as Type*);
+                                    if (ord(class_code) == ord(CASE_LIT_POSSIBLE) && etc_is_int(val_ty3 as Type*) &&
+                                        const_value != null) {
+                                        let evaluated = const_value as ConstValue*;
+                                        if ((ord(evaluated.kind) == ord(CV_INT) ||
+                                             ord(evaluated.kind) == ord(CV_BYTE) ||
+                                             ord(evaluated.kind) == ord(CV_OTHER_INT)) &&
+                                            !int_value_fits_builtin(val_ty3 as Type*, evaluated.int_value)) {
+                                            class_code = CASE_LIT_ALWAYS_FALSE;
+                                        }
+                                    }
                                     if (ord(class_code) == ord(CASE_LIT_BIGINT_CONTEXT)) {
                                         let assign_result = etc_check_assign_expr(self, val_ty3 as Type*, literal_ty as Type*,
                                             arm2.literal, unit.path, arm_literal.span);
@@ -1886,7 +2017,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                             etc_diag_error(
                                                 self,
                                                 "TYP-0107",
-                                                "'case' arm literal type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
+                                                "'case' arm value type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
                                                 unit.path,
                                                 arm_literal.span
                                             );
@@ -1898,7 +2029,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                         etc_diag_error(
                                             self,
                                             "TYP-0107",
-                                            "'case' arm literal type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
+                                            "'case' arm value type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
                                             unit.path,
                                             arm_literal.span
                                         );
@@ -1906,21 +2037,20 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                         etc_diag_warn(
                                             self,
                                             "TYP-0111",
-                                            "'case' arm literal can never match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
+                                            "'case' arm value can never match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
                                             unit.path,
                                             arm_literal.span
                                         );
                                     }
                                 }
                                 if (case_literal_ok && ord(class_code) != ord(CASE_LIT_ALWAYS_FALSE)) {
-                                    let literal_key = etc_case_literal_key(arm_literal);
-                                    if (literal_key != null) {
-                                        let case_key = literal_key as string;
+                                    if (const_value != null) {
+                                        let case_key = etc_case_const_value_key(const_value as ConstValue*);
                                         if (ss_has(seen_literals, case_key)) {
                                             etc_diag_error(
                                                 self,
                                                 "TYP-0108",
-                                                "duplicate literal value in 'case' statement",
+                                                "duplicate case arm value",
                                                 unit.path,
                                                 arm_literal.span
                                             );
@@ -1930,6 +2060,9 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                     }
                                 }
                                 type_free(literal_ty as Type*);
+                            }
+                            if (const_value != null) {
+                                tr_const_value_free(const_value as ConstValue*);
                             }
                             let arm_flow2 = etc_check_stmt(self, arm2.body);
                             if (ord(class_code) != ord(CASE_LIT_ALWAYS_FALSE) && ord(arm_flow2) != ord(FLOW_RETURNS)) {
@@ -3800,7 +3933,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
             if (expr.type_ref != null) {
                 with (let seen_arr = ss_create() => ss_free(seen_arr)) {
                     let target_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
-                        self.result.names as NameResolution*, self.current_env as ModuleEnv*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
                         expr.type_ref as TypeRef*, self.result.diags, seen_arr);
                     if (target_ty != null) {
                         let target = target_ty as Type*;
@@ -3836,7 +3969,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
             if (src_ty != null && expr.type_ref != null) {
                 with (let seen = ss_create() => ss_free(seen)) {
                     let target_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
-                        self.result.names as NameResolution*, self.current_env as ModuleEnv*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
                         expr.type_ref as TypeRef*, self.result.diags, seen);
                     if (target_ty != null) {
                         let nullable_target_inner = etc_nullable_integer_inner(target_ty as Type*);
@@ -3972,7 +4105,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                 } else {
                 with (let seen2 = ss_create() => ss_free(seen2)) {
                     let base_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
-                        self.result.names as NameResolution*, self.current_env as ModuleEnv*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
                         target_ref, self.result.diags, seen2);
                     if (base_ty != null) {
                         let base = base_ty as Type*;
@@ -4105,7 +4238,7 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
             if (expr.type_ref != null) {
                 with (let seen3 = ss_create() => ss_free(seen3)) {
                     ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
-                        self.result.names as NameResolution*, self.current_env as ModuleEnv*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
                         expr.type_ref as TypeRef*, self.result.diags, seen3);
                 }
             }

@@ -138,11 +138,18 @@ def stage_trigger_source(stage: str, code: str, oracle) -> str | None:
                 "    let value = raw_bytes()[i];\n"
                 "}\n"
             ),
+            "PAR-0241": "module main; func main() -> int { case (42) { + => { return 1; } _ => { return 0; } } }",
             "PAR-0234": "module main; func main() -> int { case (42) { _ => { return 0; } 1 => { return 1; } } }",
             "PAR-0236": "module main; func main() -> int { case (42) { _ => { return 0; } _ => { return 1; } } }",
+            "SIG-0201": "module main;\nconst A: int = B;\nconst B: int = A;\nfunc foo() -> int { return 0; }\n",
             "TYP-0106": "module main;\nstruct Point { x: int; y: int; }\nfunc foo() -> int {\nlet p: Point = Point(1, 2);\ncase (p) {\n_ => { return 0; }\n}\n}\n",
             "TYP-0107": "module main;\nfunc foo() -> int {\nlet x: int = 1;\ncase (x) {\n\"hello\" => { return 1; }\n_ => { return 0; }\n}\n}\n",
             "TYP-0108": "module main;\nfunc foo() -> int {\nlet x: int = 1;\ncase (x) {\n1 => { return 1; }\n1 => { return 1; }\n_ => { return 0; }\n}\n}\n",
+            "TYP-0112": "module main;\nlet OK: int = 1;\nfunc foo(x: int) -> int {\ncase (x) {\nOK => { return 1; }\n_ => { return 0; }\n}\n}\n",
+            "TYP-0113": "module main;\nstruct Point { x: int; }\nconst ORIGIN: Point = Point(0);\nfunc foo(x: int) -> int {\ncase (x) {\nORIGIN => { return 1; }\n_ => { return 0; }\n}\n}\n",
+            "TYP-0815": "module main;\nlet N: int = 3;\nlet xs: int[N] = [1, 2, 3];\n",
+            "TYP-0816": "module main;\nconst N: string = \"3\";\nlet xs: int[N] = [1, 2, 3];\n",
+            "TYP-0817": "module main;\nconst N: int = 0;\nlet xs: int[N] = [];\n",
         }.get(code)
         if extra is not None:
             return extra
@@ -162,7 +169,9 @@ def all_codes(stage: str, oracle) -> list[str]:
     if stage == "l1":
         codes.extend([
             "LEX-0062", "LEX-0063", "LEX-0064", "LEX-0065", "LEX-0066", "LEX-0067", "LEX-0068",
-            "TYP-0213", "TYP-0214", "TYP-0215", "TYP-0244",
+            "SIG-0201",
+            "TYP-0112", "TYP-0113", "TYP-0213", "TYP-0214", "TYP-0215", "TYP-0244",
+            "TYP-0815", "TYP-0816", "TYP-0817",
         ])
     skip = set(oracle.CLI_ONLY_CODES) | set(oracle.INTERNAL_CODES)
     if stage == "l1":

@@ -1895,7 +1895,8 @@ func cem_collect_wrappers_from_type_ref(self: CEmitter*, module_name: string, tr
     }
     with (let seen = ss_create() => ss_free(seen),
           let ty: Type*? = tr_resolve_type_ref(analysis.signatures as SignatureTables*,
-              analysis.names as NameResolution*, env as ModuleEnv*, tref as TypeRef*, analysis.diags, seen) => cem_type_free_opt(ty)) {
+              analysis.names as NameResolution*, analysis.driver_state, env as ModuleEnv*, tref as TypeRef*,
+              analysis.diags, seen) => cem_type_free_opt(ty)) {
         if (ty != null) {
             cem_collect_array_wrappers_from_type(self, ty as Type*);
             cem_collect_opt_wrappers_from_type(self, ty as Type*);

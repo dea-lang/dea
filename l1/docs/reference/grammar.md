@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> Grammar
 
-Version: 2026-06-17
+Version: 2026-06-18
 
 The following is the formal grammar for the Dea/L<sub>1</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -232,17 +232,22 @@ FuncPointerType     ::=     ( "unsafe" )? "func" "(" TypeList? ")" "->" Type
 TypeList            ::=     Type ("," Type)*
 TypeSuffix          ::=     PointerSuffix | ArraySuffix | SliceSuffix | NullableSuffix
 PointerSuffix       ::=     "*"
-ArraySuffix         ::=     "[" IntLiteral "]"
+ArraySuffix         ::=     "[" ConstIntExpr "]"
 SliceSuffix         ::=     "[" "]"
 NullableSuffix      ::=     "?"     (* applies to the preceding type syntactically *)
 
 QualifiedIdent      ::=     Ident
                       |     ModulePath "::" Ident
                       |     ModulePath "::" Ident ( "::" Ident )+   (* parsed, rejected semantically *)
+ConstIntExpr        ::=     IntLiteral | QualifiedIdent
 ```
 
 Note: multi-segment `::` paths (e.g. `color::Color::Red`) are consumed by the parser to avoid confusing leftover-token
 errors, but are rejected during semantic analysis with a diagnostic suggesting the correct single-`::` form.
+
+Compile-time constant expressions in type suffixes are resolved semantically. In this bootstrap stage, the accepted
+source subset is integer literals and references to visible `const` declarations; later stages may extend this to
+arithmetic and selected pure compile-time operators.
 
 Examples (all syntactically valid types in L<sub>1</sub>):
 
@@ -350,12 +355,16 @@ MatchArm        ::=     Pattern "=>" Stmt
 ```ebnf
 CaseStmt        ::=     "case" "(" Expr ")" "{" CaseArm* WildcardArm? "}"
 
-CaseArm         ::=     CaseLiteral "=>" Stmt
+CaseArm         ::=     CaseArmValue "=>" Stmt
 
 WildcardArm     ::=     "_" "=>" Stmt
 
-CaseLiteral     ::=     IntLiteral | FloatLiteral | ByteLiteral | StringLiteral | BoolLiteral
+CaseArmValue    ::=     ConstScalarExpr
+ConstScalarExpr ::=     IntLiteral | FloatLiteral | ByteLiteral | StringLiteral | BoolLiteral | QualifiedIdent
 ```
+
+`CaseArmValue` expressions are resolved semantically. In this bootstrap stage, they may be scalar/string/bool literals
+or references to visible `const` declarations with comparable scalar/string/bool values.
 
 Patterns (current L<sub>1</sub> bootstrap subset):
 
@@ -511,8 +520,9 @@ Notes:
   annotated locals, assignments, function parameters, constructor fields, enum payload fields, return expressions, and
   explicit array constructors. Short literals zero/default-pad trailing elements; overlong literals are rejected. Slice
   targets such as `T[]` do not accept array literals directly.
-- Array constructors are restricted to array type calls such as `int[3]([1, 2])` or `byte[1024](0xFF)`. Fill arguments
-  have the outer array's element type, so `int[10][20]([1, 2, 3])` broadcasts one contextually-built `int[20]` row.
+- Array constructors are restricted to array type calls such as `int[3]([1, 2])`, `int[N]([1, 2])`, or
+  `byte[1024](0xFF)`. Fill arguments have the outer array's element type, so `int[10][20]([1, 2, 3])` broadcasts one
+  contextually-built `int[20]` row.
 - A `TypeExpr` is syntactically unambiguous in call arguments: either a builtin type name, or an identifier (including a
   qualified name) followed by one or more `*`/`?` suffixes that end at an argument boundary (`,` or `)`).
 - Builtin type expressions may include array suffixes, such as `sizeof(int[4])`. Qualified identifier array suffixes are

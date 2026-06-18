@@ -239,14 +239,15 @@ func sig_reject_slice_escape(ty: Type*, code: string, message: string, diags: Di
  * @param decl Struct declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
  */
-func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, decl: StructDecl*,
-                        diags: DiagCollector*) {
+func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                        decl: StructDecl*, diags: DiagCollector*) {
     with (let fields: VectorBase*? = ptr_vec_create(vec_size(decl.fields)) => sig_struct_field_vec_temp_free(fields),
           let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
         let ok = true;
         for (let i = 0; i < vec_size(decl.fields); i = i + 1) {
             let field_decl = ptr_vec_get(decl.fields, i) as FieldDecl*;
-            let field_type = tr_resolve_type_ref(tables, nr, env, field_decl.type_ref, diags, seen as StringSet*);
+            let field_type = tr_resolve_type_ref(tables, nr, driver_state, env, field_decl.type_ref, diags,
+                seen as StringSet*);
             if (field_type == null) {
                 ok = false;
                 continue;
@@ -293,8 +294,8 @@ func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, env: Modu
  * @param decl Enum declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
  */
-func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, decl: EnumDecl*,
-                      diags: DiagCollector*) {
+func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                      decl: EnumDecl*, diags: DiagCollector*) {
     with (let variants: VectorBase*? = ptr_vec_create(vec_size(decl.variants)) => sig_enum_variant_vec_temp_free(variants),
           let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
         let ok = true;
@@ -304,7 +305,8 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, env: Module
             let field_names = sv_create(vec_size(variant_decl.fields));
             for (let j = 0; j < vec_size(variant_decl.fields); j = j + 1) {
                 let field_decl = ptr_vec_get(variant_decl.fields, j) as FieldDecl*;
-                let field_type = tr_resolve_type_ref(tables, nr, env, field_decl.type_ref, diags, seen as StringSet*);
+                let field_type = tr_resolve_type_ref(tables, nr, driver_state, env, field_decl.type_ref, diags,
+                    seen as StringSet*);
                 if (field_type == null) {
                     ok = false;
                     continue;
@@ -354,14 +356,15 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, env: Module
  * @param decl Function declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
  */
-func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, decl: FuncDecl*,
-                      diags: DiagCollector*) {
+func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                      decl: FuncDecl*, diags: DiagCollector*) {
     with (let params: VectorBase*? = ptr_vec_create(vec_size(decl.params)) => sig_type_vec_free_opt(params),
           let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
         let ok = true;
         for (let i = 0; i < vec_size(decl.params); i = i + 1) {
             let param = ptr_vec_get(decl.params, i) as Param*;
-            let param_type = tr_resolve_type_ref(tables, nr, env, param.type_ref, diags, seen as StringSet*);
+            let param_type = tr_resolve_type_ref(tables, nr, driver_state, env, param.type_ref, diags,
+                seen as StringSet*);
             if (param_type == null) {
                 ok = false;
                 continue;
@@ -369,7 +372,8 @@ func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, env: Module
             ptr_vec_push(params as VectorBase*, param_type as void*);
         }
 
-        let ret_type = tr_resolve_type_ref(tables, nr, env, decl.return_type, diags, seen as StringSet*);
+        let ret_type = tr_resolve_type_ref(tables, nr, driver_state, env, decl.return_type, diags,
+            seen as StringSet*);
         if (ret_type == null) {
             ok = false;
         } else {
@@ -601,7 +605,7 @@ func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleE
     let let_type: Type*? = null;
     if (decl.type_ref != null) {
         with (let seen = ss_create() => ss_free(seen)) {
-            let_type = tr_resolve_type_ref(tables, nr, env, decl.type_ref as TypeRef*, diags, seen);
+            let_type = tr_resolve_type_ref(tables, nr, driver_state, env, decl.type_ref as TypeRef*, diags, seen);
         }
     } else {
         let_type = sig_infer_literal_type(tables, nr, env, driver_state, decl.value);
@@ -640,9 +644,22 @@ func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleE
 
     if (decl.is_const) {
         let unit = driver_find_unit(driver_state, env.module_name);
-        if (unit == null ||
-            !sig_expr_is_const_initializer(tables, nr, env, (unit as DriverUnit*).parse_result.expr_arena, decl.value))
-        {
+        let is_const_initializer = false;
+        if (unit != null) {
+            is_const_initializer = sig_expr_is_const_initializer(tables, nr, env,
+                (unit as DriverUnit*).parse_result.expr_arena, decl.value);
+            if (!is_const_initializer) {
+                with (let ctx = tr_const_eval_context_create(driver_state, tables, nr, diags) =>
+                      tr_const_eval_context_free(ctx)) {
+                    let const_value = tr_const_eval_expr(ctx, env, decl.value);
+                    if (const_value != null) {
+                        tr_const_value_free(const_value as ConstValue*);
+                        is_const_initializer = true;
+                    }
+                }
+            }
+        }
+        if (!is_const_initializer) {
             type_free(let_type as Type*);
             sig_diag_error(
                 diags,
@@ -1019,19 +1036,20 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
             let top = ptr_vec_get(mod.decls, j) as TopLevelDecl*;
             match (top.kind) {
                 TD_STRUCT => {
-                    sig_resolve_struct(tables, nr, env, top.data as StructDecl*, diags);
+                    sig_resolve_struct(tables, nr, driver_state, env, top.data as StructDecl*, diags);
                 }
                 TD_ENUM => {
-                    sig_resolve_enum(tables, nr, env, top.data as EnumDecl*, diags);
+                    sig_resolve_enum(tables, nr, driver_state, env, top.data as EnumDecl*, diags);
                 }
                 TD_FUNC => {
-                    sig_resolve_func(tables, nr, env, top.data as FuncDecl*, diags);
+                    sig_resolve_func(tables, nr, driver_state, env, top.data as FuncDecl*, diags);
                 }
                 TD_TYPE_ALIAS => {
                     let sym = nr_module_env_local(env, (top.data as TypeAliasDecl*).name);
                     if (sym != null) {
                         with (let seen = ss_create() => ss_free(seen)) {
-                            let resolved_alias = tr_resolve_alias(tables, nr, env, sym as Symbol*, diags, seen);
+                            let resolved_alias = tr_resolve_alias(tables, nr, driver_state, env, sym as Symbol*, diags,
+                                seen);
                             if (resolved_alias != null) {
                                 type_free(resolved_alias as Type*);
                             }

@@ -17,3 +17,4 @@
 | [0013](0013-opaque-type-exports-and-layout-hiding-visibility.md) | Opaque Type Exports and Layout-Hiding Visibility | Accepted |
 | [0014](0014-module-interface-artifact.md)                        | Module Interface Artifact                        | Accepted |
 | [0015](0015-slice-types-and-intrinsics.md)                       | Slice Types and `len`/`slice` Intrinsics         | Accepted |
+| [0016](0016-compile-time-constant-value-contexts.md)             | Compile-Time Constant Value Contexts             | Accepted |

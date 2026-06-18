@@ -3,7 +3,7 @@
 ## Compile-time constant values in array bounds and `case` arms
 
 - Date: 2026-06-17
-- Status: Draft
+- Status: Completed
 - Title: Compile-time constant values in array bounds and `case` arms
 - Kind: Feature
 - Severity: High
@@ -25,7 +25,7 @@
   - `l1/work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md`
   - `l1/docs/roadmap.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
-- Repro: None
+- Repro: `make clean test-all`
 
 ## Summary
 
@@ -34,6 +34,20 @@ rejects array type suffixes that carry an identifier instead of an integer liter
 constant instead of a literal. This plan extends those two grammar contexts to accept constant-expression syntax and
 moves type/value validation from parse time to semantic time, leaving a clean path for future arithmetic const
 expressions.
+
+## Completion Notes
+
+1. `TypeSuffix` now retains `array_len_expr`, and the parser accepts integer literals, identifiers, and qualified
+   identifiers in array type suffixes and array constructor type calls.
+2. `case` arm values now accept the existing literal set plus identifiers and qualified identifiers, with semantic
+   checking responsible for rejecting non-const, aggregate, mismatched, or duplicate evaluated values.
+3. `type_resolve.l0` now owns a reusable `ConstValue` evaluator for literal and visible-`const` references, including
+   cycle detection through `SIG-0201`; signature resolution uses it for scalar const-reference initializers.
+4. Array bound diagnostics now distinguish non-constant, wrong-type, and non-positive values with `TYP-0815`,
+   `TYP-0816`, and `TYP-0817`; case arm const diagnostics use `TYP-0112` and `TYP-0113`.
+5. Tests cover parser AST shape, concrete resolved array lengths, positive named-const array/case contexts, negative
+   array-bound contexts, negative case-arm contexts, diagnostic parity triggers, grammar docs, and catalog updates.
+6. ADR-0016 records compile-time constant value contexts and ADR-0011 now reflects non-literal array bounds.
 
 ## Current State
 

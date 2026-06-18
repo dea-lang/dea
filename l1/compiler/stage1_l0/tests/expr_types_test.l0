@@ -12,7 +12,9 @@ import std.vector;
 
 import analysis;
 import sem_context;
+import signatures;
 import source_paths;
+import types;
 import util.log;
 
 /**
@@ -1218,7 +1220,7 @@ func test_typing_fixed_array_err() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_fixed_array_err", cfg);
         assert(analysis_has_errors(result), "expected typing errors for typing_fixed_array_err");
-        assert(has_diag_code(result, "TYP-0800"), "expected invalid array length diagnostic");
+        assert(has_diag_code(result, "TYP-0817"), "expected invalid array length diagnostic");
         assert(has_diag_code(result, "TYP-0801"), "expected bare array literal diagnostic");
         assert(has_diag_code(result, "TYP-0802"), "expected overlong array literal diagnostic");
         assert(has_diag_code(result, "TYP-0803"), "expected array literal element mismatch diagnostic");
@@ -1229,6 +1231,75 @@ func test_typing_fixed_array_err() {
         assert(has_diag_code(result, "TYP-0151"), "expected type-name-as-value diagnostic");
         assert(!has_diag_code(result, "TYP-0159"), "builtin type-as-value should not report unknown identifier");
         assert(!has_diag_code(result, "TYP-0279"), "invalid array length should not add unknown-type cascade");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests named compile-time constants in array bounds and `case` arms.
+ */
+func test_typing_const_value_contexts_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_value_contexts_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_const_value_contexts_ok");
+
+        let fn_ty = sig_lookup_func_type(result.signatures as SignatureTables*,
+            "typing_const_value_contexts_ok", "use_param");
+        assert(fn_ty != null, "use_param signature should resolve");
+        let params = (fn_ty as Type*).params as VectorBase*;
+        let param_ty = *(vec_get(params, 0) as Type**);
+        assert(ord(param_ty.kind) == ord(TY_ARRAY), "use_param parameter should be an array");
+        assert(param_ty.array_len == 3, "named const array bound should resolve to concrete length 3");
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests semantic diagnostics for invalid const-valued array bounds.
+ */
+func test_typing_const_array_bounds_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_array_bounds_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_array_bounds_err");
+        assert(has_diag_code(result, "TYP-0815"), "expected non-const array bound diagnostic");
+        assert(has_diag_code(result, "TYP-0816"), "expected wrong-type array bound diagnostic");
+        assert(has_diag_code(result, "TYP-0817"), "expected non-positive array bound diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests const array bounds use the declaration type, not only the raw initializer literal.
+ */
+func test_typing_const_array_bound_decl_type_regression() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_array_bound_decl_type_regression", cfg);
+        assert(analysis_has_errors(result), "expected declaration-typed array-bound errors");
+        assert(has_diag_code(result, "TYP-0815"), "expected aggregate-typed array bound to be non-evaluable");
+        assert(has_diag_code(result, "TYP-0816"), "expected unsigned array bound diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests semantic diagnostics for invalid const-valued `case` arms.
+ */
+func test_typing_const_case_values_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_case_values_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_case_values_err");
+        assert(has_diag_code(result, "TYP-0112"), "expected non-const case arm diagnostic");
+        assert(has_diag_code(result, "TYP-0113"), "expected aggregate case arm diagnostic");
+        assert(has_diag_code(result, "TYP-0108"), "expected duplicate const case value diagnostic");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -1355,6 +1426,10 @@ func main() {
     test_typing_is_intrinsic_qualified_ok();
     test_typing_is_intrinsic_err();
     test_typing_fixed_array_err();
+    test_typing_const_value_contexts_ok();
+    test_typing_const_array_bounds_err();
+    test_typing_const_array_bound_decl_type_regression();
+    test_typing_const_case_values_err();
     test_typing_slice_ok();
     test_typing_slice_err();
     test_typing_slice_escape_err();
