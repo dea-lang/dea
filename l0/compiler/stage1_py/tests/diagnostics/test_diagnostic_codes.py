@@ -29,7 +29,7 @@ INTERNAL_CODES = {
     "PAR-0120", "PAR-0130", "PAR-0140",
     "PAR-0150", "PAR-0160", "PAR-0170", "PAR-0180", "PAR-0190",
     "PAR-0200", "PAR-0230", "PAR-0500",
-    "PAR-0175", "PAR-0238", "PAR-0239",
+    "PAR-0175", "PAR-0239",
 
     # Resolver "shouldn't happen" path for malformed compilation units.
     "RES-0029",
