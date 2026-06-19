@@ -3035,6 +3035,85 @@ func be_emit_slice_descriptor(self: Backend*, expr: ExprNode*, expr_id: ExprId) 
 }
 
 /**
+ * Lower the complete argument list for a typed variadic call.
+ *
+ * Ordinary trailing values are copied into an owning fixed-array temporary and
+ * exposed to the callee through the effective slice parameter. A final spread
+ * argument already denotes the complete slice tail and is passed through.
+ *
+ * @param self Backend state to update.
+ * @param expr Variadic call expression.
+ * @param func_ty Resolved variadic function type.
+ * @return Comma-separated lowered C arguments.
+ */
+func be_emit_variadic_call_args(self: Backend*, expr: ExprNode*, func_ty: Type*) -> string {
+    let params = func_ty.params as VectorBase*;
+    let fixed_count = vec_size(params) - 1;
+    let slice_ty = ptr_vec_get(params, fixed_count) as Type*;
+    let elem_ty = slice_ty.inner as Type*;
+    let args = expr.ids as VectorBase*;
+    let arg_count = vec_size(args);
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < fixed_count; i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            let arg_id = id_vec_get(args, i);
+            let expected = ptr_vec_get(params, i) as Type*;
+            let c_arg = be_emit_expr_with_expected_type(self, arg_id, expected);
+            c_arg = be_finalize_lowered_call_arg(self, arg_id, c_arg, expected, false);
+            sb_append(sb, c_arg);
+        }
+
+        if (fixed_count > 0) {
+            sb_append(sb, ", ");
+        }
+
+        if (expr.has_spread_arg) {
+            let spread_id = id_vec_get(args, fixed_count);
+            let spread_c = be_emit_expr_with_expected_type(self, spread_id, slice_ty);
+            spread_c = be_finalize_lowered_call_arg(self, spread_id, spread_c, slice_ty, false);
+            sb_append(sb, spread_c);
+            return sb_to_string(sb);
+        }
+
+        let variadic_count = arg_count - fixed_count;
+        if (variadic_count == 0) {
+            sb_append(sb, "((" + cem_emit_type(slice_ty) + "){ .len = 0, .data = NULL })");
+            return sb_to_string(sb);
+        }
+
+        with (let pack_ty = type_new_array(type_clone(elem_ty), variadic_count) => type_free(pack_ty),
+              let init = sb_create() => sb_free(init)) {
+            sb_append(init, "((" + cem_emit_type(pack_ty) + "){ .data = {");
+            for (let j = 0; j < variadic_count; j = j + 1) {
+                if (j > 0) {
+                    sb_append(init, ", ");
+                }
+                let value_id = id_vec_get(args, fixed_count + j);
+                sb_append(init, be_emit_owned_expr_with_expected_type(self, value_id, elem_ty));
+            }
+            sb_append(init, "} })");
+
+            let pack_name = cem_fresh_tmp(self.emitter, "varargs");
+            cem_emit_temp_decl(self.emitter, cem_emit_type(pack_ty), pack_name, sb_to_string(init));
+            if (self.current_scope == null) {
+                be_ice("[ICE-1313] variadic pack materialization requires an active scope");
+            }
+            if (analysis_has_arc_data(self.result, pack_ty)) {
+                sc_add_owned(self.current_scope as ScopeContext*, pack_name, pack_ty);
+            } else {
+                sc_add_declared(self.current_scope as ScopeContext*, pack_name, pack_ty);
+            }
+            sb_append(sb, "((" + cem_emit_type(slice_ty) + "){ .len = ((dea_int)" +
+                int_to_string(variadic_count) + "), .data = " + pack_name + ".data })");
+            return sb_to_string(sb);
+        }
+    }
+}
+
+/**
  * Emit one call expression.
  *
  * @param self Backend state to inspect.
@@ -3132,6 +3211,11 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                     c_func_name = cem_mangle_function_name((callee_sym as Symbol*).module_name, (callee_sym as Symbol*).name, func_ty as Type*);
                 }
 
+                if ((func_ty as Type*).is_variadic) {
+                    return be_emit_direct_function_call(self, c_func_name,
+                        be_emit_variadic_call_args(self, expr, func_ty as Type*));
+                }
+
                 with (let sb = sb_create() => sb_free(sb)) {
                     let arg_count = 0;
                     if (expr.ids != null) {
@@ -3216,24 +3300,29 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
     }
 
     with (let sb2 = sb_create() => sb_free(sb2)) {
-        let arg_count2 = 0;
-        if (expr.ids != null) {
-            arg_count2 = vec_size(expr.ids as VectorBase*);
-        }
-        for (let i = 0; i < arg_count2; i = i + 1) {
-            if (i > 0) {
-                sb_append(sb2, ", ");
-            }
-            let arg_id2 = id_vec_get(expr.ids as VectorBase*, i);
-            let c_arg3 = be_emit_expr(self, arg_id2);
-            with (let arg_ty3 = be_expr_type(self, arg_id2) => type_free_opt(arg_ty3)) {
-                if (arg_ty3 != null && be_should_materialize_arc_temp(self, arg_id2, arg_ty3 as Type*)) {
-                    c_arg3 = be_materialize_arc_temp(self, c_arg3, arg_ty3 as Type*);
-                }
-                sb_append(sb2, c_arg3);
-            }
-        }
         with (let callee_ty = be_expr_type(self, expr.expr_a) => type_free_opt(callee_ty)) {
+            if (callee_ty != null && ord((callee_ty as Type*).kind) == ord(TY_FUNC) &&
+                (callee_ty as Type*).is_variadic) {
+                sb_append(sb2, be_emit_variadic_call_args(self, expr, callee_ty as Type*));
+            } else {
+                let arg_count2 = 0;
+                if (expr.ids != null) {
+                    arg_count2 = vec_size(expr.ids as VectorBase*);
+                }
+                for (let i = 0; i < arg_count2; i = i + 1) {
+                    if (i > 0) {
+                        sb_append(sb2, ", ");
+                    }
+                    let arg_id2 = id_vec_get(expr.ids as VectorBase*, i);
+                    let c_arg3 = be_emit_expr(self, arg_id2);
+                    with (let arg_ty3 = be_expr_type(self, arg_id2) => type_free_opt(arg_ty3)) {
+                        if (arg_ty3 != null && be_should_materialize_arc_temp(self, arg_id2, arg_ty3 as Type*)) {
+                            c_arg3 = be_materialize_arc_temp(self, c_arg3, arg_ty3 as Type*);
+                        }
+                        sb_append(sb2, c_arg3);
+                    }
+                }
+            }
             let c_callee = be_emit_expr(self, expr.expr_a);
             if (callee_ty != null && ord((callee_ty as Type*).kind) == ord(TY_FUNC)) {
                 let callee_tmp = cem_fresh_tmp(self.emitter, "func");
@@ -3245,6 +3334,50 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                 c_callee = callee_tmp;
             }
             return cem_emit_function_call(cem_emit_paren_expr(c_callee), sb_to_string(sb2));
+        }
+    }
+}
+
+/**
+ * Pre-collect fixed-array wrappers needed only by ordinary variadic calls.
+ *
+ * @param self Backend state to inspect.
+ */
+func be_prepare_variadic_pack_wrappers(self: Backend*) {
+    for (let unit_i = 0; unit_i < driver_unit_count(self.result.driver_state); unit_i = unit_i + 1) {
+        let unit = driver_unit_get(self.result.driver_state, unit_i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+        let root = unit.parse_result.root_module as Module*;
+        self.current_module = root.name;
+        self.current_unit = unit;
+        self.current_env = be_find_env(self, root.name);
+        let arena = unit.parse_result.expr_arena;
+        for (let expr_i = 0; expr_i < vec_size(arena.nodes); expr_i = expr_i + 1) {
+            let expr = expr_arena_get(arena, expr_i);
+            if (ord(expr.kind) != ord(EX_CALL) || expr.has_spread_arg) {
+                continue;
+            }
+            with (let callee_ty = be_expr_type(self, expr.expr_a) => type_free_opt(callee_ty)) {
+                if (callee_ty == null || ord((callee_ty as Type*).kind) != ord(TY_FUNC) ||
+                    !(callee_ty as Type*).is_variadic) {
+                    continue;
+                }
+                let params = (callee_ty as Type*).params as VectorBase*;
+                let fixed_count = vec_size(params) - 1;
+                let arg_count = vec_size(expr.ids as VectorBase*);
+                let variadic_count = arg_count - fixed_count;
+                if (variadic_count <= 0) {
+                    continue;
+                }
+                let slice_ty = ptr_vec_get(params, fixed_count) as Type*;
+                with (let pack_ty = type_new_array(type_clone(slice_ty.inner as Type*), variadic_count) => type_free(pack_ty)) {
+                    cem_collect_array_wrappers_from_type(self.emitter, pack_ty);
+                    cem_collect_opt_wrappers_from_type(self.emitter, pack_ty);
+                    cem_collect_func_ptrs_from_type(self.emitter, pack_ty);
+                }
+            }
         }
     }
 }
@@ -4932,6 +5065,7 @@ func backend_generate(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogCo
         log_stage(cfg, "Generating C code", "");
         log_debug(cfg, "Preparing optional wrapper types");
         cem_prepare_optional_wrappers(self.emitter);
+        be_prepare_variadic_pack_wrappers(self);
         log_debug(cfg, "Emitting header and forward declarations");
         cem_emit_header(self.emitter, opts);
         cem_emit_forward_decls(self.emitter);

@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_variadic_identity_err;
+
+type Variadic = func(int...) -> void;
+type FixedSlice = func(int[]) -> void;
+
+func variadic(values: int...) {
+}
+
+func fixed(values: int[]) {
+}
+
+func errors() {
+    let as_variadic: Variadic = fixed;
+    let as_fixed: FixedSlice = variadic;
+}

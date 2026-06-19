@@ -530,6 +530,7 @@ func ps_parse_postfix_expr(self: ParserState*) -> ExprId? {
                   let labels: StringVector*? = sv_create(4) => sv_free_opt(labels)) {
                 let any_named = false;
                 let any_pos = false;
+                let has_spread = false;
                 if (!ps_check(self, ord(TT_RPAREN))) {
                     while (true) {
                         let label: string = "";
@@ -551,6 +552,14 @@ func ps_parse_postfix_expr(self: ParserState*) -> ExprId? {
                         id_vec_push(args as VectorBase*, arg);
                         sv_push(labels as StringVector*, label);
 
+                        if (ps_match(self, ord(TT_ELLIPSIS))) {
+                            has_spread = true;
+                            if (!ps_check(self, ord(TT_RPAREN))) {
+                                ps_emit_error(self, "PAR-0521", "spread argument must be final", ps_peek(self));
+                                return null;
+                            }
+                        }
+
                         if (!ps_match(self, ord(TT_COMMA))) {
                             break;
                         }
@@ -561,6 +570,7 @@ func ps_parse_postfix_expr(self: ParserState*) -> ExprId? {
                 let node = expr_node_create(EX_CALL, ps_extend_span(self, start));
                 node.expr_a = current;
                 node.ids = args as VectorBase*;
+                node.has_spread_arg = has_spread;
                 args = null;
                 if (any_named) {
                     node.arg_labels = labels as StringVector*;

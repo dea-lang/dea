@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-06-16
+Version: 2026-06-19
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -71,6 +71,12 @@ and may not be returned or stored in long-lived locations (see [design-decisions
 slice emits only the descriptor copy. If the compiler materializes a fixed-array rvalue to back a slice, that backing
 temporary is still an owned array and is cleaned up by the normal array rules when its element type transitively
 contains ARC-managed data.
+
+An ordinary variadic call owns a compiler-materialized fixed array containing copies of its trailing arguments. That
+array follows the same recursive retain and cleanup rules as any other `T[N]` value and remains alive through the call;
+the callee receives only its `T[]` descriptor. Mutating the callee pack therefore does not mutate the original argument
+places. A spread call `f(pack...)` forwards existing slice backing storage without copying, so mutations retain normal
+slice aliasing behavior.
 
 ## 4. ARC `string` Semantics
 

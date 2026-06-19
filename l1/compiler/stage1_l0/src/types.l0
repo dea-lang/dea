@@ -39,6 +39,7 @@ struct Type {
     params: VectorBase*?; // Type*
     result: Type*?;
     is_unsafe: bool;
+    is_variadic: bool;
 }
 
 /**
@@ -129,7 +130,7 @@ func type_param_vec_free(items: VectorBase*?) {
  */
 func type_new(kind: TypeKind, module_name: string, name: string, inner: Type*?, params: VectorBase*?,
               result: Type*?, is_unsafe: bool) -> Type* {
-    return new Type(kind, module_name, name, inner, 0, params, result, is_unsafe);
+    return new Type(kind, module_name, name, inner, 0, params, result, is_unsafe, false);
 }
 
 /**
@@ -400,6 +401,20 @@ func type_new_func(params: VectorBase*, result: Type*, is_unsafe: bool) -> Type*
 }
 
 /**
+ * Create a variadic function type whose final effective parameter is a slice.
+ *
+ * @param params Owned vector of effective parameter types.
+ * @param result Result type.
+ * @param is_unsafe Whether the function has the unsafe contract marker.
+ * @return New variadic function type.
+ */
+func type_new_variadic_func(params: VectorBase*, result: Type*, is_unsafe: bool) -> Type* {
+    let ty = type_new_func(params, result, is_unsafe);
+    ty.is_variadic = true;
+    return ty;
+}
+
+/**
  * Check whether a type is a specific builtin.
  *
  * @param self Type to inspect.
@@ -521,6 +536,9 @@ func type_clone(self: Type*) -> Type* {
         let param = *(vec_get(src_params, i) as Type**);
         vec_push_ptr(params, type_clone(param) as void*);
     }
+    if (self.is_variadic) {
+        return type_new_variadic_func(params, type_clone(self.result as Type*), self.is_unsafe);
+    }
     return type_new_func(params, type_clone(self.result as Type*), self.is_unsafe);
 }
 
@@ -560,7 +578,7 @@ func type_equals(a: Type*?, b: Type*?) -> bool {
 
     let left_params = left.params as VectorBase*;
     let right_params = right.params as VectorBase*;
-    if (left.is_unsafe != right.is_unsafe) {
+    if (left.is_unsafe != right.is_unsafe || left.is_variadic != right.is_variadic) {
         return false;
     }
     if (vec_size(left_params) != vec_size(right_params)) {
@@ -629,7 +647,13 @@ func type_format(self: Type*) -> string {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
-            sb_append(sb, type_format(*(vec_get(params, i) as Type**)));
+            let param = *(vec_get(params, i) as Type**);
+            if (self.is_variadic && i == vec_size(params) - 1 && ord(param.kind) == ord(TY_SLICE)) {
+                sb_append(sb, type_format(param.inner as Type*));
+                sb_append(sb, "...");
+            } else {
+                sb_append(sb, type_format(param));
+            }
         }
         sb_append(sb, ") -> ");
         sb_append(sb, type_format(self.result as Type*));

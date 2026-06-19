@@ -34,6 +34,8 @@ func test_demangler_complex_types() {
     assert((demangle_lbi("__deaM4demo4mainN5pointF0PM4demo4mainS5Point") as string) == "demo.main::point() -> demo.main.Point*",
         "nominal type pointer mismatch");
     assert((demangle_lbi("__deaM4mainN4findF1Qcv") as string) == "main::find(string?) -> void", "nullable type mismatch");
+    assert((demangle_lbi("__deaM4mainN7collectF2iVcv") as string) == "main::collect(int, string...) -> void",
+        "variadic function mismatch");
 }
 
 func test_demangler_enum_variants() {

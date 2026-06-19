@@ -163,7 +163,7 @@ UnsafeFunctionDecl  ::=     "unsafe" ( "func" Ident "(" ParamList? ")" "->" Type
                                      | "extern" "func" Ident "(" ParamList? ")" "->" Type ";" )
 
 ParamList           ::=     Param ("," Param)*
-Param               ::=     Ident ":" Type
+Param               ::=     Ident ":" Type ( "..." )?
 ```
 
 ### 3.2 Extern functions
@@ -234,7 +234,7 @@ UnsuffixedType      ::=     SimpleType
                       |     "(" FuncPointerType ")"     (* useful before nullable suffixes *)
 SimpleType          ::=     QualifiedIdent
 FuncPointerType     ::=     ( "unsafe" )? "func" "(" TypeList? ")" "->" Type
-TypeList            ::=     Type ("," Type)*
+TypeList            ::=     Type ("," Type)* ( "..." )?
 TypeSuffix          ::=     PointerSuffix | ArraySuffix | SliceSuffix | NullableSuffix
 PointerSuffix       ::=     "*"
 ArraySuffix         ::=     "[" ConstIntExpr "]"
@@ -274,6 +274,7 @@ Examples (all syntactically valid types in L<sub>1</sub>):
 - `func(int, bool) -> int`
 - `unsafe func(byte*) -> int`
 - `(func() -> void)?`
+- `func(int, string...) -> int`
 
 Fixed-size array lengths must be positive `int` literals. Adjacent array suffixes preserve source-order dimensions:
 `int[2][3]` is two rows of three `int` values. Exact semantic rules (e.g. when `?` is allowed) are enforced in the type
@@ -287,6 +288,10 @@ is reserved for future use and is rejected by the parser; it is never treated as
 Type suffixes apply left-to-right and build an ordered constructor stack. `T?*` is a pointer to an optional `T`; `T*?`
 is an optional pointer to `T`; `T??` is an optional optional `T` and is not collapsed by the type system. `void*` is
 valid, but `void?` and `void?*` are rejected because `void` is not a value object.
+
+A trailing `...` is accepted only on the final function declaration or function-type parameter. `name: T...` gives
+`name` the effective callee-side type `T[]`, while the variadic marker remains part of the function type identity.
+Variadic `extern func` declarations are rejected; this syntax defines L1 variadics, not C ABI varargs.
 
 ## 5. Blocks and statements
 
@@ -477,7 +482,7 @@ PostfixOp           ::=     "(" ( ArgList )? ")"    (* function call *)
 ArgList             ::=     Arg ( "," Arg )*
 
 Arg                 ::=     Ident ":" ArgValue
-                      |     ArgValue
+                      |     ArgValue ( "..." )?
 
 ArgValue            ::=     TypeExpr
                       |     Expr
@@ -521,6 +526,9 @@ Notes:
 - Call and `new` argument lists must be all positional or all named. Named arguments are accepted for function calls,
   struct constructors, and enum-variant constructors; labels are checked semantically against the required parameter,
   field, or payload names.
+- A variadic call supplies the fixed prefix followed by zero or more values of the variadic element type. Variadic calls
+  are positional-only. A final `pack...` forwards an existing compatible `T[]` (or contextually converted `T[N]`) as the
+  complete variadic tail; individual trailing values cannot be combined with a spread pack.
 - Array literals require an expected fixed-size array type `T[N]` and have no standalone type. Valid contexts include
   annotated locals, assignments, function parameters, constructor fields, enum payload fields, return expressions, and
   explicit array constructors. Short literals zero/default-pad trailing elements; overlong literals are rejected. Slice

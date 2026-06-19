@@ -33,7 +33,7 @@
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
   - `l1/work/initiatives/0003-c-ffi.md`
-  - `l1/work/plans/features/2026-04-22-variadic-functions-noref.md`
+  - `l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="parser_test signatures_test expr_types_test backend_test l0c_lib_test"`
 

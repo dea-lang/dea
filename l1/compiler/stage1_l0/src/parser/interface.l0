@@ -298,7 +298,7 @@ func pi_apply_type_ref_suffix(base: Type*, tref: TypeRef*) -> Type* {
                 result = type_new_pointer(result);
             } else if (ord(suffix.kind) == ord(TS_ARRAY)) {
                 result = type_append_array_dimension(result, suffix.array_len);
-            } else if (ord(suffix.kind) == ord(TS_SLICE)) {
+            } else if (ord(suffix.kind) == ord(TS_SLICE) || ord(suffix.kind) == ord(TS_VARIADIC)) {
                 result = type_new_slice(result);
             } else {
                 result = type_new_nullable(result);
@@ -344,7 +344,12 @@ func pi_type_from_ref(self: ParserState*, tref: TypeRef*) -> Type*? {
                 return null;
             }
 
+            let is_variadic = vec_size(parsed_params) > 0 &&
+                type_ref_is_variadic(ptr_vec_get(parsed_params, vec_size(parsed_params) - 1) as TypeRef*);
             let func_ty = type_new_func(params as VectorBase*, result as Type*, tref.is_unsafe);
+            if (is_variadic) {
+                func_ty.is_variadic = true;
+            }
             params = null;
             result = null;
             return pi_apply_type_ref_suffix(func_ty, tref);
@@ -781,6 +786,7 @@ func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, is_unsafe: boo
     with (let param_names: StringVector*? = sv_create(4) => sv_free_opt(param_names),
           let param_types: VectorBase*? = ptr_vec_create(4) => type_param_vec_free(param_types),
           let ret_type: Type*? = null => pi_type_free_opt(ret_type)) {
+        let is_variadic = false;
         while (!ps_check(self, ord(TT_RPAREN)) && !ps_check(self, ord(TT_EOF))) {
             if (vec_size(param_types as VectorBase*) > 0) {
                 if (ps_expect(self, ord(TT_COMMA), "PAR-0572", "Expected ',' between parameters") == null) {
@@ -802,7 +808,18 @@ func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, is_unsafe: boo
             if (param_type == null) {
                 return pi_sync_to_semi_or_rbrace(self);
             }
-            ptr_vec_push(param_types as VectorBase*, param_type as void*);
+            let effective_type = param_type as Type*;
+            if (ps_match(self, ord(TT_ELLIPSIS))) {
+                if (!ps_check(self, ord(TT_RPAREN))) {
+                    type_free(effective_type);
+                    ps_emit_error(self, "PAR-0520",
+                        "variadic parameter must be the final interface function parameter", ps_peek(self));
+                    return pi_sync_to_semi_or_rbrace(self);
+                }
+                effective_type = type_new_slice(effective_type);
+                is_variadic = true;
+            }
+            ptr_vec_push(param_types as VectorBase*, effective_type as void*);
         }
 
         ps_expect(self, ord(TT_RPAREN), "PAR-0572", "Expected ')' after parameter list");
@@ -822,6 +839,7 @@ func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, is_unsafe: boo
         }
 
         let func_type = type_new_func(param_types as VectorBase*, ret_type as Type*, is_unsafe);
+        func_type.is_variadic = is_variadic;
         let entry = new InterfaceFuncEntry(name, param_names as StringVector*, func_type, hash_opt as string);
         ptr_vec_push(mi.func_entries, entry as void*);
         param_names = null;
@@ -1043,7 +1061,8 @@ func pi_normalize_against_peers(peers: VectorBase*, ty: Type*) -> bool {
  *              cross-module nominal kinds.
  */
 func pi_normalize_type(mi: ModuleInterface*, ty: Type*, peers: VectorBase*?) {
-    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE)) {
+    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE) ||
+        ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_SLICE)) {
         pi_normalize_type(mi, ty.inner as Type*, peers);
         return;
     }

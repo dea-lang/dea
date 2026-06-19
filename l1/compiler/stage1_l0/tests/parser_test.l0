@@ -137,6 +137,37 @@ func test_slice_type_syntax_ok() {
 }
 
 /**
+ * Tests declaration, function-type, and call-spread variadic syntax.
+ */
+func test_variadic_syntax_ok() {
+    let src = "module main; type V = func(int, string...) -> int; " +
+        "func count(prefix: int, values: string...) -> int { return prefix + len(values); } " +
+        "func forward(values: string[]) -> int { return count(0, values...); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected variadic syntax to parse");
+    let root = result.root_module as Module*;
+    let func_top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let func_decl = func_top.data as FuncDecl*;
+    let last_param = ptr_vec_get(func_decl.params, 1) as Param*;
+    assert(type_ref_is_variadic(last_param.type_ref), "Expected variadic declaration suffix");
+    let forward_top = ptr_vec_get(root.decls, 2) as TopLevelDecl*;
+    let forward_decl = forward_top.data as FuncDecl*;
+    let block = stmt_arena_get(result.stmt_arena, forward_decl.body);
+    let ret_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(block.ids as VectorBase*, 0));
+    let call = expr_arena_get(result.expr_arena, ret_stmt.expr_a);
+    assert(call.has_spread_arg, "Expected final spread argument marker");
+    parse_result_free(result);
+}
+
+/**
+ * Tests variadic parameters and spread arguments must be final.
+ */
+func test_variadic_syntax_err() {
+    expect_error_code("module main; func bad(values: int..., tail: int) {}", "PAR-0520");
+    expect_error_code("module main; func f(values: int...) {} func bad(xs: int[]) { f(xs..., 1); }", "PAR-0521");
+}
+
+/**
  * Tests nested pointer-before-slice and nullable-before-slice suffix ordering.
  */
 func test_slice_nested_suffix_order_ok() {
@@ -1478,6 +1509,8 @@ func main() {
     test_parser_message_omits_embedded_code();
     test_array_type_syntax_message();
     test_slice_type_syntax_ok();
+    test_variadic_syntax_ok();
+    test_variadic_syntax_err();
     test_slice_nested_suffix_order_ok();
     test_reserved_inferred_length_array();
     test_array_expr_syntax_messages();

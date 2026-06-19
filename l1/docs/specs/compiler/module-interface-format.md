@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-06-13
+Version: 2026-06-19
 
 Status: Draft artifact contract
 
@@ -190,9 +190,11 @@ Functions are signature-only declarations with the trailing hash:
 ```dea
 func area(s: Size) -> int == "";
 func ping() -> void == "";
+func collect(prefix: int, values: string...) -> int == "";
 ```
 
-Bodies are never emitted into `.l1m`.
+Bodies are never emitted into `.l1m`. Variadic function declarations and function types preserve the final `T...` marker
+so consumers distinguish them from fixed `T[]` signatures.
 
 ### Consts
 

@@ -188,6 +188,8 @@ diagnostic.
 | `PAR-0504` | All     | 'with': cannot have both '=>' and cleanup block                          |
 | `PAR-0505` | All     | 'with': cleanup block required when '=>' is not used                     |
 | `PAR-0506` | All     | `'cleanup'` without a matching `'with'`                                  |
+| `PAR-0520` | L1+     | Variadic parameter marker must appear on the final parameter             |
+| `PAR-0521` | L1+     | Spread argument must be the final call argument                          |
 | `PAR-0540` | L1+     | Expected exported name or '\*' in export manifest                        |
 | `PAR-0541` | L1+     | Expected ';' after export manifest                                       |
 | `PAR-0542` | L1+     | Export manifest is not allowed after imports or declarations             |
@@ -313,6 +315,7 @@ diagnostic.
 | `SIG-0040` | All   | Value-type cycle creates an infinitely sized type                                 |
 | `SIG-0200` | L1+   | `const` initializer must be compile-time constant                                 |
 | `SIG-0201` | L1+   | Compile-time constant cycle                                                       |
+| `SIG-0220` | L1+   | `extern func` declarations cannot be variadic                                     |
 | `SIG-9029` | All   | Internal error: a type-alias symbol does not reference a type-alias declaration   |
 
 ## Expression Type Checking, Type Inference, and Type-Related Semantic Analysis
@@ -433,6 +436,11 @@ diagnostic.
 | `TYP-0701` | All     | Explicit nullable-pointer-to-pointer cast is provably null at compile time                             |
 | `TYP-0702` | All     | Integer literal outside `int` requires a contextual integer type                                       |
 | `TYP-0703` | All     | Integer literal outside `int` cannot be used in this contextual type                                   |
+| `TYP-0740` | L1+     | Variadic call is missing required fixed-prefix arguments                                               |
+| `TYP-0741` | L1+     | Variadic trailing argument type mismatch                                                               |
+| `TYP-0742` | L1+     | Spread argument requires a variadic callee                                                             |
+| `TYP-0743` | L1+     | Spread argument is not the complete compatible variadic tail                                           |
+| `TYP-0744` | L1+     | Variadic calls do not accept named arguments                                                           |
 | `TYP-0760` | L1+     | Named arguments are not accepted by this callee or intrinsic                                           |
 | `TYP-0761` | L1+     | Internal error: named argument label count mismatch                                                    |
 | `TYP-0762` | L1+     | Unknown named argument                                                                                 |

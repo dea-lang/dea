@@ -3,7 +3,7 @@
 ## Add L1 variadic functions
 
 - Date: 2026-04-22
-- Status: Deferred
+- Status: Completed
 - Title: Add L1 variadic functions
 - Kind: Feature
 - Severity: Medium
@@ -22,13 +22,13 @@
   - `l1/compiler/stage1_l0/tests/parser_test.l0`
   - `l1/compiler/stage1_l0/tests/expr_types_test.l0`
   - `l1/compiler/stage1_l0/tests/c_emitter_test.l0`
-  - `l1/compiler/stage1_l0/tests/l0c_lib_test.l0`
+  - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
   - `l1/work/initiatives/0003-c-ffi.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
-- Repro: None
+- Repro: `make -C l1 test-stage1 && make -C l1 test-stage1-trace`
 
 ## Summary
 
@@ -40,20 +40,17 @@ This split keeps the language-core work reviewable and avoids entangling pack se
 calling-convention edge cases, and `va_list`-style C interop. The standalone plan should leave a clean handoff to the
 FFI initiative rather than pre-committing its boundary rules.
 
-## Deferral Rationale
+## Deferral Resolution
 
-This plan is deferred pending a general slice/array language feature (currently a backlog item under "Language core" in
-[l1/docs/roadmap.md](../../../docs/roadmap.md)). Phase 2 of this plan would otherwise have to invent a bespoke read-only
-pack contract solely because L1 has no slice/array surface today. If slices/arrays land first, the variadic feature
-collapses to syntactic sugar over a slice-typed trailing parameter: forwarding becomes trivial, variadic
-function-pointer typing simplifies, and no throwaway pack ABI is shipped. Re-evaluate this plan once a slice/array plan
-is promoted from backlog.
+The prerequisite slice feature landed before implementation. Variadic parameters now resolve to the existing `T[]`
+descriptor surface, avoiding a bespoke pack type and any C varargs dependency. Ordinary calls materialize caller-owned
+fixed-array packs; explicit final `pack...` calls forward existing compatible slice or fixed-array storage.
 
-Deferring L1 variadics does not block C variadic FFI: that work is a separate sibling tranche under Initiative 0003 with
+The earlier deferral did not block C variadic FFI: that work is a separate sibling tranche under Initiative 0003 with
 its own `va_list` companion-function workaround (see "C variadic FFI scope" in
-[l1/work/initiatives/0003-c-ffi.md](../../initiatives/0003-c-ffi.md)).
+[l1/work/initiatives/0003-c-ffi.md](../../../initiatives/0003-c-ffi.md)).
 
-## Current State
+## Pre-Implementation State
 
 1. Function declarations, function types, and calls in L1 all assume a fixed arity.
 2. `expr_types.l0` enforces exact argument counts for direct calls and constructor-like call surfaces.
@@ -71,15 +68,16 @@ its own `va_list` companion-function workaround (see "C variadic FFI scope" in
 4. Variadic calls remain positional-only in this plan. Named-argument interaction is out of scope and is a separate
    follow-up plan, not a sequencing dependency on the standalone named-arguments plan; both features independently
    reject the cross-feature combination.
-5. The pack representation may be compiler-private, but the plan must define a small, documented source-level contract
-   for reading the count and individual elements inside the callee.
+5. Inside the callee, the final variadic parameter has effective type `T[]` and uses ordinary `len`, checked indexing,
+   and slice assignment behavior.
+6. Explicit forwarding uses one final `pack...` argument as the complete variadic tail; it cannot be mixed with
+   individual variadic values.
 
 ## Goal
 
 1. Parse variadic function declarations and function-pointer types.
 2. Type-check calls with a fixed required prefix plus zero or more trailing arguments of the variadic element type.
-3. Define a bootstrap-safe body contract for consuming the variadic pack without introducing general slice/array
-   features.
+3. Expose the variadic pack through the implemented `T[]` body contract.
 4. Lower variadic calls and callees in generated C without implying C variadic FFI support.
 
 ## Implementation Phases
@@ -91,10 +89,8 @@ parameter. Enforce that the variadic parameter is last and appears at most once.
 
 ### Phase 2: Callee-side pack contract
 
-Choose and document the minimal source-level surface visible inside the callee. The implementation may use hidden count
-and storage parameters internally, but the plan should commit to an L1-facing contract that is stable and does not
-depend on general array/slice work. The recommended direction is a narrow read-only pack surface with element count and
-indexed access only.
+Resolve the final parameter to `T[]`. The callee uses the existing mutable slice surface, while ordinary call arguments
+live in an owned caller-side fixed-array pack for the duration of the surrounding scope.
 
 ### Phase 3: Call typing and lowering
 
@@ -111,8 +107,8 @@ function world rather than reusing C varargs.
 ### Phase 4: Function pointers and forwarding
 
 Extend function-pointer typing and emission so variadic signatures can be named and called indirectly when their fixed
-prefix and variadic element type match exactly. Forwarding one variadic pack into another variadic call is in scope only
-if the chosen pack contract makes it straightforward; otherwise it should be deferred explicitly.
+prefix and variadic element type match exactly. Forward a compatible slice or fixed array with explicit final `pack...`
+syntax.
 
 ### Phase 5: Docs and roadmap
 
@@ -122,13 +118,10 @@ if the chosen pack contract makes it straightforward; otherwise it should be def
 
 ## Diagnostics
 
-1. This feature is likely to need dedicated parse-time diagnostics for malformed `...` placement and dedicated type
-   diagnostics for variadic call mismatches.
-2. Provisionally reserve `PAR-0520` to `PAR-0539` for variadic syntax/placement diagnostics and `TYP-0740` to `TYP-0759`
-   for variadic typing/call diagnostics. If signature-analysis-specific diagnostics become necessary for variadic
-   function types, provisionally reserve `SIG-0220` to `SIG-0239`.
-3. Re-check all proposed reservations against the live catalog at implementation time before assigning final numbers; if
-   any slot has been used in the meantime, choose a different free block then.
+1. `PAR-0520` and `PAR-0521` cover malformed parameter and spread placement.
+2. `SIG-0220` rejects variadic `extern func` declarations.
+3. `TYP-0740` through `TYP-0744` cover fixed-prefix, element, spread, and named-call failures.
+4. All assigned codes are registered in the live diagnostic catalog.
 
 ## Non-Goals
 
@@ -145,3 +138,11 @@ if the chosen pack contract makes it straightforward; otherwise it should be def
 3. Generated C for L1-defined variadic functions is self-consistent and does not rely on C ABI varargs.
 4. The roadmap and design-decision docs clearly separate L1 variadic functions from C variadic FFI.
 5. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+
+## Implementation Summary
+
+Completed in L1 Stage 1. The lexer, parser, ordered type-suffix model, semantic function types, direct and indirect call
+typing, C lowering, interface round trips, LBI mangling/demangling, diagnostics, runtime fixtures, trace coverage, and
+reference documentation now support L1-defined variadic functions. The final `T...` parameter lowers as `T[]`, while the
+`V` LBI component keeps variadic function identity distinct from a fixed slice signature. C variadic FFI remains outside
+this plan.

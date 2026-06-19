@@ -143,9 +143,23 @@ func test_emitter_name_mangling() {
     ptr_vec_push(func_i_i.params as VectorBase*, type_clone(int_ty) as void*);
     let func_s_v = type_new_func(ptr_vec_create(0), type_clone(void_ty), false);
     ptr_vec_push(func_s_v.params as VectorBase*, type_clone(string_ty) as void*);
+    let variadic_params = ptr_vec_create(2);
+    ptr_vec_push(variadic_params, type_clone(int_ty) as void*);
+    ptr_vec_push(variadic_params, type_new_slice(type_clone(string_ty)) as void*);
+    let func_variadic = type_new_variadic_func(variadic_params, type_clone(void_ty), false);
+    let fixed_slice_params = ptr_vec_create(2);
+    ptr_vec_push(fixed_slice_params, type_clone(int_ty) as void*);
+    ptr_vec_push(fixed_slice_params, type_new_slice(type_clone(string_ty)) as void*);
+    let func_fixed_slice = type_new_func(fixed_slice_params, type_clone(void_ty), false);
 
     assert(cem_mangle_struct_name("demo.main", "Point") == "__deaM4demo4mainS5Point", "struct name mismatch");
     assert(cem_mangle_function_name("demo.main", "main", func_v_v) == "__deaM4demo4mainN4mainF0v", "function name mismatch");
+    assert(cem_mangle_function_name("main", "collect", func_variadic) == "__deaM4mainN7collectF2iVcv",
+        "variadic function name mismatch");
+    assert(type_format(func_variadic) == "func(int, string...) -> void", "variadic type format mismatch");
+    assert(!type_equals(func_variadic, func_fixed_slice), "variadic and fixed-slice function types must differ");
+    assert(cem_func_ptr_name_for_type(func_variadic) == cem_func_ptr_name_for_type(func_fixed_slice),
+        "variadic and fixed-slice functions should share the C ABI typedef");
     assert(cem_mangle_let_name("demo.main", "static") == "__deaM4demo4mainN6static",
         "C-keyword let name should be safe under LBI prefix");
     assert(cem_mangle_struct_name("demo.main", "return") == "__deaM4demo4mainS6return",
@@ -191,6 +205,8 @@ func test_emitter_name_mangling() {
     type_free(func_v_v);
     type_free(func_i_i);
     type_free(func_s_v);
+    type_free(func_variadic);
+    type_free(func_fixed_slice);
     type_free(func_push);
     cem_free(emitter);
 }

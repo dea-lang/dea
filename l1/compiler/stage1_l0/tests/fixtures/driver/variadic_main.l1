@@ -1,0 +1,81 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module variadic_main;
+
+type VariadicInt = func(int, int...) -> int;
+type IntFn = func(int) -> int;
+type StringFn = func(string) -> string;
+
+func inc(value: int) -> int {
+    return value + 1;
+}
+
+func echo(value: string) -> string {
+    return value;
+}
+
+func call_int(values: IntFn...) -> int {
+    return (values[0])(1);
+}
+
+func call_string(values: StringFn...) -> string {
+    return (values[0])("callback");
+}
+
+func sum(base: int, values: int...) -> int {
+    let total = base;
+    let i = 0;
+    while (i < len(values)) {
+        total = total + values[i];
+        i = i + 1;
+    }
+    return total;
+}
+
+func forward(base: int, values: int...) -> int {
+    return sum(base, values...);
+}
+
+func first(values: string...) -> string {
+    if (len(values) == 0) {
+        return "";
+    }
+    return values[0];
+}
+
+func set_first(values: int...) {
+    if (len(values) > 0) {
+        values[0] = 99;
+    }
+}
+
+func main() -> int {
+    let cb: VariadicInt = sum;
+    let values: int[3] = [2, 3, 4];
+    let all = slice(values);
+    let word = first("vari" + "adic", "pack");
+    let original = 5;
+    set_first(original);
+    let spread_values: int[2] = [1, 2];
+    set_first(spread_values...);
+    let callback_word = call_string(echo);
+    if (word != "variadic") {
+        return 1;
+    }
+    if (original != 5 || spread_values[0] != 99) {
+        return 4;
+    }
+    if (call_int(inc) != 2 || callback_word != "callback") {
+        return 5;
+    }
+    if (sum(7) != 7 || sum(1, 2, 3) != 6 || cb(1, 2, 3) != 6) {
+        return 2;
+    }
+    if (forward(1, all...) != 10 || sum(1, values...) != 10) {
+        return 3;
+    }
+    return 0;
+}

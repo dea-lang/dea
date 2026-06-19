@@ -542,7 +542,14 @@ func ls_next_token(self: LexerState*) -> Token? {
             return Token(TT_COLON, start_index, start_line, start_column);
         }
 
-        '.' => return Token(TT_DOT, start_index, start_line, start_column);
+        '.' => {
+            if (ls_peek(self) == '.' && ls_peek_next(self) == '.') {
+                ls_advance(self);
+                ls_advance(self);
+                return Token(TT_ELLIPSIS, start_index, start_line, start_column);
+            }
+            return Token(TT_DOT, start_index, start_line, start_column);
+        }
 
         '?' => return Token(TT_QUESTION, start_index, start_line, start_column);
 

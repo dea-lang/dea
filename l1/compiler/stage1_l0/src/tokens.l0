@@ -103,6 +103,7 @@ enum TokenType {
     TT_OROR;            // ||
     TT_BANG;            // !
     TT_QUESTION;        // ?
+    TT_ELLIPSIS;        // ...
     TT_DOT;             // .
 
     // Reserved operators
@@ -209,6 +210,7 @@ func token_to_string(token: Token) -> string {
         TT_OROR => { return "||"; }
         TT_BANG => { return "!"; }
         TT_QUESTION => { return "?"; }
+        TT_ELLIPSIS => { return "..."; }
         TT_DOT => { return "."; }
 
         TT_AMP => { return "&"; }

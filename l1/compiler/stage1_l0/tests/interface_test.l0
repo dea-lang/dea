@@ -539,6 +539,64 @@ func test_interface_ordered_type_suffix_round_trip() {
 }
 
 /**
+ * Tests variadic declarations and function types round-trip through interfaces.
+ */
+func test_interface_variadic_round_trip() {
+    let text = "module interface variadic_iface;\nfingerprint \"\";\n\nstruct Point {\n  value: int;\n} == \"\";\n\ntype V = func(int, Point...) -> int == \"\";\n\nfunc collect(prefix: int, values: Point...) -> int == \"\";\n";
+    let parsed = pi_parse_interface(text, "<variadic-interface>");
+    assert(!ipr_has_errors(parsed), "variadic interface should parse");
+    let mi = parsed.interface as ModuleInterface*;
+    let alias = ptr_vec_get(mi.alias_entries, 0) as InterfaceAliasEntry*;
+    assert(alias.ty.is_variadic, "expected variadic function alias");
+    let alias_pack = ptr_vec_get(alias.ty.params as VectorBase*, 1) as Type*;
+    assert(ord(alias_pack.kind) == ord(TY_SLICE), "expected variadic alias pack slice");
+    let alias_element = alias_pack.inner as Type*;
+    assert(ord(alias_element.kind) == ord(TY_STRUCT), "expected nominal variadic alias element");
+    assert(alias_element.module_name == "variadic_iface", "variadic alias element module mismatch");
+    assert(alias_element.name == "Point", "variadic alias element name mismatch");
+    let entry = ptr_vec_get(mi.func_entries, 0) as InterfaceFuncEntry*;
+    assert(entry.ty.is_variadic, "expected variadic interface function");
+    let func_pack = ptr_vec_get(entry.ty.params as VectorBase*, 1) as Type*;
+    assert(ord(func_pack.kind) == ord(TY_SLICE), "expected variadic function pack slice");
+    let func_element = func_pack.inner as Type*;
+    assert(ord(func_element.kind) == ord(TY_STRUCT), "expected nominal variadic function element");
+    assert(func_element.module_name == "variadic_iface", "variadic function element module mismatch");
+    assert(func_element.name == "Point", "variadic function element name mismatch");
+    assert(ie_emit(mi) == text, "variadic interface should round-trip byte-for-byte");
+    ipr_free(parsed);
+}
+
+/**
+ * Tests that peer lookup normalizes a cross-module nominal variadic element
+ * through its semantic slice wrapper.
+ */
+func test_interface_variadic_cross_module_kind_with_peers() {
+    let dep_text = emit_interface_for("iface_dep");
+    let dep_parsed = pi_parse_interface(dep_text, "<iface_dep-variadic>");
+    assert(!ipr_has_errors(dep_parsed), "iface_dep variadic peer parse should succeed");
+    let dep_mi = dep_parsed.interface as ModuleInterface*;
+
+    with (let peers: VectorBase*? = ptr_vec_create(1) => vec_free(peers as VectorBase*)) {
+        ptr_vec_push(peers as VectorBase*, dep_mi as void*);
+        let text = "module interface variadic_cross;\nfingerprint \"\";\n\nrequire iface_dep::RemoteColor == \"\";\n\nfunc collect(values: iface_dep::RemoteColor...) -> void == \"\";\n";
+        let parsed = pi_parse_interface_with_peers(text, "<variadic-cross>", peers as VectorBase*);
+        assert(!ipr_has_errors(parsed), "cross-module variadic interface should parse");
+        let mi = parsed.interface as ModuleInterface*;
+        let entry = ptr_vec_get(mi.func_entries, 0) as InterfaceFuncEntry*;
+        let pack = ptr_vec_get(entry.ty.params as VectorBase*, 0) as Type*;
+        assert(ord(pack.kind) == ord(TY_SLICE), "expected cross-module variadic pack slice");
+        let element = pack.inner as Type*;
+        assert(ord(element.kind) == ord(TY_ENUM), "cross-module variadic element must normalize to enum");
+        assert(element.module_name == "iface_dep", "cross-module variadic element module mismatch");
+        assert(element.name == "RemoteColor", "cross-module variadic element name mismatch");
+        assert(ie_emit(mi) == text, "cross-module variadic interface should round-trip byte-for-byte");
+        ipr_free(parsed);
+    }
+
+    ipr_free(dep_parsed);
+}
+
+/**
  * Tests that the new per-symbol `require` and `link` dependency-line forms
  * (including algorithm-tagged hash strings) parse, sort/deduplicate, and
  * round-trip through emit -> parse -> emit byte-for-byte.
@@ -612,6 +670,8 @@ func main() {
     test_interface_dotted_literal_missing_double_colon();
     test_interface_unsafe_function_markers();
     test_interface_ordered_type_suffix_round_trip();
+    test_interface_variadic_round_trip();
+    test_interface_variadic_cross_module_kind_with_peers();
     test_interface_dep_lines_round_trip();
     test_interface_decl_hash_suffix_diagnostics();
     printl_s("interface_test: all tests passed");

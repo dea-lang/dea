@@ -389,7 +389,20 @@ func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, driver_stat
             return;
         }
 
+        let is_variadic = vec_size(decl.params) > 0 &&
+            type_ref_is_variadic((ptr_vec_get(decl.params, vec_size(decl.params) - 1) as Param*).type_ref);
+        if (decl.is_extern && is_variadic) {
+            sig_diag_error(diags, "SIG-0220", "extern functions cannot be variadic",
+                env.module_ptr.filename, decl.span);
+            type_param_vec_free(params);
+            params = null;
+            type_free(ret_type as Type*);
+            return;
+        }
         let func_type = type_new_func(params as VectorBase*, ret_type as Type*, decl.is_unsafe);
+        if (is_variadic) {
+            func_type.is_variadic = true;
+        }
         let key = sig_key(env.module_name, decl.name);
         spm_put(tables.func_types, key, func_type as void*);
         let sym_opt = nr_module_env_local(env, decl.name);

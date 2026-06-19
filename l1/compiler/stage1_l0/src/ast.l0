@@ -159,6 +159,7 @@ enum TypeSuffixKind {
     TS_NULLABLE;
     TS_ARRAY;
     TS_SLICE;
+    TS_VARIADIC;
 }
 
 /**
@@ -470,6 +471,7 @@ struct ExprNode {
 
     ids: VectorBase*?;        // int entries, typically call/new args
     arg_labels: StringVector*?; // string entries, for call/new named arguments
+    has_spread_arg: bool;     // final call argument carries `...`
     type_ref: TypeRef*?;
     module_path: StringVector*?;
     name_qualifier: StringVector*?;
@@ -502,10 +504,28 @@ func expr_node_create(kind: ExprKind, span: Span) -> ExprNode* {
         invalid_expr_id(),
         null,
         null,
+        false,
         null,
         null,
         null
     );
+}
+
+/**
+ * Report whether a type reference carries the parameter-only variadic suffix.
+ *
+ * @param self Type reference to inspect.
+ * @return `true` when the final ordered suffix is `TS_VARIADIC`.
+ */
+func type_ref_is_variadic(self: TypeRef*) -> bool {
+    if (self.suffixes == null) {
+        return false;
+    }
+    let suffixes = self.suffixes as VectorBase*;
+    if (vec_size(suffixes) == 0) {
+        return false;
+    }
+    return ord((ptr_vec_get(suffixes, vec_size(suffixes) - 1) as TypeSuffix*).kind) == ord(TS_VARIADIC);
 }
 
 /**

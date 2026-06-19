@@ -160,6 +160,11 @@ func demangle_type_component(mangled: string, c: Cursor*, out: CharBuffer*) -> b
             cb_append_s(out, "?");
             return true;
         }
+        'V' => {
+            if (!demangle_type_component(mangled, c, out)) { return false; }
+            cb_append_s(out, "...");
+            return true;
+        }
         'A' => {
             let dim = parse_int_prefix(mangled, c);
             if (c.pos >= len_s(mangled) || char_at_s(mangled, c.pos) != '_') { return false; }

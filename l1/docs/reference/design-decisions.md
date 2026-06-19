@@ -192,6 +192,21 @@ The current `unsafe` marker is a function-level contract marker, not a call-site
 Lambdas, closures, method pointers, and C variadic function pointer types are intentionally out of scope for the current
 bootstrap feature.
 
+## 8.1 L1 Variadic Functions
+
+L1-defined variadic functions use a single trailing parameter `name: T...`; function pointer types mirror the spelling
+as `func(Prefix, T...) -> U`. Inside the callee the parameter has effective type `T[]`, so ordinary `len`, indexing, and
+slice assignment rules apply. Variadic function types remain distinct from fixed `func(Prefix, T[]) -> U` types even
+though both lower their final C parameter to the same slice descriptor ABI.
+
+Calls provide the fixed prefix plus zero or more `T` values. The caller materializes those values into an owned
+fixed-array pack and passes a non-owning slice descriptor, so callee mutation changes the pack copy rather than the
+original argument values. A final `pack...` instead forwards a compatible slice or fixed array directly and therefore
+keeps normal slice aliasing. Spread must be the complete variadic tail, and named variadic calls are rejected.
+
+The LBI encodes the variadic final parameter with `V`, preserving link and function-type identity. Variadic
+`extern func` declarations remain rejected because C variadic ABI rules belong to the separate C FFI initiative.
+
 ## 9. Nullability, Casts, and Introspection
 
 Current policy:

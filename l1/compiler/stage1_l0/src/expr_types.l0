@@ -2533,6 +2533,9 @@ func etc_types_equal_ignoring_func_unsafety(a: Type*?, b: Type*?) -> bool {
         return left.array_len == right.array_len && etc_types_equal_ignoring_func_unsafety(left.inner, right.inner);
     }
 
+    if (left.is_variadic != right.is_variadic) {
+        return false;
+    }
     let left_params = left.params as VectorBase*;
     let right_params = right.params as VectorBase*;
     if (vec_size(left_params) != vec_size(right_params)) {
@@ -3325,6 +3328,19 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
         let arg_count = 0;
         if (args != null) arg_count = vec_size(args);
 
+        if (c_ty.is_variadic && expr.arg_labels != null) {
+            etc_diag_error(self, "TYP-0744", "variadic calls do not accept named arguments",
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(c_ty);
+            return null;
+        }
+        if (!c_ty.is_variadic && expr.has_spread_arg) {
+            etc_diag_error(self, "TYP-0742", "spread argument requires a variadic callee",
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(c_ty);
+            return null;
+        }
+
         let resolved_args: VectorBase*? = null;
         if (expr.arg_labels != null && args != null) {
             let expected_names = etc_get_call_param_names(self, callee);
@@ -3343,7 +3359,55 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
             args = resolved_args as VectorBase*;
         }
 
-        if (arg_count != vec_size(params)) {
+        if (c_ty.is_variadic) {
+            let fixed_count = vec_size(params) - 1;
+            let variadic_slice = ptr_vec_get(params, fixed_count) as Type*;
+            if (expr.has_spread_arg) {
+                if (arg_count != fixed_count + 1) {
+                    etc_diag_error(self, "TYP-0743",
+                        "spread argument must be the entire variadic tail",
+                        (self.current_unit as DriverUnit*).path, expr.span);
+                } else {
+                    for (let i_vf = 0; i_vf < fixed_count; i_vf = i_vf + 1) {
+                        let arg_id_vf = id_vec_get(args as VectorBase*, i_vf);
+                        let p_ty_vf = ptr_vec_get(params, i_vf) as Type*;
+                        if (ord(etc_check_expr_against_expected(self, p_ty_vf, arg_id_vf,
+                            (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                            etc_diag_error(self, "TYP-0312", "function call argument type mismatch",
+                                (self.current_unit as DriverUnit*).path, expr.span);
+                        }
+                    }
+                    let spread_id = id_vec_get(args as VectorBase*, fixed_count);
+                    if (ord(etc_check_expr_against_expected(self, variadic_slice, spread_id,
+                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                        etc_diag_error(self, "TYP-0743", "spread argument type mismatch",
+                            (self.current_unit as DriverUnit*).path, expr.span);
+                    }
+                }
+            } else if (arg_count < fixed_count) {
+                etc_diag_error(self, "TYP-0740", "variadic call is missing fixed-prefix arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+            } else {
+                for (let i_v = 0; i_v < arg_count; i_v = i_v + 1) {
+                    let arg_id_v = id_vec_get(args as VectorBase*, i_v);
+                    let expected_v = variadic_slice.inner as Type*;
+                    if (i_v < fixed_count) {
+                        expected_v = ptr_vec_get(params, i_v) as Type*;
+                    }
+                    if (ord(etc_check_expr_against_expected(self, expected_v, arg_id_v,
+                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                        let code = "TYP-0741";
+                        let message = "variadic argument type mismatch";
+                        if (i_v < fixed_count) {
+                            code = "TYP-0312";
+                            message = "function call argument type mismatch";
+                        }
+                        etc_diag_error(self, code, message,
+                            (self.current_unit as DriverUnit*).path, expr.span);
+                    }
+                }
+            }
+        } else if (arg_count != vec_size(params)) {
             etc_diag_error(self, "TYP-0183", "function call argument count mismatch",
                 (self.current_unit as DriverUnit*).path, expr.span);
         } else {

@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-06-14
+Version: 2026-06-19
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -79,6 +79,8 @@ checks, including:
   `while`, `for`, and `match` bodies accepted under the current body-local scope/cleanup rules
 - function pointer types, indirect calls, same-signature function pointer identity comparisons, nullable function
   pointers, and `unsafe func` declarations plus unsafe/plain function-pointer distinctions
+- L1-defined variadic functions and function pointer types, with trailing `T...` parameters, slice-backed callee packs,
+  zero-or-more positional trailing arguments, and explicit final `pack...` forwarding
 - fixed-width integer builtins `tiny`, `short`, `ushort`, `int`, `uint`, `long`, and `ulong`, with contextual wide
   integer literals carried through the bigint path when they exceed bootstrap `int`
 - integer bitwise operators `&`, `|`, `^`, `~`, `<<`, and `>>`

@@ -968,6 +968,59 @@ func test_typing_named_args_err() {
 }
 
 /**
+ * Tests variadic direct, indirect, and spread call typing.
+ */
+func test_typing_variadic_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_variadic_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_variadic_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests dedicated variadic diagnostics.
+ */
+func test_typing_variadic_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_variadic_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_variadic_err");
+        assert(has_diag_code(result, "TYP-0740"), "expected missing fixed-prefix diagnostic");
+        assert(has_diag_code(result, "TYP-0741"), "expected variadic element mismatch");
+        assert(has_diag_code(result, "TYP-0742"), "expected non-variadic spread diagnostic");
+        assert(has_diag_code(result, "TYP-0743"), "expected mixed spread-tail diagnostic");
+        assert(has_diag_code(result, "TYP-0744"), "expected named variadic call diagnostic");
+        analysis_result_free(result);
+
+        let extern_result = analysis_analyze_entry(sp, "typing_variadic_extern_err", cfg);
+        assert(analysis_has_errors(extern_result), "expected typing errors for typing_variadic_extern_err");
+        assert(has_diag_code(extern_result, "SIG-0220"), "expected variadic extern rejection");
+        analysis_result_free(extern_result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests variadic/fixed-slice identity mismatches are not classified as unsafety mismatches.
+ */
+func test_typing_variadic_identity_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_variadic_identity_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_variadic_identity_err");
+        assert(count_diag_code(result, "TYP-0780") == 0,
+            "variadic identity mismatch must not report unsafe/plain mismatch");
+        assert(count_diag_code(result, "TYP-0310") == 2,
+            "expected two ordinary initializer type mismatches");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests `match` exhaustiveness and missing-return flow diagnostics.
  */
 func test_typing_match_flow_err() {
@@ -1461,6 +1514,9 @@ func main() {
     test_typing_call_err();
     test_typing_named_args_ok();
     test_typing_named_args_err();
+    test_typing_variadic_ok();
+    test_typing_variadic_err();
+    test_typing_variadic_identity_err();
     test_typing_small_int_ok();
     test_typing_small_int_err();
     test_typing_small_int_literal_overflow();

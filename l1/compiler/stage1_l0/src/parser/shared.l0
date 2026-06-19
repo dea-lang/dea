@@ -1148,6 +1148,15 @@ func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
             if (!ps_check(self, ord(TT_RPAREN))) {
                 while (true) {
                     let param_type = ps_parse_type(self)?;
+                    if (ps_match(self, ord(TT_ELLIPSIS))) {
+                        ps_mark_type_ref_variadic(param_type);
+                        if (!ps_check(self, ord(TT_RPAREN))) {
+                            ps_emit_error(self, "PAR-0520",
+                                "variadic parameter must be the final function type parameter", ps_peek(self));
+                            type_ref_free(param_type);
+                            return null;
+                        }
+                    }
                     ptr_vec_push(params as VectorBase*, param_type as void*);
                     if (!ps_match(self, ord(TT_COMMA))) {
                         break;
@@ -1195,6 +1204,19 @@ func ps_parse_type_atom(self: ParserState*, start: Span) -> TypeRef*? {
         return null;
     }
     return new TypeRef(type_name, 0, false, false, module_path, name_qualifier, null, null, null, ps_extend_span(self, atom_start));
+}
+
+/**
+ * Append the parameter-only variadic suffix to a parsed type reference.
+ *
+ * @param tref Type reference to mark.
+ */
+func ps_mark_type_ref_variadic(tref: TypeRef*) {
+    if (tref.suffixes == null) {
+        tref.suffixes = ptr_vec_create(1);
+    }
+    ptr_vec_push(tref.suffixes as VectorBase*,
+        new TypeSuffix(TS_VARIADIC, 0, invalid_expr_id(), tref.span) as void*);
 }
 
 /**

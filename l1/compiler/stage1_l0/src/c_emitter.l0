@@ -499,7 +499,13 @@ func cem_mangle_type_component_to_cb(ty: Type*, cb: CharBuffer*) {
         let params = ty.params as VectorBase*;
         cb_append_s(cb, int_to_string(vec_size(params)));
         for (let i = 0; i < vec_size(params); i = i + 1) {
-            cem_mangle_type_component_to_cb(*(vec_get(params, i) as Type**), cb);
+            let param = *(vec_get(params, i) as Type**);
+            if (ty.is_variadic && i == vec_size(params) - 1 && ord(param.kind) == ord(TY_SLICE)) {
+                cb_append_s(cb, "V");
+                cem_mangle_type_component_to_cb(param.inner as Type*, cb);
+            } else {
+                cem_mangle_type_component_to_cb(param, cb);
+            }
         }
         cem_mangle_type_component_to_cb(ty.result as Type*, cb);
         return;
@@ -777,6 +783,9 @@ func cem_opt_key_for_type(t: Type*) -> string {
     if (ord(t.kind) == ord(TY_ARRAY)) {
         return "a" + int_to_string(t.array_len) + "_" + cem_opt_key_for_type(t.inner as Type*);
     }
+    if (ord(t.kind) == ord(TY_SLICE)) {
+        return "sl_" + cem_opt_key_for_type(t.inner as Type*);
+    }
     if (ord(t.kind) == ord(TY_FUNC)) {
         with (let sb = sb_create() => sb_free(sb)) {
             sb_append(sb, cem_opt_key_for_type(t.result as Type*));
@@ -831,6 +840,9 @@ func cem_type_component(typ: Type*) -> string {
     }
     if (ord(typ.kind) == ord(TY_SLICE)) {
         return "W" + cem_type_component(typ.inner as Type*);
+    }
+    if (ord(typ.kind) == ord(TY_FUNC)) {
+        return cem_mangle_type_component(typ);
     }
     if (ord(typ.kind) == ord(TY_STRUCT)) {
         return "M" + cem_mangle_module_path_components(typ.module_name) + "S" +

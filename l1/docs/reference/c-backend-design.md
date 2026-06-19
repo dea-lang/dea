@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-06-17
+Version: 2026-06-19
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -127,6 +127,8 @@ build mode preserve the L1 floating-point contract.
 - user-defined structs lower to C structs with mangled LBI names
 - enums lower to tagged unions with LBI-mangled tag names
 - function pointer types lower to signature-specific `dea_func_*` typedefs over plain C function pointers
+- variadic L1 function types lower their final `T...` parameter as the same `T[]` descriptor used by fixed slice
+  parameters; semantic and LBI identity still distinguish the two function types
 - pointer-shaped nullable values use `NULL` representation
 - non-pointer nullable values lower to wrapper structs carrying `has_value` plus the wrapped value
 - non-null values used in matching nullable contexts lower to present wrappers; for example, returning `0 as ulong` from
@@ -154,6 +156,8 @@ Implemented lowering currently includes:
 - contextual array literals, array constructors, `new T[N]`, `sizeof(T[N])`, whole-array value copies, and checked array
   indexing
 - `len` and `slice` intrinsics, contextual `T[N] -> T[]` conversion, and checked slice indexing
+- variadic direct and indirect calls, including empty descriptors, scope-owned fixed-array packs, and pass-through
+  `pack...` slice forwarding
 
 ## Ownership and Cleanup Model
 
@@ -175,6 +179,8 @@ Key rules:
 - fixed-size array indexing emits a bounds check that calls `_rt_panic_oob(index, length)` before accessing `.data`
 - slice descriptors are non-owning and do not retain or clean up elements; fixed-array rvalues materialized as slice
   backing storage are registered for normal scope cleanup when their element type transitively contains ARC-managed data
+- ordinary variadic arguments are initialized into a synthetic owning fixed-array wrapper and cleaned up with the
+  surrounding scope; spread forwarding emits only the contextually converted slice descriptor
 - `len(slice)` reads `.len`, `len(array)` is the compile-time length, and `len(string)` calls `rt_strlen`; slice
   indexing checks `index < 0 || index >= .len` with `_rt_panic_oob` before `.data[index]`, and `slice(...)` range
   construction checks `start`/`count` against the base length before forming the descriptor (a zero-length result uses

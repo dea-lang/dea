@@ -84,7 +84,13 @@ func ie_format_type(ty: Type*, module_name: string) -> string {
                     if (i > 0) {
                         sb_append(sb, ", ");
                     }
-                    sb_append(sb, ie_format_type(ptr_vec_get(params, i) as Type*, module_name));
+                    let param = ptr_vec_get(params, i) as Type*;
+                    if (ty.is_variadic && i == vec_size(params) - 1 && ord(param.kind) == ord(TY_SLICE)) {
+                        sb_append(sb, ie_format_type(param.inner as Type*, module_name));
+                        sb_append(sb, "...");
+                    } else {
+                        sb_append(sb, ie_format_type(param, module_name));
+                    }
                 }
                 sb_append(sb, ") -> ");
                 sb_append(sb, ie_format_type(ty.result as Type*, module_name));
@@ -207,7 +213,13 @@ func ie_emit_func(sb: StringBuffer*, entry: InterfaceFuncEntry*, module_name: st
         }
         sb_append(sb, sv_get(entry.param_names, i));
         sb_append(sb, ": ");
-        sb_append(sb, ie_format_type(ptr_vec_get(params, i) as Type*, module_name));
+        let param = ptr_vec_get(params, i) as Type*;
+        if (entry.ty.is_variadic && i == vec_size(params) - 1 && ord(param.kind) == ord(TY_SLICE)) {
+            sb_append(sb, ie_format_type(param.inner as Type*, module_name));
+            sb_append(sb, "...");
+        } else {
+            sb_append(sb, ie_format_type(param, module_name));
+        }
     }
     sb_append(sb, ") -> ");
     sb_append(sb, ie_format_type(entry.ty.result as Type*, module_name));

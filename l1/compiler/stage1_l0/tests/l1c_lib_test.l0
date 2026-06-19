@@ -526,6 +526,68 @@ func test_run_function_pointer_build_and_keep_c() {
 }
 
 /**
+ * Tests variadic direct/indirect calls, spread forwarding, and generated C packs.
+ */
+func test_run_variadic_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path();
+    rt_delete_file(out_path);
+    rt_delete_file(c_path);
+
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "variadic_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "variadic_main should compile and execute");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "variadic_main kept C file should exist");
+    assert(contains_s(c_text as string, "N3sumF2iVii(dea_int base, __deaWi values)"),
+        "variadic signature should use V identity and slice ABI");
+    assert(contains_s(c_text as string, ".len = 0, .data = NULL"),
+        "zero-element variadic pack mismatch");
+    assert(contains_s(c_text as string, "dea_varargs_"),
+        "ordinary variadic call should materialize a pack array");
+    assert(contains_s(c_text as string, ".data = (values).data"),
+        "array spread should pass a slice descriptor without repacking");
+    assert(contains_s(c_text as string, "typedef dea_int (*dea_func_int_int_sl_int)(dea_int, __deaWi);"),
+        "variadic function pointer should share the slice-level C ABI typedef");
+    assert(contains_s(c_text as string, "__deaA1_F1ii"),
+        "int callback variadic pack should encode its complete function signature");
+    assert(contains_s(c_text as string, "__deaA1_F1cc"),
+        "string callback variadic pack should encode its complete function signature");
+    assert(!contains_s(c_text as string, "__deaA1_X"),
+        "callback variadic packs must not use the ambiguous fallback wrapper name");
+
+    rt_delete_file(out_path);
+    rt_delete_file(c_path);
+}
+
+/**
+ * Tests ARC-managed variadic packs under traced execution.
+ */
+func test_run_variadic_trace() {
+    with (let argv = sv_create(10) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-P");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "variadic_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced variadic_main should succeed");
+    }
+}
+
+/**
  * Tests string equality and inequality execution in `--run --keep-c` mode.
  */
 func test_run_string_equality_build_and_keep_c() {
@@ -1280,6 +1342,7 @@ func main() {
     test_run_named_args_main();
     test_run_bitwise_build_and_keep_c();
     test_run_function_pointer_build_and_keep_c();
+    test_run_variadic_build_and_keep_c();
     test_run_string_equality_build_and_keep_c();
     test_run_pointer_identity_build_and_keep_c();
     test_run_opaque_handle_round_trip();
@@ -1312,5 +1375,6 @@ func main() {
     test_run_trace_slice_non_owning();
     test_run_trace_fixed_array_arc_paths();
     test_run_trace_fixed_array_nested_return();
+    test_run_variadic_trace();
     printl_s("l1c_lib_test: all tests passed");
 }

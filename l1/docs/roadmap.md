@@ -84,6 +84,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   enum tag comparison, including qualified variant references and enum-returning call expressions in first position.
 - Feature [2026-04-18-l1-function-pointer-types-noref][function-pointers] added first-class `func(...) -> T` function
   pointer types, indirect calls, nullable function pointers, and same-signature identity comparisons.
+- Feature [2026-04-22-variadic-functions-noref][variadic-functions] added L1-defined trailing `T...` parameters and
+  function pointer types, slice-backed callee packs, zero-or-more positional trailing arguments, and explicit final
+  `pack...` forwarding. C variadic FFI remains separate under Initiative [0003-c-ffi][c-ffi].
 - Refactor [2026-04-24-runtime-static-library-split-noref][runtime-split] moved the copied L1 runtime from header-only
   inclusion to public headers plus normal/traced runtime archives and completed Initiative
   [0002-runtime-static-library][runtime-library].
@@ -159,10 +162,8 @@ surface.
 - Separate compilation, interface verification, and external-library linking are tracked by Initiative
   [0001-separate-compilation-and-linking][separate-compilation].
 - Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative [0003-c-ffi][c-ffi].
-- Varargs are split explicitly. L1-defined variadic functions are scoped by Feature
-  [2026-04-22-variadic-functions-noref][variadic-functions], currently **deferred** pending the typed arrays/buffers/
-  slices item below; once that feature lands, the variadic plan should be re-evaluated and likely shrinks to sugar over
-  a slice-typed parameter. C variadic FFI remains a sibling tranche under Initiative [0003-c-ffi][c-ffi].
+- C variadic FFI remains a sibling tranche under Initiative [0003-c-ffi][c-ffi]; implemented L1-defined variadics do not
+  use or expose the C varargs ABI.
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
 - Fixed-size typed arrays `T[N]`, raw-pointer indexing `ptr[i]` inside `unsafe func`, and the function-level `unsafe`
@@ -256,7 +257,7 @@ update to be promoted to an initiative or plan:
 [separate-compilation]: ../work/initiatives/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
-[stage1-slices]: ../work/plans/features/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
+[stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
@@ -264,7 +265,7 @@ update to be promoted to an initiative or plan:
 [toplet-diagnostic-recovery]: ../work/plans/bug-fixes/closed/2026-06-19-stage1-toplet-diagnostic-recovery-noref.md
 [toplet-initializer-typing]: ../work/plans/bug-fixes/closed/2026-06-18-stage1-toplet-initializer-typing-noref.md
 [unified-lbi-mangling]: ../work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md
-[variadic-functions]: ../work/plans/features/2026-04-22-variadic-functions-noref.md
+[variadic-functions]: ../work/plans/features/closed/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
 [wide-int]: ../work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md
 [wide-math]: ../work/plans/features/closed/2026-04-14-l1-std-math-wide-integer-followup-noref.md

@@ -55,6 +55,7 @@ produces a link error if a value is called as a function or vice-versa across mo
 | `demo.main::Color` (enum)                  | `__deaM4demo4mainE5Color`     |
 | `demo.main::static` (`let` named `static`) | `__deaM4demo4mainN6static`    |
 | `unsafe func(int*) -> void` exported       | `__deaM<...>N<name>XF1Piv`    |
+| `main::sum` (`func(int, int...) -> int`)   | `__deaM4mainN3sumF2iVii`      |
 | module lifecycle `demo.main::init`         | `__deaM4demo4mainI4init`      |
 
 ## Type Components
@@ -65,11 +66,12 @@ structural types like array wrappers.
 ### Grammar
 
 ```ebnf
-type-component = nominal-type | modifier | array | slice | func | builtin
+type-component = nominal-type | modifier | array | slice | variadic-param | func | builtin
 nominal-type   = module-section ("S" | "E") length identifier
 modifier       = ("P" | "Q" | "X") type-component
 array          = "A" dim "_" type-component
 slice          = "W" type-component
+variadic-param = "V" type-component
 func           = "F" arity type-component* type-component
 builtin        = "a" | "h" | "s" | "t" | "i" | "j" | "l" | "m"
                | "f" | "d" | "z" | "c" | "v"
@@ -94,6 +96,7 @@ The grammar is self-delimiting and parseable by recursive descent.
 | `Q`   | Nullable/optional                  | `Q<component>`          |
 | `F`   | Function type                      | `F<arity><params><ret>` |
 | `X`   | Unsafe function/effect modifier    | `X<component>`          |
+| `V`   | Variadic final function parameter  | `V<element>`            |
 
 ### ABI Encoding Decision Rule
 
@@ -138,6 +141,12 @@ The mangled encoding mirrors this layout: dimensions are emitted outermost-first
 A fixed slice parameter `T[]` encodes as `W<T>`. `W` denotes a non-owning window over contiguous storage and keeps the
 slice component distinct from the `S` nominal struct leaf. The corresponding generated C descriptor name uses the same
 component, for example `int[]` becomes `__deaWi`.
+
+## Variadic Parameters
+
+A variadic final parameter `T...` encodes as `V<T>` inside its function component, so `func(int, int...) -> int` is
+`F2iVii`. It lowers to the slice-descriptor parameter ABI documented above, but the distinct LBI component prevents a
+variadic function from being linked or typed as a fixed slice function.
 
 ## `unsafe` Lowering
 

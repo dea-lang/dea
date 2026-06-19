@@ -1029,7 +1029,7 @@ func tr_apply_suffix(tables: SignatureTables*, nr: NameResolution*, driver_state
                 }
                 suffix.array_len = resolved_len;
                 current = type_append_array_dimension(current, resolved_len);
-            } else if (ord(suffix.kind) == ord(TS_SLICE)) {
+            } else if (ord(suffix.kind) == ord(TS_SLICE) || ord(suffix.kind) == ord(TS_VARIADIC)) {
                 if (ord(current.kind) == ord(TY_BUILTIN) && current.name == "void") {
                     type_free(current);
                     tr_diag_error(diags, "SIG-0011", "type 'void' cannot be a slice element", filename, tref.span);
@@ -1100,7 +1100,12 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, driver_s
             if (result == null) {
                 return null;
             }
+            let is_variadic = vec_size(parsed_params) > 0 &&
+                type_ref_is_variadic(ptr_vec_get(parsed_params, vec_size(parsed_params) - 1) as TypeRef*);
             let func_ty = type_new_func(params as VectorBase*, result as Type*, tref.is_unsafe);
+            if (is_variadic) {
+                func_ty.is_variadic = true;
+            }
             params = null;
             result = null;
             return tr_apply_suffix(tables, nr, driver_state, env, func_ty, tref, diags, env.module_ptr.filename);
