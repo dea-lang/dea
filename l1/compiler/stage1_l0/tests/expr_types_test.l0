@@ -1376,8 +1376,26 @@ func test_typing_toplet_initializer_err() {
         let result = analysis_analyze_entry(sp, "typing_toplet_initializer_err", cfg);
         assert(analysis_has_errors(result), "expected typing errors for typing_toplet_initializer_err");
         assert(count_diag_code(result, "TYP-0050") == 1, "expected one top-level void annotation diagnostic");
-        assert(has_diag_code(result, "TYP-0310"), "expected top-level initializer mismatch diagnostic");
+        assert(count_diag_code(result, "TYP-0310") == 1,
+            "expected one top-level initializer mismatch diagnostic");
         assert(has_diag_code(result, "TYP-0808"), "expected top-level len operand diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests resolved top-level initializers remain checked after signature errors.
+ */
+func test_typing_toplet_diagnostic_recovery_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_toplet_diagnostic_recovery_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_toplet_diagnostic_recovery_err");
+        assert(count_diag_code(result, "TYP-0310") == 1,
+            "expected one recovered top-level initializer mismatch diagnostic");
+        assert(count_diag_code(result, "TYP-0816") == 1,
+            "expected one wrong-type array-bound diagnostic");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -1483,6 +1501,7 @@ func main() {
     test_typing_slice_ok();
     test_typing_slice_err();
     test_typing_toplet_initializer_err();
+    test_typing_toplet_diagnostic_recovery_err();
     test_typing_slice_escape_err();
     printl_s("expr_types_test: all tests passed");
 }

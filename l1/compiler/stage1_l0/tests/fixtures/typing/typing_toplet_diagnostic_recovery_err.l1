@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_toplet_diagnostic_recovery_err;
+
+const N: byte = ((25) as byte);
+const L: int*** = ((N) as int);
+const hello_world_messages: string[L] = [
+    "Hello, world! This is Dea/L1.",
+];
+
+func main() {
+}

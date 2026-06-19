@@ -107,11 +107,6 @@ func analysis_analyze_entry(search_paths: SourceSearchPaths*, entry_module: stri
     result.locals_result = local_envs;
     log_debug(cfg, "Local scope resolution processed " + int_to_string(locals_env_count(local_envs)) + " function(s)");
 
-    if (analysis_has_errors(result)) {
-        log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
-        return result;
-    }
-
     log_stage(cfg, "Type-checking expressions", "");
     let expr_diag_start = diag_count(result.diags);
     expr_types_check(result);

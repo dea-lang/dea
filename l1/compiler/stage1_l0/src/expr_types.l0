@@ -4357,9 +4357,14 @@ func etc_check_top_level_initializers(self: ExpressionTypeChecker*, root: Module
 /**
  * Run expression and statement type checking for the analysis result.
  *
+ * Resolved top-level initializers remain safe to check after an earlier
+ * semantic error. Function bodies are checked only when this pass starts with
+ * a clean diagnostic state.
+ *
  * @param result Analysis result to populate with expression types and diagnostics.
  */
 func expr_types_check(result: AnalysisResult*) {
+    let check_function_bodies = !analysis_has_errors(result);
     let checker = new ExpressionTypeChecker(result, "", null, null, null, null, null, ptr_vec_create(4), ptr_vec_create(4), 0, false, null);
 
     for (let i = 0; i < driver_unit_count(result.driver_state); i = i + 1) {
@@ -4369,10 +4374,17 @@ func expr_types_check(result: AnalysisResult*) {
         checker.current_unit = unit;
         let root = unit.parse_result.root_module as Module*;
         checker.current_module = root.name;
-        checker.current_env = nr_env_find(result.names as NameResolution*, checker.current_module) as ModuleEnv*;
+        let current_env = nr_env_find(result.names as NameResolution*, checker.current_module);
+        if (current_env == null) {
+            continue;
+        }
+        checker.current_env = current_env as ModuleEnv*;
 
         etc_check_top_level_initializers(checker, root);
 
+        if (!check_function_bodies) {
+            continue;
+        }
         let locals = result.locals_result as LocalsResult*;
         for (let j = 0; j < locals_env_count(locals); j = j + 1) {
             let env = locals_env_get(locals, j);

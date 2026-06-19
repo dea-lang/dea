@@ -104,6 +104,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   follow equality comparability rules with warning-only always-false integer arms.
 - Bug Fix [2026-06-18-stage1-toplet-initializer-typing-noref][toplet-initializer-typing] made Stage 1 type-check
   top-level `let` initializer expressions before backend lowering records runtime initializer metadata.
+- Bug Fix [2026-06-19-stage1-toplet-diagnostic-recovery-noref][toplet-diagnostic-recovery] preserved resolved top-level
+  initializer diagnostics when signature resolution had already reported an error.
 
 </details>
 
@@ -259,6 +261,7 @@ update to be promoted to an initiative or plan:
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
+[toplet-diagnostic-recovery]: ../work/plans/bug-fixes/closed/2026-06-19-stage1-toplet-diagnostic-recovery-noref.md
 [toplet-initializer-typing]: ../work/plans/bug-fixes/closed/2026-06-18-stage1-toplet-initializer-typing-noref.md
 [unified-lbi-mangling]: ../work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md
 [variadic-functions]: ../work/plans/features/2026-04-22-variadic-functions-noref.md
