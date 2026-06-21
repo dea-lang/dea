@@ -33,6 +33,8 @@
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
   - `l1/work/initiatives/0003-c-ffi.md`
+  - `l1/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
+  - `l1/work/proposals/cstr-and-c-string-guards.md`
   - `l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="parser_test signatures_test expr_types_test backend_test l0c_lib_test"`
@@ -56,6 +58,10 @@ strings.
    (`sys.rt::rt_string_bytes_ptr`, the C-only `_rt_string_bytes`) already expose the underlying byte pointer, but there
    is no typed `string -> cstr` conversion surface that uses them.
 4. The analyzer does not enforce a closed FFI-safe type set for the broader C boundary.
+
+The draft [cheap string slices plan] would allow a logical `string` view whose end is not NUL-terminated. The
+[C-string guard proposal] records the resulting alternative to this plan's current zero-cost reinterpretation default.
+Phase 3 must not implement the conversion contract until that proposal is accepted, rejected, or superseded.
 
 ## Defaults Chosen
 
@@ -157,3 +163,6 @@ Update grammar/design-decision docs and add regression coverage for:
    existing runtime string-bytes primitives and does not touch `std.string`.
 4. The roadmap and design-decision docs clearly distinguish this FFI surface from L1-defined variadic functions.
 5. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+
+[c-string guard proposal]: ../../proposals/cstr-and-c-string-guards.md
+[cheap string slices plan]: 2026-06-21-cheap-string-slices-noref.md
