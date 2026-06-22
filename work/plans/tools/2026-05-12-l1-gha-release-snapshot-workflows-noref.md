@@ -2,7 +2,7 @@
 
 ## Add L1 snapshot and release GHA workflows
 
-- Date: 2026-05-12
+- Date: 2026-06-22
 - Status: Draft
 - Title: Add L1 snapshot and release GHA workflows
 - Kind: Tooling
@@ -26,7 +26,6 @@
 - Modules:
   - `.github/workflows/l1-snapshot.yml`
   - `.github/workflows/l1-release.yml`
-  - `.github/workflows/l1-docs-build.yml` (new, L1-specific docs build)
   - `MONOREPO.md`
   - `docs/project-status.md`
   - `l1/docs/project-status.md`
