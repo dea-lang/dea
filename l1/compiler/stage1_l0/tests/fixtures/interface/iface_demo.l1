@@ -6,7 +6,7 @@
 module iface_demo;
 
 export Point, Size, Color, Dims, make_point, area, origin, scale_factor, debug_prefix, zero_color, vivid_color,
-       wide_seed, cast_count, cast_float, current_offset;
+       wide_seed, cast_count, cast_float, folded_count, current_offset;
 
 /**
  * A 2D point with named fields.
@@ -73,6 +73,7 @@ const scale_factor: double = 2.5;
 const wide_seed: ulong = 25;
 const cast_count: int = wide_seed as int;
 const cast_float: float = scale_factor as float;
+const folded_count: int = (cast_count + 5) / 3;
 
 /**
  * A debug prefix string.

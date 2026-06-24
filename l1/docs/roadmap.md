@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-06-21
+Version: 2026-06-24
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -103,6 +103,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   exported-surface visibility checks, and opaque `.l1m` nominal declarations.
 - Feature [2026-06-18-stage1-const-scalar-casts-noref][const-scalar-casts] added statically checked integer-family,
   `float`/`double`, and scalar identity casts to Stage 1 `const` initializers.
+- Feature [2026-06-24-stage1-scalar-const-expression-flow-noref][scalar-const-flow] extended Stage 1 `const` evaluation
+  with checked 32-bit `int` operators, short-circuit booleans, folded interfaces/static initializers, const-valued
+  array/case contexts, and const-guided boolean liveness flow.
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
 - Bug Fix [2026-06-18-stage1-toplet-initializer-typing-noref][toplet-initializer-typing] made Stage 1 type-check
@@ -259,6 +262,7 @@ update to be promoted to an initiative or plan:
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-resplit]: ../work/plans/refactors/closed/2026-04-27-runtime-cu-resplit-noref.md
 [runtime-split]: ../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
+[scalar-const-flow]: ../work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md
 [separate-compilation]: ../work/initiatives/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md

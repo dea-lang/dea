@@ -606,19 +606,17 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     let literal = "";
                     if (is_const) {
                         let unit = driver_find_unit(result.driver_state, module_name) as DriverUnit*;
-                        let folded_cast = false;
-                        if (mi_expr_is_const_cast(unit.parse_result.expr_arena, decl.value)) {
-                            with (let ctx = tr_const_eval_context_create(result.driver_state, sigs, nr, result.diags) =>
-                                  tr_const_eval_context_free(ctx)) {
-                                let value = tr_const_eval_expr(ctx, env, decl.value);
-                                if (value != null) {
-                                    literal = mi_format_const_value(value as ConstValue*);
-                                    tr_const_value_free(value as ConstValue*);
-                                    folded_cast = true;
-                                }
+                        let folded_scalar = false;
+                        with (let ctx = tr_const_eval_context_create(result.driver_state, sigs, nr, result.diags) =>
+                              tr_const_eval_context_free(ctx)) {
+                            let value = tr_const_eval_expr(ctx, env, decl.value);
+                            if (value != null) {
+                                literal = mi_format_const_value(value as ConstValue*);
+                                tr_const_value_free(value as ConstValue*);
+                                folded_scalar = true;
                             }
                         }
-                        if (!folded_cast) {
+                        if (!folded_scalar) {
                             literal = mi_format_literal(result.driver_state, module_name, decl.value);
                             mi_collect_value_refs_for(nr, env, result.driver_state, module_name, decl.value,
                                 require_entries);

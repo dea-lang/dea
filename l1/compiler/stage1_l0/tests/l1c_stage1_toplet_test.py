@@ -314,17 +314,19 @@ def test_execute_const_referenced_array_bound(artifact_dir: Path) -> None:
 
         const Z: ulong = 25;
         const I: int = Z as int;
+        const J: int = (I + 5) / 3;
         const messages: string[I] = ["hello"];
 
         func classify(value: int) -> int {
             case (value) {
                 I => { return 1; }
+                J => { return 2; }
                 _ => { return 0; }
             }
         }
 
         func main() -> int {
-            return len(messages) - I + classify(I) - 1;
+            return len(messages) - I + classify(J) - 2;
         }
     """
     run_ok(
@@ -336,6 +338,8 @@ def test_execute_const_referenced_array_bound(artifact_dir: Path) -> None:
     c_code = run_gen("generate_const_referenced_array_bound", source, artifact_dir)
     assert_true("_rt_cast_dea_int_from_unsigned" not in c_code,
         "const cast must fold instead of using a runtime checked-cast helper", artifact_dir)
+    assert_true("const dea_int __deaM4mainN1J = 10;" in c_code,
+        "folded arithmetic const should lower to a static literal", artifact_dir)
 
 
 def test_execute_toplet_mutation(artifact_dir: Path) -> None:

@@ -10,6 +10,8 @@ const BAD_INT: int = TOO_LARGE as int;
 const BAD_INT_COPY: int = BAD_INT as int;
 const bad_messages: string[BAD_INT] = ["hello"];
 const BAD_UINT: uint = (-1) as uint;
+const BAD_SHIFT_BYTE: byte = 1 << 8;
+const BAD_OR_BYTE: byte = (1 << 8) | 1;
 
 let runtime_value: int = 25;
 const NON_CONST: int = runtime_value as int;

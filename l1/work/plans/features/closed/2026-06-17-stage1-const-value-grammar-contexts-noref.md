@@ -48,6 +48,9 @@ expressions.
 5. Tests cover parser AST shape, concrete resolved array lengths, positive named-const array/case contexts, negative
    array-bound contexts, negative case-arm contexts, diagnostic parity triggers, grammar docs, and catalog updates.
 6. ADR-0016 records compile-time constant value contexts and ADR-0011 now reflects non-literal array bounds.
+7. Scalar const-expression support is recorded separately in
+   `l1/work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md`; this plan's direct
+   array-bound and `case` arm syntax remains constrained to literals and visible `const` references.
 
 ## Current State
 

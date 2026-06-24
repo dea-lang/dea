@@ -7,16 +7,27 @@ module typing_const_value_contexts_ok;
 
 const N: int = 3;
 const M: int = N;
+const WIDTH: int = N + 1;
 const OK: int = 200;
+const RETRY: int = OK + 1;
+const BIT_FOLD: int = ((1 << 2) ^ 1) & 5;
 const QUIT: string = "quit";
+const SHORT_FALSE: bool = false && (1 / 0 == 0);
+const SHORT_TRUE: bool = true || (1 / 0 == 0);
+const SHOULD_RUN: bool = SHORT_TRUE && RETRY > OK && QUIT == "quit";
 
 func use_param(xs: int[M]) -> int {
     return xs[0] + xs[1] + xs[2];
 }
 
+func use_wide_param(xs: int[WIDTH]) -> int {
+    return xs[0] + xs[1] + xs[2] + xs[3];
+}
+
 func status_code(status: int) -> int {
     case (status) {
         OK => { return 1; }
+        RETRY => { return BIT_FOLD; }
         _ => { return 0; }
     }
 }
@@ -30,6 +41,10 @@ func command_code(cmd: string) -> int {
 
 func exercise() -> int {
     let local: int[N] = [1, 2, 3];
+    let wide: int[WIDTH] = [1, 2, 3, 4];
     let constructed = int[M]([4, 5, 6]);
-    return use_param(local) + constructed[0] + status_code(OK) + command_code(QUIT);
+    if (SHOULD_RUN) {
+        return use_param(local) + use_wide_param(wide) + constructed[0] + status_code(RETRY) + command_code(QUIT);
+    }
+    return 0;
 }

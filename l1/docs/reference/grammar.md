@@ -217,9 +217,11 @@ ConstDecl           ::=     "const" Ident ":" Type "=" Expr ";"
 syntax.
 
 The compile-time initializer subset includes primitive literals, constant aggregate constructors, visible scalar `const`
-references, and selected scalar casts. Cast folding supports all builtin integer types with exact target-range checking,
-`float` to/from `double`, and identity casts for `bool` and `string`. Integer/real cross-casts, nullable casts, pointer
-casts, and aggregate casts remain runtime-only or unsupported in `const` initializers.
+references, supported scalar operators, and selected scalar casts. 32-bit `int` arithmetic folds only when the result is
+representable; overflow, invalid shifts, and divide/modulo by zero are non-evaluable. `&&` and `||` short-circuit during
+const evaluation. Cast folding supports all builtin integer types with exact target-range checking, `float` to/from
+`double`, and identity casts for `bool` and `string`. Integer/real cross-casts, nullable casts, pointer casts, and
+aggregate casts remain runtime-only or unsupported in `const` initializers.
 
 ## 4. Types
 
@@ -251,8 +253,10 @@ Note: multi-segment `::` paths (e.g. `color::Color::Red`) are consumed by the pa
 errors, but are rejected during semantic analysis with a diagnostic suggesting the correct single-`::` form.
 
 Compile-time constant expressions in type suffixes are resolved semantically. In this bootstrap stage, the accepted
-source subset is integer literals and references to visible `const` declarations; later stages may extend this to
-arithmetic and selected pure compile-time operators.
+direct source subset is integer literals and references to visible `const` declarations. Referenced scalar constants may
+themselves use the supported compile-time scalar expression subset, including checked 32-bit `int` arithmetic, bitwise
+and shift operators over non-negative 32-bit `int` values, short-circuit boolean operators, scalar equality/comparison,
+and selected scalar casts.
 
 Examples (all syntactically valid types in L<sub>1</sub>):
 
@@ -390,7 +394,9 @@ ConstScalarExpr ::=     IntLiteral | FloatLiteral | ByteLiteral | StringLiteral 
 ```
 
 `CaseArmValue` expressions are resolved semantically. In this bootstrap stage, they may be scalar/string/bool literals
-or references to visible `const` declarations with comparable scalar/string/bool values.
+or references to visible `const` declarations with comparable scalar/string/bool values. Referenced scalar constants may
+use the same supported compile-time scalar expression subset as other const-value contexts. Direct binary expressions in
+case arm syntax remain out of scope for this bootstrap subset.
 
 Patterns (current L<sub>1</sub> bootstrap subset):
 

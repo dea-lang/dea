@@ -1947,6 +1947,10 @@ func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type:
     if (ord(literal_expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected_type.kind) == ord(TY_ARRAY)) {
         return be_emit_array_literal_value(self, literal_id, expected_type);
     }
+    let evaluated = be_try_emit_evaluated_const_initializer(self, literal_id, expected_type);
+    if (evaluated != null) {
+        return evaluated as string;
+    }
     let expr = literal_expr;
     match (expr.kind) {
         EX_INT => { return cem_emit_int_literal(expr.int_value); }
@@ -1962,7 +1966,7 @@ func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type:
             if (variant_init != null) {
                 return variant_init;
             }
-            return be_try_emit_evaluated_const_initializer(self, literal_id, expected_type);
+            return null;
         }
         EX_ARRAY_LITERAL => {
             if (ord(expected_type.kind) == ord(TY_ARRAY)) {

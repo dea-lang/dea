@@ -428,7 +428,7 @@ func tr_const_eval_report_failure(self: ConstEvalContext*) {
 }
 
 /**
- * Return whether a constant value carries a host-sized integer payload.
+ * Return whether a constant value carries a 32-bit `int` payload.
  *
  * @param value Value to inspect.
  * @return `true` for integer-like values.
@@ -439,10 +439,30 @@ func tr_const_value_is_integer_like(value: ConstValue*) -> bool {
 }
 
 /**
+ * Create a boolean constant value.
+ *
+ * @param value Boolean payload.
+ * @return New boolean constant value.
+ */
+func tr_const_bool_value(value: bool) -> ConstValue* {
+    return tr_const_value_new(CV_BOOL, 0, value, "", 0);
+}
+
+/**
+ * Create a default integer constant value.
+ *
+ * @param value Integer payload.
+ * @return New integer constant value.
+ */
+func tr_const_int_value(value: int) -> ConstValue* {
+    return tr_const_value_new(CV_INT, value, false, "", 0);
+}
+
+/**
  * Return whether a constant value belongs to the builtin integer family.
  *
  * @param value Value to inspect.
- * @return `true` for host-sized or bigint-backed integer values.
+ * @return `true` for values backed by a 32-bit `int` payload or bigint text.
  */
 func tr_const_value_is_integer(value: ConstValue*) -> bool {
     return tr_const_value_is_integer_like(value) || ord(value.kind) == ord(CV_BIGINT);
@@ -747,6 +767,456 @@ func tr_const_eval_cast(ctx: ConstEvalContext*, env: ModuleEnv*, arena: ExprAren
 }
 
 /**
+ * Return the Dea 32-bit `int` minimum used by Stage 1 const folding.
+ *
+ * @return Minimum representable `int` payload.
+ */
+func tr_const_int_min_value() -> int {
+    return -2147483648;
+}
+
+/**
+ * Return the Dea 32-bit `int` maximum used by Stage 1 const folding.
+ *
+ * @return Maximum representable `int` payload.
+ */
+func tr_const_int_max_value() -> int {
+    return 2147483647;
+}
+
+/**
+ * Safely negate one const integer payload.
+ *
+ * @param value Integer payload.
+ * @return Negated payload, or `null` on overflow.
+ */
+func tr_const_safe_negate(value: int) -> int? {
+    if (value == tr_const_int_min_value()) {
+        return null;
+    }
+    return -value;
+}
+
+/**
+ * Safely fold bitwise-not over one 32-bit `int` payload.
+ *
+ * @param value Integer payload.
+ * @return Folded payload.
+ */
+func tr_const_safe_bitwise_not(value: int) -> int? {
+    if (value == tr_const_int_max_value()) {
+        return tr_const_int_min_value();
+    }
+    return -(value + 1);
+}
+
+/**
+ * Safely add two const integer payloads.
+ *
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Sum, or `null` on overflow.
+ */
+func tr_const_safe_add(lhs: int, rhs: int) -> int? {
+    let max = tr_const_int_max_value();
+    let min = tr_const_int_min_value();
+    if (lhs > 0 && rhs > max - lhs) {
+        return null;
+    }
+    if (lhs < 0 && rhs < min - lhs) {
+        return null;
+    }
+    return lhs + rhs;
+}
+
+/**
+ * Safely subtract two const integer payloads.
+ *
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Difference, or `null` on overflow.
+ */
+func tr_const_safe_subtract(lhs: int, rhs: int) -> int? {
+    let max = tr_const_int_max_value();
+    let min = tr_const_int_min_value();
+    if (rhs > 0 && lhs < min + rhs) {
+        return null;
+    }
+    if (rhs < 0 && lhs > max + rhs) {
+        return null;
+    }
+    return lhs - rhs;
+}
+
+/**
+ * Safely multiply two const integer payloads.
+ *
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Product, or `null` on overflow.
+ */
+func tr_const_safe_multiply(lhs: int, rhs: int) -> int? {
+    if (lhs == 0 || rhs == 0) {
+        return 0;
+    }
+    let max = tr_const_int_max_value();
+    let min = tr_const_int_min_value();
+    if (lhs > 0) {
+        if (rhs > 0) {
+            if (lhs > max / rhs) return null;
+        } else {
+            if (rhs < min / lhs) return null;
+        }
+    } else {
+        if (rhs > 0) {
+            if (lhs < min / rhs) return null;
+        } else {
+            if (lhs < max / rhs) return null;
+        }
+    }
+    return lhs * rhs;
+}
+
+/**
+ * Safely divide two const integer payloads.
+ *
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Quotient, or `null` for invalid arithmetic.
+ */
+func tr_const_safe_divide(lhs: int, rhs: int) -> int? {
+    if (rhs == 0) {
+        return null;
+    }
+    if (lhs == tr_const_int_min_value() && rhs == -1) {
+        return null;
+    }
+    return lhs / rhs;
+}
+
+/**
+ * Safely fold integer remainder over const payloads.
+ *
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Remainder, or `null` for invalid arithmetic.
+ */
+func tr_const_safe_modulo(lhs: int, rhs: int) -> int? {
+    if (rhs == 0) {
+        return null;
+    }
+    if (lhs == tr_const_int_min_value() && rhs == -1) {
+        return null;
+    }
+    return lhs % rhs;
+}
+
+/**
+ * Return 2 raised to a supported non-negative shift count.
+ *
+ * @param shift Shift count.
+ * @return Power of two, or `null` when unsupported.
+ */
+func tr_const_eval_pow2(shift: int) -> int? {
+    if (shift < 0 || shift > 30) {
+        return null;
+    }
+    let result = 1;
+    for (let i = 0; i < shift; i = i + 1) {
+        let next = tr_const_safe_multiply(result, 2);
+        if (next == null) return null;
+        result = next as int;
+    }
+    return result;
+}
+
+/**
+ * Safely fold a bitwise operator for non-negative 32-bit `int` payloads.
+ *
+ * L0 reserves bitwise operators, so the bootstrap evaluator computes these
+ * with arithmetic over positive integer payloads.
+ *
+ * @param op Operator spelling.
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Folded integer payload, or `null` when unsupported.
+ */
+func tr_const_safe_positive_bitwise(op: string, lhs: int, rhs: int) -> int? {
+    if (lhs < 0 || rhs < 0) {
+        return null;
+    }
+    let left = lhs;
+    let right = rhs;
+    let place = 1;
+    let result = 0;
+    while (left > 0 || right > 0) {
+        let left_bit = left % 2;
+        let right_bit = right % 2;
+        let out_bit = 0;
+        if (op == "&") {
+            if (left_bit == 1 && right_bit == 1) {
+                out_bit = 1;
+            }
+        } else if (op == "|") {
+            if (left_bit == 1 || right_bit == 1) {
+                out_bit = 1;
+            }
+        } else if (op == "^") {
+            if (left_bit != right_bit) {
+                out_bit = 1;
+            }
+        } else {
+            return null;
+        }
+        if (out_bit == 1) {
+            let next_result = tr_const_safe_add(result, place);
+            if (next_result == null) return null;
+            result = next_result as int;
+        }
+        left = left / 2;
+        right = right / 2;
+        if (left > 0 || right > 0) {
+            let next_place = tr_const_safe_multiply(place, 2);
+            if (next_place == null) return null;
+            place = next_place as int;
+        }
+    }
+    return result;
+}
+
+/**
+ * Safely shift a non-negative const integer payload left.
+ *
+ * @param lhs Left integer payload.
+ * @param rhs Shift count.
+ * @return Shifted payload, or `null` when unsupported.
+ */
+func tr_const_safe_shift_left(lhs: int, rhs: int) -> int? {
+    if (lhs < 0) {
+        return null;
+    }
+    let factor = tr_const_eval_pow2(rhs);
+    if (factor == null) {
+        return null;
+    }
+    return tr_const_safe_multiply(lhs, factor as int);
+}
+
+/**
+ * Safely shift a non-negative const integer payload right.
+ *
+ * @param lhs Left integer payload.
+ * @param rhs Shift count.
+ * @return Shifted payload, or `null` when unsupported.
+ */
+func tr_const_safe_shift_right(lhs: int, rhs: int) -> int? {
+    if (lhs < 0) {
+        return null;
+    }
+    let divisor = tr_const_eval_pow2(rhs);
+    if (divisor == null) {
+        return null;
+    }
+    return lhs / (divisor as int);
+}
+
+/**
+ * Fold one supported unary constant expression.
+ *
+ * @param ctx Const-evaluation context.
+ * @param env Module environment controlling name lookup.
+ * @param arena Expression arena containing the operand.
+ * @param expr Unary expression node.
+ * @return Owned folded value, or `null` when unsupported.
+ */
+func tr_const_eval_unary(ctx: ConstEvalContext*, env: ModuleEnv*, arena: ExprArena*, expr: ExprNode*) -> ConstValue*? {
+    let operand = tr_const_eval_expr_in_env(ctx, env, arena, expr.expr_a);
+    if (operand == null) {
+        return null;
+    }
+
+    let value = operand as ConstValue*;
+    let result: ConstValue*? = null;
+    if (expr.text_value == "!") {
+        if (ord(value.kind) == ord(CV_BOOL)) {
+            result = tr_const_bool_value(!value.bool_value);
+        }
+    } else if (expr.text_value == "-") {
+        if (tr_const_value_is_integer_like(value)) {
+            let negated = tr_const_safe_negate(value.int_value);
+            if (negated != null) {
+                result = tr_const_int_value(negated as int);
+            }
+        }
+    } else if (expr.text_value == "~") {
+        if (tr_const_value_is_integer_like(value)) {
+            let inverted = tr_const_safe_bitwise_not(value.int_value);
+            if (inverted != null) {
+                result = tr_const_int_value(inverted as int);
+            }
+        }
+    }
+
+    tr_const_value_free(value);
+    return result;
+}
+
+/**
+ * Fold one integer binary operator to a 32-bit `int` payload.
+ *
+ * @param op Operator spelling.
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Folded integer payload, or `null` for invalid operations.
+ */
+func tr_const_eval_integer_binary_payload(op: string, lhs: int, rhs: int) -> int? {
+    if (op == "+") return tr_const_safe_add(lhs, rhs);
+    if (op == "-") return tr_const_safe_subtract(lhs, rhs);
+    if (op == "*") return tr_const_safe_multiply(lhs, rhs);
+    if (op == "/") return tr_const_safe_divide(lhs, rhs);
+    if (op == "%") return tr_const_safe_modulo(lhs, rhs);
+    if (op == "&" || op == "|" || op == "^") return tr_const_safe_positive_bitwise(op, lhs, rhs);
+    if (op == "<<") return tr_const_safe_shift_left(lhs, rhs);
+    if (op == ">>") return tr_const_safe_shift_right(lhs, rhs);
+    return null;
+}
+
+/**
+ * Fold one integer binary operator.
+ *
+ * @param op Operator spelling.
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Folded integer value, or `null` for invalid operations.
+ */
+func tr_const_eval_integer_binary(op: string, lhs: int, rhs: int) -> ConstValue*? {
+    let payload = tr_const_eval_integer_binary_payload(op, lhs, rhs);
+    if (payload == null) {
+        return null;
+    }
+    return tr_const_int_value(payload as int);
+}
+
+/**
+ * Fold one integer comparison operator.
+ *
+ * @param op Operator spelling.
+ * @param lhs Left integer payload.
+ * @param rhs Right integer payload.
+ * @return Folded boolean value, or `null` when `op` is not a comparison.
+ */
+func tr_const_eval_integer_compare(op: string, lhs: int, rhs: int) -> ConstValue*? {
+    if (op == "<") {
+        return tr_const_bool_value(lhs < rhs);
+    }
+    if (op == "<=") {
+        return tr_const_bool_value(lhs <= rhs);
+    }
+    if (op == ">") {
+        return tr_const_bool_value(lhs > rhs);
+    }
+    if (op == ">=") {
+        return tr_const_bool_value(lhs >= rhs);
+    }
+    return null;
+}
+
+/**
+ * Compare two supported scalar constant values for equality.
+ *
+ * @param left Left constant value.
+ * @param right Right constant value.
+ * @return Equality result, or `null` when the value families are unsupported.
+ */
+func tr_const_eval_values_equal(left: ConstValue*, right: ConstValue*) -> bool? {
+    if (tr_const_value_is_integer_like(left) && tr_const_value_is_integer_like(right)) {
+        return left.int_value == right.int_value;
+    }
+    if (ord(left.kind) == ord(CV_BOOL) && ord(right.kind) == ord(CV_BOOL)) {
+        return left.bool_value == right.bool_value;
+    }
+    if (ord(left.kind) == ord(CV_STRING) && ord(right.kind) == ord(CV_STRING)) {
+        return left.text_value == right.text_value;
+    }
+    return null;
+}
+
+/**
+ * Evaluate one supported binary constant expression.
+ *
+ * @param ctx Const-evaluation context.
+ * @param env Module environment controlling name lookup.
+ * @param arena Expression arena containing operands.
+ * @param expr Binary expression node.
+ * @return Owned folded value, or `null` when unsupported.
+ */
+func tr_const_eval_binary(ctx: ConstEvalContext*, env: ModuleEnv*, arena: ExprArena*, expr: ExprNode*) -> ConstValue*? {
+    let op = expr.text_value;
+    let left_opt = tr_const_eval_expr_in_env(ctx, env, arena, expr.expr_a);
+    if (left_opt == null) {
+        return null;
+    }
+    let left = left_opt as ConstValue*;
+
+    if (op == "&&" || op == "||") {
+        if (ord(left.kind) != ord(CV_BOOL)) {
+            tr_const_value_free(left);
+            return null;
+        }
+        if (op == "&&" && !left.bool_value) {
+            tr_const_value_free(left);
+            return tr_const_bool_value(false);
+        }
+        if (op == "||" && left.bool_value) {
+            tr_const_value_free(left);
+            return tr_const_bool_value(true);
+        }
+        let right_bool_opt = tr_const_eval_expr_in_env(ctx, env, arena, expr.expr_b);
+        if (right_bool_opt == null) {
+            tr_const_value_free(left);
+            return null;
+        }
+        let right_bool = right_bool_opt as ConstValue*;
+        let bool_result: ConstValue*? = null;
+        if (ord(right_bool.kind) == ord(CV_BOOL)) {
+            bool_result = tr_const_bool_value(right_bool.bool_value);
+        }
+        tr_const_value_free(left);
+        tr_const_value_free(right_bool);
+        return bool_result;
+    }
+
+    let right_opt = tr_const_eval_expr_in_env(ctx, env, arena, expr.expr_b);
+    if (right_opt == null) {
+        tr_const_value_free(left);
+        return null;
+    }
+
+    let right = right_opt as ConstValue*;
+    let result: ConstValue*? = null;
+
+    if (op == "==" || op == "!=") {
+        let equal = tr_const_eval_values_equal(left, right);
+        if (equal != null) {
+            if (op == "==") {
+                result = tr_const_bool_value(equal as bool);
+            } else {
+                result = tr_const_bool_value(!(equal as bool));
+            }
+        }
+    } else if (tr_const_value_is_integer_like(left) && tr_const_value_is_integer_like(right)) {
+        result = tr_const_eval_integer_binary(op, left.int_value, right.int_value);
+        if (result == null) {
+            result = tr_const_eval_integer_compare(op, left.int_value, right.int_value);
+        }
+    }
+
+    tr_const_value_free(left);
+    tr_const_value_free(right);
+    return result;
+}
+
+/**
  * Evaluate a const declaration symbol to a compile-time value.
  *
  * @param ctx Const-evaluation context.
@@ -844,6 +1314,8 @@ func tr_const_eval_expr_in_env(ctx: ConstEvalContext*, env: ModuleEnv*, arena: E
             }
             return tr_const_eval_symbol(ctx, sym as Symbol*);
         }
+        EX_UNARY => { return tr_const_eval_unary(ctx, env, arena, expr); }
+        EX_BINARY => { return tr_const_eval_binary(ctx, env, arena, expr); }
         EX_CAST => { return tr_const_eval_cast(ctx, env, arena, expr); }
         _ => { return null; }
     }

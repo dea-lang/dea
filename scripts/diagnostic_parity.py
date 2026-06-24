@@ -118,6 +118,7 @@ def stage_trigger_source(stage: str, code: str, oracle) -> str | None:
             "LEX-0066": "1.0x",
             "LEX-0067": "1.0d",
             "LEX-0068": "123f",
+            "TYP-0010": "module main;\nfunc foo(flag: bool) -> int { if (flag) { return 1; } }\n",
             "TYP-0244": "module main;\nimport dea;\nfunc foo() -> int { let f = sizeof; return 0; }\n",
             "TYP-0213": (
                 "module main;\n"

@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-06-19
+Version: 2026-06-24
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -124,10 +124,11 @@ Current bootstrap status:
 ## 7.1 Fixed-Size Array Policy
 
 Fixed-size arrays are first-class value types spelled `T[N]`, where `N` is a positive compile-time `int` constant
-expression. The current bootstrap source subset is an integer literal or a visible top-level `const` reference. Suffix
-order is source-significant across pointer, nullable, and array suffixes: `T*[N]` is an array of pointers, `T[N]*` is a
-pointer to an array, `T?*` is a pointer to optional storage, and `T*?` is an optional pointer. Adjacent dimensions
-preserve C-like source order, so `int[2][3]` is two rows of three `int` values.
+expression. The current direct source subset is an integer literal or a visible top-level `const` reference; referenced
+scalar constants may themselves use the supported compile-time scalar expression subset. Suffix order is
+source-significant across pointer, nullable, and array suffixes: `T*[N]` is an array of pointers, `T[N]*` is a pointer
+to an array, `T?*` is a pointer to optional storage, and `T*?` is an optional pointer. Adjacent dimensions preserve
+C-like source order, so `int[2][3]` is two rows of three `int` values.
 
 Array literals (`[a, b]`) are contextual only and have no standalone type. They are accepted only when the expected type
 is a fixed-size array `T[N]`, reject overlong element lists, and zero/default-pad omitted trailing elements. Expected
@@ -460,10 +461,14 @@ such as `uint`, `long`, and `ulong`, plus the implemented floating-point forms `
 
 Current decision:
 
-- integer literals outside native bootstrap `int` are represented inside the compiler as opaque bigint payloads carrying
-  sign, significant digits, and base (`2`, `8`, `10`, or `16`)
-- the compiler does not perform compile-time arithmetic on those payloads; it only performs textual range checks where a
-  contextual integer target is known
+- integer literals outside Dea's 32-bit `int` range are represented inside the compiler as opaque bigint payloads
+  carrying sign, significant digits, and base (`2`, `8`, `10`, or `16`)
+- the compiler does not perform compile-time arithmetic on bigint payloads; it only performs textual range checks where
+  a contextual integer target is known
+- 32-bit `int` compile-time constants can fold checked arithmetic, non-negative bitwise/shift operations, short-circuit
+  boolean operators, scalar equality/comparison, and selected scalar casts
+- overflow, invalid shifts, divide/modulo by zero, and unsupported bitwise operands are non-evaluable rather than
+  compiler failures
 - generated C reconstructs equivalent literal spellings from the stored payload/base pair and adds destination-aware C
   suffixes or macros where required
 - IR and semantic nodes remain typed, so the payload encoding is an internal implementation detail rather than a
@@ -537,8 +542,8 @@ Current policy:
 
 - top-level `const` requires an explicit type annotation
 - top-level `const` initializers may use literals, `null`, bare zero-argument enum variants, constructor calls whose
-  arguments are themselves constant, visible scalar `const` references, and the selected compile-time scalar casts
-  described in Sections 11 and 12
+  arguments are themselves constant, visible scalar `const` references, supported checked scalar operators, and the
+  selected compile-time scalar casts described in Sections 11 and 12
 - compile-time scalar casts cover builtin integer-to-integer casts with target-range checking, `float` to/from `double`,
   and identity casts for `bool` and `string`; other cast families remain outside the accepted constant subset
 - scalar, string, and bool `const` values may be referenced from constant-value grammar contexts such as array bounds

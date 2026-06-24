@@ -308,7 +308,7 @@ func test_typing_const_casts_err() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_const_casts_err", cfg);
         assert(analysis_has_errors(result), "expected invalid const-cast diagnostics");
-        assert(count_diag_code(result, "TYP-0700") == 2, "expected two static integer range diagnostics");
+        assert(count_diag_code(result, "TYP-0700") == 4, "expected four static integer range diagnostics");
         assert(count_diag_code(result, "SIG-0200") == 2,
             "expected non-constant and excluded cast initializers to remain unsupported");
         assert(!has_diag_code(result, "TYP-0815"), "invalid cast should suppress non-constant array-bound cascade");
@@ -1389,6 +1389,29 @@ func test_typing_const_value_contexts_ok() {
         assert(ord(param_ty.kind) == ord(TY_ARRAY), "use_param parameter should be an array");
         assert(param_ty.array_len == 3, "named const array bound should resolve to concrete length 3");
 
+        let wide_fn_ty = sig_lookup_func_type(result.signatures as SignatureTables*,
+            "typing_const_value_contexts_ok", "use_wide_param");
+        assert(wide_fn_ty != null, "use_wide_param signature should resolve");
+        let wide_params = (wide_fn_ty as Type*).params as VectorBase*;
+        let wide_param_ty = *(vec_get(wide_params, 0) as Type**);
+        assert(ord(wide_param_ty.kind) == ord(TY_ARRAY), "use_wide_param parameter should be an array");
+        assert(wide_param_ty.array_len == 4, "folded const array bound should resolve to concrete length 4");
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests scalar compile-time expressions in const declarations reject unsupported cases.
+ */
+func test_typing_const_expr_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_expr_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_expr_err");
+        assert(count_diag_code(result, "SIG-0200") == 11,
+            "expected eleven non-constant const initializer diagnostics");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -1437,6 +1460,38 @@ func test_typing_const_case_values_err() {
         assert(has_diag_code(result, "TYP-0112"), "expected non-const case arm diagnostic");
         assert(has_diag_code(result, "TYP-0113"), "expected aggregate case arm diagnostic");
         assert(has_diag_code(result, "TYP-0108"), "expected duplicate const case value diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests compile-time boolean flow removes impossible liveness paths.
+ */
+func test_typing_const_bool_flow_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_bool_flow_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_const_bool_flow_ok");
+        assert(!has_diag_code(result, "TYP-0150"), "did not expect use-after-drop diagnostics");
+        assert(!has_diag_code(result, "TYP-0062"), "did not expect dropped-variable diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests shadowed const names stay dynamic and dead branches keep type errors.
+ */
+func test_typing_const_bool_flow_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_bool_flow_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_bool_flow_err");
+        assert(count_diag_code(result, "TYP-0150") == 1,
+            "expected one use-after-drop diagnostic for local const-name shadowing");
+        assert(count_diag_code(result, "TYP-0310") == 1,
+            "expected one type mismatch diagnostic in the dead const branch");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -1605,11 +1660,14 @@ func main() {
     test_typing_is_intrinsic_err();
     test_typing_fixed_array_err();
     test_typing_const_value_contexts_ok();
+    test_typing_const_expr_err();
     test_typing_const_array_bounds_err();
     test_typing_const_array_bound_decl_type_regression();
     test_typing_const_casts_ok();
     test_typing_const_casts_err();
     test_typing_const_case_values_err();
+    test_typing_const_bool_flow_ok();
+    test_typing_const_bool_flow_err();
     test_typing_slice_ok();
     test_typing_slice_err();
     test_typing_toplet_initializer_err();

@@ -42,6 +42,7 @@ struct ExpressionTypeChecker {
     loop_depth: int;
     next_stmt_unreachable: bool;
     suppress_diagnostics: bool;
+    suppress_liveness_diagnostics: bool;
     liveness_diagnostics_only: bool;
     loop_flow_capture_stack: LoopFlowCapture*?;
     cleanup_header_guard_stack: CleanupHeaderGuard*?;
@@ -103,6 +104,15 @@ enum CaseLiteralClass {
 }
 
 /**
+ * Tri-state result for compile-time boolean flow tests.
+ */
+enum ConstBoolFlowKind {
+    CONST_BOOL_UNKNOWN;
+    CONST_BOOL_TRUE;
+    CONST_BOOL_FALSE;
+}
+
+/**
  * Linked stack entry for guarded `with` header locals during cleanup-block checking.
  */
 struct CleanupHeaderGuard {
@@ -121,6 +131,9 @@ struct CleanupHeaderGuard {
  */
 func etc_diag_error(self: ExpressionTypeChecker*, code: string, message: string, filename: string, span: Span) {
     if (self.suppress_diagnostics) {
+        return;
+    }
+    if (self.suppress_liveness_diagnostics && (code == "TYP-0062" || code == "TYP-0150")) {
         return;
     }
     if (self.liveness_diagnostics_only && code != "TYP-0062" && code != "TYP-0150") {
@@ -2019,6 +2032,216 @@ func etc_case_arm_is_aggregate_const(self: ExpressionTypeChecker*, expr_id: Expr
 }
 
 /**
+ * Report whether an expression node is an unqualified local reference.
+ *
+ * @param self Expression checker state.
+ * @param expr Expression node to inspect.
+ * @return `true` when the expression names a local without qualification.
+ */
+func etc_expr_is_unqualified_local_ref(self: ExpressionTypeChecker*, expr: ExprNode*) -> bool {
+    if (ord(expr.kind) == ord(EX_VAR_REF) && expr.module_path == null && expr.name_qualifier == null) {
+        let local_ty = etc_lookup_local(self, expr.text_value);
+        if (local_ty != null) {
+            type_free(local_ty as Type*);
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Report whether an expression contains an unqualified local reference.
+ *
+ * This whole-tree helper is used by constant integer narrowing, where every
+ * operand must be compile-time known before folding is allowed.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Expression to inspect.
+ * @return `true` when any unqualified variable reference names a local.
+ */
+func etc_expr_contains_unqualified_local_ref(self: ExpressionTypeChecker*, expr_id: ExprId) -> bool {
+    if (expr_id < 0 || self.current_unit == null) {
+        return false;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (etc_expr_is_unqualified_local_ref(self, expr)) {
+        return true;
+    }
+    if (expr.expr_a >= 0 && etc_expr_contains_unqualified_local_ref(self, expr.expr_a)) {
+        return true;
+    }
+    if (expr.expr_b >= 0 && etc_expr_contains_unqualified_local_ref(self, expr.expr_b)) {
+        return true;
+    }
+    if (expr.expr_c >= 0 && etc_expr_contains_unqualified_local_ref(self, expr.expr_c)) {
+        return true;
+    }
+    if (expr.ids != null) {
+        let ids = expr.ids as VectorBase*;
+        for (let i = 0; i < vec_size(ids); i = i + 1) {
+            if (etc_expr_contains_unqualified_local_ref(self, id_vec_get(ids, i))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Evaluate a condition expression to a compile-time boolean for flow only.
+ *
+ * This helper follows source short-circuit reachability. A local reference only
+ * makes the condition dynamic when that reference is on an evaluated path.
+ *
+ * @param self Expression checker state.
+ * @param ctx Const-evaluation context.
+ * @param expr_id Condition expression.
+ * @return Known true, known false, or unknown.
+ */
+func etc_const_bool_flow_eval(self: ExpressionTypeChecker*, ctx: ConstEvalContext*, expr_id: ExprId) -> ConstBoolFlowKind {
+    if (expr_id < 0 || self.current_unit == null || self.current_env == null) {
+        return CONST_BOOL_UNKNOWN;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    match (expr.kind) {
+        EX_PAREN => {
+            return etc_const_bool_flow_eval(self, ctx, expr.expr_a);
+        }
+        EX_BOOL => {
+            if (expr.bool_value) return CONST_BOOL_TRUE;
+            return CONST_BOOL_FALSE;
+        }
+        EX_UNARY => {
+            if (expr.text_value != "!") {
+                return CONST_BOOL_UNKNOWN;
+            }
+            let inner = etc_const_bool_flow_eval(self, ctx, expr.expr_a);
+            if (ord(inner) == ord(CONST_BOOL_TRUE)) return CONST_BOOL_FALSE;
+            if (ord(inner) == ord(CONST_BOOL_FALSE)) return CONST_BOOL_TRUE;
+            return CONST_BOOL_UNKNOWN;
+        }
+        EX_BINARY => {
+            if (expr.text_value == "&&") {
+                let left = etc_const_bool_flow_eval(self, ctx, expr.expr_a);
+                if (ord(left) == ord(CONST_BOOL_FALSE)) return CONST_BOOL_FALSE;
+                if (ord(left) == ord(CONST_BOOL_TRUE)) {
+                    return etc_const_bool_flow_eval(self, ctx, expr.expr_b);
+                }
+                return CONST_BOOL_UNKNOWN;
+            }
+            if (expr.text_value == "||") {
+                let left2 = etc_const_bool_flow_eval(self, ctx, expr.expr_a);
+                if (ord(left2) == ord(CONST_BOOL_TRUE)) return CONST_BOOL_TRUE;
+                if (ord(left2) == ord(CONST_BOOL_FALSE)) {
+                    return etc_const_bool_flow_eval(self, ctx, expr.expr_b);
+                }
+                return CONST_BOOL_UNKNOWN;
+            }
+            return CONST_BOOL_UNKNOWN;
+        }
+        EX_VAR_REF => {
+            if (etc_expr_is_unqualified_local_ref(self, expr)) {
+                return CONST_BOOL_UNKNOWN;
+            }
+        }
+        _ => {
+            return CONST_BOOL_UNKNOWN;
+        }
+    }
+
+    let value: ConstValue*? = null;
+    value = tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr_id);
+    if (value == null) {
+        return CONST_BOOL_UNKNOWN;
+    }
+
+    let known = value as ConstValue*;
+    let result = CONST_BOOL_UNKNOWN;
+    if (ord(known.kind) == ord(CV_BOOL)) {
+        if (known.bool_value) {
+            result = CONST_BOOL_TRUE;
+        } else {
+            result = CONST_BOOL_FALSE;
+        }
+    }
+    tr_const_value_free(known);
+    return result;
+}
+
+/**
+ * Evaluate a condition to a compile-time boolean for flow only.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Condition expression.
+ * @return Known true, known false, or unknown.
+ */
+func etc_const_bool_flow(self: ExpressionTypeChecker*, expr_id: ExprId) -> ConstBoolFlowKind {
+    if (expr_id < 0 || self.current_unit == null || self.current_env == null) {
+        return CONST_BOOL_UNKNOWN;
+    }
+
+    with (let ctx = tr_const_eval_context_create(self.result.driver_state,
+          self.result.signatures as SignatureTables*, self.result.names as NameResolution*, self.result.diags) =>
+          tr_const_eval_context_free(ctx)) {
+        return etc_const_bool_flow_eval(self, ctx, expr_id);
+    }
+}
+
+/**
+ * Type-check a dead compile-time branch while suppressing only liveness errors.
+ *
+ * @param self Expression checker state.
+ * @param stmt_id Statement to check.
+ * @return Statement flow reported by the checked statement.
+ */
+func etc_check_dead_const_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKind {
+    let saved_suppress_liveness = self.suppress_liveness_diagnostics;
+    let saved_capture = self.loop_flow_capture_stack;
+    self.suppress_liveness_diagnostics = true;
+    self.loop_flow_capture_stack = null;
+    let flow = etc_check_stmt(self, stmt_id);
+    self.loop_flow_capture_stack = saved_capture;
+    self.suppress_liveness_diagnostics = saved_suppress_liveness;
+    return flow;
+}
+
+/**
+ * Type-check a loop body known not to execute, then restore incoming liveness.
+ *
+ * @param self Expression checker state.
+ * @param body Loop body statement id.
+ * @param update Optional `for` update statement id.
+ */
+func etc_check_dead_const_loop_parts(self: ExpressionTypeChecker*, body: StmtId, update: StmtId) {
+    let saved_alive: VectorBase*? = null;
+    if (self.alive_scopes != null) {
+        saved_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+    }
+    let saved_unreachable = self.next_stmt_unreachable;
+    let saved_capture = self.loop_flow_capture_stack;
+    let saved_suppress_liveness = self.suppress_liveness_diagnostics;
+
+    self.suppress_liveness_diagnostics = true;
+    self.loop_flow_capture_stack = null;
+    self.next_stmt_unreachable = false;
+    self.loop_depth = self.loop_depth + 1;
+    let ignored_body_flow = etc_check_stmt(self, body);
+    self.loop_depth = self.loop_depth - 1;
+    if (update >= 0) {
+        self.next_stmt_unreachable = false;
+        let ignored_update_flow = etc_check_stmt(self, update);
+    }
+
+    if (saved_alive != null) {
+        etc_alive_scope_stack_restore(self, saved_alive as VectorBase*);
+        etc_alive_scope_stack_free(saved_alive);
+    }
+    self.loop_flow_capture_stack = saved_capture;
+    self.suppress_liveness_diagnostics = saved_suppress_liveness;
+    self.next_stmt_unreachable = saved_unreachable;
+}
+
+/**
  * Type-check a statement and its nested statements.
  *
  * @param self Expression checker state.
@@ -2183,6 +2406,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 }
                 type_free(cond_ty as Type*);
             }
+            let known_cond = etc_const_bool_flow(self, stmt.expr_a);
             let pre_alive: VectorBase*? = null;
             let then_alive: VectorBase*? = null;
             let else_alive: VectorBase*? = null;
@@ -2191,28 +2415,57 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 pre_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
             }
             self.next_stmt_unreachable = false;
-            let then_flow = etc_check_stmt(self, stmt.stmt_a);
+            let then_flow = FLOW_FALLTHROUGH;
+            if (ord(known_cond) == ord(CONST_BOOL_FALSE)) {
+                then_flow = etc_check_dead_const_stmt(self, stmt.stmt_a);
+            } else {
+                then_flow = etc_check_stmt(self, stmt.stmt_a);
+            }
             let then_unreachable = self.next_stmt_unreachable;
             if (self.alive_scopes != null) {
                 then_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
             }
+            if (pre_alive != null) {
+                etc_alive_scope_stack_restore(self, pre_alive as VectorBase*);
+            }
             self.next_stmt_unreachable = false;
-            let else_flow = etc_check_stmt(self, stmt.stmt_b);
+            let else_flow = FLOW_FALLTHROUGH;
+            if (stmt.stmt_b >= 0) {
+                if (ord(known_cond) == ord(CONST_BOOL_TRUE)) {
+                    else_flow = etc_check_dead_const_stmt(self, stmt.stmt_b);
+                } else {
+                    else_flow = etc_check_stmt(self, stmt.stmt_b);
+                }
+            }
             let else_unreachable = self.next_stmt_unreachable;
             if (self.alive_scopes != null) {
                 else_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
             }
             if (pre_alive != null && then_alive != null) {
                 let fallthrough_states = ptr_vec_create(2);
-                if (ord(then_flow) == ord(FLOW_FALLTHROUGH)) {
-                    etc_alive_state_vec_push_clone(fallthrough_states, then_alive as VectorBase*);
-                }
-                if (stmt.stmt_b >= 0) {
-                    if (else_alive != null && ord(else_flow) == ord(FLOW_FALLTHROUGH)) {
-                        etc_alive_state_vec_push_clone(fallthrough_states, else_alive as VectorBase*);
+                if (ord(known_cond) == ord(CONST_BOOL_TRUE)) {
+                    if (ord(then_flow) == ord(FLOW_FALLTHROUGH)) {
+                        etc_alive_state_vec_push_clone(fallthrough_states, then_alive as VectorBase*);
+                    }
+                } else if (ord(known_cond) == ord(CONST_BOOL_FALSE)) {
+                    if (stmt.stmt_b >= 0) {
+                        if (else_alive != null && ord(else_flow) == ord(FLOW_FALLTHROUGH)) {
+                            etc_alive_state_vec_push_clone(fallthrough_states, else_alive as VectorBase*);
+                        }
+                    } else {
+                        etc_alive_state_vec_push_clone(fallthrough_states, pre_alive as VectorBase*);
                     }
                 } else {
-                    etc_alive_state_vec_push_clone(fallthrough_states, pre_alive as VectorBase*);
+                    if (ord(then_flow) == ord(FLOW_FALLTHROUGH)) {
+                        etc_alive_state_vec_push_clone(fallthrough_states, then_alive as VectorBase*);
+                    }
+                    if (stmt.stmt_b >= 0) {
+                        if (else_alive != null && ord(else_flow) == ord(FLOW_FALLTHROUGH)) {
+                            etc_alive_state_vec_push_clone(fallthrough_states, else_alive as VectorBase*);
+                        }
+                    } else {
+                        etc_alive_state_vec_push_clone(fallthrough_states, pre_alive as VectorBase*);
+                    }
                 }
                 if (vec_size(fallthrough_states) > 0) {
                     let merged = etc_alive_scope_stack_meet_many(
@@ -2220,6 +2473,22 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     etc_alive_scope_stack_free(self.alive_scopes);
                     self.alive_scopes = merged;
                     flow = FLOW_FALLTHROUGH;
+                } else if (ord(known_cond) == ord(CONST_BOOL_TRUE)) {
+                    etc_alive_scope_stack_restore(self, pre_alive as VectorBase*);
+                    if (ord(then_flow) == ord(FLOW_RETURNS)) {
+                        flow = FLOW_RETURNS;
+                    } else {
+                        flow = FLOW_STOPS;
+                    }
+                } else if (ord(known_cond) == ord(CONST_BOOL_FALSE)) {
+                    etc_alive_scope_stack_restore(self, pre_alive as VectorBase*);
+                    if (stmt.stmt_b >= 0 && ord(else_flow) == ord(FLOW_RETURNS)) {
+                        flow = FLOW_RETURNS;
+                    } else if (stmt.stmt_b >= 0 && ord(else_flow) == ord(FLOW_STOPS)) {
+                        flow = FLOW_STOPS;
+                    } else {
+                        flow = FLOW_FALLTHROUGH;
+                    }
                 } else if (stmt.stmt_b >= 0 &&
                     ord(then_flow) == ord(FLOW_RETURNS) &&
                     ord(else_flow) == ord(FLOW_RETURNS)) {
@@ -2236,6 +2505,14 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             etc_alive_scope_stack_free(else_alive);
             if (pre_unreachable) {
                 self.next_stmt_unreachable = true;
+            } else if (ord(known_cond) == ord(CONST_BOOL_TRUE)) {
+                self.next_stmt_unreachable = then_unreachable;
+            } else if (ord(known_cond) == ord(CONST_BOOL_FALSE)) {
+                if (stmt.stmt_b >= 0) {
+                    self.next_stmt_unreachable = else_unreachable;
+                } else {
+                    self.next_stmt_unreachable = false;
+                }
             } else if (stmt.stmt_b >= 0) {
                 self.next_stmt_unreachable = then_unreachable && else_unreachable;
             } else {
@@ -2250,43 +2527,56 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 }
                 type_free(cond_ty2 as Type*);
             }
+            let known_while_cond = etc_const_bool_flow(self, stmt.expr_a);
             let pre_alive_loop: VectorBase*? = null;
             if (self.alive_scopes != null) {
                 pre_alive_loop = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
             }
             if (pre_alive_loop != null) {
-                let iteration = etc_check_loop_iteration(self, stmt.expr_a, stmt.stmt_a, -1);
-                let next_head = etc_alive_scope_stack_meet_many(pre_alive_loop as VectorBase*, iteration.backedge_states);
-                if (!etc_alive_scope_stack_equal(pre_alive_loop as VectorBase*, next_head)) {
+                if (ord(known_while_cond) == ord(CONST_BOOL_FALSE)) {
+                    etc_check_dead_const_loop_parts(self, stmt.stmt_a, -1);
+                    etc_alive_scope_stack_restore(self, pre_alive_loop as VectorBase*);
+                } else {
+                    let iteration = etc_check_loop_iteration(self, stmt.expr_a, stmt.stmt_a, -1);
+                    let next_head = etc_alive_scope_stack_meet_many(pre_alive_loop as VectorBase*, iteration.backedge_states);
+                    if (!etc_alive_scope_stack_equal(pre_alive_loop as VectorBase*, next_head)) {
+                        etc_loop_flow_capture_free(iteration.capture);
+                        etc_alive_state_vec_free(iteration.backedge_states);
+                        drop iteration;
+                        let fixed = etc_loop_liveness_fixed_point(self, pre_alive_loop as VectorBase*,
+                            stmt.expr_a, stmt.stmt_a, -1);
+                        iteration = new LoopIterationFlow(fixed.capture, fixed.backedge_states, FLOW_FALLTHROUGH);
+                        etc_alive_scope_stack_free(next_head);
+                        next_head = fixed.head;
+                        drop fixed;
+                    }
+                    let include_zero_iteration = true;
+                    if (ord(known_while_cond) == ord(CONST_BOOL_TRUE) &&
+                        vec_size(iteration.capture.break_states) > 0) {
+                        include_zero_iteration = false;
+                    }
+                    let after_states = ptr_vec_create(1 + vec_size(iteration.capture.break_states) +
+                        vec_size(iteration.backedge_states));
+                    if (include_zero_iteration) {
+                        etc_alive_state_vec_push_clone(after_states, pre_alive_loop as VectorBase*);
+                    }
+                    for (let bi = 0; bi < vec_size(iteration.capture.break_states); bi = bi + 1) {
+                        etc_alive_state_vec_push_clone(after_states,
+                            ptr_vec_get(iteration.capture.break_states, bi) as VectorBase*);
+                    }
+                    for (let ci = 0; ci < vec_size(iteration.backedge_states); ci = ci + 1) {
+                        etc_alive_state_vec_push_clone(after_states,
+                            ptr_vec_get(iteration.backedge_states, ci) as VectorBase*);
+                    }
+                    let after_loop = etc_alive_scope_stack_meet_many(ptr_vec_get(after_states, 0) as VectorBase*, after_states);
+                    etc_alive_scope_stack_free(self.alive_scopes);
+                    self.alive_scopes = after_loop;
+                    etc_alive_state_vec_free(after_states);
+                    etc_alive_scope_stack_free(next_head);
                     etc_loop_flow_capture_free(iteration.capture);
                     etc_alive_state_vec_free(iteration.backedge_states);
                     drop iteration;
-                    let fixed = etc_loop_liveness_fixed_point(self, pre_alive_loop as VectorBase*,
-                        stmt.expr_a, stmt.stmt_a, -1);
-                    iteration = new LoopIterationFlow(fixed.capture, fixed.backedge_states, FLOW_FALLTHROUGH);
-                    etc_alive_scope_stack_free(next_head);
-                    next_head = fixed.head;
-                    drop fixed;
                 }
-                let after_states = ptr_vec_create(1 + vec_size(iteration.capture.break_states) +
-                    vec_size(iteration.backedge_states));
-                etc_alive_state_vec_push_clone(after_states, pre_alive_loop as VectorBase*);
-                for (let bi = 0; bi < vec_size(iteration.capture.break_states); bi = bi + 1) {
-                    etc_alive_state_vec_push_clone(after_states,
-                        ptr_vec_get(iteration.capture.break_states, bi) as VectorBase*);
-                }
-                for (let ci = 0; ci < vec_size(iteration.backedge_states); ci = ci + 1) {
-                    etc_alive_state_vec_push_clone(after_states,
-                        ptr_vec_get(iteration.backedge_states, ci) as VectorBase*);
-                }
-                let after_loop = etc_alive_scope_stack_meet_many(ptr_vec_get(after_states, 0) as VectorBase*, after_states);
-                etc_alive_scope_stack_free(self.alive_scopes);
-                self.alive_scopes = after_loop;
-                etc_alive_state_vec_free(after_states);
-                etc_alive_scope_stack_free(next_head);
-                etc_loop_flow_capture_free(iteration.capture);
-                etc_alive_state_vec_free(iteration.backedge_states);
-                drop iteration;
             }
             etc_alive_scope_stack_free(pre_alive_loop);
         }
@@ -2299,44 +2589,57 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 }
                 type_free(cond_ty3 as Type*);
             }
+            let known_for_cond = etc_const_bool_flow(self, stmt.expr_a);
             let pre_alive_for: VectorBase*? = null;
             if (self.alive_scopes != null) {
                 pre_alive_for = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
             }
             if (pre_alive_for != null) {
                 if (ord(init_flow) == ord(FLOW_FALLTHROUGH)) {
-                    let iteration2 = etc_check_loop_iteration(self, stmt.expr_a, stmt.stmt_c, stmt.stmt_b);
-                    let next_head2 = etc_alive_scope_stack_meet_many(pre_alive_for as VectorBase*, iteration2.backedge_states);
-                    if (!etc_alive_scope_stack_equal(pre_alive_for as VectorBase*, next_head2)) {
+                    if (ord(known_for_cond) == ord(CONST_BOOL_FALSE)) {
+                        etc_check_dead_const_loop_parts(self, stmt.stmt_c, stmt.stmt_b);
+                        etc_alive_scope_stack_restore(self, pre_alive_for as VectorBase*);
+                    } else {
+                        let iteration2 = etc_check_loop_iteration(self, stmt.expr_a, stmt.stmt_c, stmt.stmt_b);
+                        let next_head2 = etc_alive_scope_stack_meet_many(pre_alive_for as VectorBase*, iteration2.backedge_states);
+                        if (!etc_alive_scope_stack_equal(pre_alive_for as VectorBase*, next_head2)) {
+                            etc_loop_flow_capture_free(iteration2.capture);
+                            etc_alive_state_vec_free(iteration2.backedge_states);
+                            drop iteration2;
+                            let fixed2 = etc_loop_liveness_fixed_point(self, pre_alive_for as VectorBase*,
+                                stmt.expr_a, stmt.stmt_c, stmt.stmt_b);
+                            iteration2 = new LoopIterationFlow(fixed2.capture, fixed2.backedge_states, FLOW_FALLTHROUGH);
+                            etc_alive_scope_stack_free(next_head2);
+                            next_head2 = fixed2.head;
+                            drop fixed2;
+                        }
+                        let include_zero_iteration2 = true;
+                        if (ord(known_for_cond) == ord(CONST_BOOL_TRUE) &&
+                            vec_size(iteration2.capture.break_states) > 0) {
+                            include_zero_iteration2 = false;
+                        }
+                        let after_states2 = ptr_vec_create(1 + vec_size(iteration2.capture.break_states) +
+                            vec_size(iteration2.backedge_states));
+                        if (include_zero_iteration2) {
+                            etc_alive_state_vec_push_clone(after_states2, pre_alive_for as VectorBase*);
+                        }
+                        for (let bj = 0; bj < vec_size(iteration2.capture.break_states); bj = bj + 1) {
+                            etc_alive_state_vec_push_clone(after_states2,
+                                ptr_vec_get(iteration2.capture.break_states, bj) as VectorBase*);
+                        }
+                        for (let cj = 0; cj < vec_size(iteration2.backedge_states); cj = cj + 1) {
+                            etc_alive_state_vec_push_clone(after_states2,
+                                ptr_vec_get(iteration2.backedge_states, cj) as VectorBase*);
+                        }
+                        let after_for = etc_alive_scope_stack_meet_many(ptr_vec_get(after_states2, 0) as VectorBase*, after_states2);
+                        etc_alive_scope_stack_free(self.alive_scopes);
+                        self.alive_scopes = after_for;
+                        etc_alive_state_vec_free(after_states2);
+                        etc_alive_scope_stack_free(next_head2);
                         etc_loop_flow_capture_free(iteration2.capture);
                         etc_alive_state_vec_free(iteration2.backedge_states);
                         drop iteration2;
-                        let fixed2 = etc_loop_liveness_fixed_point(self, pre_alive_for as VectorBase*,
-                            stmt.expr_a, stmt.stmt_c, stmt.stmt_b);
-                        iteration2 = new LoopIterationFlow(fixed2.capture, fixed2.backedge_states, FLOW_FALLTHROUGH);
-                        etc_alive_scope_stack_free(next_head2);
-                        next_head2 = fixed2.head;
-                        drop fixed2;
                     }
-                    let after_states2 = ptr_vec_create(1 + vec_size(iteration2.capture.break_states) +
-                        vec_size(iteration2.backedge_states));
-                    etc_alive_state_vec_push_clone(after_states2, pre_alive_for as VectorBase*);
-                    for (let bj = 0; bj < vec_size(iteration2.capture.break_states); bj = bj + 1) {
-                        etc_alive_state_vec_push_clone(after_states2,
-                            ptr_vec_get(iteration2.capture.break_states, bj) as VectorBase*);
-                    }
-                    for (let cj = 0; cj < vec_size(iteration2.backedge_states); cj = cj + 1) {
-                        etc_alive_state_vec_push_clone(after_states2,
-                            ptr_vec_get(iteration2.backedge_states, cj) as VectorBase*);
-                    }
-                    let after_for = etc_alive_scope_stack_meet_many(ptr_vec_get(after_states2, 0) as VectorBase*, after_states2);
-                    etc_alive_scope_stack_free(self.alive_scopes);
-                    self.alive_scopes = after_for;
-                    etc_alive_state_vec_free(after_states2);
-                    etc_alive_scope_stack_free(next_head2);
-                    etc_loop_flow_capture_free(iteration2.capture);
-                    etc_alive_state_vec_free(iteration2.backedge_states);
-                    drop iteration2;
                 } else {
                     let saved_unreachable_for = self.next_stmt_unreachable;
                     let saved_capture_for = self.loop_flow_capture_stack;
@@ -3262,59 +3565,30 @@ func etc_can_cast(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> bool 
  * @return Integer value, or `null` when not a supported constant form.
  */
 func etc_cast_const_int(self: ExpressionTypeChecker*, expr_id: ExprId) -> int? {
-    if (expr_id < 0 || self.current_unit == null) {
+    if (expr_id < 0 || self.current_unit == null || self.current_env == null) {
         return null;
     }
-    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
-    if (ord(expr.kind) == ord(EX_INT)) {
-        return expr.int_value;
-    }
-    if (ord(expr.kind) == ord(EX_PAREN)) {
-        return etc_cast_const_int(self, expr.expr_a);
-    }
-    if (ord(expr.kind) == ord(EX_UNARY)) {
-        let inner = etc_cast_const_int(self, expr.expr_a)?;
-        if (expr.text_value == "-") {
-            return -inner;
-        }
-        if (expr.text_value == "~") {
-            return -(inner + 1);
-        }
+    if (etc_expr_contains_unqualified_local_ref(self, expr_id)) {
         return null;
     }
-    if (ord(expr.kind) == ord(EX_BINARY)) {
-        let left = etc_cast_const_int(self, expr.expr_a);
-        let right = etc_cast_const_int(self, expr.expr_b);
-        if (left == null || right == null) {
-            return null;
-        }
 
-        let lhs = left as int;
-        let rhs = right as int;
-        if (expr.text_value == "+") {
-            return lhs + rhs;
-        }
-        if (expr.text_value == "-") {
-            return lhs - rhs;
-        }
-        if (expr.text_value == "*") {
-            return lhs * rhs;
-        }
-        if (expr.text_value == "/") {
-            if (rhs == 0) {
-                return null;
-            }
-            return lhs / rhs;
-        }
-        if (expr.text_value == "%") {
-            if (rhs == 0) {
-                return null;
-            }
-            return lhs % rhs;
-        }
+    let value: ConstValue*? = null;
+    with (let ctx = tr_const_eval_context_create(self.result.driver_state,
+          self.result.signatures as SignatureTables*, self.result.names as NameResolution*, self.result.diags) =>
+          tr_const_eval_context_free(ctx)) {
+        value = tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr_id);
+    }
+    if (value == null) {
         return null;
     }
-    return null;
+
+    let known = value as ConstValue*;
+    let result: int? = null;
+    if (tr_const_value_is_integer_like(known)) {
+        result = known.int_value;
+    }
+    tr_const_value_free(known);
+    return result;
 }
 
 /**
@@ -4901,7 +5175,7 @@ func etc_check_top_level_initializers(self: ExpressionTypeChecker*, root: Module
  */
 func expr_types_check(result: AnalysisResult*) {
     let check_function_bodies = !analysis_has_errors(result);
-    let checker = new ExpressionTypeChecker(result, "", null, null, null, null, null, ptr_vec_create(4), ptr_vec_create(4), 0, false, false, false, null, null);
+    let checker = new ExpressionTypeChecker(result, "", null, null, null, null, null, ptr_vec_create(4), ptr_vec_create(4), 0, false, false, false, false, null, null);
 
     for (let i = 0; i < driver_unit_count(result.driver_state); i = i + 1) {
         let unit = driver_unit_get(result.driver_state, i);

@@ -337,8 +337,9 @@ func test_backend_generate_top_level_consts() {
         sv_push(lines, "    Green(value: int);");
         sv_push(lines, "}");
         sv_push(lines, "const answer: int = 42;");
+        sv_push(lines, "const folded: int = (answer + 6) / 4;");
         sv_push(lines, "const color: Color = Red;");
-        sv_push(lines, "func main() -> int { return answer + origin.x + origin.y + ord(color); }");
+        sv_push(lines, "func main() -> int { return answer + folded + origin.x + origin.y + ord(color); }");
         sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
@@ -349,6 +350,8 @@ func test_backend_generate_top_level_consts() {
             "top-level const alias-backed struct lowering mismatch");
         assert(contains_s(generated, "const dea_int __deaM4demo4mainN6answer = 42;"),
             "top-level const scalar lowering mismatch");
+        assert(contains_s(generated, "const dea_int __deaM4demo4mainN6folded = 12;"),
+            "top-level folded const scalar lowering mismatch");
         assert(contains_s(generated, "const struct __deaM4demo4mainE5Color __deaM4demo4mainN5color = { .tag = __deaM4demo4mainE5Color_Red };"),
             "top-level const bare variant lowering mismatch");
 

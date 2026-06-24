@@ -1,7 +1,7 @@
 # ADR-0016: Compile-Time Constant Value Contexts
 
 - Decision date: 2026-06-18
-- Last edited: 2026-06-19
+- Last edited: 2026-06-24
 - Status: Accepted
 
 ## Context
@@ -16,16 +16,17 @@ L1 has explicit compile-time constant value contexts:
 
 - Fixed-size array suffixes accept `T[N]`, where `N` is a positive compile-time `int` constant expression.
 - `case` arm values accept compile-time scalar, string, and bool constant expressions comparable with the scrutinee.
-- The bootstrap source subset is literals, visible top-level `const` references (including qualified references), and
-  selected scalar casts over compile-time-known operands.
+- The direct grammar subset is literals and visible top-level `const` references (including qualified references).
+  Referenced scalar constants may use 32-bit `int` arithmetic, bitwise operators over non-negative 32-bit `int` values,
+  boolean operators, scalar equality/comparison, and selected scalar casts over compile-time-known operands.
 - Constant references are evaluated semantically, with recursive const-reference evaluation and cycle diagnostics.
 - Compile-time casts include builtin integer-to-integer casts with exact range checking, `float` to/from `double`, and
   identity casts for `bool` and `string`.
 - A referenced `const` declaration's explicit type annotation is authoritative for value-context classification.
 - Array lengths resolve to concrete integer values before type lowering, signatures, interface emission, or backend
   work.
-- Integer/real cross-casts, nullable/pointer/aggregate casts, arithmetic, and general constexpr operators remain future
-  work.
+- Integer/real cross-casts, nullable/pointer/aggregate casts, bigint or real arithmetic, string concatenation, and
+  general constexpr operators remain future work.
 
 ## Rationale
 
@@ -50,6 +51,7 @@ L1 has explicit compile-time constant value contexts:
 
 - [l1/work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md][const-contexts]
 - [l1/work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md][const-casts]
+- [l1/work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md][const-flow]
 
 ## Current Docs
 
@@ -60,6 +62,7 @@ L1 has explicit compile-time constant value contexts:
 
 [const-casts]: ../../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [const-contexts]: ../../work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md
+[const-flow]: ../../work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md
 [design-decisions]: ../reference/design-decisions.md
 [diagnostics]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [grammar]: ../reference/grammar.md

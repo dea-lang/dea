@@ -17,6 +17,9 @@ const AS_UINT: uint = AS_INT as uint;
 const AS_LONG: long = AS_INT as long;
 const AS_ULONG: ulong = AS_INT as ulong;
 const AS_ALIAS: Count = (AS_ULONG as Count);
+const SHIFT_BYTE: byte = 1 << 7;
+const XOR_BYTE: byte = (1 << 2) ^ 1;
+const AND_BYTE: byte = 7 & 3;
 
 const TINY_MIN: tiny = (-128) as tiny;
 const BYTE_MAX: byte = 255 as byte;
@@ -55,6 +58,9 @@ func exercise() -> int {
     if (INT_MIN_COPY != INT_MIN || UINT_MAX_COPY != UINT_MAX || LONG_MIN_COPY != LONG_MIN ||
         LONG_MAX_COPY != LONG_MAX || ULONG_MAX_COPY != ULONG_MAX) {
         return 2;
+    }
+    if (SHIFT_BYTE != 128 || XOR_BYTE != 5 || AND_BYTE != 3) {
+        return 3;
     }
     return len(messages) - AS_ALIAS + classify(AS_INT) - 1;
 }

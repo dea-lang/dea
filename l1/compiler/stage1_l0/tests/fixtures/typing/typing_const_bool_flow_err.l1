@@ -1,0 +1,30 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_const_bool_flow_err;
+
+const ALWAYS: bool = true;
+const NEVER: bool = false;
+
+struct Box {
+    value: int;
+}
+
+func local_shadow_keeps_condition_dynamic(flag: bool) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    let ALWAYS: bool = flag;
+    if (ALWAYS) {
+        p = new Box(2);
+    }
+    return p.value; // TYP-0150
+}
+
+func dead_branch_still_reports_type_error() -> int {
+    if (NEVER) {
+        let x: int = "bad"; // TYP-0310
+    }
+    return 0;
+}

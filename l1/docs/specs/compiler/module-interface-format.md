@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-06-19
+Version: 2026-06-24
 
 Status: Draft artifact contract
 
@@ -241,11 +241,14 @@ This formatting rule is shared by every declaration kind in the interface file.
 
 ## Const Literal Formatting
 
-The current interface emitter serializes the full Stage 1 compile-time-constant subset:
+The current interface emitter serializes accepted Stage 1 compile-time constants as folded values:
 
 - integer, bigint, real, byte, string, bool, and `null` literals
 - zero-field enum variant references
 - struct and enum constructor calls whose arguments are themselves interface literals
+
+Scalar const expressions are not preserved as expression syntax in `.l1m`; supported arithmetic, bitwise, boolean,
+comparison, and cast expressions appear as their folded literal values.
 
 Canonical constructor emission uses comma-plus-space separators:
 
