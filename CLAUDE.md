@@ -31,11 +31,12 @@ The monorepo root `Makefile` is intentionally minimal. Use it only for monorepo 
 
 - `make help`
 - `make venv`
+- `make test-all`
 - `make clean`
 - `make clean-all`
 
-Do not treat the root `Makefile` as a dispatcher for level-local build, test, or docs targets. For those, enter the
-level directory first.
+Do not treat the root `Makefile` as a dispatcher for focused level-local build, test, or docs targets. Use root
+`make test-all` only for full registered-level validation; for targeted level work, enter the level directory first.
 
 ## Shared Environment
 
