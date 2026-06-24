@@ -36,8 +36,8 @@ dependent diagnostics after an invalid cast.
 
 1. The shared constant evaluator now folds integer-family casts, `float`/`double` casts, and scalar identity casts while
    retaining precise invalid-cast state.
-2. Integer casts use host-sized or bigint-backed range checks and emit one `TYP-0700` without `SIG-0200` or array-bound
-   cascades; excluded and non-constant cast operands retain `SIG-0200`.
+2. Integer casts use 32-bit `int`-backed or bigint-backed range checks and emit one `TYP-0700` without `SIG-0200` or
+   array-bound cascades; excluded and non-constant cast operands retain `SIG-0200`.
 3. Top-level initializers, named `case` arms, and exported interfaces lower supported casts to target-typed literals;
    generated code does not call runtime checked-cast helpers for folded const values.
 4. Tests cover every integer target family, signed/unsigned boundaries, bigint values, aliases, nested/parenthesized
@@ -57,8 +57,8 @@ dependent diagnostics after an invalid cast.
 
 ## Implementation
 
-1. Add cast evaluation and explicit invalid-cast state to the reusable `ConstValue` evaluator, including host-sized and
-   bigint-backed range checks and target-normalized real spellings.
+1. Add cast evaluation and explicit invalid-cast state to the reusable `ConstValue` evaluator, including 32-bit
+   `int`-backed and bigint-backed range checks and target-normalized real spellings.
 2. Make signature resolution recognize valid folded casts, retain `SIG-0200` for non-constant or excluded operands, and
    suppress `SIG-0200`/array-bound cascades after a precise cast diagnostic.
 3. Lower supported const casts to static literals and emit folded literals in module interfaces.

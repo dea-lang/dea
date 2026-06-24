@@ -98,10 +98,10 @@ func fits_in_byte(value: int) -> bool {
 }
 
 /**
- * Check whether a host integer value is representable by a builtin integer type.
+ * Check whether a Dea `int` value is representable by a builtin integer type.
  *
  * @param dst   Destination builtin integer type.
- * @param value Host integer value.
+ * @param value Dea `int` value.
  * @return `true` when `value` lies inside the value domain of `dst`.
  */
 func int_value_fits_builtin(dst: Type*, value: int) -> bool {
