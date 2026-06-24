@@ -867,6 +867,76 @@ def test_codegen_with_inline_continue_header_runs_cleanup(codegen_single, compil
     assert success, f"Program should exit 0: stderr={stderr}"
 
 
+def test_codegen_for_headers_target_outer_loop(codegen_single, compile_and_run, tmp_path):
+    """For init/update loop control targets the enclosing loop."""
+    c_code, diags = codegen_single("main", """
+        module main;
+        import std.io;
+
+        func break_init() -> int {
+            let outer: int = 0;
+            let result: int = 0;
+            while (outer < 2) {
+                outer = outer + 1;
+                for (break; false;) {
+                }
+                result = result + 1;
+            }
+            return result;
+        }
+
+        func continue_init() -> int {
+            let outer: int = 0;
+            let result: int = 0;
+            while (outer < 2) {
+                outer = outer + 1;
+                for (continue; false; result = result + 10) {
+                }
+                result = result + 1;
+            }
+            return result;
+        }
+
+        func break_update() -> int {
+            let outer: int = 0;
+            let result: int = 0;
+            while (outer < 2) {
+                outer = outer + 1;
+                for (let inner: int = 0; inner < 1; break) {
+                    inner = inner + 1;
+                }
+                result = result + 1;
+            }
+            return result;
+        }
+
+        func continue_update() -> int {
+            let outer: int = 0;
+            let result: int = 0;
+            while (outer < 2) {
+                outer = outer + 1;
+                for (let inner: int = 0; inner < 1; continue) {
+                    inner = inner + 1;
+                }
+                result = result + 1;
+            }
+            return result;
+        }
+
+        func main() -> int {
+            printl_i(break_init());
+            printl_i(continue_init());
+            printl_i(break_update());
+            printl_i(continue_update());
+            return 0;
+        }
+    """)
+    assert c_code is not None, [d.message for d in diags]
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, f"Program should exit 0: stderr={stderr}"
+    assert stdout == "0\n0\n0\n0\n"
+
+
 def test_codegen_with_inline_cleanup_return_compiles_and_runs(codegen_single, compile_and_run, tmp_path):
     """Return inside inline cleanup should compile and run with expected result."""
     c_code, diags = codegen_single("main", """

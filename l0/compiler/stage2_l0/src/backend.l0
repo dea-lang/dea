@@ -2919,13 +2919,13 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
         ST_FOR => {
             let break_label2 = be_fresh_label(self, "lbrk");
             let continue_label2 = be_fresh_label(self, "lcont");
-            be_push_loop_labels(self, break_label2, continue_label2);
             let outer_scope = be_push_scope(self);
             cem_emit_for_loop_start(self.emitter);
             if (stmt.stmt_a >= 0) {
                 be_emit_stmt(self, stmt.stmt_a);
             }
 
+            be_push_loop_labels(self, break_label2, continue_label2);
             cem_emit_while_header(self.emitter, cem_emit_bool_literal(true));
             cem_emit_block_start(self.emitter);
             if (stmt.expr_a >= 0) {
@@ -2937,7 +2937,7 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
             }
             cem_emit_block_start(self.emitter);
             let loop_scope2 = be_push_scope(self);
-            be_push_loop_cleanup_scopes(self, loop_scope2, outer_scope);
+            be_push_loop_cleanup_scopes(self, loop_scope2, loop_scope2);
             be_emit_block_sequence(self, stmt.stmt_c);
             let body_falls_through = !self.next_stmt_unreachable;
             if (body_falls_through) {
@@ -2948,15 +2948,16 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
             cem_emit_block_end(self.emitter);
             self.next_stmt_unreachable = false;
             cem_emit_label(self.emitter, continue_label2);
+            be_pop_loop_labels(self);
             if (stmt.stmt_b >= 0) {
                 be_emit_stmt(self, stmt.stmt_b);
             }
             cem_emit_block_end(self.emitter);
+            self.next_stmt_unreachable = false;
+            cem_emit_label(self.emitter, break_label2);
             be_emit_cleanup_at_scope_exit(self, outer_scope);
             be_pop_scope(self);
             cem_emit_for_loop_end(self.emitter);
-            cem_emit_label(self.emitter, break_label2);
-            be_pop_loop_labels(self);
             self.next_stmt_unreachable = false;
         }
         ST_RETURN => {

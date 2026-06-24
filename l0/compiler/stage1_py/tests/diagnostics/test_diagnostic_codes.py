@@ -131,6 +131,7 @@ PAR_TRIGGERS = {
     "PAR-0142": "module main; func main() -> int { for (let i: int = 0 i < 3; i = i + 1) { return 0; } }",
     "PAR-0143": "module main; func main() -> int { for (let i: int = 0; i < 3 i = i + 1) { return 0; } }",
     "PAR-0144": "module main; func main() -> int { for (let i: int = 0; i < 3; i = i + 1 { return 0; } }",
+    "PAR-0145": "module main; func main() -> int { for (let i: int = 0; i < 3; let j: int = i) { return 0; } }",
     "PAR-0161": "module main; func main() -> int { drop ; return 0; }",
     "PAR-0171": "module main; enum Option { None; } func main(opt: Option) -> int { match opt { None => { return 0; } } }",
     "PAR-0172": "module main; enum Option { None; } func main(opt: Option) -> int { match (opt { None => { return 0; } } }",

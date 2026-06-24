@@ -656,6 +656,58 @@ func test_typing_drop_flow_err() {
     sp_free(sp);
 }
 
+/** Tests loop liveness merging and delayed assignment revival. */
+func test_typing_loop_liveness_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_loop_liveness_err", cfg);
+        assert(analysis_has_errors(result), "expected loop liveness errors");
+        assert(count_diag_code(result, "TYP-0150") == 5, "expected five use-after-drop diagnostics");
+        assert(count_diag_code(result, "TYP-0010") == 3, "expected conservative loop return diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests loop liveness paths that should remain usable after the loop. */
+func test_typing_loop_liveness_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_loop_liveness_ok", cfg);
+        assert(!analysis_has_errors(result), "expected loop liveness ok fixture to pass");
+        assert(!has_diag_code(result, "TYP-0150"), "did not expect use-after-drop diagnostics");
+        assert(!has_diag_code(result, "TYP-0062"), "did not expect dropped-variable diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests definite-return flow through with statements and for initialization. */
+func test_typing_with_return_flow_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_with_return_flow_ok", cfg);
+        assert(!analysis_has_errors(result), "expected with/header returns to satisfy function flow");
+        assert(!has_diag_code(result, "TYP-0010"), "did not expect missing-return diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests inline cleanup loop control overriding a header return. */
+func test_typing_with_return_flow_override() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_with_return_flow_override", cfg);
+        assert(!analysis_has_errors(result), "did not expect errors for cleanup loop-control override");
+        assert(count_diag_code(result, "TYP-0030") == 2, "expected unreachable warnings after cleanup loop control");
+        assert(!has_diag_code(result, "TYP-0031"), "did not expect return-unreachable warnings");
+        assert(!has_diag_code(result, "TYP-0010"), "did not expect missing-return diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
 /**
  * Main entry point for the module.
  */
@@ -698,5 +750,9 @@ func main() {
     test_typing_new_err();
     test_typing_drop_err();
     test_typing_drop_flow_err();
+    test_typing_loop_liveness_err();
+    test_typing_loop_liveness_ok();
+    test_typing_with_return_flow_ok();
+    test_typing_with_return_flow_override();
     printl_s("expr_types_test: all tests passed");
 }

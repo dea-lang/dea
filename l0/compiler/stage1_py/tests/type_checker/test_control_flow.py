@@ -123,6 +123,288 @@ def test_continue_inside_for_loop_ok(analyze_single):
     assert not result.has_errors()
 
 
+def test_for_header_loop_control_requires_outer_loop(analyze_single):
+    """Header loop control is outside the loop being initialized."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func f() -> int {
+            for (break; true; continue) {
+            }
+            return 0;
+        }
+        """,
+    )
+
+    assert has_error_code(result.diagnostics, "TYP-0110")
+    assert has_error_code(result.diagnostics, "TYP-0120")
+
+
+def test_for_header_loop_control_accepts_outer_loop(analyze_single):
+    """An enclosing loop makes init/update loop control valid."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func f() -> int {
+            let outer: int = 0;
+            while (outer < 2) {
+                outer = outer + 1;
+                for (continue; false; break) {
+                }
+            }
+            return outer;
+        }
+        """,
+    )
+
+    assert not result.has_errors()
+
+
+def test_loop_body_revival_is_not_definite_after_zero_iterations(analyze_single):
+    """A loop body cannot revive a dropped value on the zero-iteration path."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f() -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            while (false) {
+                p = new Box(2);
+            }
+            return p.value;
+        }
+        """,
+    )
+
+    assert has_error_code(result.diagnostics, "TYP-0150")
+
+
+def test_loop_fixed_point_rejects_second_iteration_use_after_drop(analyze_single):
+    """Backedge liveness is applied to uses at the next iteration head."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f() -> int {
+            let p: Box* = new Box(1);
+            let i: int = 0;
+            while (i < 2) {
+                i = i + p.value;
+                drop p;
+            }
+            return 0;
+        }
+        """,
+    )
+
+    assert has_error_code(result.diagnostics, "TYP-0150")
+
+
+def test_assignment_rhs_cannot_read_dropped_target(analyze_single):
+    """Revival happens after evaluating the assignment RHS."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f() -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            p = p;
+            return 0;
+        }
+        """,
+    )
+
+    assert has_error_code(result.diagnostics, "TYP-0150")
+
+
+def test_unreachable_assignment_after_break_cannot_revive_loop_liveness(analyze_single):
+    """Unreachable statements after break cannot affect post-loop liveness."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f() -> int {
+            let p: Box* = new Box(1);
+            while (true) {
+                drop p;
+                break;
+                p = new Box(2);
+            }
+            return p.value;
+        }
+        """,
+    )
+
+    assert has_error_code(result.diagnostics, "TYP-0030")
+    assert has_error_code(result.diagnostics, "TYP-0150")
+
+
+def test_unreachable_assignment_after_continue_cannot_revive_loop_liveness(analyze_single):
+    """Unreachable statements after continue cannot affect backedge liveness."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f() -> int {
+            let p: Box* = new Box(1);
+            let i: int = 0;
+            while (i < 2) {
+                i = i + 1;
+                drop p;
+                continue;
+                p = new Box(2);
+            }
+            return p.value;
+        }
+        """,
+    )
+
+    assert has_error_code(result.diagnostics, "TYP-0030")
+    assert has_error_code(result.diagnostics, "TYP-0150")
+
+
+def test_returning_loop_exit_does_not_poison_post_loop_liveness(analyze_single):
+    """A returned path does not reach statements after the loop."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f(flag: bool) -> int {
+            let p: Box* = new Box(1);
+            while (flag) {
+                drop p;
+                return 0;
+            }
+            return p.value;
+        }
+        """,
+    )
+
+    assert not has_error_code(result.diagnostics, "TYP-0150")
+    assert not has_error_code(result.diagnostics, "TYP-0062")
+
+
+def test_for_header_break_does_not_apply_unexecuted_body_liveness(analyze_single):
+    """A for-header break exits before the for body can mutate liveness."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f() -> int {
+            let p: Box* = new Box(1);
+            while (true) {
+                for (break; false;) {
+                    drop p;
+                }
+            }
+            return p.value;
+        }
+        """,
+    )
+
+    assert not has_error_code(result.diagnostics, "TYP-0150")
+    assert not has_error_code(result.diagnostics, "TYP-0062")
+
+
+def test_loops_do_not_satisfy_required_return_policy(analyze_single):
+    """Conservative return analysis does not treat loop bodies as proof."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func infinite_while() -> int {
+            while (true) {
+                return 1;
+            }
+        }
+        func infinite_for() -> int {
+            for (;;) {
+                return 2;
+            }
+        }
+        func conditional(flag: bool) -> int {
+            while (flag) {
+                return 3;
+            }
+        }
+        """,
+    )
+
+    assert sum("TYP-0010" in d.message for d in result.diagnostics) == 3
+
+
+def test_with_header_and_cleanup_returns_satisfy_function_flow(analyze_single):
+    """All established with-return forms participate in definite return."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func header() -> int {
+            with (return 1 => null) {
+            }
+        }
+        func inline_cleanup() -> int {
+            with (let marker: int = 0 => return 2) {
+            }
+        }
+        func cleanup_block() -> int {
+            with (let marker: int = 0) {
+            } cleanup {
+                return 3;
+            }
+        }
+        func main() -> int { return 0; }
+        """,
+    )
+
+    assert not has_error_code(result.diagnostics, "TYP-0010")
+
+
+def test_with_registered_cleanup_loop_control_overrides_header_return(analyze_single):
+    """Registered break/continue cleanup overrides a pending with-header return."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        func break_cleanup_overrides_header_return() -> int {
+            while (true) {
+                with (let marker: int = 0 => break, return 1 => null) {
+                }
+                return 2;
+            }
+            return 3;
+        }
+        func continue_cleanup_overrides_header_return() -> int {
+            let i: int = 0;
+            while (i < 1) {
+                i = i + 1;
+                with (let marker: int = 0 => continue, return 1 => null) {
+                }
+                return 2;
+            }
+            return 3;
+        }
+        func main() -> int { return 0; }
+        """,
+    )
+
+    assert not result.has_errors()
+    assert sum("TYP-0030" in d.message for d in result.diagnostics) == 2
+    assert not has_error_code(result.diagnostics, "TYP-0031")
+    assert not has_error_code(result.diagnostics, "TYP-0010")
+
+
 def test_unreachable_warning_after_unconditional_continue(analyze_single):
     """Unconditional continue should mark the following statement unreachable."""
     result = analyze_single(

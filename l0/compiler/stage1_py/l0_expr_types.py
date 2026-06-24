@@ -3,7 +3,8 @@
 
 """Expression-level type checking for the L0 compiler."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, Optional, List, Set, Tuple
 
 from l0_analysis import AnalysisResult, VarRefResolution
@@ -32,6 +33,22 @@ from l0_types import (
     NullType,
     get_null_type,
     format_type, )
+
+
+class StmtFlow(Enum):
+    """Reachability after checking a statement or block."""
+
+    FALLTHROUGH = "fallthrough"
+    RETURNS = "returns"
+    STOPS = "stops"
+
+
+@dataclass
+class LoopFlowCapture:
+    """Liveness states for loop-control exits from one loop body."""
+
+    break_states: List[List[Dict[str, bool]]] = field(default_factory=list)
+    continue_states: List[List[Dict[str, bool]]] = field(default_factory=list)
 
 
 @dataclass
@@ -83,6 +100,9 @@ class ExpressionTypeChecker:
         self._return_paths: bool = False  # does current path guarantee a return?
         self._breakable_loop_depth: int = 0  # depth of loops allowing 'break'/'continue'
         self._next_stmt_unreachable: bool = False  # is next statement unreachable?
+        self._suppress_diagnostics: bool = False
+        self._liveness_diagnostics_only: bool = False
+        self._loop_flow_capture_stack: List[LoopFlowCapture] = []
         # Stack of guards for cleanup-block references to header vars that may
         # be uninitialized on header `?` failure paths.
         self._cleanup_header_ref_guard_stack: List[Tuple[int, Set[str]]] = []
@@ -314,7 +334,131 @@ class ExpressionTypeChecker:
                 scope[name] = alive
                 return
 
-    def _check_block(self, block: Block, *, check_return_paths: bool = False, push_new_scope: bool = True) -> None:
+    def _clone_alive_scopes(self) -> List[Dict[str, bool]]:
+        """Clone the current definite-liveness stack."""
+        return [dict(scope) for scope in self._alive_scopes]
+
+    def _meet_alive_scopes(self, *states: List[Dict[str, bool]]) -> None:
+        """Keep a binding alive only when every incoming state keeps it alive."""
+        self._alive_scopes = self._meet_alive_state(*states)
+
+    def _meet_alive_state(self, *states: List[Dict[str, bool]]) -> List[Dict[str, bool]]:
+        """Return the definite-liveness meet of several states."""
+        if not states:
+            return self._clone_alive_scopes()
+        merged = [dict(scope) for scope in states[0]]
+        for scope_index, scope in enumerate(merged):
+            for name in scope:
+                scope[name] = all(
+                    scope_index < len(state)
+                    and state[scope_index].get(name, False)
+                    for state in states
+                )
+        return merged
+
+    def _check_update_from_backedge_states(
+        self,
+        update: Optional[Stmt],
+        states: List[List[Dict[str, bool]]],
+    ) -> List[List[Dict[str, bool]]]:
+        """Check a for-update statement from all reachable body backedges."""
+        if not states:
+            if update is not None:
+                saved_alive = self._clone_alive_scopes()
+                saved_unreachable = self._next_stmt_unreachable
+                self._next_stmt_unreachable = False
+                self._check_stmt(update)
+                self._alive_scopes = saved_alive
+                self._next_stmt_unreachable = saved_unreachable
+            return []
+        if update is None:
+            return [[dict(scope) for scope in state] for state in states]
+
+        self._alive_scopes = self._meet_alive_state(*states)
+        update_flow = self._check_stmt(update)
+        if update_flow is StmtFlow.FALLTHROUGH:
+            return [self._clone_alive_scopes()]
+        return []
+
+    def _check_loop_iteration(
+        self,
+        body: Block,
+        *,
+        cond: Optional[Expr] = None,
+        update: Optional[Stmt] = None,
+        check_return_paths: bool = False,
+    ) -> Tuple[LoopFlowCapture, List[List[Dict[str, bool]]], StmtFlow]:
+        """Check one loop iteration and return captured flow states."""
+        if cond is not None:
+            self._infer_expr(cond)
+
+        capture = LoopFlowCapture()
+        self._loop_flow_capture_stack.append(capture)
+        self._breakable_loop_depth += 1
+        try:
+            body_flow = self._check_block(body, check_return_paths=check_return_paths)
+        finally:
+            self._breakable_loop_depth -= 1
+            self._loop_flow_capture_stack.pop()
+
+        backedge_states = [[dict(scope) for scope in state] for state in capture.continue_states]
+        if body_flow is StmtFlow.FALLTHROUGH:
+            backedge_states.append(self._clone_alive_scopes())
+        backedge_states = self._check_update_from_backedge_states(update, backedge_states)
+        return capture, backedge_states, body_flow
+
+    def _loop_liveness_fixed_point(
+        self,
+        pre_loop: List[Dict[str, bool]],
+        body: Block,
+        *,
+        cond: Optional[Expr] = None,
+        update: Optional[Stmt] = None,
+    ) -> Tuple[List[Dict[str, bool]], LoopFlowCapture, List[List[Dict[str, bool]]]]:
+        """Converge loop-head liveness and diagnose later-iteration uses."""
+        head = self._clone_alive_scopes()
+        saved_unreachable = self._next_stmt_unreachable
+        while True:
+            self._alive_scopes = [dict(scope) for scope in head]
+            old_suppress = self._suppress_diagnostics
+            self._suppress_diagnostics = True
+            try:
+                _, backedge_states, _ = self._check_loop_iteration(
+                    body,
+                    cond=cond,
+                    update=update,
+                )
+            finally:
+                self._suppress_diagnostics = old_suppress
+                self._next_stmt_unreachable = saved_unreachable
+            next_head = self._meet_alive_state(pre_loop, *backedge_states)
+            if next_head == head:
+                head = next_head
+                break
+            head = next_head
+
+        self._alive_scopes = [dict(scope) for scope in head]
+        old_liveness_only = self._liveness_diagnostics_only
+        self._liveness_diagnostics_only = True
+        try:
+            capture, backedge_states, _ = self._check_loop_iteration(
+                body,
+                cond=cond,
+                update=update,
+            )
+        finally:
+            self._liveness_diagnostics_only = old_liveness_only
+            self._next_stmt_unreachable = saved_unreachable
+        self._alive_scopes = head
+        return head, capture, backedge_states
+
+    def _check_block(
+        self,
+        block: Block,
+        *,
+        check_return_paths: bool = False,
+        push_new_scope: bool = True,
+    ) -> StmtFlow:
         """Check a block of statements.
 
         Args:
@@ -327,8 +471,14 @@ class ExpressionTypeChecker:
         try:
             unreachable_warning_issued = False
             guarantees_return = False
+            block_flow = StmtFlow.FALLTHROUGH
             check_or_not = check_return_paths
             for stmt in block.stmts:
+                unreachable_before_stmt = guarantees_return or self._next_stmt_unreachable
+                pre_unreachable_alive = self._clone_alive_scopes()
+                active_capture = self._loop_flow_capture_stack[-1] if self._loop_flow_capture_stack else None
+                pre_break_count = len(active_capture.break_states) if active_capture is not None else 0
+                pre_continue_count = len(active_capture.continue_states) if active_capture is not None else 0
                 # Check for unreachable code after a guaranteed return
                 if guarantees_return and not unreachable_warning_issued:
                     self._warn(stmt, "[TYP-0031] unreachable code after 'return'")
@@ -337,21 +487,34 @@ class ExpressionTypeChecker:
                     self._warn(stmt, "[TYP-0030] unreachable code")
                     unreachable_warning_issued = True
                 # Check the statement
-                self._check_stmt(stmt, check_return_paths=check_or_not)
+                stmt_flow = self._check_stmt(stmt, check_return_paths=check_or_not)
+                if unreachable_before_stmt:
+                    self._alive_scopes = pre_unreachable_alive
+                    if active_capture is not None:
+                        del active_capture.break_states[pre_break_count:]
+                        del active_capture.continue_states[pre_continue_count:]
+                    continue
                 # Update return path tracking
                 if check_return_paths:
                     guarantees_return = guarantees_return or self._return_paths
                     if guarantees_return:
                         check_or_not = False  # no need to check further statements
+                if stmt_flow is StmtFlow.RETURNS:
+                    block_flow = StmtFlow.RETURNS
+                elif stmt_flow is StmtFlow.STOPS:
+                    block_flow = StmtFlow.STOPS
+                if stmt_flow is not StmtFlow.FALLTHROUGH:
+                    self._next_stmt_unreachable = True
 
             if check_return_paths:
                 self._return_paths = guarantees_return
+            return block_flow
         finally:
             self._next_stmt_unreachable = False  # reset for outer scope
             if push_new_scope:
                 self._pop_scope()
 
-    def _check_stmt(self, stmt: Stmt, *, check_return_paths: bool = False) -> None:
+    def _check_stmt(self, stmt: Stmt, *, check_return_paths: bool = False) -> StmtFlow:
         """Check a single statement.
 
         Args:
@@ -366,11 +529,11 @@ class ExpressionTypeChecker:
             self._check_return(stmt)
             if check_return_paths:
                 self._return_paths = True
-            return None
+            return StmtFlow.RETURNS
 
         if isinstance(stmt, ExprStmt):
             self._infer_expr(stmt.expr)
-            return None
+            return StmtFlow.FALLTHROUGH
 
         if isinstance(stmt, LetStmt):
             annot_ty = None  # type from annotation (if any)
@@ -381,10 +544,10 @@ class ExpressionTypeChecker:
                 annot_ty = self._resolve_type_ref(stmt.type)
                 if annot_ty is None:  # error in type ref
                     self._error(stmt.type, f"[TYP-0040] cannot resolve type annotation for variable '{stmt.name}'")
-                    return None
+                    return StmtFlow.FALLTHROUGH
                 if annot_ty is get_builtin_type("void"):
                     self._error(stmt, "[TYP-0050] variable cannot have type 'void'")
-                    return None
+                    return StmtFlow.FALLTHROUGH
                 # Infer initializer type in the context of annotation
                 value_ty = self._infer_expr(stmt.value,
                                             widening_type=annot_ty,
@@ -392,12 +555,12 @@ class ExpressionTypeChecker:
                                             context_descriptor=f"initializer for variable '{stmt.name}'")
                 if value_ty is None:
                     # Error already reported by _infer_expr
-                    return None
+                    return StmtFlow.FALLTHROUGH
 
             # When widening_type is provided, _infer_expr already checks compatibility
             if annot_ty is not None:
                 self._declare_local(stmt.name, annot_ty, stmt)
-                return None
+                return StmtFlow.FALLTHROUGH
 
             # No annotation: infer from initializer
             value_ty = self._infer_expr(stmt.value, context_descriptor=f"initializer for variable '{stmt.name}'")
@@ -405,35 +568,49 @@ class ExpressionTypeChecker:
             # Type inference
             if value_ty is None:
                 # Error in expression, can't infer (should have been reported already)
-                return self._error(stmt, f"[TYP-0051] initializer for '{stmt.name}' type mismatch")
+                self._error(stmt, f"[TYP-0051] initializer for '{stmt.name}' type mismatch")
+                return StmtFlow.FALLTHROUGH
             elif isinstance(value_ty, NullType):
-                return self._error(stmt, "[TYP-0052] cannot infer type from 'null'; explicit type required")
+                self._error(stmt, "[TYP-0052] cannot infer type from 'null'; explicit type required")
+                return StmtFlow.FALLTHROUGH
             elif self._is_void(value_ty):
-                return self._error(stmt.value, "[TYP-0053] initializer is 'void', cannot assign to variable")
+                self._error(stmt.value, "[TYP-0053] initializer is 'void', cannot assign to variable")
+                return StmtFlow.FALLTHROUGH
             else:
                 self._declare_local(stmt.name, value_ty, stmt)
 
-            return None
+            return StmtFlow.FALLTHROUGH
 
         if isinstance(stmt, AssignStmt):
-            # Flow-sensitive: assignment re-validates a dropped variable
+            # A bare assignment target may revive a dropped variable, but the
+            # old value remains dead while the RHS is evaluated.
+            prior_alive = None
             if isinstance(stmt.target, VarRef):
+                prior_alive = self._lookup_alive(stmt.target.name)
                 self._set_alive(stmt.target.name, True)
 
             # Infer target type first, then use it as context for value
             target_ty = self._infer_expr(stmt.target)
 
+            if isinstance(stmt.target, VarRef) and prior_alive is not None:
+                self._set_alive(stmt.target.name, prior_alive)
+
             if target_ty is not None:
                 # Use target type as widening context for the value
-                self._infer_expr(stmt.value,
-                                 widening_type=target_ty,
-                                 context_code="TYP-0311",
-                                 context_descriptor=f"assignment to {self._describe_lvalue(stmt.target)}")
+                value_ty = self._infer_expr(
+                    stmt.value,
+                    widening_type=target_ty,
+                    context_code="TYP-0311",
+                    context_descriptor=f"assignment to {self._describe_lvalue(stmt.target)}",
+                )
             else:
                 # Target type inference failed, still check value for errors
-                self._infer_expr(stmt.value)
+                value_ty = self._infer_expr(stmt.value)
 
-            return None
+            if isinstance(stmt.target, VarRef) and value_ty is not None:
+                self._set_alive(stmt.target.name, True)
+
+            return StmtFlow.FALLTHROUGH
 
         if isinstance(stmt, DropStmt):
             var_ty = self._lookup_local(stmt.name)
@@ -446,23 +623,23 @@ class ExpressionTypeChecker:
                 )
                 if sym_result.symbol is not None and sym_result.symbol.kind is SymbolKind.LET:
                     self._error(stmt, f"[TYP-0063] cannot drop module-level let '{stmt.name}'")
-                    return None
+                    return StmtFlow.FALLTHROUGH
                 self._error(stmt, f"[TYP-0060] unknown variable '{stmt.name}'")
-                return None
+                return StmtFlow.FALLTHROUGH
 
             is_ptr = isinstance(var_ty, PointerType)
             is_opt_ptr = isinstance(var_ty, NullableType) and isinstance(var_ty.inner, PointerType)
             if not (is_ptr or is_opt_ptr):
                 self._error(stmt, f"[TYP-0061] cannot drop non-pointer type '{format_type(var_ty)}'")
-                return None
+                return StmtFlow.FALLTHROUGH
 
             alive = self._lookup_alive(stmt.name)
             if alive is False:
                 self._error(stmt, f"[TYP-0062] use of dropped variable '{stmt.name}'")
-                return None
+                return StmtFlow.FALLTHROUGH
 
             self._set_alive(stmt.name, False)
-            return None
+            return StmtFlow.FALLTHROUGH
 
         if isinstance(stmt, IfStmt):
             cond_ty = self._infer_expr(stmt.cond, context_descriptor="condition in if statement")
@@ -475,7 +652,7 @@ class ExpressionTypeChecker:
 
             # then branch
             self._next_stmt_unreachable = False
-            self._check_stmt(stmt.then_stmt, check_return_paths=check_return_paths)
+            then_flow = self._check_stmt(stmt.then_stmt, check_return_paths=check_return_paths)
             then_alive = [dict(scope) for scope in self._alive_scopes]
             then_returns = self._return_paths
             then_unreachable = self._next_stmt_unreachable
@@ -483,21 +660,33 @@ class ExpressionTypeChecker:
             # else branch
             else_returns = False
             else_unreachable = False
+            else_flow = StmtFlow.FALLTHROUGH
+            fallthrough_states: List[List[Dict[str, bool]]] = []
+            if then_flow is StmtFlow.FALLTHROUGH:
+                fallthrough_states.append(then_alive)
             if stmt.else_stmt is not None:
                 # Restore pre-if liveness
                 self._alive_scopes = [dict(scope) for scope in pre_alive]
                 self._next_stmt_unreachable = False
-                self._check_stmt(stmt.else_stmt, check_return_paths=check_return_paths)
+                else_flow = self._check_stmt(stmt.else_stmt, check_return_paths=check_return_paths)
                 else_alive = [dict(scope) for scope in self._alive_scopes]
                 else_returns = self._return_paths
                 else_unreachable = self._next_stmt_unreachable
+                if else_flow is StmtFlow.FALLTHROUGH:
+                    fallthrough_states.append(else_alive)
+            else:
+                # Without an else, the false branch falls through unchanged.
+                fallthrough_states.append(pre_alive)
 
-                # Merge then/else liveness
-                for scope_index in range(len(self._alive_scopes)):
-                    for var_name in self._alive_scopes[scope_index]:
-                        then_var_alive = then_alive[scope_index].get(var_name, True)
-                        else_var_alive = else_alive[scope_index].get(var_name, True)
-                        self._alive_scopes[scope_index][var_name] = then_var_alive and else_var_alive
+            if fallthrough_states:
+                self._alive_scopes = self._meet_alive_state(*fallthrough_states)
+                stmt_flow = StmtFlow.FALLTHROUGH
+            elif then_flow is StmtFlow.RETURNS and else_flow is StmtFlow.RETURNS:
+                self._alive_scopes = [dict(scope) for scope in pre_alive]
+                stmt_flow = StmtFlow.RETURNS
+            else:
+                self._alive_scopes = [dict(scope) for scope in pre_alive]
+                stmt_flow = StmtFlow.STOPS
 
             if check_return_paths:
                 # An if-else guarantees a return only if BOTH branches do.
@@ -511,36 +700,89 @@ class ExpressionTypeChecker:
             else:
                 self._next_stmt_unreachable = False
 
-            return None
+            return stmt_flow
 
         if isinstance(stmt, WhileStmt):
             cond_ty = self._infer_expr(stmt.cond, context_descriptor="condition in while loop")
             if cond_ty is not None and not self._is_bool(cond_ty):
                 self._error(stmt, "[TYP-0080] while condition must have type 'bool'")
 
-            self._breakable_loop_depth += 1
-            self._check_block(stmt.body, check_return_paths=check_return_paths)
-            self._breakable_loop_depth -= 1
-            return None
+            pre_alive = self._clone_alive_scopes()
+            capture, backedge_states, _ = self._check_loop_iteration(
+                stmt.body,
+                cond=stmt.cond,
+                check_return_paths=check_return_paths,
+            )
+            next_head = self._meet_alive_state(pre_alive, *backedge_states)
+            if next_head != pre_alive:
+                _, capture, backedge_states = self._loop_liveness_fixed_point(
+                    pre_alive,
+                    stmt.body,
+                    cond=stmt.cond,
+                )
+            after_states = [pre_alive, *capture.break_states, *backedge_states]
+            self._alive_scopes = self._meet_alive_state(*after_states)
+            if check_return_paths:
+                self._return_paths = False
+            return StmtFlow.FALLTHROUGH
 
         if isinstance(stmt, ForStmt):
             self._push_scope()
             try:
+                init_returns = False
+                init_flow = StmtFlow.FALLTHROUGH
                 if stmt.init:
-                    self._check_stmt(stmt.init)
+                    init_flow = self._check_stmt(stmt.init, check_return_paths=check_return_paths)
+                    init_returns = self._return_paths if check_return_paths else False
 
                 if stmt.cond:
                     cond_ty = self._infer_expr(stmt.cond)
                     if cond_ty is not None and not self._is_bool(cond_ty):
                         self._error(stmt, "[TYP-0090] for loop condition must have type 'bool'")
 
-                if stmt.update:
-                    self._check_stmt(stmt.update)
+                pre_loop_alive = self._clone_alive_scopes()
+                if init_flow is not StmtFlow.FALLTHROUGH:
+                    active_capture = self._loop_flow_capture_stack[-1] if self._loop_flow_capture_stack else None
+                    pre_break_count = len(active_capture.break_states) if active_capture is not None else 0
+                    pre_continue_count = len(active_capture.continue_states) if active_capture is not None else 0
+                    saved_unreachable = self._next_stmt_unreachable
+                    try:
+                        self._next_stmt_unreachable = False
+                        self._check_loop_iteration(
+                            stmt.body,
+                            cond=stmt.cond,
+                            update=stmt.update,
+                            check_return_paths=False,
+                        )
+                    finally:
+                        self._alive_scopes = [dict(scope) for scope in pre_loop_alive]
+                        self._next_stmt_unreachable = saved_unreachable
+                        if active_capture is not None:
+                            del active_capture.break_states[pre_break_count:]
+                            del active_capture.continue_states[pre_continue_count:]
+                    if check_return_paths:
+                        self._return_paths = init_returns
+                    return init_flow
 
-                self._breakable_loop_depth += 1
-                self._check_block(stmt.body, check_return_paths=check_return_paths)
-                self._breakable_loop_depth -= 1
-                return None
+                capture, backedge_states, _ = self._check_loop_iteration(
+                    stmt.body,
+                    cond=stmt.cond,
+                    update=stmt.update,
+                    check_return_paths=check_return_paths,
+                )
+                next_head = self._meet_alive_state(pre_loop_alive, *backedge_states)
+                if next_head != pre_loop_alive:
+                    _, capture, backedge_states = self._loop_liveness_fixed_point(
+                        pre_loop_alive,
+                        stmt.body,
+                        cond=stmt.cond,
+                        update=stmt.update,
+                    )
+                after_states = [pre_loop_alive, *capture.break_states, *backedge_states]
+                self._alive_scopes = self._meet_alive_state(*after_states)
+                if check_return_paths:
+                    self._return_paths = init_returns
+                return StmtFlow.FALLTHROUGH
             finally:
                 self._pop_scope()
 
@@ -558,6 +800,10 @@ class ExpressionTypeChecker:
 
             seen_literals: Dict[object, Expr] = {}
             all_arms_return = len(stmt.arms) + (1 if stmt.else_arm is not None else 0) > 0
+            pre_case_alive = self._clone_alive_scopes()
+            pre_case_unreachable = self._next_stmt_unreachable
+            pre_case_return_paths = self._return_paths
+            fallthrough_states: List[List[Dict[str, bool]]] = []
 
             for arm in stmt.arms:
                 literal_info = self._case_literal_info(arm.literal)
@@ -580,39 +826,63 @@ class ExpressionTypeChecker:
                         else:
                             seen_literals[literal_value] = arm.literal
 
+                self._alive_scopes = [dict(scope) for scope in pre_case_alive]
+                self._next_stmt_unreachable = False
+                self._return_paths = False
+                arm_flow = StmtFlow.FALLTHROUGH
                 self._push_scope()
                 try:
-                    this_arm_returns = False
                     check_or_not = check_return_paths
                     if isinstance(arm.body, Block):
-                        self._check_block(arm.body, check_return_paths=check_or_not, push_new_scope=False)
+                        arm_flow = self._check_block(arm.body, check_return_paths=check_or_not, push_new_scope=False)
                     else:
-                        self._check_stmt(arm.body, check_return_paths=check_or_not)
-                    if check_return_paths:
-                        this_arm_returns = self._return_paths
+                        arm_flow = self._check_stmt(arm.body, check_return_paths=check_or_not)
+                    this_arm_returns = arm_flow is StmtFlow.RETURNS
                     all_arms_return = all_arms_return and this_arm_returns
                 finally:
                     self._pop_scope()
+                if arm_flow is StmtFlow.FALLTHROUGH:
+                    fallthrough_states.append(self._clone_alive_scopes())
 
+            else_arm_flow = StmtFlow.FALLTHROUGH
             if stmt.else_arm is not None:
+                self._alive_scopes = [dict(scope) for scope in pre_case_alive]
+                self._next_stmt_unreachable = False
+                self._return_paths = False
+                else_arm_flow = StmtFlow.FALLTHROUGH
                 self._push_scope()
                 try:
-                    this_arm_returns = False
                     check_or_not = check_return_paths
                     if isinstance(stmt.else_arm.body, Block):
-                        self._check_block(stmt.else_arm.body, check_return_paths=check_or_not, push_new_scope=False)
+                        else_arm_flow = self._check_block(
+                            stmt.else_arm.body,
+                            check_return_paths=check_or_not,
+                            push_new_scope=False,
+                        )
                     else:
-                        self._check_stmt(stmt.else_arm.body, check_return_paths=check_or_not)
-                    if check_return_paths:
-                        this_arm_returns = self._return_paths
+                        else_arm_flow = self._check_stmt(stmt.else_arm.body, check_return_paths=check_or_not)
+                    this_arm_returns = else_arm_flow is StmtFlow.RETURNS
                     all_arms_return = all_arms_return and this_arm_returns
                 finally:
                     self._pop_scope()
+                if else_arm_flow is StmtFlow.FALLTHROUGH:
+                    fallthrough_states.append(self._clone_alive_scopes())
+            else:
+                fallthrough_states.append([dict(scope) for scope in pre_case_alive])
 
             if check_return_paths:
                 self._return_paths = stmt.else_arm is not None and all_arms_return
+            else:
+                self._return_paths = pre_case_return_paths
 
-            return None
+            if stmt.else_arm is not None and all_arms_return:
+                self._alive_scopes = [dict(scope) for scope in pre_case_alive]
+                self._next_stmt_unreachable = pre_case_unreachable
+                return StmtFlow.RETURNS
+            if fallthrough_states:
+                self._alive_scopes = self._meet_alive_state(*fallthrough_states)
+            self._next_stmt_unreachable = pre_case_unreachable
+            return StmtFlow.FALLTHROUGH
 
         if isinstance(stmt, MatchStmt):
             # Type the scrutinee
@@ -620,7 +890,7 @@ class ExpressionTypeChecker:
 
             if not isinstance(scrutinee_ty, EnumType):
                 self._error(stmt, f"[TYP-0100] match expression must have enum type, got '{format_type(scrutinee_ty)}'")
-                return None
+                return StmtFlow.FALLTHROUGH
 
             all_arms_return = len(stmt.arms) > 0  # False if no arms
 
@@ -710,9 +980,11 @@ class ExpressionTypeChecker:
                     this_arm_returns = False
 
                     check_or_not = check_return_paths
-                    self._check_block(arm.body, check_return_paths=check_or_not, push_new_scope=False)
+                    arm_flow = self._check_block(arm.body, check_return_paths=check_or_not, push_new_scope=False)
                     if check_return_paths:
                         this_arm_returns = self._return_paths
+                    else:
+                        this_arm_returns = arm_flow is StmtFlow.RETURNS
 
                     all_arms_return = all_arms_return and this_arm_returns
 
@@ -722,7 +994,7 @@ class ExpressionTypeChecker:
             enum_info = self.enum_infos.get((scrutinee_ty.module, scrutinee_ty.name))
             if not enum_info:
                 self._error(stmt, f"[TYP-0103] no type information for enum '{format_type(scrutinee_ty)}'")
-                return None
+                return StmtFlow.FALLTHROUGH
 
             # check that all variants are covered (or wildcard present)
             arm_variants = set(arm.pattern.name for arm in stmt.arms if isinstance(arm.pattern, VariantPattern))
@@ -749,7 +1021,9 @@ class ExpressionTypeChecker:
                 # A match guarantees a return if it is exhaustive AND all arms return.
                 self._return_paths = is_exhaustive and all_arms_return
 
-            return None
+            if is_exhaustive and all_arms_return:
+                return StmtFlow.RETURNS
+            return StmtFlow.FALLTHROUGH
 
         if isinstance(stmt, WithStmt):
             # Type-check items sequentially in a new scope
@@ -757,10 +1031,24 @@ class ExpressionTypeChecker:
             try:
                 seen_header_try = False
                 maybe_uninit_nonnullable: Set[str] = set()
+                header_returns = False
 
-                for item in stmt.items:
+                for item_index, item in enumerate(stmt.items):
                     init_has_try = self._stmt_contains_try(item.init)
-                    self._check_stmt(item.init)
+                    self._check_stmt(item.init, check_return_paths=check_return_paths)
+
+                    if check_return_paths and isinstance(item.init, ReturnStmt):
+                        override = None
+                        if stmt.cleanup_body is None:
+                            for registered in reversed(stmt.items[:item_index + 1]):
+                                cleanup = registered.cleanup
+                                if isinstance(cleanup, ReturnStmt):
+                                    override = "return"
+                                    break
+                                if isinstance(cleanup, (BreakStmt, ContinueStmt)):
+                                    override = "loop"
+                                    break
+                        header_returns = override != "loop"
 
                     if init_has_try:
                         seen_header_try = True
@@ -774,47 +1062,85 @@ class ExpressionTypeChecker:
                                 maybe_uninit_nonnullable.add(item.init.name)
 
                 # Body in a nested scope
-                self._check_block(stmt.body, check_return_paths=check_return_paths)
+                body_flow = self._check_block(stmt.body, check_return_paths=check_return_paths)
+                body_returns = self._return_paths if check_return_paths else False
 
                 # Inline cleanups (=>) in reverse order (LIFO), only if reachable.
+                inline_override = None
                 for item in reversed(stmt.items):
                     if item.cleanup is not None:
-                        self._check_stmt(item.cleanup)
+                        cleanup_flow = self._check_stmt(item.cleanup, check_return_paths=check_return_paths)
+                        if inline_override is None:
+                            if cleanup_flow is StmtFlow.RETURNS:
+                                inline_override = "return"
+                            elif cleanup_flow is StmtFlow.STOPS:
+                                inline_override = "loop"
 
                 # Cleanup body in the item scope (not body scope)
+                cleanup_body_returns = False
+                cleanup_body_flow = StmtFlow.FALLTHROUGH
                 if stmt.cleanup_body is not None:
                     header_scope_index = len(self._local_scopes) - 1
                     self._cleanup_header_ref_guard_stack.append((header_scope_index, maybe_uninit_nonnullable))
                     try:
-                        self._check_block(stmt.cleanup_body)
+                        cleanup_body_flow = self._check_block(
+                            stmt.cleanup_body,
+                            check_return_paths=check_return_paths,
+                        )
+                        cleanup_body_returns = self._return_paths if check_return_paths else False
                     finally:
                         self._cleanup_header_ref_guard_stack.pop()
+
+                with_returns = False
+                if check_return_paths:
+                    if cleanup_body_returns or inline_override == "return":
+                        self._return_paths = True
+                        with_returns = True
+                    elif inline_override == "loop":
+                        self._return_paths = False
+                    else:
+                        self._return_paths = header_returns or body_returns
+                        with_returns = self._return_paths
+                elif cleanup_body_flow is StmtFlow.RETURNS or inline_override == "return":
+                    with_returns = True
+                elif inline_override is None and body_flow is StmtFlow.RETURNS:
+                    with_returns = True
+
+                if with_returns:
+                    return StmtFlow.RETURNS
+                if inline_override == "loop" or cleanup_body_flow is StmtFlow.STOPS:
+                    return StmtFlow.STOPS
+                return StmtFlow.FALLTHROUGH
             finally:
                 self._pop_scope()
-            return None
 
         # Handle standalone block statements (nested blocks)
         if isinstance(stmt, Block):
-            self._check_block(stmt, check_return_paths=check_return_paths)
-            return None
+            return self._check_block(stmt, check_return_paths=check_return_paths)
 
         if isinstance(stmt, BreakStmt):
             if self._breakable_loop_depth < 1:
                 self._error(stmt, "[TYP-0110] 'break' statement not within a loop")
+                return StmtFlow.FALLTHROUGH
             else:
+                if self._loop_flow_capture_stack:
+                    self._loop_flow_capture_stack[-1].break_states.append(self._clone_alive_scopes())
                 self._next_stmt_unreachable = True
-            return None
+            return StmtFlow.STOPS
 
         if isinstance(stmt, ContinueStmt):
             if self._breakable_loop_depth < 1:
                 self._error(stmt, "[TYP-0120] 'continue' statement not within a loop")
+                return StmtFlow.FALLTHROUGH
             else:
+                if self._loop_flow_capture_stack:
+                    self._loop_flow_capture_stack[-1].continue_states.append(self._clone_alive_scopes())
                 self._next_stmt_unreachable = True
-            return None
+            return StmtFlow.STOPS
 
         # Unknown (should not happen if AST is well-formed)
         self._error(stmt, f"[TYP-0139] unknown statement type: {type(stmt).__name__}")
-        return None
+        return StmtFlow.FALLTHROUGH
 
     # ------------------------------------------------------------------
     # Expression typing
@@ -844,9 +1170,10 @@ class ExpressionTypeChecker:
         if expr is None:
             return self._error(Expr(), "[TYP-0149] cannot infer type of None expression")
 
-        # Memoization: if we already inferred a type, reuse it.
+        # Memoization is safe for types, but a settled-loop diagnostic pass must
+        # revisit variable references under the converged liveness state.
         existing = self.expr_types.get(id(expr))
-        if existing is not None:
+        if existing is not None and not self._liveness_diagnostics_only:
             return existing
 
         result: Optional[Type]
@@ -1730,6 +2057,12 @@ class ExpressionTypeChecker:
 
     def _diagnostic(self, node: Optional[Node], message: str, kind: str = "info") -> None:
         """Internal helper to create and append a diagnostic."""
+        if self._suppress_diagnostics:
+            return
+        if self._liveness_diagnostics_only and not (
+            "[TYP-0062]" in message or "[TYP-0150]" in message
+        ):
+            return
         mod_name = None
         filename = None
         if self.cu is not None and self._current_func_env is not None:
@@ -1738,15 +2071,25 @@ class ExpressionTypeChecker:
             if mod is not None:
                 filename = mod.filename
 
-        self.diagnostics.append(
-            diag_from_node(
-                kind=kind,
-                message=message,
-                module_name=mod_name,
-                filename=filename,
-                node=node
-            )
+        diagnostic = diag_from_node(
+            kind=kind,
+            message=message,
+            module_name=mod_name,
+            filename=filename,
+            node=node,
         )
+        if self._liveness_diagnostics_only:
+            duplicate = any(
+                existing.kind == diagnostic.kind
+                and existing.message == diagnostic.message
+                and existing.filename == diagnostic.filename
+                and existing.line == diagnostic.line
+                and existing.column == diagnostic.column
+                for existing in self.diagnostics
+            )
+            if duplicate:
+                return
+        self.diagnostics.append(diagnostic)
 
     def _is_int_assignable(self, typ: Optional[Type]) -> bool:
         """Check if type is 'int' or 'byte'."""

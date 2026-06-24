@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-06-19
+Version: 2026-06-24
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -133,6 +133,7 @@ diagnostic.
 | `PAR-0142` | All     | Expected ';' after for loop initialization                               |
 | `PAR-0143` | All     | Expected ';' after for loop condition                                    |
 | `PAR-0144` | All     | Expected ')' after for loop clauses                                      |
+| `PAR-0145` | All     | Let declaration is not permitted in a for loop update clause             |
 | `PAR-0150` | All     | Expected 'return'                                                        |
 | `PAR-0160` | All     | Expected 'drop'                                                          |
 | `PAR-0161` | All     | Expected variable name after 'drop'                                      |

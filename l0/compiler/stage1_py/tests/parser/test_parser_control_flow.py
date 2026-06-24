@@ -95,6 +95,34 @@ def test_parser_for_missing_semicolons(analyze_single):
     assert has_error_code(result.diagnostics, "PAR-0143")
 
 
+def test_parser_for_update_rejects_let(analyze_single):
+    """A for update cannot introduce a local declaration."""
+    valid = analyze_single(
+        "main",
+        """
+        module main;
+        func main() -> int {
+            for (let i: int = 0; i < 3; i = i + 1) {}
+            return 0;
+        }
+        """,
+    )
+    assert not valid.has_errors()
+
+    invalid = analyze_single(
+        "main",
+        """
+        module main;
+        func main() -> int {
+            for (let i: int = 0; i < 3; let j: int = i) {}
+            return 0;
+        }
+        """,
+    )
+    assert invalid.has_errors()
+    assert has_error_code(invalid.diagnostics, "PAR-0145")
+
+
 def test_parser_match_errors(analyze_single):
     src = """
     module main;

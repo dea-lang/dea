@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-06-19
+Version: 2026-06-24
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -194,6 +194,12 @@ Current compiler behavior:
 - `continue` cleans only the current iteration body scope before control returns to the loop update/condition path
 - `return`, `break`, and `expr?` early exits run pending `with` cleanup before ordinary owned-value cleanup
 - direct return of an owned local may be treated as a move
+- `for` initialization and update execute in the surrounding loop context; header `break` / `continue` targets an
+  enclosing loop, while body loop control targets the `for` itself
+- normal `for` condition-false and body-break exits clean initialization-scope ARC values exactly once
+- drop liveness is definite across loop fixed points; assignment to a bare local revives it only after the right-hand
+  side checks successfully
+- abrupt `with` cleanup replaces the pending exit; cleanup fallthrough resumes it, and inline cleanup is LIFO
 
 ## 9. Validation and Bug Reporting
 

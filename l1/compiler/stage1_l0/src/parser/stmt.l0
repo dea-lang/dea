@@ -299,7 +299,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
             ps_expect(self, ord(TT_SEMI), "PAR-0143", "expected ';' after for loop condition")?;
             let post_value = post;
             if (!ps_check(self, ord(TT_RPAREN))) {
-                post_value = ps_parse_simple_stmt(self)?;
+                post_value = ps_parse_for_update_stmt(self)?;
             }
             ps_expect(self, ord(TT_RPAREN), "PAR-0144", "expected ')' after for loop clauses")?;
             let body = ps_parse_stmt(self)?;
@@ -315,7 +315,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
         ps_expect(self, ord(TT_SEMI), "PAR-0143", "expected ';' after for loop condition")?;
         let post_value2 = post;
         if (!ps_check(self, ord(TT_RPAREN))) {
-            post_value2 = ps_parse_simple_stmt(self)?;
+            post_value2 = ps_parse_for_update_stmt(self)?;
         }
         ps_expect(self, ord(TT_RPAREN), "PAR-0144", "expected ')' after for loop clauses")?;
         let body2 = ps_parse_stmt(self)?;
@@ -338,7 +338,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
 
         let post3 = invalid_stmt_id();
         if (!ps_check(self, ord(TT_RPAREN))) {
-            post3 = ps_parse_simple_stmt(self)?;
+            post3 = ps_parse_for_update_stmt(self)?;
         }
         ps_expect(self, ord(TT_RPAREN), "PAR-0144", "expected ')' after for loop clauses")?;
         let body3 = ps_parse_stmt(self)?;
@@ -355,7 +355,7 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
 
     let post4 = invalid_stmt_id();
     if (!ps_check(self, ord(TT_RPAREN))) {
-        post4 = ps_parse_simple_stmt(self)?;
+        post4 = ps_parse_for_update_stmt(self)?;
     }
 
     ps_expect(self, ord(TT_RPAREN), "PAR-0144", "expected ')' after for loop clauses")?;
@@ -367,6 +367,25 @@ func ps_parse_for_stmt(self: ParserState*) -> StmtId? {
     node4.stmt_b = post4;
     node4.stmt_c = body4;
     return stmt_arena_add(self.stmt_arena, node4);
+}
+
+/**
+ * Parse a statement permitted in a `for` update clause.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed update statement id, or `null` on error.
+ */
+func ps_parse_for_update_stmt(self: ParserState*) -> StmtId? {
+    if (ps_check(self, ord(TT_LET))) {
+        ps_emit_error(
+            self,
+            "PAR-0145",
+            "'let' declaration is not permitted in a for loop update clause",
+            ps_peek(self)
+        );
+        return null;
+    }
+    return ps_parse_simple_stmt(self);
 }
 
 /**

@@ -1,6 +1,6 @@
 # Dea/L<sub>0</sub> Grammar
 
-Version: 2026-06-09
+Version: 2026-06-24
 
 The following is the formal grammar for the Dea/L<sub>0</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -200,11 +200,16 @@ Stmt            ::=     Block
                   |     SimpleStmt ";"
 
 SimpleStmt      ::=     LetStmt
-                  |     AssignStmt
+                  |     NonDeclStmt
+
+NonDeclStmt     ::=     AssignStmt
                   |     BreakStmt
                   |     ContinueStmt
                   |     ReturnStmt
+                  |     DropStmt
                   |     Expr
+
+DropStmt        ::=     "drop" Ident
 ```
 
 ### 5.1 Variable declarations
@@ -231,12 +236,22 @@ IfStmt          ::=     "if" "(" Expr ")" Stmt ( "else" Stmt )?
 
 WhileStmt       ::=     "while" "(" Expr ")" Block
 
-ForStmt         ::=     "for" "(" ( SimpleStmt )? ";" ( Expr )? ";" ( SimpleStmt )? ")" Block
+ForStmt         ::=     "for" "(" ( ForInitStmt )? ";" ( Expr )? ";" ( ForUpdateStmt )? ")" Block
+
+ForInitStmt     ::=     SimpleStmt
+
+ForUpdateStmt   ::=     NonDeclStmt
 
 BreakStmt       ::=     "break" 
 
 ContinueStmt    ::=     "continue" 
 ```
+
+The initialization and update clauses execute in the surrounding loop context. A `break` or `continue` in either clause
+therefore targets an enclosing loop and is invalid when no enclosing loop exists. Only the body belongs to the new `for`
+loop. The update clause excludes `let` declarations but otherwise accepts every non-declaration simple statement.
+Definite-return analysis remains conservative: loop bodies do not prove that a function returns on every path, even for
+syntactically infinite loops such as `while (true)` or `for (;;)`.
 
 ### 5.4 Return
 

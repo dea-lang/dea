@@ -1,0 +1,29 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_loop_liveness_ok;
+
+struct Box {
+    value: int;
+}
+
+func return_excludes_dropped_path(flag: bool) -> int {
+    let p: Box* = new Box(1);
+    while (flag) {
+        drop p;
+        return 0;
+    }
+    return p.value;
+}
+
+func for_header_break_skips_body_drop() -> int {
+    let p: Box* = new Box(1);
+    while (true) {
+        for (break; false;) {
+            drop p;
+        }
+    }
+    return p.value;
+}

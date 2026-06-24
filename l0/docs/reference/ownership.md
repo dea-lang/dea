@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-05-09
+Version: 2026-06-24
 
 This document describes how ownership works in L0 today, covering:
 
@@ -221,7 +221,15 @@ The compiler ensures that ARC-managed locals are only cleaned up if they were ac
 
 - **`continue` in loops:** Cleanup only runs for variables declared within the current iteration body. The update step
   and loop condition are evaluated after iteration-scope cleanup.
+- **`for` headers:** Initialization and update execute in the surrounding loop context. Header `break` / `continue`
+  targets an enclosing loop, while body loop control targets the `for` itself. Condition-false and body-break exits
+  release initialization-scope ARC values exactly once.
+- **Drop liveness:** A pointer binding is usable only when it is alive on every path reaching the use. Loop analysis
+  converges liveness across backedges, and assignment to a bare local revives the binding only after the right-hand side
+  checks successfully.
 - **Early `return`:** All scopes up to the function top-level are cleaned in reverse order.
+- **`with` exit precedence:** Cleanup fallthrough resumes the pending exit. An abrupt cleanup replaces that exit, and
+  inline cleanup runs in LIFO order until one statement transfers control.
 - **Move optimization:** Returning a local variable (`return x;`) skips its final `release` because ownership is
   transferred to the caller.
 

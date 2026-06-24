@@ -96,6 +96,26 @@ func test_valid_module() {
 }
 
 /**
+ * Tests that `let` remains valid in a `for` initializer but is rejected in the
+ * update clause.
+ */
+func test_for_update_let_rejected() {
+    let valid = "module main; func main() -> int { for (let i: int = 0; i < 3; i = i + 1) {} return 0; }";
+    expect_ok(valid);
+
+    let non_decl_headers = "module main; " +
+        "func assign_header() -> int { let x: int = 0; for (x = 1; false; x = 2) {} return x; } " +
+        "func expr_header() -> int { let x: int = 0; for (x; false; x) {} return x; } " +
+        "func drop_header() -> int { let p: int* = new int(1); for (drop p; false; drop p) {} return 0; } " +
+        "func control_header() -> int { while (true) { for (break; false; continue) {} } return 0; } " +
+        "func return_header() -> int { for (return 0; false; return 0) {} return 0; }";
+    expect_ok(non_decl_headers);
+
+    let invalid = "module main; func main() -> int { for (let i: int = 0; i < 3; let j: int = i) {} return 0; }";
+    expect_error_code(invalid, "PAR-0145");
+}
+
+/**
  * Tests test_module_decl_error.
  */
 func test_module_decl_error() {
@@ -664,6 +684,7 @@ func test_single_unterminated_block_reports_par0091_once() {
 func main() {
     test_parser_message_omits_embedded_code();
     test_valid_module();
+    test_for_update_let_rejected();
     test_module_decl_error();
     test_reserved_variable_name_error();
     test_reserved_operator_error();

@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-04-20
+Version: 2026-06-24
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -143,8 +143,12 @@ Key points:
 - Loop cleanup is path-sensitive: `continue` cleans only the current iteration body scope before jumping to the update
   step, while `break` and `return` clean all nested scopes up to the relevant exit boundary. This ensures that ARC
   locals declared after a `continue` are not released if the `continue` path is taken before their initialization.
+- A `for` initialization or update clause executes in the surrounding loop context. Header `break` / `continue`
+  therefore targets an enclosing loop, while body loop control targets the `for` itself. Condition-false and body-break
+  exits share one cleanup point for initialization-scope ARC values.
 - For `with` cleanup-block form, nullable header lets are predeclared to `null` before initializer evaluation so
   header-failure cleanup can safely reference them.
+- An abrupt `with` cleanup replaces the pending exit; cleanup fallthrough resumes it. Inline cleanup remains LIFO.
 - Enum/struct-by-value cleanup recursively cleans owned fields of active values.
 
 ## Entry Point Behavior

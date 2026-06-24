@@ -705,13 +705,22 @@ class Parser:
         if self._check(TokenKind.RPAREN):
             post = None
         else:
-            post = self._parse_simple_stmt()
+            post = self._parse_for_update_stmt()
 
         self._expect(TokenKind.RPAREN, "[PAR-0144] expected ')' after for loop clauses")
 
         body = self._parse_block()
 
         return ForStmt(init, cond, post, body, span=self._extend_span(start))
+
+    def _parse_for_update_stmt(self) -> Stmt:
+        """Parse a statement permitted in a for-loop update clause."""
+        if self._check(TokenKind.LET):
+            self._error_bail(
+                "[PAR-0145] 'let' declaration is not permitted in a for loop update clause",
+                self._peek(),
+            )
+        return self._parse_simple_stmt()
 
     def _parse_return_stmt(self) -> ReturnStmt:
         """Parse a 'return' statement."""

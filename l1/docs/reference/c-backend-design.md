@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-06-19
+Version: 2026-06-24
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -169,6 +169,9 @@ Key rules:
 - returning an owned local may be lowered as a move
 - scope exit cleanup runs in reverse declaration order
 - early exits run pending `with` cleanup before normal owned-value cleanup
+- `for` initialization and update execute in the surrounding loop context; body loop control alone targets the new
+  `for`, and condition-false/body-break exits clean initialization-scope ARC values once
+- abrupt `with` cleanup replaces the pending exit, while cleanup fallthrough resumes it; inline cleanup remains LIFO
 - enum and struct cleanup recursively releases owned fields for active values
 - arrays whose element type transitively contains ARC-managed data participate in retain and cleanup; cleanup walks
   elements in reverse index order

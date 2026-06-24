@@ -1974,6 +1974,39 @@ def test_with_inline_return_header_preserves_lifo_order(artifact_dir: Path) -> N
     assert_equal(stdout, "b\na\n0\n", "inline return header LIFO cleanup order mismatch", artifact_dir)
 
 
+def test_for_header_outer_control_cleanup(artifact_dir: Path) -> None:
+    """For-header outer control must clean each exited scope exactly once."""
+
+    stdout, _stderr, _report, _arc = run_case(
+        "for_header_outer_control_cleanup",
+        """
+        module main;
+        import std.io;
+
+        func helper() -> int {
+            let outer: int = 0;
+            while (outer < 1) {
+                outer = outer + 1;
+                let text: string = "left" + "right";
+                for (break; false;) {
+                }
+                printl_s(text);
+            }
+            for (let scoped: string = "scope" + "value"; false;) {
+            }
+            return 0;
+        }
+
+        func main() -> int {
+            printl_i(helper());
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    assert_equal(stdout, "0\n", "for header outer-control result mismatch", artifact_dir)
+
+
 def test_with_inline_break_header_runs_cleanup(artifact_dir: Path) -> None:
     """A committed break from an inline with header must run that item's cleanup."""
 
@@ -2164,6 +2197,7 @@ def main() -> int:
         test_with_inline_return_header_evaluates_value_before_cleanup,
         test_with_inline_return_header_cleanup_return_overrides,
         test_with_inline_return_header_preserves_lifo_order,
+        test_for_header_outer_control_cleanup,
         test_with_inline_break_header_runs_cleanup,
         test_with_inline_continue_header_runs_cleanup,
         test_with_header_try_failure_runs_prior_inline_cleanup,

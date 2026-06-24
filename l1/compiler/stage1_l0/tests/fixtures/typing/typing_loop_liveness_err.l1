@@ -1,0 +1,76 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_loop_liveness_err;
+
+struct Box {
+    value: int;
+}
+
+func err_zero_iteration_revival() -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    while (false) {
+        p = new Box(2);
+    }
+    return p.value; // TYP-0150
+}
+
+func err_assignment_reads_dead_target() -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    p = p; // TYP-0150
+    return 0;
+}
+
+func err_second_iteration_use_after_drop() -> int {
+    let p: Box* = new Box(1);
+    let i: int = 0;
+    while (i < 2) {
+        i = i + p.value; // TYP-0150 on the converged backedge state
+        drop p;
+    }
+    return 0;
+}
+
+func err_unreachable_assignment_after_break() -> int {
+    let p: Box* = new Box(1);
+    while (true) {
+        drop p;
+        break;
+        p = new Box(2);
+    }
+    return p.value; // TYP-0150
+}
+
+func err_unreachable_assignment_after_continue() -> int {
+    let p: Box* = new Box(1);
+    let i: int = 0;
+    while (i < 2) {
+        i = i + 1;
+        drop p;
+        continue;
+        p = new Box(2);
+    }
+    return p.value; // TYP-0150
+}
+
+func err_infinite_while_return_policy() -> int {
+    while (true) {
+        return 1;
+    }
+}
+
+func err_infinite_for_return_policy() -> int {
+    for (;;) {
+        return 2;
+    }
+}
+
+func err_conditional_while_return_policy(flag: bool) -> int {
+    while (flag) {
+        return 3;
+    }
+}

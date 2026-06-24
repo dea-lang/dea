@@ -80,8 +80,8 @@ l0_int l0_main_main(void)
         __lcont_2:;
             i = (_rt_iadd(i, 1));
         }
+    __lbrk_1:;
     }
-__lbrk_1:;
     while (1)
     {
         l0_bool l0_cond_3 = 0;

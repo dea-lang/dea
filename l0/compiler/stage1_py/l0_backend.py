@@ -1527,15 +1527,17 @@ class Backend:
         """
         break_label = self._fresh_label("lbrk")
         continue_label = self._fresh_label("lcont")
-        self._loop_label_stack.append((break_label, continue_label))
 
         outer_scope = self._push_scope()
 
         self.emitter.emit_for_loop_start()
 
+        # The initialization clause belongs to the enclosing loop context,
+        # not to the loop being initialized.
         if stmt.init:
             self._emit_stmt(stmt.init, module_name)
 
+        self._loop_label_stack.append((break_label, continue_label))
         self.emitter.emit_while_header(self.emitter.emit_bool_literal(True))
 
         self.emitter.emit_block_start()
@@ -1547,7 +1549,9 @@ class Backend:
             self.emitter.emit_block_end()
         self.emitter.emit_block_start()
         loop_scope = self._push_scope()
-        self._loop_cleanup_scope_stack.append((loop_scope, outer_scope))
+        # Body break/continue clean the iteration scope.  The shared break
+        # label below cleans the initialization scope exactly once.
+        self._loop_cleanup_scope_stack.append((loop_scope, loop_scope))
 
         self._emit_block_sequence(stmt.body, module_name)
         body_fallthrough_reachable = not self._next_stmt_unreachable
@@ -1561,18 +1565,21 @@ class Backend:
         self._next_stmt_unreachable = False
         self.emitter.emit_label(continue_label)
 
+        # The update clause also belongs to the enclosing loop context.  A
+        # break/continue here therefore targets an outer loop, when present.
+        self._loop_label_stack.pop()
         if stmt.update:
             self._emit_stmt(stmt.update, module_name)
 
         self.emitter.emit_block_end()
 
+        self._next_stmt_unreachable = False
+        self.emitter.emit_label(break_label)
         self._emit_cleanup_at_scope_exit(outer_scope)
 
         self._pop_scope()  # Pop outer_scope
         self.emitter.emit_for_loop_end()
 
-        self.emitter.emit_label(break_label)
-        self._loop_label_stack.pop()
         self._next_stmt_unreachable = False
         return None
 

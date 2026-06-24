@@ -1,7 +1,7 @@
 # ADR-0010: `with` Statement and Deterministic Cleanup
 
 - Decision date: 2025-12-29
-- Last edited: 2026-05-20
+- Last edited: 2026-06-24
 - Status: Accepted
 
 ## Context
@@ -33,6 +33,8 @@ Semantics:
 - Cleanup runs on every exit from the body: normal fall-through, `return`, `break`, and `continue`.
 - Cleanup also runs on early exit from `with` headers caused by `?` (null propagation), but only for items that
   completed initialization before the short-circuit.
+- Cleanup fallthrough resumes the pending exit. An abrupt cleanup (`return`, valid `break`, or valid `continue`)
+  replaces that exit; inline cleanup statements execute in LIFO order until one transfers control.
 - ARC drop sequencing inside `with` bodies follows the same slot-replacement rules as ordinary assignment.
 
 ## Rationale
@@ -56,8 +58,10 @@ Semantics:
 
 ## Related Plans
 
-None (pre-plan era; several bug-fix plans addressed edge cases in ARC cleanup within `with` — see
-[l0/docs/decisions/0008-arc-ownership-model.md](0008-arc-ownership-model.md) for the related plan list).
+- `work/plans/bug-fixes/closed/2026-06-22-shared-for-header-and-statement-flow-safety-noref.md`: defines cleanup exit
+  precedence when an abrupt cleanup replaces a pending `with` exit.
+- Pre-plan ARC cleanup history is summarized from
+  [l0/docs/decisions/0008-arc-ownership-model.md](0008-arc-ownership-model.md).
 
 ## Current Docs
 
