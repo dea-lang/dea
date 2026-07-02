@@ -152,6 +152,41 @@ func test_output_flag_selection_matches_compiler_family() {
 }
 
 /**
+ * Tests test_compile_command_order_places_source_after_compiler_flags.
+ */
+func test_compile_command_order_places_source_after_compiler_flags() {
+    with (
+        let extra_opts = sv_create(1) => sv_free(extra_opts),
+        let words = sv_create(13) => sv_free(words)
+    ) {
+        sv_push(extra_opts, "-DVALUE=1");
+
+        let optimize = bd_get_optimize_flag("tcc", extra_opts);
+        assert(optimize != null && optimize as string == "-O1", "tcc default optimize flag mismatch");
+        bd_push_c_compile_command_words(
+            words,
+            "tcc",
+            "tcc",
+            extra_opts,
+            optimize,
+            "runtime/include",
+            "input.c",
+            "out.exe",
+            "runtime/lib"
+        );
+
+        assert(sv_get(words, 0) == "tcc", "compiler should be first");
+        assert(sv_get(words, 1) == "-DVALUE=1", "extra C option should precede source");
+        assert(sv_get(words, 2) == "-std=c99", "standard flag should precede source");
+        assert(sv_get(words, 5) == "-O1", "optimization flag should precede source");
+        assert(sv_get(words, 6) == "-I", "runtime include flag should precede source");
+        assert(sv_get(words, 8) == "input.c", "source path should follow compiler flags");
+        assert(sv_get(words, 9) == "-o", "output flag should follow source");
+        assert(sv_get(words, 11) == "-L", "runtime library flag should follow source");
+    }
+}
+
+/**
  * Tests test_exe_name_helpers_are_consistent.
  */
 func test_exe_name_helpers_are_consistent() {
@@ -180,6 +215,7 @@ func main() {
     test_compiler_flag_family_detection();
     test_get_optimize_flag_defaults_and_overrides();
     test_output_flag_selection_matches_compiler_family();
+    test_compile_command_order_places_source_after_compiler_flags();
     test_exe_name_helpers_are_consistent();
     printl_s("build_driver_test: all tests passed");
 }

@@ -1068,6 +1068,49 @@ func bd_push_output_flags(words: StringVector*, family: string, exe_path: string
 }
 
 /**
+ * Push a C compiler invocation into a command-word vector.
+ *
+ * @param words Command words to extend.
+ * @param compiler C compiler executable.
+ * @param family Compiler flag-family name.
+ * @param extra_opts User C compiler option words.
+ * @param optimize Selected default optimization flag, or `null`.
+ * @param runtime_include Runtime header include path, or `null`.
+ * @param c_path Generated C input path.
+ * @param exe_path Output executable path.
+ * @param uses_sys_real Whether the analyzed program imports `sys.real`.
+ * @return `true` when sys.real link flags were appended.
+ */
+func bd_push_c_compile_command_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    extra_opts: StringVector*,
+    optimize: string?,
+    runtime_include: string?,
+    c_path: string,
+    exe_path: string,
+    uses_sys_real: bool
+) -> bool {
+    sv_push(words, compiler);
+    for (let extra_i = 0; extra_i < sv_size(extra_opts); extra_i = extra_i + 1) {
+        sv_push(words, sv_get(extra_opts, extra_i));
+    }
+    bd_push_standard_flags(words, family);
+    if (optimize != null) {
+        sv_push(words, optimize as string);
+    }
+    if (runtime_include != null) {
+        sv_push(words, "-I");
+        sv_push(words, runtime_include as string);
+    }
+
+    sv_push(words, c_path);
+    bd_push_output_flags(words, family, exe_path);
+    return bd_push_sys_real_link_flags(words, family, uses_sys_real);
+}
+
+/**
  * Push runtime library search-path flags into a command-word vector.
  *
  * @param words Command words to extend.
@@ -1265,37 +1308,28 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             }
             let runtime_lib_opt = bd_runtime_lib_dir(opts);
 
-            sv_push(command_words, compiler);
-            sv_push(command_words, c_path);
-            bd_push_output_flags(command_words, family, exe_path);
-
-            for (let extra_i = 0; extra_i < sv_size(extra_opts); extra_i = extra_i + 1) {
-                sv_push(command_words, sv_get(extra_opts, extra_i));
-            }
             if (family == "unknown") {
                 log_warning(cfg, "Unsupported compiler '" + compiler +
                     "' (flag family '" + family + "'): not adding standard flags");
             }
-            bd_push_standard_flags(command_words, family);
 
             let optimize_opt = bd_get_optimize_flag(family, extra_opts);
             if (optimize_opt != null) {
-                let optimize = optimize_opt as string;
-                optimize_opt = null;
-                log_info(cfg, "Adding optimization flag: " + optimize);
-                sv_push(command_words, optimize);
+                log_info(cfg, "Adding optimization flag: " + optimize_opt as string);
             }
 
-            if (bd_push_sys_real_link_flags(command_words, family, analysis_uses_sys_real(result))) {
+            if (bd_push_c_compile_command_words(
+                command_words,
+                compiler,
+                family,
+                extra_opts,
+                optimize_opt,
+                bd_runtime_include_dir(opts),
+                c_path,
+                exe_path,
+                analysis_uses_sys_real(result)
+            )) {
                 log_info(cfg, "Linking host math library for sys.real");
-            }
-
-            let runtime_include_opt = bd_runtime_include_dir(opts);
-            if (runtime_include_opt != null) {
-                let runtime_include = runtime_include_opt as string;
-                runtime_include_opt = null;
-                sv_push(command_words, "-I");
-                sv_push(command_words, runtime_include);
             }
 
             if (runtime_lib_opt != null) {

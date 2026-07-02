@@ -267,9 +267,55 @@ def test_build_uses_a_exe_by_default_on_windows(tmp_path, monkeypatch):
     rc = cmd_build(_build_args(tmp_path, "main", c_compiler="gcc", output=None))
 
     assert rc == 0
-    assert captured["cmd"][-1] == "-O0"
+    c_idx = next(i for i, arg in enumerate(captured["cmd"]) if arg.endswith(".c"))
+    assert captured["cmd"].index("-O0") < c_idx
     assert "a.exe" in captured["cmd"]
     assert "a.out" not in captured["cmd"]
+
+
+def test_build_places_source_after_compiler_flags_for_tcc(tmp_path, monkeypatch):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    runtime_lib = tmp_path / "runtime_lib"
+    runtime_lib.mkdir()
+    captured = {}
+
+    def _fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+        return _RunResult(returncode=0)
+
+    monkeypatch.delenv("L0_CFLAGS", raising=False)
+    monkeypatch.delenv("L0_RUNTIME_INCLUDE", raising=False)
+    monkeypatch.delenv("L0_RUNTIME_LIB", raising=False)
+    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+
+    rc = cmd_build(
+        _build_args(
+            tmp_path,
+            "main",
+            c_compiler="tcc",
+            c_options="-DVALUE=1",
+            runtime_include=str(tmp_path),
+            runtime_lib=str(runtime_lib),
+        )
+    )
+
+    assert rc == 0
+    cmd = captured["cmd"]
+    c_idx = next(i for i, arg in enumerate(cmd) if arg.endswith(".c"))
+    assert cmd[0] == "tcc"
+    assert cmd.index("-DVALUE=1") < c_idx
+    assert cmd.index("-std=c99") < c_idx
+    assert cmd.index("-O1") < c_idx
+    assert cmd.index("-I") < c_idx
+    assert cmd.index("-o") > c_idx
+    assert cmd.index("-L") > c_idx
 
 
 def test_build_uses_msvc_flag_forms_for_output_and_runtime_paths(tmp_path, monkeypatch):

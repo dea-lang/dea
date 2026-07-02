@@ -835,6 +835,52 @@ func bd_push_output_flags(words: StringVector*, family: string, exe_path: string
 }
 
 /**
+ * Push a C compiler invocation into a command-word vector.
+ *
+ * @param words Command words to extend.
+ * @param compiler C compiler executable.
+ * @param family Compiler flag-family name.
+ * @param extra_opts User C compiler option words.
+ * @param optimize Selected default optimization flag, or `null`.
+ * @param runtime_include Runtime header include path, or `null`.
+ * @param c_path Generated C input path.
+ * @param exe_path Output executable path.
+ * @param runtime_lib Runtime library search path, or `null`.
+ */
+func bd_push_c_compile_command_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    extra_opts: StringVector*,
+    optimize: string?,
+    runtime_include: string?,
+    c_path: string,
+    exe_path: string,
+    runtime_lib: string?
+) {
+    sv_push(words, compiler);
+    for (let extra_i = 0; extra_i < sv_size(extra_opts); extra_i = extra_i + 1) {
+        sv_push(words, sv_get(extra_opts, extra_i));
+    }
+    bd_push_standard_flags(words, family);
+    if (optimize != null) {
+        sv_push(words, optimize as string);
+    }
+    if (runtime_include != null) {
+        sv_push(words, "-I");
+        sv_push(words, runtime_include as string);
+    }
+
+    sv_push(words, c_path);
+    bd_push_output_flags(words, family, exe_path);
+
+    if (runtime_lib != null) {
+        sv_push(words, "-L");
+        sv_push(words, runtime_lib as string);
+    }
+}
+
+/**
  * Replay compiler output captured into temp files.
  *
  * @param cfg Logging configuration.
@@ -1003,34 +1049,25 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 return 1;
             }
 
-            sv_push(command_words, compiler as string);
-            sv_push(command_words, c_path as string);
-            bd_push_output_flags(command_words, family, exe_path);
-
-            for (let extra_i = 0; extra_i < sv_size(extra_opts); extra_i = extra_i + 1) {
-                sv_push(command_words, sv_get(extra_opts, extra_i));
-            }
             if (family == "unknown") {
                 log_warning(cfg, "Unsupported compiler '" + compiler as string + "' (flag family '" + family + "'): not adding standard flags");
             }
-            bd_push_standard_flags(command_words, family);
 
             let optimize = bd_get_optimize_flag(family, extra_opts);
             if (optimize != null) {
                 log_info(cfg, "Adding optimization flag: " + optimize as string);
-                sv_push(command_words, optimize as string);
             }
-
-            let runtime_include = bd_runtime_include_dir(opts);
-            if (runtime_include != null) {
-                sv_push(command_words, "-I");
-                sv_push(command_words, runtime_include as string);
-            }
-
-            if (runtime_lib != null) {
-                sv_push(command_words, "-L");
-                sv_push(command_words, runtime_lib as string);
-            }
+            bd_push_c_compile_command_words(
+                command_words,
+                compiler as string,
+                family,
+                extra_opts,
+                optimize,
+                bd_runtime_include_dir(opts),
+                c_path as string,
+                exe_path,
+                runtime_lib
+            );
             log_info(cfg, "Compiling:");
             log_info(cfg, bd_join_display_words(command_words));
 

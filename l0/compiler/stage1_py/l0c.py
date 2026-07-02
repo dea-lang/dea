@@ -581,9 +581,9 @@ def cmd_build(args: argparse.Namespace) -> int:
         if extra_opts:
             log_info(context, f"Extra C compiler options: {extra_opts}")
 
-        # Build compiler command
-        cmd = [compiler, str(c_path)]
-        cmd.extend(_output_flags(flag_family, exe_path))
+        # Build compiler command. Preprocessor/compiler options must precede the
+        # source path for tcc; output and library flags can follow it.
+        cmd = [compiler]
         cmd.extend(extra_opts)
 
         # Add standard flags
@@ -609,6 +609,9 @@ def cmd_build(args: argparse.Namespace) -> int:
             cmd.extend(_runtime_include_flags(flag_family, args.runtime_include))
         elif os.getenv("L0_RUNTIME_INCLUDE"):
             cmd.extend(_runtime_include_flags(flag_family, os.getenv("L0_RUNTIME_INCLUDE")))
+
+        cmd.append(str(c_path))
+        cmd.extend(_output_flags(flag_family, exe_path))
 
         # Add runtime library search path
         runtime_lib_path = args.runtime_lib or os.getenv("L0_RUNTIME_LIB")
