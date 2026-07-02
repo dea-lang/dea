@@ -202,16 +202,57 @@ REPO_ROOT="$(cd -- "${{SCRIPT_DIR}}/{repo_relative_from_bin}" && pwd -P)"
 MONOREPO_ROOT="$(cd -- "${{REPO_ROOT}}/.." && pwd -P)"
 export {home_var_name}="${{REPO_ROOT}}/compiler"
 
+_dea_env_remove_path() {{
+    local path_entry="$1"
+    local rest="${{PATH:-}}:"
+    local existing_entry
+    local new_path=""
+    local new_path_set=0
+
+    while [[ -n "${{rest}}" ]]; do
+        existing_entry="${{rest%%:*}}"
+        rest="${{rest#*:}}"
+        if [[ "${{existing_entry}}" == "${{path_entry}}" ]]; then
+            continue
+        fi
+        if [[ "${{new_path_set}}" -eq 1 ]]; then
+            new_path="${{new_path}}:${{existing_entry}}"
+        else
+            new_path="${{existing_entry}}"
+            new_path_set=1
+        fi
+    done
+    export PATH="${{new_path}}"
+}}
+
+_dea_env_prepend_path_once() {{
+    local path_entry="$1"
+
+    _dea_env_remove_path "${{path_entry}}"
+    if [[ -n "${{PATH}}" ]]; then
+        export PATH="${{path_entry}}:${{PATH}}"
+    else
+        export PATH="${{path_entry}}"
+    fi
+}}
+
 repo_venv="${{MONOREPO_ROOT}}/.venv"
-if [[ -f "${{repo_venv}}/bin/activate" && "${{VIRTUAL_ENV:-}}" != "${{repo_venv}}" ]]; then
-    # shellcheck source=/dev/null
-    . "${{repo_venv}}/bin/activate"
+if [[ -f "${{repo_venv}}/bin/activate" ]]; then
+    if [[ "${{VIRTUAL_ENV:-}}" != "${{repo_venv}}" ]]; then
+        _OLD_VIRTUAL_PATH="${{PATH:-}}"
+        # shellcheck source=/dev/null
+        . "${{repo_venv}}/bin/activate"
+    fi
+    if [[ -n "${{VIRTUAL_ENV:-}}" && "${{VIRTUAL_ENV}}" != "${{repo_venv}}" ]]; then
+        _dea_env_remove_path "${{VIRTUAL_ENV}}/bin"
+        export VIRTUAL_ENV="${{repo_venv}}"
+    fi
+    _dea_env_prepend_path_once "${{repo_venv}}/bin"
 fi
 
-case ":${{PATH}}:" in
-    *":${{SCRIPT_DIR}}:"*) ;;
-    *) export PATH="${{SCRIPT_DIR}}${{PATH:+:${{PATH}}}}" ;;
-esac
+_dea_env_prepend_path_once "${{SCRIPT_DIR}}"
+unset -f _dea_env_prepend_path_once 2>/dev/null || true
+unset -f _dea_env_remove_path 2>/dev/null || true
 
 hash -r 2>/dev/null || true
 
