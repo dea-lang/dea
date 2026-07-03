@@ -559,6 +559,48 @@ func test_backend_generate_drop_statement() {
 }
 
 /**
+ * Tests generated drop precheck ordering before ARC-bearing struct cleanup.
+ */
+func test_backend_generate_drop_precheck_before_struct_cleanup() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Box {");
+        sv_push(lines, "    s: string;");
+        sv_push(lines, "}");
+        sv_push(lines, "func zap(p: Box*) {");
+        sv_push(lines, "    drop p;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p: Box* = new Box(\"hello\");");
+        sv_push(lines, "    zap(p);");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for drop precheck fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        let precheck_idx = find_s(generated, "_rt_drop_precheck((void*)p);");
+        let release_idx = find_s(generated, "rt_string_release(p->s);");
+        let drop_idx = find_s(generated, "_rt_drop((void*)p);");
+        assert(precheck_idx >= 0, "drop precheck missing");
+        assert(release_idx >= 0, "struct field cleanup missing");
+        assert(drop_idx >= 0, "drop call missing");
+        assert(precheck_idx < release_idx, "drop precheck should precede field cleanup");
+        assert(release_idx < drop_idx, "field cleanup should precede final drop");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests test_backend_generate_new_and_try_lowering.
  */
 func test_backend_generate_new_and_try_lowering() {

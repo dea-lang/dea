@@ -25,6 +25,7 @@ L0_ROOT = REPO_ROOT / "l0"
 TRACE_CHECKER = L0_ROOT / "compiler" / "stage2_l0" / "scripts" / "check_trace_log.py"
 
 _ARC_LINE_RE = re.compile(r"^\[l0\]\[arc\] (.+)$")
+_MEM_LINE_RE = re.compile(r"^\[l0\]\[mem\] (.+)$")
 _KV_RE = re.compile(r"(\w+)=(\S+)")
 
 
@@ -53,6 +54,18 @@ def parse_arc_lines(stderr: str) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
     for line in stderr.splitlines():
         match = _ARC_LINE_RE.match(line)
+        if match is None:
+            continue
+        results.append(dict(_KV_RE.findall(match.group(1))))
+    return results
+
+
+def parse_mem_lines(stderr: str) -> list[dict[str, str]]:
+    """Extract structured memory events from trace stderr."""
+
+    results: list[dict[str, str]] = []
+    for line in stderr.splitlines():
+        match = _MEM_LINE_RE.match(line)
         if match is None:
             continue
         results.append(dict(_KV_RE.findall(match.group(1))))
@@ -185,6 +198,38 @@ def run_case(case_name: str, source: str, artifact_dir: Path) -> tuple[str, str,
         artifact_dir,
     )
     return stdout_text, stderr_text, report_text, parse_arc_lines(stderr_text)
+
+
+def run_failing_case(
+    case_name: str,
+    source: str,
+    artifact_dir: Path,
+) -> tuple[str, str, list[dict[str, str]], list[dict[str, str]]]:
+    """Compile and run one trace case that is expected to fail at runtime."""
+
+    compiler = stage2_compiler()
+    assert_true(compiler.is_file(), f"missing repo-local Stage 2 compiler: {compiler}", artifact_dir)
+
+    source_path = write_case_source(artifact_dir, case_name, source)
+    stdout_path = artifact_dir / f"{case_name}.stdout.log"
+    stderr_path = artifact_dir / f"{case_name}.stderr.log"
+
+    run_result = subprocess.run(
+        [str(compiler), "--run", "--trace-memory", "--trace-arc", str(source_path)],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    stdout_path.write_bytes(run_result.stdout if run_result.stdout is not None else b"")
+    stderr_path.write_bytes(run_result.stderr if run_result.stderr is not None else b"")
+
+    stdout_text = read_text(stdout_path)
+    stderr_text = read_text(stderr_path)
+    if run_result.returncode == 0:
+        fail(f"{case_name} expected non-zero exit code", artifact_dir)
+
+    return stdout_text, stderr_text, parse_arc_lines(stderr_text), parse_mem_lines(stderr_text)
 
 
 def test_static_string_noop(artifact_dir: Path) -> None:
@@ -400,6 +445,47 @@ def test_struct_heap_string_field_drop(artifact_dir: Path) -> None:
     frees = heap_frees(arc)
     assert_true(len(frees) >= 1, f"expected heap free on struct drop, got {frees!r}", artifact_dir)
     assert_true(frees[-1].get("rc_after") == "0", f"expected terminal heap free, got {frees[-1]!r}", artifact_dir)
+
+
+def test_double_drop_precheck_precedes_struct_arc_cleanup(artifact_dir: Path) -> None:
+    """A stale helper-mediated drop should panic before a second field cleanup."""
+
+    _stdout, stderr, arc, mem = run_failing_case(
+        "double_drop_precheck_struct_arc_cleanup",
+        """
+        module main;
+        import std.string;
+
+        struct Box {
+            s: string;
+        }
+
+        func zap(p: Box*) {
+            drop p;
+        }
+
+        func main() -> int {
+            let p: Box* = new Box(concat_s("he", "llo"));
+            zap(p);
+            zap(p);
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    assert_true(
+        "Software Failure: drop: pointer not allocated by 'new'" in stderr,
+        "expected stale-drop software failure",
+        artifact_dir,
+    )
+    panics = [
+        event
+        for event in mem
+        if event.get("op") == "drop" and event.get("action") == "panic-not-found"
+    ]
+    assert_equal(len(panics), 1, "expected one stale-drop panic event", artifact_dir)
+    assert_equal(len(heap_frees(arc)), 1, "expected only the first drop to free field ARC data", artifact_dir)
 
 
 def test_enum_string_variant_cleanup(artifact_dir: Path) -> None:
@@ -1573,6 +1659,7 @@ def main() -> int:
         test_discarded_concat_freed,
         test_struct_static_string_field_drop,
         test_struct_heap_string_field_drop,
+        test_double_drop_precheck_precedes_struct_arc_cleanup,
         test_enum_string_variant_cleanup,
         test_optional_string_cleanup,
         test_case_scrutinee_unwrap_retains,

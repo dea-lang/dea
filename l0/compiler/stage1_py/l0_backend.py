@@ -2398,7 +2398,11 @@ class Backend:
         else:
             inner_type = var_type.inner
 
-        # Emit cleanup for owned fields before freeing
+        # Emit cleanup for owned fields before freeing.
+        cleanup_needs_pointee = self.analysis.has_arc_data(inner_type)
+        if cleanup_needs_pointee:
+            self.emitter.emit_drop_precheck_call(c_name)
+
         if isinstance(inner_type, StructType):
             self._emit_struct_cleanup(c_name, inner_type)
         elif isinstance(inner_type, EnumType):

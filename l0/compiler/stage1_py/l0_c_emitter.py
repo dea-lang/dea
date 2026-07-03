@@ -1767,6 +1767,14 @@ class CEmitter:
         """
         self.out.emit(f"_rt_drop((void*){c_ptr_expr});")
 
+    def emit_drop_precheck_call(self, c_ptr_expr: str) -> None:
+        """Emit a runtime validation before generated drop cleanup.
+
+        Args:
+            c_ptr_expr: C expression evaluating to the object pointer.
+        """
+        self.out.emit(f"_rt_drop_precheck((void*){c_ptr_expr});")
+
     def emit_null_assignment(self, c_var: str) -> None:
         """Emit a NULL assignment to a variable.
 

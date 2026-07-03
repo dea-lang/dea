@@ -419,6 +419,8 @@ void _rt_alloc_table_insert(void *ptr);
 int _rt_alloc_table_remove(void *ptr);
 void *_rt_alloc_obj_impl(dea_int bytes, const char *_loc_file, int _loc_line);
 void *_rt_alloc_obj(dea_int bytes);
+void _rt_drop_precheck_impl(void *ptr, const char *_loc_file, int _loc_line);
+void _rt_drop_precheck(void *ptr);
 void _rt_drop_impl(void *ptr, const char *_loc_file, int _loc_line);
 void _rt_drop(void *ptr);
 uint32_t _rt_fmix32(uint32_t x);

@@ -489,12 +489,14 @@ func test_emitter_trace_runtime_calls_use_impl_entrypoints() {
     cem_emit_header(emitter, opts);
     cem_emit_string_retain(emitter, "s");
     cem_emit_string_release(emitter, "s");
+    cem_emit_drop_precheck_call(emitter, "p");
     cem_emit_drop_call(emitter, "p");
     cem_emit_alloc_obj(emitter, "struct __deaM4demoS5Point*", "struct __deaM4demoS5Point", "tmp");
 
     let text = cem_get_output(emitter);
     assert(contains_s(text, "_rt_string_retain_impl(s, __FILE__, __LINE__);"), "trace retain call mismatch");
     assert(contains_s(text, "_rt_string_release_impl(s, __FILE__, __LINE__);"), "trace release call mismatch");
+    assert(contains_s(text, "_rt_drop_precheck_impl((void*)p, __FILE__, __LINE__);"), "trace drop precheck mismatch");
     assert(contains_s(text, "_rt_drop_impl((void*)p, __FILE__, __LINE__);"), "trace drop call mismatch");
     assert(contains_s(text,
         "struct __deaM4demoS5Point* tmp = (struct __deaM4demoS5Point*)_rt_alloc_obj_impl((dea_int)sizeof(struct __deaM4demoS5Point), __FILE__, __LINE__);"),
@@ -554,6 +556,7 @@ func test_emitter_cleanup_and_switch_helpers() {
     let cleanup_maybe_ty = type_new_enum("demo.main", "Maybe");
     cem_emit_value_cleanup(emitter, "pt", cleanup_point_ty);
     cem_emit_enum_cleanup(emitter, "mp", cleanup_maybe_ty);
+    cem_emit_drop_precheck_call(emitter, "ptr");
     cem_emit_drop_call(emitter, "ptr");
     cem_emit_null_assignment(emitter, "ptr");
 
@@ -568,6 +571,7 @@ func test_emitter_cleanup_and_switch_helpers() {
     assert(contains_s(text, "rt_string_release((pt).name);"), "struct cleanup helper mismatch");
     assert(contains_s(text, "if (mp != NULL)"), "enum cleanup null guard mismatch");
     assert(contains_s(text, "rt_string_release(mp->data.Some.value);"), "enum cleanup field mismatch");
+    assert(contains_s(text, "_rt_drop_precheck((void*)ptr);"), "drop precheck helper mismatch");
     assert(contains_s(text, "_rt_drop((void*)ptr);"), "drop helper mismatch");
     assert(contains_s(text, "ptr = NULL;"), "null assignment helper mismatch");
 

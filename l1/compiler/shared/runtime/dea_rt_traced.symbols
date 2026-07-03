@@ -27,6 +27,8 @@ _rt_cast_dea_ushort_from_unsigned
 _rt_dea_string_from_const_literal
 _rt_drop
 _rt_drop_impl
+_rt_drop_precheck
+_rt_drop_precheck_impl
 _rt_fmix32
 _rt_fold_u64_to_u32_fmix
 _rt_free_impl

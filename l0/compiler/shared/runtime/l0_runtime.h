@@ -2503,6 +2503,24 @@ static int _rt_alloc_table_remove(void *ptr) {
 }
 
 /**
+ * Check whether a pointer is present in the allocation hash table.
+ *
+ * @return 1 if found, 0 if not found.
+ */
+static int _rt_alloc_table_contains(void *ptr) {
+    if (_rt_alloc_table_cap == 0) return 0;
+
+    size_t idx = _rt_alloc_hash(ptr, _rt_alloc_table_cap);
+    while (_rt_alloc_table[idx] != NULL) {
+        if (_rt_alloc_table[idx] == ptr) {
+            return 1;
+        }
+        idx = (idx + 1) & (_rt_alloc_table_cap - 1);
+    }
+    return 0;
+}
+
+/**
  * Allocate a single zero-initialized object for L0 `new`.
  * Panics on failure, and registers the returned pointer for `_rt_drop`.
  * 
@@ -2545,6 +2563,37 @@ static void *_rt_alloc_obj(l0_int bytes) {
 
     _RT_TRACE_MEM("op=new_alloc bytes=%d ptr=%p action=ok", (int)bytes, ptr);
     return ptr;
+}
+#endif
+
+/**
+ * Validate a heap-allocated object before generated cleanup dereferences it.
+ * Does not unregister or free the pointer.
+ *
+ * @param ptr Pointer to validate.
+ */
+#ifdef L0_TRACE_MEMORY
+static void _rt_drop_precheck_impl(void *ptr, const char *_loc_file, int _loc_line) {
+    if (ptr == NULL) {
+        return; /* covers drop of null optional pointers (T*?) */
+    }
+
+    if (!_rt_alloc_table_contains(ptr)) {
+        _RT_TRACE_MEM("op=drop ptr=%p action=panic-not-found loc=\"%s\":%d", ptr, _loc_file, _loc_line);
+        _rt_panic("drop: pointer not allocated by 'new'");
+    }
+}
+#define _rt_drop_precheck(ptr) _rt_drop_precheck_impl((ptr), __FILE__, __LINE__)
+#else
+static void _rt_drop_precheck(void *ptr) {
+    if (ptr == NULL) {
+        return; /* covers drop of null optional pointers (T*?) */
+    }
+
+    if (!_rt_alloc_table_contains(ptr)) {
+        _RT_TRACE_MEM("op=drop ptr=%p action=panic-not-found", ptr);
+        _rt_panic("drop: pointer not allocated by 'new'");
+    }
 }
 #endif
 

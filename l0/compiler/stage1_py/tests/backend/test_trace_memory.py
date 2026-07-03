@@ -20,6 +20,7 @@ import re
 # ---------------------------------------------------------------------------
 
 _MEM_LINE_RE = re.compile(r"^\[l0\]\[mem\] (.+)$")
+_ARC_LINE_RE = re.compile(r"^\[l0\]\[arc\] (.+)$")
 _KV_RE = re.compile(r"(\w+)=(\S+)")
 
 
@@ -28,6 +29,17 @@ def parse_mem_lines(stderr: str) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
     for line in stderr.splitlines():
         m = _MEM_LINE_RE.match(line)
+        if m:
+            fields = dict(_KV_RE.findall(m.group(1)))
+            results.append(fields)
+    return results
+
+
+def parse_arc_lines(stderr: str) -> list[dict[str, str]]:
+    """Extract ``[l0][arc]`` lines and split key=value tokens into dicts."""
+    results: list[dict[str, str]] = []
+    for line in stderr.splitlines():
+        m = _ARC_LINE_RE.match(line)
         if m:
             fields = dict(_KV_RE.findall(m.group(1)))
             results.append(fields)
@@ -46,6 +58,20 @@ def _compile_with_trace_memory(analyze_single, compile_and_run, tmp_path, src):
     ok, stdout, stderr = compile_and_run(c_code, tmp_path)
     mem_lines = parse_mem_lines(stderr)
     return ok, stdout, stderr, mem_lines
+
+
+def _compile_with_memory_and_arc_trace(analyze_single, compile_and_run, tmp_path, src):
+    """Compile and run with memory and ARC tracing enabled."""
+    result = analyze_single("main", src)
+    assert not result.has_errors(), result.diagnostics
+    result.context.trace_memory = True
+    result.context.trace_arc = True
+
+    from l0_backend import Backend
+
+    c_code = Backend(result).generate()
+    ok, stdout, stderr = compile_and_run(c_code, tmp_path)
+    return ok, stdout, stderr, parse_mem_lines(stderr), parse_arc_lines(stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +111,54 @@ def test_trace_memory_struct_new_drop_basic(
     assert allocs[0]["ptr"] == drops[0]["ptr"], (
         f"new_alloc ptr {allocs[0]['ptr']} != drop ptr {drops[0]['ptr']}"
     )
+
+
+def test_trace_memory_double_drop_precheck_precedes_arc_cleanup(
+    analyze_single, compile_and_run, tmp_path
+):
+    """A stale drop through an alias must panic before a second field cleanup."""
+    ok, _stdout, stderr, mem, arc = _compile_with_memory_and_arc_trace(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        struct Box {
+            s: string;
+        }
+
+        func zap(p: Box*) {
+            drop p;
+        }
+
+        func main() -> int {
+            let p: Box* = new Box(concat_s("he", "llo"));
+            zap(p);
+            zap(p);
+            return 0;
+        }
+        """,
+    )
+    assert not ok
+    assert "Software Failure: drop: pointer not allocated by 'new'" in stderr
+
+    panics = [
+        event
+        for event in mem
+        if event.get("op") == "drop" and event.get("action") == "panic-not-found"
+    ]
+    assert len(panics) == 1, f"expected one stale-drop panic event: {mem}"
+
+    heap_release_frees = [
+        event
+        for event in arc
+        if event.get("kind") == "heap"
+        and event.get("op") == "release"
+        and event.get("action") == "free"
+    ]
+    assert len(heap_release_frees) == 1, f"expected only the first drop to release field ARC data: {arc}"
 
 
 # ---------------------------------------------------------------------------

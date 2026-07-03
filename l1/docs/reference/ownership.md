@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-06-24
+Version: 2026-07-03
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -55,6 +55,10 @@ Current lowering policy:
   values; the fill value has element type `T`, which may itself be an array
 - `drop` accepts both `T*` and `T*?`
 - dropping `null` is a safe no-op
+
+Before generated cleanup dereferences a pointee, the backend validates that the pointer is still registered as a `new`
+allocation. This makes stale `drop` failures deterministic even when cleanup must release ARC fields or fixed-array
+elements first.
 
 Before calling the final drop helper, compiler-generated cleanup may release owned fields such as `string` members.
 Pointer children with independent ownership are still your responsibility.

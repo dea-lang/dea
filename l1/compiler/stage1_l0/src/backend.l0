@@ -4206,6 +4206,10 @@ func be_emit_drop_stmt(self: Backend*, stmt: StmtNode*) {
     }
 
     let pointee = inner_type.inner as Type*;
+    let cleanup_needs_pointee = analysis_has_arc_data(self.result, pointee);
+    if (cleanup_needs_pointee) {
+        cem_emit_drop_precheck_call(self.emitter, c_name);
+    }
     if (ord(pointee.kind) == ord(TY_STRUCT)) {
         be_emit_struct_cleanup(self, c_name, pointee);
     } else if (ord(pointee.kind) == ord(TY_ENUM)) {

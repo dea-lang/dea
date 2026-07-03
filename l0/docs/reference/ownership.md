@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-06-24
+Version: 2026-07-03
 
 This document describes how ownership works in L0 today, covering:
 
@@ -56,6 +56,8 @@ How it lowers at runtime:
 - The `drop` statement accepts both standard pointers (`T*`) and nullable pointers (`T*?`).
 - `_rt_drop(NULL)` is a safe no-op (e.g. `drop p` where `p` is `null` does nothing).
 - Dropping a pointer that was not allocated by `new` triggers a runtime panic.
+- Before generated cleanup dereferences a pointee, the backend validates that the pointer is still registered as a `new`
+  allocation. This makes stale `drop` failures deterministic even when cleanup must release ARC fields first.
 
 Before calling `_rt_drop`, the compiler may emit field cleanup automatically:
 

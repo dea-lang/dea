@@ -142,6 +142,38 @@ def test_codegen_struct_cleanup_order_for_owned_fields(codegen_single):
     assert first_release < second_release
 
 
+def test_codegen_drop_precheck_precedes_struct_cleanup(codegen_single):
+    c_code, _ = codegen_single(
+        "main",
+        """
+        module main;
+
+        struct Box {
+            s: string;
+        }
+
+        func zap(p: Box*) {
+            drop p;
+        }
+
+        func main() -> int {
+            let p: Box* = new Box("hello");
+            zap(p);
+            return 0;
+        }
+        """,
+    )
+
+    if c_code is None:
+        return
+
+    precheck = c_code.find("_rt_drop_precheck((void*)p);")
+    release = c_code.find("rt_string_release(p->s);")
+    drop = c_code.find("_rt_drop((void*)p);")
+    assert precheck != -1 and release != -1 and drop != -1
+    assert precheck < release < drop
+
+
 def test_codegen_optional_string_cleanup_guards_and_order(codegen_single):
     c_code, _ = codegen_single(
         "main",
