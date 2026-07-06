@@ -551,7 +551,8 @@ func test_backend_generate_drop_statement() {
         assert(!analysis_has_errors(result), "analysis should succeed for drop fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "_rt_drop((void*)p);"), "drop call mismatch");
+        assert(contains_s(generated, "_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)"), "drop begin call mismatch");
+        assert(contains_s(generated, "_rt_drop_finish_impl((void*)("), "drop finish call mismatch");
         assert(contains_s(generated, "p = NULL;"), "drop should null the pointer after release");
 
         analysis_result_free(result);
@@ -559,9 +560,9 @@ func test_backend_generate_drop_statement() {
 }
 
 /**
- * Tests generated drop precheck ordering before ARC-bearing struct cleanup.
+ * Tests generated drop begin validation ordering before ARC-bearing struct cleanup.
  */
-func test_backend_generate_drop_precheck_before_struct_cleanup() {
+func test_backend_generate_drop_begin_before_struct_cleanup() {
     with (let filenames = sv_create(1) => sv_free(filenames),
           let sources = sv_create(1) => sv_free(sources),
           let lines = sv_create(16) => sv_free(lines),
@@ -584,17 +585,17 @@ func test_backend_generate_drop_precheck_before_struct_cleanup() {
         sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
-        assert(!analysis_has_errors(result), "analysis should succeed for drop precheck fixture");
+        assert(!analysis_has_errors(result), "analysis should succeed for drop begin fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        let precheck_idx = find_s(generated, "_rt_drop_precheck((void*)p);");
-        let release_idx = find_s(generated, "rt_string_release(p->s);");
-        let drop_idx = find_s(generated, "_rt_drop((void*)p);");
-        assert(precheck_idx >= 0, "drop precheck missing");
+        let begin_idx = find_s(generated, "_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)");
+        let release_idx = find_s(generated, "rt_string_release(l0_drop_");
+        let finish_idx = find_s(generated, "_rt_drop_finish_impl((void*)(");
+        assert(begin_idx >= 0, "drop begin missing");
         assert(release_idx >= 0, "struct field cleanup missing");
-        assert(drop_idx >= 0, "drop call missing");
-        assert(precheck_idx < release_idx, "drop precheck should precede field cleanup");
-        assert(release_idx < drop_idx, "field cleanup should precede final drop");
+        assert(finish_idx >= 0, "drop finish missing");
+        assert(begin_idx < release_idx, "drop begin should precede field cleanup");
+        assert(release_idx < finish_idx, "field cleanup should precede final drop");
 
         analysis_result_free(result);
     }
@@ -648,13 +649,58 @@ func test_backend_generate_new_and_try_lowering() {
             "new expression should allocate heap storage");
         assert(contains_s(generated, "(struct l0_demo_main_Box){ 0 }"),
             "zero-arg struct new should lower to zero initialization");
-        assert(contains_s(generated, "*l0_new_"), "new expression should initialize the allocated object");
+        assert(contains_s(generated, "static _rt_ptr_site l0_site_"),
+            "checked pointer access should declare a call-site cache");
+        assert(contains_s(generated, "_rt_check_ptr_site(&l0_site_"),
+            "new expression should initialize through a checked pointer");
+        assert(contains_s(generated, "_RT_ACCESS_WRITE"),
+            "new expression should initialize through a write-checked pointer");
         assert(contains_s(generated, "l0_demo_main_Result_Ok"),
             "enum variant new should initialize the variant tag");
         assert(contains_s(generated, "l0_opt_int l0_try_"), "try expression should materialize a temp");
         assert(contains_s(generated, "if (!((l0_try_"), "try expression should check has_value");
         assert(contains_s(generated, "if (l0_try_"), "niche-nullable try should keep a direct null check");
         assert(!contains_s(generated, "if ((l0_try_"), "niche-nullable try should avoid redundant condition parens");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_deref_field_write_uses_write_mode.
+ */
+func test_backend_generate_deref_field_write_uses_write_mode() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Inner {");
+        sv_push(lines, "    value: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct Outer {");
+        sv_push(lines, "    inner: Inner;");
+        sv_push(lines, "}");
+        sv_push(lines, "func poke(q: Outer*, r: Inner*) {");
+        sv_push(lines, "    (*r).value = 1;");
+        sv_push(lines, "    q.inner.value = 2;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for deref field write fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "_RT_ACCESS_WRITE"),
+            "field stores through dereferences should use write-mode pointer checks");
+        assert(!contains_s(generated, "_RT_ACCESS_READ"),
+            "field stores through dereferences should not fall back to read-mode pointer checks");
 
         analysis_result_free(result);
     }
@@ -886,7 +932,9 @@ func main() {
     test_backend_generate_match_and_with_cleanup_block();
     test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets();
     test_backend_generate_drop_statement();
+    test_backend_generate_drop_begin_before_struct_cleanup();
     test_backend_generate_new_and_try_lowering();
+    test_backend_generate_deref_field_write_uses_write_mode();
     test_backend_generate_intrinsics_use_analyzed_target_types();
     test_backend_generate_string_copy_retains();
     test_backend_generate_identity_cast_string_copy_retains();

@@ -113,7 +113,7 @@ def test_trace_memory_struct_new_drop_basic(
     )
 
 
-def test_trace_memory_double_drop_precheck_precedes_arc_cleanup(
+def test_trace_memory_double_drop_validation_precedes_arc_cleanup(
     analyze_single, compile_and_run, tmp_path
 ):
     """A stale drop through an alias must panic before a second field cleanup."""
@@ -142,14 +142,15 @@ def test_trace_memory_double_drop_precheck_precedes_arc_cleanup(
         """,
     )
     assert not ok
-    assert "Software Failure: drop: pointer not allocated by 'new'" in stderr
+    assert "Software Failure:" in stderr
+    assert "double drop" in stderr
 
-    panics = [
+    drops = [
         event
         for event in mem
-        if event.get("op") == "drop" and event.get("action") == "panic-not-found"
+        if event.get("op") == "drop" and event.get("action") == "free"
     ]
-    assert len(panics) == 1, f"expected one stale-drop panic event: {mem}"
+    assert len(drops) == 1, f"expected only the first drop to complete: {mem}"
 
     heap_release_frees = [
         event

@@ -715,7 +715,8 @@ func test_backend_generate_drop_statement() {
         assert(!analysis_has_errors(result), "analysis should succeed for drop fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "_rt_drop((void*)p);"), "drop call mismatch");
+        assert(contains_s(generated, "_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)"), "drop begin call mismatch");
+        assert(contains_s(generated, "_rt_drop_finish_impl((void*)("), "drop finish call mismatch");
         assert(contains_s(generated, "p = NULL;"), "drop should null the pointer after release");
 
         analysis_result_free(result);
@@ -723,9 +724,9 @@ func test_backend_generate_drop_statement() {
 }
 
 /**
- * Tests generated drop precheck ordering before heap array cleanup.
+ * Tests generated drop begin validation ordering before heap array cleanup.
  */
-func test_backend_generate_drop_precheck_before_array_cleanup() {
+func test_backend_generate_drop_begin_before_array_cleanup() {
     with (let filenames = sv_create(1) => sv_free(filenames),
           let sources = sv_create(1) => sv_free(sources),
           let lines = sv_create(16) => sv_free(lines),
@@ -745,17 +746,17 @@ func test_backend_generate_drop_precheck_before_array_cleanup() {
         sv_push(sources, bt_source(lines));
 
         let result = bt_analyze_sources("demo.main", filenames, sources);
-        assert(!analysis_has_errors(result), "analysis should succeed for array drop precheck fixture");
+        assert(!analysis_has_errors(result), "analysis should succeed for array drop begin fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        let precheck_idx = find_s(generated, "_rt_drop_precheck((void*)p);");
+        let begin_idx = find_s(generated, "_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)");
         let cleanup_idx = find_s(generated, "for (dea_int");
-        let drop_idx = find_s(generated, "_rt_drop((void*)p);");
-        assert(precheck_idx >= 0, "drop precheck missing");
+        let finish_idx = find_s(generated, "_rt_drop_finish_impl((void*)(");
+        assert(begin_idx >= 0, "drop begin missing");
         assert(cleanup_idx >= 0, "array cleanup loop missing");
-        assert(drop_idx >= 0, "drop call missing");
-        assert(precheck_idx < cleanup_idx, "drop precheck should precede array cleanup");
-        assert(cleanup_idx < drop_idx, "array cleanup should precede final drop");
+        assert(finish_idx >= 0, "drop finish missing");
+        assert(begin_idx < cleanup_idx, "drop begin should precede array cleanup");
+        assert(cleanup_idx < finish_idx, "array cleanup should precede final drop");
 
         analysis_result_free(result);
     }
@@ -809,7 +810,14 @@ func test_backend_generate_new_and_try_lowering() {
             "new expression should allocate heap storage");
         assert(contains_s(generated, "(struct __deaM4demo4mainS3Box){ 0 }"),
             "zero-arg struct new should lower to zero initialization");
-        assert(contains_s(generated, "*dea_new_"), "new expression should initialize the allocated object");
+        assert(contains_s(generated, "static _rt_ptr_site dea_site_"),
+            "checked pointer access should declare a call-site cache");
+        assert(contains_s(generated, "_rt_check_ptr_site(&dea_site_") && contains_s(generated, ", (void*)(dea_new_"),
+            "new expression should initialize through a checked pointer");
+        assert(contains_s(generated, "_RT_ALIGNOF(struct __deaM4demo4mainS3Box)"),
+            "new expression pointer check should include target alignment");
+        assert(contains_s(generated, "_RT_ACCESS_WRITE"),
+            "new expression should initialize through a write-checked pointer");
         assert(contains_s(generated, "__deaM4demo4mainE6Result_Ok"),
             "enum variant new should initialize the variant tag");
         assert(contains_s(generated, "dea_opt_int dea_try_"), "try expression should materialize a temp");
@@ -1120,8 +1128,15 @@ func test_backend_generate_pointer_indexing_contract() {
         assert(!analysis_has_errors(result), "analysis should succeed for pointer-indexing fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "return p[i];"), "pointer-index read should lower to direct C indexing");
-        assert(contains_s(generated, "p[i] = value;"), "pointer-index write should lower to direct C indexing");
+        assert(contains_s(generated, "_rt_check_index_ptr_site(&dea_site_") &&
+                contains_s(generated, ", (void*)(p), (dea_int)(i), (dea_int)(sizeof(dea_int)), (dea_int)(_RT_ALIGNOF(dea_int))"),
+            "pointer-index read/write should lower through checked indexed pointer access");
+        assert(!contains_s(generated, "((dea_int*)(p) + (i))"),
+            "pointer-index read/write must not form the indexed C pointer before validation");
+        assert(contains_s(generated, "_RT_ACCESS_READ") && contains_s(generated, "_RT_ACCESS_WRITE"),
+            "pointer-index read/write should pass distinct runtime access modes");
+        assert(contains_s(generated, " = value;"),
+            "pointer-index write should still emit an assignment");
         assert(contains_s(generated, "dea_int* dea_base_"),
             "effectful write base should be captured once");
         assert(contains_s(generated, "dea_int dea_idx_"),
@@ -1130,8 +1145,46 @@ func test_backend_generate_pointer_indexing_contract() {
             "effectful write should still emit one indexed assignment after temp capture");
         assert(contains_s(generated, "dea_int* dea_base_"),
             "effectful read base should be captured once");
-        assert(contains_s(generated, "return dea_base_"),
-            "effectful read should return the indexed temporary base");
+        assert(contains_s(generated, ", (void*)(dea_base_"),
+            "effectful read should check the indexed temporary base before pointer arithmetic");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests write-mode pointer checks for field stores through dereferences.
+ */
+func test_backend_generate_deref_field_write_uses_write_mode() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Inner {");
+        sv_push(lines, "    value: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct Outer {");
+        sv_push(lines, "    inner: Inner;");
+        sv_push(lines, "}");
+        sv_push(lines, "unsafe func poke(q: Outer*, r: Inner*) {");
+        sv_push(lines, "    (*r).value = 1;");
+        sv_push(lines, "    q.inner.value = 2;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int { return 0; }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for deref field write fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "_RT_ACCESS_WRITE"),
+            "field stores through dereferences should use write-mode pointer checks");
+        assert(!contains_s(generated, "_RT_ACCESS_READ"),
+            "field stores through dereferences should not fall back to read-mode pointer checks");
 
         analysis_result_free(result);
     }
@@ -1187,7 +1240,7 @@ func test_backend_generate_fixed_arrays() {
             "expected C99-compatible empty array literal initializer");
         assert(contains_s(generated, "__deaA2_A3_i filled = dea_arr_"),
             "expected multidimensional literal-as-fill constructor");
-        assert(contains_s(generated, "*dea_new_") && contains_s(generated, "dea_arr_"),
+        assert(contains_s(generated, ", (void*)(dea_new_") && contains_s(generated, "dea_arr_"),
             "expected heap multidimensional literal-as-fill constructor");
         assert(contains_s(generated, "_rt_panic_oob("), "expected array bounds checks");
         assert(bt_count_substring(generated, "_rt_panic_oob(") >= 2,
@@ -1196,8 +1249,12 @@ func test_backend_generate_fixed_arrays() {
         assert(contains_s(generated, "((dea_int)sizeof(dea_int))"), "expected sizeof indexed value type");
         assert(!contains_s(generated, "__deaA3_i dea_base_"),
             "nested row indexing should not materialize a flattened row as a wrapper");
-        assert(contains_s(generated, "(p[i]).data[j]"),
-            "pointer-to-array indexing should keep wrapper boundary before row access");
+        assert(contains_s(generated, "_rt_check_index_ptr_site(&dea_site_") &&
+            contains_s(generated, ", (void*)(p), (dea_int)(i), (dea_int)(sizeof(__deaA3_i)), (dea_int)(_RT_ALIGNOF(__deaA3_i))") &&
+            contains_s(generated, ".data[j]"),
+            "pointer-to-array indexing should check the row pointer and keep wrapper boundary before row access");
+        assert(!contains_s(generated, "((__deaA3_i*)(p) + (i))"),
+            "pointer-to-array indexing must not form the row pointer before validation");
 
         analysis_result_free(result);
     }
@@ -1250,7 +1307,10 @@ func test_backend_generate_slices() {
             "expected three-argument slice check to compare count with remaining length");
         assert(!contains_s(generated, ") + (dea_slice_count_"),
             "three-argument slice range checks must not add start and count");
-        assert(contains_s(generated, ").data["), "expected slice element access through the data pointer");
+        assert(contains_s(generated, "_rt_check_index_ptr_site(&dea_site_"),
+            "expected slice element access through checked indexed pointer validation");
+        assert(contains_s(generated, ", (void*)((s).data),"),
+            "expected slice function parameter access to validate the descriptor data pointer");
         assert(contains_s(generated, "(whole).len"), "expected len(slice) to read the descriptor length");
         assert(contains_s(generated, "rt_strlen(text)"), "expected len(string) to call rt_strlen");
         assert(contains_s(generated, "rt_strlen(dea_arc_"), "expected len(string rvalue) to use a cleanup temp");
@@ -1826,6 +1886,7 @@ func main() {
     test_backend_generate_single_statement_loop_and_match_bodies();
     test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets();
     test_backend_generate_drop_statement();
+    test_backend_generate_drop_begin_before_array_cleanup();
     test_backend_generate_new_and_try_lowering();
     test_backend_generate_intrinsics_use_analyzed_target_types();
     test_backend_generate_named_args_use_source_order_temporaries();
@@ -1834,6 +1895,7 @@ func main() {
     test_backend_generate_string_copy_retains();
     test_backend_generate_identity_cast_string_copy_retains();
     test_backend_generate_pointer_indexing_contract();
+    test_backend_generate_deref_field_write_uses_write_mode();
     test_backend_generate_fixed_arrays();
     test_backend_generate_slices();
     test_backend_generate_fixed_array_arc_shapes();

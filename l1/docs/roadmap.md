@@ -162,6 +162,11 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   production source modules while preserving public root imports and current compiler behavior.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
+- Feature [2026-06-30-runtime-pointer-access-validation-noref][runtime-pointer-validation] adds runtime pointer access
+  validation to L1 under the shared Dea-wide pointer-safety plan; checked builds are the default and `DEA_RT_UNCHECKED`
+  compiles validation out for release builds. The prebuilt archive runtime honors `DEA_RT_QUARANTINE_MAX_BYTES` and
+  `DEA_RT_QUARANTINE_MAX_COUNT` environment overrides read once at first tracker use. The `l1c --unchecked` flag selects
+  the prebuilt `libdea_rt_unchecked.a` archive variant and defines `DEA_RT_UNCHECKED` in generated C.
 
 ## Backlog
 
@@ -268,6 +273,7 @@ update to be promoted to an initiative or plan:
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
+[runtime-pointer-validation]: ../work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md
 [runtime-resplit]: ../work/plans/refactors/closed/2026-04-27-runtime-cu-resplit-noref.md
 [runtime-split]: ../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
 [scalar-const-flow]: ../work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md

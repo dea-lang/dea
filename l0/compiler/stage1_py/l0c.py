@@ -265,6 +265,7 @@ def build_compilation_context(args: argparse.Namespace) -> CompilationContext:
         emit_line_directives=not getattr(args, 'no_line_directives', False),
         trace_arc=getattr(args, 'trace_arc', False),
         trace_memory=getattr(args, 'trace_memory', False),
+        rt_unchecked=getattr(args, 'unchecked', False),
         log_rich_format=log_rich_format,
         log_level=log_level,
     )
@@ -698,6 +699,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             no_line_directives=args.no_line_directives,
             trace_arc=getattr(args, 'trace_arc', False),
             trace_memory=getattr(args, 'trace_memory', False),
+            unchecked=getattr(args, 'unchecked', False),
             log=args.log,
         )
 
@@ -1160,6 +1162,11 @@ def _add_codegen_arg(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Enable memory runtime tracing in generated C code (emits L0_TRACE_MEMORY; valid in: '--build', '--run', '--gen')",
     )
+    parser.add_argument(
+        "--unchecked",
+        action="store_true",
+        help="Disable runtime pointer validation in generated C code (emits L0_RT_UNCHECKED; valid in: '--build', '--run', '--gen')",
+    )
 
 
 _OPTIONS_REQUIRING_VALUE = {
@@ -1199,20 +1206,21 @@ def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.
     mode = args.mode
 
     scoped_flags = [
-        ("output", "--output", {"build", "run", "gen"}),
-        ("keep_c", "--keep-c", {"build", "run"}),
-        ("c_compiler", "--c-compiler", {"build", "run"}),
-        ("c_options", "--c-options", {"build", "run"}),
-        ("runtime_include", "--runtime-include", {"build", "run"}),
-        ("runtime_lib", "--runtime-lib", {"build", "run"}),
-        ("no_line_directives", "--no-line-directives", {"build", "run", "gen"}),
-        ("trace_arc", "--trace-arc", {"build", "run", "gen"}),
-        ("trace_memory", "--trace-memory", {"build", "run", "gen"}),
-        ("all_modules", "--all-modules", {"tok", "ast", "sym", "type"}),
-        ("include_eof", "--include-eof", {"tok"}),
+        ("output", "--output", {"build", "run", "gen"}, "L0C-2010"),
+        ("keep_c", "--keep-c", {"build", "run"}, "L0C-2011"),
+        ("c_compiler", "--c-compiler", {"build", "run"}, "L0C-2012"),
+        ("c_options", "--c-options", {"build", "run"}, "L0C-2013"),
+        ("runtime_include", "--runtime-include", {"build", "run"}, "L0C-2014"),
+        ("runtime_lib", "--runtime-lib", {"build", "run"}, "L0C-2015"),
+        ("no_line_directives", "--no-line-directives", {"build", "run", "gen"}, "L0C-2016"),
+        ("trace_arc", "--trace-arc", {"build", "run", "gen"}, "L0C-2017"),
+        ("trace_memory", "--trace-memory", {"build", "run", "gen"}, "L0C-2018"),
+        ("unchecked", "--unchecked", {"build", "run", "gen"}, "L0C-2025"),
+        ("all_modules", "--all-modules", {"tok", "ast", "sym", "type"}, "L0C-2019"),
+        ("include_eof", "--include-eof", {"tok"}, "L0C-2020"),
     ]
 
-    for attr, flag_name, valid_modes in scoped_flags:
+    for attr, flag_name, valid_modes, code in scoped_flags:
         value = getattr(args, attr)
         provided = bool(value)
         if not provided:
@@ -1220,7 +1228,12 @@ def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.
         if mode in valid_modes:
             continue
         modes_msg = ", ".join(f"--{m}" for m in sorted(valid_modes))
-        parser.error(f"option '{flag_name}' is valid only with modes: {modes_msg}")
+        parser.error(f"[{code}] option '{flag_name}' is valid only with modes: {modes_msg}")
+
+    if getattr(args, "unchecked", False) and (
+        getattr(args, "trace_arc", False) or getattr(args, "trace_memory", False)
+    ):
+        parser.error("[L0C-2026] option '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'")
 
 
 def main(argv: Optional[List[str]] = None) -> None:
@@ -1322,14 +1335,14 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if args.mode == "run":
         if len(args.targets) > 1:
-            parser.error("mode '--run' accepts exactly one target; use '--' before runtime program arguments")
+            parser.error("[L0C-2022] mode '--run' accepts exactly one target; use '--' before runtime program arguments")
         args.entry = args.targets[0]
         args.args = program_args
     else:
         if program_args:
-            parser.error("arguments after '--' are valid only with '--run'")
+            parser.error("[L0C-2023] arguments after '--' are valid only with '--run'")
         if len(args.targets) > 1:
-            parser.error("multiple targets are not supported yet; pass exactly one target")
+            parser.error("[L0C-2024] multiple targets are not supported yet; pass exactly one target")
         args.entry = args.targets[0]
 
     _validate_mode_scoped_flags(parser, args)

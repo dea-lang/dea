@@ -102,8 +102,10 @@ def test_dereference_of_simple_variable_no_temp(codegen_single):
     # Should NOT generate a pointer temporary for simple variable
     assert "l0_ptr_" not in c_code, "Should not generate temp for simple variable dereference"
 
-    # Should directly use the parameter
-    assert "(*ptr)" in c_code
+    # Should directly check and dereference the parameter without caching it first.
+    assert "_rt_check_ptr_site(&" in c_code
+    assert "(void*)(ptr), (l0_int)(sizeof" in c_code
+    assert "_RT_ACCESS_WRITE" in c_code
 
 
 def test_string_assignment_through_function_call_pointer(codegen_single):
@@ -137,10 +139,10 @@ def test_string_assignment_through_function_call_pointer(codegen_single):
     assert temp_match, "Could not find temp variable"
     temp_name = temp_match.group(0)
 
-    # Should use temp for rt_string_release
-    assert f"rt_string_release((*{temp_name}))" in c_code
-    # Should use temp for assignment
-    assert f"(*{temp_name}) =" in c_code
+    # Should use the cached temp for both release and assignment through checked access.
+    assert c_code.count(f"(void*)({temp_name}), (l0_int)(sizeof") >= 2
+    assert "rt_string_release((*((l0_string*)_rt_check_ptr_site" in c_code
+    assert "(*((l0_string*)_rt_check_ptr_site" in c_code
     # Note: String literals don't need rt_string_retain (they're fresh values, not place exprs)
 
 
@@ -223,6 +225,57 @@ def test_field_access_on_simple_variable_no_temp(codegen_single):
 
     # Should NOT generate an object temporary for simple variable
     assert "l0_obj_" not in c_code, "Should not generate temp for simple variable field access"
+
+
+def test_explicit_deref_field_write_uses_write_mode(codegen_single):
+    """Test that a field store through an explicit dereference checks write mode."""
+    c_code, diags = codegen_single(
+        "main",
+        """
+        module main;
+
+        struct Pair {
+            a: byte;
+            b: byte;
+        }
+
+        func assign_field(q: Pair*) {
+            (*q).b = 'X';
+        }
+        """,
+    )
+
+    assert c_code is not None, f"Codegen failed: {diags}"
+
+    assert "_RT_ACCESS_WRITE" in c_code
+    assert "_RT_ACCESS_READ" not in c_code
+
+
+def test_nested_field_write_uses_write_mode(codegen_single):
+    """Test that a store into a nested embedded-struct field checks write mode."""
+    c_code, diags = codegen_single(
+        "main",
+        """
+        module main;
+
+        struct Inner {
+            value: int;
+        }
+
+        struct Outer {
+            inner: Inner;
+        }
+
+        func assign_nested(q: Outer*) {
+            q.inner.value = 42;
+        }
+        """,
+    )
+
+    assert c_code is not None, f"Codegen failed: {diags}"
+
+    assert "_RT_ACCESS_WRITE" in c_code
+    assert "_RT_ACCESS_READ" not in c_code
 
 
 # ============================================================================
@@ -352,7 +405,7 @@ def test_string_dereference_assign_calls_func_once(tmp_path, write_l0_file, sear
         func get_string_slot() -> string* {
             counter = counter + 1;
             // Allocate space for a string - use calloc which zeroes memory
-            let ptr: void* = rt_calloc(1, 8) as void*;
+            let ptr: void* = rt_calloc(1, sizeof(string)) as void*;
             let sptr: string* = ptr as string*;
             return sptr;
         }
@@ -447,6 +500,62 @@ def test_field_assign_with_function_call_object(tmp_path, write_l0_file, search_
     assert success, stderr
     assert "Counter after int field assign: 1" in stdout
     assert "Counter after string field assign: 1" in stdout
+
+
+def test_explicit_deref_field_assign_with_function_call(tmp_path, write_l0_file, search_paths, compile_and_run):
+    """Test that (*f()).b = v writes through the callee's pointer, not a temp copy.
+
+    The pointer expression must be cached and the store must land in the
+    pointed-to struct; materializing the struct value into a temporary would
+    silently discard the assignment.
+    """
+    write_l0_file(
+        "dereffield",
+        """
+        module dereffield;
+
+        import std.io;
+        import sys.memory;
+
+        struct Pair {
+            a: int;
+            b: int;
+        }
+
+        let counter: int = 0;
+        let slot: void*? = null;
+
+        func get_pair_ptr() -> Pair* {
+            counter = counter + 1;
+            return (slot as void*) as Pair*;
+        }
+
+        func main() -> int {
+            slot = rt_calloc(1, sizeof(Pair)) as void*;
+            counter = 0;
+
+            (*get_pair_ptr()).b = 42;
+
+            printl_si("Counter:", counter);
+            printl_si("Value:", get_pair_ptr().b);
+
+            rt_free(slot);
+            return 0;
+        }
+        """,
+    )
+
+    driver = L0Driver(search_paths=search_paths)
+    result = driver.analyze("dereffield")
+    assert not result.has_errors(), result.diagnostics
+
+    backend = Backend(result)
+    c_code = backend.generate()
+
+    success, stdout, stderr = compile_and_run(c_code, tmp_path)
+    assert success, stderr
+    assert "Counter: 1" in stdout
+    assert "Value: 42" in stdout
 
 
 # ============================================================================

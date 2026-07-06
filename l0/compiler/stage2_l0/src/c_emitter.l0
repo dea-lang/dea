@@ -40,6 +40,7 @@ struct CEmitter {
     current_module: string?;
     out: CCodeBuilder*;
     tmp_counter: int;
+    active_line_directive: string;
     opt_wrappers: StringPtrMap*; // wrapper name -> Type*
     opt_emitted: StringSet*;
 }
@@ -203,7 +204,7 @@ func ccb_to_string(self: CCodeBuilder*) -> string {
  * @return New emitter.
  */
 func cem_create() -> CEmitter* {
-    return new CEmitter(null, null, ccb_create(), 0, spm_create(), ss_create());
+    return new CEmitter(null, null, ccb_create(), 0, "", spm_create(), ss_create());
 }
 
 /**
@@ -659,6 +660,9 @@ func cem_emit_header(self: CEmitter*, opts: CodegenOptions*) {
     if (opts.trace_memory) {
         ccb_emit(self.out, "#define L0_TRACE_MEMORY 1");
     }
+    if (opts.rt_unchecked) {
+        ccb_emit(self.out, "#define L0_RT_UNCHECKED 1");
+    }
     ccb_emit(self.out, "#include \"l0_runtime.h\"");
     ccb_emit(self.out, "");
 }
@@ -690,12 +694,23 @@ func cem_module_filename(self: CEmitter*, module_name: string) -> string {
  */
 func cem_emit_line_directive(self: CEmitter*, line: int, current_module: string, opts: CodegenOptions*) {
     if (!opts.emit_line_directives || line <= 0) {
+        self.active_line_directive = "";
         return;
     }
-    ccb_emit(
-        self.out,
-        "#line " + int_to_string(line) + " \"" + se_encode_c_string_bytes(cem_module_filename(self, current_module)) + "\""
-    );
+    self.active_line_directive = "#line " + int_to_string(line) + " \"" +
+        se_encode_c_string_bytes(cem_module_filename(self, current_module)) + "\"";
+    ccb_emit(self.out, self.active_line_directive);
+}
+
+/**
+ * Re-emit the current source line directive after generated helper lines.
+ *
+ * @param self Emitter to update.
+ */
+func cem_restore_active_line_directive(self: CEmitter*) {
+    if (!is_empty_s(self.active_line_directive)) {
+        ccb_emit(self.out, self.active_line_directive);
+    }
 }
 
 /**
@@ -1453,6 +1468,90 @@ func cem_emit_cast(c_type: string, c_inner: string) -> string {
 }
 
 /**
+ * Emit a runtime-checked pointer access expression.
+ *
+ * Declares one static per-call-site cache slot so the runtime validates
+ * repeated accesses from the same site with a single range check.
+ *
+ * @param self Emitter to update.
+ * @param c_ptr_expr Pointer expression.
+ * @param c_ptr_type Lowered pointer type.
+ * @param c_required_size Required byte extent expression.
+ * @param c_required_align Required alignment expression.
+ * @param access_mode Runtime access mode expression.
+ * @return Checked pointer expression.
+ */
+func cem_emit_checked_ptr_access(self: CEmitter*, c_ptr_expr: string, c_ptr_type: string, c_required_size: string, c_required_align: string, access_mode: string) -> string {
+    let site = cem_fresh_tmp(self, "site");
+    ccb_emit(self.out, "static _rt_ptr_site " + site + ";");
+    cem_restore_active_line_directive(self);
+    return "((" + c_ptr_type + ")_rt_check_ptr_site(&" + site + ", (void*)(" + c_ptr_expr + "), (l0_int)(" +
+        c_required_size + "), (l0_int)(" + c_required_align + "), " + access_mode + ", __FILE__, __LINE__))";
+}
+
+/**
+ * Emit a runtime-checked indexed pointer access expression.
+ *
+ * @param self Emitter to update.
+ * @param c_base_expr Base pointer expression.
+ * @param c_index_expr Index expression.
+ * @param c_ptr_type Lowered pointer type.
+ * @param c_element_size Element byte extent expression.
+ * @param c_required_align Required alignment expression.
+ * @param access_mode Runtime access mode expression.
+ * @return Checked pointer expression.
+ */
+func cem_emit_checked_ptr_index_access(self: CEmitter*, c_base_expr: string, c_index_expr: string, c_ptr_type: string,
+                                       c_element_size: string, c_required_align: string, access_mode: string) -> string {
+    let site = cem_fresh_tmp(self, "site");
+    ccb_emit(self.out, "static _rt_ptr_site " + site + ";");
+    cem_restore_active_line_directive(self);
+    return "((" + c_ptr_type + ")_rt_check_index_ptr_site(&" + site + ", (void*)(" + c_base_expr + "), (l0_int)(" +
+        c_index_expr + "), (l0_int)(" + c_element_size + "), (l0_int)(" + c_required_align + "), " +
+        access_mode + ", __FILE__, __LINE__))";
+}
+
+/**
+ * Emit a checked pointer to one complete object of the given C base type.
+ *
+ * @param self Emitter to update.
+ * @param c_ptr_expr Pointer expression.
+ * @param c_base_type Lowered pointee type.
+ * @return Checked pointer expression.
+ */
+func cem_emit_checked_ptr_access_for_base(self: CEmitter*, c_ptr_expr: string, c_base_type: string, access_mode: string) -> string {
+    return cem_emit_checked_ptr_access(
+        self,
+        c_ptr_expr,
+        c_base_type + "*",
+        "sizeof(" + c_base_type + ")",
+        "_RT_ALIGNOF(" + c_base_type + ")",
+        access_mode
+    );
+}
+
+/**
+ * Emit the expression that validates and begins a generated drop.
+ *
+ * @param c_ptr_expr Pointer expression.
+ * @param c_ptr_type Lowered pointer type.
+ * @return Checked pointer expression.
+ */
+func cem_emit_drop_begin_expr(c_ptr_expr: string, c_ptr_type: string) -> string {
+    return "((" + c_ptr_type + ")_rt_drop_begin_impl((void*)(" + c_ptr_expr + "), __FILE__, __LINE__))";
+}
+
+/**
+ * Emit the runtime call that completes a generated drop.
+ *
+ * @param self Emitter to update.
+ * @param c_ptr_expr Checked drop pointer expression.
+ */
+func cem_emit_drop_finish_call(self: CEmitter*, c_ptr_expr: string) {
+    ccb_emit(self.out, "_rt_drop_finish_impl((void*)(" + c_ptr_expr + "), __FILE__, __LINE__);");
+}
+
+/**
  * Emit a checked narrowing cast call.
  *
  * @param c_dst_type Destination C type name.
@@ -2026,6 +2125,19 @@ func cem_emit_pointer_assignment(self: CEmitter*, c_ptr_name: string, c_value: s
 }
 
 /**
+ * Emit an assignment through a runtime-checked object pointer.
+ *
+ * @param self Emitter to update.
+ * @param c_ptr_name C pointer expression.
+ * @param c_base_type Lowered pointee type.
+ * @param c_value Lowered value expression.
+ */
+func cem_emit_checked_pointer_assignment(self: CEmitter*, c_ptr_name: string, c_base_type: string, c_value: string) {
+    let checked = cem_emit_checked_ptr_access_for_base(self, c_ptr_name, c_base_type, "_RT_ACCESS_WRITE");
+    ccb_emit(self.out, "*" + checked + " = " + c_value + ";");
+}
+
+/**
  * Emit an ARC string retain call.
  *
  * @param self Emitter to update.
@@ -2115,16 +2227,6 @@ func cem_emit_drop_call(self: CEmitter*, c_ptr_expr: string) {
 }
 
 /**
- * Emit a runtime validation before generated drop cleanup.
- *
- * @param self Emitter to update.
- * @param c_ptr_expr Lowered pointer expression.
- */
-func cem_emit_drop_precheck_call(self: CEmitter*, c_ptr_expr: string) {
-    ccb_emit(self.out, "_rt_drop_precheck((void*)" + c_ptr_expr + ")" + ";");
-}
-
-/**
  * Emit a NULL assignment.
  *
  * @param self Emitter to update.
@@ -2155,7 +2257,8 @@ func cem_emit_alloc_obj(self: CEmitter*, c_ptr_type: string, c_base_type: string
  * @param c_init_str Lowered initializer body without outer braces.
  */
 func cem_emit_struct_init(self: CEmitter*, c_temp_name: string, c_base_type: string, c_init_str: string) {
-    ccb_emit(self.out, "*" + c_temp_name + " = (" + c_base_type + "){ " + c_init_str + " };");
+    let checked = cem_emit_checked_ptr_access_for_base(self, c_temp_name, c_base_type, "_RT_ACCESS_WRITE");
+    ccb_emit(self.out, "*" + checked + " = (" + c_base_type + "){ " + c_init_str + " };");
 }
 
 /**
@@ -2226,7 +2329,8 @@ func cem_emit_enum_variant_init(self: CEmitter*, c_temp_name: string, enum_type:
  * @param c_base_type Lowered base type.
  */
 func cem_emit_zero_init(self: CEmitter*, c_temp_name: string, c_base_type: string) {
-    ccb_emit(self.out, "*" + c_temp_name + " = (" + c_base_type + "){ 0" + " }" + ";");
+    let checked = cem_emit_checked_ptr_access_for_base(self, c_temp_name, c_base_type, "_RT_ACCESS_WRITE");
+    ccb_emit(self.out, "*" + checked + " = (" + c_base_type + "){ 0" + " }" + ";");
 }
 
 /**

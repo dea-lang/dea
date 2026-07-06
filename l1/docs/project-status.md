@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-11
+Version: 2026-07-12
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -97,7 +97,8 @@ checks, including:
 - explicit nullability, `T` to `T?` wrapping, integer casts to nullable integer targets, `new` / `drop`, ARC-managed
   `string`, casts, postfix `expr?`, string value comparisons, same-type `T?` equality, same-type pointer identity
   equality, and `is(x, Variant)` enum tag checks
-- raw-pointer indexing `ptr[i]` inside `unsafe func`, with direct unchecked lowering on non-null sized pointer bases
+- raw-pointer indexing `ptr[i]` inside `unsafe func`, checked dynamically in checked runtime builds and lowered directly
+  in `--unchecked` builds on non-null sized pointer bases
 
 The stdlib currently includes the core bootstrap modules for I/O, strings, text, paths, filesystem access, time,
 randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.integer`, L1-only

@@ -1,7 +1,7 @@
 # ADR-0011: Fixed-Size Array Policy
 
 - Decision date: 2026-05-10
-- Last edited: 2026-07-11
+- Last edited: 2026-07-12
 - Status: Accepted
 
 ## Context
@@ -22,8 +22,8 @@ expression:
 - Array fill constructor: `T[N](value)` fills all elements with `value`.
 - Array indexing is **safe**: generated code evaluates base and index once, checks `index < 0 || index >= N`, and calls
   `_rt_panic_oob(index, N)` on failure.
-- Raw pointer indexing (`ptr[i]` where `ptr: T*`) remains the unsafe, unchecked operation and requires an `unsafe func`
-  body (see [ADR-0010][adr-unsafe]).
+- Raw pointer indexing (`ptr[i]` where `ptr: T*`) remains a source-unsafe operation and requires an `unsafe func` body
+  (see [ADR-0010][adr-unsafe]); checked runtime builds may still validate the access dynamically.
 
 ## Rationale
 

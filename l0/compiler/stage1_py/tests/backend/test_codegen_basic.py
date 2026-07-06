@@ -367,7 +367,9 @@ def test_codegen_unary_expressions(codegen_single):
         return
 
     assert "(-x)" in c_code
-    assert "(*p)" in c_code
+    assert "_rt_check_ptr_site(&" in c_code
+    assert "(void*)(p), (l0_int)(sizeof" in c_code
+    assert "_RT_ACCESS_READ" in c_code
 
 
 def test_codegen_field_access(codegen_single):
@@ -398,8 +400,11 @@ def test_codegen_field_access(codegen_single):
     # Value access uses dot
     assert "(p).x" in c_code
 
-    # Pointer access uses arrow
-    assert "(p)->x" in c_code
+    # Pointer access uses a checked pointer before the arrow.
+    assert "_rt_check_ptr_site(&" in c_code
+    assert "(void*)(p), (l0_int)(sizeof" in c_code
+    assert "_RT_ACCESS_READ" in c_code
+    assert ")->x" in c_code
 
 
 def test_codegen_array_indexing(codegen_single):

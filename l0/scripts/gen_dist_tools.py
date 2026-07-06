@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tempfile
 
-from build_stage2_l0c import build_stage2_artifact
+from build_stage2_l0c import build_stage2_artifact, compiler_runtime_build_env
 from dist_tools_lib import (
     create_stage2_distribution,
     distribution_archive_basename,
@@ -149,16 +149,17 @@ def main() -> int:
             try:
                 temp_layout = normalize_dea_build_dir(str(temp_dist))
                 with stage2_build_info_overlay(prefix_layout.repo_root, os.environ.copy(), temp_parent=build_root) as overlay:
-                    print_toolchain_env(overlay.build_env)
+                    compiler_build_env = compiler_runtime_build_env(overlay.build_env)
+                    print_toolchain_env(compiler_build_env)
                     print_progress(f"stage 1/3: building bootstrap Stage 2 compiler under {temp_layout.dea_build_dir}")
                     stage2_wrapper, _, _ = build_stage2_artifact(
                         temp_layout,
                         keep_c=False,
                         extra_project_roots=[str(overlay.overlay_root)],
-                        extra_env=overlay.build_env,
+                        extra_env=compiler_build_env,
                     )
                     self_hosted_native = temp_dist / "l0c-stage2-selfhosted.native"
-                    self_build_env = overlay.build_env.copy()
+                    self_build_env = compiler_runtime_build_env(overlay.build_env)
                     self_build_env["L0_HOME"] = str(prefix_layout.repo_root / "compiler")
                     self_build_env.pop("L0_SYSTEM", None)
                     self_build_env.pop("L0_RUNTIME_INCLUDE", None)
@@ -201,8 +202,9 @@ def main() -> int:
             try:
                 bootstrap_layout = normalize_dea_build_dir(str(temp_root / "bootstrap"))
                 with stage2_build_info_overlay(REPO_ROOT, os.environ.copy(), temp_parent=build_root) as overlay:
+                    compiler_build_env = compiler_runtime_build_env(overlay.build_env)
                     dist_layout = normalize_prefix_dir(str(temp_root / distribution_root_dir_name()))
-                    print_toolchain_env(overlay.build_env)
+                    print_toolchain_env(compiler_build_env)
                     print_progress(
                         f"stage 1/4: building bootstrap Stage 2 compiler under {render_display_path(bootstrap_layout.dea_build_dir)}"
                     )
@@ -210,10 +212,10 @@ def main() -> int:
                         bootstrap_layout,
                         keep_c=False,
                         extra_project_roots=[str(overlay.overlay_root)],
-                        extra_env=overlay.build_env,
+                        extra_env=compiler_build_env,
                     )
                     self_hosted_native = temp_root / "l0c-stage2-selfhosted.native"
-                    self_build_env = overlay.build_env.copy()
+                    self_build_env = compiler_runtime_build_env(overlay.build_env)
                     self_build_env["L0_HOME"] = str(REPO_ROOT / "compiler")
                     self_build_env.pop("L0_SYSTEM", None)
                     self_build_env.pop("L0_RUNTIME_INCLUDE", None)

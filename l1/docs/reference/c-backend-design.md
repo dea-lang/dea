@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-06-24
+Version: 2026-07-05
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -175,8 +175,9 @@ Key rules:
 - enum and struct cleanup recursively releases owned fields for active values
 - arrays whose element type transitively contains ARC-managed data participate in retain and cleanup; cleanup walks
   elements in reverse index order
-- raw-pointer indexing lowers to direct C indexing; side-effectful lvalue bases or indexes are captured once so writes
-  preserve single evaluation of both operands
+- raw-pointer indexing inside `unsafe func` lowers through runtime pointer validation in checked builds and to direct C
+  indexing in `--unchecked` builds; side-effectful lvalue bases or indexes are captured once so writes preserve single
+  evaluation of both operands
 - fixed-size array values lower at the wrapper boundary; flattened nested rows are raw C arrays only inside dedicated
   array helper paths
 - fixed-size array indexing emits a bounds check that calls `_rt_panic_oob(index, length)` before accessing `.data`

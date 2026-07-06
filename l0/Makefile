@@ -23,6 +23,13 @@ else
 DIST_L0_CFLAGS_DEFAULT := -O2
 endif
 
+# Optional runtime tuning knobs composed into L0_CFLAGS as C defines.
+L0_RT_TUNING_CFLAGS := $(strip \
+	$(if $(strip $(L0_RT_UNCHECKED)),-DL0_RT_UNCHECKED) \
+	$(if $(strip $(L0_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L0_RT_QUARANTINE_MAX_BYTES)) \
+	$(if $(strip $(L0_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L0_RT_QUARANTINE_MAX_COUNT)))
+L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
+
 .PHONY: \
 	help \
 	venv \
@@ -46,6 +53,7 @@ endif
 	test-docker \
 	refresh-goldens \
 	list-installed \
+	bench-runtime \
 	test-all \
 	print-dea-build-dir \
 	docs \
@@ -90,6 +98,7 @@ help:
 		'  docs-pdf           Generate the project documentation, including the PDF manual.' \
 		'' \
 		'Other targets:' \
+		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-all`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
 		'  refresh-goldens    Regenerate Stage 2 backend golden C fixtures from Stage 1.' \
 		'  list-installed     List files installed by `make install` under PREFIX.' \
 		'  help               Show this help text.' \
@@ -110,7 +119,14 @@ help:
 		'  DOCKER_IMAGE=l0-test' \
 		'                     Docker image tag used by `make docker`.' \
 		'  DOCKER_L0_CC=<compiler>' \
-		'                     Optional C compiler passed into the Docker run as `L0_CC` (`gcc` or `clang`).'
+		'                     Optional C compiler passed into the Docker run as `L0_CC` (`gcc` or `clang`).' \
+		'  L0_RT_UNCHECKED=1  Compose `-DL0_RT_UNCHECKED` into `L0_CFLAGS` for `install`, `dist`, and `install-dev-stage2` (unchecked runtime; same effect as the `l0c --unchecked` flag).' \
+		'  L0_RT_QUARANTINE_MAX_BYTES=<n>' \
+		'                     Compose a checked-runtime quarantine byte limit define into `L0_CFLAGS` (default 16 MiB).' \
+		'  L0_RT_QUARANTINE_MAX_COUNT=<n>' \
+		'                     Compose a checked-runtime quarantine record limit define into `L0_CFLAGS` (default 4096; `0` disables retention; `256` is the suggested setting for performance-sensitive checked deployments).' \
+		'  L0_COMPILER_RT_QUARANTINE_MAX_COUNT=256' \
+		'                     Checked-runtime quarantine record limit used when building L0 compiler binaries only; empty disables this compiler-build default and user program defaults stay unchanged.'
 
 venv:
 	@$(MAKE) -C .. venv
@@ -121,6 +137,10 @@ install-dev-stage1:
 	@printf 'Repo-local Stage 1 compiler version:\n'
 	@"$(DEA_BUILD_DIR)/bin/l0c-stage1" --version
 
+ifneq ($(strip $(L0_RT_TUNING_CFLAGS)),)
+install-dev-stage2: export L0_CFLAGS := $(L0_CFLAGS) $(L0_RT_TUNING_CFLAGS)
+endif
+install-dev-stage2: export L0_COMPILER_RT_QUARANTINE_MAX_COUNT := $(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)
 install-dev-stage2:
 	DEA_BUILD_DIR="$(DEA_BUILD_DIR)" $(PYTHON) ./scripts/build_stage2_l0c.py
 	$(PYTHON) ./scripts/gen_dist_tools.py write-env-script --dea-build-dir "$(DEA_BUILD_DIR)"
@@ -134,7 +154,7 @@ install:
 		printf '%s\n' 'make install: PREFIX is required; example: make PREFIX=/tmp/l0-install L0_CC=gcc install' >&2; \
 		exit 2; \
 	fi
-	L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}" $(PYTHON) ./scripts/gen_dist_tools.py install-prefix --prefix "$(PREFIX)"
+	L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}$(if $(L0_RT_TUNING_CFLAGS), $(L0_RT_TUNING_CFLAGS))" $(PYTHON) ./scripts/gen_dist_tools.py install-prefix --prefix "$(PREFIX)"
 	@printf 'Installed Stage 2 compiler version:\n'
 	@"$(PREFIX)/bin/l0c-stage2" --version
 	@printf '\n------------------------------------------------------------------------------\n'
@@ -147,6 +167,9 @@ else
 endif
 	@printf '\n------------------------------------------------------------------------------\n'
 
+bench-runtime:
+	$(PYTHON) ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")
+
 list-installed:
 	@if [ -z "$(strip $(PREFIX))" ]; then \
 		printf '%s\n' 'make list-installed: PREFIX is required; example: make PREFIX=/usr/local list-installed' >&2; \
@@ -155,7 +178,7 @@ list-installed:
 	@$(PYTHON) ./scripts/gen_dist_tools.py list-installed --prefix "$(PREFIX)"
 
 dist: venv
-	L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}" $(PYTHON) ./scripts/gen_dist_tools.py make-dist
+	L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}$(if $(L0_RT_TUNING_CFLAGS), $(L0_RT_TUNING_CFLAGS))" $(PYTHON) ./scripts/gen_dist_tools.py make-dist
 
 use-dev-stage1: install-dev-stage1
 	$(PYTHON) ./scripts/gen_dist_tools.py set-alias --dea-build-dir "$(DEA_BUILD_DIR)" --stage stage1
@@ -183,6 +206,8 @@ test-stage1: | venv
 	"$(VENV_PYTHON)" -m pytest -n auto -q --quiet-progress
 
 test-stage2: install-dev-stage2 | venv
+test-stage2: export L0_COMPILER_RT_QUARANTINE_MAX_COUNT := $(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)
+test-stage2:
 	DEA_BUILD_DIR="$(DEA_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage2_l0/scripts/run_tests.py $(TESTS)
 
 test-stage2-trace: install-dev-stage2 | venv
@@ -195,6 +220,8 @@ test-dist: | venv
 	"$(VENV_PYTHON)" ./tests/test_make_dist_workflow.py
 
 triple-test: install-dev-stage2 | venv
+triple-test: export L0_COMPILER_RT_QUARANTINE_MAX_COUNT := $(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)
+triple-test:
 	DEA_BUILD_DIR="$(DEA_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage2_l0/tests/l0c_triple_bootstrap_test.py
 
 test-dea-build: | venv

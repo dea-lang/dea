@@ -33,6 +33,9 @@ MONOREPO_ROOT = REPO_ROOT.parent
 DEFAULT_L1_BUILD_DIR = "build/dea"
 L1_BUILD_DIR_ENV = "L1_BUILD_DIR"
 L1_BOOTSTRAP_L0C_ENV = "L1_BOOTSTRAP_L0C"
+L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV = "L1_COMPILER_RT_QUARANTINE_MAX_COUNT"
+DEFAULT_L1_COMPILER_RT_QUARANTINE_MAX_COUNT = "256"
+RT_QUARANTINE_MAX_COUNT_DEFINE = "-D_RT_QUARANTINE_MAX_COUNT="
 
 
 @dataclass(frozen=True)
@@ -102,6 +105,31 @@ def write_relative_alias(path: Path, target_name: str) -> None:
             shutil.copy2(target_cmd, cmd_path)
     else:
         path.symlink_to(target_name)
+
+
+def append_cflag(cflags: str, flag: str) -> str:
+    """Append one C flag to an existing flag string."""
+
+    return f"{cflags} {flag}".strip()
+
+
+def compiler_runtime_build_env(source_env: dict[str, str]) -> dict[str, str]:
+    """Return an env for building the L1 compiler with checked-runtime tuning."""
+
+    build_env = dict(source_env)
+    cflags = build_env.get("L0_CFLAGS", "")
+    if RT_QUARANTINE_MAX_COUNT_DEFINE in cflags:
+        return build_env
+
+    count = build_env.get(
+        L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
+        DEFAULT_L1_COMPILER_RT_QUARANTINE_MAX_COUNT,
+    ).strip()
+    if not count:
+        return build_env
+
+    build_env["L0_CFLAGS"] = append_cflag(cflags, f"{RT_QUARANTINE_MAX_COUNT_DEFINE}{count}")
+    return build_env
 
 
 def write_stage1_wrapper(layout: L1BuildLayout) -> Path:
@@ -184,7 +212,7 @@ def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], k
         c_output.unlink(missing_ok=True)
     build_args.extend(["-P", "compiler/stage1_l0/src", "-o", str(native_bin), "l1c"])
 
-    build_env = os.environ.copy()
+    build_env = compiler_runtime_build_env(os.environ.copy())
     build_env["L0_HOME"] = str(MONOREPO_ROOT / "l0" / "compiler")
     build_env["L0_SYSTEM"] = str(MONOREPO_ROOT / "l0" / "compiler" / "shared" / "l0" / "stdlib")
     build_env.pop("L0_RUNTIME_INCLUDE", None)

@@ -12,6 +12,7 @@ struct CodegenOptions {
     emit_line_directives: bool;
     trace_arc: bool;
     trace_memory: bool;
+    rt_unchecked: bool;
 }
 
 /**
@@ -20,7 +21,7 @@ struct CodegenOptions {
  * @return New codegen options object.
  */
 func cg_options_create() -> CodegenOptions* {
-    return new CodegenOptions(true, false, false);
+    return new CodegenOptions(true, false, false, false);
 }
 
 /**

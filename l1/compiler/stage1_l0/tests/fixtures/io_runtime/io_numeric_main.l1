@@ -5,6 +5,7 @@
 
 module io_numeric_main;
 
+import sys.rt;
 import std.io;
 import std.integer;
 import std.string;
@@ -97,6 +98,50 @@ func mode_text() -> int {
     return 0;
 }
 
+func mode_bytes() -> int {
+    let line_opt = read_line();
+    if (line_opt == null) {
+        return 25;
+    }
+    let line = line_opt as string;
+    let p = rt_string_bytes_ptr(line);
+    let b = *p;
+    if ((b as int) != 65) {
+        return 26;
+    }
+    printl_s("bytes-ok");
+    return 0;
+}
+
+func mode_bytes_write_static() -> int {
+    let p = rt_string_bytes_ptr("Hi");
+    *p = 'X';
+    return 0;
+}
+
+struct BytePair {
+    a: byte;
+    b: byte;
+}
+
+func mode_bytes_write_field() -> int {
+    let raw = rt_string_bytes_ptr("Hi") as void*;
+    let q = raw as BytePair*;
+    (*q).b = 'X';
+    return 0;
+}
+
+func mode_bytes_write_heap() -> int {
+    let line_opt = read_line();
+    if (line_opt == null) {
+        return 27;
+    }
+    let line = line_opt as string;
+    let p = rt_string_bytes_ptr(line);
+    *p = 'X';
+    return 0;
+}
+
 func main() -> int {
     if (argc() < 2) {
         return 2;
@@ -113,6 +158,18 @@ func main() -> int {
     }
     if (mode == "text") {
         return mode_text();
+    }
+    if (mode == "bytes") {
+        return mode_bytes();
+    }
+    if (mode == "bytes-write-static") {
+        return mode_bytes_write_static();
+    }
+    if (mode == "bytes-write-field") {
+        return mode_bytes_write_field();
+    }
+    if (mode == "bytes-write-heap") {
+        return mode_bytes_write_heap();
     }
     return 3;
 }

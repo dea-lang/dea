@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-07-11
+Version: 2026-07-12
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -620,66 +620,79 @@ remainder/decomposition, rounding, and transcendental math.
 
 Low-level raw memory FFI. Misuse can cause undefined behavior.
 
+In checked runtime builds (the default), allocations are tracked and pointer accesses are validated; dropped and freed
+blocks pass through a bounded quarantine before returning to the C allocator. The quarantine limits default to 16 MiB
+and 4096 records and can be retuned per process through the `DEA_RT_QUARANTINE_MAX_BYTES` and
+`DEA_RT_QUARANTINE_MAX_COUNT` environment variables, read once at first tracker use, or baked into the archives with the
+`make` variables `L1_RT_QUARANTINE_MAX_BYTES`/`L1_RT_QUARANTINE_MAX_COUNT`. Smaller retention (including `0`) speeds
+allocation-heavy code at the cost of a shorter use-after-drop detection window. The default record limit (4096) is
+detection-first and right for development; `256` is the suggested setting for performance-sensitive checked deployments,
+per the `make bench-runtime` matrix (intermediate values near 1024 cost about as much as 4096 while shrinking the
+window). Record-pool and tracker-table metadata are peak-driven, while quarantined payload memory is bounded by the
+byte/count caps, so lower caps can reduce retained freed payload memory. The `l1c --unchecked` flag selects the prebuilt
+`libdea_rt_unchecked.a` archive variant and defines `DEA_RT_UNCHECKED` in generated C, compiling tracking and validation
+out entirely; it cannot be combined with the trace flags.
+
 ## FFI Inventory (`extern func` / `unsafe extern func`)
 
 All `extern func` and `unsafe extern func` symbols exposed to L1 from `sys.*` modules are listed here.
 
 ### Declared in `sys.rt` (52)
 
-| Function                      | Signature                                         | Description                            |
-| ----------------------------- | ------------------------------------------------- | -------------------------------------- |
-| `rt_string_get`               | `func(s: string, index: int) -> byte`             | Returns one byte from a string.        |
-| `rt_string_bytes_ptr`         | `func(s: string) -> byte*`                        | Returns a raw pointer to string bytes. |
-| `rt_strlen`                   | `func(str: string) -> int`                        | Returns string byte length.            |
-| `rt_string_equals`            | `func(a: string, b: string) -> bool`              | Compares strings for equality.         |
-| `rt_string_compare`           | `func(a: string, b: string) -> int`               | Compares strings lexicographically.    |
-| `rt_string_concat`            | `func(a: string, b: string) -> string`            | Concatenates two strings.              |
-| `rt_string_slice`             | `func(s: string, start: int, end: int) -> string` | Returns a string slice by byte range.  |
-| `rt_string_from_byte_array`   | `func(bytes: byte*, len: int) -> string`          | Creates a string from raw bytes.       |
-| `rt_string_from_byte`         | `func(b: byte) -> string`                         | Creates a one-byte string.             |
-| `rt_string_retain`            | `func(s: string) -> void`                         | Increments heap-string refcount.       |
-| `rt_string_release`           | `func(s: string) -> void`                         | Decrements heap-string refcount.       |
-| `rt_read_file_all`            | `func(path: string) -> string?`                   | Reads a whole file into a string.      |
-| `rt_write_file_all`           | `func(path: string, data: string) -> bool`        | Writes a whole string to a file.       |
-| `rt_flush_stdout`             | `func() -> void`                                  | Flushes standard output.               |
-| `rt_flush_stderr`             | `func() -> void`                                  | Flushes standard error.                |
-| `rt_print`                    | `func(s: string) -> void`                         | Prints a string to stdout.             |
-| `rt_print_stderr`             | `func(s: string) -> void`                         | Prints a string to stderr.             |
-| `rt_println`                  | `func() -> void`                                  | Prints a newline to stdout.            |
-| `rt_println_stderr`           | `func() -> void`                                  | Prints a newline to stderr.            |
-| `rt_print_int`                | `func(x: int) -> void`                            | Prints an int to stdout.               |
-| `rt_print_int_stderr`         | `func(x: int) -> void`                            | Prints an int to stderr.               |
-| `rt_print_uint`               | `func(x: uint) -> void`                           | Prints a uint to stdout.               |
-| `rt_print_uint_stderr`        | `func(x: uint) -> void`                           | Prints a uint to stderr.               |
-| `rt_print_long`               | `func(x: long) -> void`                           | Prints a long to stdout.               |
-| `rt_print_long_stderr`        | `func(x: long) -> void`                           | Prints a long to stderr.               |
-| `rt_print_ulong`              | `func(x: ulong) -> void`                          | Prints a ulong to stdout.              |
-| `rt_print_ulong_stderr`       | `func(x: ulong) -> void`                          | Prints a ulong to stderr.              |
-| `rt_print_float`              | `func(x: float) -> void`                          | Prints a float to stdout.              |
-| `rt_print_float_stderr`       | `func(x: float) -> void`                          | Prints a float to stderr.              |
-| `rt_print_double`             | `func(x: double) -> void`                         | Prints a double to stdout.             |
-| `rt_print_double_stderr`      | `func(x: double) -> void`                         | Prints a double to stderr.             |
-| `rt_print_bool`               | `func(x: bool) -> void`                           | Prints a bool to stdout.               |
-| `rt_print_bool_stderr`        | `func(x: bool) -> void`                           | Prints a bool to stderr.               |
-| `rt_read_line`                | `func() -> string?`                               | Reads one line from stdin.             |
-| `rt_read_char`                | `func() -> int`                                   | Reads one byte from stdin.             |
-| `rt_abort`                    | `func(message: string) -> void`                   | Aborts execution with a message.       |
-| `rt_exit`                     | `func(code: int) -> void`                         | Exits the current process.             |
-| `rt_srand`                    | `func(seed: int) -> void`                         | Seeds the runtime RNG.                 |
-| `rt_rand`                     | `func(max: int) -> int`                           | Returns a random int below `max`.      |
-| `rt_errno`                    | `func() -> int`                                   | Returns the current errno value.       |
-| `rt_get_env_var`              | `func(name: string) -> string?`                   | Reads an environment variable.         |
-| `rt_get_argc`                 | `func() -> int`                                   | Returns process argument count.        |
-| `rt_get_pid`                  | `func() -> int`                                   | Returns the current process id.        |
-| `rt_get_argv`                 | `func(i: int) -> string`                          | Returns one process argument.          |
-| `rt_time_unix`                | `func(out: RtTimeParts*) -> bool`                 | Captures wall-clock time.              |
-| `rt_time_monotonic`           | `func(out: RtTimeParts*) -> bool`                 | Captures monotonic time.               |
-| `rt_time_monotonic_supported` | `func() -> bool`                                  | Reports monotonic-clock availability.  |
-| `rt_time_local_offset_sec`    | `func(unix_sec: int) -> int?`                     | Looks up local UTC offset.             |
-| `rt_time_local_is_dst`        | `func(unix_sec: int) -> bool?`                    | Looks up local DST state.              |
-| `rt_system`                   | `func(cmd: string) -> int`                        | Runs a shell command.                  |
-| `rt_file_info`                | `func(path: string) -> RtFileInfo`                | Returns stat-like file metadata.       |
-| `rt_delete_file`              | `func(path: string) -> bool`                      | Deletes a file by path.                |
+| Function                      | Signature                                         | Description                                                                                                |
+| ----------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `rt_string_get`               | `func(s: string, index: int) -> byte`             | Returns one byte from a string.                                                                            |
+| `rt_string_bytes_ptr`         | `func(s: string) -> byte*`                        | Returns a pointer to runtime-managed string bytes; checked reads are valid, checked writes and drops fail. |
+| `rt_strlen`                   | `func(str: string) -> int`                        | Returns string byte length.                                                                                |
+| `rt_string_equals`            | `func(a: string, b: string) -> bool`              | Compares strings for equality.                                                                             |
+| `rt_string_compare`           | `func(a: string, b: string) -> int`               | Compares strings lexicographically.                                                                        |
+| `rt_string_concat`            | `func(a: string, b: string) -> string`            | Concatenates two strings.                                                                                  |
+| `rt_string_slice`             | `func(s: string, start: int, end: int) -> string` | Returns a string slice by byte range.                                                                      |
+| `rt_string_from_byte_array`   | `func(bytes: byte*, len: int) -> string`          | Creates a string from raw bytes.                                                                           |
+| `rt_string_from_byte`         | `func(b: byte) -> string`                         | Creates a one-byte string.                                                                                 |
+| `rt_string_retain`            | `func(s: string) -> void`                         | Increments heap-string refcount.                                                                           |
+| `rt_string_release`           | `func(s: string) -> void`                         | Decrements heap-string refcount.                                                                           |
+| `rt_read_file_all`            | `func(path: string) -> string?`                   | Reads a whole file into a string.                                                                          |
+| `rt_write_file_all`           | `func(path: string, data: string) -> bool`        | Writes a whole string to a file.                                                                           |
+| `rt_flush_stdout`             | `func() -> void`                                  | Flushes standard output.                                                                                   |
+| `rt_flush_stderr`             | `func() -> void`                                  | Flushes standard error.                                                                                    |
+| `rt_print`                    | `func(s: string) -> void`                         | Prints a string to stdout.                                                                                 |
+| `rt_print_stderr`             | `func(s: string) -> void`                         | Prints a string to stderr.                                                                                 |
+| `rt_println`                  | `func() -> void`                                  | Prints a newline to stdout.                                                                                |
+| `rt_println_stderr`           | `func() -> void`                                  | Prints a newline to stderr.                                                                                |
+| `rt_print_int`                | `func(x: int) -> void`                            | Prints an int to stdout.                                                                                   |
+| `rt_print_int_stderr`         | `func(x: int) -> void`                            | Prints an int to stderr.                                                                                   |
+| `rt_print_uint`               | `func(x: uint) -> void`                           | Prints a uint to stdout.                                                                                   |
+| `rt_print_uint_stderr`        | `func(x: uint) -> void`                           | Prints a uint to stderr.                                                                                   |
+| `rt_print_long`               | `func(x: long) -> void`                           | Prints a long to stdout.                                                                                   |
+| `rt_print_long_stderr`        | `func(x: long) -> void`                           | Prints a long to stderr.                                                                                   |
+| `rt_print_ulong`              | `func(x: ulong) -> void`                          | Prints a ulong to stdout.                                                                                  |
+| `rt_print_ulong_stderr`       | `func(x: ulong) -> void`                          | Prints a ulong to stderr.                                                                                  |
+| `rt_print_float`              | `func(x: float) -> void`                          | Prints a float to stdout.                                                                                  |
+| `rt_print_float_stderr`       | `func(x: float) -> void`                          | Prints a float to stderr.                                                                                  |
+| `rt_print_double`             | `func(x: double) -> void`                         | Prints a double to stdout.                                                                                 |
+| `rt_print_double_stderr`      | `func(x: double) -> void`                         | Prints a double to stderr.                                                                                 |
+| `rt_print_bool`               | `func(x: bool) -> void`                           | Prints a bool to stdout.                                                                                   |
+| `rt_print_bool_stderr`        | `func(x: bool) -> void`                           | Prints a bool to stderr.                                                                                   |
+| `rt_read_line`                | `func() -> string?`                               | Reads one line from stdin.                                                                                 |
+| `rt_read_char`                | `func() -> int`                                   | Reads one byte from stdin.                                                                                 |
+| `rt_abort`                    | `func(message: string) -> void`                   | Aborts execution with a message.                                                                           |
+| `rt_exit`                     | `func(code: int) -> void`                         | Exits the current process.                                                                                 |
+| `rt_srand`                    | `func(seed: int) -> void`                         | Seeds the runtime RNG.                                                                                     |
+| `rt_rand`                     | `func(max: int) -> int`                           | Returns a random int below `max`.                                                                          |
+| `rt_errno`                    | `func() -> int`                                   | Returns the current errno value.                                                                           |
+| `rt_get_env_var`              | `func(name: string) -> string?`                   | Reads an environment variable.                                                                             |
+| `rt_get_argc`                 | `func() -> int`                                   | Returns process argument count.                                                                            |
+| `rt_get_pid`                  | `func() -> int`                                   | Returns the current process id.                                                                            |
+| `rt_get_argv`                 | `func(i: int) -> string`                          | Returns one process argument.                                                                              |
+| `rt_time_unix`                | `func(out: RtTimeParts*) -> bool`                 | Captures wall-clock time.                                                                                  |
+| `rt_time_monotonic`           | `func(out: RtTimeParts*) -> bool`                 | Captures monotonic time.                                                                                   |
+| `rt_time_monotonic_supported` | `func() -> bool`                                  | Reports monotonic-clock availability.                                                                      |
+| `rt_time_local_offset_sec`    | `func(unix_sec: int) -> int?`                     | Looks up local UTC offset.                                                                                 |
+| `rt_time_local_is_dst`        | `func(unix_sec: int) -> bool?`                    | Looks up local DST state.                                                                                  |
+| `rt_system`                   | `func(cmd: string) -> int`                        | Runs a shell command.                                                                                      |
+| `rt_file_info`                | `func(path: string) -> RtFileInfo`                | Returns stat-like file metadata.                                                                           |
+| `rt_delete_file`              | `func(path: string) -> bool`                      | Deletes a file by path.                                                                                    |
 
 ### Declared in `sys.real` (68)
 

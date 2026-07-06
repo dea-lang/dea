@@ -130,6 +130,7 @@ class CEmitter:
 
     # Temporary variable counter for unique naming
     _tmp_counter: int = 0
+    _active_line_directive: Optional[str] = None
 
     # Optional wrapper tracking (C-specific representation of T?)
     _opt_wrappers: Dict[str, Type] = field(default_factory=dict)
@@ -557,6 +558,8 @@ class CEmitter:
             self.out.emit("#define L0_TRACE_ARC 1")
         if self.analysis.context.trace_memory:
             self.out.emit("#define L0_TRACE_MEMORY 1")
+        if self.analysis.context.rt_unchecked:
+            self.out.emit("#define L0_RT_UNCHECKED 1")
         self.out.emit('#include "l0_runtime.h"')
         self.out.emit()
 
@@ -568,8 +571,10 @@ class CEmitter:
             current_module: Name of the current module.
         """
         if not self.analysis.context.emit_line_directives:
+            self._active_line_directive = None
             return
         if node is None or node.span is None:
+            self._active_line_directive = None
             return
         filename = None
         if current_module and self.analysis.cu:
@@ -578,7 +583,15 @@ class CEmitter:
                 filename = mod.filename or f"{current_module}.l0"
         if filename:
             escaped_filename = encode_c_string_bytes(str(filename).replace("\\", "/").encode("utf-8"))
-            self.out.emit(f'#line {node.span.start_line} "{escaped_filename}"')
+            self._active_line_directive = f'#line {node.span.start_line} "{escaped_filename}"'
+            self.out.emit(self._active_line_directive)
+        else:
+            self._active_line_directive = None
+
+    def restore_active_line_directive(self) -> None:
+        """Re-emit the current source line directive after generated helper lines."""
+        if self._active_line_directive is not None:
+            self.out.emit(self._active_line_directive)
 
     def emit_forward_decls(self) -> None:
         """Emit forward declarations for all structs and enums in compilation unit."""
@@ -1365,6 +1378,70 @@ class CEmitter:
         """
         return f"(({c_type})({c_inner}))"
 
+    def emit_checked_ptr_access(
+        self,
+        c_ptr_expr: str,
+        c_ptr_type: str,
+        c_required_size: str,
+        c_required_align: str,
+        access_mode: str = "_RT_ACCESS_READ",
+    ) -> str:
+        """Emit a runtime-checked pointer access expression.
+
+        Declares one static per-call-site cache slot so the runtime validates
+        repeated accesses from the same site with a single range check.
+        """
+        site = self.fresh_tmp("site")
+        self.out.emit(f"static _rt_ptr_site {site};")
+        self.restore_active_line_directive()
+        return (
+            f"(({c_ptr_type})_rt_check_ptr_site(&{site}, (void*)({c_ptr_expr}), "
+            f"(l0_int)({c_required_size}), (l0_int)({c_required_align}), "
+            f"{access_mode}, __FILE__, __LINE__))"
+        )
+
+    def emit_checked_ptr_index_access(
+        self,
+        c_base_expr: str,
+        c_index_expr: str,
+        c_ptr_type: str,
+        c_element_size: str,
+        c_required_align: str,
+        access_mode: str = "_RT_ACCESS_READ",
+    ) -> str:
+        """Emit a runtime-checked indexed pointer access expression."""
+        site = self.fresh_tmp("site")
+        self.out.emit(f"static _rt_ptr_site {site};")
+        self.restore_active_line_directive()
+        return (
+            f"(({c_ptr_type})_rt_check_index_ptr_site(&{site}, (void*)({c_base_expr}), "
+            f"(l0_int)({c_index_expr}), (l0_int)({c_element_size}), "
+            f"(l0_int)({c_required_align}), {access_mode}, __FILE__, __LINE__))"
+        )
+
+    def emit_checked_ptr_access_for_base(
+        self,
+        c_ptr_expr: str,
+        c_base_type: str,
+        access_mode: str = "_RT_ACCESS_READ",
+    ) -> str:
+        """Emit a runtime-checked pointer to a complete object of ``c_base_type``."""
+        return self.emit_checked_ptr_access(
+            c_ptr_expr,
+            f"{c_base_type}*",
+            f"sizeof({c_base_type})",
+            f"_RT_ALIGNOF({c_base_type})",
+            access_mode,
+        )
+
+    def emit_drop_begin_expr(self, c_ptr_expr: str, c_ptr_type: str) -> str:
+        """Emit the expression that validates and begins a generated drop."""
+        return f"(({c_ptr_type})_rt_drop_begin_impl((void*)({c_ptr_expr}), __FILE__, __LINE__))"
+
+    def emit_drop_finish_call(self, c_ptr_expr: str) -> None:
+        """Emit the runtime call that completes a generated drop."""
+        self.out.emit(f"_rt_drop_finish_impl((void*)({c_ptr_expr}), __FILE__, __LINE__);")
+
     def emit_checked_narrow_cast(self, c_dst_type: str, c_inner: str) -> str:
         """Emit C code for a checked narrowing cast runtime call."""
         return f"(_rt_narrow_{c_dst_type}({c_inner}))"
@@ -1684,6 +1761,11 @@ class CEmitter:
         """
         self.out.emit(f"*{c_ptr_name} = {c_value};")
 
+    def emit_checked_pointer_assignment(self, c_ptr_name: str, c_base_type: str, c_value: str) -> None:
+        """Emit an assignment through a runtime-checked object pointer."""
+        checked = self.emit_checked_ptr_access_for_base(c_ptr_name, c_base_type, "_RT_ACCESS_WRITE")
+        self.out.emit(f"*{checked} = {c_value};")
+
     def emit_temp_decl(self, c_type: str, c_temp_name: str, c_value: str) -> None:
         """Emit a C temporary variable declaration with initializer.
 
@@ -1767,14 +1849,6 @@ class CEmitter:
         """
         self.out.emit(f"_rt_drop((void*){c_ptr_expr});")
 
-    def emit_drop_precheck_call(self, c_ptr_expr: str) -> None:
-        """Emit a runtime validation before generated drop cleanup.
-
-        Args:
-            c_ptr_expr: C expression evaluating to the object pointer.
-        """
-        self.out.emit(f"_rt_drop_precheck((void*){c_ptr_expr});")
-
     def emit_null_assignment(self, c_var: str) -> None:
         """Emit a NULL assignment to a variable.
 
@@ -1801,7 +1875,8 @@ class CEmitter:
             c_base_type: C base object type string.
             c_init_str: C compound initializer body.
         """
-        self.out.emit(f"*{c_temp_name} = ({c_base_type}){{ {c_init_str} }};")
+        checked = self.emit_checked_ptr_access_for_base(c_temp_name, c_base_type, "_RT_ACCESS_WRITE")
+        self.out.emit(f"*{checked} = ({c_base_type}){{ {c_init_str} }};")
 
     def emit_struct_init_from_fields(
             self,
@@ -1851,7 +1926,8 @@ class CEmitter:
             c_temp_name: Name of the pointer variable.
             c_base_type: C base object type string.
         """
-        self.out.emit(f"*{c_temp_name} = ({c_base_type}){{ 0 }};")
+        checked = self.emit_checked_ptr_access_for_base(c_temp_name, c_base_type, "_RT_ACCESS_WRITE")
+        self.out.emit(f"*{checked} = ({c_base_type}){{ 0 }};")
 
     def emit_try_check_niche(self, c_tmp: str, ret_none: str) -> None:
         """Emit a NULL check for a niche-optimized optional.

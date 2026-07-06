@@ -1,7 +1,7 @@
 # ADR-0010: Unsafe Marker and Raw-Pointer Indexing
 
 - Decision date: 2026-05-08
-- Last edited: 2026-07-11
+- Last edited: 2026-07-12
 - Status: Accepted
 
 ## Context
@@ -16,7 +16,8 @@ A gate was needed to prevent raw-pointer indexing from appearing in ordinary saf
 
 The `unsafe` keyword is a function-level contract marker:
 
-- `unsafe func`: declares that the function body may perform unchecked raw-memory operations.
+- `unsafe func`: declares that the function body may perform raw-memory operations whose source-level safety cannot be
+  proven by the compiler.
 - Raw-pointer indexing (`ptr[i]` where `ptr: T*`) is accepted **only** inside `unsafe func` bodies; it is rejected in
   safe function bodies.
 - Ordinary pointer dereference (`*p`) and pointer field access (`p.field`) remain available in safe code.
@@ -24,6 +25,8 @@ The `unsafe` keyword is a function-level contract marker:
   be tightened in future.
 - `unsafe func` types in function pointer signatures (`unsafe func(T) -> U`) are a distinct type from `func(T) -> U`;
   they are not compatible.
+- Checked runtime builds may still validate raw pointer accesses dynamically. In `--unchecked` builds, those validations
+  compile out and raw-pointer indexing lowers to direct C pointer access.
 
 ## Rationale
 

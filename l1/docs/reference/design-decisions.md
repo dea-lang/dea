@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-06-24
+Version: 2026-07-05
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -116,10 +116,15 @@ Current bootstrap status:
 
 - `&` is reserved in the current implementation and is not yet assigned address-of semantics
 - postfix pointer indexing is finalized as a raw-pointer operation: for `ptr: T*` and `index: int`, `ptr[index]` is
-  accepted only inside `unsafe func` bodies, rejects nullable bases and `void*`, emits no bounds check, and lowers to
-  direct C indexing
+  accepted only inside `unsafe func` bodies and rejects nullable bases and `void*`
 - ordinary pointer dereference (`*p`) and pointer field access remain available in safe code; only postfix pointer
   indexing is gated on `unsafe func`
+
+`unsafe func` is a source-level contract boundary, not a promise that every build omits runtime diagnostics. In checked
+runtime builds, pointer dereference, pointer field access, raw pointer indexing, and generated `drop` cleanup validate
+allocation provenance, access range, writeability, and release state before touching storage. In `--unchecked` builds,
+those pointer-access validations compile out and raw pointer indexing lowers to direct C pointer arithmetic and
+dereference; the `unsafe func` author is then solely responsible for the range/provenance proof.
 
 ## 7.1 Fixed-Size Array Policy
 
@@ -143,7 +148,8 @@ Array constructor expressions are restricted to array type calls with one argume
 Array lengths resolve to concrete values before signature and backend lowering.
 
 Array indexing is safe: generated code evaluates the base and index once, checks `index < 0 || index >= N`, and calls
-`_rt_panic_oob(index, N)` on failure. Raw pointer indexing remains the unsafe, unchecked operation described above.
+`_rt_panic_oob(index, N)` on failure. Raw pointer indexing has no source-level upper bound; checked builds may still
+catch invalid allocation/range/provenance at runtime, while unchecked builds trust the `unsafe func` contract.
 
 ## 7.2 Slice Policy
 
@@ -188,7 +194,8 @@ unsafe function pointers, for example `(unsafe func(void*) -> int)?`. Nullable f
 operands; ordered comparisons remain rejected.
 
 The current `unsafe` marker is a function-level contract marker, not a call-site gate. Safe code may still call an
-`unsafe func` value today; the marker exists to distinguish unchecked raw-memory contracts in signatures and interfaces.
+`unsafe func` value today; the marker exists to distinguish source-unsafe raw-memory contracts in signatures and
+interfaces.
 
 Lambdas, closures, method pointers, and C variadic function pointer types are intentionally out of scope for the current
 bootstrap feature.

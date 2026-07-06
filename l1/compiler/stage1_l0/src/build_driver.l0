@@ -798,7 +798,7 @@ func bd_validate_runtime_lib(runtime_lib_path: string, diags: DiagCollector*) ->
 }
 
 /**
- * Return the runtime archive filename selected by the trace flags.
+ * Return the runtime archive filename selected by the trace and unchecked flags.
  *
  * @param opts Parsed CLI options.
  * @return Runtime archive filename.
@@ -807,11 +807,14 @@ func bd_runtime_archive_filename(opts: CliOptions*) -> string {
     if (opts.trace_arc || opts.trace_memory) {
         return "libdea_rt_traced.a";
     }
+    if (opts.unchecked) {
+        return "libdea_rt_unchecked.a";
+    }
     return "libdea_rt.a";
 }
 
 /**
- * Return the linker `-l` name selected by the trace flags.
+ * Return the linker `-l` name selected by the trace and unchecked flags.
  *
  * @param opts Parsed CLI options.
  * @return Runtime linker name without `lib` prefix or archive suffix.
@@ -819,6 +822,9 @@ func bd_runtime_archive_filename(opts: CliOptions*) -> string {
 func bd_runtime_archive_link_name(opts: CliOptions*) -> string {
     if (opts.trace_arc || opts.trace_memory) {
         return "dea_rt_traced";
+    }
+    if (opts.unchecked) {
+        return "dea_rt_unchecked";
     }
     return "dea_rt";
 }
@@ -848,6 +854,8 @@ func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?
     let variant = "default";
     if (opts.trace_arc || opts.trace_memory) {
         variant = "traced";
+    } else if (opts.unchecked) {
+        variant = "unchecked";
     }
     let object_dir = join(join(join(build_dir as string, "runtime"), "tcc"), variant);
     let paths = sv_create(16);
@@ -1237,6 +1245,7 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             cg_opts.emit_line_directives = !opts.no_line_directives;
             cg_opts.trace_arc = opts.trace_arc;
             cg_opts.trace_memory = opts.trace_memory;
+            cg_opts.rt_unchecked = opts.unchecked;
 
             if (!bd_validate_float_c_options(result, extra_opts, cmd_diags)) {
                 dp_print_collector(cmd_diags);

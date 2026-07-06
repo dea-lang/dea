@@ -310,6 +310,67 @@ class Backend:
         # Default: treat as having side effects to be safe
         return True
 
+    def _pointer_type_or_none(self, ty: Optional[Type]) -> Optional[PointerType]:
+        """Return the represented pointer type for pointer-shaped values."""
+        if isinstance(ty, PointerType):
+            return ty
+        if isinstance(ty, NullableType) and isinstance(ty.inner, PointerType):
+            return ty.inner
+        return None
+
+    def _sizeof_expr_for_type(self, ty: Type) -> str:
+        """Return a C ``sizeof`` expression for the runtime access extent."""
+        if isinstance(ty, BuiltinType) and ty.name == "void":
+            return "1"
+        return f"sizeof({self.emitter.emit_type(ty)})"
+
+    def _alignof_expr_for_type(self, ty: Type) -> str:
+        """Return a C alignment expression for the runtime access target."""
+        if isinstance(ty, BuiltinType) and ty.name == "void":
+            return "1"
+        return f"_RT_ALIGNOF({self.emitter.emit_type(ty)})"
+
+    def _emit_checked_pointer_expr(
+        self,
+        c_ptr_expr: str,
+        ptr_ty: Type,
+        node: Optional[Node] = None,
+        access_mode: str = "_RT_ACCESS_READ",
+    ) -> str:
+        """Emit a pointer expression checked for one pointee-sized access."""
+        represented_ptr = self._pointer_type_or_none(ptr_ty)
+        if represented_ptr is None:
+            self.ice(f"[ICE-1245] expected pointer type, got '{format_type(ptr_ty)}'", node=node)
+
+        c_ptr_ty = self.emitter.emit_type(represented_ptr)
+        required_size = self._sizeof_expr_for_type(represented_ptr.inner)
+        required_align = self._alignof_expr_for_type(represented_ptr.inner)
+        return self.emitter.emit_checked_ptr_access(c_ptr_expr, c_ptr_ty, required_size, required_align, access_mode)
+
+    def _emit_pointer_index_lvalue(
+        self,
+        c_base: str,
+        c_index: str,
+        base_ty: Type,
+        node: Optional[Node] = None,
+        access_mode: str = "_RT_ACCESS_WRITE",
+    ) -> str:
+        """Emit a checked pointer-index lvalue expression."""
+        ptr_ty = self._pointer_type_or_none(base_ty)
+        if ptr_ty is None:
+            self.ice(f"[ICE-1246] expected pointer index base, got '{format_type(base_ty)}'", node=node)
+
+        c_ptr_ty = self.emitter.emit_type(ptr_ty)
+        checked = self.emitter.emit_checked_ptr_index_access(
+            c_base,
+            c_index,
+            c_ptr_ty,
+            self._sizeof_expr_for_type(ptr_ty.inner),
+            self._alignof_expr_for_type(ptr_ty.inner),
+            access_mode,
+        )
+        return self.emitter.emit_deref_lvalue(checked)
+
     def _lookup_local_var_type(self, var_name: str) -> Optional[Type]:
         """Look up a local variable's type in the current scope chain.
 
@@ -1757,19 +1818,43 @@ class Backend:
                 ptr_temp = self.emitter.fresh_tmp("ptr")
                 c_ptr_expr = self._emit_expr(target.operand)
                 self.emitter.emit_temp_decl(self.emitter.emit_type(ptr_ty), ptr_temp, c_ptr_expr)
-                return self.emitter.emit_deref_lvalue(ptr_temp)
+                checked_ptr = self._emit_checked_pointer_expr(ptr_temp, ptr_ty, target.operand, "_RT_ACCESS_WRITE")
+                return self.emitter.emit_deref_lvalue(checked_ptr)
+            ptr_ty = self.analysis.expr_types.get(id(target.operand))
+            if ptr_ty is None:
+                self.ice("[ICE-1242] missing type for dereference operand", node=target.operand)
+            checked_ptr = self._emit_checked_pointer_expr(
+                self._emit_expr(target.operand), ptr_ty, target.operand, "_RT_ACCESS_WRITE"
+            )
+            return self.emitter.emit_deref_lvalue(checked_ptr)
 
-        # Case 2: Field access with side effects in object expression
+        # Case 2: Field access
         if isinstance(target, FieldAccessExpr):
+            obj_ty = self.analysis.expr_types.get(id(target.obj))
+            if obj_ty is None:
+                self.ice("[ICE-1243] missing type for field access object", node=target.obj)
+            obj_ptr_ty = self._pointer_type_or_none(obj_ty)
+            if obj_ptr_ty is None and self._is_place_expr(target.obj):
+                # The store lands inside the object's own storage, so the object
+                # must be emitted as an lvalue: inner pointer accesses keep
+                # write mode and no struct temp copy is introduced.
+                c_obj_expr = self._emit_lvalue_with_caching(target.obj)
+                return self.emitter.emit_field_lvalue(c_obj_expr, target.field, False)
             if self._has_side_effects(target.obj):
-                obj_ty = self.analysis.expr_types.get(id(target.obj))
-                if obj_ty is None:
-                    self.ice("[ICE-1243] missing type for field access object", node=target.obj)
                 obj_temp = self.emitter.fresh_tmp("obj")
                 c_obj_expr = self._emit_expr(target.obj)
                 self.emitter.emit_temp_decl(self.emitter.emit_type(obj_ty), obj_temp, c_obj_expr)
-                is_pointer = isinstance(obj_ty, PointerType)
-                return self.emitter.emit_field_lvalue(obj_temp, target.field, is_pointer)
+                if obj_ptr_ty is not None:
+                    checked_obj = self._emit_checked_pointer_expr(obj_temp, obj_ptr_ty, target.obj, "_RT_ACCESS_WRITE")
+                    return self.emitter.emit_field_lvalue(checked_obj, target.field, True)
+                return self.emitter.emit_field_lvalue(obj_temp, target.field, False)
+            c_obj_expr = self._emit_expr(target.obj)
+            if obj_ptr_ty is not None:
+                c_obj_expr = self._emit_checked_pointer_expr(
+                    c_obj_expr, obj_ptr_ty, target.obj, "_RT_ACCESS_WRITE"
+                )
+                return self.emitter.emit_field_lvalue(c_obj_expr, target.field, True)
+            return self.emitter.emit_field_lvalue(c_obj_expr, target.field, False)
 
         # Case 3: Index access with side effects in index expression
         if isinstance(target, IndexExpr):
@@ -1793,7 +1878,17 @@ class Backend:
                     self.emitter.emit_temp_decl("l0_int", idx_temp, c_index)
                     c_index = idx_temp
 
+                base_ty = self.analysis.expr_types.get(id(target.array))
+                if base_ty is not None and self._pointer_type_or_none(base_ty) is not None:
+                    return self._emit_pointer_index_lvalue(c_base, c_index, base_ty, target)
+
                 return self.emitter.emit_index_lvalue(c_base, c_index)
+            c_base = self._emit_expr(target.array)
+            c_index = self._emit_expr(target.index)
+            base_ty = self.analysis.expr_types.get(id(target.array))
+            if base_ty is not None and self._pointer_type_or_none(base_ty) is not None:
+                return self._emit_pointer_index_lvalue(c_base, c_index, base_ty, target)
+            return self.emitter.emit_index_lvalue(c_base, c_index)
 
         # Case 4: Parenthesized expression - unwrap and recurse
         if isinstance(target, ParenExpr):
@@ -2389,35 +2484,31 @@ class Backend:
                 self.ice(f"[ICE-1060] undefined variable in drop: {stmt.name}", node=stmt)
             var_type = var_sym.type
 
-        if not (isinstance(var_type, PointerType) or
-                isinstance(var_type, NullableType) and isinstance(var_type.inner, PointerType)):
+        ptr_type = self._pointer_type_or_none(var_type)
+        if ptr_type is None:
             self.ice(f"[ICE-1061] drop requires pointer type, got '{format_type(var_type)}'", node=stmt)
 
-        if isinstance(var_type, NullableType) and isinstance(var_type.inner, PointerType):
-            inner_type = var_type.inner.inner
-        else:
-            inner_type = var_type.inner
+        inner_type = ptr_type.inner
+        drop_tmp = self.emitter.fresh_tmp("drop")
+        c_ptr_type = self.emitter.emit_type(ptr_type)
+        self.emitter.emit_temp_decl(c_ptr_type, drop_tmp, self.emitter.emit_drop_begin_expr(c_name, c_ptr_type))
 
         # Emit cleanup for owned fields before freeing.
-        cleanup_needs_pointee = self.analysis.has_arc_data(inner_type)
-        if cleanup_needs_pointee:
-            self.emitter.emit_drop_precheck_call(c_name)
-
         if isinstance(inner_type, StructType):
-            self._emit_struct_cleanup(c_name, inner_type)
+            self._emit_struct_cleanup(drop_tmp, inner_type)
         elif isinstance(inner_type, EnumType):
-            self._emit_enum_cleanup(c_name, inner_type)
+            self._emit_enum_cleanup(drop_tmp, inner_type)
         elif self.analysis.is_arc_type(inner_type):
             # Release the ARC value before freeing the container
-            c_cond = self.emitter.emit_pointer_null_check(c_name, "!=")
+            c_cond = self.emitter.emit_pointer_null_check(drop_tmp, "!=")
             self.emitter.emit_if_header(c_cond)
             self.emitter.emit_block_start()
-            self.emitter.emit_string_release(f"*{c_name}")
+            self.emitter.emit_string_release(f"*{drop_tmp}")
             self.emitter.emit_block_end()
         # For other builtin types or other pointers, no special cleanup needed
 
         # Emit the actual drop
-        self.emitter.emit_drop_call(c_name)
+        self.emitter.emit_drop_finish_call(drop_tmp)
         self.emitter.emit_null_assignment(c_name)
 
     # -------------------------------------------------------------------------
@@ -2698,7 +2789,7 @@ class Backend:
         elif isinstance(base_ty, BuiltinType):
             if len(expr.args) == 1:
                 c_arg = self._emit_expr(expr.args[0])
-                self.emitter.emit_pointer_assignment(tmp, c_arg)
+                self.emitter.emit_checked_pointer_assignment(tmp, c_base, c_arg)
             else:
                 self.ice(
                     f"[ICE-1230] new expression with multiple args not supported for builtin type '{format_type(base_ty)}'",
@@ -2707,7 +2798,7 @@ class Backend:
         else:
             if len(expr.args) == 1:
                 c_arg = self._emit_expr(expr.args[0])
-                self.emitter.emit_pointer_assignment(tmp, c_arg)
+                self.emitter.emit_checked_pointer_assignment(tmp, c_base, c_arg)
             else:
                 # multiple args not supported for other types
                 self.ice(
@@ -2892,6 +2983,11 @@ class Backend:
 
         elif isinstance(expr, UnaryOp):
             c_operand = self._emit_expr(expr.operand)
+            if expr.op == "*":
+                operand_ty = self.analysis.expr_types.get(id(expr.operand))
+                if operand_ty is None:
+                    self.ice("[ICE-1247] missing type for dereference operand", node=expr.operand)
+                c_operand = self._emit_checked_pointer_expr(c_operand, operand_ty, expr.operand)
             return self.emitter.emit_unary_op(expr.op, c_operand)
 
         elif isinstance(expr, BinaryOp):
@@ -2959,13 +3055,25 @@ class Backend:
                 return self.emitter.emit_function_call(f"({c_callee})", c_args)
 
         elif isinstance(expr, IndexExpr):
+            base_ty = self.analysis.expr_types.get(id(expr.array))
+            if base_ty is None:
+                self.ice("[ICE-1898] missing type for index base", node=expr.array)
+
+            c_base = self._emit_expr(expr.array)
+            c_index = self._emit_expr(expr.index)
+            if self._pointer_type_or_none(base_ty) is not None:
+                return self._emit_pointer_index_lvalue(c_base, c_index, base_ty, expr, "_RT_ACCESS_READ")
+
             self.ice("[ICE-1899] IndexExpr not yet implemented", node=expr)
 
         elif isinstance(expr, FieldAccessExpr):
             c_obj = self._emit_expr(expr.obj)
             # Determine if we need . or ->
             obj_type = self.analysis.expr_types.get(id(expr.obj))
-            is_pointer = isinstance(obj_type, PointerType)
+            obj_ptr_ty = self._pointer_type_or_none(obj_type)
+            is_pointer = obj_ptr_ty is not None
+            if obj_ptr_ty is not None:
+                c_obj = self._emit_checked_pointer_expr(c_obj, obj_ptr_ty, expr.obj)
             return self.emitter.emit_field_access(c_obj, expr.field, is_pointer)
 
         elif isinstance(expr, ParenExpr):

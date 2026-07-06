@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-07-03
+Version: 2026-07-05
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -141,9 +141,10 @@ if (opts.output != null) {
 These forms must work without manual retain/release and without restoring clone-like helper functions. If generated code
 or runtime behavior differs from this contract, treat it as a compiler bug.
 
-Raw-pointer writes inherit that same slot-replacement rule even though the access itself is unchecked. In other words,
-`ptr[i] = value` inside an `unsafe func` does not add bounds checks or provenance checks, but once the destination slot
-is identified it must retain the incoming ARC-managed value before releasing the overwritten contents of that slot.
+Raw-pointer writes inherit that same slot-replacement rule. In checked builds, `ptr[i] = value` inside an `unsafe func`
+still validates the pointer access dynamically before identifying the destination slot; in `--unchecked` builds the
+access lowers directly and trusts the `unsafe func` contract. Once the destination slot is identified, both modes must
+retain the incoming ARC-managed value before releasing the overwritten contents of that slot.
 
 ## 5. Optional Unwrap
 

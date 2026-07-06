@@ -210,6 +210,82 @@ func test_gen_trace_flags_emit_warning() {
 }
 
 /**
+ * Tests test_unchecked_flag_parsed_in_build_mode.
+ */
+func test_unchecked_flag_parsed_in_build_mode() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--build");
+        sv_push(argv, "--unchecked");
+        sv_push(argv, "app.main");
+
+        let parsed = cli_parse(argv);
+        assert(!diag_has_errors(parsed.diags), "expected --build --unchecked parse success");
+        assert(parsed.options != null, "expected parsed options");
+
+        let opts = parsed.options as CliOptions*;
+        assert(opts.unchecked, "expected unchecked flag set");
+
+        cli_parse_result_free(parsed);
+    }
+}
+
+/**
+ * Tests test_unchecked_rejected_outside_build_run_gen.
+ */
+func test_unchecked_rejected_outside_build_run_gen() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "--unchecked");
+        sv_push(argv, "app.main");
+
+        let parsed = cli_parse(argv);
+        assert(diag_has_errors(parsed.diags), "expected parse errors for --check --unchecked");
+        assert(parsed.options == null, "options must be null on parse errors");
+
+        cli_parse_result_free(parsed);
+    }
+}
+
+/**
+ * Tests test_unchecked_rejected_with_trace_flags.
+ */
+func test_unchecked_rejected_with_trace_flags() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--build");
+        sv_push(argv, "--unchecked");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "app.main");
+
+        let parsed = cli_parse(argv);
+        assert(diag_has_errors(parsed.diags), "expected parse errors for --unchecked with trace flags");
+        assert(parsed.options == null, "options must be null on parse errors");
+
+        cli_parse_result_free(parsed);
+    }
+}
+
+/**
+ * Tests test_gen_unchecked_emits_link_guidance_warning.
+ */
+func test_gen_unchecked_emits_link_guidance_warning() {
+    with (let argv = sv_create(4) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--unchecked");
+        sv_push(argv, "app.main");
+
+        let parsed = cli_parse(argv);
+        assert(!diag_has_errors(parsed.diags), "unchecked under --gen should remain warning-only");
+        assert(parsed.options != null, "expected parsed options for --gen --unchecked");
+        assert(diag_count(parsed.diags) == 1, "expected one warning for --gen --unchecked");
+        let diag = diag_get(parsed.diags, 0);
+        assert(ord(diag.severity) == ord(Warning), "expected unchecked diagnostic to be a warning");
+        assert(diag.code == "L1C-0020", "expected --gen unchecked warning code");
+
+        cli_parse_result_free(parsed);
+    }
+}
+
+/**
  * Tests test_no_legacy_command_rewrite.
  */
 func test_no_legacy_command_rewrite() {
@@ -238,5 +314,9 @@ func main() {
     test_ast_mode_accepted();
     test_ast_all_modules_accepted();
     test_gen_trace_flags_emit_warning();
+    test_unchecked_flag_parsed_in_build_mode();
+    test_unchecked_rejected_outside_build_run_gen();
+    test_unchecked_rejected_with_trace_flags();
+    test_gen_unchecked_emits_link_guidance_warning();
     printl_s("cli_args_test: all tests passed");
 }

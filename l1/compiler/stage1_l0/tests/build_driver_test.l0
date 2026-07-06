@@ -233,6 +233,22 @@ func test_runtime_archive_filename_selects_traced_when_either_trace_flag_set() {
 }
 
 /**
+ * Tests unchecked runtime archive filename selection.
+ */
+func test_runtime_archive_filename_selects_unchecked_when_unchecked_set() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        opts.unchecked = true;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_unchecked.a", "unchecked archive filename mismatch");
+        assert(bd_runtime_archive_link_name(opts) == "dea_rt_unchecked", "unchecked archive link name mismatch");
+
+        let unchecked_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
+        let unchecked_dir = join(join(join("build-root", "runtime"), "tcc"), "unchecked");
+        assert(sv_get(unchecked_paths, 0) == join(unchecked_dir, "dea_rt_panic.o"), "unchecked tcc object dir mismatch");
+        sv_free(unchecked_paths);
+    }
+}
+
+/**
  * Tests traced runtime archive linker-name selection.
  */
 func test_runtime_archive_link_name_selects_traced_when_either_trace_flag_set() {
@@ -308,6 +324,7 @@ func main() {
     test_compile_command_order_places_source_after_compiler_flags();
     test_exe_name_helpers_are_consistent();
     test_runtime_archive_filename_selects_traced_when_either_trace_flag_set();
+    test_runtime_archive_filename_selects_unchecked_when_unchecked_set();
     test_runtime_archive_link_name_selects_traced_when_either_trace_flag_set();
     test_runtime_object_paths_return_null_without_l1_build_dir();
     test_runtime_object_paths_return_default_or_traced_dirs();

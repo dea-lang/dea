@@ -1,6 +1,6 @@
 # Bug Fix Plan
 
-## Shared drop precheck before generated cleanup
+## Shared drop validation before generated cleanup
 
 - Date: 2026-07-03
 - Status: Completed
@@ -40,10 +40,10 @@
 
 ## Summary
 
-Generated `drop` lowering currently cleans ARC-managed fields before calling the runtime `_rt_drop` helper. If a stale
-alias reaches `drop`, the cleanup path can dereference freed pointee storage before the allocation tracker has a chance
-to report `drop: pointer not allocated by 'new'`. Depending on allocator state, the same invalid program may therefore
-produce either the intended software failure or a segmentation fault.
+Generated `drop` lowering currently cleans ARC-managed fields before final runtime drop validation. If a stale alias
+reaches `drop`, the cleanup path can dereference freed pointee storage before the allocation tracker has a chance to
+report the invalid drop. Depending on allocator state, the same invalid program may therefore produce either the
+intended software failure or a segmentation fault.
 
 ## Root Cause
 
@@ -53,11 +53,12 @@ the runtime check proves it is still registered.
 
 ## Scope of This Fix
 
-1. Add an internal runtime precheck helper that validates `new` allocation membership without unregistering or freeing
-   the pointer.
-2. Emit the precheck immediately before any generated `drop` cleanup that dereferences the pointee.
-3. Keep final `_rt_drop` as the only unregister/free step.
-4. Preserve valid-drop memory traces by keeping the precheck silent on success and on `null`.
+1. Split generated drops into runtime begin/finish helpers.
+2. Emit `_rt_drop_begin_impl` before generated `drop` cleanup so stale, non-base, and non-droppable pointers fail before
+   the pointee is dereferenced.
+3. Run cleanup through the validated temporary returned by begin, then emit `_rt_drop_finish_impl` as the only final
+   unregister/free step.
+4. Preserve valid-drop memory traces by keeping begin silent on success and on `null`.
 5. Update L0 and L1 ownership docs to document the validation order.
 
 ## Non-Goals
@@ -68,24 +69,25 @@ the runtime check proves it is still registered.
 
 ## Verification Criteria
 
-- L0 Stage 1 generated C contains precheck before ARC cleanup and final `_rt_drop` after cleanup.
-- L0 Stage 2 and L1 Stage 1 runtime regressions abort deterministically with `drop: pointer not allocated by 'new'` for
-  the double-drop-through-helper repro.
+- L0 Stage 1 generated C contains `_rt_drop_begin_impl` before ARC cleanup and `_rt_drop_finish_impl` after cleanup.
+- L0 Stage 2 and L1 Stage 1 runtime regressions abort deterministically with a checked-runtime double-drop diagnostic
+  for the double-drop-through-helper repro.
 - The invalid-drop repro emits only one ARC cleanup for the owned heap string field.
 - Valid drop trace tests continue to see unchanged `new_alloc` and `drop free` events.
 
 ## Outcome
 
-- Added silent success-path drop precheck helpers to the L0 header runtime and the L1 split runtime.
-- Updated L0 Stage 1, L0 Stage 2, and L1 Stage 1 drop lowering so cleanup-bearing drops validate the pointer before
-  generated cleanup dereferences it.
+- Added silent success-path drop begin helpers and final drop finish helpers to the L0 header runtime and the L1 split
+  runtime.
+- Updated L0 Stage 1, L0 Stage 2, and L1 Stage 1 drop lowering so all generated drops validate the pointer before
+  generated cleanup dereferences it, then complete final drop through finish.
 - Covered the stale helper-mediated double-drop repro in L0 Stage 1, L0 Stage 2, and L1 Stage 1.
 - Updated L0 and L1 ownership docs to document validation before generated cleanup.
 
 ## Verification
 
 ```bash
-cd l0 && ../.venv/bin/python -m pytest compiler/stage1_py/tests/backend/test_codegen_semantics.py::test_codegen_drop_precheck_precedes_struct_cleanup compiler/stage1_py/tests/backend/test_trace_memory.py::test_trace_memory_double_drop_precheck_precedes_arc_cleanup -q
+cd l0 && ../.venv/bin/python -m pytest compiler/stage1_py/tests/backend/test_codegen_semantics.py::test_codegen_drop_begin_validation_precedes_struct_cleanup compiler/stage1_py/tests/backend/test_trace_memory.py::test_trace_memory_double_drop_validation_precedes_arc_cleanup -q
 cd l0 && make test-stage2 TESTS="c_emitter_test backend_test l0c_stage2_arc_trace_regression_test.py"
 cd l1 && make test-stage1 TESTS="c_emitter_test backend_test l1c_stage1_arc_trace_regression_test.py"
 cd l0 && ../.venv/bin/python -m pytest compiler/stage1_py/tests/backend/test_trace_memory.py -q

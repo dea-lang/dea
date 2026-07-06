@@ -334,8 +334,8 @@ def test_codegen_multiple_pointer_indirection(codegen_single):
     # Function parameter should have triple pointer
     assert "l0_int*** p" in c_code
 
-    # Return should have triple deref
-    assert "(*(*(*p)))" in c_code or "(***p)" in c_code
+    # Return should validate each pointer dereference.
+    assert c_code.count("_rt_check_ptr_site") >= 3
 
 
 # ============================================================================
@@ -707,9 +707,10 @@ def test_codegen_extern_with_pointer_return(codegen_single):
     # Return type should be pointer
     assert "l0_int* (allocate)(void);" in c_code
 
-    # Call and dereference should be present
+    # Call and checked dereference should be present
     assert "allocate()" in c_code
-    assert "(*p)" in c_code
+    assert "_rt_check_ptr_site(&" in c_code
+    assert "(void*)(p), (l0_int)(sizeof" in c_code
 
 
 # ============================================================================

@@ -89,9 +89,9 @@ implementation. In addition, `in` remains reserved for a future extension.
 Note: the current bootstrap implementation uses `&` only as the binary bitwise-AND operator. No forward-looking design
 decision has been made yet on whether prefix address-of will become part of the L<sub>1</sub> language surface. Postfix
 indexing syntax is part of the current surface: `ptr[index]` is the raw-pointer indexing form, accepted only in
-`unsafe func` bodies, with `int` indexes and direct unchecked lowering for sized non-`void` pointee types. `arr[index]`
-on fixed-size arrays and `slice[index]` on slices are safe, bounds checked before any pointer access, and also require
-an `int` index.
+`unsafe func` bodies, with `int` indexes for sized non-`void` pointee types. In checked builds it still participates in
+runtime pointer validation; in `--unchecked` builds it lowers to direct C pointer access. `arr[index]` on fixed-size
+arrays and `slice[index]` on slices are safe, bounds checked before any pointer access, and also require an `int` index.
 
 ### 1.5 Special identifier `_`
 

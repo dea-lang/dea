@@ -39,6 +39,8 @@ class CompilationContext:
         trace_arc: If True, generated C enables ARC tracing in runtime (`L0_TRACE_ARC`).
         trace_memory: If True, generated C enables memory tracing in runtime
             (`L0_TRACE_MEMORY`).
+        rt_unchecked: If True, generated C disables runtime pointer validation
+            and allocation tracking (`L0_RT_UNCHECKED`).
         log_rich_format: If True, emit logs in rich format: may include log
             level, timestamps, etc.
         log_level: Current logging level.
@@ -46,6 +48,7 @@ class CompilationContext:
     emit_line_directives: bool = True
     trace_arc: bool = False
     trace_memory: bool = False
+    rt_unchecked: bool = False
     log_rich_format: bool = False
     log_level: LogLevel = LogLevel.WARNING
 

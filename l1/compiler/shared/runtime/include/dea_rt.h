@@ -30,6 +30,10 @@
 #include <sys/wait.h>
 #endif
 
+#ifndef _RT_ALIGNOF
+#define _RT_ALIGNOF(type) offsetof(struct { char _rt_align_c; type _rt_align_v; }, _rt_align_v)
+#endif
+
 
 /* =========================================================================
  * Compiler-specific builtins and attributes
@@ -401,6 +405,175 @@ void rt_exit(dea_int code);
 void rt_srand(dea_int seed);
 dea_int rt_rand(dea_int max);
 dea_int rt_errno(void);
+
+/* =========================================================================
+ * Runtime pointer access validation: tracker types and fast path
+ * -------------------------------------------------------------------------
+ * Checked builds (the default) validate every generated pointer dereference
+ * against the allocation tracker. Define DEA_RT_UNCHECKED when compiling
+ * generated code and the runtime archive to compile validation out;
+ * generated code is identical in both modes.
+ * ========================================================================= */
+
+#define _RT_ALLOC_LIVE 1
+#define _RT_ALLOC_QUARANTINED 2
+#define _RT_ALLOC_POOLED 3
+#define _RT_MEM_USER 0
+#define _RT_MEM_ARC 1
+#define _RT_MEM_STATIC 2
+#define _RT_ACCESS_READ 0
+#define _RT_ACCESS_WRITE 1
+#define _RT_ACCESS_UNTRACKED_OK 2
+
+typedef struct _rt_alloc_record _rt_alloc_record;
+typedef struct _rt_ptr_site _rt_ptr_site;
+
+/**
+ * One tracked allocation. Records are pool-allocated and never freed, so a
+ * stale record pointer held by a call-site cache stays dereferenceable; the
+ * generation counter rejects reuse.
+ */
+struct _rt_alloc_record {
+    void *base;
+    size_t size;
+    size_t align;
+    uint32_t type_id; /* Reserved for a future runtime type-identity initiative. */
+    uint32_t tree_prio;
+    uint64_t generation;
+    int state;
+    int mem_kind;
+    int read_only;
+    const char *alloc_file;
+    int alloc_line;
+    const char *drop_file;
+    int drop_line;
+    _rt_alloc_record *tree_left;
+    _rt_alloc_record *tree_right;
+    _rt_alloc_record *q_next;
+};
+
+/**
+ * Per-call-site pointer check cache. Generated code declares one static
+ * instance per checked access site; a hit validates with one generation
+ * compare and one range check, without hashing.
+ */
+struct _rt_ptr_site {
+    _rt_alloc_record *owner;
+    uint64_t generation;
+};
+
+void *_rt_check_ptr_site_slow(_rt_ptr_site *site, void *ptr, dea_int required_size, dea_int required_align, int access_mode, const char *loc_file, int loc_line);
+void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, dea_int index, dea_int element_size, dea_int required_align, int access_mode, const char *loc_file, int loc_line);
+void _rt_track_arc_bytes(void *ptr, size_t size);
+void _rt_untrack_arc_alloc(void *ptr);
+void _rt_track_static_bytes(const void *ptr, size_t size);
+
+/**
+ * Validate one pointer access through a call-site cache.
+ *
+ * @param site Per-call-site cache slot owned by the generated access site.
+ * @param ptr Pointer about to be dereferenced.
+ * @param required_size Size in bytes of the access.
+ * @param required_align Required alignment, or 0 for no alignment check.
+ * @param access_mode `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`.
+ * @param loc_file Source file of the access site.
+ * @param loc_line Source line of the access site.
+ * @return `ptr` when the access is valid; panics otherwise.
+ */
+static inline void *_rt_check_ptr_site(_rt_ptr_site *site, void *ptr, dea_int required_size, dea_int required_align, int access_mode, const char *loc_file, int loc_line) {
+#ifdef DEA_RT_UNCHECKED
+    (void)site; (void)required_size; (void)required_align; (void)access_mode; (void)loc_file; (void)loc_line;
+    return ptr;
+#else
+    _rt_alloc_record *owner = site != NULL ? site->owner : NULL;
+    if (owner != NULL && owner->generation == site->generation &&
+        owner->state == _RT_ALLOC_LIVE && required_size > 0 &&
+        required_align >= 0 &&
+        (access_mode == _RT_ACCESS_READ || access_mode == _RT_ACCESS_WRITE) &&
+        (access_mode != _RT_ACCESS_WRITE || !owner->read_only)) {
+        uintptr_t base = (uintptr_t)owner->base;
+        uintptr_t addr = (uintptr_t)ptr;
+        if (addr >= base) {
+            size_t offset = (size_t)(addr - base);
+            if (offset <= owner->size && (size_t)required_size <= owner->size - offset &&
+                (required_align <= 1 || (addr % (size_t)required_align) == 0)) {
+                return ptr;
+            }
+        }
+    }
+    return _rt_check_ptr_site_slow(site, ptr, required_size, required_align, access_mode, loc_file, loc_line);
+#endif
+}
+
+/**
+ * Validate and derive one indexed pointer access through a call-site cache.
+ *
+ * The checked path validates the base pointer and target byte range before
+ * forming the target pointer value, avoiding out-of-object C pointer
+ * arithmetic in generated code.
+ *
+ * @param site Per-call-site cache slot owned by the generated access site.
+ * @param base_ptr Base pointer expression before indexing.
+ * @param index Element index.
+ * @param element_size Size in bytes of one indexed element.
+ * @param required_align Required target alignment, or 0 for no alignment check.
+ * @param access_mode `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`.
+ * @param loc_file Source file of the access site.
+ * @param loc_line Source line of the access site.
+ * @return Target pointer when the access is valid; panics otherwise.
+ */
+static inline void *_rt_check_index_ptr_site(
+    _rt_ptr_site *site,
+    void *base_ptr,
+    dea_int index,
+    dea_int element_size,
+    dea_int required_align,
+    int access_mode,
+    const char *loc_file,
+    int loc_line
+) {
+#ifdef DEA_RT_UNCHECKED
+    uint64_t offset = (uint64_t)((int64_t)index * (int64_t)element_size);
+    (void)site; (void)required_align; (void)access_mode; (void)loc_file; (void)loc_line;
+    return (void *)((uintptr_t)base_ptr + (uintptr_t)offset);
+#else
+    _rt_alloc_record *owner = site != NULL ? site->owner : NULL;
+    int index_mode = access_mode & _RT_ACCESS_WRITE;
+    int index_flags = access_mode & ~_RT_ACCESS_WRITE;
+    if (owner != NULL && owner->generation == site->generation &&
+        owner->state == _RT_ALLOC_LIVE && index >= 0 && element_size > 0 &&
+        required_align >= 0 &&
+        (index_flags == 0 || index_flags == _RT_ACCESS_UNTRACKED_OK) &&
+        (index_mode == _RT_ACCESS_READ || index_mode == _RT_ACCESS_WRITE) &&
+        (index_mode != _RT_ACCESS_WRITE || !owner->read_only)) {
+        /* `dea_int` is 32-bit, so the 64-bit product of two non-negative
+         * operands cannot wrap and the SIZE_MAX comparison is exact. */
+        uint64_t offset64 = (uint64_t)index * (uint64_t)element_size;
+        if (offset64 <= SIZE_MAX) {
+            uintptr_t owner_addr = (uintptr_t)owner->base;
+            uintptr_t base_addr = (uintptr_t)base_ptr;
+            if (base_addr >= owner_addr) {
+                size_t base_offset = (size_t)(base_addr - owner_addr);
+                if (base_offset < owner->size) {
+                    size_t offset = (size_t)offset64;
+                    size_t available = owner->size - base_offset;
+                    if (offset <= available && (size_t)element_size <= available - offset) {
+                        size_t target_offset = base_offset + offset;
+                        if (target_offset <= UINTPTR_MAX - owner_addr) {
+                            uintptr_t target_addr = owner_addr + target_offset;
+                            if (required_align <= 1 || (target_addr % (size_t)required_align) == 0) {
+                                return (void *)target_addr;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return _rt_check_index_ptr_site_slow(site, base_ptr, index, element_size, required_align, access_mode, loc_file, loc_line);
+#endif
+}
+
 void *_rt_alloc_impl(dea_int bytes, const char *_loc_file, int _loc_line);
 void *rt_alloc(dea_int bytes);
 void *_rt_realloc_impl(void *ptr, dea_int new_bytes, const char *_loc_file, int _loc_line);
@@ -413,14 +586,18 @@ void *rt_memset(void *dest, dea_int value, dea_int bytes);
 void *rt_memcpy(void *dest, void *src, dea_int bytes);
 dea_int rt_memcmp(void *a, void *b, dea_int bytes);
 void *rt_array_element(void *array_data, dea_int element_size, dea_int index);
-size_t _rt_alloc_hash(void *ptr, size_t cap);
-void _rt_alloc_table_grow(void);
-void _rt_alloc_table_insert(void *ptr);
-int _rt_alloc_table_remove(void *ptr);
+void *_rt_drop_begin_impl(void *ptr, const char *loc_file, int loc_line);
+void _rt_drop_finish_impl(void *ptr, const char *loc_file, int loc_line);
+void *_rt_validate_derived_ptr(
+    void *derived,
+    void *parent_base,
+    dea_int size,
+    dea_int align,
+    const char *loc_file,
+    int loc_line
+);
 void *_rt_alloc_obj_impl(dea_int bytes, const char *_loc_file, int _loc_line);
 void *_rt_alloc_obj(dea_int bytes);
-void _rt_drop_precheck_impl(void *ptr, const char *_loc_file, int _loc_line);
-void _rt_drop_precheck(void *ptr);
 void _rt_drop_impl(void *ptr, const char *_loc_file, int _loc_line);
 void _rt_drop(void *ptr);
 uint32_t _rt_fmix32(uint32_t x);

@@ -10,9 +10,13 @@
  * behavior if used incorrectly. Use with caution and ensure proper memory
  * management.
  *
- * Note: These functions operate on raw pointers and do not perform any
- * bounds checking. It is the caller's responsibility to ensure that pointers
- * are valid and that memory is managed correctly.
+ * Note: Allocation wrappers register returned storage with the runtime pointer
+ * access tracker. Dereferences performed by checked generated L1 code validate
+ * the target pointer before accessing memory.
+ *
+ * Low-level byte operations in this module still operate on raw pointers and do
+ * not perform full semantic bounds checking on their own. It is the caller's
+ * responsibility to ensure that pointers are valid and that memory is managed correctly.
  * Misuse of these functions can lead to memory corruption, leaks, or crashes.
  * Always validate inputs and handle memory carefully when using these
  * functions.

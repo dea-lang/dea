@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-05-19
+Version: 2026-07-05
 
 This document records rationale and policy decisions.
 
@@ -58,7 +58,49 @@ Rationale:
 - keeps ownership/lifetime rules simpler during bootstrap,
 - keeps boundary complexity concentrated in runtime/kernel APIs.
 
-### 3.3 No raw pointer arithmetic contract
+### 3.3 Runtime pointer access validation and build modes
+
+Generated pointer dereference, pointer field access, pointer indexing, and `drop` are validated at runtime against an
+allocation tracker in checked builds, which are the default. Null, unregistered, freed/quarantined, out-of-range, and
+non-base-drop accesses become defined runtime aborts instead of C undefined behavior.
+
+Key properties:
+
+- Tracked storage covers `new`, `rt_alloc`, `rt_calloc`, and `rt_realloc` allocations, plus heap string blocks
+  (ARC-managed) and static string spans; string storage registers lazily at first `rt_string_bytes_ptr` exposure, so
+  strings that never hand out raw bytes stay out of the tracker. ARC-managed and static records are not droppable, and
+  string records are read-only for checked writes.
+- Checked accesses carry a read or write mode. Stores classify every pointer access on the store path as a write,
+  including explicit dereference objects (`(*q).b = ...`) and nested embedded-struct chains (`q.inner.b = ...`), so
+  read-only records reject those stores.
+- Dropped/freed user allocations pass through a bounded quarantine before their storage returns to the C allocator, so
+  use-after-drop is reported with allocation and release locations while the record is quarantined. Heap string blocks
+  are untracked and freed immediately on final ARC release: a dangling `rt_string_bytes_ptr` pointer is reported as
+  unregistered only until the address range is reused by a later allocation.
+- Each generated checked access site keeps one static call-site cache; repeated access from the same site validates with
+  a generation compare and a range check. Tracker lookups are O(1) amortized for allocation bases and O(log n) for
+  interior pointers.
+- The tracker hash table is rebuilt at a capacity sized from the live record count, so sustained alloc/free churn in
+  long-running programs purges lookup tombstones at a stable capacity instead of growing the table with the lifetime
+  number of frees. Allocation-record pool memory is peak-driven and is never returned to the C allocator.
+- Quarantine retention is tunable when compiling generated C: `_RT_QUARANTINE_MAX_BYTES` (default 16 MiB) and
+  `_RT_QUARANTINE_MAX_COUNT` (default 4096) accept `-D` overrides, for example through `L0_CFLAGS`. Smaller retention
+  (including 0) speeds allocation-heavy code by returning freed blocks to the C allocator sooner, at the cost of a
+  shorter use-after-drop detection window.
+- Retention guidance, backed by the `make bench-runtime` matrix across tcc, clang, and GCC: the default
+  `_RT_QUARANTINE_MAX_COUNT=4096` is detection-first and right for development builds; `256` is the suggested setting
+  for performance-sensitive checked deployments (it keeps a meaningful detection window while removing roughly half of
+  the retention overhead on allocation-heavy churn); intermediate values near 1024 cost about as much as 4096 while
+  shrinking the window, so they are not recommended. Record-pool and tracker-table metadata are peak-driven, while
+  quarantined payload memory is bounded by the byte/count caps, so lower caps can reduce retained freed payload memory.
+  For release performance beyond retention tuning, use `--unchecked`.
+- The `l0c --unchecked` flag (valid in `--build`, `--run`, `--gen`; mutually exclusive with the trace flags) emits
+  `L0_RT_UNCHECKED` into the generated C prelude, producing a release build: validation, tracking, and quarantine
+  compile out, and allocation/drop call the C allocator directly. Defining `L0_RT_UNCHECKED` through C flags (for
+  example `L0_CFLAGS` or the `make` variable `L0_RT_UNCHECKED=1`) achieves the same without the flag. Release builds are
+  an explicit opt-out of checked pointer semantics and provide no temporal-safety diagnostics.
+
+### 3.4 No raw pointer arithmetic contract
 
 Pointer arithmetic is not part of L0 surface semantics.
 

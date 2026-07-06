@@ -185,6 +185,42 @@ def test_all_modules_is_rejected_outside_dump_modes(monkeypatch, capsys):
     assert "option '--all-modules' is valid only with modes: --ast, --sym, --tok, --type" in capsys.readouterr().err
 
 
+def test_unchecked_is_rejected_outside_build_run_gen(monkeypatch, capsys):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main(["--check", "--unchecked", "app.main"])
+
+    assert rc == 2
+    assert calls == []
+    stderr = capsys.readouterr().err
+    assert "[L0C-2025]" in stderr
+    assert "option '--unchecked' is valid only with modes: --build, --gen, --run" in stderr
+
+
+def test_unchecked_is_rejected_with_trace_flags(monkeypatch, capsys):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main(["--run", "--unchecked", "--trace-memory", "app.main"])
+
+    assert rc == 2
+    assert calls == []
+    stderr = capsys.readouterr().err
+    assert "[L0C-2026]" in stderr
+    assert "option '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'" in stderr
+
+
+def test_unchecked_is_accepted_in_gen_mode(monkeypatch):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main(["--gen", "--unchecked", "app.main"])
+
+    assert rc == 0
+    assert len(calls) == 1
+    name, args = calls[0]
+    assert name == "gen"
+    assert args.unchecked is True
+
+
 def test_output_is_allowed_in_run_mode(monkeypatch):
     calls = _patch_handlers(monkeypatch)
 

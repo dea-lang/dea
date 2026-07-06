@@ -34,6 +34,32 @@ def test_codegen_trace_defines_emitted(analyze_single):
     assert mem_pos < runtime_pos
 
 
+def test_codegen_unchecked_define_emitted(analyze_single):
+    result = analyze_single(
+        "main",
+        """
+        module main;
+
+        func main() -> int {
+            return 0;
+        }
+        """,
+    )
+
+    assert not result.has_errors(), result.diagnostics
+    result.context.rt_unchecked = True
+
+    from l0_backend import Backend
+
+    c_code = Backend(result).generate()
+
+    unchecked_pos = c_code.find("#define L0_RT_UNCHECKED 1")
+    runtime_pos = c_code.find('#include "l0_runtime.h"')
+    assert unchecked_pos != -1
+    assert runtime_pos != -1
+    assert unchecked_pos < runtime_pos
+
+
 def test_codegen_enum_tagging_and_match_switch(codegen_single):
     c_code, _ = codegen_single(
         "main",
@@ -89,6 +115,30 @@ def test_codegen_struct_field_access_and_nullability(codegen_single):
     assert "l0_int* p = NULL;" in c_code
 
 
+def test_codegen_pointer_checks_include_alignment(codegen_single):
+    c_code, diagnostics = codegen_single(
+        "main",
+        """
+        module main;
+
+        struct Box {
+            value: int;
+        }
+
+        func main() -> int {
+            let p: Box* = new Box(7);
+            let value: int = p.value;
+            drop p;
+            return value;
+        }
+        """,
+    )
+
+    assert c_code is not None, diagnostics
+    assert "_rt_check_ptr_site" in c_code
+    assert "_RT_ALIGNOF(" in c_code
+
+
 def test_codegen_string_refcounts_and_cleanup_order(codegen_single):
     c_code, _ = codegen_single(
         "main",
@@ -136,13 +186,15 @@ def test_codegen_struct_cleanup_order_for_owned_fields(codegen_single):
     if c_code is None:
         return
 
-    first_release = c_code.find("rt_string_release(p->first);")
-    second_release = c_code.find("rt_string_release(p->second);")
+    first_match = re.search(r"rt_string_release\(l0_drop_\d+->first\);", c_code)
+    second_match = re.search(r"rt_string_release\(l0_drop_\d+->second\);", c_code)
+    first_release = first_match.start() if first_match else -1
+    second_release = second_match.start() if second_match else -1
     assert first_release != -1 and second_release != -1
     assert first_release < second_release
 
 
-def test_codegen_drop_precheck_precedes_struct_cleanup(codegen_single):
+def test_codegen_drop_begin_validation_precedes_struct_cleanup(codegen_single):
     c_code, _ = codegen_single(
         "main",
         """
@@ -167,11 +219,12 @@ def test_codegen_drop_precheck_precedes_struct_cleanup(codegen_single):
     if c_code is None:
         return
 
-    precheck = c_code.find("_rt_drop_precheck((void*)p);")
-    release = c_code.find("rt_string_release(p->s);")
-    drop = c_code.find("_rt_drop((void*)p);")
-    assert precheck != -1 and release != -1 and drop != -1
-    assert precheck < release < drop
+    begin = c_code.find("_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)")
+    release_match = re.search(r"rt_string_release\(l0_drop_\d+->s\);", c_code)
+    release = release_match.start() if release_match else -1
+    finish = c_code.find("_rt_drop_finish_impl((void*)(")
+    assert begin != -1 and release != -1 and finish != -1
+    assert begin < release < finish
 
 
 def test_codegen_optional_string_cleanup_guards_and_order(codegen_single):

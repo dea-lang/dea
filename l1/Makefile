@@ -13,6 +13,7 @@ HOST_PYTHON ?= $(shell if command -v python3 >/dev/null 2>&1; then printf '%s' p
 VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(VENV_PYTHON_DEFAULT); fi)
 PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
 L1_BUILD_DIR ?= build/dea
+L1_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 DOCKER_IMAGE ?= l1-test
 AR ?= ar
 L1_RUNTIME_CC ?= $(if $(strip $(L1_CC)),$(L1_CC),$(or $(shell if command -v clang >/dev/null 2>&1; then printf '%s' clang; elif command -v gcc >/dev/null 2>&1; then printf '%s' gcc; elif command -v cc >/dev/null 2>&1; then printf '%s' cc; fi),$(if $(filter-out undefined default,$(origin CC)),$(CC))))
@@ -27,15 +28,19 @@ RUNTIME_SOURCE_NAMES := dea_rt_panic.c dea_rt_sys.c dea_rt_math.c dea_rt_rand.c 
 RUNTIME_SOURCES := $(addprefix $(RUNTIME_ROOT)/src/,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_DEFAULT_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/default/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_TRACED_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/traced/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_UNCHECKED_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/unchecked/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_TCC_DEFAULT_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/default/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_TCC_TRACED_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/traced/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_TCC_UNCHECKED_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/unchecked/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_DEFAULT_LIB := $(RUNTIME_LIB_DIR)/libdea_rt.a
 RUNTIME_TRACED_LIB := $(RUNTIME_LIB_DIR)/libdea_rt_traced.a
+RUNTIME_UNCHECKED_LIB := $(RUNTIME_LIB_DIR)/libdea_rt_unchecked.a
 RUNTIME_PUBLIC_HEADERS := $(RUNTIME_INCLUDE_DIR)/dea_rt.h $(RUNTIME_INCLUDE_DIR)/l1_real.h
 RUNTIME_CFLAGS ?= -O2 -std=c99
+RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples test-all test-docker print-l1-build-dir clean docker
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples bench-runtime test-all test-docker print-l1-build-dir clean docker
 
 help:
 	@printf '%s\n' \
@@ -53,6 +58,7 @@ help:
 		'                     Run L1 Stage 1 ARC/memory trace checks including intentionally slow trace tests.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
 		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 1 compiler; fail on warnings or errors.' \
+		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-all`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
 		'  clean              Remove repo-local build artifacts under `build/*`.' \
 		'  clean-runtime      Remove only repo-local runtime build products under `$(L1_BUILD_DIR)`.' \
 		'  clean-all          Run both `clean` and `clean-runtime`.' \
@@ -73,6 +79,12 @@ help:
 		'                     C compiler used by `l1c --build/--run` for L1 fixture snippets; also defaults `L1_RUNTIME_CC` when set.' \
 		'  L1_RUNTIME_CC=<compiler>' \
 		'                     Runtime archive C compiler (defaults to `L1_CC`, then clang/gcc/cc, then `CC`). Example: `make clean-runtime runtime L1_RUNTIME_CC=gcc-15`.' \
+		'  L1_RT_QUARANTINE_MAX_BYTES=<n>' \
+		'                     Bake a quarantine byte limit into the checked runtime archives (default 16 MiB). Deployments can also retune at process start with the `DEA_RT_QUARANTINE_MAX_BYTES` environment variable.' \
+		'  L1_RT_QUARANTINE_MAX_COUNT=<n>' \
+		'                     Bake a quarantine record limit into the checked runtime archives (default 4096; `0` disables retention; `256` is the suggested setting for performance-sensitive checked deployments). Runtime counterpart: `DEA_RT_QUARANTINE_MAX_COUNT`.' \
+		'  L1_COMPILER_RT_QUARANTINE_MAX_COUNT=256' \
+		'                     Checked-runtime quarantine record limit used when building the L1 compiler binary only; empty disables this compiler-build default and L1 runtime archive defaults stay unchanged.' \
 		'  L1_TRACE_TEST_JOBS=<n>' \
 		'                     Override parallelism for `test-stage1-trace*`; when unset, trace runs follow the normal default job policy.' \
 		'  L1_TRACE_ARTIFACT_DIR=<dir>' \
@@ -118,10 +130,16 @@ $(RUNTIME_BUILD_DIR)/default:
 $(RUNTIME_BUILD_DIR)/traced:
 	@mkdir -p "$@"
 
+$(RUNTIME_BUILD_DIR)/unchecked:
+	@mkdir -p "$@"
+
 $(RUNTIME_TCC_BUILD_DIR)/default:
 	@mkdir -p "$@"
 
 $(RUNTIME_TCC_BUILD_DIR)/traced:
+	@mkdir -p "$@"
+
+$(RUNTIME_TCC_BUILD_DIR)/unchecked:
 	@mkdir -p "$@"
 
 $(RUNTIME_LIB_DIR):
@@ -131,22 +149,31 @@ $(RUNTIME_INCLUDE_DIR):
 	@mkdir -p "$@"
 
 $(RUNTIME_BUILD_DIR)/default/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_BUILD_DIR)/default
-	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
 $(RUNTIME_BUILD_DIR)/traced/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_BUILD_DIR)/traced
-	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+
+$(RUNTIME_BUILD_DIR)/unchecked/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_BUILD_DIR)/unchecked
+	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) -DDEA_RT_UNCHECKED $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
 $(RUNTIME_TCC_BUILD_DIR)/default/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_TCC_BUILD_DIR)/default
-	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
 $(RUNTIME_TCC_BUILD_DIR)/traced/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_TCC_BUILD_DIR)/traced
-	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+
+$(RUNTIME_TCC_BUILD_DIR)/unchecked/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_TCC_BUILD_DIR)/unchecked
+	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) -DDEA_RT_UNCHECKED $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
 $(RUNTIME_DEFAULT_LIB): $(RUNTIME_DEFAULT_OBJS) | $(RUNTIME_LIB_DIR)
 	$(AR) rcs "$@" $(RUNTIME_DEFAULT_OBJS)
 
 $(RUNTIME_TRACED_LIB): $(RUNTIME_TRACED_OBJS) | $(RUNTIME_LIB_DIR)
 	$(AR) rcs "$@" $(RUNTIME_TRACED_OBJS)
+
+$(RUNTIME_UNCHECKED_LIB): $(RUNTIME_UNCHECKED_OBJS) | $(RUNTIME_LIB_DIR)
+	$(AR) rcs "$@" $(RUNTIME_UNCHECKED_OBJS)
 
 $(RUNTIME_INCLUDE_DIR)/dea_rt.h: $(RUNTIME_ROOT)/include/dea_rt.h | $(RUNTIME_INCLUDE_DIR)
 	cp "$<" "$@"
@@ -160,10 +187,13 @@ ifeq ($(strip $(L1_TCC_OBJ_CC_IS_EXPLICIT)),)
 	@printf '%s\n' 'make runtime: no tcc: skipping specialized runtime build'
 endif
 else
-runtime-tcc-objects: $(RUNTIME_TCC_DEFAULT_OBJS) $(RUNTIME_TCC_TRACED_OBJS)
+runtime-tcc-objects: $(RUNTIME_TCC_DEFAULT_OBJS) $(RUNTIME_TCC_TRACED_OBJS) $(RUNTIME_TCC_UNCHECKED_OBJS)
 endif
 
-runtime: $(RUNTIME_DEFAULT_LIB) $(RUNTIME_TRACED_LIB) $(RUNTIME_PUBLIC_HEADERS) runtime-tcc-objects
+runtime: $(RUNTIME_DEFAULT_LIB) $(RUNTIME_TRACED_LIB) $(RUNTIME_UNCHECKED_LIB) $(RUNTIME_PUBLIC_HEADERS) runtime-tcc-objects
+
+bench-runtime:
+	$(PYTHON) ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")
 
 clean-runtime:
 	rm -rf "$(RUNTIME_BUILD_DIR)" "$(RUNTIME_LIB_DIR)"
@@ -173,7 +203,7 @@ clean-all:
 	@$(MAKE) clean-runtime
 
 build-stage1: venv runtime _ensure-bootstrap-l0-stage2
-	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(PYTHON)" ./scripts/build_stage1_l1c.py
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" L1_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L1_COMPILER_RT_QUARANTINE_MAX_COUNT)" "$(PYTHON)" ./scripts/build_stage1_l1c.py
 	@printf 'Repo-local L1 Stage 1 compiler version:\n'
 	@"$(L1_BUILD_DIR)/bin/l1c-stage1" --version
 

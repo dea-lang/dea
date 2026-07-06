@@ -1,12 +1,8 @@
-_rt_alloc_hash
 _rt_alloc_impl
 _rt_alloc_obj
 _rt_alloc_obj_impl
 _rt_alloc_string
 _rt_alloc_string_impl
-_rt_alloc_table_grow
-_rt_alloc_table_insert
-_rt_alloc_table_remove
 _rt_calloc_impl
 _rt_cast_dea_byte_from_signed
 _rt_cast_dea_byte_from_unsigned
@@ -24,11 +20,13 @@ _rt_cast_dea_ulong_from_signed
 _rt_cast_dea_ulong_from_unsigned
 _rt_cast_dea_ushort_from_signed
 _rt_cast_dea_ushort_from_unsigned
+_rt_check_index_ptr_site_slow
+_rt_check_ptr_site_slow
 _rt_dea_string_from_const_literal
 _rt_drop
+_rt_drop_begin_impl
+_rt_drop_finish_impl
 _rt_drop_impl
-_rt_drop_precheck
-_rt_drop_precheck_impl
 _rt_fmix32
 _rt_fold_u64_to_u32_fmix
 _rt_free_impl
@@ -73,6 +71,8 @@ _rt_string_retain_impl
 _rt_time_to_dea_int_nsec
 _rt_time_to_dea_int_sec
 _rt_time_write_parts
+_rt_track_arc_bytes
+_rt_track_static_bytes
 _rt_uadd
 _rt_udiv
 _rt_uladd
@@ -82,7 +82,9 @@ _rt_ulmul
 _rt_ulsub
 _rt_umod
 _rt_umul
+_rt_untrack_arc_alloc
 _rt_usub
+_rt_validate_derived_ptr
 _unwrap_opt
 _unwrap_ptr
 rt_abort

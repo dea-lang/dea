@@ -260,6 +260,7 @@ diagnostic.
 | `L0C-0017` | `L1C-0017` | All     | '--output' is ignored in '--run' mode unless '--keep-c' is set; the executable path remains temporary |
 |            | `L1C-0018` | L1 only | Explicit C compiler option violates the L1 floating-point backend contract                            |
 |            | `L1C-0019` | L1 only | Trace flags under '--gen' require the caller to link or compile against the traced runtime surface    |
+|            | `L1C-0020` | L1 only | '--unchecked' under '--gen' requires the caller to link or compile against the unchecked runtime      |
 | `L0C-0020` |            | L0 only | Analysis or AST command failed with an exception                                                      |
 | `L0C-0030` |            | L0 only | Entry module not found in compilation unit                                                            |
 | `L0C-0040` | `L1C-0040` | All     | Cannot read an input source file during token dump                                                    |
@@ -286,6 +287,8 @@ diagnostic.
 | `L0C-2022` | `L1C-2022` | All     | '--run' accepts exactly one target; use '--' before runtime program arguments                         |
 | `L0C-2023` | `L1C-2023` | All     | Arguments after '--' are valid only with '--run'                                                      |
 | `L0C-2024` | `L1C-2024` | All     | Multiple targets are not supported yet; pass exactly one target                                       |
+| `L0C-2025` | `L1C-2025` | All     | '--unchecked' is valid only with '--build', '--gen', or '--run'                                       |
+| `L0C-2026` | `L1C-2026` | All     | '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'                               |
 |            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                |
 | `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in Stage 1 yet                                                  |
 | `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                           |

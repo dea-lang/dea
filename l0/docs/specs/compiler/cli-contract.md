@@ -1,6 +1,6 @@
 # L0 Compiler CLI Contract
 
-Version: 2026-07-11
+Version: 2026-07-12
 
 This document is the normative shared CLI contract for the L0 compiler across Stage 1 and Stage 2. Stage-specific
 differences are called out explicitly in [Section 9](#9-stage-specific-differences).
@@ -62,11 +62,16 @@ The following options are enforced by CLI argument validation and are only accep
 | `-NLD` / `--no-line-directives` | `build`, `run`, `gen`       |
 | `--trace-arc`                   | `build`, `run`, `gen`       |
 | `--trace-memory`                | `build`, `run`, `gen`       |
+| `--unchecked`                   | `build`, `run`, `gen`       |
 | `--all-modules` / `-a`          | `tok`, `ast`, `sym`, `type` |
 | `--include-eof`                 | `tok`                       |
 
 Using a mode-scoped option with an incompatible mode is currently a fatal CLI error (exit code 2). This policy may be
 relaxed in a future revision.
+
+`--unchecked` disables runtime pointer validation: L0 emits `L0_RT_UNCHECKED` into the generated C prelude, and L1
+additionally selects the unchecked runtime archive. Combining `--unchecked` with `--trace-arc` or `--trace-memory` is a
+fatal CLI error (exit code 2); traced builds assert checked-runtime invariants.
 
 C compiler flags are merged as: `$L0_CFLAGS` first, then `--c-options`.
 

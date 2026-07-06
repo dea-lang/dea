@@ -576,6 +576,109 @@ func be_has_side_effects(self: Backend*, expr_id: ExprId) -> bool {
 }
 
 /**
+ * Return the represented pointer type for pointer-shaped values.
+ *
+ * @param ty Type to inspect.
+ * @return Pointer type, or `null` when not pointer-shaped.
+ */
+func be_pointer_type_or_null(ty: Type*?) -> Type*? {
+    if (ty == null) {
+        return null;
+    }
+    let actual = ty as Type*;
+    if (ord(actual.kind) == ord(TY_POINTER)) {
+        return actual;
+    }
+    if (ord(actual.kind) == ord(TY_NULLABLE) && actual.inner != null &&
+            ord((actual.inner as Type*).kind) == ord(TY_POINTER)) {
+        return actual.inner as Type*;
+    }
+    return null;
+}
+
+/**
+ * Return a C sizeof expression for the runtime access extent.
+ *
+ * @param ty Type whose value extent is required.
+ * @return C expression string.
+ */
+func be_sizeof_expr_for_type(ty: Type*) -> string {
+    if (type_is_builtin(ty, "void")) {
+        return "1";
+    }
+    return "sizeof(" + cem_emit_type(ty) + ")";
+}
+
+/**
+ * Return a C alignment expression for the runtime access target.
+ *
+ * @param ty Type whose alignment is required.
+ * @return C expression string.
+ */
+func be_alignof_expr_for_type(ty: Type*) -> string {
+    if (type_is_builtin(ty, "void")) {
+        return "1";
+    }
+    return "_RT_ALIGNOF(" + cem_emit_type(ty) + ")";
+}
+
+/**
+ * Emit a pointer expression checked for one pointee-sized access.
+ *
+ * @param self Backend state to inspect.
+ * @param c_ptr_expr Pointer expression.
+ * @param ptr_ty L0 pointer-shaped type.
+ * @param access_mode Runtime access mode expression.
+ * @return Checked pointer expression.
+ */
+func be_emit_checked_pointer_expr(self: Backend*, c_ptr_expr: string, ptr_ty: Type*, access_mode: string) -> string {
+    let represented_ptr = be_pointer_type_or_null(ptr_ty);
+    if (represented_ptr == null) {
+        return be_ice_string("[ICE-1245] expected pointer type, got '" + type_format(ptr_ty) + "'");
+    }
+
+    let ptr = represented_ptr as Type*;
+    return cem_emit_checked_ptr_access(
+        self.emitter,
+        c_ptr_expr,
+        cem_emit_type(ptr),
+        be_sizeof_expr_for_type(ptr.inner as Type*),
+        be_alignof_expr_for_type(ptr.inner as Type*),
+        access_mode
+    );
+}
+
+/**
+ * Emit a checked pointer-index lvalue expression.
+ *
+ * @param self Backend state to inspect.
+ * @param c_base Base pointer expression.
+ * @param c_index Index expression.
+ * @param base_ty L0 pointer-shaped base type.
+ * @param access_mode Runtime access mode expression.
+ * @return Checked lvalue expression.
+ */
+func be_emit_pointer_index_lvalue(self: Backend*, c_base: string, c_index: string, base_ty: Type*, access_mode: string) -> string {
+    let ptr_ty = be_pointer_type_or_null(base_ty);
+    if (ptr_ty == null) {
+        return be_ice_string("[ICE-1246] expected pointer index base, got '" + type_format(base_ty) + "'");
+    }
+
+    let ptr = ptr_ty as Type*;
+    let c_ptr_ty = cem_emit_type(ptr);
+    let checked = cem_emit_checked_ptr_index_access(
+        self.emitter,
+        c_base,
+        c_index,
+        c_ptr_ty,
+        be_sizeof_expr_for_type(ptr.inner as Type*),
+        be_alignof_expr_for_type(ptr.inner as Type*),
+        access_mode
+    );
+    return cem_emit_deref_lvalue(checked);
+}
+
+/**
  * Report whether an expression is a cast from a place.
  *
  * @param self Backend state to inspect.
@@ -1445,22 +1548,52 @@ func be_emit_lvalue(self: Backend*, expr_id: ExprId) -> string {
                     let ptr_temp = cem_fresh_tmp(self.emitter, "ptr");
                     let c_ptr_expr = be_emit_expr(self, expr.expr_a);
                     cem_emit_temp_decl(self.emitter, cem_emit_type(ptr_ty as Type*), ptr_temp, c_ptr_expr);
-                    return cem_emit_deref_lvalue(ptr_temp);
+                    return cem_emit_deref_lvalue(be_emit_checked_pointer_expr(self, ptr_temp, ptr_ty as Type*, "_RT_ACCESS_WRITE"));
+                }
+            }
+            if (expr.text_value == "*") {
+                with (let ptr_ty2 = be_expr_type(self, expr.expr_a) => type_free_opt(ptr_ty2)) {
+                    if (ptr_ty2 == null) {
+                        return be_ice_string("[ICE-1242] missing type for dereference operand");
+                    }
+                    return cem_emit_deref_lvalue(
+                        be_emit_checked_pointer_expr(self, be_emit_expr(self, expr.expr_a), ptr_ty2 as Type*, "_RT_ACCESS_WRITE")
+                    );
                 }
             }
         }
         EX_FIELD => {
-            if (be_has_side_effects(self, expr.expr_a)) {
-                with (let obj_ty = be_expr_type(self, expr.expr_a) => type_free_opt(obj_ty)) {
-                    if (obj_ty == null) {
-                        return be_ice_string("[ICE-1243] missing type for field access object");
-                    }
+            with (let obj_ty = be_expr_type(self, expr.expr_a) => type_free_opt(obj_ty)) {
+                if (obj_ty == null) {
+                    return be_ice_string("[ICE-1243] missing type for field access object");
+                }
+                let obj_ptr_ty = be_pointer_type_or_null(obj_ty as Type*);
+                if (obj_ptr_ty == null && be_is_place_expr(self, expr.expr_a)) {
+                    // The store lands inside the object's own storage, so the
+                    // object must be emitted as an lvalue: inner pointer
+                    // accesses keep write mode and no struct temp copy is
+                    // introduced.
+                    return cem_emit_field_lvalue(be_emit_lvalue(self, expr.expr_a), expr.text_value, false);
+                }
+                if (be_has_side_effects(self, expr.expr_a)) {
                     let obj_temp = cem_fresh_tmp(self.emitter, "obj");
                     let c_obj_expr = be_emit_expr(self, expr.expr_a);
                     cem_emit_temp_decl(self.emitter, cem_emit_type(obj_ty as Type*), obj_temp, c_obj_expr);
-                    let is_pointer = ord((obj_ty as Type*).kind) == ord(TY_POINTER);
-                    return cem_emit_field_lvalue(obj_temp, expr.text_value, is_pointer);
+                    if (obj_ptr_ty != null) {
+                        return cem_emit_field_lvalue(
+                            be_emit_checked_pointer_expr(self, obj_temp, obj_ptr_ty as Type*, "_RT_ACCESS_WRITE"),
+                            expr.text_value,
+                            true
+                        );
+                    }
+                    return cem_emit_field_lvalue(obj_temp, expr.text_value, false);
                 }
+                let c_obj_expr = be_emit_expr(self, expr.expr_a);
+                if (obj_ptr_ty != null) {
+                    c_obj_expr = be_emit_checked_pointer_expr(self, c_obj_expr, obj_ptr_ty as Type*, "_RT_ACCESS_WRITE");
+                    return cem_emit_field_lvalue(c_obj_expr, expr.text_value, true);
+                }
+                return cem_emit_field_lvalue(c_obj_expr, expr.text_value, false);
             }
         }
         EX_INDEX => {
@@ -1487,8 +1620,26 @@ func be_emit_lvalue(self: Backend*, expr_id: ExprId) -> string {
                     final_index = idx_temp;
                 }
 
+                with (let base_ty2 = be_expr_type(self, expr.expr_a) => type_free_opt(base_ty2)) {
+                    if (base_ty2 != null && be_pointer_type_or_null(base_ty2 as Type*) != null) {
+                        return be_emit_pointer_index_lvalue(self, final_base, final_index, base_ty2 as Type*, "_RT_ACCESS_WRITE");
+                    }
+                }
+
                 return cem_emit_index_lvalue(final_base, final_index);
             }
+            with (let base_ty3 = be_expr_type(self, expr.expr_a) => type_free_opt(base_ty3)) {
+                if (base_ty3 != null && be_pointer_type_or_null(base_ty3 as Type*) != null) {
+                    return be_emit_pointer_index_lvalue(
+                        self,
+                        be_emit_expr(self, expr.expr_a),
+                        be_emit_expr(self, expr.expr_b),
+                        base_ty3 as Type*,
+                        "_RT_ACCESS_WRITE"
+                    );
+                }
+            }
+            return cem_emit_index_lvalue(be_emit_expr(self, expr.expr_a), be_emit_expr(self, expr.expr_b));
         }
         EX_PAREN => {
             return be_emit_lvalue(self, expr.expr_a);
@@ -1907,7 +2058,7 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
         }
 
         if (arg_count == 1) {
-            cem_emit_pointer_assignment(self.emitter, tmp, be_emit_expr(self, id_vec_get(expr.ids as VectorBase*, 0)));
+            cem_emit_checked_pointer_assignment(self.emitter, tmp, c_base, be_emit_expr(self, id_vec_get(expr.ids as VectorBase*, 0)));
             return tmp;
         }
 
@@ -1973,17 +2124,45 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
             return be_ice_string("[ICE-1102] unsupported module-level variable reference");
         }
         EX_UNARY => {
-            return cem_emit_unary_op(expr.text_value, be_emit_expr(self, expr.expr_a));
+            let c_operand = be_emit_expr(self, expr.expr_a);
+            if (expr.text_value == "*") {
+                with (let operand_ty = be_expr_type(self, expr.expr_a) => type_free_opt(operand_ty)) {
+                    if (operand_ty == null) {
+                        return be_ice_string("[ICE-1247] missing type for dereference operand");
+                    }
+                    c_operand = be_emit_checked_pointer_expr(self, c_operand, operand_ty as Type*, "_RT_ACCESS_READ");
+                }
+            }
+            return cem_emit_unary_op(expr.text_value, c_operand);
         }
         EX_BINARY => { return be_emit_binary_op(self, expr_id); }
         EX_CALL => { return be_emit_call(self, expr_id); }
         EX_INDEX => {
+            with (let base_ty = be_expr_type(self, expr.expr_a) => type_free_opt(base_ty)) {
+                if (base_ty == null) {
+                    return be_ice_string("[ICE-1898] missing type for index base");
+                }
+                if (be_pointer_type_or_null(base_ty as Type*) != null) {
+                    return be_emit_pointer_index_lvalue(
+                        self,
+                        be_emit_expr(self, expr.expr_a),
+                        be_emit_expr(self, expr.expr_b),
+                        base_ty as Type*,
+                        "_RT_ACCESS_READ"
+                    );
+                }
+            }
             return cem_emit_index_lvalue(be_emit_expr(self, expr.expr_a), be_emit_expr(self, expr.expr_b));
         }
         EX_FIELD => {
             with (let obj_ty = be_expr_type(self, expr.expr_a) => type_free_opt(obj_ty)) {
-                let is_pointer = obj_ty != null && ord((obj_ty as Type*).kind) == ord(TY_POINTER);
-                return cem_emit_field_access(be_emit_expr(self, expr.expr_a), expr.text_value, is_pointer);
+                let c_obj = be_emit_expr(self, expr.expr_a);
+                let obj_ptr_ty = be_pointer_type_or_null(obj_ty);
+                if (obj_ptr_ty != null) {
+                    c_obj = be_emit_checked_pointer_expr(self, c_obj, obj_ptr_ty as Type*, "_RT_ACCESS_READ");
+                    return cem_emit_field_access(c_obj, expr.text_value, true);
+                }
+                return cem_emit_field_access(c_obj, expr.text_value, false);
             }
         }
         EX_PAREN => { return cem_emit_paren_expr(be_emit_expr(self, expr.expr_a)); }
@@ -2354,31 +2533,28 @@ func be_emit_drop_stmt(self: Backend*, stmt: StmtNode*) {
         be_ice("[ICE-1060] drop requires resolved variable type");
     }
 
-    let inner_type = var_type as Type*;
-    if (ord((var_type as Type*).kind) == ord(TY_NULLABLE)) {
-        inner_type = ((var_type as Type*).inner as Type*);
-    }
-    if (ord(inner_type.kind) != ord(TY_POINTER)) {
+    let ptr_type = be_pointer_type_or_null(var_type as Type*);
+    if (ptr_type == null) {
         be_ice("[ICE-1061] drop requires pointer type, got '" + type_format(var_type as Type*) + "'");
     }
 
-    let pointee = inner_type.inner as Type*;
-    let cleanup_needs_pointee = analysis_has_arc_data(self.result, pointee);
-    if (cleanup_needs_pointee) {
-        cem_emit_drop_precheck_call(self.emitter, c_name);
-    }
+    let pointee = (ptr_type as Type*).inner as Type*;
+    let drop_tmp = cem_fresh_tmp(self.emitter, "drop");
+    let c_ptr_type = cem_emit_type(ptr_type as Type*);
+    cem_emit_temp_decl(self.emitter, c_ptr_type, drop_tmp, cem_emit_drop_begin_expr(c_name, c_ptr_type));
+
     if (ord(pointee.kind) == ord(TY_STRUCT)) {
-        be_emit_struct_cleanup(self, c_name, pointee);
+        be_emit_struct_cleanup(self, drop_tmp, pointee);
     } else if (ord(pointee.kind) == ord(TY_ENUM)) {
-        be_emit_enum_cleanup(self, c_name, pointee);
+        be_emit_enum_cleanup(self, drop_tmp, pointee);
     } else if (analysis_is_arc_type(pointee)) {
-        cem_emit_if_header(self.emitter, cem_emit_pointer_null_check(c_name, "!="));
+        cem_emit_if_header(self.emitter, cem_emit_pointer_null_check(drop_tmp, "!="));
         cem_emit_block_start(self.emitter);
-        cem_emit_string_release(self.emitter, "*" + c_name);
+        cem_emit_string_release(self.emitter, "*" + drop_tmp);
         cem_emit_block_end(self.emitter);
     }
 
-    cem_emit_drop_call(self.emitter, c_name);
+    cem_emit_drop_finish_call(self.emitter, drop_tmp);
     cem_emit_null_assignment(self.emitter, c_name);
     self.next_stmt_unreachable = false;
 }

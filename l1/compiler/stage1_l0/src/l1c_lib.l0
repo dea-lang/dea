@@ -324,6 +324,7 @@ func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
             cg_opts.emit_line_directives = !opts.no_line_directives;
             cg_opts.trace_arc = opts.trace_arc;
             cg_opts.trace_memory = opts.trace_memory;
+            cg_opts.rt_unchecked = opts.unchecked;
 
             let c_code = backend_generate(result, cg_opts, cfg);
             if (opts.output != null) {

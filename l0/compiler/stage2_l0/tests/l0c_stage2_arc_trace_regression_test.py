@@ -447,11 +447,11 @@ def test_struct_heap_string_field_drop(artifact_dir: Path) -> None:
     assert_true(frees[-1].get("rc_after") == "0", f"expected terminal heap free, got {frees[-1]!r}", artifact_dir)
 
 
-def test_double_drop_precheck_precedes_struct_arc_cleanup(artifact_dir: Path) -> None:
+def test_double_drop_validation_precedes_struct_arc_cleanup(artifact_dir: Path) -> None:
     """A stale helper-mediated drop should panic before a second field cleanup."""
 
     _stdout, stderr, arc, mem = run_failing_case(
-        "double_drop_precheck_struct_arc_cleanup",
+        "double_drop_validation_struct_arc_cleanup",
         """
         module main;
         import std.string;
@@ -475,16 +475,16 @@ def test_double_drop_precheck_precedes_struct_arc_cleanup(artifact_dir: Path) ->
     )
 
     assert_true(
-        "Software Failure: drop: pointer not allocated by 'new'" in stderr,
-        "expected stale-drop software failure",
+        "Software Failure:" in stderr and "double drop" in stderr,
+        "expected stale double-drop software failure",
         artifact_dir,
     )
-    panics = [
+    drops = [
         event
         for event in mem
-        if event.get("op") == "drop" and event.get("action") == "panic-not-found"
+        if event.get("op") == "drop" and event.get("action") == "free"
     ]
-    assert_equal(len(panics), 1, "expected one stale-drop panic event", artifact_dir)
+    assert_equal(len(drops), 1, "expected only the first drop to complete", artifact_dir)
     assert_equal(len(heap_frees(arc)), 1, "expected only the first drop to free field ARC data", artifact_dir)
 
 
@@ -1659,7 +1659,7 @@ def main() -> int:
         test_discarded_concat_freed,
         test_struct_static_string_field_drop,
         test_struct_heap_string_field_drop,
-        test_double_drop_precheck_precedes_struct_arc_cleanup,
+        test_double_drop_validation_precedes_struct_arc_cleanup,
         test_enum_string_variant_cleanup,
         test_optional_string_cleanup,
         test_case_scrutinee_unwrap_retains,

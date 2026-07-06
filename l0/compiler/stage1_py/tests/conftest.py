@@ -344,13 +344,16 @@ def compile_and_run(runtime_dir: Path):
         runtime_dir: The path to the L0 C runtime headers.
 
     Returns:
-        A callable that takes a C code string and a working directory path,
-        compiles the code using the configured C compiler, executes the
-        resulting binary, and returns a tuple:
+        A callable that takes a C code string, a working directory path, and
+        optional text to feed the binary on standard input, compiles the code
+        using the configured C compiler, executes the resulting binary, and
+        returns a tuple:
         (success_boolean, standard_output_string, standard_error_string).
     """
 
-    def _compile_and_run(c_code: str, work_dir: Path) -> tuple[bool, str, str]:
+    def _compile_and_run(
+        c_code: str, work_dir: Path, stdin_text: str | None = None
+    ) -> tuple[bool, str, str]:
         cc = _find_cc()
         flag_family = _compiler_flag_family(cc)
 
@@ -397,6 +400,7 @@ def compile_and_run(runtime_dir: Path):
             capture_output=True,
             text=True,
             timeout=10,
+            input=stdin_text,
         )
 
         return result.returncode == 0, result.stdout, result.stderr

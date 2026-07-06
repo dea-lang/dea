@@ -1,7 +1,7 @@
 # ADR-0007: Function Pointer Types
 
 - Decision date: 2026-04-18
-- Last edited: 2026-05-20
+- Last edited: 2026-07-05
 - Status: Accepted
 
 ## Context
@@ -24,7 +24,7 @@ Function pointer types are spelled `func(T1, T2) -> U` and `unsafe func(T1, T2) 
   bootstrap.
 
 The `unsafe` marker is a function-level contract marker, not a call-site gate; safe code may still call an `unsafe func`
-value today. The marker exists to distinguish unchecked raw-memory contracts in signatures.
+value today. The marker exists to distinguish source-unsafe raw-memory contracts in signatures.
 
 ## Rationale
 

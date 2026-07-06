@@ -36,12 +36,13 @@ def compiler_path() -> Path:
     return resolve_tool(build_dir / "bin" / "l1c-stage1")
 
 
-def run_mode(mode: str, stdin_text: str = "") -> subprocess.CompletedProcess[str]:
+def run_mode(mode: str, stdin_text: str = "", extra_flags: list[str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             str(compiler_path()),
             "-P",
             "compiler/stage1_l0/tests/fixtures/io_runtime",
+            *(extra_flags or []),
             "--run",
             "io_numeric_main",
             "--",
@@ -57,14 +58,27 @@ def run_mode(mode: str, stdin_text: str = "") -> subprocess.CompletedProcess[str
     )
 
 
-def require_run(mode: str, stdin_text: str, stdout: str, stderr: str = "") -> None:
-    completed = run_mode(mode, stdin_text)
+def require_run(
+    mode: str,
+    stdin_text: str,
+    stdout: str,
+    stderr: str = "",
+    extra_flags: list[str] | None = None,
+) -> None:
+    completed = run_mode(mode, stdin_text, extra_flags)
     if completed.returncode != 0:
         sys.stderr.write(completed.stdout)
         sys.stderr.write(completed.stderr)
         raise AssertionError(f"{mode} exited with {completed.returncode}")
     assert completed.stdout == stdout, f"{mode} stdout mismatch: {completed.stdout!r}"
     assert completed.stderr == stderr, f"{mode} stderr mismatch: {completed.stderr!r}"
+
+
+def require_failure(mode: str, stdin_text: str, stderr_needle: str) -> None:
+    completed = run_mode(mode, stdin_text)
+    if completed.returncode == 0:
+        raise AssertionError(f"{mode} unexpectedly succeeded")
+    assert stderr_needle in completed.stderr, f"{mode} stderr mismatch: {completed.stderr!r}"
 
 
 def main() -> int:
@@ -91,6 +105,12 @@ def main() -> int:
             "invalids\n"
         ),
     )
+    require_run("bytes", ("A" * 200) + "\n", "bytes-ok\n")
+    # A valid program must behave identically with the unchecked runtime archive.
+    require_run("bytes", ("A" * 200) + "\n", "bytes-ok\n", extra_flags=["--unchecked"])
+    require_failure("bytes-write-static", "", "read-only pointer write")
+    require_failure("bytes-write-field", "", "read-only pointer write")
+    require_failure("bytes-write-heap", ("A" * 200) + "\n", "read-only pointer write")
     return 0
 
 

@@ -268,7 +268,11 @@ def main() -> int:
             fail(f"could not find distribution directory in output:\n{output}")
         if archive_match is None:
             fail(f"could not find distribution archive in output:\n{output}")
-        expected_cflags = "gen-dea-build-tools: L0_CFLAGS='-O2 -static'" if is_windows_host() else "gen-dea-build-tools: L0_CFLAGS=-O2"
+        expected_cflags = (
+            "gen-dea-build-tools: L0_CFLAGS='-O2 -static -D_RT_QUARANTINE_MAX_COUNT=256'"
+            if is_windows_host()
+            else "gen-dea-build-tools: L0_CFLAGS='-O2 -D_RT_QUARANTINE_MAX_COUNT=256'"
+        )
         if expected_cflags not in output:
             fail(f"expected '{expected_cflags}' in output:\n{output}")
 
