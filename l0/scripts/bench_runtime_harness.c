@@ -19,6 +19,8 @@
  *            returns the same address each iteration.
  *   ramp     Grow a large mixed-size live set, hold it, free it all, then
  *            churn until the tracker table contracts (memory-intensive).
+ *   cached   Warm one pointer-check site per live allocation, then time only
+ *            cache-hit pointer validation sweeps.
  *   strings  Heap-string churn; lazily registered ARC storage stays out of
  *            the tracker.
  *
@@ -66,6 +68,8 @@ static unsigned bench_rng_next(unsigned *rng) {
     *rng = *rng * 1664525u + 1013904223u;
     return *rng;
 }
+
+static volatile uintptr_t bench_cached_sink = 0;
 
 static void bench_print_tracker_stats(const char *scenario) {
 #ifndef L0_RT_UNCHECKED
@@ -178,6 +182,55 @@ static int bench_ramp(long scale) {
     return 0;
 }
 
+static int bench_cached(long scale) {
+    long live_count = 65536L * scale;
+    long sweeps = 64;
+    void **live = (void**)calloc((size_t)live_count, sizeof(void*));
+    _rt_ptr_site *sites = (_rt_ptr_site*)calloc((size_t)live_count, sizeof(_rt_ptr_site));
+    unsigned rng = 24680;
+    if (live == NULL || sites == NULL) {
+        free(live);
+        free(sites);
+        return 2;
+    }
+
+    for (long i = 0; i < live_count; i++) {
+        unsigned draw = bench_rng_next(&rng);
+        l0_int size = (l0_int)(16 + (draw >> 20 & 255));
+        live[i] = rt_alloc(size);
+        if (live[i] == NULL) {
+            for (long j = 0; j < i; j++) {
+                rt_free(live[j]);
+            }
+            free(live);
+            free(sites);
+            return 2;
+        }
+        _rt_check_ptr_site(&sites[i], live[i], 1, 1, _RT_ACCESS_READ, "<bench>", 0);
+    }
+
+    uintptr_t acc = 0;
+    clock_t start = clock();
+    for (long sweep = 0; sweep < sweeps; sweep++) {
+        for (long i = 0; i < live_count; i++) {
+            acc ^= (uintptr_t)_rt_check_ptr_site(&sites[i], live[i], 1, 1, _RT_ACCESS_READ, "<bench>", 0);
+        }
+    }
+    bench_cached_sink ^= acc;
+    printf("cached.wall_ms=%.0f\n", bench_ms_since(start));
+    printf("cached.ops=%ld\n", live_count * sweeps);
+    printf("cached.live=%ld\n", live_count);
+    printf("cached.sink=%lu\n", (unsigned long)bench_cached_sink);
+    bench_print_tracker_stats("cached");
+
+    for (long i = 0; i < live_count; i++) {
+        rt_free(live[i]);
+    }
+    free(live);
+    free(sites);
+    return 0;
+}
+
 static int bench_strings(long scale) {
     long pairs = 1000000L * scale;
     clock_t start = clock();
@@ -198,6 +251,9 @@ int main(int argc, char **argv) {
     if (argc > 2) scale = strtol(argv[2], NULL, 10);
     if (scale <= 0) scale = 1;
 
+    printf("record.hot_bytes=%zu\n", sizeof(_rt_alloc_record));
+    printf("record.cold_bytes=%zu\n", sizeof(_rt_alloc_record_cold));
+
     int run_all = strcmp(scenario, "all") == 0;
     int rc = 0;
     int matched = 0;
@@ -215,6 +271,11 @@ int main(int argc, char **argv) {
     if (run_all || strcmp(scenario, "ramp") == 0) {
         matched = 1;
         rc = bench_ramp(scale);
+        if (rc != 0) return rc;
+    }
+    if (run_all || strcmp(scenario, "cached") == 0) {
+        matched = 1;
+        rc = bench_cached(scale);
         if (rc != 0) return rc;
     }
     if (run_all || strcmp(scenario, "strings") == 0) {

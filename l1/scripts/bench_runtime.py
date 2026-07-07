@@ -33,11 +33,12 @@ L1_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOT = L1_ROOT / "compiler" / "shared" / "runtime"
 HARNESS = L1_ROOT / "scripts" / "bench_runtime_harness.c"
 
-SCENARIOS = ("tight", "window", "ramp", "strings")
+SCENARIOS = ("tight", "window", "ramp", "cached", "strings")
 WALL_KEYS = {
     "tight": ("tight.wall_ms",),
     "window": ("window.wall_ms",),
     "ramp": ("ramp.grow_wall_ms", "ramp.free_wall_ms", "ramp.settle_wall_ms"),
+    "cached": ("cached.wall_ms",),
     "strings": ("strings.wall_ms",),
 }
 DEFAULT_COMPILERS = ("tcc", "clang", "gcc-16")
@@ -130,11 +131,15 @@ def format_row(label: str, cells: dict[str, dict[str, float]]) -> str:
         return f"{cells[scenario]['_wall']:9.0f}"
 
     ramp = cells["ramp"]
+    hot_bytes = int(ramp.get("record.hot_bytes", 0))
+    cold_bytes = ramp.get("record.cold_bytes")
+    cold_text = f"{int(cold_bytes):5d}" if cold_bytes is not None else f"{'-':>5}"
     rss_mib = ramp.get("max_rss_kib", 0.0) / 1024.0
     cap_peak = int(ramp.get("ramp.table_cap_peak", 0))
     chunks = int(ramp.get("ramp.rec_pool_chunks_peak", 0))
     return (
-        f"{label:>10} | {wall('tight')} | {wall('window')} | {wall('ramp')} | {wall('strings')} |"
+        f"{label:>10} | {hot_bytes:4d} | {cold_text} |"
+        f" {wall('tight')} | {wall('window')} | {wall('ramp')} | {wall('cached')} | {wall('strings')} |"
         f" {rss_mib:10.1f} | {cap_peak:9d} | {chunks:7d}"
     )
 
@@ -146,7 +151,8 @@ def main() -> int:
 
     print(f"bench_runtime: scale={args.scale} runs={args.runs} (wall in ms, best of {args.runs})")
     header = (
-        f"{'setting':>10} | {'tight':>9} | {'window':>9} | {'ramp':>9} | {'strings':>9} |"
+        f"{'setting':>10} | {'hotB':>4} | {'coldB':>5} |"
+        f" {'tight':>9} | {'window':>9} | {'ramp':>9} | {'cached':>9} | {'strings':>9} |"
         f" {'rampRSSMiB':>10} | {'rampCap':>9} | {'chunks':>7}"
     )
 

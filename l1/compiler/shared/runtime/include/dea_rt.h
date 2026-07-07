@@ -426,30 +426,47 @@ dea_int rt_errno(void);
 #define _RT_ACCESS_UNTRACKED_OK 2
 
 typedef struct _rt_alloc_record _rt_alloc_record;
+typedef struct _rt_alloc_record_cold _rt_alloc_record_cold;
 typedef struct _rt_ptr_site _rt_ptr_site;
 
 /**
- * One tracked allocation. Records are pool-allocated and never freed, so a
+ * Hot allocation fields read by checked pointer cache hits and allocation
+ * tracker mutation paths. Records are pool-allocated and never freed, so a
  * stale record pointer held by a call-site cache stays dereferenceable; the
  * generation counter rejects reuse.
  */
 struct _rt_alloc_record {
     void *base;
     size_t size;
-    size_t align;
-    uint32_t type_id; /* Reserved for a future runtime type-identity initiative. */
-    uint32_t tree_prio;
     uint64_t generation;
-    int state;
-    int mem_kind;
-    int read_only;
-    const char *alloc_file;
-    int alloc_line;
-    const char *drop_file;
-    int drop_line;
     _rt_alloc_record *tree_left;
     _rt_alloc_record *tree_right;
     _rt_alloc_record *q_next;
+    uint32_t tree_prio;
+    uint32_t cold_index;
+    uint8_t state;
+    uint8_t read_only;
+    uint8_t mem_kind;
+#if UINTPTR_MAX == UINT32_MAX && SIZE_MAX == UINT32_MAX
+    uint8_t hot_pad[25];
+#else
+    uint8_t hot_pad[5];
+#endif
+};
+
+typedef char _rt_alloc_record_size_check[(sizeof(_rt_alloc_record) == 64) ? 1 : -1];
+
+/**
+ * Cold allocation fields used by diagnostics and rare metadata reads.
+ */
+struct _rt_alloc_record_cold {
+    size_t align;
+    uint32_t type_id; /* Reserved for a future runtime type-identity initiative. */
+    int alloc_line;
+    int drop_line;
+    uint32_t reserved;
+    const char *alloc_file;
+    const char *drop_file;
 };
 
 /**

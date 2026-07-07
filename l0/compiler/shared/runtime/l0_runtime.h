@@ -515,30 +515,47 @@ static inline void *_unwrap_opt(void *opt_ptr, const char *type_name) {
 #endif
 
 typedef struct _rt_alloc_record _rt_alloc_record;
+typedef struct _rt_alloc_record_cold _rt_alloc_record_cold;
 typedef struct _rt_ptr_site _rt_ptr_site;
 
 /**
- * One tracked allocation. Records are pool-allocated and never freed, so a
+ * Hot allocation fields read by checked pointer cache hits and allocation
+ * tracker mutation paths. Records are pool-allocated and never freed, so a
  * stale record pointer held by a call-site cache stays dereferenceable; the
  * generation counter rejects reuse.
  */
 struct _rt_alloc_record {
     void *base;
     size_t size;
-    size_t align;
-    uint32_t type_id; /* Reserved for a future runtime type-identity initiative. */
-    uint32_t tree_prio;
     uint64_t generation;
-    int state;
-    int mem_kind;
-    int read_only;
-    const char *alloc_file;
-    int alloc_line;
-    const char *drop_file;
-    int drop_line;
     _rt_alloc_record *tree_left;
     _rt_alloc_record *tree_right;
     _rt_alloc_record *q_next;
+    uint32_t tree_prio;
+    uint32_t cold_index;
+    uint8_t state;
+    uint8_t read_only;
+    uint8_t mem_kind;
+#if UINTPTR_MAX == UINT32_MAX && SIZE_MAX == UINT32_MAX
+    uint8_t hot_pad[25];
+#else
+    uint8_t hot_pad[5];
+#endif
+};
+
+typedef char _rt_alloc_record_size_check[(sizeof(_rt_alloc_record) == 64) ? 1 : -1];
+
+/**
+ * Cold allocation fields used by diagnostics and rare metadata reads.
+ */
+struct _rt_alloc_record_cold {
+    size_t align;
+    uint32_t type_id; /* Reserved for a future runtime type-identity initiative. */
+    int alloc_line;
+    int drop_line;
+    uint32_t reserved;
+    const char *alloc_file;
+    const char *drop_file;
 };
 
 /**
@@ -2653,6 +2670,7 @@ static uint64_t _rt_alloc_next_generation = 1;
 
 static _rt_alloc_record *_rt_alloc_tree_root = NULL;
 static _rt_alloc_record *_rt_rec_free_list = NULL;
+static _rt_alloc_record_cold **_rt_cold_chunks = NULL;
 static size_t _rt_rec_pool_chunks = 0;
 
 static _rt_alloc_record *_rt_quarantine_head = NULL;
@@ -2660,27 +2678,80 @@ static _rt_alloc_record *_rt_quarantine_tail = NULL;
 static size_t _rt_quarantine_bytes = 0;
 static size_t _rt_quarantine_count = 0;
 
+#if _RT_REC_POOL_CHUNK == 256
+#define _rt_rec_cold(rec) (&_rt_cold_chunks[(rec)->cold_index >> 8][(rec)->cold_index & 255u])
+#else
+#define _rt_rec_cold(rec) (&_rt_cold_chunks[(size_t)(rec)->cold_index / (size_t)_RT_REC_POOL_CHUNK][(size_t)(rec)->cold_index % (size_t)_RT_REC_POOL_CHUNK])
+#endif
+
 /**
  * Take one record from the pool, refilling it chunk-wise. Pool memory is
  * never returned to the C allocator, so stale record pointers held by
  * call-site caches remain safe to dereference.
  */
-static _rt_alloc_record *_rt_rec_new(void) {
+static _rt_alloc_record *_rt_rec_new(_rt_alloc_record_cold **cold_out) {
     if (_rt_rec_free_list == NULL) {
-        _rt_alloc_record *chunk = (_rt_alloc_record*)malloc(_RT_REC_POOL_CHUNK * sizeof(_rt_alloc_record));
-        if (chunk == NULL) {
-            _rt_panic("runtime allocation tracker: out of memory (record pool)");
+        size_t chunk_count = (size_t)_RT_REC_POOL_CHUNK;
+        size_t chunk_no = _rt_rec_pool_chunks;
+        if (chunk_count == 0) {
+            _rt_panic("runtime allocation tracker: invalid record pool chunk size");
         }
+        if (chunk_count > (SIZE_MAX - 63u) / sizeof(_rt_alloc_record)) {
+            _rt_panic("runtime allocation tracker: record pool size overflow");
+        }
+        if (chunk_count > SIZE_MAX / sizeof(_rt_alloc_record_cold)) {
+            _rt_panic("runtime allocation tracker: cold record pool size overflow");
+        }
+        if (chunk_no > ((size_t)UINT32_MAX - (chunk_count - 1u)) / chunk_count) {
+            _rt_panic("runtime allocation tracker: record pool index overflow");
+        }
+        if (chunk_no > (SIZE_MAX / sizeof(_rt_alloc_record_cold*)) - 1u) {
+            _rt_panic("runtime allocation tracker: cold chunk directory overflow");
+        }
+
+        size_t hot_bytes = chunk_count * sizeof(_rt_alloc_record);
+        unsigned char *raw = (unsigned char*)malloc(hot_bytes + 63u);
+        if (raw == NULL) {
+            _rt_panic("runtime allocation tracker: out of memory (hot record pool)");
+        }
+        size_t off = (size_t)(-(uintptr_t)raw & 63u);
+        _rt_alloc_record *chunk = (_rt_alloc_record*)(void*)(raw + off);
+
+        _rt_alloc_record_cold **new_cold_chunks = (_rt_alloc_record_cold**)realloc(
+            _rt_cold_chunks,
+            (chunk_no + 1u) * sizeof(_rt_alloc_record_cold*)
+        );
+        if (new_cold_chunks == NULL) {
+            _rt_panic("runtime allocation tracker: out of memory (cold chunk directory)");
+        }
+        _rt_cold_chunks = new_cold_chunks;
+
+        _rt_alloc_record_cold *cold_chunk = (_rt_alloc_record_cold*)malloc(chunk_count * sizeof(_rt_alloc_record_cold));
+        if (cold_chunk == NULL) {
+            _rt_panic("runtime allocation tracker: out of memory (cold record pool)");
+        }
+        _rt_cold_chunks[chunk_no] = cold_chunk;
         _rt_rec_pool_chunks++;
-        for (size_t i = 0; i < _RT_REC_POOL_CHUNK; i++) {
+
+        size_t base_index = chunk_no * chunk_count;
+        for (size_t i = 0; i < chunk_count; i++) {
+            chunk[i].base = NULL;
+            chunk[i].size = 0;
             chunk[i].state = _RT_ALLOC_POOLED;
+            chunk[i].read_only = 0;
+            chunk[i].mem_kind = 0;
             chunk[i].generation = 0;
+            chunk[i].cold_index = (uint32_t)(base_index + i);
             chunk[i].q_next = _rt_rec_free_list;
             _rt_rec_free_list = &chunk[i];
         }
     }
     _rt_alloc_record *rec = _rt_rec_free_list;
+    _rt_alloc_record_cold *cold = _rt_rec_cold(rec);
     _rt_rec_free_list = rec->q_next;
+    if (cold_out != NULL) {
+        *cold_out = cold;
+    }
     return rec;
 }
 
@@ -3028,21 +3099,23 @@ static void _rt_track_alloc_record_kind(
         _rt_panic_fmt("runtime allocation tracker: duplicate allocation address %p", ptr);
     }
 
-    _rt_alloc_record *rec = _rt_rec_new();
+    _rt_alloc_record_cold *cold = NULL;
+    _rt_alloc_record *rec = _rt_rec_new(&cold);
 
     rec->base = ptr;
     rec->size = size == 0 ? 1u : size;
-    rec->align = align;
-    rec->type_id = type_id;
     rec->generation = _rt_alloc_next_generation++;
     if (_rt_alloc_next_generation == 0) _rt_alloc_next_generation = 1;
     rec->state = _RT_ALLOC_LIVE;
-    rec->mem_kind = mem_kind;
-    rec->read_only = read_only;
-    rec->alloc_file = loc_file;
-    rec->alloc_line = loc_line;
-    rec->drop_file = NULL;
-    rec->drop_line = 0;
+    rec->read_only = read_only ? 1u : 0u;
+    rec->mem_kind = (uint8_t)mem_kind;
+    cold->align = align;
+    cold->type_id = type_id;
+    cold->alloc_file = loc_file;
+    cold->alloc_line = loc_line;
+    cold->drop_file = NULL;
+    cold->drop_line = 0;
+    cold->reserved = 0;
     rec->q_next = NULL;
 
     _rt_alloc_table_insert(rec);
@@ -3110,10 +3183,10 @@ static void _rt_evict_quarantine(void) {
     }
 }
 
-static void _rt_quarantine_alloc_record(_rt_alloc_record *rec, const char *loc_file, int loc_line) {
+static void _rt_quarantine_alloc_record(_rt_alloc_record *rec, _rt_alloc_record_cold *cold, const char *loc_file, int loc_line) {
     rec->state = _RT_ALLOC_QUARANTINED;
-    rec->drop_file = loc_file;
-    rec->drop_line = loc_line;
+    cold->drop_file = loc_file;
+    cold->drop_line = loc_line;
     rec->q_next = NULL;
 
     if (_rt_quarantine_tail == NULL) {
@@ -3140,6 +3213,7 @@ static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_l
         }
         _rt_panic_invalid_drop("unregistered pointer", ptr, loc_file, loc_line);
     }
+    _rt_alloc_record_cold *cold = _rt_rec_cold(rec);
     if (rec->mem_kind != _RT_MEM_USER) {
         _rt_panic_invalid_drop(
             rec->mem_kind == _RT_MEM_ARC
@@ -3152,14 +3226,14 @@ static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_l
         _rt_panic_fmt(
             "runtime error: double free/drop\n  pointer: %p\n  first released at: %s:%d\n  second released at: %s:%d",
             ptr,
-            rec->drop_file ? rec->drop_file : "<unknown>",
-            rec->drop_line,
+            cold->drop_file ? cold->drop_file : "<unknown>",
+            cold->drop_line,
             loc_file ? loc_file : "<unknown>",
             loc_line
         );
     }
 
-    _rt_quarantine_alloc_record(rec, loc_file, loc_line);
+    _rt_quarantine_alloc_record(rec, cold, loc_file, loc_line);
 }
 
 static void *_rt_realloc_tracked_alloc(void *ptr, size_t new_size, const char *loc_file, int loc_line) {
@@ -3172,6 +3246,7 @@ static void *_rt_realloc_tracked_alloc(void *ptr, size_t new_size, const char *l
     }
 
     _rt_alloc_record *old_rec = _rt_alloc_table_lookup(ptr);
+    _rt_alloc_record_cold *old_cold = old_rec != NULL ? _rt_rec_cold(old_rec) : NULL;
     if (old_rec == NULL || old_rec->state != _RT_ALLOC_LIVE ||
         old_rec->mem_kind != _RT_MEM_USER) {
         _rt_panic_invalid_drop("invalid realloc pointer", ptr, loc_file, loc_line);
@@ -3186,8 +3261,8 @@ static void *_rt_realloc_tracked_alloc(void *ptr, size_t new_size, const char *l
     if (copy_size > 0) {
         memcpy(new_ptr, ptr, copy_size);
     }
-    _rt_track_alloc_record(new_ptr, new_size, old_rec->align, old_rec->type_id, loc_file, loc_line);
-    _rt_quarantine_alloc_record(old_rec, loc_file, loc_line);
+    _rt_track_alloc_record(new_ptr, new_size, old_cold->align, old_cold->type_id, loc_file, loc_line);
+    _rt_quarantine_alloc_record(old_rec, old_cold, loc_file, loc_line);
     return new_ptr;
 }
 
@@ -3203,13 +3278,14 @@ static void *_rt_check_ptr_site_slow(_rt_ptr_site *site, void *ptr, l0_int requi
     _rt_alloc_record *base = _rt_alloc_table_lookup(ptr);
     if (base != NULL) {
         if (base->state != _RT_ALLOC_LIVE) {
+            _rt_alloc_record_cold *base_cold = _rt_rec_cold(base);
             _rt_panic_fmt(
                 "runtime error: use after drop/free\n  pointer: %p\n  allocated at: %s:%d\n  released at: %s:%d\n  accessed at: %s:%d",
                 ptr,
-                base->alloc_file ? base->alloc_file : "<unknown>",
-                base->alloc_line,
-                base->drop_file ? base->drop_file : "<unknown>",
-                base->drop_line,
+                base_cold->alloc_file ? base_cold->alloc_file : "<unknown>",
+                base_cold->alloc_line,
+                base_cold->drop_file ? base_cold->drop_file : "<unknown>",
+                base_cold->drop_line,
                 loc_file ? loc_file : "<unknown>",
                 loc_line
             );
@@ -3269,13 +3345,14 @@ static void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, l
         _rt_panic_invalid_access("unregistered pointer index base", base_ptr, loc_file, loc_line);
     }
     if (owner->state != _RT_ALLOC_LIVE) {
+        _rt_alloc_record_cold *owner_cold = _rt_rec_cold(owner);
         _rt_panic_fmt(
             "runtime error: use after drop/free\n  pointer: %p\n  allocated at: %s:%d\n  released at: %s:%d\n  accessed at: %s:%d",
             base_ptr,
-            owner->alloc_file ? owner->alloc_file : "<unknown>",
-            owner->alloc_line,
-            owner->drop_file ? owner->drop_file : "<unknown>",
-            owner->drop_line,
+            owner_cold->alloc_file ? owner_cold->alloc_file : "<unknown>",
+            owner_cold->alloc_line,
+            owner_cold->drop_file ? owner_cold->drop_file : "<unknown>",
+            owner_cold->drop_line,
             loc_file ? loc_file : "<unknown>",
             loc_line
         );
@@ -3320,6 +3397,7 @@ static void *_rt_drop_begin_impl(void *ptr, const char *loc_file, int loc_line) 
         }
         _rt_panic_invalid_drop("unregistered pointer", ptr, loc_file, loc_line);
     }
+    _rt_alloc_record_cold *cold = _rt_rec_cold(rec);
     if (rec->mem_kind != _RT_MEM_USER) {
         _rt_panic_invalid_drop(
             rec->mem_kind == _RT_MEM_ARC
@@ -3332,8 +3410,8 @@ static void *_rt_drop_begin_impl(void *ptr, const char *loc_file, int loc_line) 
         _rt_panic_fmt(
             "runtime error: double drop\n  pointer: %p\n  first dropped at: %s:%d\n  second dropped at: %s:%d",
             ptr,
-            rec->drop_file ? rec->drop_file : "<unknown>",
-            rec->drop_line,
+            cold->drop_file ? cold->drop_file : "<unknown>",
+            cold->drop_line,
             loc_file ? loc_file : "<unknown>",
             loc_line
         );
