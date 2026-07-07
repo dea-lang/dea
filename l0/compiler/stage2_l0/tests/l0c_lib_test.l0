@@ -11,6 +11,7 @@ import std.assert;
 import std.fs;
 import std.io;
 import std.string;
+import std.text;
 import std.vector;
 
 import l0c_lib;
@@ -34,12 +35,21 @@ func semantics_fixture_root() -> string {
 }
 
 /**
+ * Returns a process-local suffix for temporary output files.
+ *
+ * @return Suffix that keeps normal and traced test processes isolated.
+ */
+func tmp_output_suffix() -> string {
+    return "-" + int_to_string(rt_get_pid());
+}
+
+/**
  * Returns the temporary output path used by `--gen` tests.
  *
  * @return Output file path for generated C.
  */
 func gen_output_path() -> string {
-    return "compiler/stage2_l0/tests/.tmp-ok_main.c";
+    return "compiler/stage2_l0/tests/.tmp-ok_main" + tmp_output_suffix() + ".c";
 }
 
 /**
@@ -48,7 +58,7 @@ func gen_output_path() -> string {
  * @return Output executable path for build tests.
  */
 func build_output_path() -> string {
-    return "compiler/stage2_l0/tests/.tmp-build-ok_main";
+    return "compiler/stage2_l0/tests/.tmp-build-ok_main" + tmp_output_suffix();
 }
 
 /**
@@ -57,7 +67,7 @@ func build_output_path() -> string {
  * @return Output C path for build tests.
  */
 func build_c_output_path() -> string {
-    return "compiler/stage2_l0/tests/.tmp-build-ok_main.c";
+    return "compiler/stage2_l0/tests/.tmp-build-ok_main" + tmp_output_suffix() + ".c";
 }
 
 /**
@@ -66,7 +76,7 @@ func build_c_output_path() -> string {
  * @return Requested output base path for run tests.
  */
 func run_keep_c_output_path() -> string {
-    return "compiler/stage2_l0/tests/.tmp-run-kept";
+    return "compiler/stage2_l0/tests/.tmp-run-kept" + tmp_output_suffix();
 }
 
 /**
@@ -75,7 +85,7 @@ func run_keep_c_output_path() -> string {
  * @return Output C path for run tests.
  */
 func run_keep_c_c_path() -> string {
-    return "compiler/stage2_l0/tests/.tmp-run-kept.c";
+    return "compiler/stage2_l0/tests/.tmp-run-kept" + tmp_output_suffix() + ".c";
 }
 
 /**
