@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-06-24
+Version: 2026-07-08
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -149,6 +149,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   non-variadic C boundary.
 - Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] carves OS/process helpers and RNG out of
   `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c` CUs.
+- Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] decomposes oversized Stage 1
+  production source modules while preserving public root imports and current compiler behavior.
 - Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices] adds Stage 1 slice types `T[]`,
   `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
@@ -267,6 +269,7 @@ update to be promoted to an initiative or plan:
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
+[stage1-source-decomposition]: ../work/plans/refactors/2026-07-08-stage1-source-decomposition-noref.md
 [string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
