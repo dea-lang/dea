@@ -1,7 +1,7 @@
 # ADR-0010: Checked Runtime Pointer Access Validation
 
 - Decision date: 2026-07-03
-- Last edited: 2026-07-04
+- Last edited: 2026-07-08
 - Status: Accepted
 
 ## Context
@@ -74,6 +74,11 @@ identical in both modes, and a raw define passed through C flags remains a suppo
   documented suggestion for performance-sensitive checked deployments, based on the benchmark matrix recorded in the
   shared runtime allocation tracker benchmark plan, which showed the retention cost curves are compiler-independent and
   intermediate values near 1024 buy no performance over 4096.
+- Per-site check granularity is the intended unit for future static check elision: a site a static analysis proves safe
+  is simply not lowered through the check helper, while unproven sites keep their runtime check, and elision never
+  rejects a program the analysis cannot verify. The long-term direction, including the staged analysis and the
+  differential-oracle role of the checked runtime, is recorded in
+  [work/proposals/static-pointer-check-elision.md](../../work/proposals/static-pointer-check-elision.md).
 - The unchecked opt-out and the retention tunables are exposed through the build surface: the shared `--unchecked`
   driver flag, the L1 `libdea_rt_unchecked.a` archive variant built alongside the default and traced archives, and
   make-level variables that compose the corresponding C defines (`L0_RT_UNCHECKED`, `L0_RT_QUARANTINE_MAX_*` for L0
