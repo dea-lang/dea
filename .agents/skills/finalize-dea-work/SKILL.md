@@ -60,10 +60,18 @@ resolved links) and update the corresponding `decisions/INDEX.md` in the same co
 git diff --cached --check
 ```
 
-7. Run pre-commit from the relevant level directory against the root config after staging:
+7. Run pre-commit against the root config after staging. The root `pyproject.toml` owns the `dev` dependency group, so
+   run from the monorepo root by default:
 
 ```bash
-uv run --group dev pre-commit run --hook-stage pre-commit -c ../.pre-commit-config.yaml --files $(git diff --cached --name-only --diff-filter=ACMR --relative)
+uv run --group dev pre-commit run --hook-stage pre-commit -c .pre-commit-config.yaml --files $(git diff --cached --name-only --diff-filter=ACMR)
+```
+
+If you are already in an immediate level directory such as `l0/` or `l1/`, keep `uv` pointed at the root project and
+pass root-relative staged paths:
+
+```bash
+uv run --directory .. --group dev pre-commit run --hook-stage pre-commit -c .pre-commit-config.yaml --files $(git -C .. diff --cached --name-only --diff-filter=ACMR)
 ```
 
 If a hook reformats files, stage the hook edits, rerun `git diff --cached --check`, and rerun pre-commit before
