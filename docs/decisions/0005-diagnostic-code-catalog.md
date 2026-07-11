@@ -1,7 +1,7 @@
 # ADR-0005: Shared Diagnostic Code Catalog
 
 - Decision date: 2026-04-03
-- Last edited: 2026-05-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -39,9 +39,9 @@ Rules:
 
 ## Related Plans
 
-- [work/plans/features/closed/2026-04-03-shared-diagnostic-code-catalog-noref.md](../plans/features/closed/2026-04-03-shared-diagnostic-code-catalog-noref.md):
+- [work/plans/features/closed/2026-04-03-shared-diagnostic-code-catalog-noref.md](../../work/plans/features/closed/2026-04-03-shared-diagnostic-code-catalog-noref.md):
   introduced the catalog
-- [work/plans/features/closed/2026-04-03-diagnostic-code-catalog-meanings-noref.md](../plans/features/closed/2026-04-03-diagnostic-code-catalog-meanings-noref.md):
+- [work/plans/features/closed/2026-04-03-diagnostic-code-catalog-meanings-noref.md](../../work/plans/features/closed/2026-04-03-diagnostic-code-catalog-meanings-noref.md):
   expanded with semantic meanings
 
 ## Current Docs

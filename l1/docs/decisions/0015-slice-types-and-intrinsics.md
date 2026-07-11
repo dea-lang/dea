@@ -1,7 +1,7 @@
 # ADR-0015: Slice Types and `len`/`slice` Intrinsics
 
 - Decision date: 2026-06-16
-- Last edited: 2026-06-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -52,8 +52,8 @@ Slices are first-class non-owning views spelled `T[]`, layered on top of fixed a
 - The escape restrictions are enforced at signature-resolution time (return types, struct fields, top-level lets, enum
   payloads), so a function can never declare a slice return type.
 - Dynamic buffers, shared buffers, address-of (`&`), broader pointer arithmetic, and slice-of-slice ergonomics remain
-  future work. Once slices exist, the deferred variadic-functions plan can be re-evaluated as sugar over a slice-typed
-  parameter.
+  future work. L1-defined variadic functions now use a slice-typed callee parameter and caller-owned packs as recorded
+  by [ADR-0017][adr-variadics]; C variadic FFI remains separate.
 
 ## Related Plans
 
@@ -71,6 +71,7 @@ Slices are first-class non-owning views spelled `T[]`, layered on top of fixed a
 [abi]: ../specs/compiler/abi.md
 [adr-arrays]: 0011-fixed-size-array-policy.md
 [adr-prelude]: 0002-dea-virtual-prelude-module.md
+[adr-variadics]: 0017-l1-variadic-functions.md
 [arrays-plan]: ../../work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md
 [backend]: ../reference/c-backend-design.md
 [design-decisions]: ../reference/design-decisions.md

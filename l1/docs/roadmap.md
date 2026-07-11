@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-08
+Version: 2026-07-11
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -84,12 +84,16 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   enum tag comparison, including qualified variant references and enum-returning call expressions in first position.
 - Feature [2026-04-18-l1-function-pointer-types-noref][function-pointers] added first-class `func(...) -> T` function
   pointer types, indirect calls, nullable function pointers, and same-signature identity comparisons.
+- Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices] added Stage 1 slice types `T[]`,
+  `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
 - Feature [2026-04-22-variadic-functions-noref][variadic-functions] added L1-defined trailing `T...` parameters and
   function pointer types, slice-backed callee packs, zero-or-more positional trailing arguments, and explicit final
   `pack...` forwarding. C variadic FFI remains separate under Initiative [0003-c-ffi][c-ffi].
 - Refactor [2026-04-24-runtime-static-library-split-noref][runtime-split] moved the copied L1 runtime from header-only
   inclusion to public headers plus normal/traced runtime archives and completed Initiative
   [0002-runtime-static-library][runtime-library].
+- Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] moved OS/process helpers and RNG into dedicated
+  `dea_rt_sys.c` and `dea_rt_rand.c` runtime translation units.
 - Feature [2026-04-24-export-manifests-and-aliased-imports-noref][export-imports] added module-level export manifests
   plus alias and selective import resolution for the separate-compilation initiative.
 - Feature [2026-04-24-lbi-symbol-mangling-and-linkage-noref][symbol-linkage] adopted tagged-section LBI names for source
@@ -108,6 +112,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   array/case contexts, and const-guided boolean liveness flow.
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
+- Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] made Stage 1 check array
+  literals against expected fixed-size array contexts before standalone inference.
 - Bug Fix [2026-06-18-stage1-toplet-initializer-typing-noref][toplet-initializer-typing] made Stage 1 type-check
   top-level `let` initializer expressions before backend lowering records runtime initializer metadata.
 - Bug Fix [2026-06-19-stage1-toplet-diagnostic-recovery-noref][toplet-diagnostic-recovery] preserved resolved top-level
@@ -147,16 +153,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   as the external-library linking surface.
 - Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
   non-variadic C boundary.
-- Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] carves OS/process helpers and RNG out of
-  `dea_rt_panic.c` and `dea_rt_math.c` into new `dea_rt_sys.c` and `dea_rt_rand.c` CUs.
 - Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] decomposes oversized Stage 1
   production source modules while preserving public root imports and current compiler behavior.
-- Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices] adds Stage 1 slice types `T[]`,
-  `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
-- Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] makes Stage 1 check array
-  literals against expected fixed-size array contexts before standalone inference.
 
 ## Backlog
 
@@ -175,11 +175,11 @@ surface.
 - Lambdas/closures, including capture, ownership, and lowering rules.
 - Generics and generic modules.
 - Fixed-size typed arrays `T[N]`, raw-pointer indexing `ptr[i]` inside `unsafe func`, and the function-level `unsafe`
-  marker shipped under Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. First-class slice types
-  `T[]`, `len`, and `slice` are tracked by Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices].
-  Dynamic buffers, shared buffers, address-of (`&`), and broader pointer arithmetic remain backlog items. Current
-  `std.array` / `std.vector` storage remains the library-level dynamic/container layer rather than a replacement for
-  `T[N]`.
+  marker shipped under Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. First-class,
+  escape-restricted slice types `T[]`, `len`, and `slice` shipped through Feature
+  [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices]. Dynamic buffers, shared buffers, address-of
+  (`&`), and broader pointer arithmetic remain backlog items. Current `std.array` / `std.vector` storage remains the
+  library-level dynamic/container layer rather than a replacement for `T[N]` or `T[]`.
 - `_` struct-member semantics are tracked by Feature
   [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members], which fixes `_ : StructType` as a single
   first-position anonymous embedded struct member and defines its construction, field-access, layout, and ABI rules.

@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-06-19
+Version: 2026-07-11
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -27,6 +27,8 @@ Use this file as the status snapshot. For implementation details, use:
 - [l1/docs/specs/compiler/abi.md](specs/compiler/abi.md) for L1 Binary Interface symbol mangling and linkage rules
 - [l1/docs/specs/compiler/module-interface-format.md](specs/compiler/module-interface-format.md) for textual `.l1m`
   module interface artifacts
+- [docs/specs/compiler/cli-contract.md](../../docs/specs/compiler/cli-contract.md) for the shared cross-level CLI
+  contract
 
 The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 
@@ -40,10 +42,10 @@ C generation, and host build/run integration for `.l1` inputs.
 The implementation sources remain `.l0`, while user-facing L1 source inputs, examples, and stdlib modules use `.l1`.
 
 The current compiler also synthesizes the implicit `dea` prelude module for language intrinsics. Unqualified
-`sizeof(...)`, `ord(...)`, and `is(...)` remain ergonomic bootstrap-stage spellings, while `dea::sizeof(...)`,
-`dea::ord(...)`, and `dea::is(...)` are always available as the stable qualified forms. The current `is(x, Variant)`
-intrinsic supports payload-ignoring enum tag comparison, including qualified variant references and enum-returning call
-expressions in first position.
+`sizeof(...)`, `ord(...)`, `is(...)`, `len(...)`, and `slice(...)` remain ergonomic bootstrap-stage spellings, while
+their `dea::`-qualified forms are always available as stable escape hatches. `is(x, Variant)` performs payload-ignoring
+enum tag comparison. `len(x)` accepts fixed arrays, slices, and strings; `slice(...)` builds an escape-restricted
+non-owning view over fixed-array or slice storage.
 
 Generated C uses the unified recursive LBI grammar: value symbols use `__deaM...N...` terminals with function type
 components where needed, nominal types use `S` / `E`, and compiler-generated module lifecycle helpers use
@@ -71,8 +73,9 @@ This gives the subtree a complete bootstrap environment without claiming a self-
 The current implemented language surface matches the bootstrap subset exercised by the compiler, tests, and example
 checks, including:
 
-- functions, structs, enums, type aliases, top-level `let`, top-level `const`, and deferred module-init lowering for
-  non-constant top-level `let` initializers before user `main`
+- functions, structs, enums, type aliases, top-level `let`, top-level `const`, checked scalar constant expressions and
+  casts, const-valued array/case contexts, and deferred module-init lowering for non-constant top-level `let`
+  initializers before user `main`
 - modules/imports with qualified-name disambiguation, module-level export manifests including opaque type exports, alias
   imports, and selective imports
 - structured control flow including `if`, `while`, `for`, `match`, `case`, and `with` / `cleanup`, with single-statement
@@ -86,8 +89,9 @@ checks, including:
 - integer bitwise operators `&`, `|`, `^`, `~`, `<<`, and `>>`
 - builtin `float` and `double`, real literals, the current narrow numeric conversion rules, and backend-validated
   floating-point lowering
-- fixed-size arrays `T[N]`, ordered pointer/nullable/array type suffixes, contextual array literals and fill
-  constructors, checked array indexing, `sizeof(T[N])`, and `new T[N]` / `drop`
+- fixed-size arrays `T[N]`, non-owning slice views `T[]`, ordered pointer/nullable/array/slice type suffixes, contextual
+  array literals and fill constructors, checked array and slice indexing, `len`/`slice`, `sizeof(T[N])`, and `new T[N]`
+  / `drop`
 - explicit nullability, `T` to `T?` wrapping, integer casts to nullable integer targets, `new` / `drop`, ARC-managed
   `string`, casts, postfix `expr?`, string value comparisons, same-type `T?` equality, same-type pointer identity
   equality, and `is(x, Variant)` enum tag checks
@@ -126,8 +130,9 @@ skips the specialized tcc object build. `make test-stage1-trace` runs the defaul
 intentionally slow trace cases such as `math_runtime_compile_test`; pass the test name explicitly or use
 `make test-stage1-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
 latest-stage `--check` coverage for `examples/*.l1`, while `make test-all` combines the implementation tests, default
-ARC/memory trace checks, and example checks. Linux portability is exercised via `make test-docker`, which runs
-`test-all` inside the repo-owned Docker image; run it after runtime, Makefile, or build-driver changes.
+ARC/memory trace checks, environment-stackability checks, and example checks. Linux portability is exercised via
+`make test-docker`, which runs `test-all` inside the repo-owned Docker image; run it after runtime, Makefile, or
+build-driver changes.
 
 Validation is currently centered on:
 
@@ -144,7 +149,9 @@ Validation is currently centered on:
 
 - `make check-examples` for warning-free latest-stage `--check` coverage across `examples/*.l1`
 
-- `make test-all` as the combined local Stage 1 validation entry point
+- `make test-env` for generated launcher and environment-stackability coverage
+
+- `make test-all` as the combined local Stage 1, trace, environment, and example validation entry point
 
 - `make test-docker` as the Linux container reference path for runtime/build-driver portability
 
@@ -168,7 +175,8 @@ These remain true today:
 
 1. There is no implemented `stage2_l1` compiler yet.
 2. Backend output is one C translation unit.
-3. Fixed-size arrays `T[N]` are implemented, but dynamic arrays/buffers and slices are not general language features.
+3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
+   shared buffers, and general escape-capable slices are not language features.
 4. Address-of (`&`) and generics are not part of the current active language surface.
 
 ## Near-Term Direction

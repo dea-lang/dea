@@ -1,7 +1,7 @@
 # ADR-0010: Unsafe Marker and Raw-Pointer Indexing
 
 - Decision date: 2026-05-08
-- Last edited: 2026-05-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -52,6 +52,6 @@ The `unsafe` keyword is a function-level contract marker:
 - [l1/docs/reference/design-decisions.md][design-decisions]: §7 (pointer and ownership policy, pointer indexing)
 
 [design-decisions]: ../reference/design-decisions.md
-[initiative]: ../../initiatives/closed/0004-array-primitives-and-unsafe-marker.md
+[initiative]: ../../work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md
 [ptr-indexing]: ../../work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md
 [unsafe-marker]: ../../work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md

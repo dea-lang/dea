@@ -1,12 +1,13 @@
 # L0 Compiler CLI Contract
 
-Version: 2026-04-21
+Version: 2026-07-11
 
 This document is the normative shared CLI contract for the L0 compiler across Stage 1 and Stage 2. Stage-specific
 differences are called out explicitly in [Section 9](#9-stage-specific-differences).
 
 Canonical ownership:
 
+- Dea-wide shared CLI contract: [docs/specs/compiler/cli-contract.md](../../../../docs/specs/compiler/cli-contract.md)
 - Stage 1-specific guarantees: [stage1-contract.md](stage1-contract.md)
 - Stage 2-specific guarantees: [stage2-contract.md](stage2-contract.md)
 - Architecture and pass flow: [reference/architecture.md](../../reference/architecture.md)
@@ -131,7 +132,7 @@ No output is written to stderr on a clean `--help` invocation.
 `--version` prints compiler identity information to stdout and exits 0. No output is written to stderr.
 
 The minimum shared output is the identity string on its own line. Stage 2 repo-local and install-prefix artifacts
-include additional provenance fields (see [Section 9.1](#91-stage-2---version-provenance)).
+include additional provenance fields (see [Section 9.2](#92-stage-2)).
 
 ### 7.3 `-v` verbose identity
 

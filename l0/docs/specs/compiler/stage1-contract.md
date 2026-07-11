@@ -1,6 +1,6 @@
 # L0 Stage 1 Compiler Contract
 
-Version: 2026-06-10
+Version: 2026-07-11
 
 This document is the compact Stage 1 contract and navigation index.
 
@@ -11,7 +11,7 @@ Canonical ownership:
 - C backend behavior and lowering details: [reference/c-backend-design.md](../../reference/c-backend-design.md)
 - Language/runtime rationale and future evolution: [reference/design-decisions.md](../../reference/design-decisions.md)
 - Shared source-text and language-vocabulary policy:
-  [docs/specs/language/source-text-and-language-vocabulary.md](../../../docs/specs/language/source-text-and-language-vocabulary.md)
+  [docs/specs/language/source-text-and-language-vocabulary.md](../../../../docs/specs/language/source-text-and-language-vocabulary.md)
 - Diagnostic code assignment and cross-stage parity: [diagnostic-code-policy.md](diagnostic-code-policy.md)
 
 ## 1. Scope

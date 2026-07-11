@@ -1,7 +1,7 @@
 # ADR-0009: Module Visibility, Exports, and Imports
 
 - Decision date: 2026-04-24
-- Last edited: 2026-05-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -75,7 +75,7 @@ ImportDecl ::= "import" ModulePath ";"                          (* open import *
 
 ## Current Docs
 
-- [l1/docs/specs/compiler/module-visibility-and-imports.md][visibility-spec]: normative spec (Version 2026-05-19)
+- [l1/docs/specs/compiler/module-visibility-and-imports.md][visibility-spec]: normative visibility and import spec
 - [l1/docs/specs/compiler/abi.md][abi-spec]: LBI symbol mangling for exported names
 
 [abi-spec]: ../specs/compiler/abi.md

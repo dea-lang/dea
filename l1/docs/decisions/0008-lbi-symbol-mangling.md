@@ -1,7 +1,7 @@
 # ADR-0008: LBI Symbol Mangling
 
 - Decision date: 2026-04-24
-- Last edited: 2026-06-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -55,8 +55,8 @@ source-significant order.
 - [l1/docs/specs/compiler/abi.md][abi]: normative LBI mangling specification
 
 [abi]: ../specs/compiler/abi.md
-[adr-abi]: 0002-c-abi-naming-policy.md
+[adr-abi]: 0003-c-abi-naming-policy.md
 [lbi-mangling]: ../../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
 [lbi-unified]: ../../work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md
-[runtime-lib]: ../../initiatives/closed/0002-runtime-static-library.md
+[runtime-lib]: ../../work/initiatives/closed/0002-runtime-static-library.md
 [slices]: ../../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md

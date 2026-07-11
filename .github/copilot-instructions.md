@@ -11,12 +11,13 @@ The root `Makefile` is monorepo maintenance only:
 ```bash
 make help
 make venv
+make test-all
 make clean
 make clean-all
 ```
 
 Do not use the root `Makefile` as a dispatcher for level-specific build or test commands. `cd` into the relevant level
-directory first.
+directory first. Root `make test-all` is reserved for full validation across every registered level.
 
 ### `l0/`
 
@@ -54,7 +55,7 @@ make test-stage2 TESTS="driver_test"
 make test-stage2-trace TESTS="l0c_lib_test"
 ```
 
-Lint / hooks:
+Lint / hooks (run from the monorepo root):
 
 ```bash
 uv run --group dev pre-commit install -c .pre-commit-config.yaml

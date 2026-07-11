@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-05-19
+Version: 2026-07-11
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -18,8 +18,8 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 +---------------------------------------------------------+
 |                      std.* Modules                      |
 | array, assert, fs, hashmap, hashset, io, linear_map,    |
-| math, optional, path, rand, real, string, system, text, |
-| time, types, unit, vector                               |
+| integer, optional, path, rand, real, string, system,    |
+| text, time, types, unit, vector                         |
 +---------------------------------------------------------+
                              |
                              v
@@ -622,9 +622,9 @@ Low-level raw memory FFI. Misuse can cause undefined behavior.
 
 ## FFI Inventory (`extern func` / `unsafe extern func`)
 
-All `extern func` and `unsafe extern func` symbols exposed to L1 from stdlib modules are listed here.
+All `extern func` and `unsafe extern func` symbols exposed to L1 from `sys.*` modules are listed here.
 
-### Declared in `sys.rt` (42)
+### Declared in `sys.rt` (52)
 
 | Function                      | Signature                                         | Description                            |
 | ----------------------------- | ------------------------------------------------- | -------------------------------------- |
@@ -680,6 +680,47 @@ All `extern func` and `unsafe extern func` symbols exposed to L1 from stdlib mod
 | `rt_system`                   | `func(cmd: string) -> int`                        | Runs a shell command.                  |
 | `rt_file_info`                | `func(path: string) -> RtFileInfo`                | Returns stat-like file metadata.       |
 | `rt_delete_file`              | `func(path: string) -> bool`                      | Deletes a file by path.                |
+
+### Declared in `sys.real` (68)
+
+These runtime-backed floating-point bindings are provided in matched `float` (`_f`) and `double` (`_d`) forms.
+
+| Functions                                       | Signatures                                                                                     | Description                                     |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `rt_real_get_nan_f` / `rt_real_get_nan_d`       | `func() -> float` / `func() -> double`                                                         | Return quiet NaN values.                        |
+| `rt_real_get_inf_f` / `rt_real_get_inf_d`       | `func() -> float` / `func() -> double`                                                         | Return positive infinity values.                |
+| `rt_real_is_nan_f` / `rt_real_is_nan_d`         | `func(x: float) -> bool` / `func(x: double) -> bool`                                           | Test whether `x` is NaN.                        |
+| `rt_real_is_inf_f` / `rt_real_is_inf_d`         | `func(x: float) -> bool` / `func(x: double) -> bool`                                           | Test whether `x` is infinite.                   |
+| `rt_real_is_finite_f` / `rt_real_is_finite_d`   | `func(x: float) -> bool` / `func(x: double) -> bool`                                           | Test whether `x` is finite.                     |
+| `rt_real_signbit_f` / `rt_real_signbit_d`       | `func(x: float) -> bool` / `func(x: double) -> bool`                                           | Test the sign bit of `x`.                       |
+| `rt_real_abs_f` / `rt_real_abs_d`               | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the absolute value.                      |
+| `rt_real_sqrt_f` / `rt_real_sqrt_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the square root.                         |
+| `rt_real_cbrt_f` / `rt_real_cbrt_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the cube root.                           |
+| `rt_real_hypot_f` / `rt_real_hypot_d`           | `func(x: float, y: float) -> float` / `func(x: double, y: double) -> double`                   | Return the Euclidean norm of `x` and `y`.       |
+| `rt_real_floor_f` / `rt_real_floor_d`           | `func(x: float) -> float` / `func(x: double) -> double`                                        | Round toward negative infinity.                 |
+| `rt_real_ceil_f` / `rt_real_ceil_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Round toward positive infinity.                 |
+| `rt_real_trunc_f` / `rt_real_trunc_d`           | `func(x: float) -> float` / `func(x: double) -> double`                                        | Round toward zero.                              |
+| `rt_real_round_f` / `rt_real_round_d`           | `func(x: float) -> float` / `func(x: double) -> double`                                        | Round to the nearest integral value.            |
+| `rt_real_fmod_f` / `rt_real_fmod_d`             | `func(x: float, y: float) -> float` / `func(x: double, y: double) -> double`                   | Return the truncated-quotient remainder.        |
+| `rt_real_remainder_f` / `rt_real_remainder_d`   | `func(x: float, y: float) -> float` / `func(x: double, y: double) -> double`                   | Return the IEEE remainder.                      |
+| `rt_real_modf_f` / `rt_real_modf_d`             | `func(x: float, iptr: RtFloatOut*) -> float` / `func(x: double, iptr: RtDoubleOut*) -> double` | Split fractional and integral parts.            |
+| `rt_real_frexp_f` / `rt_real_frexp_d`           | `func(x: float, exp: RtIntOut*) -> float` / `func(x: double, exp: RtIntOut*) -> double`        | Split into normalized fraction and exponent.    |
+| `rt_real_ldexp_f` / `rt_real_ldexp_d`           | `func(x: float, exp: int) -> float` / `func(x: double, exp: int) -> double`                    | Scale `x` by an integral power of two.          |
+| `rt_real_copy_sign_f` / `rt_real_copy_sign_d`   | `func(x: float, y: float) -> float` / `func(x: double, y: double) -> double`                   | Copy the sign of `y` onto `x`.                  |
+| `rt_real_next_after_f` / `rt_real_next_after_d` | `func(x: float, y: float) -> float` / `func(x: double, y: double) -> double`                   | Return the next representable value toward `y`. |
+| `rt_real_exp_f` / `rt_real_exp_d`               | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return `e` raised to `x`.                       |
+| `rt_real_exp2_f` / `rt_real_exp2_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return 2 raised to `x`.                         |
+| `rt_real_log_f` / `rt_real_log_d`               | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the natural logarithm.                   |
+| `rt_real_log10_f` / `rt_real_log10_d`           | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the base-10 logarithm.                   |
+| `rt_real_log2_f` / `rt_real_log2_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the base-2 logarithm.                    |
+| `rt_real_pow_f` / `rt_real_pow_d`               | `func(x: float, y: float) -> float` / `func(x: double, y: double) -> double`                   | Return `x` raised to `y`.                       |
+| `rt_real_sin_f` / `rt_real_sin_d`               | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the sine.                                |
+| `rt_real_cos_f` / `rt_real_cos_d`               | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the cosine.                              |
+| `rt_real_tan_f` / `rt_real_tan_d`               | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the tangent.                             |
+| `rt_real_asin_f` / `rt_real_asin_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the arc sine.                            |
+| `rt_real_acos_f` / `rt_real_acos_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the arc cosine.                          |
+| `rt_real_atan_f` / `rt_real_atan_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the arc tangent.                         |
+| `rt_real_atan2_f` / `rt_real_atan2_d`           | `func(x: float, y: float) -> float` / `func(x: double, y: double) -> double`                   | Return the quadrant-aware arc tangent.          |
 
 ### Declared in `sys.memory` (11)
 

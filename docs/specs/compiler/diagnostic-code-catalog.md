@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-06-24
+Version: 2026-07-11
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -164,12 +164,12 @@ diagnostic.
 | `PAR-0234` | All     | Value arm cannot appear after the default arm in 'case' statement        |
 | `PAR-0235` | All     | Expected '=>' in 'case' arm                                              |
 | `PAR-0236` | All     | Duplicate default arm in 'case' statement                                |
-| `PAR-0237` | All     | '=>' not allowed in 'else' arm                                           |
+| `PAR-0237` | L0 only | '=>' not allowed in deprecated `else` arm                                |
 | `PAR-0239` | All     | Expected '}' after 'case' statement                                      |
 | `PAR-0240` | All     | 'case' statement must have at least one arm                              |
 | `PAR-0241` | All     | Expected literal (L0) or constant value expression (L1+) in 'case' arm   |
-| `PAR-0242` | All     | Deprecated `else` default arm in `case`; use `_ =>` instead (warning)    |
-| `PAR-0243` | All     | Ambiguous `else` after `if` in `case` value arm; brace it or use `_ =>`  |
+| `PAR-0242` | L0 only | Deprecated `else` default arm in `case`; use `_ =>` instead (warning)    |
+| `PAR-0243` | L0 only | Ambiguous `else` after `if` in `case` value arm; brace it or use `_ =>`  |
 | `PAR-0260` | L1+     | `const` declarations require an explicit type annotation                 |
 | `PAR-0261` | L1+     | Expected '=' in const binding                                            |
 | `PAR-0262` | L1+     | Expected ';' after const declaration                                     |
@@ -182,6 +182,10 @@ diagnostic.
 | `PAR-0321` | All     | Expected ';' after import                                                |
 | `PAR-0400` | All     | Expected type name                                                       |
 | `PAR-0401` | All     | Expected identifier after '::' in qualified name                         |
+| `PAR-0402` | L1+     | Expected '(' after `func` in function type                               |
+| `PAR-0403` | L1+     | Expected ')' after function type parameters                              |
+| `PAR-0404` | L1+     | Expected '->' in function type                                           |
+| `PAR-0405` | L1+     | Expected ')' after parenthesized type                                    |
 | `PAR-0500` | All     | Expected 'with'                                                          |
 | `PAR-0501` | All     | Expected '(' after 'with'                                                |
 | `PAR-0502` | All     | Expected ')' after with items                                            |
@@ -257,13 +261,14 @@ diagnostic.
 | `L0C-0030` |            | L0 only | Entry module not found in compilation unit                                                            |
 | `L0C-0040` | `L1C-0040` | All     | Cannot read an input source file during token dump                                                    |
 | `L0C-0041` |            | L0 only | Source file encoding error during token dump                                                          |
+| `L0C-0042` |            | L0 only | Unexpected lexer failure during token dump when no structured lexer diagnostic is available           |
 | `L0C-0050` |            | L0 only | Compilation-unit discovery failed during all-modules token dump                                       |
 | `L0C-0060` |            | L0 only | Discovered module path could not be resolved during all-modules token dump                            |
 | `L0C-0070` | `L1C-0070` | All     | Entry module path or unit could not be resolved for token dump or Stage 1 introspection commands      |
 | `L0C-2001` | `L1C-2001` | All     | Unknown command-line option                                                                           |
 | `L0C-2002` | `L1C-2002` | All     | Multiple conflicting mode flags were provided                                                         |
 | `L0C-2003` | `L1C-2003` | All     | Missing value for an option that requires an argument                                                 |
-| `L0C-2010` | `L1C-2010` | All     | '--output' is valid only with '--build', '--gen', or '--run'                                          |
+| `L0C-2010` | `L1C-2010` | All     | '--output' is valid only with artifact modes: build/gen/run, plus L1 interface emission               |
 | `L0C-2011` | `L1C-2011` | All     | '--keep-c' is valid only with '--build' or '--run'                                                    |
 | `L0C-2012` | `L1C-2012` | All     | '--c-compiler' is valid only with '--build' or '--run'                                                |
 | `L0C-2013` | `L1C-2013` | All     | '--c-options' is valid only with '--build' or '--run'                                                 |

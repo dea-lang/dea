@@ -73,8 +73,9 @@ Also see: `../CONTRIBUTING.md`, `../SECURITY.md`.
 
 ## Commands
 
-Run L0-specific commands from the `l0/` directory. The monorepo root `Makefile` only owns `help`, `venv`, `clean`, and
-`clean-all`. For normal development, prefer the repo-local switchable `l0c` alias:
+Run L0-specific commands from the `l0/` directory. The monorepo root `Makefile` only owns `help`, `venv`, `test-all`,
+`clean`, and `clean-all`; root `test-all` is the full registered-level validation entrypoint, not a focused L0 target.
+For normal development, prefer the repo-local switchable `l0c` alias:
 
 ```bash
 make use-dev-stage2 # or `make use-dev-stage1`; each builds and installs the launcher automatically

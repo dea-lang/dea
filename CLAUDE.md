@@ -60,6 +60,8 @@ Do not treat the root `Makefile` as a dispatcher for focused level-local build, 
   `docs/specs/compiler/diagnostic-code-catalog.md`), not relative-path text such as `../../..`.
 - Do not mention commit IDs, short SHAs, or full SHAs in work plans, documentation, ADRs, or other lifecycle artifacts.
   Refer to named plans, dates, features, bug IDs, or descriptive change names instead.
+- Shared compiler CLI modes, options, exit-code meanings, and level-extension rules live in
+  `docs/specs/compiler/cli-contract.md`.
 - Shared compiler diagnostic-code registry, levels, and meanings live in
   `docs/specs/compiler/diagnostic-code-catalog.md`.
 - For shared diagnostic-code documentation, treat L0 Python Stage 1 as the current oracle for registered code

@@ -36,7 +36,9 @@ Root specs live under `docs/specs/` and define Dea-wide contracts that are not o
 
 Examples:
 
-- shared compiler contracts and catalogs
+- the shared [docs/specs/compiler/cli-contract.md](specs/compiler/cli-contract.md)
+- shared compiler catalogs such as
+  [docs/specs/compiler/diagnostic-code-catalog.md](specs/compiler/diagnostic-code-catalog.md)
 - future cross-level release or compatibility policy
 
 Language-specific specs live in the owning subtree such as `l0/docs/specs/`.

@@ -8,6 +8,6 @@
 | [0004](0004-monorepo-directory-structure.md)                              | Monorepo Directory Structure                               | Accepted |
 | [0005](0005-diagnostic-code-catalog.md)                                   | Shared Diagnostic Code Catalog                             | Accepted |
 | [0006](0006-docs-work-taxonomy.md)                                        | Docs/Work Taxonomy                                         | Accepted |
-| [0007](0007-case-default-arm-wildcard.md)                                 | Case Default Arm `_ =>` Wildcard                           | Accepted |
+| [0007](0007-case-default-arm-wildcard.md)                                 | Case Default Arm `_ =>` Wildcard Migration                 | Accepted |
 | [0008](0008-source-text-encoding-and-ascii-language-vocabulary.md)        | Source Text Encoding and ASCII Language Vocabulary         | Accepted |
 | [0009](0009-logical-lexer-error-recovery-tokens-and-codepoint-columns.md) | Logical Lexer-Error Recovery Tokens and Code-Point Columns | Accepted |

@@ -1,7 +1,7 @@
 # ADR-0006: Docs/Work Taxonomy
 
 - Decision date: 2026-04-04
-- Last edited: 2026-05-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -43,7 +43,7 @@ Placement rules:
 
 ## Related Plans
 
-- [work/plans/refactors/closed/2026-04-04-docs-work-taxonomy-reorg-noref.md](../plans/refactors/closed/2026-04-04-docs-work-taxonomy-reorg-noref.md):
+- [work/plans/refactors/closed/2026-04-04-docs-work-taxonomy-reorg-noref.md](../../work/plans/refactors/closed/2026-04-04-docs-work-taxonomy-reorg-noref.md):
   implemented the separation across root, L0, and L1
 
 ## Current Docs

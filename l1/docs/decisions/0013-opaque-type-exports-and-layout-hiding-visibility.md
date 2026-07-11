@@ -1,7 +1,7 @@
 # ADR-0013: Opaque Type Exports and Layout-Hiding Visibility
 
 - Decision date: 2026-06-13
-- Last edited: 2026-06-14
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -180,11 +180,10 @@ Neutral:
   full definition.
 - Resolution (`sig_resolve_func`, `signatures.l0`): check each referenced type against the module export set with the
   by-value/by-pointer split; add the analogous aggregate-export (layout-closure, one-level) check.
-- Diagnostics: (a) unexported type in an exported signature/aggregate; (b) opaque type used by value; (c) mixed field
-  visibility, not yet implemented. Provisional codes are carried in the implementation plan (see Related Plans) and
-  re-checked against the live catalog at implementation time.
-- Tests: private-type-in-public-signature (currently uncovered); opaque-pointer round trip across two modules; by-value
-  rejection; nested-struct closure cases (by-value chain, pointer frontier, unexported intermediary); `.l1m`
+- Diagnostics cover unexported types in exported signatures/aggregates and opaque types used by value. Mixed field
+  visibility remains outside the current grammar because partial field visibility is deferred.
+- Tests cover private types in public signatures, opaque-pointer round trips across modules, by-value rejection,
+  nested-struct closure cases (by-value chain, pointer frontier, unexported intermediary), and `.l1m`
   forward-declaration emission for opaque types.
 
 ## Open questions / follow-ups

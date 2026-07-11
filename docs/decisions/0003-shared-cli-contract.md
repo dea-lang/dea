@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-05-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -23,8 +23,9 @@ A normative shared CLI contract is defined in `docs/specs/compiler/cli-contract.
 - Exit codes.
 - Source-path resolution rules.
 
-Both Stage 1 and Stage 2 of the L0 compiler, and the L1 compiler, must conform to this contract. Divergence is a bug to
-be fixed, not an accepted difference.
+Both Stage 1 and Stage 2 of the L0 compiler, and the L1 compiler, must conform to the shared meanings in this contract.
+Documented level-specific extensions such as L1 `--emit-interface` are allowed; silently changing a shared flag or
+exit-code meaning is a bug.
 
 ## Rationale
 
@@ -48,3 +49,5 @@ be fixed, not an accepted difference.
 ## Current Docs
 
 - [docs/specs/compiler/cli-contract.md](../specs/compiler/cli-contract.md): normative CLI surface
+- [l0/docs/specs/compiler/cli-contract.md](../../l0/docs/specs/compiler/cli-contract.md): complete L0 Stage 1/Stage 2
+  realization

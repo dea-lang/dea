@@ -1,7 +1,7 @@
 # ADR-0007: Case Default Arm `_ =>` Wildcard Migration
 
 - Decision date: 2026-06-07
-- Last edited: 2026-06-08
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -28,10 +28,10 @@ no new tokens or keywords.
 - Phase 2: remove `else` as a `case` default entirely, drop `PAR-0243` (unreachable once `_` shares no token with `if`),
   and mechanically rewrite the remaining in-tree `case ... else` sites to `_ =>`.
 
-The default arm is treated as a single slot regardless of spelling: a value arm after either spelling is `PAR-0234`, a
-second default in any `_`/`else` combination is `PAR-0236`, and either spelling counts toward the at-least-one-arm rule
-`PAR-0240`. `_` takes `=>`; the deprecated `else` does not. Per ADR-0005, L0 Stage 2 and L1 Stage 1 reuse the identical
-diagnostic codes for these equivalent conditions.
+The rollout is level-specific today: L0 Stage 1 and Stage 2 remain in Phase 1 for compatibility, while L1 Stage 1
+completed Phase 2 on 2026-06-09. In L0, the default arm is one slot regardless of spelling: a value arm after either
+spelling is `PAR-0234`, a second default is `PAR-0236`, and either spelling counts toward `PAR-0240`. In L1, only `_ =>`
+occupies that slot; `else` in a `case` is diagnosed as an unmatched `else` rather than a deprecated default.
 
 ## Rationale
 
@@ -44,22 +44,23 @@ diagnostic codes for these equivalent conditions.
 
 ## Consequences
 
-- Programs using the `else` default now emit `PAR-0242`; they keep compiling until Phase 2 removes the spelling.
-- The grammar carries a transitional `DefaultArm ::= WildcardArm | ElseArm` production and a `PAR-0243` disambiguation
-  note in both level grammars; both are simplified in Phase 2.
-- The AST default-arm representation is spelling-neutral (the warning is emitted at parse time), so Phase 2 removes the
-  `else` spelling without an AST reshape.
-- The in-tree `case ... else` source migration (about 95 default arms, mostly in the compilers' own `.l0` sources) is
-  deferred to Phase 2.
+- L0 programs using the `else` default emit `PAR-0242` and continue compiling; the dangling-`else` ambiguity remains
+  guarded by `PAR-0243`.
+- L1 accepts only `_ =>` defaults. `PAR-0237`, `PAR-0242`, and `PAR-0243` are therefore L0-only diagnostics.
+- The L0 grammar retains `DefaultArm ::= WildcardArm | ElseArm`; the L1 grammar contains only the wildcard form.
+- The AST default-arm representation remains spelling-neutral, so L1 Phase 2 required no AST reshape.
+- Production compiler sources and ordinary fixtures use `_ =>`; L0 retains dedicated deprecated-spelling tests and the
+  parser compatibility surface.
 
 ## Related Plans
 
 - [work/plans/features/closed/2026-06-07-case-default-arm-wildcard-phase1-noref.md](../../work/plans/features/closed/2026-06-07-case-default-arm-wildcard-phase1-noref.md):
   introduced `_ =>`, the `PAR-0242` deprecation, and the `PAR-0243` guard across L0 Stage 1/Stage 2 and L1 Stage 1
+- L1 Phase 2 removed the deprecated spelling from the L1 parser on 2026-06-09.
 
 ## Current Docs
 
-- [docs/specs/compiler/diagnostic-code-catalog.md](../specs/compiler/diagnostic-code-catalog.md): registers `PAR-0242`
-  and `PAR-0243` and the generalized default-arm meanings
+- [docs/specs/compiler/diagnostic-code-catalog.md](../specs/compiler/diagnostic-code-catalog.md): registers the L0-only
+  transitional diagnostics and shared wildcard-default meanings
 - [l0/docs/reference/grammar.md](../../l0/docs/reference/grammar.md): L0 transitional `case` grammar
-- [l1/docs/reference/grammar.md](../../l1/docs/reference/grammar.md): L1 transitional `case` grammar
+- [l1/docs/reference/grammar.md](../../l1/docs/reference/grammar.md): L1 Phase 2 `case` grammar

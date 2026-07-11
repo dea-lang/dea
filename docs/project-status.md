@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-05-19
+Version: 2026-07-11
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -17,6 +17,7 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 - [l0/docs/project-status.md](../l0/docs/project-status.md) for the current L0 implementation and release status.
 - [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 bootstrap implementation status.
 - [l1/README.md](../l1/README.md) for the current L1 bootstrap subtree entry point.
+- [docs/specs/compiler/cli-contract.md](specs/compiler/cli-contract.md) for the shared compiler CLI contract.
 
 ## Current Repository Shape
 
@@ -60,9 +61,12 @@ Its repository status today is:
 - validated through copied Stage 1 implementation tests written in `.l0` and run through the upstream L0 compiler,
 - using `.l1` as the current L1 source surface for the copied L1 stdlib, example programs, and bootstrap test fixtures,
 - carrying implemented post-L0 language work such as wider numeric types, real literals, bitwise operators, top-level
-  `const`, string value comparisons, nullable/pointer identity equality, the `is(...)` enum tag intrinsic, function
-  pointer types, `unsafe func`, raw-pointer indexing inside unsafe functions, fixed-size arrays, and single-statement
-  `while` / `for` / `match` bodies,
+  `const` with checked scalar constant expressions, string value comparisons, nullable/pointer identity equality, named
+  arguments, the `is(...)` enum tag intrinsic, function pointer and L1-defined variadic function types, `unsafe func`,
+  raw-pointer indexing inside unsafe functions, fixed-size arrays, non-owning slices with `len`/`slice`, and
+  single-statement `while` / `for` / `match` bodies,
+- emitting deterministic textual `.l1m` module interfaces through the internal `--emit-interface` mode while ordinary
+  imports remain source-based,
 - shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
   value-type helper surface,
 - not yet an install/dist/release-bearing product.
@@ -98,7 +102,7 @@ The monorepo now has a small but real shared top-level layer:
 - root `work/plans/` for Dea-wide planning,
 - root `docs/` for Dea-wide status and reference documents,
 - root `CLAUDE.md` for monorepo-wide workflow policy,
-- root `Makefile` for shared `help`, `venv`, `clean`, and `clean-all`,
+- root `Makefile` for shared `help`, `venv`, `test-all`, `clean`, and `clean-all`,
 - root `scripts/dea_tooling/` for shared launcher/bootstrap helpers.
 
 This shared layer is intentionally narrow. Most compiler, language, runtime, and user-facing documentation remains owned
@@ -108,7 +112,8 @@ by the relevant level subtree.
 
 Near-term project direction is split cleanly by level:
 
-1. Keep Dea/L0 focused on release-readiness, documentation completion, and residual bug fixes toward `1.0.0`.
+1. Maintain the released Dea/L0 `1.0.0` line through documented, semantically versioned fixes and focused foundational
+   changes.
 2. Keep Dea/L1 focused on bootstrap stabilization and planned post-L0 language/library growth, not on release parity
    yet.
 3. Only move or duplicate level-local reference documents into root `docs/reference/` when they clearly become Dea-wide

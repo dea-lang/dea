@@ -1,6 +1,6 @@
 # The L0 Standard Library
 
-Version: 2026-05-19
+Version: 2026-07-11
 
 The standard library provides ergonomic L0 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -18,8 +18,8 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 +---------------------------------------------------------+
 |                      std.* Modules                      |
 | array, assert, fs, hashmap, hashset, io, linear_map,    |
-| math, optional, path, rand, string, system, text, time, |
-| unit, vector                                            |
+| integer, optional, path, rand, string, system, text,    |
+| time, unit, vector                                      |
 +---------------------------------------------------------+
                              |
                              v

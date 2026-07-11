@@ -1,7 +1,7 @@
 # ADR-0003: C ABI Naming Policy
 
 - Decision date: 2026-04-04
-- Last edited: 2026-05-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -51,5 +51,5 @@ include.
 - [l1/docs/reference/design-decisions.md][design-decisions]: §4 (C ABI naming policy)
 
 [abi-migration]: ../../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md
-[adr-lbi]: 0003-lbi-symbol-mangling.md
+[adr-lbi]: 0008-lbi-symbol-mangling.md
 [design-decisions]: ../reference/design-decisions.md

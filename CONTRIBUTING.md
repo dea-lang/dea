@@ -8,11 +8,13 @@ from the `l0/` directory.
 
 ## Scope and status
 
-Dea/L0 is experimental. The language, compiler CLI, and runtime APIs may change without notice.
+Dea/L0 remains experimental, but `1.0.0` is a released, semantically versioned language line. Language, compiler CLI,
+and runtime changes must be documented and versioned; backward-incompatible changes are not introduced silently into an
+existing release line.
 
-At this point of the Dea/L0 project, we are focused on building a solid foundation for the compiler and language design.
-This means that internal refactors, API changes, and design iterations are expected and welcome. However, we are not yet
-concerned with building a stable public API or ensuring backward compatibility.
+Current work still prioritizes a solid compiler and language-design foundation. Internal refactors, API changes, and
+design iterations are expected, while user-visible changes follow the level's semantic-versioning and Stage 1/Stage 2
+parity rules.
 
 The focus is on correctness, maintainability, and code quality over performance optimizations or feature completeness.
 

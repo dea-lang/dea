@@ -1,7 +1,7 @@
 # ADR-0002: Pointer Model and No Address-of
 
 - Decision date: 2025-12-06
-- Last edited: 2026-05-20
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context

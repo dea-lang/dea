@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-06-10
+Version: 2026-07-11
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -18,6 +18,7 @@ Related canonical docs:
 - Backend lowering and generated C details: [c-backend-design.md](c-backend-design.md)
 - Language/runtime rationale and policy: [design-decisions.md](design-decisions.md)
 - Bootstrap status snapshot: [l1/docs/project-status.md](../project-status.md)
+- Shared CLI behavior: [docs/specs/compiler/cli-contract.md](../../../docs/specs/compiler/cli-contract.md)
 
 ## 1. High-Level Pipeline
 
@@ -42,16 +43,14 @@ signatures.l0 -> func/struct/enum/let type tables
 locals.l0 -> FunctionEnv per function
   |
   v
-expr_types.l0 -> expression types + semantic diagnostics
+expr_types.l0 -> typed AnalysisResult + semantic diagnostics
   |
-  v
-backend.l0 + c_emitter.l0 -> single C99 translation unit
+  +-- `--emit-interface` --> interface_emitter.l0 + module_interface.l0 --> textual `.l1m`
   |
-  v
-build_driver.l0 -> host C compiler invocation (`--build` / `--run`)
-  |
-  v
-Executable launch (`--run`)
+  +-- `--gen` / `--build` / `--run` --> backend.l0 + c_emitter.l0 --> single C99 translation unit
+                                          |
+                                          v
+                                   build_driver.l0 --> host C compiler / executable launch
 ```
 
 Current CLI entry point: `compiler/stage1_l0/src/l1c.l0`.
@@ -108,12 +107,19 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Validates return-path and cleanup-path requirements.
 - Produces semantic diagnostics without crashing the compiler.
 
-### 2.7 Backend (`backend.l0`, `c_emitter.l0`, `string_escape.l0`)
+### 2.7 Interface Projection (`interface_emitter.l0`, `module_interface.l0`, `mi_utils.l0`)
+
+- Projects exported declarations from a completed analysis result.
+- Emits deterministic textual `.l1m` artifacts through the internal `--emit-interface` mode.
+- Parses the constrained interface grammar for round-trip validation; ordinary source imports do not consume `.l1m`
+  files yet.
+
+### 2.8 Backend (`backend.l0`, `c_emitter.l0`, `string_escape.l0`)
 
 - Consumes typed analysis results and emits one C99 translation unit.
 - Delegates backend-specific behavior to [c-backend-design.md](c-backend-design.md).
 
-### 2.8 Driver and CLI (`driver.l0`, `l1c_lib.l0`, `cli_args.l0`, `build_driver.l0`)
+### 2.9 Driver and CLI (`driver.l0`, `l1c_lib.l0`, `cli_args.l0`, `build_driver.l0`)
 
 - Coordinates the pass pipeline.
 - Implements CLI mode dispatch and host compiler execution.
@@ -127,6 +133,8 @@ Primary aggregates in the current implementation include:
 - parsed AST nodes from `ast.l0`
 - module and symbol environments from `name_resolver.l0`
 - typed semantic state from `analysis.l0`
+- projected and parsed module interfaces from `module_interface.l0`
+- checked scalar constant values evaluated through `type_resolve.l0`
 
 Important analysis tables include:
 
@@ -153,7 +161,8 @@ Important analysis tables include:
    of scope for this contract.
 5. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
 6. Generated output is currently one C99 translation unit.
-7. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in the
+7. Interface emission is deterministic, but `.l1m` artifacts are not normal compile/build/run inputs yet.
+8. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in the
    other L1 reference documents.
 
 ## 5. File/Module Layout
@@ -162,22 +171,37 @@ Main current compiler modules under `compiler/stage1_l0/src/`:
 
 - `analysis.l0`
 - `ast.l0`
+- `ast_printer.l0`
 - `backend.l0`
 - `build_driver.l0`
+- `build_info.l0`
 - `cli_args.l0`
+- `codegen_options.l0`
+- `dea_prelude.l0`
+- `diag_print.l0`
 - `driver.l0`
 - `expr_types.l0`
+- `interface_emitter.l0`
 - `l1c.l0`
 - `l1c_lib.l0`
 - `lexer.l0`
 - `locals.l0`
+- `mi_utils.l0`
+- `module_interface.l0`
 - `name_resolver.l0`
 - `parser.l0`
+- `parser/decl.l0`, `parser/expr.l0`, `parser/interface.l0`, `parser/shared.l0`, and `parser/stmt.l0`
+- `scope_context.l0`
+- `sem_context.l0`
 - `signatures.l0`
+- `source_paths.l0`
 - `string_escape.l0`
+- `symbols.l0`
 - `tokens.l0`
 - `type_resolve.l0`
 - `types.l0`
+
+Shared support modules live under `compiler/stage1_l0/src/util/`.
 
 ## 6. Host and Toolchain Assumptions
 

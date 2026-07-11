@@ -1,7 +1,7 @@
 # ADR-0011: Fixed-Size Array Policy
 
 - Decision date: 2026-05-10
-- Last edited: 2026-06-18
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -57,4 +57,4 @@ expression:
 [const-contexts]: ../../work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md
 [design-decisions]: ../reference/design-decisions.md
 [grammar]: ../reference/grammar.md
-[initiative]: ../../initiatives/closed/0004-array-primitives-and-unsafe-marker.md
+[initiative]: ../../work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md

@@ -31,19 +31,16 @@ Do not sweep `work/plans/**` or archived docs unless the task explicitly asks fo
 1. Read `CLAUDE.md` first. If the audit touches `l0/` or `l1/`, read the matching subtree `CLAUDE.md` too.
 2. Inventory recent landed changes before editing docs. Prefer:
 
--
-
-`git --no-pager log --since='<date>' --date=short --pretty=format:'%ad %h %s' --name-only -- '*.md' '.github/workflows/*'`
-
+- `git --no-pager log --since='<date>' --date=short --pretty=format:'%ad %h %s' --name-only -- '*.md' '.github/workflows/*'`
 - targeted reads of the relevant `Makefile`, runtime headers, stdlib modules, tests, and workflow files
 
 3. Map change areas to the highest-risk docs first:
 
-- L1 numeric/bootstrap changes: `l1/docs/reference/project-status.md`, `l1/docs/reference/design-decisions.md`,
+- L1 numeric/bootstrap changes: `l1/docs/project-status.md`, `l1/docs/reference/design-decisions.md`,
   `l1/docs/reference/standard-library.md`, `l1/docs/reference/architecture.md`, `l1/README.md`, and
   `l1/compiler/stage1_l0/README.md`
 - L0 workflow/release/docs changes: `README.md`, `l0/README.md`, `l0/README-WINDOWS.md`, `l0/docs/user/**`,
-  `l0/docs/reference/project-status.md`, `CONTRIBUTING.md`, and relevant `l0/docs/specs/**`
+  `l0/docs/project-status.md`, `CONTRIBUTING.md`, and relevant `l0/docs/specs/**`
 - shared compiler or diagnostic changes: `docs/specs/compiler/**` and root `docs/reference/**`
 
 4. Treat implementation and landed behavior as the oracle:
@@ -107,12 +104,17 @@ PY
 - guidance that still points at a superseded workflow
 
 7. Keep docs honest about scope. If L1 is bootstrap-only or a library follow-up is still open, say so plainly.
-8. If you commit, follow the commit rules in `CLAUDE.md` and run pre-commit from a level directory against the root
-   config, for example:
+8. If you commit, follow the commit rules in `CLAUDE.md` and run pre-commit against the root config. Run from the
+   monorepo root by default:
 
 ```bash
-cd l0
-uv run --group dev pre-commit run --hook-stage pre-commit -c ../.pre-commit-config.yaml --files $(git diff --cached --name-only --diff-filter=ACMR --relative)
+uv run --group dev pre-commit run --hook-stage pre-commit -c .pre-commit-config.yaml --files $(git diff --cached --name-only --diff-filter=ACMR)
+```
+
+If already in an immediate level directory, keep `uv` pointed at the root project and pass root-relative paths:
+
+```bash
+uv run --directory .. --group dev pre-commit run --hook-stage pre-commit -c .pre-commit-config.yaml --files $(git -C .. diff --cached --name-only --diff-filter=ACMR)
 ```
 
 ## Writing rules

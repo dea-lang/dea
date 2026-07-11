@@ -1,7 +1,7 @@
 # ADR-0014: Module Interface Artifact
 
 - Decision date: 2026-06-13
-- Last edited: 2026-06-13
+- Last edited: 2026-07-11
 - Status: Accepted
 
 ## Context
@@ -57,7 +57,7 @@ tranche.
 
 ## Current Docs
 
-- [l1/docs/specs/compiler/module-interface-format.md][format-spec]: textual `.l1m` artifact format (Version 2026-06-13)
+- [l1/docs/specs/compiler/module-interface-format.md][format-spec]: textual `.l1m` artifact format
 - [l1/docs/specs/compiler/module-visibility-and-imports.md][visibility-spec]: export surface feeding interface emission
 - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]: registered `.l1m` parser diagnostics
 
