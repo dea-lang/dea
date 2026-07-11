@@ -46,11 +46,32 @@ resolved links) and update the corresponding `decisions/INDEX.md` in the same co
 4. Run relevant validation before the commit. Scope the run to the level(s) actually touched (determine touched paths
    from the same `git status --short`/diff review used in step 1 and the Required-context section):
 
+For history-only rewrites such as squash, reword, or reorder operations:
+
+- Start from a clean worktree and record the pre-rewrite commit and tree.
+
+- Compare the proposed tree with the pre-rewrite tree rather than classifying the combined diff against the reset base.
+
+- When the proposed tree is identical and relevant tests or CI for that exact tree are known passing, reuse those
+  results instead of rerunning the code suites. Record the reused validation in the final handoff.
+
+- When the proposed tree differs only in documentation, follow the docs-only rule below.
+
+- When any code, build configuration, dependency, or generated source differs, follow the normal level-specific or
+  cross-cutting validation rule below.
+
+- Still run the staged whitespace check and pre-commit. For a soft-reset squash, use
+  `git diff --cached --quiet "$pre_rewrite_commit"` to prove staged tree identity, then verify the replacement commit's
+  tree matches the recorded pre-rewrite tree.
+
 - For code changes confined to `l0/`: run `make -C l0 clean test-all`.
+
 - For code changes confined to `l1/`: run `make -C l1 clean test-all`.
+
 - For cross-cutting code changes (touching more than one level, or touching shared/root paths such as `scripts/`,
   `tools/`, root `pyproject.toml`, `uv.lock`, root config, or the root `Makefile`): run the full repo-root
   `make clean test-all` (executes in all `lN` directories).
+
 - For docs-only changes: run `git diff --check`; run docs tooling when the edited docs have a generator/check target
 
 5. Stage explicitly. Use `git add -u <scope>` plus explicit new files. Re-check `git status --short`.
@@ -144,5 +165,5 @@ git log -1 --oneline
 4. Final response must include:
 
 - commit hash and summary
-- validation commands run
+- validation commands run, or reused validation and tree-identity evidence for a history-only rewrite
 - any unstaged/untracked files intentionally left alone
