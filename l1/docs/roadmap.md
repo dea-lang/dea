@@ -137,6 +137,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
+- Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
+  to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
@@ -208,7 +210,8 @@ surface.
 
 ### Tooling and delivery
 
-- Self-hosted `stage2_l1` compiler implementation and eventual Stage 1/Stage 2 parity validation.
+- Self-hosted `stage2_l1` compiler implementation and Stage 1/Stage 2 parity validation are tracked by Feature
+  [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting].
 - Release-bearing L1 install, distribution, release, and docs-publishing workflows after the bootstrap productization
   plan lands.
 - Broader L1 CI/CD and tooling beyond bootstrap packaging, including validation matrices and published artifact checks.
@@ -270,6 +273,7 @@ update to be promoted to an initiative or plan:
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [stage1-source-decomposition]: ../work/plans/refactors/2026-07-08-stage1-source-decomposition-noref.md
+[stage2-self-hosting]: ../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
