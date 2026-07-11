@@ -38,7 +38,7 @@ on:
           - macos-arm64
           - windows-ucrt64
       c_compiler:
-        description: C compiler to use for manual Linux or Windows validation runs
+        description: C compiler to use for manual validation runs
         required: true
         default: gcc
         type: choice
@@ -203,7 +203,7 @@ jobs:
       - route-levels
       - select-matrix
     if: needs.route-levels.outputs.run_any == 'true'
-    name: unified (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ github.event_name == 'workflow_dispatch' && (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
+    name: unified (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ github.event_name == 'workflow_dispatch' && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}
@@ -222,11 +222,18 @@ jobs:
         id: select-cc
         shell: bash
         run: |
+          compiler="${{ matrix.c_compiler }}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.c_compiler }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
+            compiler="${{ inputs.c_compiler }}"
+            if [ "${{ matrix.os }}" = "darwin" ] && [ "$compiler" = "gcc" ]; then
+              compiler="$(python3 -c 'import shutil; print(next((f"gcc-{version}" for version in range(99, 0, -1) if shutil.which(f"gcc-{version}")), ""))')"
+              if [ -z "$compiler" ]; then
+                echo "No versioned Homebrew GCC executable was found on the Darwin runner." >&2
+                exit 1
+              fi
+            fi
           fi
+          echo "value=$compiler" >> "$GITHUB_OUTPUT"
 
       - name: Set up uv
         if: runner.os != 'Windows'

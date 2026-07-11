@@ -166,7 +166,8 @@ Useful environment overrides:
 - `KEEP_ARTIFACTS=1` keeps the generated temp directory under `build/tests/l0_stage2_triple_bootstrap.*` for inspection.
 - `L0_CC=<compiler>` pins the exact host C compiler used for all self-builds.
 - `L0_CFLAGS="..."` appends extra C compiler flags; the test still adds deterministic linker flags required for native
-  identity checks, including Darwin UUID and ad hoc code-signature suppression.
+  identity checks. Intel Darwin builds suppress UUIDs and ad hoc signatures; Darwin arm64 builds retain the load
+  commands required for execution and neutralize UUIDs only in the comparison copies.
 - When `L0_CC` resolves to `tcc`, the test still compares retained C outputs but skips the native-binary identity check
   because `tcc` does not currently guarantee stable binaries across identical builds.
 
@@ -191,6 +192,10 @@ On Linux, the native identity step compares stripped binaries. Raw ELF outputs c
 the retained C source path changes, even after disabling the linker build ID. Stripping preserves the meaningful native
 code / link-result comparison while ignoring filename-sensitive metadata.
 
+On Darwin arm64, the executable compiler artifacts retain their UUID and ad hoc signature load commands. The native
+identity step removes signatures, strips local symbols, and zeroes each `LC_UUID` payload only in the non-executable
+comparison copies before comparing the remaining Mach-O bytes.
+
 On Windows, the triple-bootstrap test keeps the retained-C identity gate but skips the native binary byte comparison.
 MinGW-w64 PE outputs are not reliably reproducible byte-for-byte on CI even when the retained C is identical and linker
 timestamps are disabled.
@@ -199,8 +204,10 @@ If you want to run the same flow manually step by step, keep one compiler and on
 
 ```bash
 export L0_CC=clang
-export L0_CFLAGS="-Wl,-no_uuid -Wl,-no_adhoc_codesign"  # macOS
-# export L0_CFLAGS="-Wl,--build-id=none"  # Linux
+export L0_CFLAGS="-frandom-seed=l0c-stage2"
+# Intel macOS: append `-Wl,-no_uuid -Wl,-no_adhoc_codesign`.
+# Apple Silicon: retain the default UUID and ad hoc signature load commands.
+# Linux: append `-Wl,--build-id=none`.
 
 DEA_BUILD_DIR=build/tests/triple-manual KEEP_C=1 python scripts/build_stage2_l0c.py
 L0_HOME="$PWD/compiler" ./build/tests/triple-manual/bin/l0c-stage2 --build --keep-c -P compiler/stage2_l0/src -o build/tests/triple-manual/l0c-stage2-second.native l0c
@@ -208,10 +215,19 @@ L0_HOME="$PWD/compiler" ./build/tests/triple-manual/l0c-stage2-second.native --b
 cmp build/tests/triple-manual/l0c-stage2-second.c build/tests/triple-manual/l0c-stage2-third.c
 cp build/tests/triple-manual/l0c-stage2-second.native build/tests/triple-manual/l0c-stage2-second.stripped
 cp build/tests/triple-manual/l0c-stage2-third.native build/tests/triple-manual/l0c-stage2-third.stripped
-codesign --remove-signature build/tests/triple-manual/l0c-stage2-second.stripped 2>/dev/null || true
-codesign --remove-signature build/tests/triple-manual/l0c-stage2-third.stripped 2>/dev/null || true
 strip -x build/tests/triple-manual/l0c-stage2-second.stripped
 strip -x build/tests/triple-manual/l0c-stage2-third.stripped
+codesign --remove-signature build/tests/triple-manual/l0c-stage2-second.stripped 2>/dev/null || true
+codesign --remove-signature build/tests/triple-manual/l0c-stage2-third.stripped 2>/dev/null || true
+if [ "$(uname -s)" = Darwin ]; then
+    python3 - <<'PY'
+from pathlib import Path
+from compiler.stage2_l0.tests.l0c_triple_bootstrap_test import neutralize_darwin_uuid
+
+for name in ("second", "third"):
+    neutralize_darwin_uuid(Path(f"build/tests/triple-manual/l0c-stage2-{name}.stripped"))
+PY
+fi
 cmp build/tests/triple-manual/l0c-stage2-second.stripped build/tests/triple-manual/l0c-stage2-third.stripped
 L0_HOME="$PWD/compiler" ./build/tests/triple-manual/l0c-stage2-third.native --run -P examples hello
 ```

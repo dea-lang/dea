@@ -340,6 +340,8 @@ def test_execute_const_referenced_array_bound(artifact_dir: Path) -> None:
         "const cast must fold instead of using a runtime checked-cast helper", artifact_dir)
     assert_true("const dea_int __deaM4mainN1J = 10;" in c_code,
         "folded arithmetic const should lower to a static literal", artifact_dir)
+    assert_true("const __deaA25_c __deaM4mainN8messages = {.data = {DEA_STRING_CONST(" in c_code,
+        "const array should lower to a file-scope brace initializer", artifact_dir)
 
 
 def test_execute_toplet_mutation(artifact_dir: Path) -> None:

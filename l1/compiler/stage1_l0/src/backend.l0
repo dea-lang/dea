@@ -1287,6 +1287,33 @@ func be_emit_array_literal_value(self: Backend*, expr_id: ExprId, expected: Type
 }
 
 /**
+ * Emit a fixed-size array literal as a file-scope C initializer.
+ *
+ * @param self Backend state to update.
+ * @param expr_id Array literal expression.
+ * @param expected Contextual array type.
+ * @return Brace initializer suitable for static storage duration.
+ */
+func be_emit_array_literal_static_initializer(self: Backend*, expr_id: ExprId, expected: Type*) -> string {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "{.data = {");
+        let ids = expr.ids as VectorBase*;
+        if (vec_size(ids) == 0) {
+            sb_append(sb, "0");
+        }
+        for (let i = 0; i < vec_size(ids); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, be_emit_let_initializer(self, id_vec_get(ids, i), expected.inner as Type*));
+        }
+        sb_append(sb, "}}");
+        return sb_to_string(sb);
+    }
+}
+
+/**
  * Emit the C brace initializer for an array literal's data field.
  *
  * @param self Backend state to update.
@@ -1945,7 +1972,7 @@ func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type:
     let literal_id = be_unwrap_paren_expr_id(self, expr_id);
     let literal_expr = expr_arena_get(be_current_expr_arena(self), literal_id);
     if (ord(literal_expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected_type.kind) == ord(TY_ARRAY)) {
-        return be_emit_array_literal_value(self, literal_id, expected_type);
+        return be_emit_array_literal_static_initializer(self, literal_id, expected_type);
     }
     let evaluated = be_try_emit_evaluated_const_initializer(self, literal_id, expected_type);
     if (evaluated != null) {
@@ -1970,7 +1997,7 @@ func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type:
         }
         EX_ARRAY_LITERAL => {
             if (ord(expected_type.kind) == ord(TY_ARRAY)) {
-                return be_emit_array_literal_value(self, literal_id, expected_type);
+                return be_emit_array_literal_static_initializer(self, literal_id, expected_type);
             }
             return null;
         }

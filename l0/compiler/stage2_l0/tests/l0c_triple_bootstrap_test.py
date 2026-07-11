@@ -11,9 +11,11 @@ from __future__ import annotations
 import difflib
 import hashlib
 import os
+import platform
 import re
 import shlex
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -170,7 +172,8 @@ def deterministic_c_flags(compiler_text: str) -> list[str]:
     flags: list[str] = ["-frandom-seed=l0c-stage2"]
 
     if sys.platform == "darwin":
-        flags.extend(["-Wl,-no_uuid", "-Wl,-no_adhoc_codesign"])
+        if platform.machine() != "arm64":
+            flags.extend(["-Wl,-no_uuid", "-Wl,-no_adhoc_codesign"])
     elif sys.platform.startswith("linux"):
         flags.append("-Wl,--build-id=none")
     elif sys.platform == "win32":
@@ -381,6 +384,53 @@ def _remove_darwin_code_signature(path: Path) -> None:
         )
 
 
+def neutralize_darwin_uuid(path: Path) -> None:
+    """Zero the ``LC_UUID`` payload in one thin Mach-O comparison copy."""
+
+    data = bytearray(read_bytes(path))
+    magic_layouts = {
+        b"\xce\xfa\xed\xfe": ("<", 28),
+        b"\xcf\xfa\xed\xfe": ("<", 32),
+        b"\xfe\xed\xfa\xce": (">", 28),
+        b"\xfe\xed\xfa\xcf": (">", 32),
+    }
+    layout = magic_layouts.get(bytes(data[:4]))
+    if layout is None:
+        raise TripleBootstrapFailure(f"normalized Darwin artifact is not a thin Mach-O binary: {path}")
+
+    byte_order, header_size = layout
+    if len(data) < header_size:
+        raise TripleBootstrapFailure(f"truncated Mach-O header in normalized Darwin artifact: {path}")
+
+    command_count = struct.unpack_from(f"{byte_order}I", data, 16)[0]
+    command_bytes = struct.unpack_from(f"{byte_order}I", data, 20)[0]
+    command_offset = header_size
+    command_end = command_offset + command_bytes
+    if command_end > len(data):
+        raise TripleBootstrapFailure(f"truncated Mach-O load-command table in normalized Darwin artifact: {path}")
+
+    uuid_count = 0
+    for _ in range(command_count):
+        if command_offset + 8 > command_end:
+            raise TripleBootstrapFailure(f"truncated Mach-O load command in normalized Darwin artifact: {path}")
+        command, command_size = struct.unpack_from(f"{byte_order}II", data, command_offset)
+        if command_size < 8 or command_offset + command_size > command_end:
+            raise TripleBootstrapFailure(f"invalid Mach-O load command size in normalized Darwin artifact: {path}")
+        if command == 0x1B:  # LC_UUID
+            if command_size != 24:
+                raise TripleBootstrapFailure(f"invalid Mach-O LC_UUID size in normalized Darwin artifact: {path}")
+            uuid_count += 1
+            if uuid_count > 1:
+                raise TripleBootstrapFailure(f"duplicate Mach-O LC_UUID command in normalized Darwin artifact: {path}")
+            data[command_offset + 8:command_offset + 24] = b"\0" * 16
+        command_offset += command_size
+
+    if command_offset != command_end:
+        raise TripleBootstrapFailure(f"inconsistent Mach-O load-command table in normalized Darwin artifact: {path}")
+
+    path.write_bytes(data)
+
+
 def normalized_native_artifact(path: Path, artifact_dir: Path) -> Path:
     """Return one normalized native artifact path for byte-identity comparison.
 
@@ -395,7 +445,6 @@ def normalized_native_artifact(path: Path, artifact_dir: Path) -> Path:
         if strip_command is None:
             raise TripleBootstrapFailure("no strip tool found for native identity comparison")
         shutil.copy2(path, normalized)
-        _remove_darwin_code_signature(normalized)
         completed = subprocess.run(
             [*strip_command, "-x", str(normalized)],
             cwd=REPO_ROOT,
@@ -416,6 +465,8 @@ def normalized_native_artifact(path: Path, artifact_dir: Path) -> Path:
                     ]
                 ).rstrip()
             )
+        _remove_darwin_code_signature(normalized)
+        neutralize_darwin_uuid(normalized)
         return normalized
 
     if sys.platform == "win32":
