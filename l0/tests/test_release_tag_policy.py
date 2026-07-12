@@ -107,7 +107,7 @@ def run_release_metadata_validation(
             path.write_text(content, encoding="utf-8")
         output_path = root / "github-output"
         environment = os.environ.copy()
-        environment.update({"CURRENT_TAG": tag, "GITHUB_OUTPUT": str(output_path)})
+        environment.update({"CURRENT_TAG": tag, "GITHUB_OUTPUT": output_path.name})
         completed = subprocess.run(
             ["bash", "-eu", "-o", "pipefail", "-c", script],
             cwd=root,
