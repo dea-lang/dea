@@ -70,7 +70,7 @@ the archive. The file uses a key/value format such as:
 
 ```text
 name: dea/l0
-version: 1.0.0
+version: 1.1.0
 build: gha-...
 commit: 92ce58a2...
 os: Darwin

@@ -7,6 +7,7 @@ This directory is organized by document intent first, then subsystem.
 - `project-status.md`: current implementation status, known limitations, and near-term direction.
 - `reference/`: stable current-state documentation for language and compiler.
 - `user/`: standalone end-user guides used as the source for shipped distribution docs.
+- `releases/`: curated stable-release notes used unchanged as GitHub release descriptions.
 - `specs/`: normative contracts and behavioral specifications.
 - `implementation/`: implementation-oriented specs and design notes.
 - `attic/`: superseded or obsolete documents when archival storage is needed.
@@ -33,6 +34,7 @@ packaged as a release asset (`dea_l0_api_reference-<TAG>.tar.gz`) for consumptio
 - Use `project-status.md` for the current L0 status snapshot.
 - Use `reference/` when documenting how the system currently works.
 - Use `user/` for standalone end-user docs meant to ship in release archives.
+- Use `releases/` for versioned stable-release descriptions and their index.
 - Use `specs/` when defining canonical behavior/contracts.
 - Use `implementation/` for build strategy details (for example Stage 2 parser internals).
 - Move a document to `attic/` only when it is superseded or obsolete.
@@ -72,6 +74,7 @@ Plans and proposals follow the metadata and lifecycle rules in [`../work/README.
 ## Core Docs
 
 - [project-status.md](project-status.md): current implementation status, known limitations, and near-term direction.
+- [releases/README.md](releases/README.md): index of curated stable-release descriptions.
 - [reference/architecture.md](reference/architecture.md): compiler pipeline and pass structure.
 - [reference/c-backend-design.md](reference/c-backend-design.md): Stage 1 lowering/runtime interaction details.
 - [reference/standard-library.md](reference/standard-library.md): `std.*` and `sys.*` API surface.

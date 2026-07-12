@@ -1,8 +1,8 @@
 # L0 Project Status
 
-Version: 2026-05-19
+Version: 2026-07-13
 
-This document summarizes what is implemented in this repository today and what defines the current Dea/L0 `1.0.0`
+This document summarizes what is implemented in this repository today and what defines the current Dea/L0 `1.1.0`
 release.
 
 L0 now lives as one language subtree inside the Dea monorepo; monorepo release tags use the `l0-vX.Y.Z` namespace while
@@ -99,7 +99,7 @@ The current development support baseline remains:
 
 ## Known Limitations and Constraints
 
-These remain true in the `1.0.0` release:
+These remain true in the `1.1.0` release:
 
 1. Backend output is one C translation unit (no multi-object/header split pipeline yet).
 2. Arrays/slices are not implemented, and pointer indexing is not part of the current L0 language surface; indexing

@@ -14,6 +14,45 @@ permissions:
   id-token: write
 
 jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: l0
+    outputs:
+      release_version: ${{ steps.release-metadata.outputs.release_version }}
+      release_notes: ${{ steps.release-metadata.outputs.release_notes }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate stable release tag and canonical notes
+        id: release-metadata
+        env:
+          CURRENT_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$CURRENT_TAG" =~ ^l0-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Error: release tag must be a stable l0-vX.Y.Z tag: $CURRENT_TAG" >&2
+            exit 1
+          fi
+
+          release_version="${CURRENT_TAG#l0-v}"
+          release_notes="docs/releases/$release_version.md"
+          if [ ! -f "$release_notes" ]; then
+            echo "Error: missing canonical release notes: $release_notes" >&2
+            exit 1
+          fi
+
+          expected_heading="# Dea/L0 $release_version"
+          actual_heading="$(sed -n '1p' "$release_notes")"
+          if [ "$actual_heading" != "$expected_heading" ]; then
+            echo "Error: $release_notes must start with: $expected_heading" >&2
+            exit 1
+          fi
+
+          echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "release_notes=$release_notes" >> "$GITHUB_OUTPUT"
+
   check-pages-availability:
     runs-on: ubuntu-latest
     outputs:
@@ -32,6 +71,7 @@ jobs:
           fi
 
   build-dist:
+    needs: validate-release
     strategy:
       fail-fast: false
       matrix:
@@ -350,6 +390,7 @@ jobs:
           path: l0/${{ env.DIST_ARCHIVE_PATH }}
 
   build-docs:
+    needs: validate-release
     uses: ./.github/workflows/l0-docs-build.yml
     with:
       source_ref: ${{ github.ref_name }}
@@ -372,7 +413,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
   publish-release:
-    needs: [build-dist, build-docs]
+    needs: [validate-release, build-dist, build-docs]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -470,25 +511,12 @@ jobs:
                   handle.write(f"{digest}  {asset.name}\n")
           PY
 
-      - name: Generate release notes
-        env:
-          CURRENT_TAG: ${{ github.ref_name }}
-        run: |
-          prev_tag="$(git tag --merged HEAD --sort=-v:refname | grep '^l0-v' | grep -Fxv "$CURRENT_TAG" | head -n 1 || true)"
-          if [ -z "$prev_tag" ]; then
-            prev_tag="$(git tag --merged HEAD --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
-          fi
-          if [ -n "$prev_tag" ]; then
-            git log --pretty=format:'- %s (%h)' "$prev_tag..$CURRENT_TAG" > build/release-notes.md
-          else
-            git log --pretty=format:'- %s (%h)' "$CURRENT_TAG" > build/release-notes.md
-          fi
-
       - name: Ensure draft GitHub release
         id: ensure-draft
         env:
           GH_TOKEN: ${{ github.token }}
           CURRENT_TAG: ${{ github.ref_name }}
+          RELEASE_NOTES: ${{ needs.validate-release.outputs.release_notes }}
         run: |
           release_api="repos/$GITHUB_REPOSITORY/releases/tags/$CURRENT_TAG"
           if gh api "$release_api" >/dev/null 2>&1; then
@@ -506,7 +534,7 @@ jobs:
                 -f name="$CURRENT_TAG" \
                 -F draft=true \
                 -F prerelease=false \
-                -F body=@build/release-notes.md \
+                -F "body=@$RELEASE_NOTES" \
                 --jq '.id'
             )"
           fi
@@ -522,12 +550,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ steps.ensure-draft.outputs.release_id }}
+          RELEASE_NOTES: ${{ needs.validate-release.outputs.release_notes }}
         run: |
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
             -f name="${{ github.ref_name }}" \
             -F draft=false \
             -F prerelease=false \
-            -F body=@build/release-notes.md >/dev/null
+            -F "body=@$RELEASE_NOTES" >/dev/null
 
       - name: Fire repository_dispatch (optional)
         if: vars.BLOG_REPO != ''

@@ -1,6 +1,6 @@
 [project]
 name = "l0c"
-version = "1.0.0.dev0"
+version = "1.1.0.dev0"
 description = "L0 language compiler"
 authors = [{ name = "gwz (googlielmo)", email = "googlielmo@gmail.com" }]
 requires-python = ">=3.14"

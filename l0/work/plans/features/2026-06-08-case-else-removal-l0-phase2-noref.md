@@ -9,18 +9,20 @@
 - Scope: L0
 - Severity: Medium
 - Stage: L0 (Stage 1 + Stage 2)
+- Target release: L0 2.0.0
 - Targets:
   - L0 Stage 1
   - L0 Stage 2
 - Origin: Dangling-`else` ambiguity retired by making `_ =>` the sole `case` default
 - Depends on:
-  - The source-migration prerequisite
-    [work/plans/refactors/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../../../work/plans/refactors/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):
-    all in-tree compiled `.l0` `case … else` defaults, including `.l0` files under `l1/`, must already be `_ =>` before
-    this plan removes the `else` grammar.
-  - The committed `PAR-0123` bug-fix. Independent of the L1 plan
-    ([l1/work/plans/features/2026-06-08-case-else-removal-l1-phase2-noref.md](../../../../l1/work/plans/features/2026-06-08-case-else-removal-l1-phase2-noref.md));
-    intended to land second.
+  - The completed source-migration prerequisite
+    [work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../../../work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):
+    all in-tree compiled `.l0` `case … else` defaults, including `.l0` files under `l1/`, are already `_ =>` before this
+    plan removes the `else` grammar.
+  - The completed `PAR-0123` bug fix
+    ([work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md](../../../../work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md)).
+  - The independent L1 Phase 2 plan has already landed
+    ([l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../../../../l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md)).
 - Subsystem: Parser / grammar / diagnostics / docs / ADR
 - Modules:
   - `l0/compiler/stage1_py/l0_parser.py`, `l0_diagnostics.py`
@@ -34,13 +36,14 @@
 
 This is the L0 half of Phase 2 (ADR-0007). Phase 1 made `_ =>` canonical, deprecated `else` (`PAR-0242`), and added the
 ambiguity error `PAR-0243`. The prerequisite source-migration refactor has already rewritten in-tree `.l0` sources to
-`_ =>`; this plan removes `else` as an L0 `case` default and retires the interim codes. It carries the shared cleanup;
-the L1 half is a separate plan.
+`_ =>`, and the independent L1 half is complete. L0 retains the compatibility spelling throughout the 1.x release line;
+this plan is explicitly deferred to L0 2.0.0, where it will remove `else` as an L0 `case` default and retire the interim
+codes. It is not a prerequisite for L0 1.1.0.
 
 Note the cross-level reality: the L1 compiler is itself `.l0` (`l1/compiler/stage1_l0/src/*.l0`), compiled by L0 Stage
 2, so any remaining `case … else` default there would be governed by this L0 grammar change. The prerequisite refactor
-must therefore have already canonicalized those files before this plan lands. (The L1 *parser logic* in
-`l1/.../parser/stmt.l0` is the L1 plan's concern and has no `case … else` of its own.)
+has already canonicalized those files. The L1 *parser logic* in `l1/.../parser/stmt.l0` was handled by the completed L1
+Phase 2 plan and has no `case … else` of its own.
 
 ## Proposed Changes
 
@@ -52,8 +55,8 @@ must therefore have already canonicalized those files before this plan lands. (T
 2. **Shared diagnostic retirement:** remove `PAR-0242`/`0243` from `l0_diagnostics.py` `DIAGNOSTIC_CODE_FAMILIES`,
    `test_diagnostic_codes.py` (`PAR_TRIGGERS` / `WARNING_CODES`), and the catalog rows; reword the Phase 1 generalized
    meanings back to `_`-only: `PAR-0234` "value arm cannot appear after the `_` default arm", `PAR-0236` "duplicate `_`
-   default arm", `PAR-0238` "expected value literal or `_` in `case` arm". If the L1 plan landed first and added a
-   `PAR-0242`/`0243` `l1` skip in `scripts/diagnostic_parity.py`, remove it (now moot). Bump catalog `Version:`.
+   default arm", `PAR-0238` "expected value literal or `_` in `case` arm". Remove the now-moot `PAR-0242`/`0243` `l1`
+   skip added by the completed L1 plan in `scripts/diagnostic_parity.py`. Bump catalog `Version:`.
 3. **Tests:** remove the L0 Phase 1 `PAR-0242`/`0243` tests and the `else if … else` default-body test; add tests that a
    stray `case`-arm `else` emits `PAR-0123`, `_ =>` is the only default, and `1 => if (c) x; else y;` parses cleanly.
 4. **Grammar** (`l0/docs/reference/grammar.md`): terminal form below; remove the Phase 1 `PAR-0243`/deprecation prose;
@@ -65,10 +68,9 @@ CaseArm     ::= CaseLiteral "=>" Stmt
 WildcardArm ::= "_" "=>" Stmt
 ```
 
-5. **Lifecycle:** update `docs/decisions/0007-case-default-arm-wildcard.md` to record Phase 2 complete (terminal
-   grammar, retirement of `PAR-0242`/`0243`); bump `Last edited:`. `git mv` the Phase 1 plan
-   (`work/plans/features/2026-06-07-case-default-arm-wildcard-phase1-noref.md`) into `closed/` and repoint ADR-0007's
-   Related Plans link.
+5. **Lifecycle:** update `docs/decisions/0007-case-default-arm-wildcard.md` to record L0 Phase 2 complete (terminal
+   grammar, retirement of `PAR-0242`/`0243`); bump `Last edited:`. Move this plan into `l0/work/plans/features/closed/`
+   and add it to ADR-0007's Related Plans.
 
 ## Verification
 
@@ -79,10 +81,10 @@ WildcardArm ::= "_" "=>" Stmt
 3. `rg 'PAR-0242|PAR-0243' l0 l1` is empty except historical ADR/plan prose; diagnostic-code parity tests pass.
 4. Whole-tree build clean: `cd l0 && make -j test-all` + `make triple-test`; `cd l1 && make test-stage1` still green;
    both `check-examples` with no warnings/errors.
-5. `l0/docs/reference/grammar.md` version-bumped to terminal form; catalog updated; ADR-0007 updated; Phase 1 plan
-   closed and its ADR link repointed.
+5. `l0/docs/reference/grammar.md` version-bumped to terminal form; catalog updated; ADR-0007 updated; this plan closed
+   and linked from the ADR.
 
 ## Non-Goals
 
-1. L1 parser changes (the L1 plan) and any source migration (the prerequisite refactor plan).
+1. Further L1 parser changes or source migration; those were completed in their separate plans.
 2. Any change to `match` or `with`; the block-body alternative; new tokens/keywords; no new ADR.

@@ -8,7 +8,10 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
+import tempfile
 
 
 def resolve_workflow_root() -> Path | None:
@@ -64,6 +67,61 @@ def assert_before(text: str, first: str, second: str, *, context: str) -> None:
         fail(f"expected {first!r} before {second!r} in {context}")
 
 
+def extract_named_run_script(text: str, step_name: str) -> str:
+    marker = f"      - name: {step_name}\n"
+    marker_index = text.find(marker)
+    if marker_index < 0:
+        fail(f"missing workflow step {step_name!r}")
+
+    run_marker = "        run: |\n"
+    run_index = text.find(run_marker, marker_index + len(marker))
+    next_step_index = text.find("\n      - name:", marker_index + len(marker))
+    if run_index < 0 or (next_step_index >= 0 and run_index >= next_step_index):
+        fail(f"missing run script for workflow step {step_name!r}")
+
+    script_lines: list[str] = []
+    content = text[run_index + len(run_marker) :]
+    for line in content.splitlines(keepends=True):
+        if line.strip() == "":
+            script_lines.append("\n")
+            continue
+        if not line.startswith("          "):
+            break
+        script_lines.append(line[10:])
+    if not script_lines:
+        fail(f"empty run script for workflow step {step_name!r}")
+    return "".join(script_lines)
+
+
+def run_release_metadata_validation(
+    script: str,
+    *,
+    tag: str,
+    notes: dict[str, str] | None = None,
+) -> tuple[subprocess.CompletedProcess[str], str]:
+    with tempfile.TemporaryDirectory(prefix="l0-release-policy.") as temporary_directory:
+        root = Path(temporary_directory)
+        for relative_path, content in (notes or {}).items():
+            path = root / relative_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        output_path = root / "github-output"
+        environment = os.environ.copy()
+        environment.update({"CURRENT_TAG": tag, "GITHUB_OUTPUT": str(output_path)})
+        completed = subprocess.run(
+            ["bash", "-eu", "-o", "pipefail", "-c", script],
+            cwd=root,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        output = output_path.read_text(encoding="utf-8") if output_path.is_file() else ""
+        return completed, output
+
+
 def check_release_workflow() -> None:
     # Pin the durable wiring concepts (triggers, version derivation, the
     # immutable draft-then-publish lifecycle, release-line tag gating), not the
@@ -71,6 +129,63 @@ def check_release_workflow() -> None:
     text = read_text(".github/workflows/l0-release.yml")
     # Triggered by level-prefixed release tags.
     assert_contains(text, '"l0-v*"', context="l0-release.yml")
+    # The broad event trigger is followed by executable stable-SemVer gating,
+    # because GitHub tag filters are globs rather than regular expressions.
+    validation_step = "Validate stable release tag and canonical notes"
+    validation_script = extract_named_run_script(text, validation_step)
+    assert_contains(
+        validation_script,
+        "^l0-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+        context=validation_step,
+    )
+    assert_contains(
+        validation_script,
+        'release_notes="docs/releases/$release_version.md"',
+        context=validation_step,
+    )
+    assert_contains(
+        validation_script,
+        'expected_heading="# Dea/L0 $release_version"',
+        context=validation_step,
+    )
+    valid, valid_output = run_release_metadata_validation(
+        validation_script,
+        tag="l0-v1.2.3",
+        notes={"docs/releases/1.2.3.md": "# Dea/L0 1.2.3\n\nRelease body.\n"},
+    )
+    if valid.returncode != 0:
+        fail(f"valid stable release metadata rejected: {valid.stderr.strip()}")
+    if valid_output.splitlines() != [
+        "release_version=1.2.3",
+        "release_notes=docs/releases/1.2.3.md",
+    ]:
+        fail(f"unexpected stable release metadata outputs: {valid_output!r}")
+    for invalid_tag in (
+        "l0-v1.2",
+        "l0-v1.2.3-rc.1",
+        "l0-v1.2.3+build.1",
+        "l0-v01.2.3",
+        "v1.2.3",
+    ):
+        invalid, _ = run_release_metadata_validation(validation_script, tag=invalid_tag)
+        if invalid.returncode == 0:
+            fail(f"non-stable release tag accepted: {invalid_tag}")
+    missing, _ = run_release_metadata_validation(validation_script, tag="l0-v1.2.3")
+    if missing.returncode == 0 or "missing canonical release notes" not in missing.stderr:
+        fail("missing canonical release notes did not fail validation")
+    mismatched, _ = run_release_metadata_validation(
+        validation_script,
+        tag="l0-v1.2.3",
+        notes={"docs/releases/1.2.3.md": "# Dea/L0 1.2.4\n"},
+    )
+    if mismatched.returncode == 0 or "must start with: # Dea/L0 1.2.3" not in mismatched.stderr:
+        fail("mismatched release-note heading did not fail validation")
+    assert_contains(text, "needs: validate-release", context="l0-release.yml")
+    assert_contains(
+        text,
+        "needs: [validate-release, build-dist, build-docs]",
+        context="l0-release.yml",
+    )
     # Pages availability is probed and gated.
     assert_contains(text, "repos/$GITHUB_REPOSITORY/pages", context="l0-release.yml")
     assert_contains(text, "pages_enabled=true", context="l0-release.yml")
@@ -93,10 +208,20 @@ def check_release_workflow() -> None:
     assert_contains(text, "gh release upload", context="l0-release.yml")
     if 'gh release edit "$CURRENT_TAG"' in text:
         fail("unexpected post-draft gh release edit path in l0-release.yml")
-    # Release-line gating: prefer the previous l0-v tag, fall back to a
-    # pre-monorepo bare vX.Y.Z tag for release notes.
-    assert_contains(text, "grep '^l0-v'", context="l0-release.yml")
-    assert_contains(text, "grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$'", context="l0-release.yml")
+    # The canonical checked-in notes are passed unchanged to draft creation
+    # and publication; historical tag scanning and generated git-log bodies
+    # must not return.
+    if text.count('-F "body=@$RELEASE_NOTES"') != 2:
+        fail("canonical release notes are not used exactly for draft creation and publication")
+    if text.count("RELEASE_NOTES: ${{ needs.validate-release.outputs.release_notes }}") != 2:
+        fail("publish steps do not bind canonical release notes from the validation job")
+    for stale_release_notes_path in (
+        "grep '^l0-v'",
+        "git log --pretty",
+        "build/release-notes.md",
+    ):
+        if stale_release_notes_path in text:
+            fail(f"stale release-note selector present in l0-release.yml: {stale_release_notes_path}")
     # Lifecycle ordering: build assets, then checksum, then draft, then publish.
     assert_before(text, "make check-examples", "make dist", context="l0-release.yml")
     assert_before(text, "tar -czf", "SHA256SUMS", context="l0-release.yml")

@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-07-11
+Version: 2026-07-13
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -112,7 +112,7 @@ by the relevant level subtree.
 
 Near-term project direction is split cleanly by level:
 
-1. Maintain the released Dea/L0 `1.0.0` line through documented, semantically versioned fixes and focused foundational
+1. Maintain the released Dea/L0 `1.1.0` line through documented, semantically versioned fixes and focused foundational
    changes.
 2. Keep Dea/L1 focused on bootstrap stabilization and planned post-L0 language/library growth, not on release parity
    yet.
