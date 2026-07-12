@@ -122,32 +122,8 @@ def run_release_metadata_validation(
         return completed, output
 
 
-def check_release_workflow() -> None:
-    # Pin the durable wiring concepts (triggers, version derivation, the
-    # immutable draft-then-publish lifecycle, release-line tag gating), not the
-    # exact shell/quoting of each step, which is reworded freely.
-    text = read_text(".github/workflows/l0-release.yml")
-    # Triggered by level-prefixed release tags.
-    assert_contains(text, '"l0-v*"', context="l0-release.yml")
-    # The broad event trigger is followed by executable stable-SemVer gating,
-    # because GitHub tag filters are globs rather than regular expressions.
-    validation_step = "Validate stable release tag and canonical notes"
-    validation_script = extract_named_run_script(text, validation_step)
-    assert_contains(
-        validation_script,
-        "^l0-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
-        context=validation_step,
-    )
-    assert_contains(
-        validation_script,
-        'release_notes="docs/releases/$release_version.md"',
-        context=validation_step,
-    )
-    assert_contains(
-        validation_script,
-        'expected_heading="# Dea/L0 $release_version"',
-        context=validation_step,
-    )
+def check_release_metadata_validation_script(validation_script: str) -> None:
+    """Exercise the Ubuntu release-metadata shell step on POSIX hosts."""
     valid, valid_output = run_release_metadata_validation(
         validation_script,
         tag="l0-v1.2.3",
@@ -180,6 +156,39 @@ def check_release_workflow() -> None:
     )
     if mismatched.returncode == 0 or "must start with: # Dea/L0 1.2.3" not in mismatched.stderr:
         fail("mismatched release-note heading did not fail validation")
+
+
+def check_release_workflow() -> None:
+    # Pin the durable wiring concepts (triggers, version derivation, the
+    # immutable draft-then-publish lifecycle, release-line tag gating), not the
+    # exact shell/quoting of each step, which is reworded freely.
+    text = read_text(".github/workflows/l0-release.yml")
+    # Triggered by level-prefixed release tags.
+    assert_contains(text, '"l0-v*"', context="l0-release.yml")
+    # The broad event trigger is followed by executable stable-SemVer gating,
+    # because GitHub tag filters are globs rather than regular expressions.
+    validation_step = "Validate stable release tag and canonical notes"
+    validation_script = extract_named_run_script(text, validation_step)
+    assert_contains(
+        validation_script,
+        "^l0-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+        context=validation_step,
+    )
+    assert_contains(
+        validation_script,
+        'release_notes="docs/releases/$release_version.md"',
+        context=validation_step,
+    )
+    assert_contains(
+        validation_script,
+        'expected_heading="# Dea/L0 $release_version"',
+        context=validation_step,
+    )
+    # The production step runs on ubuntu-latest. Native Windows CI still
+    # performs every static wiring assertion below, but does not execute the
+    # Ubuntu Bash fragment through an MSYS subprocess boundary.
+    if os.name != "nt":
+        check_release_metadata_validation_script(validation_script)
     assert_contains(text, "needs: validate-release", context="l0-release.yml")
     assert_contains(
         text,
