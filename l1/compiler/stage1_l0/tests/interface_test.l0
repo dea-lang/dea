@@ -107,6 +107,9 @@ func test_emit_interface_deterministic() {
     assert(contains_s(first, "const cast_count: int = 25 == \"\";"), "expected folded integer cast const literal");
     assert(contains_s(first, "const cast_float: float = 2.5f == \"\";"), "expected folded real cast const literal");
     assert(contains_s(first, "const folded_count: int = 10 == \"\";"), "expected folded scalar const expression");
+    assert(contains_s(first, "const neg_seed: int = -25 == \"\";"), "expected folded negative const literal");
+    assert(contains_s(first, "const sample_values: int[3] = [1, 2, 3] == \"\";"),
+        "expected fixed-array const literal");
     assert(!contains_s(first, " as "), "interface const casts must serialize as folded literals");
     assert(contains_s(first, "const zero_color: Color = Red == \"\";"), "expected enum-variant const literal");
     assert(contains_s(first, "const vivid_color: Color = Rgb(255, 0, 0) == \"\";"), "expected multi-field enum const literal");
@@ -142,7 +145,7 @@ func test_interface_round_trip() {
     assert(vec_size(mi.enum_infos) == 1, "expected 1 exported enum");
     assert(vec_size(mi.alias_entries) == 1, "expected 1 exported alias");
     assert(vec_size(mi.func_entries) == 2, "expected 2 exported funcs");
-    assert(vec_size(mi.let_entries) == 10, "expected 9 consts plus 1 let");
+    assert(vec_size(mi.let_entries) == 12, "expected 11 consts plus 1 let");
 
     let re_emitted = ie_emit(mi);
     assert(re_emitted == emitted, "parser/emitter round-trip must preserve canonical text");
@@ -478,6 +481,112 @@ func test_interface_dotted_module_literal_round_trip() {
 }
 
 /**
+ * Tests empty, flat, and nested array const literals round-trip canonically.
+ */
+func test_interface_array_literal_round_trip() {
+    let text = "module interface arrays;\n" +
+        "fingerprint \"\";\n" +
+        "\n" +
+        "const empty: int[2] = [] == \"\";\n" +
+        "\n" +
+        "const flat: int[3] = [1, 2, 3] == \"\";\n" +
+        "\n" +
+        "const nested: int[2][2] = [[1, 2], [3, 4]] == \"\";\n";
+    let parsed = pi_parse_interface(text, "<arrays>");
+    assert(!ipr_has_errors(parsed), "array const interface should parse");
+    assert(parsed.interface != null, "array const interface should produce metadata");
+    assert(ie_emit(parsed.interface as ModuleInterface*) == text,
+        "array const interface should round-trip byte-for-byte");
+    ipr_free(parsed);
+
+    assert_parse_rejected(
+        "module interface arrays;\nfingerprint \"\";\nconst bad: int[2] = [1,] == \"\";\n",
+        "PAR-0572",
+        "<array-trailing-comma>"
+    );
+    assert_parse_rejected(
+        "module interface arrays;\nfingerprint \"\";\nconst bad: int[2] = [1 2] == \"\";\n",
+        "PAR-0572",
+        "<array-missing-comma>"
+    );
+}
+
+/**
+ * Tests signed numeric const literals, including bigint-token `int` minimum,
+ * round-trip through the constrained interface parser.
+ */
+func test_interface_negative_literal_round_trip() {
+    let text = "module interface signed_literals;\n" +
+        "fingerprint \"\";\n" +
+        "\n" +
+        "const int_min: int = -2147483648 == \"\";\n" +
+        "\n" +
+        "const min_offset: int = -5 == \"\";\n" +
+        "\n" +
+        "const min_real: double = -2.5 == \"\";\n" +
+        "\n" +
+        "const offsets: int[3] = [1, -2, 3] == \"\";\n";
+    let parsed = pi_parse_interface(text, "<signed-literals>");
+    assert(!ipr_has_errors(parsed), "signed numeric const interface should parse");
+    assert(parsed.interface != null, "signed numeric const interface should produce metadata");
+    assert(ie_emit(parsed.interface as ModuleInterface*) == text,
+        "signed numeric const interface should round-trip byte-for-byte");
+    ipr_free(parsed);
+
+    let spaced_text = "module interface signed_literals;\n" +
+        "fingerprint \"\";\n" +
+        "\n" +
+        "const int_min: int = -2147483648 == \"\";\n" +
+        "\n" +
+        "const min_offset: int = -5 == \"\";\n" +
+        "\n" +
+        "const min_real: double = -2.5 == \"\";\n";
+    let spaced = pi_parse_interface(
+        "module interface signed_literals;\nfingerprint \"\";\n" +
+            "const int_min: int = - 2147483648 == \"\";\n" +
+            "const min_offset: int = - 5 == \"\";\n" +
+            "const min_real: double = - 2.5 == \"\";\n",
+        "<split-signed-literal>"
+    );
+    assert(!ipr_has_errors(spaced), "split-token signed numeric const interface should parse");
+    assert(ie_emit(spaced.interface as ModuleInterface*) == spaced_text,
+        "split-token signed numeric const should canonicalize");
+    ipr_free(spaced);
+
+    assert_parse_rejected(
+        "module interface signed_literals;\nfingerprint \"\";\nconst bad: bool = -true == \"\";\n",
+        "PAR-0572",
+        "<signed-nonnumeric>"
+    );
+    assert_parse_rejected(
+        "module interface signed_literals;\nfingerprint \"\";\nconst bad: int = - -5 == \"\";\n",
+        "PAR-0572",
+        "<double-signed-numeric>"
+    );
+}
+
+/**
+ * Tests duplicate interface names are rejected before interface replay.
+ */
+func test_interface_duplicate_declaration_rejected() {
+    assert_parse_rejected(
+        "module interface duplicates;\nfingerprint \"\";\nfunc value() -> int == \"\";\nconst value: int = 1 == \"\";\n",
+        "PAR-0577",
+        "<duplicate-func-const>"
+    );
+    assert_parse_rejected(
+        "module interface duplicates;\nfingerprint \"\";\nenum Value { Ready; } == \"\";\nfunc Ready() -> int == \"\";\n",
+        "PAR-0577",
+        "<duplicate-variant-func>"
+    );
+    assert_parse_rejected(
+        "module interface duplicates;\nfingerprint \"\";\nopaque struct Hidden == \"\";\nopaque enum Hidden == \"\";\n",
+        "PAR-0577",
+        "<duplicate-opaque-nominals>"
+    );
+}
+
+/**
  * Tests that the interface emitter writes dotted module paths in const
  * literals (e.g. `pkg.sub::Red`, not `pkg::sub::Red`).
  */
@@ -511,6 +620,10 @@ func test_interface_unsafe_function_markers() {
     let emitted = emit_interface_for("iface_unsafe");
     assert(contains_s(emitted, "unsafe func borrow(cb: unsafe func(int) -> int) -> unsafe func(int) -> int == \"\";"),
         "expected unsafe function signature in emitted interface");
+    assert(contains_s(emitted, "extern func puts(value: string) -> int == \"\";"),
+        "expected extern function signature in emitted interface");
+    assert(contains_s(emitted, "unsafe extern func raw_sink(value: int*) -> void == \"\";"),
+        "expected unsafe extern function signature in emitted interface");
     assert(contains_s(emitted, "type UnsafeCb = unsafe func(int) -> int == \"\";"),
         "expected unsafe function alias in emitted interface");
 
@@ -521,6 +634,19 @@ func test_interface_unsafe_function_markers() {
     assert(func_entry.ty.is_unsafe, "expected top-level unsafe func flag");
     let param_ty = ptr_vec_get(func_entry.ty.params as VectorBase*, 0) as Type*;
     assert(param_ty.is_unsafe, "expected nested unsafe function type");
+    let saw_extern = false;
+    let saw_unsafe_extern = false;
+    for (let i = 0; i < vec_size(mi.func_entries); i = i + 1) {
+        let entry = ptr_vec_get(mi.func_entries, i) as InterfaceFuncEntry*;
+        if (entry.name == "puts") {
+            saw_extern = entry.is_extern && !entry.ty.is_unsafe;
+        }
+        if (entry.name == "raw_sink") {
+            saw_unsafe_extern = entry.is_extern && entry.ty.is_unsafe;
+        }
+    }
+    assert(saw_extern, "expected parsed extern function flag");
+    assert(saw_unsafe_extern, "expected parsed unsafe extern function flags");
     ipr_free(parsed);
 
     assert_parse_rejected("module interface m;\nfingerprint \"\";\nunsafe const x: int = 0;\n", "PAR-0602", "<unsafe-bad-decl>");
@@ -667,6 +793,9 @@ func main() {
     test_interface_cross_module_kind_with_peers();
     test_interface_cross_module_kind_without_peers();
     test_interface_dotted_module_literal_round_trip();
+    test_interface_array_literal_round_trip();
+    test_interface_negative_literal_round_trip();
+    test_interface_duplicate_declaration_rejected();
     test_emit_interface_dotted_module_literal();
     test_interface_dotted_literal_missing_double_colon();
     test_interface_unsafe_function_markers();

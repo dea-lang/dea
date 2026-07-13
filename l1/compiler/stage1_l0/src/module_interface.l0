@@ -32,6 +32,7 @@ struct InterfaceFuncEntry {
     name: string;
     param_names: StringVector*;    // parallel to ty.params
     ty: Type*;                     // TY_FUNC, owned
+    is_extern: bool;
     hash: string;                  // per-symbol hash, "" for now
 }
 

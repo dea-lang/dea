@@ -15,8 +15,11 @@ import util.numbers;
 
 import ast;
 import driver;
+import lexer;
 import name_resolver;
+import parser.shared;
 import symbols;
+import tokens;
 import types;
 
 /**
@@ -425,6 +428,114 @@ func tr_const_eval_report_failure(self: ConstEvalContext*) {
     if (failure.code != "") {
         tr_diag_error(self.diags, failure.code, failure.message, failure.filename, failure.span);
     }
+}
+
+/**
+ * Parse a scalar canonical interface literal into a const value.
+ *
+ * Aggregate constructor and enum-variant literals deliberately return `null`;
+ * callers still know the symbol is a const through `Symbol.is_const`.
+ *
+ * @param literal Canonical literal text from an interface const entry.
+ * @return Owned scalar constant value, or `null` for non-scalar literals.
+ */
+func tr_const_eval_interface_literal_raw(literal: string) -> ConstValue*? {
+    if (literal == "") {
+        return null;
+    }
+    with (let ls = ls_create(literal, "<interface-const>") => ls_free(ls)) {
+        let tokens_opt = tokenize(ls);
+        if (tokens_opt == null) {
+            return null;
+        }
+        with (let tv = tokens_opt as TokenVector => tv_free(tv)) {
+            if (tv_len(tv) == 3) {
+                let sign = tv_get(tv, 0);
+                let tok = tv_get(tv, 1);
+                let eof = tv_get(tv, 2);
+                if (ord(sign.token_type) != ord(TT_MINUS) || ord(eof.token_type) != ord(TT_EOF)) {
+                    return null;
+                }
+                match (tok.token_type) {
+                    TT_INT(text, value) => {
+                        if (starts_with_s(token_int_text(tok) as string, "-")) {
+                            return null;
+                        }
+                        return tr_const_value_new(CV_INT, 0 - value, false, "", 0);
+                    }
+                    TT_REALNUM(sig, exp_text, is_float) => {
+                        let real_text = token_real_text(tok) as string;
+                        if (starts_with_s(real_text, "-")) {
+                            return null;
+                        }
+                        let kind = CV_DOUBLE;
+                        if (is_float) {
+                            kind = CV_FLOAT;
+                        }
+                        return tr_const_value_new(kind, 0, false, "-" + real_text, 0);
+                    }
+                    TT_BIGINT(text2, base) => { return null; }
+                    _ => { return null; }
+                }
+            }
+            if (tv_len(tv) != 2) {
+                return null;
+            }
+            let tok = tv_get(tv, 0);
+            let eof = tv_get(tv, 1);
+            if (ord(eof.token_type) != ord(TT_EOF)) {
+                return null;
+            }
+            match (tok.token_type) {
+                TT_INT(text, value) => { return tr_const_value_new(CV_INT, value, false, "", 0); }
+                TT_BIGINT(text2, base) => { return tr_const_value_new(CV_BIGINT, 0, false, text2, base); }
+                TT_BYTE(text3, value2) => { return tr_const_value_new(CV_BYTE, value2 as int, false, text3, 0); }
+                TT_STRING(text4, value3) => { return tr_const_value_new(CV_STRING, 0, false, value3, 0); }
+                TT_REALNUM(sig, exp_text, is_float) => {
+                    let kind = CV_DOUBLE;
+                    if (is_float) {
+                        kind = CV_FLOAT;
+                    }
+                    return tr_const_value_new(kind, 0, false, token_real_text(tok) as string, 0);
+                }
+                TT_TRUE => { return tr_const_value_new(CV_BOOL, 0, true, "", 0); }
+                TT_FALSE => { return tr_const_value_new(CV_BOOL, 0, false, "", 0); }
+                TT_NULL => { return tr_const_value_new(CV_NULL, 0, false, "", 0); }
+                _ => { return null; }
+            }
+        }
+    }
+}
+
+/**
+ * Evaluate an interface-backed const symbol to a compile-time scalar value.
+ *
+ * @param ctx Const-evaluation context.
+ * @param sym Interface-backed const symbol.
+ * @param key Cache key for the symbol.
+ * @return Owned scalar constant value, or `null` for aggregate/non-scalar literals.
+ */
+func tr_const_eval_interface_symbol(ctx: ConstEvalContext*, sym: Symbol*, key: string) -> ConstValue*? {
+    let raw = tr_const_eval_interface_literal_raw(sym.const_literal);
+    if (raw == null) {
+        return null;
+    }
+    let resolved_type = spm_get(ctx.tables.let_types, key);
+    let value: ConstValue*? = null;
+    if (resolved_type != null) {
+        value = tr_const_value_for_type(raw as ConstValue*, resolved_type as Type*);
+    } else {
+        value = raw;
+        raw = null;
+    }
+    if (raw != null) {
+        tr_const_value_free(raw as ConstValue*);
+    }
+    if (value == null) {
+        return null;
+    }
+    spm_put(ctx.cache, key, tr_const_value_clone(value as ConstValue*) as void*);
+    return value;
 }
 
 /**
@@ -1224,11 +1335,7 @@ func tr_const_eval_binary(ctx: ConstEvalContext*, env: ModuleEnv*, arena: ExprAr
  * @return Owned constant value, or `null` when not evaluable.
  */
 func tr_const_eval_symbol(ctx: ConstEvalContext*, sym: Symbol*) -> ConstValue*? {
-    if (ord(sym.kind) != ord(SYM_LET) || sym.decl_ptr == null) {
-        return null;
-    }
-    let decl = sym.decl_ptr as LetDecl*;
-    if (!decl.is_const) {
+    if (ord(sym.kind) != ord(SYM_LET) || !sym.is_const) {
         return null;
     }
 
@@ -1238,6 +1345,11 @@ func tr_const_eval_symbol(ctx: ConstEvalContext*, sym: Symbol*) -> ConstValue*? 
         return tr_const_value_clone(cached as ConstValue*);
     }
 
+    if (sym.decl_ptr == null) {
+        return tr_const_eval_interface_symbol(ctx, sym, key);
+    }
+
+    let decl = sym.decl_ptr as LetDecl*;
     let unit = driver_find_unit(ctx.driver_state, sym.module_name);
     let env = nr_env_find(ctx.nr, sym.module_name);
     if (unit == null || env == null) {
@@ -1361,11 +1473,7 @@ func tr_expr_names_resolved_const(ctx: ConstEvalContext*, env: ModuleEnv*, expr_
         return false;
     }
     let sym = tr_symbol_lookup(ctx.nr, env, expr.text_value, expr.module_path, expr.name_qualifier);
-    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || (sym as Symbol*).decl_ptr == null) {
-        return false;
-    }
-    let decl = (sym as Symbol*).decl_ptr as LetDecl*;
-    if (!decl.is_const) {
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || !(sym as Symbol*).is_const) {
         return false;
     }
     return spm_get(ctx.tables.let_types, tr_key((sym as Symbol*).module_name, (sym as Symbol*).name)) != null;

@@ -11,23 +11,40 @@
 - Parent Initiative: `l1/work/initiatives/0001-separate-compilation-and-linking.md`
 - Subsystem: CLI / driver / build workflow / docs
 - Modules:
+  - `l1/compiler/stage1_l0/src/analysis.l0`
+  - `l1/compiler/stage1_l0/src/backend.l0`
+  - `l1/compiler/stage1_l0/src/c_emitter.l0`
   - `l1/compiler/stage1_l0/src/cli_args.l0`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
   - `l1/compiler/stage1_l0/src/driver.l0`
+  - `l1/compiler/stage1_l0/src/expr_types.l0`
+  - `l1/compiler/stage1_l0/src/interface_emitter.l0`
   - `l1/compiler/stage1_l0/src/l1c.l0`
   - `l1/compiler/stage1_l0/src/l1c_lib.l0`
+  - `l1/compiler/stage1_l0/src/name_resolver.l0`
+  - `l1/compiler/stage1_l0/src/parser/interface.l0`
+  - `l1/compiler/stage1_l0/src/signatures.l0`
+  - `l1/compiler/stage1_l0/src/sem_context.l0`
   - `l1/compiler/stage1_l0/src/source_paths.l0`
+  - `l1/compiler/stage1_l0/src/type_resolve.l0`
   - `l1/docs/roadmap.md`
 - Test modules:
+  - `l1/compiler/stage1_l0/tests/analysis_test.l0`
+  - `l1/compiler/stage1_l0/tests/backend_test.l0`
+  - `l1/compiler/stage1_l0/tests/c_emitter_test.l0`
   - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/interface_replay_test.l0`
+  - `l1/compiler/stage1_l0/tests/interface_test.l0`
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
+  - `l1/compiler/stage1_l0/tests/name_resolver_test.l0`
+  - `l1/compiler/stage1_l0/tests/type_resolve_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
-- Repro: `make -C l1 test-stage1 TESTS="cli_args_test build_driver_test driver_test l1c_lib_test"`
+- Repro: `make -C l1 test-all`
 
 ## Summary
 
@@ -45,14 +62,16 @@ compilation orchestration.
 
 ## Current State
 
-1. Stage 1 still treats one requested entry module plus its import closure as one generated C program build.
-2. The current CLI mode matrix is centered on `--build`, `--run`, and inspection modes, not compile-only output.
-3. The driver does not search an interface-path list for `.l1m` files.
-4. Current runtime short-option plumbing still occupies `-I` / `-L` in a pre-separate-compilation way.
-5. The abandoned local `module-interface-implementation` branch proved that direct `.l1m` imports are useful, but also
+1. Internal analysis entry points can replay supplied dependency-free direct-provider `.l1m` files through semantic
+   analysis and C generation without loading provider source.
+2. Stage 1 still treats one requested entry module plus its import closure as one generated C program build.
+3. The current CLI mode matrix is centered on `--build`, `--run`, and inspection modes, not compile-only output.
+4. The driver does not search an interface-path list for `.l1m` files.
+5. Current runtime short-option plumbing still occupies `-I` / `-L` in a pre-separate-compilation way.
+6. The abandoned local `module-interface-implementation` branch proved that direct `.l1m` imports are useful, but also
    showed that exposing `-I` to `--build`/`--run` before provider objects are linked leaves unresolved externs, and that
    compile-only must not emit a whole source closure into one object.
-6. The same branch did not complete transitive `.l1m` dependency loading, and any parsed implementation-tier `link`
+7. The same branch did not complete transitive `.l1m` dependency loading, and any parsed implementation-tier `link`
    entries were not yet populated into the project graph that later provider-object linking depends on.
 
 ## Defaults Chosen
@@ -78,7 +97,7 @@ compilation orchestration.
 
 ## Implementation Phases
 
-### Phase 1: Direct `.l1m` import plumbing
+### Phase 1: Direct `.l1m` import plumbing (completed)
 
 Teach the driver, name resolver, signature resolver, and backend to consume a direct imported `.l1m` for:
 
@@ -98,6 +117,40 @@ linking out of scope.
 This phase may start with direct provider interfaces only, but it must not silently treat missing transitive interface
 dependencies as success. Until transitive `.l1m` closure loading exists, nested interface dependencies should either be
 rejected with a clear diagnostic or documented as unsupported in the specific driver entry point being tested.
+
+Stage 1 now activates only supplied interfaces selected by imports and replays their cloned canonical metadata through
+name resolution, signature resolution, expression typing, interface projection, and C generation. Source and interface
+providers share enum export behavior; interface literals round-trip recursive arrays and signed scalars; extern ABI,
+unsafe, variadic, fingerprint, hash, and parameter-name metadata survive replay. Dependency-bearing direct providers
+remain rejected until closure loading lands, and malformed duplicate declarations are rejected before replay.
+
+The completed tranche passed focused replay, parser, resolver, backend, and emitter tests; focused replay/parser trace
+tests; and the clean full L1 suite:
+
+```bash
+make -C l1 test-stage1 TESTS="interface_replay_test interface_test name_resolver_test signatures_test type_resolve_test backend_test c_emitter_test"
+make -C l1 test-stage1-trace TESTS="interface_replay_test interface_test"
+make -C l1 clean test-all
+```
+
+#### Phase 1 review follow-up (completed 2026-07-13)
+
+Post-implementation review found three direct-replay gaps. Active interfaces now retain a wire-preserving clone for
+projection alongside their alias-normalized semantic clone, so alias spellings remain aligned with stored fingerprints
+and symbol hashes. Interface-backed `sys.real` providers now enable the runtime helper definitions and host math-library
+flags. Expression typing rejects `drop` on imported opaque pointees with `RES-0038`, because hidden owned fields require
+provider-side cleanup.
+
+The follow-up passed focused interface, emitter, and build-driver tests; focused replay/emitter trace tests; and clean
+full L1 validation:
+
+```bash
+make -C l1 test-stage1 TESTS="analysis_test interface_replay_test interface_test c_emitter_test build_driver_test"
+make -C l1 test-stage1-trace TESTS="analysis_test interface_replay_test c_emitter_test"
+make -C l1 clean test-all
+```
+
+Results: 48 normal tests, 37 default trace tests, the environment stackability check, and all four L1 examples passed.
 
 ### Phase 2: CLI option and mode design
 
@@ -176,7 +229,7 @@ provider objects or explicit external-link inputs.
 08. Implementation-tier `link` dependency records are populated before any build/run or link-verification path relies on
     them to select provider objects.
 09. Direct interface replay tests cover pointer-only use of imported opaque nominal types without requiring imported
-    layout, while by-value opaque rejection remains covered by the opaque-export semantic tests.
+    layout, reject layout-dependent `drop` on opaque pointees, and retain by-value opaque rejection coverage.
 10. Driver tests cover invalid mode combinations, missing interface paths, direct interface imports, and successful
     compile-only flows.
 11. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.

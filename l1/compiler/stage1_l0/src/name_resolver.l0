@@ -18,7 +18,9 @@ import util.strings;
 import ast;
 import dea_prelude;
 import driver;
+import module_interface;
 import symbols;
+import types;
 
 /**
  * Represents the ModuleEnv structure.
@@ -38,6 +40,17 @@ struct ModuleEnv {
     open_import_modules: StringSet*;
     alias_imports: StringPtrMap*;     // string -> ModuleEnv* (non-owning)
     prelude_imported: StringSet*;
+    pending_extern_shadows: VectorBase*; // PendingExternShadow*
+}
+
+/**
+ * Deferred local/imported extern shadow check.
+ */
+struct PendingExternShadow {
+    local: Symbol*;          // non-owning
+    imported: Symbol*;       // non-owning
+    imported_module: string;
+    name: string;
 }
 
 /**
@@ -245,6 +258,11 @@ func nr_module_env_free(self: ModuleEnv*) {
     ss_free(self.open_import_modules);
     spm_free(self.alias_imports);
     ss_free(self.prelude_imported);
+    for (let shadow_i = 0; shadow_i < vec_size(self.pending_extern_shadows); shadow_i = shadow_i + 1) {
+        let shadow = ptr_vec_get(self.pending_extern_shadows, shadow_i) as PendingExternShadow*;
+        drop shadow;
+    }
+    vec_free(self.pending_extern_shadows);
     if (self.module_ptr_owned) {
         module_free(self.module_ptr);
     }
@@ -394,6 +412,27 @@ func nr_module_env_has_prelude_name(self: ModuleEnv*, name: string) -> bool {
 }
 
 /**
+ * Return pending extern-shadow check count.
+ *
+ * @param self Module environment to inspect.
+ * @return Number of deferred checks.
+ */
+func nr_module_env_pending_extern_shadow_count(self: ModuleEnv*) -> int {
+    return vec_size(self.pending_extern_shadows);
+}
+
+/**
+ * Return one pending extern-shadow check.
+ *
+ * @param self Module environment to inspect.
+ * @param index Deferred check index.
+ * @return Pending extern-shadow check at `index`.
+ */
+func nr_module_env_pending_extern_shadow_get(self: ModuleEnv*, index: int) -> PendingExternShadow* {
+    return ptr_vec_get(self.pending_extern_shadows, index) as PendingExternShadow*;
+}
+
+/**
  * Return the names of locally defined symbols.
  *
  * @param self Module environment to inspect.
@@ -459,6 +498,21 @@ func nr_define_local(env: ModuleEnv*, diags: DiagCollector*, name: string, sym: 
 }
 
 /**
+ * Record a local/imported extern shadow check that needs resolved signatures.
+ *
+ * @param env Importing module environment.
+ * @param imported_module Module that provided the imported symbol.
+ * @param name Shadowed symbol name.
+ * @param local Local symbol.
+ * @param imported Imported symbol.
+ */
+func nr_add_pending_extern_shadow(env: ModuleEnv*, imported_module: string, name: string, local: Symbol*,
+                                  imported: Symbol*) {
+    ptr_vec_push(env.pending_extern_shadows,
+        new PendingExternShadow(local, imported, imported_module, name) as void*);
+}
+
+/**
  * Collect locally declared top-level symbols for one module.
  *
  * @param env Module environment being populated.
@@ -471,8 +525,9 @@ func nr_collect_locals(env: ModuleEnv*, diags: DiagCollector*) {
         match (top.kind) {
             TD_FUNC => {
                 let decl = top.data as FuncDecl*;
-                nr_define_local(env, diags, decl.name,
-                    symbol_create(decl.name, SYM_FUNC, env.module_name, "", decl as void*, decl.span));
+                let sym = symbol_create(decl.name, SYM_FUNC, env.module_name, "", decl as void*, decl.span);
+                sym.is_extern = decl.is_extern;
+                nr_define_local(env, diags, decl.name, sym);
             }
             TD_STRUCT => {
                 let decl = top.data as StructDecl*;
@@ -497,8 +552,9 @@ func nr_collect_locals(env: ModuleEnv*, diags: DiagCollector*) {
             }
             TD_LET => {
                 let decl = top.data as LetDecl*;
-                nr_define_local(env, diags, decl.name,
-                    symbol_create(decl.name, SYM_LET, env.module_name, "", decl as void*, decl.span));
+                let sym2 = symbol_create(decl.name, SYM_LET, env.module_name, "", decl as void*, decl.span);
+                sym2.is_const = decl.is_const;
+                nr_define_local(env, diags, decl.name, sym2);
             }
         }
     }
@@ -531,6 +587,33 @@ func nr_manifest_name_is_opaque(manifest: ExportManifest*, name: string) -> bool
 }
 
 /**
+ * Export the variants of every transparently exported enum.
+ *
+ * Enum variants are derived members of their owning enum's public surface,
+ * not independently exportable top-level declarations.
+ *
+ * @param env Module environment whose base export set is complete.
+ */
+func nr_export_transparent_enum_variants(env: ModuleEnv*) {
+    for (let i = 0; i < spm_capacity(env.locals); i = i + 1) {
+        if (!spm_slot_occupied(env.locals, i)) {
+            continue;
+        }
+        let name = spm_slot_key(env.locals, i);
+        let sym = spm_slot_value(env.locals, i) as Symbol*;
+        if (ord(sym.kind) != ord(SYM_ENUM_VARIANT)) {
+            continue;
+        }
+        let owner = spm_get(env.exports, sym.owner_name);
+        if (owner == null || ord((owner as Symbol*).kind) != ord(SYM_ENUM) ||
+            ss_has(env.opaque_exports, sym.owner_name)) {
+            continue;
+        }
+        spm_put(env.exports, name, sym as void*);
+    }
+}
+
+/**
  * Compute one module's exported symbol map from its manifest and locals.
  *
  * @param env Module environment being populated.
@@ -542,11 +625,13 @@ func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
         for (let i = 0; i < spm_capacity(env.locals); i = i + 1) {
             if (spm_slot_occupied(env.locals, i)) {
                 let name = spm_slot_key(env.locals, i);
-                if (nr_default_exports_name(name)) {
-                    spm_put(env.exports, name, spm_slot_value(env.locals, i));
+                let sym = spm_slot_value(env.locals, i) as Symbol*;
+                if (ord(sym.kind) != ord(SYM_ENUM_VARIANT) && nr_default_exports_name(name)) {
+                    spm_put(env.exports, name, sym as void*);
                 }
             }
         }
+        nr_export_transparent_enum_variants(env);
         return;
     }
 
@@ -554,9 +639,13 @@ func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
     if (m.export_all) {
         for (let j = 0; j < spm_capacity(env.locals); j = j + 1) {
             if (spm_slot_occupied(env.locals, j)) {
-                spm_put(env.exports, spm_slot_key(env.locals, j), spm_slot_value(env.locals, j));
+                let sym2 = spm_slot_value(env.locals, j) as Symbol*;
+                if (ord(sym2.kind) != ord(SYM_ENUM_VARIANT)) {
+                    spm_put(env.exports, spm_slot_key(env.locals, j), sym2 as void*);
+                }
             }
         }
+        nr_export_transparent_enum_variants(env);
         return;
     }
 
@@ -576,7 +665,7 @@ func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
             ss_add(seen, export_name);
 
             let sym = nr_module_env_local(env, export_name);
-            if (sym == null) {
+            if (sym == null || ord((sym as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
                 nr_span_diag_error(
                     diags,
                     "RES-0031",
@@ -603,6 +692,7 @@ func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
             }
         }
     }
+    nr_export_transparent_enum_variants(env);
 }
 
 /**
@@ -687,6 +777,9 @@ func nr_import_symbol(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagColl
                 env.module_ptr.filename,
                 local.span
             );
+        } else if (ord(local.kind) == ord(SYM_FUNC) && ord(sym.kind) == ord(SYM_FUNC) &&
+                   local.is_extern && sym.is_extern && sym.decl_ptr == null) {
+            nr_add_pending_extern_shadow(env, imported_env.module_name, name, local, sym);
         } else {
             nr_span_diag_warn(
                 diags,
@@ -941,7 +1034,8 @@ func nr_make_owned_env(module_ptr: Module*, module_ptr_owned: bool) -> ModuleEnv
         ss_create(),
         ss_create(),
         spm_create(),
-        ss_create()
+        ss_create(),
+        ptr_vec_create(0)
     );
 }
 
@@ -954,6 +1048,121 @@ func nr_make_dea_env() -> ModuleEnv* {
     let module_ptr = dea_make_virtual_module();
     let env = nr_make_owned_env(module_ptr, true);
     dea_populate_locals(env.locals, env.all);
+    return env;
+}
+
+/**
+ * Create the synthetic module node used by an interface-backed environment.
+ *
+ * @param mi Interface backing the module environment.
+ * @return New empty module node for the interface provider.
+ */
+func nr_make_interface_module(mi: ModuleInterface*) -> Module* {
+    return new Module(mi.module_name, null, ptr_vec_create(0), ptr_vec_create(0), dea_zero_span(),
+        "<interface:" + mi.module_name + ">");
+}
+
+/**
+ * Define an interface-backed local/exported symbol.
+ *
+ * @param env Interface module environment being populated.
+ * @param diags Diagnostic collector.
+ * @param name Symbol name.
+ * @param kind Symbol kind.
+ * @param owner_name Owner name for enum variants, otherwise empty.
+ * @param resolved_type Optional resolved type to clone into the symbol.
+ * @param span Source/interface span for diagnostics.
+ */
+func nr_define_interface_symbol(env: ModuleEnv*, diags: DiagCollector*, name: string, kind: SymbolKind,
+                                owner_name: string, resolved_type: Type*?, span: Span, is_const: bool,
+                                const_literal: string, is_extern: bool) {
+    let sym = symbol_create(name, kind, env.module_name, owner_name, null, span);
+    if (resolved_type != null) {
+        symbol_set_type_clone(sym, resolved_type as Type*);
+    }
+    sym.is_const = is_const;
+    sym.const_literal = const_literal;
+    sym.is_extern = is_extern;
+    nr_define_local(env, diags, name, sym);
+}
+
+/**
+ * Mark every local interface symbol as exported.
+ *
+ * @param env Interface module environment.
+ */
+func nr_export_all_interface_symbols(env: ModuleEnv*) {
+    for (let i = 0; i < spm_capacity(env.locals); i = i + 1) {
+        if (spm_slot_occupied(env.locals, i)) {
+            spm_put(env.exports, spm_slot_key(env.locals, i), spm_slot_value(env.locals, i));
+        }
+    }
+}
+
+/**
+ * Populate one module environment from parsed interface metadata.
+ *
+ * @param env Interface-backed environment to populate.
+ * @param mi Interface metadata.
+ * @param diags Diagnostic collector.
+ */
+func nr_populate_interface_env(env: ModuleEnv*, mi: ModuleInterface*, diags: DiagCollector*) {
+    for (let i = 0; i < vec_size(mi.struct_infos); i = i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, i) as StructInfo*;
+        nr_define_interface_symbol(env, diags, info.name, SYM_STRUCT, "", info.struct_type, info.span, false, "",
+            false);
+        if (info.is_opaque) {
+            ss_add(env.opaque_exports, info.name);
+        }
+    }
+
+    for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+        let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+        nr_define_interface_symbol(env, diags, info2.name, SYM_ENUM, "", info2.enum_type, info2.span, false, "",
+            false);
+        if (info2.is_opaque) {
+            ss_add(env.opaque_exports, info2.name);
+        } else {
+            for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+                let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+                nr_define_interface_symbol(env, diags, variant.name, SYM_ENUM_VARIANT, info2.name, info2.enum_type,
+                    info2.span, false, "", false);
+            }
+        }
+    }
+
+    for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
+        let entry = ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*;
+        nr_define_interface_symbol(env, diags, entry.name, SYM_TYPE_ALIAS, "", entry.ty, dea_zero_span(), false, "",
+            false);
+    }
+
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        let entry2 = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+        nr_define_interface_symbol(env, diags, entry2.name, SYM_FUNC, "", entry2.ty, dea_zero_span(), false, "",
+            entry2.is_extern);
+    }
+
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        let entry3 = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
+        nr_define_interface_symbol(env, diags, entry3.name, SYM_LET, "", entry3.ty, dea_zero_span(),
+            entry3.is_const, entry3.literal, false);
+    }
+
+    nr_export_all_interface_symbols(env);
+}
+
+/**
+ * Create a module environment backed by a parsed `.l1m` interface.
+ *
+ * @param mi Interface backing the environment.
+ * @param diags Diagnostic collector.
+ * @return New owned interface environment.
+ */
+func nr_make_interface_env(mi: ModuleInterface*, diags: DiagCollector*) -> ModuleEnv* {
+    let module_ptr = nr_make_interface_module(mi);
+    let env = nr_make_owned_env(module_ptr, true);
+    nr_populate_interface_env(env, mi, diags);
     return env;
 }
 
@@ -977,7 +1186,7 @@ func nr_env_names_sorted(self: NameResolution*) -> StringVector* {
  * @return Name-resolution result containing per-module environments.
  */
 func nr_resolve(driver_state: DriverState*, diags: DiagCollector*) -> NameResolution* {
-    let result = new NameResolution(ptr_vec_create(driver_unit_count(driver_state) + 1), spm_create());
+    let result = new NameResolution(ptr_vec_create(driver_unit_count(driver_state) + driver_interface_count(driver_state) + 1), spm_create());
 
     for (let i = 0; i < driver_unit_count(driver_state); i = i + 1) {
         let unit = driver_unit_get(driver_state, i);
@@ -989,6 +1198,16 @@ func nr_resolve(driver_state: DriverState*, diags: DiagCollector*) -> NameResolu
         let env = nr_make_env(module_ptr);
         ptr_vec_push(result.envs, env as void*);
         spm_put(result.by_name, env.module_name, env as void*);
+    }
+
+    for (let iface_i = 0; iface_i < driver_interface_count(driver_state); iface_i = iface_i + 1) {
+        let iface = driver_interface_get(driver_state, iface_i);
+        if (spm_get(result.by_name, iface.module_name) != null) {
+            continue;
+        }
+        let iface_env = nr_make_interface_env(iface, diags);
+        ptr_vec_push(result.envs, iface_env as void*);
+        spm_put(result.by_name, iface_env.module_name, iface_env as void*);
     }
 
     let dea_env = nr_make_dea_env();

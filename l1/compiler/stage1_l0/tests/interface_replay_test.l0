@@ -1,0 +1,646 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module interface_replay_test;
+
+import std.assert;
+import std.io;
+import std.string;
+import std.vector;
+
+import analysis;
+import ast;
+import backend;
+import build_driver;
+import codegen_options;
+import driver;
+import mi_utils;
+import module_interface;
+import name_resolver;
+import parser.interface;
+import sem_context;
+import signatures;
+import source_paths;
+import types;
+import util.log;
+
+/**
+ * Returns the root directory for direct interface-replay fixtures.
+ *
+ * @return The interface replay fixture directory used by these tests.
+ */
+func fixture_root() -> string {
+    return "compiler/stage1_l0/tests/fixtures/interface_replay";
+}
+
+/**
+ * Creates source search paths rooted at the interface replay fixtures.
+ *
+ * @return Search paths for interface replay tests.
+ */
+func make_paths() -> SourceSearchPaths* {
+    let sp = sp_create();
+    sp_add_project_root(sp, fixture_root());
+    return sp;
+}
+
+/**
+ * Provider interface used by consumer fixtures.
+ *
+ * @return Parsed `.l1m` text for the synthetic provider.
+ */
+func provider_interface_text() -> string {
+    return "module interface replay_provider;\n" +
+        "fingerprint \"\";\n" +
+        "\n" +
+        "struct Point {\n" +
+        "  x: int;\n" +
+        "  y: int;\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "enum Shade {\n" +
+        "  Red;\n" +
+        "  Rgb(red: int, green: int, blue: int);\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "enum Message {\n" +
+        "  Empty;\n" +
+        "  Text(value: string);\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "opaque struct Handle == \"\";\n" +
+        "opaque enum Token == \"\";\n" +
+        "\n" +
+        "type PointAlias = Point == \"\";\n" +
+        "func allocate_point() -> Point* == \"\";\n" +
+        "func make_handle() -> Handle* == \"\";\n" +
+        "func make_token() -> Token*? == \"\";\n" +
+        "func make_point(px: int, py: int) -> Point == \"\";\n" +
+        "func mix(color: Shade, point: PointAlias) -> int == \"\";\n" +
+        "func borrow(handle: Handle*?) -> Handle*? == \"\";\n" +
+        "extern func c_score(value: int) -> int == \"\";\n" +
+        "unsafe extern func c_touch(handle: Handle*?) -> void == \"\";\n" +
+        "func collect(prefix: int, values: int...) -> int == \"\";\n" +
+        "const origin_x: int = 1 == \"\";\n" +
+        "const min_offset: int = -5 == \"\";\n" +
+        "const enabled: bool = true == \"\";\n" +
+        "const origin_point: Point = Point(1, 2) == \"\";\n" +
+        "const weights: int[3] = [2, 3, 5] == \"\";\n" +
+        "let current: Point? == \"\";\n";
+}
+
+/**
+ * Minimal interface used to exercise projection from interface-backed symbols.
+ *
+ * @return Parsed `.l1m` text for the projection provider.
+ */
+func projection_provider_interface_text() -> string {
+    return "module interface replay_projection_provider;\n" +
+        "fingerprint \"sip13:PROJECTION\";\n" +
+        "\n" +
+        "type Number = int == \"sip13:NUMBER\";\n" +
+        "\n" +
+        "func collect(prefix: int, values: int...) -> int == \"sip13:COLLECT\";\n" +
+        "\n" +
+        "func identity(value: Number) -> Number == \"sip13:IDENTITY\";\n" +
+        "\n" +
+        "extern func ping(value: int) -> int == \"sip13:PING\";\n" +
+        "\n" +
+        "unsafe extern func touch(value: int*) -> void == \"sip13:TOUCH\";\n" +
+        "\n" +
+        "const min_offset: int = -5 == \"sip13:MIN_OFFSET\";\n" +
+        "\n" +
+        "const values: int[3] = [1, 2, 3] == \"sip13:VALUES\";\n" +
+        "\n" +
+        "let current: int == \"sip13:CURRENT\";\n";
+}
+
+/**
+ * Minimal dependency-free `sys.real` interface used for replay.
+ *
+ * @return Parsed `.l1m` text for the runtime binding provider.
+ */
+func sys_real_interface_text() -> string {
+    return "module interface sys.real;\n" +
+        "fingerprint \"\";\n" +
+        "\n" +
+        "extern func rt_real_sqrt_d(x: double) -> double == \"\";\n";
+}
+
+/**
+ * Parse the synthetic provider interface.
+ *
+ * @return Parsed interface result.
+ */
+func parse_provider_interface() -> InterfaceParseResult* {
+    let parsed = pi_parse_interface(provider_interface_text(), "<replay_provider.l1m>");
+    assert(!ipr_has_errors(parsed), "provider interface should parse");
+    assert(parsed.interface != null, "provider interface should produce metadata");
+    return parsed;
+}
+
+/**
+ * Analyze one consumer module with the synthetic provider interface supplied.
+ *
+ * @param module_name Consumer module name.
+ * @return Analysis result.
+ */
+func analyze_with_provider(module_name: string) -> AnalysisResult* {
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let parsed = parse_provider_interface();
+    let interfaces = ptr_vec_create(1);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+    let result = analysis_analyze_entry_with_interfaces(sp, module_name, interfaces, cfg);
+    vec_free(interfaces);
+    ipr_free(parsed);
+    drop cfg;
+    sp_free(sp);
+    return result;
+}
+
+/**
+ * Analyze the projection consumer with its minimal provider interface.
+ *
+ * @return Analysis result retaining an active clone of the provider interface.
+ */
+func analyze_with_projection_provider() -> AnalysisResult* {
+    let parsed = pi_parse_interface(
+        projection_provider_interface_text(),
+        "<replay_projection_provider.l1m>"
+    );
+    assert(!ipr_has_errors(parsed), "projection provider interface should parse");
+    assert(parsed.interface != null, "projection provider interface should produce metadata");
+
+    let interfaces = ptr_vec_create(1);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_projection_consumer", interfaces, cfg);
+
+    vec_free(interfaces);
+    ipr_free(parsed);
+    drop cfg;
+    sp_free(sp);
+    return result;
+}
+
+/**
+ * Analyze the runtime-binding consumer with `sys.real` supplied as an interface.
+ *
+ * @return Analysis result retaining an active `sys.real` interface clone.
+ */
+func analyze_with_sys_real_interface() -> AnalysisResult* {
+    let parsed = pi_parse_interface(sys_real_interface_text(), "<sys.real.l1m>");
+    assert(!ipr_has_errors(parsed), "sys.real provider interface should parse");
+    assert(parsed.interface != null, "sys.real provider interface should produce metadata");
+
+    let interfaces = ptr_vec_create(1);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_sys_real", interfaces, cfg);
+
+    vec_free(interfaces);
+    ipr_free(parsed);
+    drop cfg;
+    sp_free(sp);
+    return result;
+}
+
+/**
+ * Checks if a specific analysis diagnostic code is present.
+ *
+ * @param result Analysis result to inspect.
+ * @param code Diagnostic code to search for.
+ * @return `true` if the diagnostic code is present.
+ */
+func has_diag_code(result: AnalysisResult*, code: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Count diagnostics with one code.
+ *
+ * @param result Analysis result to inspect.
+ * @param code Diagnostic code to count.
+ * @return Number of matching diagnostics.
+ */
+func diag_code_count(result: AnalysisResult*, code: string) -> int {
+    let count = 0;
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        if (analysis_diag_get(result, i).code == code) {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+/**
+ * Tests open-import direct interface replay through analysis and codegen.
+ */
+func test_direct_interface_replay_open_import_codegen() {
+    let result = analyze_with_provider("replay_open");
+    assert(!analysis_has_errors(result), "open-import consumer should analyze with provider interface");
+    assert(driver_unit_count(result.driver_state) == 1, "provider source must not be loaded");
+    assert(driver_interface_count(result.driver_state) == 1, "provider interface should be cloned into driver state");
+    assert(sv_size(analysis_source_names(result)) == 1, "expected only the consumer source in source cache");
+
+    let names = analysis_name_resolution(result) as NameResolution*;
+    let env = nr_env_find(names, "replay_open");
+    assert(env != null, "expected consumer module env");
+    assert(nr_module_env_imported(env as ModuleEnv*, "Point") != null, "expected imported struct symbol");
+    assert(nr_module_env_imported(env as ModuleEnv*, "Rgb") != null, "expected imported enum variant symbol");
+    assert(nr_module_env_imported(env as ModuleEnv*, "origin_x") != null, "expected imported const symbol");
+    assert(nr_module_env_imported(env as ModuleEnv*, "weights") != null, "expected imported array const symbol");
+
+    let sigs = analysis_signature_tables(result) as SignatureTables*;
+    let point = sig_lookup_struct_info(sigs, "replay_provider", "Point");
+    assert(point != null, "expected replayed Point struct info");
+    assert(vec_size((point as StructInfo*).fields) == 2, "expected replayed Point fields");
+    let handle = sig_lookup_struct_info(sigs, "replay_provider", "Handle");
+    assert(handle != null && (handle as StructInfo*).is_opaque, "expected replayed opaque Handle");
+    let mix_ty = sig_lookup_func_type(sigs, "replay_provider", "mix");
+    assert(mix_ty != null && type_format(mix_ty as Type*) == "func(replay_provider::Shade, replay_provider::Point) -> int",
+        "expected replayed mix function type");
+    let current_ty = sig_lookup_let_type(sigs, "replay_provider", "current");
+    assert(current_ty != null && type_format(current_ty as Type*) == "replay_provider::Point?",
+        "expected replayed current binding type");
+
+    with (let opts = cg_options_create() => cg_options_free(opts),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "struct __deaM15replay_providerS5Point {"), "expected imported Point definition");
+        assert(contains_s(generated, "dea_int x;"), "expected imported Point.x field");
+        assert(contains_s(generated, "enum __deaM15replay_providerE5Shade_tag {"), "expected imported Shade tag enum");
+        assert(contains_s(generated, "enum __deaM15replay_providerE7Message_tag {"), "expected imported Message tag enum");
+        assert(contains_s(generated, "struct __deaM15replay_providerS6Handle;"), "expected opaque Handle forward decl");
+        assert(!contains_s(generated, "struct __deaM15replay_providerS6Handle {"), "opaque Handle must not be defined");
+        assert(contains_s(generated, "__deaM15replay_providerN10make_point"), "expected imported make_point prototype/call");
+        assert(contains_s(generated, "(dea_int px, dea_int py);"), "expected interface function parameter names");
+        assert(contains_s(generated, "dea_int (c_score)(dea_int value);"), "expected raw extern function prototype");
+        assert(contains_s(generated, "void (c_touch)("), "expected raw unsafe extern function prototype");
+        assert(contains_s(generated,
+            "dea_int __deaM15replay_providerN7collectF2iVii(dea_int prefix, __deaWi values);"),
+            "expected imported variadic function prototype");
+        assert(contains_s(generated, "c_score("), "expected raw extern function call");
+        assert(contains_s(generated,
+            "dea_int collected = __deaM15replay_providerN7collectF2iVii(1, " +
+                "((__deaWi){ .len = ((dea_int)2), .data = dea_varargs_8.data }));"),
+            "expected imported variadic function call");
+        assert(!contains_s(generated, "__deaM15replay_providerN7c_score"), "extern replay must not mangle c_score");
+        assert(contains_s(generated, "case __deaM15replay_providerE7Message_Text:"), "expected imported enum cleanup switch");
+        assert(contains_s(generated, ".data.Text.value"), "expected imported enum cleanup field name");
+        assert(contains_s(generated, "extern const dea_int __deaM15replay_providerN8origin_x;"),
+            "expected imported const declaration");
+        assert(contains_s(generated, "extern const __deaA3_i __deaM15replay_providerN7weights;"),
+            "expected imported array const declaration");
+        assert(contains_s(generated, "__deaM15replay_providerN7current;"), "expected imported let declaration/reference");
+        assert(!contains_s(generated, "__deaM15replay_providerI4init"), "provider init function must not be emitted");
+    }
+
+    analysis_result_free(result);
+}
+
+/**
+ * Tests alias and selective imports replay through interface-backed envs.
+ */
+func test_direct_interface_replay_alias_and_selective_imports() {
+    let alias_result = analyze_with_provider("replay_alias");
+    assert(!analysis_has_errors(alias_result), "alias import should analyze with provider interface");
+    assert(driver_unit_count(alias_result.driver_state) == 1, "alias import must not load provider source");
+    analysis_result_free(alias_result);
+
+    let selective_result = analyze_with_provider("replay_selective");
+    assert(!analysis_has_errors(selective_result), "selective import should analyze with provider interface");
+    assert(driver_unit_count(selective_result.driver_state) == 1, "selective import must not load provider source");
+    analysis_result_free(selective_result);
+}
+
+/**
+ * Tests imported opaque layout operations still report RES-0038.
+ */
+func test_direct_interface_replay_opaque_layout_error() {
+    let result = analyze_with_provider("replay_opaque_layout_err");
+    assert(analysis_has_errors(result), "opaque by-value constructor should fail");
+    assert(has_diag_code(result, "RES-0038"), "expected RES-0038 for imported opaque layout use");
+    analysis_result_free(result);
+}
+
+/**
+ * Tests dropping interface-backed opaque pointees requires hidden layout.
+ */
+func test_direct_interface_replay_opaque_drop_error() {
+    let result = analyze_with_provider("replay_opaque_drop_err");
+    assert(analysis_has_errors(result), "opaque pointer drop should fail");
+    assert(diag_code_count(result, "RES-0038") == 2,
+        "expected RES-0038 for opaque struct and nullable enum pointer drops");
+    analysis_result_free(result);
+}
+
+/**
+ * Tests imported interface const literals in scalar const contexts.
+ */
+func test_direct_interface_replay_const_scalar_contexts() {
+    let result = analyze_with_provider("replay_const_scalar_ok");
+    assert(!analysis_has_errors(result), "imported scalar const contexts should analyze");
+    let sigs = analysis_signature_tables(result) as SignatureTables*;
+    let fn_ty = sig_lookup_func_type(sigs, "replay_const_scalar_ok", "take");
+    assert(fn_ty != null, "take signature should resolve");
+    let params = (fn_ty as Type*).params as VectorBase*;
+    let param_ty = ptr_vec_get(params, 0) as Type*;
+    assert(ord(param_ty.kind) == ord(TY_ARRAY), "take parameter should be an array");
+    assert(param_ty.array_len == 1, "imported const array bound should resolve to length 1");
+    analysis_result_free(result);
+}
+
+/**
+ * Tests imported interface const diagnostics.
+ */
+func test_direct_interface_replay_const_diagnostics() {
+    let assign_result = analyze_with_provider("replay_const_assign_err");
+    assert(analysis_has_errors(assign_result), "imported const assignment should fail");
+    assert(has_diag_code(assign_result, "TYP-0360"), "expected TYP-0360 for imported const assignment");
+    analysis_result_free(assign_result);
+
+    let bound_result = analyze_with_provider("replay_const_nonint_bound_err");
+    assert(analysis_has_errors(bound_result), "non-int imported const array bound should fail");
+    assert(has_diag_code(bound_result, "TYP-0816"), "expected TYP-0816 for non-int imported const bound");
+    assert(!has_diag_code(bound_result, "TYP-0815"), "imported const bound must not be reported as non-const");
+    analysis_result_free(bound_result);
+
+    let aggregate_result = analyze_with_provider("replay_const_aggregate_case_err");
+    assert(analysis_has_errors(aggregate_result), "aggregate imported const case arm should fail");
+    assert(has_diag_code(aggregate_result, "TYP-0113"), "expected TYP-0113 for aggregate imported const case arm");
+    analysis_result_free(aggregate_result);
+
+    let duplicate_result = analyze_with_provider("replay_const_duplicate_case_err");
+    assert(analysis_has_errors(duplicate_result), "duplicate imported const case arm should fail");
+    assert(has_diag_code(duplicate_result, "TYP-0108"), "expected TYP-0108 for duplicate imported const case arm");
+    analysis_result_free(duplicate_result);
+}
+
+/**
+ * Tests source extern declarations shadowing interface-backed extern imports.
+ */
+func test_direct_interface_replay_extern_shadow_warnings() {
+    let ok_result = analyze_with_provider("replay_extern_shadow_ok");
+    assert(!analysis_has_errors(ok_result), "compatible extern shadow should be a warning only");
+    assert(has_diag_code(ok_result, "RES-0020"), "expected RES-0020 for compatible extern shadow");
+    analysis_result_free(ok_result);
+
+    let bad_result = analyze_with_provider("replay_extern_shadow_bad");
+    assert(analysis_has_errors(bad_result), "incompatible extern shadow should fail analysis");
+    assert(has_diag_code(bad_result, "RES-0023"), "expected RES-0023 for incompatible extern shadow");
+    analysis_result_free(bad_result);
+}
+
+/**
+ * Tests incompatible source extern shadowing remains warning-only.
+ */
+func test_source_extern_shadow_incompatibility_remains_warning() {
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry(sp, "replay_source_extern_shadow", cfg);
+
+    assert(!analysis_has_errors(result), "source extern shadow incompatibility should remain warning-only");
+    assert(has_diag_code(result, "RES-0021"), "expected RES-0021 for incompatible source extern shadow");
+    assert(!has_diag_code(result, "RES-0023"), "source extern shadow must not produce RES-0023");
+
+    analysis_result_free(result);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests failed local signature resolution suppresses the dependent shadow error.
+ */
+func test_interface_extern_shadow_unknown_type_diagnostic() {
+    let result = analyze_with_provider("replay_extern_shadow_unknown_type");
+    assert(analysis_has_errors(result), "unknown local extern parameter type should fail analysis");
+    assert(has_diag_code(result, "SIG-0019"), "expected SIG-0019 for unknown local extern parameter type");
+    assert(!has_diag_code(result, "RES-0023"), "failed signature resolution must not produce RES-0023");
+    analysis_result_free(result);
+}
+
+/**
+ * Tests interface projection preserves complete interface-backed metadata.
+ */
+func test_project_interface_backed_metadata() {
+    let result = analyze_with_projection_provider();
+    assert(!analysis_has_errors(result), "projection consumer should analyze with provider interface");
+    assert(driver_interface_count(result.driver_state) == 1, "projection provider interface should be active");
+    let identity_ty = sig_lookup_func_type(result.signatures as SignatureTables*,
+        "replay_projection_provider", "identity");
+    assert(identity_ty != null && type_format(identity_ty as Type*) == "func(int) -> int",
+        "semantic interface clone should resolve alias references");
+
+    let emitted = analysis_emit_interface(result, "replay_projection_provider");
+    assert(emitted != null, "active interface-backed provider should project to `.l1m`");
+    let emitted_text = emitted as string;
+    assert(emitted_text == projection_provider_interface_text(),
+        "projected interface-backed metadata should round-trip byte-for-byte");
+    let reparsed = pi_parse_interface(emitted_text, "<reprojected.l1m>");
+    assert(!ipr_has_errors(reparsed), "reprojected interface should parse");
+    assert((reparsed.interface as ModuleInterface*).fingerprint == "sip13:PROJECTION",
+        "reprojected interface should preserve its fingerprint");
+    ipr_free(reparsed);
+
+    analysis_result_free(result);
+}
+
+/**
+ * Tests interface-backed `sys.real` enables runtime definitions and link flags.
+ */
+func test_direct_interface_replay_sys_real_runtime_support() {
+    let result = analyze_with_sys_real_interface();
+    assert(!analysis_has_errors(result), "sys.real interface consumer should analyze");
+    assert(driver_find_unit(result.driver_state, "sys.real") == null,
+        "sys.real source should not be loaded when its interface is active");
+    assert(driver_find_interface(result.driver_state, "sys.real") != null,
+        "sys.real interface should be active");
+    assert(analysis_uses_sys_real(result), "active sys.real interface should enable runtime support");
+
+    with (let opts = cg_options_create() => cg_options_free(opts),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "#define DEA_USE_SYS_REAL 1"),
+            "interface-backed sys.real should enable runtime helper definitions");
+        assert(contains_s(generated, "rt_real_sqrt_d("),
+            "interface-backed sys.real call should reach generated C");
+    }
+
+    with (let extra_opts = sv_create(0) => sv_free(extra_opts),
+          let words = sv_create(12) => sv_free(words)) {
+        assert(bd_push_c_compile_command_words(words, "cc", "gcc", extra_opts, null,
+            "runtime/include", "input.c", "out", analysis_uses_sys_real(result)),
+            "interface-backed sys.real should request host math linkage");
+        assert(sv_get(words, sv_size(words) - 1) == "-lm",
+            "interface-backed sys.real should append the host math library flag");
+    }
+
+    analysis_result_free(result);
+}
+
+/**
+ * Tests source and interface providers expose the same transparent enum variants.
+ */
+func test_source_and_interface_enum_exports_match() {
+    let sp = make_paths();
+    let source_cfg = log_config_create(LL_SILENT, false);
+    let source_result = analysis_analyze_entry(sp, "replay_enum_consumer", source_cfg);
+    assert(!analysis_has_errors(source_result), "source-backed enum consumer should analyze");
+    assert(driver_unit_count(source_result.driver_state) == 2, "source provider should be loaded");
+    let source_names = analysis_name_resolution(source_result) as NameResolution*;
+    let source_env = nr_env_find(source_names, "replay_enum_consumer") as ModuleEnv*;
+    assert(nr_module_env_imported(source_env, "Red") != null, "source provider should export Red");
+    assert(nr_module_env_imported(source_env, "Rgb") != null, "source provider should export Rgb");
+
+    let provider_cfg = log_config_create(LL_SILENT, false);
+    let provider_result = analysis_analyze_entry(sp, "replay_enum_provider", provider_cfg);
+    assert(!analysis_has_errors(provider_result), "enum provider should analyze for interface emission");
+    let emitted = analysis_emit_interface(provider_result, "replay_enum_provider");
+    assert(emitted != null, "enum provider should emit an interface");
+    let parsed = pi_parse_interface(emitted as string, "<replay_enum_provider.l1m>");
+    assert(!ipr_has_errors(parsed), "emitted enum provider interface should parse");
+
+    let interfaces = ptr_vec_create(1);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+    let replay_cfg = log_config_create(LL_SILENT, false);
+    let replay_result = analysis_analyze_entry_with_interfaces(sp, "replay_enum_consumer", interfaces, replay_cfg);
+    assert(!analysis_has_errors(replay_result), "interface-backed enum consumer should analyze");
+    assert(driver_unit_count(replay_result.driver_state) == 1, "interface provider source should not be loaded");
+    let replay_names = analysis_name_resolution(replay_result) as NameResolution*;
+    let replay_env = nr_env_find(replay_names, "replay_enum_consumer") as ModuleEnv*;
+    assert(nr_module_env_imported(replay_env, "Red") != null, "interface provider should export Red");
+    assert(nr_module_env_imported(replay_env, "Rgb") != null, "interface provider should export Rgb");
+
+    analysis_result_free(replay_result);
+    vec_free(interfaces);
+    ipr_free(parsed);
+    analysis_result_free(provider_result);
+    analysis_result_free(source_result);
+    drop replay_cfg;
+    drop provider_cfg;
+    drop source_cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests dependency-bearing interfaces are rejected for direct replay.
+ */
+func test_direct_interface_replay_rejects_dependencies() {
+    let bad_text = "module interface replay_provider;\n" +
+        "fingerprint \"\";\n" +
+        "\n" +
+        "require other::Thing == \"\";\n" +
+        "\n" +
+        "func ping() -> void == \"\";\n";
+    let parsed = pi_parse_interface(bad_text, "<replay_bad.l1m>");
+    assert(!ipr_has_errors(parsed), "dependency-bearing interface should parse");
+    let interfaces = ptr_vec_create(1);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_open", interfaces, cfg);
+    assert(analysis_has_errors(result), "dependency-bearing interface should be rejected");
+    assert(has_diag_code(result, "DRV-0070"), "expected DRV-0070 for require/link replay dependency");
+
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(parsed);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests unused supplied interfaces are ignored, including dependency-bearing ones.
+ */
+func test_direct_interface_replay_ignores_unused_interfaces() {
+    let provider = parse_provider_interface();
+    let unused_text = "module interface replay_unused;\n" +
+        "fingerprint \"\";\n" +
+        "\n" +
+        "require other::Thing == \"\";\n" +
+        "\n" +
+        "func ping() -> void == \"\";\n";
+    let unused = pi_parse_interface(unused_text, "<replay_unused.l1m>");
+    assert(!ipr_has_errors(unused), "unused dependency-bearing interface should parse");
+    let interfaces = ptr_vec_create(2);
+    ptr_vec_push(interfaces, provider.interface as void*);
+    ptr_vec_push(interfaces, unused.interface as void*);
+
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_open", interfaces, cfg);
+    assert(!analysis_has_errors(result), "unused dependency-bearing interface should be ignored");
+    assert(driver_interface_count(result.driver_state) == 1, "only active provider interface should remain");
+    assert(driver_find_interface(result.driver_state, "replay_provider") != null, "provider interface should remain active");
+    assert(driver_find_interface(result.driver_state, "replay_unused") == null, "unused interface should be dropped");
+
+    with (let opts = cg_options_create() => cg_options_free(opts),
+          let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2) {
+        let generated = backend_generate(result, opts, cfg2);
+        assert(!contains_s(generated, "replay_unused"), "unused interface must not reach generated C");
+    }
+
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(unused);
+    ipr_free(provider);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests duplicate supplied module interfaces are rejected.
+ */
+func test_direct_interface_replay_rejects_duplicate_interfaces() {
+    let parsed = parse_provider_interface();
+    let interfaces = ptr_vec_create(2);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_open", interfaces, cfg);
+    assert(analysis_has_errors(result), "duplicate provider interfaces should be rejected");
+    assert(has_diag_code(result, "DRV-0071"), "expected DRV-0071 for duplicate interface module");
+
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(parsed);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_direct_interface_replay_open_import_codegen();
+    test_direct_interface_replay_alias_and_selective_imports();
+    test_direct_interface_replay_opaque_layout_error();
+    test_direct_interface_replay_opaque_drop_error();
+    test_direct_interface_replay_const_scalar_contexts();
+    test_direct_interface_replay_const_diagnostics();
+    test_direct_interface_replay_extern_shadow_warnings();
+    test_source_extern_shadow_incompatibility_remains_warning();
+    test_interface_extern_shadow_unknown_type_diagnostic();
+    test_project_interface_backed_metadata();
+    test_direct_interface_replay_sys_real_runtime_support();
+    test_source_and_interface_enum_exports_match();
+    test_direct_interface_replay_rejects_dependencies();
+    test_direct_interface_replay_ignores_unused_interfaces();
+    test_direct_interface_replay_rejects_duplicate_interfaces();
+    printl_s("interface_replay_test: all tests passed");
+}

@@ -33,13 +33,13 @@ func ie_format_type(ty: Type*, module_name: string) -> string {
             return ty.name;
         }
         TY_STRUCT => {
-            if (ty.module_name == module_name) {
+            if (ty.module_name == "" || ty.module_name == module_name) {
                 return ty.name;
             }
             return ty.module_name + "::" + ty.name;
         }
         TY_ENUM => {
-            if (ty.module_name == module_name) {
+            if (ty.module_name == "" || ty.module_name == module_name) {
                 return ty.name;
             }
             return ty.module_name + "::" + ty.name;
@@ -202,6 +202,9 @@ func ie_emit_alias(sb: StringBuffer*, entry: InterfaceAliasEntry*, module_name: 
 func ie_emit_func(sb: StringBuffer*, entry: InterfaceFuncEntry*, module_name: string) {
     if (entry.ty.is_unsafe) {
         sb_append(sb, "unsafe ");
+    }
+    if (entry.is_extern) {
+        sb_append(sb, "extern ");
     }
     sb_append(sb, "func ");
     sb_append(sb, entry.name);

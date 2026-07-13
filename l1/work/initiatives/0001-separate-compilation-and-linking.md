@@ -1,6 +1,6 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-06-14
+- Version: 2026-07-12
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -421,7 +421,7 @@ Recorded near-term tranche checkpoints:
 - [x] Phase 0.3: `.l1m` interface emission and serialization.
 - [x] Opaque export follow-up: source `export opaque { ... }`, exported-surface checks, and explicit `.l1m` opaque
   projection.
-- [ ] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
+- [x] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
 - [ ] Phase 2.a.2: `-c` compile-only and `-I` interface-path support.
 - [ ] Phase 2.b: driver topological sort plus per-module `I4init` emission.
 - [ ] Phase 2.c: fingerprint hashing plus provider metadata embedding in `.o`.
@@ -527,8 +527,8 @@ implementation tranche proves that one decision area needs additional design wor
 - Opaque export follow-up: source-level opacity, exported-surface typing, and explicit opaque `.l1m` projection under
   [`l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`][opaque-exports]. Direct
   interface replay and fingerprint canonicalization consume the nominal visibility state this plan introduces.
-- Phase 2.a.1 / 2.a.2: direct interface imports, compile-only, and interface-path driver surface under
-  [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
+- Phase 2.a.1 direct interface imports are complete; Phase 2.a.2 compile-only and interface-path driver work remains
+  under [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
 - Phase 2.b: multi-CU init ordering and executable wrapper behavior under
   [`l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`][module-init]
 - Phase 2.c: fingerprint hashing, object metadata embedding, and link-time verification under

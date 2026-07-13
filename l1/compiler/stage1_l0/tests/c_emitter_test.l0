@@ -30,7 +30,7 @@ import util.diag;
  */
 func cet_empty_analysis_result() -> AnalysisResult* {
     return new AnalysisResult(
-        new DriverState("", ptr_vec_create(0), sv_create(0), diag_create(), sv_create(0), sv_create(0)),
+        dr_state_create("", null),
         diag_create(),
         null,
         null,
@@ -83,7 +83,7 @@ func cet_module(name: string, filename: string, decls: VectorBase*) -> Module* {
 func cet_push_module(result: AnalysisResult*, mod: Module*) {
     let module_name = mod.name;
     let pr = new ParseResult(mod, expr_arena_create(0), stmt_arena_create(0), pattern_arena_create(0), diag_create());
-    ptr_vec_push(result.driver_state.units, new DriverUnit(module_name, mod.filename, pr) as void*);
+    dr_register_unit(result.driver_state, new DriverUnit(module_name, mod.filename, pr));
 }
 
 /**
@@ -779,9 +779,6 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     let variant_infos = ptr_vec_create(2);
     let variant_none_fields = ptr_vec_create(0);
     let variant_rgb_fields = ptr_vec_create(3);
-    let decl_fields = ptr_vec_create(2);
-    let enum_variants = ptr_vec_create(2);
-    let rgb_decl_fields = ptr_vec_create(3);
     let func_params = ptr_vec_create(2);
     let func_param_types = ptr_vec_create(2);
     let extern_params = ptr_vec_create(0);
@@ -806,9 +803,9 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     ptr_vec_push(variant_rgb_fields, type_builtin_byte() as void*);
     ptr_vec_push(variant_rgb_fields, type_builtin_byte() as void*);
     let variant_rgb_names = sv_create(3);
-    sv_push(variant_rgb_names, "red");
-    sv_push(variant_rgb_names, "green");
-    sv_push(variant_rgb_names, "blue");
+    sv_push(variant_rgb_names, "r");
+    sv_push(variant_rgb_names, "g");
+    sv_push(variant_rgb_names, "b");
     ptr_vec_push(variant_infos, new EnumVariantInfo("Rgb", variant_rgb_fields, variant_rgb_names) as void*);
     let color_info = new EnumInfo(
         "demo.main::Color",
@@ -821,17 +818,6 @@ func test_emitter_top_level_forms_match_stage1_shape() {
         "",
         false
     );
-
-    ptr_vec_push(decl_fields, new FieldDecl("x", cet_builtin_type_ref("int")) as void*);
-    ptr_vec_push(decl_fields, new FieldDecl("y", cet_builtin_type_ref("int")) as void*);
-    let point_decl = new StructDecl("Point", decl_fields, span_here(1, 1));
-
-    ptr_vec_push(enum_variants, new EnumVariant("None", ptr_vec_create(0)) as void*);
-    ptr_vec_push(rgb_decl_fields, new FieldDecl("r", cet_builtin_type_ref("byte")) as void*);
-    ptr_vec_push(rgb_decl_fields, new FieldDecl("g", cet_builtin_type_ref("byte")) as void*);
-    ptr_vec_push(rgb_decl_fields, new FieldDecl("b", cet_builtin_type_ref("byte")) as void*);
-    ptr_vec_push(enum_variants, new EnumVariant("Rgb", rgb_decl_fields) as void*);
-    let color_decl = new EnumDecl("Color", enum_variants, span_here(1, 1));
 
     ptr_vec_push(func_params, new Param("a", cet_builtin_type_ref("int")) as void*);
     ptr_vec_push(func_params, new Param("b", cet_builtin_type_ref("int")) as void*);
@@ -850,8 +836,8 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     result.signatures = sig_make_tables();
     cem_set_analysis(emitter, result);
 
-    cem_emit_struct(emitter, "demo.main", point_decl, point_info);
-    cem_emit_enum(emitter, "demo.main", color_decl, color_info);
+    cem_emit_struct_info(emitter, point_info);
+    cem_emit_enum_info(emitter, color_info);
     cem_emit_zero_initialized_let_declaration(emitter, "demo.main", let_decl, let_type, false);
     cem_emit_let_declaration(emitter, "demo.main", const_decl, let_type, "7", false);
     cem_emit_function_declaration(emitter, "demo.main", sum_decl, sum_type, false);
@@ -907,8 +893,6 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     vec_free(color_info.variants);
     drop color_info;
 
-    struct_decl_free(point_decl);
-    enum_decl_free(color_decl);
     let_decl_free(let_decl);
     let_decl_free(const_decl);
     func_decl_free(sum_decl);

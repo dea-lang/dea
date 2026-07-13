@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-06-24
+Version: 2026-07-12
 
 Status: Draft artifact contract
 
@@ -19,6 +19,7 @@ form:
 
 - the emitter projects analyzed source into canonical text
 - the constrained parser reconstructs the interface model from that text
+- internal analysis entry points can replay a supplied dependency-free direct provider without loading its source
 - tests can assert byte-stable output and parser/emitter round-trip behavior
 - the internal `--emit-interface` mode can write the artifact for developer/testing use
 
@@ -191,10 +192,14 @@ Functions are signature-only declarations with the trailing hash:
 func area(s: Size) -> int == "";
 func ping() -> void == "";
 func collect(prefix: int, values: string...) -> int == "";
+extern func puts(value: string) -> int == "";
+unsafe extern func raw_sink(value: int*) -> void == "";
 ```
 
-Bodies are never emitted into `.l1m`. Variadic function declarations and function types preserve the final `T...` marker
-so consumers distinguish them from fixed `T[]` signatures.
+Bodies are never emitted into `.l1m`. `extern func` declarations preserve their unmangled C ABI spelling, and
+`unsafe extern func` preserves both the external linkage marker and the unsafe contract marker. Variadic function
+declarations and function types preserve the final `T...` marker so consumers distinguish them from fixed `T[]`
+signatures.
 
 ### Consts
 
@@ -203,6 +208,8 @@ Consts include their declared type, canonical literal value, and the trailing ha
 ```dea
 const origin: Point = Point(0, 0) == "";
 const zero_color: Color = Red == "";
+const min_offset: int = -5 == "";
+const samples: int[3] = [1, 2, 3] == "";
 ```
 
 ### Lets
@@ -243,9 +250,11 @@ This formatting rule is shared by every declaration kind in the interface file.
 
 The current interface emitter serializes accepted Stage 1 compile-time constants as folded values:
 
-- integer, bigint, real, byte, string, bool, and `null` literals
+- integer, bigint, real, byte, string, bool, and `null` literals; integer, bigint, and real literals may carry a leading
+  minus sign
 - zero-field enum variant references
 - struct and enum constructor calls whose arguments are themselves interface literals
+- empty, flat, and nested array literals whose elements are themselves interface literals
 
 Scalar const expressions are not preserved as expression syntax in `.l1m`; supported arithmetic, bitwise, boolean,
 comparison, and cast expressions appear as their folded literal values.
@@ -255,7 +264,18 @@ Canonical constructor emission uses comma-plus-space separators:
 ```dea
 Point(0, 0)
 Rgb(255, 0, 0)
+[1, 2, 3]
+[[1, 2], [3, 4]]
+[-1, 0, 1]
 ```
+
+Array literals use square brackets and the same comma-plus-space separator. Empty arrays are written `[]`; trailing
+commas are not accepted.
+
+Canonical signed numerics are sign-inclusive lexer tokens, and direct replay evaluates them through the ordinary scalar
+constant rules, including signed bigint values. The parser also accepts a split-token spelling such as `- 5` and
+canonicalizes it to `-5`; the defensive raw replay fallback for `TT_MINUS` followed by `TT_BIGINT` returns no scalar
+value, but emitted and parser-normalized interfaces do not use that split form.
 
 Zero-field enum variants are emitted as bare references such as `Red` or qualified references when they name a
 cross-module symbol.
@@ -267,15 +287,25 @@ The constrained `.l1m` parser accepts:
 - the `module interface` header
 - the `fingerprint` declaration (any string, including algorithm-tagged values such as `"sip13:<hex>"`)
 - zero or more `require` lines followed by zero or more `link` lines
-- top-level `struct`, `enum`, `type`, `func`, `const`, and `let`, each with a trailing `== "<hash>";` suffix
+- top-level `struct`, `enum`, `type`, `func`, `unsafe func`, `extern func`, `unsafe extern func`, `const`, and `let`,
+  each with a trailing `== "<hash>";` suffix
+- recursive interface const literals, including empty and nested arrays
+
+Declaration names must be unique across all declaration groups in one interface. Enum variants occupy the same
+module-level namespace as structs, enums, aliases, functions, consts, and lets, so a variant cannot duplicate any of
+those names or another variant name.
 
 It rejects ordinary source-only forms such as function bodies. Dotted module names in the header and in dependency lines
 are accepted and preserved.
 
+Internal direct replay currently accepts only dependency-free provider interfaces. An active interface containing
+`require` or `link` entries is rejected by the driver until transitive interface closure loading is implemented.
+
 The parser accepts explicit `opaque struct` and `opaque enum` declarations. Opacity is never inferred from a missing
 body.
 
-Parser failures use the dedicated `PAR-0560` through `PAR-0576` diagnostic range registered in
+Parser failures use the dedicated `PAR-0560` through `PAR-0577` diagnostic range, plus shared `PAR-0520` for invalid
+variadic placement and `PAR-0602` for malformed unsafe declarations, registered in
 [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog].
 
 ## Non-goals

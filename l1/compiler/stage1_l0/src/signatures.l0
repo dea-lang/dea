@@ -15,6 +15,8 @@ import util.numbers;
 
 import ast;
 import driver;
+import mi_utils;
+import module_interface;
 import name_resolver;
 import symbols;
 import type_resolve;
@@ -42,6 +44,34 @@ func sig_key(module_name: string, name: string) -> string {
  */
 func sig_diag_error(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
     diag_error(diags, "SignatureResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
+        span.end_column);
+}
+
+/**
+ * Emit a name-resolution warning after resolved signatures are available.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func sig_name_diag_warn(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
+    diag_warn(diags, "NameResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
+        span.end_column);
+}
+
+/**
+ * Emit a name-resolution error after resolved signatures are available.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func sig_name_diag_error(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
+    diag_error(diags, "NameResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
         span.end_column);
 }
 
@@ -460,7 +490,7 @@ func sig_infer_literal_type(tables: SignatureTables*, nr: NameResolution*, env: 
     }
     if (ord(expr.kind) == ord(EX_VAR_REF)) {
         let sym = tr_symbol_lookup(nr, env, expr.text_value, expr.module_path, expr.name_qualifier);
-        if (sym != null && sig_symbol_is_zero_field_enum_variant(sym as Symbol*)) {
+        if (sym != null && sig_symbol_is_zero_field_enum_variant(tables, sym as Symbol*)) {
             let target = sym as Symbol*;
             return type_new_enum(target.module_name, target.owner_name);
         }
@@ -502,15 +532,27 @@ func sig_infer_literal_type(tables: SignatureTables*, nr: NameResolution*, env: 
  * @param sym Symbol to inspect.
  * @return `true` when `sym` is a zero-field enum variant.
  */
-func sig_symbol_is_zero_field_enum_variant(sym: Symbol*) -> bool {
+func sig_symbol_is_zero_field_enum_variant(tables: SignatureTables*, sym: Symbol*) -> bool {
     if (ord(sym.kind) != ord(SYM_ENUM_VARIANT)) {
         return false;
     }
-    if (sym.decl_ptr == null) {
+    if (sym.decl_ptr != null) {
+        let variant = sym.decl_ptr as EnumVariant*;
+        return vec_size(variant.fields) == 0;
+    }
+
+    let info_opt = sig_lookup_enum_info(tables, sym.module_name, sym.owner_name);
+    if (info_opt == null) {
         return false;
     }
-    let variant = sym.decl_ptr as EnumVariant*;
-    return vec_size(variant.fields) == 0;
+    let info = info_opt as EnumInfo*;
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let variant_info = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        if (variant_info.name == sym.name) {
+            return vec_size(variant_info.field_types) == 0;
+        }
+    }
+    return false;
 }
 
 /**
@@ -576,7 +618,7 @@ func sig_expr_is_const_initializer(tables: SignatureTables*, nr: NameResolution*
             if (sym == null) {
                 return false;
             }
-            return sig_symbol_is_zero_field_enum_variant(sym as Symbol*);
+            return sig_symbol_is_zero_field_enum_variant(tables, sym as Symbol*);
         }
         EX_CALL => {
             let callee = expr_arena_get(arena, expr.expr_a);
@@ -1038,6 +1080,106 @@ func sig_check_exported_surfaces(tables: SignatureTables*, nr: NameResolution*, 
 }
 
 /**
+ * Emit deferred local/imported extern shadow diagnostics.
+ *
+ * @param tables Resolved signature tables.
+ * @param nr Name-resolution data containing deferred checks.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_pending_extern_shadows(tables: SignatureTables*, nr: NameResolution*, diags: DiagCollector*) {
+    for (let env_i = 0; env_i < nr_env_count(nr); env_i = env_i + 1) {
+        let env = nr_env_get(nr, env_i);
+        for (let shadow_i = 0; shadow_i < nr_module_env_pending_extern_shadow_count(env); shadow_i = shadow_i + 1) {
+            let shadow = nr_module_env_pending_extern_shadow_get(env, shadow_i);
+            let local_ty = sig_lookup_func_type(tables, shadow.local.module_name, shadow.local.name);
+            let imported_ty = sig_lookup_func_type(tables, shadow.imported.module_name, shadow.imported.name);
+            if (local_ty == null || imported_ty == null) {
+                continue;
+            }
+            if (type_equals(local_ty as Type*, imported_ty as Type*)) {
+                sig_name_diag_warn(
+                    diags,
+                    "RES-0020",
+                    "imported extern function '" + nr_build_top_key(shadow.imported_module, shadow.name) +
+                        "' will be shadowed by a compatible local extern declaration in module '" + env.module_name + "'",
+                    env.module_ptr.filename,
+                    shadow.local.span
+                );
+            } else {
+                sig_name_diag_error(
+                    diags,
+                    "RES-0023",
+                    "imported extern function '" + nr_build_top_key(shadow.imported_module, shadow.name) +
+                        "' has an incompatible signature with the local extern declaration in module '" +
+                        env.module_name + "'",
+                    env.module_ptr.filename,
+                    shadow.local.span
+                );
+            }
+        }
+    }
+}
+
+/**
+ * Store an interface-backed struct signature.
+ *
+ * @param tables Signature tables receiving replayed metadata.
+ * @param info Interface struct metadata.
+ */
+func sig_replay_interface_struct(tables: SignatureTables*, info: StructInfo*) {
+    let cloned = miu_clone_struct_info(info);
+    spm_put(tables.struct_infos, cloned.key, cloned as void*);
+}
+
+/**
+ * Store an interface-backed enum signature.
+ *
+ * @param tables Signature tables receiving replayed metadata.
+ * @param info Interface enum metadata.
+ */
+func sig_replay_interface_enum(tables: SignatureTables*, info: EnumInfo*) {
+    let cloned = miu_clone_enum_info(info);
+    spm_put(tables.enum_infos, cloned.key, cloned as void*);
+}
+
+/**
+ * Store interface-backed function and binding signatures.
+ *
+ * @param tables Signature tables receiving replayed metadata.
+ * @param mi Interface metadata to replay.
+ */
+func sig_replay_interface_entries(tables: SignatureTables*, mi: ModuleInterface*) {
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+        spm_put(tables.func_types, sig_key(mi.module_name, entry.name), type_clone(entry.ty) as void*);
+    }
+
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        let entry2 = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
+        spm_put(tables.let_types, sig_key(mi.module_name, entry2.name), type_clone(entry2.ty) as void*);
+    }
+}
+
+/**
+ * Replay supplied module-interface signatures into semantic tables.
+ *
+ * @param tables Signature tables receiving replayed metadata.
+ * @param driver_state Driver state containing cloned interfaces.
+ */
+func sig_replay_interfaces(tables: SignatureTables*, driver_state: DriverState*) {
+    for (let iface_i = 0; iface_i < driver_interface_count(driver_state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(driver_state, iface_i);
+        for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+            sig_replay_interface_struct(tables, ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*);
+        }
+        for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+            sig_replay_interface_enum(tables, ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*);
+        }
+        sig_replay_interface_entries(tables, mi);
+    }
+}
+
+/**
  * Resolve top-level type signatures for parsed modules.
  *
  * @param driver_state Parsed driver state.
@@ -1047,6 +1189,8 @@ func sig_check_exported_surfaces(tables: SignatureTables*, nr: NameResolution*, 
  */
 func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCollector*) -> SignatureTables* {
     let tables = sig_make_tables();
+
+    sig_replay_interfaces(tables, driver_state);
 
     for (let i = 0; i < nr_env_count(nr); i = i + 1) {
         let env = nr_env_get(nr, i);
@@ -1083,6 +1227,7 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
     }
 
     sig_detect_value_type_cycles(tables, diags);
+    sig_check_pending_extern_shadows(tables, nr, diags);
     sig_check_exported_surfaces(tables, nr, diags);
     return tables;
 }

@@ -5,8 +5,12 @@
 
 module export_bad_manifest;
 
-export opaque { Handle }, Handle, missing;
+export opaque { Handle }, Handle, missing, Red;
 
 struct Handle {
     value: int;
+}
+
+enum Color {
+    Red;
 }

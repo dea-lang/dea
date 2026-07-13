@@ -53,8 +53,10 @@ components where needed, nominal types use `S` / `E`, and compiler-generated mod
 consts in the current backend.
 
 The bootstrap compiler can emit deterministic textual `.l1m` module interface artifacts through the internal
-`--emit-interface` mode and can round-trip them through a constrained interface parser. Ordinary imports remain
-source-based today; `.l1m` files are not yet normal compile/build/run inputs.
+`--emit-interface` mode, round-trip them through a constrained interface parser, and replay supplied dependency-free
+direct provider interfaces through semantic analysis and C generation without loading provider source. Ordinary CLI
+imports remain source-based today; `.l1m` files are not yet normal compile/build/run inputs, and transitive interface
+dependencies are rejected until closure loading is implemented.
 
 ### Runtime and Standard Library
 

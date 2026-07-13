@@ -184,6 +184,13 @@ func test_analysis_imported_opaque_layout_errors() {
         assert(has_diag_code(new_enum_result, "RES-0038"), "expected RES-0038 for opaque enum allocation");
         analysis_result_free(new_enum_result);
     }
+
+    with (let cfg4 = log_config_create(LL_SILENT, false) => drop cfg4) {
+        let drop_result = analysis_analyze_entry(sp, "opaque_import_drop_err", cfg4);
+        assert(analysis_has_errors(drop_result), "expected imported opaque pointer drop to fail");
+        assert(has_diag_code(drop_result, "RES-0038"), "expected RES-0038 for opaque pointer drop");
+        analysis_result_free(drop_result);
+    }
     sp_free(sp);
 }
 

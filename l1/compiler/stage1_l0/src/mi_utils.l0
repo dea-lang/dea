@@ -5,12 +5,305 @@
 
 module mi_utils;
 
+import std.hashmap;
+import std.hashset;
 import std.string;
 import std.vector;
 import util.diag;
+import util.strings;
 import ast;
 import types;
 import module_interface;
+
+/**
+ * Deep-clone a StructInfo.
+ *
+ * @param info Source struct info to clone.
+ * @return New StructInfo owning cloned field types.
+ */
+func miu_clone_struct_info(info: StructInfo*) -> StructInfo* {
+    let fields = ptr_vec_create(vec_size(info.fields));
+    for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+        let src = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+        ptr_vec_push(fields, new StructFieldInfo(src.name, type_clone(src.field_type)) as void*);
+    }
+    return new StructInfo(
+        info.key,
+        info.module_name,
+        info.name,
+        info.filename,
+        info.span,
+        type_clone(info.struct_type),
+        fields,
+        info.iface_hash,
+        info.is_opaque
+    );
+}
+
+/**
+ * Deep-clone an EnumInfo.
+ *
+ * @param info Source enum info to clone.
+ * @return New EnumInfo owning cloned variant metadata.
+ */
+func miu_clone_enum_info(info: EnumInfo*) -> EnumInfo* {
+    let variants = ptr_vec_create(vec_size(info.variants));
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let src = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        let field_types = ptr_vec_create(vec_size(src.field_types));
+        for (let j = 0; j < vec_size(src.field_types); j = j + 1) {
+            ptr_vec_push(field_types, type_clone(ptr_vec_get(src.field_types, j) as Type*) as void*);
+        }
+        ptr_vec_push(variants, new EnumVariantInfo(src.name, field_types, us_sv_clone(src.field_names)) as void*);
+    }
+    return new EnumInfo(
+        info.key,
+        info.module_name,
+        info.name,
+        info.filename,
+        info.span,
+        type_clone(info.enum_type),
+        variants,
+        info.iface_hash,
+        info.is_opaque
+    );
+}
+
+/**
+ * Clone a per-used-symbol dependency entry.
+ *
+ * @param entry Source dependency entry.
+ * @return New dependency entry.
+ */
+func miu_clone_dep_entry(entry: InterfaceDepEntry*) -> InterfaceDepEntry* {
+    return new InterfaceDepEntry(entry.provider_module, entry.symbol_name, entry.hash);
+}
+
+/**
+ * Clone an interface function entry.
+ *
+ * @param entry Source function entry.
+ * @return New function entry.
+ */
+func miu_clone_func_entry(entry: InterfaceFuncEntry*) -> InterfaceFuncEntry* {
+    return new InterfaceFuncEntry(entry.name, us_sv_clone(entry.param_names), type_clone(entry.ty), entry.is_extern,
+        entry.hash);
+}
+
+/**
+ * Clone an interface let/const entry.
+ *
+ * @param entry Source let entry.
+ * @return New let entry.
+ */
+func miu_clone_let_entry(entry: InterfaceLetEntry*) -> InterfaceLetEntry* {
+    return new InterfaceLetEntry(entry.name, type_clone(entry.ty), entry.is_const, entry.literal, entry.hash);
+}
+
+/**
+ * Clone an interface type-alias entry.
+ *
+ * @param entry Source alias entry.
+ * @return New alias entry.
+ */
+func miu_clone_alias_entry(entry: InterfaceAliasEntry*) -> InterfaceAliasEntry* {
+    return new InterfaceAliasEntry(entry.name, type_clone(entry.ty), entry.hash);
+}
+
+/**
+ * Deep-clone a module interface.
+ *
+ * @param mi Source interface to clone.
+ * @return New module interface owning cloned metadata.
+ */
+func miu_clone_interface(mi: ModuleInterface*) -> ModuleInterface* {
+    let require_entries = ptr_vec_create(vec_size(mi.require_entries));
+    for (let req_i = 0; req_i < vec_size(mi.require_entries); req_i = req_i + 1) {
+        ptr_vec_push(require_entries, miu_clone_dep_entry(ptr_vec_get(mi.require_entries, req_i) as InterfaceDepEntry*) as void*);
+    }
+
+    let link_entries = ptr_vec_create(vec_size(mi.link_entries));
+    for (let link_i = 0; link_i < vec_size(mi.link_entries); link_i = link_i + 1) {
+        ptr_vec_push(link_entries, miu_clone_dep_entry(ptr_vec_get(mi.link_entries, link_i) as InterfaceDepEntry*) as void*);
+    }
+
+    let struct_infos = ptr_vec_create(vec_size(mi.struct_infos));
+    for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+        ptr_vec_push(struct_infos, miu_clone_struct_info(ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*) as void*);
+    }
+
+    let enum_infos = ptr_vec_create(vec_size(mi.enum_infos));
+    for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+        ptr_vec_push(enum_infos, miu_clone_enum_info(ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*) as void*);
+    }
+
+    let alias_entries = ptr_vec_create(vec_size(mi.alias_entries));
+    for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
+        ptr_vec_push(alias_entries, miu_clone_alias_entry(ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*) as void*);
+    }
+
+    let func_entries = ptr_vec_create(vec_size(mi.func_entries));
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        ptr_vec_push(func_entries, miu_clone_func_entry(ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*) as void*);
+    }
+
+    let let_entries = ptr_vec_create(vec_size(mi.let_entries));
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        ptr_vec_push(let_entries, miu_clone_let_entry(ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*) as void*);
+    }
+
+    return new ModuleInterface(mi.module_name, mi.fingerprint, require_entries, link_entries, struct_infos,
+        enum_infos, alias_entries, func_entries, let_entries);
+}
+
+/**
+ * Build a non-owning alias lookup map for one interface.
+ *
+ * @param mi Interface owning the alias table.
+ * @return Map from alias name to InterfaceAliasEntry*.
+ */
+func miu_build_alias_map(mi: ModuleInterface*) -> StringPtrMap* {
+    let aliases = spm_create();
+    for (let i = 0; i < vec_size(mi.alias_entries); i = i + 1) {
+        let entry = ptr_vec_get(mi.alias_entries, i) as InterfaceAliasEntry*;
+        if (spm_get(aliases, entry.name) == null) {
+            spm_put(aliases, entry.name, entry as void*);
+        }
+    }
+    return aliases;
+}
+
+/**
+ * Return a local alias entry matching a nominal type reference.
+ *
+ * @param mi Interface owning the module name.
+ * @param aliases Non-owning alias lookup map.
+ * @param module_name Nominal module name, or empty for local.
+ * @param name Nominal type name.
+ * @return Matching alias entry, or `null` when the type is not a local alias.
+ */
+func miu_find_local_alias(mi: ModuleInterface*, aliases: StringPtrMap*, module_name: string, name: string) -> InterfaceAliasEntry*? {
+    if (module_name != "" && module_name != mi.module_name) {
+        return null;
+    }
+    let entry = spm_get(aliases, name);
+    if (entry == null) {
+        return null;
+    }
+    return entry as InterfaceAliasEntry*;
+}
+
+/**
+ * Replace a nominal type descriptor with an already-cloned replacement.
+ *
+ * The caller must only pass a destination whose old value has no owned child
+ * type graph. Interface alias expansion calls this for nominal references.
+ *
+ * @param dst Destination type to mutate in place.
+ * @param replacement Replacement type whose child ownership is transferred.
+ */
+func miu_replace_nominal_type(dst: Type*, replacement: Type*) {
+    dst.kind = replacement.kind;
+    dst.module_name = replacement.module_name;
+    dst.name = replacement.name;
+    dst.inner = replacement.inner;
+    dst.array_len = replacement.array_len;
+    dst.params = replacement.params;
+    dst.result = replacement.result;
+    dst.is_unsafe = replacement.is_unsafe;
+    dst.is_variadic = replacement.is_variadic;
+
+    replacement.inner = null;
+    replacement.params = null;
+    replacement.result = null;
+    drop replacement;
+}
+
+/**
+ * Resolve local alias references inside one type tree for semantic replay.
+ *
+ * Parsed interface files preserve alias spelling so they can round-trip. The
+ * driver clone used for replay needs the actual target type wherever a local
+ * alias appears in another exported signature.
+ *
+ * @param mi Interface owning aliases.
+ * @param aliases Non-owning alias lookup map.
+ * @param ty Type tree to mutate in place.
+ * @param seen Alias names currently being expanded.
+ */
+func miu_resolve_alias_refs_in_type(mi: ModuleInterface*, aliases: StringPtrMap*, ty: Type*, seen: StringSet*) {
+    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE) ||
+        ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_SLICE)) {
+        miu_resolve_alias_refs_in_type(mi, aliases, ty.inner as Type*, seen);
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_FUNC)) {
+        let params = ty.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            miu_resolve_alias_refs_in_type(mi, aliases, ptr_vec_get(params, i) as Type*, seen);
+        }
+        miu_resolve_alias_refs_in_type(mi, aliases, ty.result as Type*, seen);
+        return;
+    }
+
+    if (ord(ty.kind) != ord(TY_STRUCT) && ord(ty.kind) != ord(TY_ENUM)) {
+        return;
+    }
+
+    let alias = miu_find_local_alias(mi, aliases, ty.module_name, ty.name);
+    if (alias == null) {
+        return;
+    }
+
+    let entry = alias as InterfaceAliasEntry*;
+    if (ss_has(seen, entry.name)) {
+        return;
+    }
+
+    ss_add(seen, entry.name);
+    let replacement = type_clone(entry.ty);
+    miu_resolve_alias_refs_in_type(mi, aliases, replacement, seen);
+    ss_remove(seen, entry.name);
+    miu_replace_nominal_type(ty, replacement);
+}
+
+/**
+ * Resolve local alias references inside all replayed signature metadata.
+ *
+ * @param mi Cloned interface to normalize for semantic replay.
+ */
+func miu_resolve_interface_alias_refs(mi: ModuleInterface*) {
+    with (let aliases = miu_build_alias_map(mi) => spm_free(aliases),
+          let seen = ss_create() => ss_free(seen)) {
+        for (let i = 0; i < vec_size(mi.alias_entries); i = i + 1) {
+            let entry = ptr_vec_get(mi.alias_entries, i) as InterfaceAliasEntry*;
+            miu_resolve_alias_refs_in_type(mi, aliases, entry.ty, seen);
+        }
+        for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+            let info = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+            for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+                let field = ptr_vec_get(info.fields, field_i) as StructFieldInfo*;
+                miu_resolve_alias_refs_in_type(mi, aliases, field.field_type, seen);
+            }
+        }
+        for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+            let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+            for (let var_i = 0; var_i < vec_size(info2.variants); var_i = var_i + 1) {
+                let variant = ptr_vec_get(info2.variants, var_i) as EnumVariantInfo*;
+                for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                    miu_resolve_alias_refs_in_type(mi, aliases, ptr_vec_get(variant.field_types, field_i2) as Type*, seen);
+                }
+            }
+        }
+        for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+            miu_resolve_alias_refs_in_type(mi, aliases, (ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*).ty, seen);
+        }
+        for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+            miu_resolve_alias_refs_in_type(mi, aliases, (ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*).ty, seen);
+        }
+    }
+}
 
 /**
  * Free a function entry and all owned fields.

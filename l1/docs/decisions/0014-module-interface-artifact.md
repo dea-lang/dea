@@ -1,7 +1,7 @@
 # ADR-0014: Module Interface Artifact
 
 - Decision date: 2026-06-13
-- Last edited: 2026-07-11
+- Last edited: 2026-07-12
 - Status: Accepted
 
 ## Context
@@ -42,8 +42,9 @@ tranche.
 
 - Signature metadata must preserve enum variant field names so interfaces can round-trip named payload fields.
 - Interface parsing has its own diagnostics for malformed `.l1m` syntax.
-- Later tranches must implement interface-backed import replay, transitive interface closure, fingerprint verification,
-  and provider-object linking before `.l1m` files become a complete user-facing separate-compilation workflow.
+- Dependency-free direct-provider replay is available through internal analysis entry points. Later tranches must add
+  ordinary interface discovery, transitive interface closure, fingerprint verification, and provider-object linking
+  before `.l1m` files become a complete user-facing separate-compilation workflow.
 
 ## Related Plans
 
@@ -57,7 +58,7 @@ tranche.
 
 ## Current Docs
 
-- [l1/docs/specs/compiler/module-interface-format.md][format-spec]: textual `.l1m` artifact format
+- [l1/docs/specs/compiler/module-interface-format.md][format-spec]: textual `.l1m` artifact format (Version 2026-07-12)
 - [l1/docs/specs/compiler/module-visibility-and-imports.md][visibility-spec]: export surface feeding interface emission
 - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]: registered `.l1m` parser diagnostics
 

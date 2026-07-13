@@ -15,6 +15,7 @@ import std.vector;
 import ast;
 import codegen_options;
 import driver;
+import module_interface;
 import name_resolver;
 import sem_context;
 import signatures;
@@ -1253,6 +1254,18 @@ func cem_emit_forward_decls(self: CEmitter*) {
         }
     }
 
+    for (let iface_i = 0; iface_i < driver_interface_count(state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(state, iface_i);
+        for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+            let info = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+            ccb_emit(self.out, "struct " + cem_mangle_struct_name(info.module_name, info.name) + ";");
+        }
+        for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+            let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+            ccb_emit(self.out, "struct " + cem_mangle_enum_name(info2.module_name, info2.name) + ";");
+        }
+    }
+
     ccb_emit(self.out, "");
 }
 
@@ -1274,15 +1287,13 @@ func cem_find_enum_variant_info(enum_info: EnumInfo*, variant_name: string) -> E
 }
 
 /**
- * Emit a complete C struct definition.
+ * Emit a complete C struct definition from resolved metadata.
  *
  * @param self Emitter to update.
- * @param module_name Name of the defining module.
- * @param decl Struct declaration node.
  * @param struct_info Resolved struct metadata.
  */
-func cem_emit_struct(self: CEmitter*, module_name: string, decl: StructDecl*, struct_info: StructInfo*) {
-    let c_name = cem_mangle_struct_name(module_name, decl.name);
+func cem_emit_struct_info(self: CEmitter*, struct_info: StructInfo*) {
+    let c_name = cem_mangle_struct_name(struct_info.module_name, struct_info.name);
     let guard = "DEA_DEFINED_" + c_name;
     ccb_emit(self.out, "#ifndef " + guard);
     ccb_emit(self.out, "#define " + guard);
@@ -1305,15 +1316,13 @@ func cem_emit_struct(self: CEmitter*, module_name: string, decl: StructDecl*, st
 }
 
 /**
- * Emit an enum as a C tagged-union struct.
+ * Emit an enum as a C tagged-union struct from resolved metadata.
  *
  * @param self Emitter to update.
- * @param module_name Name of the defining module.
- * @param decl Enum declaration node.
  * @param enum_info Resolved enum metadata.
  */
-func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_info: EnumInfo*) {
-    let c_name = cem_mangle_enum_name(module_name, decl.name);
+func cem_emit_enum_info(self: CEmitter*, enum_info: EnumInfo*) {
+    let c_name = cem_mangle_enum_name(enum_info.module_name, enum_info.name);
     let guard = "DEA_DEFINED_" + c_name;
     let tag_enum_name = c_name + "_tag";
 
@@ -1322,8 +1331,8 @@ func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_i
     ccb_emit(self.out, "enum " + tag_enum_name + " {");
     ccb_indent(self.out);
 
-    for (let i = 0; i < vec_size(decl.variants); i = i + 1) {
-        let variant = ptr_vec_get(decl.variants, i) as EnumVariant*;
+    for (let i = 0; i < vec_size(enum_info.variants); i = i + 1) {
+        let variant = ptr_vec_get(enum_info.variants, i) as EnumVariantInfo*;
         ccb_emit(self.out, c_name + "_" + variant.name + ",");
     }
 
@@ -1336,16 +1345,10 @@ func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_i
     ccb_emit(self.out, "union {");
     ccb_indent(self.out);
 
-    for (let variant_i = 0; variant_i < vec_size(decl.variants); variant_i = variant_i + 1) {
-        let variant2 = ptr_vec_get(decl.variants, variant_i) as EnumVariant*;
-        let info = cem_find_enum_variant_info(enum_info, variant2.name);
-        if (info == null) {
-            cem_ice("[ICE-1271] missing VariantInfo for " + module_name + "." + decl.name + "." + variant2.name);
-        }
-
-        let variant_info = info as EnumVariantInfo*;
+    for (let variant_i = 0; variant_i < vec_size(enum_info.variants); variant_i = variant_i + 1) {
+        let variant_info = ptr_vec_get(enum_info.variants, variant_i) as EnumVariantInfo*;
         if (vec_size(variant_info.field_types) == 0) {
-            ccb_emit(self.out, "struct { char __dummy__; } " + variant2.name + ";");
+            ccb_emit(self.out, "struct { char __dummy__; } " + variant_info.name + ";");
             continue;
         }
 
@@ -1355,14 +1358,13 @@ func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_i
                 if (j > 0) {
                     sb_append(sb, "; ");
                 }
-                let field_decl = ptr_vec_get(variant2.fields, j) as FieldDecl*;
                 let field_type = ptr_vec_get(variant_info.field_types, j) as Type*;
                 sb_append(sb, cem_emit_type(field_type));
                 sb_append(sb, " ");
-                sb_append(sb, field_decl.name);
+                sb_append(sb, sv_get(variant_info.field_names, j));
             }
             sb_append(sb, "; } ");
-            sb_append(sb, variant2.name);
+            sb_append(sb, variant_info.name);
             sb_append(sb, ";");
             ccb_emit(self.out, sb_to_string(sb));
         }
@@ -1461,6 +1463,27 @@ func cem_emit_top_level_let_cleanup(self: CEmitter*) {
  */
 func cem_function_params(decl: FuncDecl*, func_type: Type*) -> string {
     let params = func_type.params as VectorBase*;
+    with (let param_names = sv_create(vec_size(params)) => sv_free(param_names)) {
+        for (let i = 0; i < vec_size(decl.params); i = i + 1) {
+            let param_decl = ptr_vec_get(decl.params, i) as Param*;
+            sv_push(param_names, param_decl.name);
+        }
+        return cem_function_params_from_names(param_names, func_type);
+    }
+}
+
+/**
+ * Build a function parameter list from interface parameter names.
+ *
+ * @param param_names Parameter names aligned with `func_type.params`.
+ * @param func_type Resolved function type.
+ * @return Parameter-list text without surrounding parentheses.
+ */
+func cem_function_params_from_names(param_names: StringVector*, func_type: Type*) -> string {
+    let params = func_type.params as VectorBase*;
+    if (sv_size(param_names) != vec_size(params)) {
+        cem_ice("[ICE-1272] parameter name count mismatch for function type");
+    }
     if (vec_size(params) == 0) {
         return "void";
     }
@@ -1470,11 +1493,10 @@ func cem_function_params(decl: FuncDecl*, func_type: Type*) -> string {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
-            let param_decl = ptr_vec_get(decl.params, i) as Param*;
             let param_type = ptr_vec_get(params, i) as Type*;
             sb_append(sb, cem_emit_type(param_type));
             sb_append(sb, " ");
-            sb_append(sb, cem_mangle_identifier(param_decl.name));
+            sb_append(sb, cem_mangle_identifier(sv_get(param_names, i)));
         }
         return sb_to_string(sb);
     }
@@ -1504,6 +1526,40 @@ func cem_emit_function_declaration(self: CEmitter*, module_name: string, decl: F
         static_prefix = "";
     }
     ccb_emit(self.out, static_prefix + c_return_type + " " + c_name + "(" + params_str + ");");
+}
+
+/**
+ * Emit a non-static imported L1 ABI function prototype from interface metadata.
+ *
+ * @param self Emitter to update.
+ * @param module_name Provider module name.
+ * @param entry Interface function entry.
+ */
+func cem_emit_interface_function_declaration(self: CEmitter*, module_name: string, entry: InterfaceFuncEntry*) {
+    let c_name = "(" + entry.name + ")";
+    if (!entry.is_extern) {
+        c_name = cem_mangle_function_name(module_name, entry.name, entry.ty);
+    }
+    let c_return_type = cem_emit_type(entry.ty.result as Type*);
+    let params_str = cem_function_params_from_names(entry.param_names, entry.ty);
+    ccb_emit(self.out, c_return_type + " " + c_name + "(" + params_str + ");");
+}
+
+/**
+ * Emit an external declaration for an imported top-level `let` or `const`.
+ *
+ * @param self Emitter to update.
+ * @param module_name Provider module name.
+ * @param entry Interface let/const entry.
+ */
+func cem_emit_interface_let_declaration(self: CEmitter*, module_name: string, entry: InterfaceLetEntry*) {
+    let c_type = cem_emit_type(entry.ty);
+    let c_name = cem_mangle_let_name(module_name, entry.name);
+    if (entry.is_const) {
+        ccb_emit(self.out, "extern const " + c_type + " " + c_name + ";");
+    } else {
+        ccb_emit(self.out, "extern " + c_type + " " + c_name + ";");
+    }
 }
 
 /**
@@ -2105,6 +2161,15 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
                 cem_collect_func_ptrs_from_type(self, ptr_vec_get(params, j) as Type*);
             }
             cem_collect_func_ptrs_from_type(self, func_type.result as Type*);
+        }
+    }
+
+    for (let let_i = 0; let_i < spm_capacity(tables.let_types); let_i = let_i + 1) {
+        if (spm_slot_occupied(tables.let_types, let_i)) {
+            let let_type = spm_slot_value(tables.let_types, let_i) as Type*;
+            cem_collect_array_wrappers_from_type(self, let_type);
+            cem_collect_opt_wrappers_from_type(self, let_type);
+            cem_collect_func_ptrs_from_type(self, let_type);
         }
     }
 
@@ -3628,48 +3693,17 @@ func cem_emit_pattern_binding_init(scrutinee: string, variant: string, field: st
 }
 
 /**
- * Look up a loaded enum declaration by module and name.
- *
- * @param self Emitter to inspect.
- * @param module_name Defining module name.
- * @param enum_name Enum name.
- * @return Matching declaration, or `null` if absent.
- */
-func cem_find_enum_decl(self: CEmitter*, module_name: string, enum_name: string) -> EnumDecl*? {
-    let unit = driver_find_unit(cem_analysis(self).driver_state, module_name);
-    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
-        return null;
-    }
-    let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
-    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
-        let decl = ptr_vec_get(root.decls, i) as TopLevelDecl*;
-        if (ord(decl.kind) == ord(TD_ENUM)) {
-            let ed = decl.data as EnumDecl*;
-            if (ed.name == enum_name) {
-                return ed;
-            }
-        }
-    }
-    return null;
-}
-
-/**
  * Report whether any variant field in an enum carries ARC-managed data.
  *
  * @param self Emitter to inspect.
  * @param enum_info Resolved enum metadata.
- * @param decl Parsed enum declaration.
  * @return `true` when cleanup code must inspect the active variant.
  */
-func cem_enum_has_arc_data(self: CEmitter*, enum_info: EnumInfo*, decl: EnumDecl*) -> bool {
-    for (let i = 0; i < vec_size(decl.variants); i = i + 1) {
-        let variant = ptr_vec_get(decl.variants, i) as EnumVariant*;
-        let info = cem_find_enum_variant_info(enum_info, variant.name);
-        if (info == null) {
-            continue;
-        }
-        for (let j = 0; j < vec_size((info as EnumVariantInfo*).field_types); j = j + 1) {
-            if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get((info as EnumVariantInfo*).field_types, j) as Type*)) {
+func cem_enum_info_has_arc_data(self: CEmitter*, enum_info: EnumInfo*) -> bool {
+    for (let i = 0; i < vec_size(enum_info.variants); i = i + 1) {
+        let variant = ptr_vec_get(enum_info.variants, i) as EnumVariantInfo*;
+        for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+            if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get(variant.field_types, j) as Type*)) {
                 return true;
             }
         }
@@ -3740,25 +3774,17 @@ func cem_emit_value_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
         if (enum_info == null) {
             return;
         }
-        let decl = cem_find_enum_decl(self, ty.module_name, ty.name);
-        if (decl == null) {
-            return;
-        }
-        if (!cem_enum_has_arc_data(self, enum_info as EnumInfo*, decl as EnumDecl*)) {
+        if (!cem_enum_info_has_arc_data(self, enum_info as EnumInfo*)) {
             return;
         }
 
         cem_emit_switch_start(self, cem_emit_enum_tag_access(c_expr));
-        for (let i = 0; i < vec_size((decl as EnumDecl*).variants); i = i + 1) {
-            let variant = ptr_vec_get((decl as EnumDecl*).variants, i) as EnumVariant*;
-            let info2 = cem_find_enum_variant_info(enum_info as EnumInfo*, variant.name);
-            if (info2 == null) {
-                continue;
-            }
+        for (let i = 0; i < vec_size((enum_info as EnumInfo*).variants); i = i + 1) {
+            let info2 = ptr_vec_get((enum_info as EnumInfo*).variants, i) as EnumVariantInfo*;
 
             let has_arc = false;
-            for (let j = 0; j < vec_size((info2 as EnumVariantInfo*).field_types); j = j + 1) {
-                if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get((info2 as EnumVariantInfo*).field_types, j) as Type*)) {
+            for (let j = 0; j < vec_size(info2.field_types); j = j + 1) {
+                if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get(info2.field_types, j) as Type*)) {
                     has_arc = true;
                     break;
                 }
@@ -3767,12 +3793,12 @@ func cem_emit_value_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
                 continue;
             }
 
-            ccb_emit(self.out, "case " + cem_emit_enum_tag(ty, variant.name) + ": {");
+            ccb_emit(self.out, "case " + cem_emit_enum_tag(ty, info2.name) + ": {");
             ccb_indent(self.out);
-            for (let cleanup_j = 0; cleanup_j < vec_size((info2 as EnumVariantInfo*).field_types); cleanup_j = cleanup_j + 1) {
-                let field_decl = ptr_vec_get(variant.fields, cleanup_j) as FieldDecl*;
-                let field_ty = ptr_vec_get((info2 as EnumVariantInfo*).field_types, cleanup_j) as Type*;
-                cem_emit_value_cleanup(self, cem_emit_enum_payload_field_access(c_expr, variant.name, field_decl.name), field_ty);
+            for (let cleanup_j = 0; cleanup_j < vec_size(info2.field_types); cleanup_j = cleanup_j + 1) {
+                let field_ty = ptr_vec_get(info2.field_types, cleanup_j) as Type*;
+                cem_emit_value_cleanup(self, cem_emit_enum_payload_field_access(c_expr, info2.name,
+                    sv_get(info2.field_names, cleanup_j)), field_ty);
             }
             cem_emit_exit_switch(self);
             ccb_dedent(self.out);
@@ -3847,27 +3873,19 @@ func cem_emit_enum_cleanup(self: CEmitter*, c_ptr_expr: string, enum_type: Type*
     if (enum_info == null) {
         cem_ice("[ICE-1080] missing EnumInfo for " + enum_type.module_name + "." + enum_type.name);
     }
-    let decl = cem_find_enum_decl(self, enum_type.module_name, enum_type.name);
-    if (decl == null) {
-        cem_ice("[ICE-1302] missing variant decl for " + enum_type.module_name + "." + enum_type.name);
-    }
-    if (!cem_enum_has_arc_data(self, enum_info as EnumInfo*, decl as EnumDecl*)) {
+    if (!cem_enum_info_has_arc_data(self, enum_info as EnumInfo*)) {
         return;
     }
 
     ccb_emit(self.out, "if (" + c_ptr_expr + " != NULL" + ") {");
     ccb_indent(self.out);
     cem_emit_switch_start(self, c_ptr_expr + "->tag");
-    for (let i = 0; i < vec_size((decl as EnumDecl*).variants); i = i + 1) {
-        let variant = ptr_vec_get((decl as EnumDecl*).variants, i) as EnumVariant*;
-        let info2 = cem_find_enum_variant_info(enum_info as EnumInfo*, variant.name);
-        if (info2 == null) {
-            continue;
-        }
+    for (let i = 0; i < vec_size((enum_info as EnumInfo*).variants); i = i + 1) {
+        let info2 = ptr_vec_get((enum_info as EnumInfo*).variants, i) as EnumVariantInfo*;
 
         let has_arc = false;
-        for (let j = 0; j < vec_size((info2 as EnumVariantInfo*).field_types); j = j + 1) {
-            if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get((info2 as EnumVariantInfo*).field_types, j) as Type*)) {
+        for (let j = 0; j < vec_size(info2.field_types); j = j + 1) {
+            if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get(info2.field_types, j) as Type*)) {
                 has_arc = true;
                 break;
             }
@@ -3876,13 +3894,12 @@ func cem_emit_enum_cleanup(self: CEmitter*, c_ptr_expr: string, enum_type: Type*
             continue;
         }
 
-        ccb_emit(self.out, "case " + cem_emit_enum_tag(enum_type, variant.name) + ": {");
+        ccb_emit(self.out, "case " + cem_emit_enum_tag(enum_type, info2.name) + ": {");
         ccb_indent(self.out);
-        for (let cleanup_j = 0; cleanup_j < vec_size((info2 as EnumVariantInfo*).field_types); cleanup_j = cleanup_j + 1) {
-            let field_decl = ptr_vec_get(variant.fields, cleanup_j) as FieldDecl*;
-            let field_ty = ptr_vec_get((info2 as EnumVariantInfo*).field_types, cleanup_j) as Type*;
-            cem_emit_value_cleanup(self, c_ptr_expr + "->data." + variant.name + "." + field_decl.name,
-                field_ty);
+        for (let cleanup_j = 0; cleanup_j < vec_size(info2.field_types); cleanup_j = cleanup_j + 1) {
+            let field_ty = ptr_vec_get(info2.field_types, cleanup_j) as Type*;
+            cem_emit_value_cleanup(self, c_ptr_expr + "->data." + info2.name + "." +
+                sv_get(info2.field_names, cleanup_j), field_ty);
         }
         cem_emit_exit_switch(self);
         ccb_dedent(self.out);

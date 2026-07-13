@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-11
+Version: 2026-07-12
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -222,9 +222,10 @@ diagnostic.
 | `PAR-0574` | L1+     | Expected `==` after declaration in interface file                        |
 | `PAR-0575` | L1+     | Expected hash string literal after `==` in interface declaration         |
 | `PAR-0576` | L1+     | Expected ';' after declaration with hash suffix in interface file        |
+| `PAR-0577` | L1+     | Duplicate module-level declaration name in interface file                |
 | `PAR-0600` | L1+     | Expected `func` or `extern` after `unsafe` in top-level declaration      |
 | `PAR-0601` | L1+     | Expected `func` after `unsafe` in function type                          |
-| `PAR-0602` | L1+     | Expected `func` after `unsafe` in interface file                         |
+| `PAR-0602` | L1+     | Expected `func` or `extern` after `unsafe` in interface file             |
 | `PAR-0620` | L1+     | Expected constant integer expression in array type suffix                |
 | `PAR-0621` | L1+     | Expected '\]' after array type length                                    |
 | `PAR-0622` | L1+     | Expected '\]' after array literal                                        |
@@ -241,6 +242,8 @@ diagnostic.
 | `DRV-0020` | All   | Input validation error, e.g. declared module name does not match the requested module |
 | `DRV-0030` | All   | Import-related driver error, e.g. cyclic module imports                               |
 | `DRV-0040` | All   | Source decoding error, e.g. input file is not valid UTF-8                             |
+| `DRV-0070` | L1+   | Supplied module interface requires unsupported transitive `require` or `link` replay  |
+| `DRV-0071` | L1+   | Duplicate supplied module interface for the same module                               |
 
 ## Build, Code Generation, and Runtime
 
@@ -289,23 +292,24 @@ diagnostic.
 
 ## Name Resolution and Import Analysis
 
-| Code       | Level | Meaning                                                                              |
-| ---------- | ----- | ------------------------------------------------------------------------------------ |
-| `RES-0010` | All   | Duplicate top-level definition in the same module                                    |
-| `RES-0020` | All   | Imported extern function is shadowed by a compatible local extern declaration        |
-| `RES-0021` | All   | Imported symbol is shadowed by a local definition                                    |
-| `RES-0022` | All   | Ambiguous unqualified import: the same symbol name is imported from multiple modules |
-| `RES-0029` | All   | Import refers to an unknown module                                                   |
-| `RES-0030` | L1+   | Duplicate name in explicit export manifest                                           |
-| `RES-0031` | L1+   | Explicit export manifest names an unknown top-level symbol                           |
-| `RES-0032` | L1+   | Selective import names a symbol that the imported module does not export             |
-| `RES-0033` | L1+   | Duplicate import alias in the same module                                            |
-| `RES-0034` | L1+   | Name is used both as an import alias and as a visible symbol in the same module      |
-| `RES-0035` | L1+   | Redundant selective import names symbols already imported from the same module       |
-| `RES-0036` | All   | Duplicate open import declaration for the same module                                |
-| `RES-0037` | L1+   | Exported surface references an unexported type                                       |
-| `RES-0038` | L1+   | Opaque type is used where transparent layout is required                             |
-| `RES-0039` | L1+   | `opaque` export qualifier is applied to a non-type symbol                            |
+| Code       | Level | Meaning                                                                                    |
+| ---------- | ----- | ------------------------------------------------------------------------------------------ |
+| `RES-0010` | All   | Duplicate top-level definition in the same module                                          |
+| `RES-0020` | All   | Imported extern function is shadowed by a compatible local extern declaration              |
+| `RES-0021` | All   | Imported symbol is shadowed by a local definition                                          |
+| `RES-0022` | All   | Ambiguous unqualified import: the same symbol name is imported from multiple modules       |
+| `RES-0023` | L1+   | Interface-replayed extern function is shadowed by an incompatible local extern declaration |
+| `RES-0029` | All   | Import refers to an unknown module                                                         |
+| `RES-0030` | L1+   | Duplicate name in explicit export manifest                                                 |
+| `RES-0031` | L1+   | Explicit export manifest names an unknown top-level symbol                                 |
+| `RES-0032` | L1+   | Selective import names a symbol that the imported module does not export                   |
+| `RES-0033` | L1+   | Duplicate import alias in the same module                                                  |
+| `RES-0034` | L1+   | Name is used both as an import alias and as a visible symbol in the same module            |
+| `RES-0035` | L1+   | Redundant selective import names symbols already imported from the same module             |
+| `RES-0036` | All   | Duplicate open import declaration for the same module                                      |
+| `RES-0037` | L1+   | Exported surface references an unexported type                                             |
+| `RES-0038` | L1+   | Opaque type is used where transparent layout is required                                   |
+| `RES-0039` | L1+   | `opaque` export qualifier is applied to a non-type symbol                                  |
 
 ## Signature Analysis and Type Resolution for Type Declarations, Type Aliases, and Type References
 

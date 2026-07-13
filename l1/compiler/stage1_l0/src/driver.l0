@@ -8,6 +8,8 @@ module driver;
 import sys.rt;
 
 import std.fs;
+import std.hashmap;
+import std.hashset;
 import std.string;
 import std.text;
 import std.vector;
@@ -18,6 +20,8 @@ import util.log;
 import dea_prelude;
 import source_paths;
 import lexer;
+import mi_utils;
+import module_interface;
 import parser;
 import tokens;
 import ast;
@@ -37,7 +41,13 @@ struct DriverUnit {
 struct DriverState {
     entry_module: string;
     units: VectorBase*; // DriverUnit*
-    loaded: StringVector*; // used during analysis, inert afterward
+    units_by_name: StringPtrMap*; // module name -> DriverUnit*
+    interfaces: VectorBase*; // active semantic ModuleInterface* clones
+    interfaces_by_name: StringPtrMap*; // module name -> semantic ModuleInterface*
+    projection_interfaces: VectorBase*; // active wire-preserving ModuleInterface* clones
+    projection_interfaces_by_name: StringPtrMap*; // module name -> projection ModuleInterface*
+    interface_funcs_by_key: StringPtrMap*; // module::function -> InterfaceFuncEntry*
+    loaded_set: StringSet*;
     diags: DiagCollector*;
     source_names: StringVector*; // source cache: file paths
     source_texts: StringVector*; // source cache: file contents
@@ -72,13 +82,36 @@ func dr_units_free(units: VectorBase*?) {
 }
 
 /**
+ * Free an optional vector of module interfaces.
+ *
+ * @param interfaces Optional interface vector to free.
+ */
+func dr_interfaces_free(interfaces: VectorBase*?) {
+    if (interfaces == null) {
+        return;
+    }
+
+    let v = interfaces as VectorBase*;
+    for (let i = 0; i < vec_size(v); i = i + 1) {
+        mi_free(ptr_vec_get(v, i) as ModuleInterface*);
+    }
+    vec_free(v);
+}
+
+/**
  * Free driver state and all owned parse/cache data.
  *
  * @param self Driver state to free.
  */
 func driver_state_free(self: DriverState*) {
+    spm_free(self.units_by_name);
+    spm_free(self.interfaces_by_name);
+    spm_free(self.projection_interfaces_by_name);
+    spm_free(self.interface_funcs_by_key);
+    ss_free(self.loaded_set);
     dr_units_free(self.units);
-    sv_free(self.loaded);
+    dr_interfaces_free(self.interfaces);
+    dr_interfaces_free(self.projection_interfaces);
     diag_free(self.diags);
     sv_free(self.source_names);
     sv_free(self.source_texts);
@@ -138,6 +171,78 @@ func driver_unit_get(self: DriverState*, index: int) -> DriverUnit* {
 }
 
 /**
+ * Return the number of active module interfaces.
+ *
+ * @param self Driver state to inspect.
+ * @return Interface count.
+ */
+func driver_interface_count(self: DriverState*) -> int {
+    return vec_size(self.interfaces);
+}
+
+/**
+ * Return an active module interface by index.
+ *
+ * @param self Driver state to inspect.
+ * @param index Zero-based interface index.
+ * @return Module interface at `index`.
+ */
+func driver_interface_get(self: DriverState*, index: int) -> ModuleInterface* {
+    return ptr_vec_get(self.interfaces, index) as ModuleInterface*;
+}
+
+/**
+ * Build an interface function lookup key.
+ *
+ * @param module_name Provider module name.
+ * @param name Function name.
+ * @return Key in `module::function` form.
+ */
+func dr_interface_func_key(module_name: string, name: string) -> string {
+    return module_name + "::" + name;
+}
+
+/**
+ * Register a loaded unit in ordered storage and lookup indexes.
+ *
+ * @param self Driver state to update.
+ * @param unit Owned unit to register.
+ */
+func dr_register_unit(self: DriverState*, unit: DriverUnit*) {
+    ptr_vec_push(self.units, unit as void*);
+    spm_put(self.units_by_name, unit.module_name, unit as void*);
+}
+
+/**
+ * Register an active interface in owned storage and non-owning lookup indexes.
+ *
+ * @param self Driver state to update.
+ * @param mi Owned interface clone to register.
+ */
+func dr_register_interface(self: DriverState*, mi: ModuleInterface*) {
+    ptr_vec_push(self.interfaces, mi as void*);
+    spm_put(self.interfaces_by_name, mi.module_name, mi as void*);
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+        let key = dr_interface_func_key(mi.module_name, entry.name);
+        if (spm_get(self.interface_funcs_by_key, key) == null) {
+            spm_put(self.interface_funcs_by_key, key, entry as void*);
+        }
+    }
+}
+
+/**
+ * Register a wire-preserving active interface for later projection.
+ *
+ * @param self Driver state to update.
+ * @param mi Owned unnormalized interface clone to register.
+ */
+func dr_register_projection_interface(self: DriverState*, mi: ModuleInterface*) {
+    ptr_vec_push(self.projection_interfaces, mi as void*);
+    spm_put(self.projection_interfaces_by_name, mi.module_name, mi as void*);
+}
+
+/**
  * Find a loaded driver unit by module name.
  *
  * @param self Driver state to inspect.
@@ -145,13 +250,73 @@ func driver_unit_get(self: DriverState*, index: int) -> DriverUnit* {
  * @return Matching driver unit, or `null` if not loaded.
  */
 func driver_find_unit(self: DriverState*, module_name: string) -> DriverUnit*? {
-    for (let i = 0; i < vec_size(self.units); i = i + 1) {
-        let unit = ptr_vec_get(self.units, i) as DriverUnit*;
-        if (unit.module_name == module_name) {
-            return unit;
-        }
+    let unit = spm_get(self.units_by_name, module_name);
+    if (unit == null) {
+        return null;
     }
-    return null;
+    return unit as DriverUnit*;
+}
+
+/**
+ * Find an active module interface by module name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Module name to search for.
+ * @return Matching module interface, or `null` if absent.
+ */
+func driver_find_interface(self: DriverState*, module_name: string) -> ModuleInterface*? {
+    let mi = spm_get(self.interfaces_by_name, module_name);
+    if (mi == null) {
+        return null;
+    }
+    return mi as ModuleInterface*;
+}
+
+/**
+ * Find a wire-preserving active module interface by module name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Module name to search for.
+ * @return Matching projection interface, or `null` if absent.
+ */
+func driver_find_projection_interface(self: DriverState*, module_name: string) -> ModuleInterface*? {
+    let mi = spm_get(self.projection_interfaces_by_name, module_name);
+    if (mi == null) {
+        return null;
+    }
+    return mi as ModuleInterface*;
+}
+
+/**
+ * Find an interface function entry by module and function name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Provider module name.
+ * @param name Function name.
+ * @return Matching interface function entry, or `null`.
+ */
+func driver_find_interface_func(self: DriverState*, module_name: string, name: string) -> InterfaceFuncEntry*? {
+    let entry = spm_get(self.interface_funcs_by_key, dr_interface_func_key(module_name, name));
+    if (entry == null) {
+        return null;
+    }
+    return entry as InterfaceFuncEntry*;
+}
+
+/**
+ * Clone interface function parameter names by module and function name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Provider module name.
+ * @param name Function name.
+ * @return Cloned parameter-name vector, or `null`.
+ */
+func driver_clone_interface_func_param_names(self: DriverState*, module_name: string, name: string) -> StringVector*? {
+    let entry = driver_find_interface_func(self, module_name, name);
+    if (entry == null) {
+        return null;
+    }
+    return us_sv_clone((entry as InterfaceFuncEntry*).param_names);
 }
 
 /**
@@ -161,11 +326,7 @@ func driver_find_unit(self: DriverState*, module_name: string) -> DriverUnit*? {
  * @return New vector containing sorted module names.
  */
 func driver_module_names_sorted(self: DriverState*) -> StringVector* {
-    let out = sv_create(vec_size(self.units));
-    for (let i = 0; i < vec_size(self.units); i = i + 1) {
-        let unit = ptr_vec_get(self.units, i) as DriverUnit*;
-        sv_push(out, unit.module_name);
-    }
+    let out = spm_keys(self.units_by_name);
     sv_sort(out);
     return out;
 }
@@ -213,13 +374,97 @@ func dr_sv_has(items: StringVector*, module_name: string) -> bool {
 /**
  * Mark a module as loaded if it is not already recorded.
  *
- * @param loaded Vector of loaded module names.
+ * @param state Driver state to update.
  * @param module_name Module name to record.
  */
-func dr_mark_loaded(loaded: StringVector*, module_name: string) {
-    if (!dr_sv_has(loaded, module_name)) {
-        sv_push(loaded, module_name);
+func dr_mark_loaded(state: DriverState*, module_name: string) {
+    if (!ss_has(state.loaded_set, module_name)) {
+        ss_add(state.loaded_set, module_name);
     }
+}
+
+/**
+ * Create an empty driver state.
+ *
+ * @param entry_module Entry module name.
+ * @param interfaces Optional borrowed interface candidates used to size active storage.
+ * @return New driver state owning its analysis data.
+ */
+func dr_state_create(entry_module: string, interfaces: VectorBase*?) -> DriverState* {
+    let interface_capacity = 0;
+    if (interfaces != null) {
+        interface_capacity = vec_size(interfaces as VectorBase*);
+    }
+    return new DriverState(
+        entry_module,
+        ptr_vec_create(8),
+        spm_create(),
+        ptr_vec_create(interface_capacity),
+        spm_create(),
+        ptr_vec_create(interface_capacity),
+        spm_create(),
+        spm_create(),
+        ss_create(),
+        diag_create(),
+        sv_create(4),
+        sv_create(4)
+    );
+}
+
+/**
+ * Report whether an interface has unresolved dependency entries for this tranche.
+ *
+ * @param mi Interface to inspect.
+ * @return `true` when the interface carries `require` or `link` entries.
+ */
+func dr_interface_has_dependency_entries(mi: ModuleInterface*) -> bool {
+    return vec_size(mi.require_entries) > 0 || vec_size(mi.link_entries) > 0;
+}
+
+/**
+ * Build a borrowed supplied-interface lookup while rejecting duplicates.
+ *
+ * @param state Driver state receiving duplicate diagnostics.
+ * @param interfaces Borrowed vector of `ModuleInterface*` values.
+ * @return Non-owning map from module name to supplied interface.
+ */
+func dr_build_interface_candidates(state: DriverState*, interfaces: VectorBase*?) -> StringPtrMap* {
+    let candidates = spm_create();
+    if (interfaces == null) {
+        return candidates;
+    }
+    let source = interfaces as VectorBase*;
+    for (let i = 0; i < vec_size(source); i = i + 1) {
+        let mi = ptr_vec_get(source, i) as ModuleInterface*;
+        if (spm_get(candidates, mi.module_name) != null) {
+            dr_emit_error(state.diags, "DRV-0071",
+                "duplicate supplied module interface for '" + mi.module_name + "'",
+                "<interface:" + mi.module_name + ">");
+        } else {
+            spm_put(candidates, mi.module_name, mi as void*);
+        }
+    }
+    return candidates;
+}
+
+/**
+ * Reject active interfaces whose dependencies require transitive closure loading.
+ *
+ * @param state Driver state containing active imported interfaces.
+ * @return `true` if every active interface is currently supported.
+ */
+func dr_validate_active_interfaces(state: DriverState*) -> bool {
+    let ok = true;
+    for (let i = 0; i < driver_interface_count(state); i = i + 1) {
+        let mi = driver_interface_get(state, i);
+        if (dr_interface_has_dependency_entries(mi)) {
+            dr_emit_error(state.diags, "DRV-0070",
+                "module interface '" + mi.module_name + "' declares require/link dependencies; transitive interface replay is not supported yet",
+                "<interface:" + mi.module_name + ">");
+            ok = false;
+        }
+    }
+    return ok;
 }
 
 /**
@@ -256,13 +501,14 @@ func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResu
  * Revisit the loaded module closure to mirror Stage 1 cache-hit logging.
  *
  * @param state Driver state containing loaded modules.
+ * @param candidates Non-owning supplied-interface candidate map.
  * @param search_paths Source search paths used for lookups.
  * @param module_name Current module name.
  * @param visited Module names already traversed by this closure walk.
  * @param cfg Logging configuration.
  */
-func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, module_name: string, visited: StringVector*,
-                      cfg: LogConfig*) {
+func dr_visit_closure(state: DriverState*, candidates: StringPtrMap*, search_paths: SourceSearchPaths*,
+                      module_name: string, visited: StringVector*, cfg: LogConfig*) {
     let unit_opt = driver_find_unit(state, module_name);
     if (unit_opt == null) {
         return;
@@ -281,8 +527,8 @@ func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, mod
     let mod = unit.parse_result.root_module as Module*;
     for (let i = 0; i < vec_size(mod.imports); i = i + 1) {
         let imp = ptr_vec_get(mod.imports, i) as Import*;
-        dr_load_module(state, search_paths, "|", imp.name, cfg);
-        dr_visit_closure(state, search_paths, imp.name, visited, cfg);
+        dr_load_module(state, candidates, search_paths, "|", imp.name, cfg);
+        dr_visit_closure(state, candidates, search_paths, imp.name, visited, cfg);
     }
 }
 
@@ -290,22 +536,23 @@ func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, mod
  * Load one module and its import closure into the driver state.
  *
  * @param state Driver state that caches loaded modules and diagnostics.
+ * @param candidates Non-owning supplied-interface candidate map.
  * @param search_paths Source search paths used to resolve module names.
  * @param loading_chain Import chain encoded with `|name|` sentinels for cycle detection.
  * @param module_name Module name to load.
  * @param cfg Logging configuration.
  * @return `true` if the module was loaded successfully or was already cached.
  */
-func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loading_chain: string,
-                    module_name: string, cfg: LogConfig*) -> bool {
-    if (dr_sv_has(state.loaded, module_name)) {
+func dr_load_module(state: DriverState*, candidates: StringPtrMap*, search_paths: SourceSearchPaths*,
+                    loading_chain: string, module_name: string, cfg: LogConfig*) -> bool {
+    if (ss_has(state.loaded_set, module_name)) {
         log_debug(cfg, "Module '" + module_name + "' already loaded (cache hit)");
         return true;
     }
 
     if (dea_is_virtual_module_name(module_name)) {
         log_debug(cfg, "Treating module '" + module_name + "' as compiler-synthesized prelude");
-        dr_mark_loaded(state.loaded, module_name);
+        dr_mark_loaded(state, module_name);
         return true;
     }
 
@@ -319,6 +566,20 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
 
     let next_loading_chain = loading_chain + module_name + "|";
     let ok = true;
+
+    if (loading_chain != "|") {
+        let candidate = spm_get(candidates, module_name);
+        if (candidate != null) {
+            let projection_clone = miu_clone_interface(candidate as ModuleInterface*);
+            let semantic_clone = miu_clone_interface(candidate as ModuleInterface*);
+            miu_resolve_interface_alias_refs(semantic_clone);
+            dr_register_projection_interface(state, projection_clone);
+            dr_register_interface(state, semantic_clone);
+            log_debug(cfg, "Using supplied interface for module '" + module_name + "'");
+            dr_mark_loaded(state, module_name);
+            return true;
+        }
+    }
 
     let path_opt = sp_resolve(search_paths, module_name);
     if (path_opt == null) {
@@ -346,7 +607,7 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
                 let pr = dr_parse_source(path, source, cfg);
 
                 let unit = new DriverUnit(module_name, path, pr);
-                ptr_vec_push(state.units, unit as void*);
+                dr_register_unit(state, unit);
 
                 dr_copy_parse_diags(state.diags, pr);
 
@@ -361,7 +622,8 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
                     } else {
                         for (let i = 0; i < vec_size(mod.imports); i = i + 1) {
                             let imp = ptr_vec_get(mod.imports, i) as Import*;
-                            let child_ok = dr_load_module(state, search_paths, next_loading_chain, imp.name, cfg);
+                            let child_ok = dr_load_module(state, candidates, search_paths, next_loading_chain, imp.name,
+                                cfg);
                             if (!child_ok) {
                                 ok = false;
                             }
@@ -376,7 +638,7 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
         }
     }
 
-    dr_mark_loaded(state.loaded, module_name);
+    dr_mark_loaded(state, module_name);
     return ok;
 }
 
@@ -389,20 +651,38 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
  * @return Driver state containing parsed modules, caches, and diagnostics.
  */
 func driver_analyze_entry(search_paths: SourceSearchPaths*, entry_module: string, cfg: LogConfig*) -> DriverState* {
+    return driver_analyze_entry_with_interfaces(search_paths, entry_module, null, cfg);
+}
+
+/**
+ * Load and parse an entry module while treating supplied interfaces as a direct-import registry.
+ *
+ * @param search_paths Source search paths used for module resolution.
+ * @param entry_module Entry module name.
+ * @param interfaces Borrowed vector of parsed direct provider interfaces.
+ * @param cfg Logging configuration.
+ * @return Driver state containing parsed modules, active cloned interfaces, caches, and diagnostics.
+ */
+func driver_analyze_entry_with_interfaces(search_paths: SourceSearchPaths*, entry_module: string,
+                                          interfaces: VectorBase*?, cfg: LogConfig*) -> DriverState* {
     log_info(cfg, "Starting analysis for entry module '" + entry_module + "'");
     log_stage(cfg, "Building compilation unit", entry_module);
-    let state = new DriverState(
-        entry_module, ptr_vec_create(8), sv_create(8),
-        diag_create(), sv_create(4), sv_create(4)
-    );
-    dr_load_module(state, search_paths, "|", entry_module, cfg);
-    if (!driver_has_errors(state)) {
-        with (let visited = sv_create(driver_unit_count(state)) => sv_free(visited)) {
-            dr_visit_closure(state, search_paths, entry_module, visited, cfg);
+    let state = dr_state_create(entry_module, interfaces);
+    with (let candidates = dr_build_interface_candidates(state, interfaces) => spm_free(candidates)) {
+        if (!driver_has_errors(state)) {
+            dr_load_module(state, candidates, search_paths, "|", entry_module, cfg);
+            if (!driver_has_errors(state)) {
+                dr_validate_active_interfaces(state);
+            }
         }
-        with (let names = driver_module_names_sorted(state) => sv_free(names)) {
-            log_debug(cfg, "Compilation unit contains " + int_to_string(sv_size(names)) +
-                " module(s): " + join_s(names, ", "));
+        if (!driver_has_errors(state)) {
+            with (let visited = sv_create(driver_unit_count(state)) => sv_free(visited)) {
+                dr_visit_closure(state, candidates, search_paths, entry_module, visited, cfg);
+            }
+            with (let names = driver_module_names_sorted(state) => sv_free(names)) {
+                log_debug(cfg, "Compilation unit contains " + int_to_string(sv_size(names)) +
+                    " module(s): " + join_s(names, ", "));
+            }
         }
     }
     return state;

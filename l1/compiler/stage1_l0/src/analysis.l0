@@ -74,7 +74,21 @@ func analysis_signature_summary(sigs: SignatureTables*) -> string {
  * @return The complete analysis result including semantic context.
  */
 func analysis_analyze_entry(search_paths: SourceSearchPaths*, entry_module: string, cfg: LogConfig*) -> AnalysisResult* {
-    let driver_state = driver_analyze_entry(search_paths, entry_module, cfg);
+    return analysis_analyze_entry_with_interfaces(search_paths, entry_module, null, cfg);
+}
+
+/**
+ * Analyzes the entry module with a supplied direct-provider interface registry.
+ *
+ * @param search_paths The source search paths configuration.
+ * @param entry_module The name of the entry module.
+ * @param interfaces Borrowed vector of `ModuleInterface*` direct-provider candidates.
+ * @param cfg The logging configuration.
+ * @return The complete analysis result including semantic context.
+ */
+func analysis_analyze_entry_with_interfaces(search_paths: SourceSearchPaths*, entry_module: string,
+                                            interfaces: VectorBase*?, cfg: LogConfig*) -> AnalysisResult* {
+    let driver_state = driver_analyze_entry_with_interfaces(search_paths, entry_module, interfaces, cfg);
     let result = new AnalysisResult(
         driver_state,
         diag_create(),
@@ -135,60 +149,6 @@ func analysis_emit_interface(result: AnalysisResult*, module_name: string) -> st
     let text = ie_emit(mi as ModuleInterface*);
     mi_free(mi as ModuleInterface*);
     return text;
-}
-
-/**
- * Deep-clone a StructInfo.
- *
- * @param info Source struct info to clone.
- * @return New StructInfo owning cloned types.
- */
-func mi_clone_struct_info(info: StructInfo*) -> StructInfo* {
-    let fields = ptr_vec_create(vec_size(info.fields));
-    for (let i = 0; i < vec_size(info.fields); i = i + 1) {
-        let src = ptr_vec_get(info.fields, i) as StructFieldInfo*;
-        ptr_vec_push(fields, new StructFieldInfo(src.name, type_clone(src.field_type)) as void*);
-    }
-    return new StructInfo(
-        info.key,
-        info.module_name,
-        info.name,
-        info.filename,
-        info.span,
-        type_clone(info.struct_type),
-        fields,
-        info.iface_hash,
-        info.is_opaque
-    );
-}
-
-/**
- * Deep-clone an EnumInfo.
- *
- * @param info Source enum info to clone.
- * @return New EnumInfo owning cloned types.
- */
-func mi_clone_enum_info(info: EnumInfo*) -> EnumInfo* {
-    let variants = ptr_vec_create(vec_size(info.variants));
-    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
-        let src = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
-        let field_types = ptr_vec_create(vec_size(src.field_types));
-        for (let j = 0; j < vec_size(src.field_types); j = j + 1) {
-            ptr_vec_push(field_types, type_clone(ptr_vec_get(src.field_types, j) as Type*) as void*);
-        }
-        ptr_vec_push(variants, new EnumVariantInfo(src.name, field_types, us_sv_clone(src.field_names)) as void*);
-    }
-    return new EnumInfo(
-        info.key,
-        info.module_name,
-        info.name,
-        info.filename,
-        info.span,
-        type_clone(info.enum_type),
-        variants,
-        info.iface_hash,
-        info.is_opaque
-    );
 }
 
 /**
@@ -514,6 +474,11 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
         return null;
     }
 
+    let active_interface = driver_find_projection_interface(result.driver_state, module_name);
+    if (active_interface != null) {
+        return miu_clone_interface(active_interface as ModuleInterface*);
+    }
+
     let nr = result.names as NameResolution*;
     let sigs = result.signatures as SignatureTables*;
 
@@ -558,7 +523,7 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     if (info_opt == null) {
                         continue;
                     }
-                    let cloned_struct = mi_clone_struct_info(info_opt as StructInfo*);
+                    let cloned_struct = miu_clone_struct_info(info_opt as StructInfo*);
                     if (!cloned_struct.is_opaque) {
                         for (let fi = 0; fi < vec_size(cloned_struct.fields); fi = fi + 1) {
                             let field = ptr_vec_get(cloned_struct.fields, fi) as StructFieldInfo*;
@@ -572,7 +537,7 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     if (info_opt == null) {
                         continue;
                     }
-                    let cloned_enum = mi_clone_enum_info(info_opt as EnumInfo*);
+                    let cloned_enum = miu_clone_enum_info(info_opt as EnumInfo*);
                     if (!cloned_enum.is_opaque) {
                         for (let vi = 0; vi < vec_size(cloned_enum.variants); vi = vi + 1) {
                             let variant = ptr_vec_get(cloned_enum.variants, vi) as EnumVariantInfo*;
@@ -591,7 +556,7 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     let func_ty = type_clone(ty_opt as Type*);
                     mi_collect_type_refs(func_ty, module_name, require_entries);
                     let param_names = mi_collect_param_names(sym);
-                    let entry = new InterfaceFuncEntry(key, param_names, func_ty, "");
+                    let entry = new InterfaceFuncEntry(key, param_names, func_ty, sym.is_extern, "");
                     ptr_vec_push(func_entries, entry as void*);
                 }
                 SYM_LET => {

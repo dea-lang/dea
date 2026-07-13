@@ -9,6 +9,10 @@ export *;
 
 type UnsafeCb = unsafe func(int) -> int;
 
+extern func puts(value: string) -> int;
+
+unsafe extern func raw_sink(value: int*) -> void;
+
 unsafe func borrow(cb: UnsafeCb) -> UnsafeCb {
     return cb;
 }

@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_const_scalar_ok;
+
+import replay_provider;
+
+func take(values: int[origin_x]) -> int {
+    return 0;
+}
+
+func main() -> int {
+    case (origin_x) {
+        1 => return 1;
+        5 => return 2;
+        min_offset => return 3;
+        _ => return 0;
+    }
+}

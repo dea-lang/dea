@@ -5,6 +5,14 @@
 
 module export_implicit_dep;
 
+enum Visible {
+    VisibleCase;
+}
+
+enum _Private {
+    LeakedCase;
+}
+
 func public_value() -> int {
     return 7;
 }

@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> Grammar
 
-Version: 2026-06-24
+Version: 2026-07-11
 
 The following is the formal grammar for the Dea/L<sub>1</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -135,7 +135,8 @@ Semantic notes:
   only the named top-level symbols transparently. `export opaque { T };` exports a struct or enum name while hiding its
   layout; `opaque` must be followed by a non-empty brace-delimited identifier list, and bare `{ ... }` is not an export
   grouping form. If no export manifest is present, all top-level names except `_`-prefixed names are exported
-  transparently.
+  transparently. Enum variants are not top-level export items: a transparent enum exposes all of its variants, while an
+  opaque or unexported enum exposes none.
 - Plain `import module.path;` opens the imported module's export set into the current module and permits
   `module.path::name` lookup. `import module.path as alias;` binds only the `alias::name` namespace.
   `import a, b from module.path;` binds only the named exports as unqualified imports.

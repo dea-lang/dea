@@ -8,6 +8,7 @@ module type_resolve_test;
 import std.io;
 import std.string;
 import std.assert;
+import std.text;
 import std.vector;
 import std.hashset;
 
@@ -19,6 +20,7 @@ import type_resolve;
 import types;
 import symbols;
 import util.log;
+import util.numbers;
 import name_resolver;
 
 /**
@@ -356,6 +358,42 @@ func test_tr_module_qualified_variant_lookup_survives_shadow_warning() {
 }
 
 /**
+ * Tests raw interface const evaluation for split-token signed numerics.
+ */
+func test_tr_const_eval_split_interface_literals() {
+    let int_value = tr_const_eval_interface_literal_raw("- 5");
+    assert(int_value != null, "split-token negative int should evaluate");
+    assert(ord((int_value as ConstValue*).kind) == ord(CV_INT), "split-token negative int kind mismatch");
+    assert((int_value as ConstValue*).int_value == -5, "split-token negative int value mismatch");
+    tr_const_value_free(int_value as ConstValue*);
+
+    let real_value = tr_const_eval_interface_literal_raw("- 2.5");
+    assert(real_value != null, "split-token negative real should evaluate");
+    assert(ord((real_value as ConstValue*).kind) == ord(CV_DOUBLE), "split-token negative real kind mismatch");
+    assert((real_value as ConstValue*).text_value == "-2.5", "split-token negative real value mismatch");
+    tr_const_value_free(real_value as ConstValue*);
+
+    assert(tr_const_eval_interface_literal_raw("- 2147483648") == null,
+        "split-token negative bigint should stay outside raw scalar replay");
+    assert(tr_const_eval_interface_literal_raw("- -5") == null,
+        "split-token evaluator should reject an already signed payload");
+
+    let int_min = tr_const_eval_interface_literal_raw("-2147483648");
+    assert(int_min != null, "canonical int minimum should evaluate");
+    assert(ord((int_min as ConstValue*).kind) == ord(CV_INT), "canonical int minimum kind mismatch");
+    assert(int_to_string((int_min as ConstValue*).int_value) == "-2147483648",
+        "canonical int minimum value mismatch");
+    tr_const_value_free(int_min as ConstValue*);
+
+    let signed_bigint = tr_const_eval_interface_literal_raw("-9223372036854775808");
+    assert(signed_bigint != null, "canonical signed bigint should evaluate");
+    assert(ord((signed_bigint as ConstValue*).kind) == ord(CV_BIGINT), "canonical signed bigint kind mismatch");
+    assert(bigint_to_string((signed_bigint as ConstValue*).text_value, (signed_bigint as ConstValue*).base_value) ==
+        "-9223372036854775808", "canonical signed bigint value mismatch");
+    tr_const_value_free(signed_bigint as ConstValue*);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -364,5 +402,6 @@ func main() {
     test_tr_resolve_ordered_suffix_constructors();
     test_tr_resolve_slice_suffix();
     test_tr_module_qualified_variant_lookup_survives_shadow_warning();
+    test_tr_const_eval_split_interface_literals();
     printl_s("type_resolve_test: all tests passed");
 }

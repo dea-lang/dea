@@ -285,6 +285,14 @@ func test_export_surfaces_and_new_imports() {
         assert(dep_env != null, "expected export_implicit_dep env");
         assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "public_value") != null, "expected public export");
         assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "_hidden_value") == null, "expected implicit private name");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "Visible") != null,
+            "expected implicit public enum export");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "VisibleCase") != null,
+            "expected variants derived from an implicitly exported enum");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "_Private") == null,
+            "expected underscore-prefixed enum to stay private");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "LeakedCase") == null,
+            "private enum variants must not leak through their own names");
 
         nr_free(names);
         driver_state_free(state);
@@ -298,6 +306,10 @@ func test_export_surfaces_and_new_imports() {
         assert(star_env != null, "expected export_star_dep env");
         assert(nr_map_symbol_get((star_env as ModuleEnv*).exports, "_hidden_value") != null,
             "expected star export to include underscore name");
+        assert(nr_map_symbol_get((star_env as ModuleEnv*).exports, "_Starred") != null,
+            "expected star export to include underscore enum");
+        assert(nr_map_symbol_get((star_env as ModuleEnv*).exports, "StarCase") != null,
+            "expected star-exported enum variants");
         nr_free(names2);
         driver_state_free(state2);
     }
@@ -363,6 +375,22 @@ func test_export_surfaces_and_new_imports() {
         driver_state_free(state6);
     }
 
+    with (let cfg7 = log_config_create(LL_SILENT, false) => drop cfg7,
+          let diags7 = diag_create() => diag_free(diags7)) {
+        let state7 = driver_analyze_entry(sp, "opaque_import_dep", cfg7);
+        let names7 = nr_resolve(state7, diags7);
+        let opaque_env = nr_env_find(names7, "opaque_import_dep");
+        assert(opaque_env != null, "expected opaque_import_dep env");
+        assert(nr_map_symbol_get((opaque_env as ModuleEnv*).exports, "State") != null,
+            "expected opaque enum name export");
+        assert(nr_map_symbol_get((opaque_env as ModuleEnv*).exports, "Idle") == null,
+            "opaque enum variants must not be exported");
+        assert(nr_map_symbol_get((opaque_env as ModuleEnv*).exports, "Running") == null,
+            "opaque enum variants must not be exported");
+        nr_free(names7);
+        driver_state_free(state7);
+    }
+
     sp_free(sp);
 }
 
@@ -377,6 +405,8 @@ func test_export_import_diagnostics() {
         let names = nr_resolve(state, diags);
         assert(has_diag_code(diags, "RES-0030"), "expected duplicate export diagnostic");
         assert(has_diag_code(diags, "RES-0031"), "expected unknown export diagnostic");
+        assert(has_diag_message(diags, "RES-0031", "unknown top-level symbol 'Red'"),
+            "expected standalone enum variant export to be rejected");
         nr_free(names);
         driver_state_free(state);
     }

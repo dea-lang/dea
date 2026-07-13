@@ -1,6 +1,6 @@
 # Dea/L1 Module Visibility and Imports
 
-Version: 2026-06-14
+Version: 2026-07-13
 
 Status: Finalized
 
@@ -70,12 +70,18 @@ transparently, and opacity must be requested per type name.
 
 The compiler computes one effective export set for each module:
 
-1. `export *;` exports every top-level symbol, including names that begin with `_`.
-2. `export a, b;` exports exactly the listed top-level symbols.
-3. If no export manifest is present, every top-level symbol except `_`-prefixed names is exported.
+1. `export *;` exports every top-level declaration, including names that begin with `_`.
+2. `export a, b;` exports exactly the listed top-level declarations.
+3. If no export manifest is present, every top-level declaration except `_`-prefixed names is exported.
 
 An explicit export list is an allowlist, not a renaming mechanism. The listed names must resolve to top-level
 declarations in the same module, and duplicate names in the list are rejected.
+
+Enum variants are members of their owning declaration, not independently exportable top-level declarations. Exporting an
+enum transparently exports every variant; exporting it opaquely or not exporting it exposes no variants. Under the
+implicit rule, the owning enum's name determines visibility, so a public-looking variant cannot leak from an
+underscore-prefixed private enum. Listing a variant directly in an explicit export manifest is rejected as a
+non-top-level name.
 
 Names beginning with `_` are private by default only under the implicit export rule. A module can intentionally publish
 such a name with either `export *;` or an explicit list:
@@ -103,13 +109,14 @@ pure function of what the interface lets it see:
 
 - Naming the type or forming a pointer to it requires the name to be exported (opaque or transparent).
 - Reading or writing a field requires that field to be exported.
-- Any layout-requiring operation (by-value parameter or return, copy, assignment, `sizeof`, construction) requires every
-  field to be exported, that is, a transparent type.
+- Any layout-requiring operation (by-value parameter or return, copy, assignment, `sizeof`, construction, or `drop` of
+  an owned pointee) requires every field to be exported, that is, a transparent type.
 
 A hidden field hides the field's contribution to layout, not merely its name. On an opaque type an importer may name it
 and form, hold, receive, and pass pointers to it, but may not construct it, copy or assign it by value, take its
-`sizeof`, dereference it, or access its fields. These are not special-cased prohibitions; the operations are simply
-unavailable without a visible layout.
+`sizeof`, dereference it, access its fields, or apply `drop` directly to an owned pointer. Dropping the allocation must
+run cleanup for any hidden owned fields, so opaque resources require a provider-exported destruction operation. These
+are not special-cased prohibitions; the operations are simply unavailable without a visible layout.
 
 ### Exported-surface typing rule
 
@@ -135,7 +142,8 @@ is itself legal only when its by-value closure is transparent and its pointee fr
 
 Enum variants are the layout-determining members; the same rules apply with variants standing in for fields. Variant
 visibility is all-or-none initially: hiding all variants yields an opaque enum that can be held and pointed to but
-neither matched nor constructed.
+neither matched nor constructed. The effective variant export set is therefore derived from the owning enum's
+transparent or opaque state.
 
 ### Implementation scope
 

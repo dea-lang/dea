@@ -7,6 +7,10 @@ module export_star_dep;
 
 export *;
 
+enum _Starred {
+    StarCase;
+}
+
 func public_value() -> int {
     return 11;
 }

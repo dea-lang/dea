@@ -17,6 +17,7 @@ import c_emitter;
 import codegen_options;
 import dea_prelude;
 import driver;
+import module_interface;
 import name_resolver;
 import sem_context;
 import signatures;
@@ -173,6 +174,20 @@ func be_type_key_name(key: string) -> string {
 }
 
 /**
+ * Push a type key unless it is already present.
+ *
+ * @param values Vector to update.
+ * @param seen Set of already-pushed type keys.
+ * @param key Type key.
+ */
+func be_push_type_key(values: StringVector*, seen: StringSet*, key: string) {
+    if (!ss_has(seen, key)) {
+        ss_add(seen, key);
+        sv_push(values, key);
+    }
+}
+
+/**
  * Return the current module environment.
  *
  * @param self Backend state to inspect.
@@ -281,6 +296,50 @@ func be_lookup_symbol(self: Backend*, name: string, module_path: StringVector*?,
         return null;
     }
     return tr_symbol_lookup(self.result.names as NameResolution*, be_current_env(self), name, module_path, name_qualifier);
+}
+
+/**
+ * Return a C callable name for a resolved function symbol.
+ *
+ * Interface-backed functions use their replayed ABI metadata when present.
+ *
+ * @param self Backend state to inspect.
+ * @param sym Function symbol.
+ * @param func_ty Resolved function type.
+ * @return C function name.
+ */
+func be_function_c_name(self: Backend*, sym: Symbol*, func_ty: Type*) -> string {
+    if (sym.decl_ptr != null) {
+        let decl = sym.decl_ptr as FuncDecl*;
+        if (decl.is_extern) {
+            return sym.name;
+        }
+    } else {
+        let entry = driver_find_interface_func(self.result.driver_state, sym.module_name, sym.name);
+        if (entry != null && (entry as InterfaceFuncEntry*).is_extern) {
+            return sym.name;
+        }
+    }
+    return cem_mangle_function_name(sym.module_name, sym.name, func_ty);
+}
+
+/**
+ * Clone function parameter names for source-backed or interface-backed functions.
+ *
+ * @param self Backend state to inspect.
+ * @param sym Function symbol.
+ * @return Cloned parameter names, or `null`.
+ */
+func be_clone_function_param_names(self: Backend*, sym: Symbol*) -> StringVector*? {
+    if (sym.decl_ptr != null) {
+        let decl = sym.decl_ptr as FuncDecl*;
+        let names = sv_create(vec_size(decl.params));
+        for (let i = 0; i < vec_size(decl.params); i = i + 1) {
+            sv_push(names, (ptr_vec_get(decl.params, i) as Param*).name);
+        }
+        return names;
+    }
+    return driver_clone_interface_func_param_names(self.result.driver_state, sym.module_name, sym.name);
 }
 
 /**
@@ -902,24 +961,22 @@ func be_emit_retain_for_copied_value(self: Backend*, c_expr: string, ty: Type*) 
 
     if (ord(ty.kind) == ord(TY_ENUM)) {
         let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, ty.module_name, ty.name);
-        let decl = be_find_enum_decl(self, ty.module_name, ty.name);
-        if (enum_info == null || decl == null) {
+        if (enum_info == null) {
             return;
         }
 
         cem_emit_switch_start(self.emitter, cem_emit_enum_tag_access(c_expr));
-        for (let i = 0; i < vec_size((decl as EnumDecl*).variants); i = i + 1) {
-            let variant = ptr_vec_get((decl as EnumDecl*).variants, i) as EnumVariant*;
-            let info2 = cem_find_enum_variant_info(enum_info as EnumInfo*, variant.name);
-            if (info2 == null) {
-                continue;
-            }
-            cem_emit_case_label(self.emitter, cem_emit_enum_tag(ty, variant.name));
+        let variants = (enum_info as EnumInfo*).variants;
+        for (let i = 0; i < vec_size(variants); i = i + 1) {
+            let info2 = ptr_vec_get(variants, i) as EnumVariantInfo*;
+            cem_emit_case_label(self.emitter, cem_emit_enum_tag(ty, info2.name));
             cem_emit_block_start(self.emitter);
-            for (let j = 0; j < vec_size((info2 as EnumVariantInfo*).field_types); j = j + 1) {
-                let field_decl = ptr_vec_get(variant.fields, j) as FieldDecl*;
-                let field_ty = ptr_vec_get((info2 as EnumVariantInfo*).field_types, j) as Type*;
-                be_emit_retain_for_copied_value(self, cem_emit_enum_payload_field_access(c_expr, variant.name, field_decl.name), field_ty);
+            for (let j = 0; j < vec_size(info2.field_types); j = j + 1) {
+                let field_ty = ptr_vec_get(info2.field_types, j) as Type*;
+                be_emit_retain_for_copied_value(self,
+                    cem_emit_enum_payload_field_access(c_expr, info2.name,
+                        sv_get(info2.field_names, j)),
+                    field_ty);
             }
             cem_emit_exit_switch(self.emitter);
             cem_emit_block_end(self.emitter);
@@ -1523,85 +1580,6 @@ func type_free_opt(ty: Type*?) {
 }
 
 /**
- * Look up a top-level struct declaration.
- *
- * @param self Backend state to inspect.
- * @param module_name Defining module name.
- * @param struct_name Struct name.
- * @return Matching declaration, or `null` if absent.
- */
-func be_find_struct_decl(self: Backend*, module_name: string, struct_name: string) -> StructDecl*? {
-    let unit = be_find_unit(self, module_name);
-    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
-        return null;
-    }
-
-    let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
-    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
-        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
-        if (ord(top.kind) == ord(TD_STRUCT)) {
-            let decl = top.data as StructDecl*;
-            if (decl.name == struct_name) {
-                return decl;
-            }
-        }
-    }
-    return null;
-}
-
-/**
- * Look up a top-level enum declaration.
- *
- * @param self Backend state to inspect.
- * @param module_name Defining module name.
- * @param enum_name Enum name.
- * @return Matching declaration, or `null` if absent.
- */
-func be_find_enum_decl(self: Backend*, module_name: string, enum_name: string) -> EnumDecl*? {
-    let unit = be_find_unit(self, module_name);
-    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
-        return null;
-    }
-
-    let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
-    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
-        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
-        if (ord(top.kind) == ord(TD_ENUM)) {
-            let decl = top.data as EnumDecl*;
-            if (decl.name == enum_name) {
-                return decl;
-            }
-        }
-    }
-    return null;
-}
-
-/**
- * Look up an enum variant declaration.
- *
- * @param self Backend state to inspect.
- * @param module_name Defining module name.
- * @param enum_name Enum name.
- * @param variant_name Variant name.
- * @return Matching variant declaration, or `null` if absent.
- */
-func be_find_variant_decl(self: Backend*, module_name: string, enum_name: string, variant_name: string) -> EnumVariant*? {
-    let enum_decl = be_find_enum_decl(self, module_name, enum_name);
-    if (enum_decl == null) {
-        return null;
-    }
-
-    let decl = enum_decl as EnumDecl*;
-    for (let i = 0; i < vec_size(decl.variants); i = i + 1) {
-        let variant = ptr_vec_get(decl.variants, i) as EnumVariant*;
-        if (variant.name == variant_name) {
-            return variant;
-        }
-    }
-    return null;
-}
-
-/**
  * Add value-type dependencies for one field type.
  *
  * @param ty Type to inspect.
@@ -1699,34 +1677,56 @@ func be_dependency_sets_free(sets: VectorBase*?) {
 func be_collect_type_keys(self: Backend*) -> StringVector* {
     let out = sv_create(8);
 
-    for (let enum_unit_i = 0; enum_unit_i < driver_unit_count(self.result.driver_state); enum_unit_i = enum_unit_i + 1) {
-        let unit = driver_unit_get(self.result.driver_state, enum_unit_i);
-        if (unit.parse_result.root_module == null) {
-            continue;
-        }
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let enum_unit_i = 0; enum_unit_i < driver_unit_count(self.result.driver_state); enum_unit_i = enum_unit_i + 1) {
+            let unit = driver_unit_get(self.result.driver_state, enum_unit_i);
+            if (unit.parse_result.root_module == null) {
+                continue;
+            }
 
-        let root = unit.parse_result.root_module as Module*;
-        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
-            let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
-            if (ord(top.kind) == ord(TD_STRUCT)) {
-                let decl = top.data as StructDecl*;
-                sv_push(out, be_type_key(root.name, decl.name));
+            let root = unit.parse_result.root_module as Module*;
+            for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+                let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+                if (ord(top.kind) == ord(TD_STRUCT)) {
+                    let decl = top.data as StructDecl*;
+                    be_push_type_key(out, seen, be_type_key(root.name, decl.name));
+                }
             }
         }
-    }
 
-    for (let i = 0; i < driver_unit_count(self.result.driver_state); i = i + 1) {
-        let unit = driver_unit_get(self.result.driver_state, i);
-        if (unit.parse_result.root_module == null) {
-            continue;
+        for (let iface_struct_i = 0; iface_struct_i < driver_interface_count(self.result.driver_state); iface_struct_i = iface_struct_i + 1) {
+            let mi = driver_interface_get(self.result.driver_state, iface_struct_i);
+            for (let j2 = 0; j2 < vec_size(mi.struct_infos); j2 = j2 + 1) {
+                let info = ptr_vec_get(mi.struct_infos, j2) as StructInfo*;
+                if (!info.is_opaque) {
+                    be_push_type_key(out, seen, be_type_key(info.module_name, info.name));
+                }
+            }
         }
 
-        let root = unit.parse_result.root_module as Module*;
-        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
-            let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
-            if (ord(top.kind) == ord(TD_ENUM)) {
-                let decl2 = top.data as EnumDecl*;
-                sv_push(out, be_type_key(root.name, decl2.name));
+        for (let i = 0; i < driver_unit_count(self.result.driver_state); i = i + 1) {
+            let unit = driver_unit_get(self.result.driver_state, i);
+            if (unit.parse_result.root_module == null) {
+                continue;
+            }
+
+            let root = unit.parse_result.root_module as Module*;
+            for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+                let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+                if (ord(top.kind) == ord(TD_ENUM)) {
+                    let decl2 = top.data as EnumDecl*;
+                    be_push_type_key(out, seen, be_type_key(root.name, decl2.name));
+                }
+            }
+        }
+
+        for (let iface_enum_i = 0; iface_enum_i < driver_interface_count(self.result.driver_state); iface_enum_i = iface_enum_i + 1) {
+            let mi2 = driver_interface_get(self.result.driver_state, iface_enum_i);
+            for (let j3 = 0; j3 < vec_size(mi2.enum_infos); j3 = j3 + 1) {
+                let info2 = ptr_vec_get(mi2.enum_infos, j3) as EnumInfo*;
+                if (!info2.is_opaque) {
+                    be_push_type_key(out, seen, be_type_key(info2.module_name, info2.name));
+                }
             }
         }
     }
@@ -1803,24 +1803,19 @@ func be_emit_type_definitions(self: Backend*) {
 
             let struct_info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, module_name, type_name);
             if (struct_info != null) {
-                let decl = be_find_struct_decl(self, module_name, type_name);
-                if (decl == null) {
-                    be_ice("[ICE-1040] missing StructDecl for " + module_name + "." + type_name);
-                }
                 self.current_module = module_name;
-                cem_emit_struct(self.emitter, module_name, decl as StructDecl*, struct_info as StructInfo*);
+                cem_emit_struct_info(self.emitter, struct_info as StructInfo*);
                 with (let emitted_ty = type_new_struct(module_name, type_name) => type_free(emitted_ty)) {
                     cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty);
                     cem_emit_array_wrappers_for_defined_type(self.emitter, emitted_ty);
                 }
             } else {
                 let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, module_name, type_name);
-                let enum_decl = be_find_enum_decl(self, module_name, type_name);
-                if (enum_info == null || enum_decl == null) {
-                    be_ice("[ICE-1050] missing EnumDecl/EnumInfo for " + module_name + "." + type_name);
+                if (enum_info == null) {
+                    be_ice("[ICE-1050] missing EnumInfo for " + module_name + "." + type_name);
                 }
                 self.current_module = module_name;
-                cem_emit_enum(self.emitter, module_name, enum_decl as EnumDecl*, enum_info as EnumInfo*);
+                cem_emit_enum_info(self.emitter, enum_info as EnumInfo*);
                 with (let emitted_ty2 = type_new_enum(module_name, type_name) => type_free(emitted_ty2)) {
                     cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty2);
                     cem_emit_array_wrappers_for_defined_type(self.emitter, emitted_ty2);
@@ -2080,15 +2075,10 @@ func be_try_emit_const_constructor(self: Backend*, expr_id: ExprId, expected_typ
         if (variant_info == null) {
             return be_ice_string("[ICE-1051] missing VariantInfo for constant constructor");
         }
-        let variant_decl = be_find_variant_decl(self, expected_type.module_name, expected_type.name, variant_name);
-        if (variant_decl == null) {
-            return be_ice_string("[ICE-1052] missing EnumVariant decl for constant constructor");
-        }
         with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
             let info2 = variant_info as EnumVariantInfo*;
             for (let i = 0; i < vec_size(info2.field_types); i = i + 1) {
-                let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
-                sv_push(payload_inits, field_decl.name);
+                sv_push(payload_inits, sv_get(info2.field_names, i));
                 let payload_init = be_try_emit_let_initializer(self, id_vec_get(call.ids as VectorBase*, i),
                     ptr_vec_get(info2.field_types, i) as Type*)?;
                 sv_push(payload_inits, payload_init);
@@ -2141,6 +2131,13 @@ func be_emit_let_declarations(self: Backend*) {
             }
         }
     }
+    for (let iface_i = 0; iface_i < driver_interface_count(self.result.driver_state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(self.result.driver_state, iface_i);
+        if (vec_size(mi.let_entries) > 0) {
+            any_bindings = true;
+            break;
+        }
+    }
     if (!any_bindings) {
         return;
     }
@@ -2184,6 +2181,18 @@ func be_emit_let_declarations(self: Backend*) {
                 cem_emit_zero_initialized_let_declaration(self.emitter, root.name, decl, let_type as Type*,
                     be_is_symbol_exported(self, root.name, decl.name));
             }
+        }
+    }
+
+    for (let iface_i2 = 0; iface_i2 < driver_interface_count(self.result.driver_state); iface_i2 = iface_i2 + 1) {
+        let mi2 = driver_interface_get(self.result.driver_state, iface_i2);
+        if (vec_size(mi2.let_entries) == 0) {
+            continue;
+        }
+        cem_emit_module_comment(self.emitter, mi2.module_name);
+        for (let let_i = 0; let_i < vec_size(mi2.let_entries); let_i = let_i + 1) {
+            cem_emit_interface_let_declaration(self.emitter, mi2.module_name,
+                ptr_vec_get(mi2.let_entries, let_i) as InterfaceLetEntry*);
         }
     }
 }
@@ -2426,6 +2435,18 @@ func be_emit_function_declarations(self: Backend*) {
             }
             cem_emit_function_declaration(self.emitter, root.name, decl, func_type as Type*,
                 be_is_symbol_exported(self, root.name, decl.name));
+        }
+    }
+
+    for (let iface_i = 0; iface_i < driver_interface_count(self.result.driver_state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(self.result.driver_state, iface_i);
+        if (vec_size(mi.func_entries) == 0) {
+            continue;
+        }
+        cem_emit_module_comment(self.emitter, mi.module_name);
+        for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+            cem_emit_interface_function_declaration(self.emitter, mi.module_name,
+                ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*);
         }
     }
 }
@@ -2870,10 +2891,6 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
         if (variant_info == null) {
             return be_ice_string("[ICE-1051] missing VariantInfo for constructor");
         }
-        let variant_decl = be_find_variant_decl(self, result_ty.module_name, result_ty.name, variant_name);
-        if (variant_decl == null) {
-            return be_ice_string("[ICE-1052] missing EnumVariant decl for constructor");
-        }
         with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
             let info2 = variant_info as EnumVariantInfo*;
             let arg_count = 0;
@@ -2884,7 +2901,7 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
             if (expr.arg_labels != null) {
                 expected_names = sv_create(arg_count);
                 for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
-                    sv_push(expected_names as StringVector*, (ptr_vec_get((variant_decl as EnumVariant*).fields, p_idx) as FieldDecl*).name);
+                    sv_push(expected_names as StringVector*, sv_get(info2.field_names, p_idx));
                 }
                 for (let k = 0; k < arg_count; k = k + 1) {
                     if (sv_get(expected_names as StringVector*, k) != sv_get(expr.arg_labels as StringVector*, k)) {
@@ -2925,8 +2942,7 @@ func be_emit_constructor_call(self: Backend*, expr_id: ExprId, sym: Symbol*, res
                             }
                         }
                     }
-                    let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, p_idx) as FieldDecl*;
-                    sv_push(payload_inits, field_decl.name);
+                    sv_push(payload_inits, sv_get(info2.field_names, p_idx));
                     sv_push(payload_inits, sv_get(c_arg_tmps, source_index));
                 }
             }
@@ -3229,18 +3245,13 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
             }
 
             if (ord((callee_sym as Symbol*).kind) == ord(SYM_FUNC)) {
-                let c_func_name = "";
-                if ((callee_sym as Symbol*).decl_ptr == null) {
-                    return be_ice_string("[ICE-2270] regular function call is missing declaration pointer");
-                }
-                let decl = (callee_sym as Symbol*).decl_ptr as FuncDecl*;
                 let func_ty = sig_lookup_func_type(self.result.signatures as SignatureTables*,
                     (callee_sym as Symbol*).module_name, (callee_sym as Symbol*).name);
-                if (decl.is_extern) {
-                    c_func_name = (callee_sym as Symbol*).name;
-                } else {
-                    c_func_name = cem_mangle_function_name((callee_sym as Symbol*).module_name, (callee_sym as Symbol*).name, func_ty as Type*);
+                if (func_ty == null) {
+                    return be_ice_string("[ICE-1150] missing FuncType for " + (callee_sym as Symbol*).module_name +
+                        "." + (callee_sym as Symbol*).name);
                 }
+                let c_func_name = be_function_c_name(self, callee_sym as Symbol*, func_ty as Type*);
 
                 if ((func_ty as Type*).is_variadic) {
                     return be_emit_direct_function_call(self, c_func_name,
@@ -3255,9 +3266,9 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                     let expected_names: StringVector*? = null;
                     let is_out_of_order = false;
                     if (expr.arg_labels != null) {
-                        expected_names = sv_create(arg_count);
-                        for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
-                            sv_push(expected_names as StringVector*, (ptr_vec_get(decl.params, p_idx) as Param*).name);
+                        expected_names = be_clone_function_param_names(self, callee_sym as Symbol*);
+                        if (expected_names == null) {
+                            return be_ice_string("[ICE-2270] regular function call is missing parameter names");
                         }
                         for (let k = 0; k < arg_count; k = k + 1) {
                             if (sv_get(expected_names as StringVector*, k) != sv_get(expr.arg_labels as StringVector*, k)) {
@@ -3539,18 +3550,18 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
             if (enum_info == null) {
                 return be_ice_string("[ICE-1220] new enum allocation missing variant symbol");
             }
-            let variant_decl = be_find_variant_decl(self, base_ty.module_name, base_ty.name, variant_name);
             let variant_info = cem_find_enum_variant_info(enum_info as EnumInfo*, variant_name);
-            if (variant_decl == null || variant_info == null) {
+            if (variant_info == null) {
                 return be_ice_string("[ICE-1220] new enum allocation missing variant symbol");
             }
             with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
+                let info2 = variant_info as EnumVariantInfo*;
                 let expected_names: StringVector*? = null;
                 let is_out_of_order = false;
                 if (expr.arg_labels != null) {
                     expected_names = sv_create(arg_count);
                     for (let p_idx = 0; p_idx < arg_count; p_idx = p_idx + 1) {
-                        sv_push(expected_names as StringVector*, (ptr_vec_get((variant_decl as EnumVariant*).fields, p_idx) as FieldDecl*).name);
+                        sv_push(expected_names as StringVector*, sv_get(info2.field_names, p_idx));
                     }
                     for (let k = 0; k < arg_count; k = k + 1) {
                         if (sv_get(expected_names as StringVector*, k) != sv_get(expr.arg_labels as StringVector*, k)) {
@@ -3574,7 +3585,7 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
                             }
                         }
 
-                        let field_ty = ptr_vec_get((variant_info as EnumVariantInfo*).field_types, param_index) as Type*;
+                        let field_ty = ptr_vec_get(info2.field_types, param_index) as Type*;
                         let c_arg = be_emit_owned_expr_with_expected_type(self, arg_id, field_ty);
                         c_arg = be_finalize_lowered_constructor_arg(self, c_arg, field_ty, is_out_of_order);
                         sv_push(c_arg_tmps, c_arg);
@@ -3591,9 +3602,8 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
                                 }
                             }
                         }
-                        
-                        let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, p_idx) as FieldDecl*;
-                        sv_push(payload_inits, field_decl.name);
+
+                        sv_push(payload_inits, sv_get(info2.field_names, p_idx));
                         sv_push(payload_inits, sv_get(c_arg_tmps, source_index));
                     }
                 }
@@ -3654,16 +3664,13 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
             }
 
             if (ord((sym as Symbol*).kind) == ord(SYM_FUNC)) {
-                if ((sym as Symbol*).decl_ptr == null) {
-                    return be_ice_string("[ICE-2271] function reference is missing declaration pointer");
-                }
-                let decl = (sym as Symbol*).decl_ptr as FuncDecl*;
-                if (decl.is_extern) {
-                    return cem_emit_var_ref((sym as Symbol*).name);
-                }
                 let func_ty = sig_lookup_func_type(self.result.signatures as SignatureTables*,
                     (sym as Symbol*).module_name, (sym as Symbol*).name);
-                return cem_emit_var_ref(cem_mangle_function_name((sym as Symbol*).module_name, (sym as Symbol*).name, func_ty as Type*));
+                if (func_ty == null) {
+                    return be_ice_string("[ICE-1150] missing FuncType for " + (sym as Symbol*).module_name +
+                        "." + (sym as Symbol*).name);
+                }
+                return cem_emit_var_ref(be_function_c_name(self, sym as Symbol*, func_ty as Type*));
             }
 
             if (ord((sym as Symbol*).kind) == ord(SYM_LET)) {
@@ -4064,9 +4071,8 @@ func be_emit_pattern_bindings(self: Backend*, pattern_id: PatternId, enum_type: 
         return;
     }
 
-    let variant_decl = be_find_variant_decl(self, enum_type.module_name, enum_type.name, pattern.name);
     let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, enum_type.module_name, enum_type.name);
-    if (variant_decl == null || enum_info == null) {
+    if (enum_info == null) {
         return;
     }
 
@@ -4075,12 +4081,13 @@ func be_emit_pattern_bindings(self: Backend*, pattern_id: PatternId, enum_type: 
         return;
     }
 
+    let info2 = variant_info as EnumVariantInfo*;
     for (let i = 0; i < sv_size(pattern.vars as StringVector*); i = i + 1) {
-        let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
-        let field_ty = ptr_vec_get((variant_info as EnumVariantInfo*).field_types, i) as Type*;
+        let field_ty = ptr_vec_get(info2.field_types, i) as Type*;
         let c_name = cem_mangle_identifier(sv_get(pattern.vars as StringVector*, i));
         cem_emit_let_decl(self.emitter, cem_emit_type(field_ty), c_name,
-            cem_emit_pattern_binding_init("_scrutinee", pattern.name, field_decl.name));
+            cem_emit_pattern_binding_init("_scrutinee", pattern.name,
+                sv_get(info2.field_names, i)));
         sc_add_declared(arm_scope, c_name, field_ty);
     }
 }

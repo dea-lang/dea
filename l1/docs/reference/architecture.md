@@ -53,6 +53,12 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
                                    build_driver.l0 --> host C compiler / executable launch
 ```
 
+Internal analysis entry points may also supply a parsed, dependency-free direct-provider `.l1m`. The driver activates
+that interface only when a source import selects it, then name resolution, signature resolution, expression typing, and
+the backend consume its cloned metadata instead of loading provider source. Interfaces carrying `require` or `link`
+entries remain rejected until transitive closure loading is implemented; the ordinary CLI pipeline above is still
+source-based.
+
 Current CLI entry point: `compiler/stage1_l0/src/l1c.l0`.
 
 Normal developer workflow:
@@ -88,6 +94,7 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.3 Name Resolution (`name_resolver.l0`, `symbols.l0`)
 
 - Builds module environments across the import closure.
+- Populates selected provider environments from active interface metadata when supplied through the internal replay API.
 - Resolves opened imports and reports ambiguity diagnostics.
 
 ### 2.4 Signature Resolution (`signatures.l0`, `type_resolve.l0`, `types.l0`)
@@ -122,6 +129,7 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.9 Driver and CLI (`driver.l0`, `l1c_lib.l0`, `cli_args.l0`, `build_driver.l0`)
 
 - Coordinates the pass pipeline.
+- Owns indexed source units and active cloned direct-provider interfaces.
 - Implements CLI mode dispatch and host compiler execution.
 - Produces generated C, built executables, or direct runs depending on CLI mode.
 
@@ -131,6 +139,7 @@ Primary aggregates in the current implementation include:
 
 - token streams from `tokens.l0`
 - parsed AST nodes from `ast.l0`
+- parsed and active module interfaces from `module_interface.l0`
 - module and symbol environments from `name_resolver.l0`
 - typed semantic state from `analysis.l0`
 - projected and parsed module interfaces from `module_interface.l0`
@@ -152,7 +161,8 @@ Important analysis tables include:
 ## 4. Invariants
 
 1. The current L1 compiler is bootstrap-only and implemented in Dea/L0.
-2. Import closure construction is explicit and checked before later semantic passes.
+2. Import closure construction is explicit and checked before later semantic passes; a selected direct provider may be
+   satisfied by one active dependency-free interface instead of source.
 3. Source locations are propagated for diagnostics.
 4. Diagnostic columns follow a logical-source contract: every non-newline Unicode code point, including ASCII horizontal
    tabs, advances the stored column by exactly one; UTF-8 continuation bytes do not advance it. Snippet rendering

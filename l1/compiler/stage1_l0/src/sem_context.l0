@@ -222,10 +222,11 @@ func analysis_enum_infos_use_floating_point(map: StringPtrMap*) -> bool {
  * Report whether an analyzed compilation unit uses the `sys.real` module.
  *
  * @param self Analysis result to inspect.
- * @return `true` when `sys.real` is among the loaded compilation units.
+ * @return `true` when `sys.real` is a loaded source unit or active interface.
  */
 func analysis_uses_sys_real(self: AnalysisResult*) -> bool {
-    return driver_find_unit(self.driver_state, "sys.real") != null;
+    return driver_find_unit(self.driver_state, "sys.real") != null ||
+        driver_find_interface(self.driver_state, "sys.real") != null;
 }
 
 /**

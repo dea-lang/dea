@@ -1066,15 +1066,11 @@ func etc_assignment_const_target_name(self: ExpressionTypeChecker*, expr_id: Exp
     }
 
     let sym = etc_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
-    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || (sym as Symbol*).decl_ptr == null) {
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || !(sym as Symbol*).is_const) {
         return null;
     }
 
-    let decl = (sym as Symbol*).decl_ptr as LetDecl*;
-    if (decl.is_const) {
-        return decl.name;
-    }
-    return null;
+    return (sym as Symbol*).name;
 }
 
 /**
@@ -2016,11 +2012,7 @@ func etc_case_arm_is_aggregate_const(self: ExpressionTypeChecker*, expr_id: Expr
     }
 
     let sym = etc_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
-    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || (sym as Symbol*).decl_ptr == null) {
-        return false;
-    }
-    let decl = (sym as Symbol*).decl_ptr as LetDecl*;
-    if (!decl.is_const) {
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || !(sym as Symbol*).is_const) {
         return false;
     }
     let ty = sig_lookup_let_type(self.result.signatures as SignatureTables*, (sym as Symbol*).module_name,
@@ -2965,12 +2957,21 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         "cannot drop non-pointer type '" + type_format(var_ty) + "'",
                         unit.path, stmt.span);
                 } else {
-                    let alive = etc_alive_lookup(self, stmt.name);
-                    if (alive != null && (alive as int) == 0) {
-                        etc_diag_error(self, "TYP-0062", "use of dropped variable '" + stmt.name + "'",
-                            unit.path, stmt.span);
+                    let pointer_ty = var_ty;
+                    if (is_opt_ptr) {
+                        pointer_ty = var_ty.inner as Type*;
+                    }
+                    let pointee = pointer_ty.inner as Type*;
+                    if (etc_is_imported_opaque_nominal(self, pointee)) {
+                        etc_diag_opaque_layout_use(self, pointee, stmt.span);
                     } else {
-                        etc_alive_set(self, stmt.name, false);
+                        let alive = etc_alive_lookup(self, stmt.name);
+                        if (alive != null && (alive as int) == 0) {
+                            etc_diag_error(self, "TYP-0062", "use of dropped variable '" + stmt.name + "'",
+                                unit.path, stmt.span);
+                        } else {
+                            etc_alive_set(self, stmt.name, false);
+                        }
                     }
                 }
                 type_free(var_ty);
@@ -3880,6 +3881,8 @@ func etc_get_call_param_names(self: ExpressionTypeChecker*, callee: ExprNode*) -
                 }
                 return names;
             }
+            return driver_clone_interface_func_param_names(self.result.driver_state, (sym as Symbol*).module_name,
+                (sym as Symbol*).name);
         }
     }
     return null;
@@ -3899,20 +3902,43 @@ func etc_get_struct_field_names(self: ExpressionTypeChecker*, base: Type*) -> St
     return null;
 }
 
+func etc_get_enum_variant_field_names_for_symbol(self: ExpressionTypeChecker*, sym: Symbol*) -> StringVector*? {
+    if (ord(sym.kind) != ord(SYM_ENUM_VARIANT)) {
+        return null;
+    }
+    if (sym.decl_ptr != null) {
+        let variant_decl = sym.decl_ptr as EnumVariant*;
+        let fields = variant_decl.fields;
+        let count = vec_size(fields);
+        let names = sv_create(count);
+        for (let i_ev = 0; i_ev < count; i_ev = i_ev + 1) {
+            sv_push(names, (ptr_vec_get(fields, i_ev) as FieldDecl*).name);
+        }
+        return names;
+    }
+
+    let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, sym.module_name, sym.owner_name);
+    if (enum_info == null) {
+        return null;
+    }
+    let info = enum_info as EnumInfo*;
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let variant_info = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        if (variant_info.name == sym.name) {
+            let names2 = sv_create(sv_size(variant_info.field_names));
+            for (let j = 0; j < sv_size(variant_info.field_names); j = j + 1) {
+                sv_push(names2, sv_get(variant_info.field_names, j));
+            }
+            return names2;
+        }
+    }
+    return null;
+}
+
 func etc_get_enum_variant_field_names(self: ExpressionTypeChecker*, target_ref: TypeRef*) -> StringVector*? {
     let sym = etc_lookup_symbol(self, target_ref.name, target_ref.module_path, target_ref.name_qualifier);
-    if (sym != null && ord((sym as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
-        let decl_ptr = (sym as Symbol*).decl_ptr;
-        if (decl_ptr != null) {
-            let variant_decl = decl_ptr as EnumVariant*;
-            let fields = variant_decl.fields;
-            let count = vec_size(fields);
-            let names = sv_create(count);
-            for (let i_ev = 0; i_ev < count; i_ev = i_ev + 1) {
-                sv_push(names, (ptr_vec_get(fields, i_ev) as FieldDecl*).name);
-            }
-            return names;
-        }
+    if (sym != null) {
+        return etc_get_enum_variant_field_names_for_symbol(self, sym as Symbol*);
     }
     return null;
 }
@@ -4248,15 +4274,7 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
                                 let sym2 = etc_lookup_symbol(self, callee_expr.text_value, callee_expr.module_path, callee_expr.name_qualifier);
                                 let expected_names3: StringVector*? = null;
                                 if (sym2 != null && ord((sym2 as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
-                                    let decl_ptr3 = (sym2 as Symbol*).decl_ptr;
-                                    if (decl_ptr3 != null) {
-                                        let variant_decl3 = decl_ptr3 as EnumVariant*;
-                                        let fields3 = variant_decl3.fields;
-                                        expected_names3 = sv_create(vec_size(fields3));
-                                        for (let k = 0; k < vec_size(fields3); k = k + 1) {
-                                            sv_push(expected_names3 as StringVector*, (ptr_vec_get(fields3, k) as FieldDecl*).name);
-                                        }
-                                    }
+                                    expected_names3 = etc_get_enum_variant_field_names_for_symbol(self, sym2 as Symbol*);
                                 }
 
                                 if (expected_names3 == null) {

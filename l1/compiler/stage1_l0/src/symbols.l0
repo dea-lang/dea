@@ -31,6 +31,9 @@ struct Symbol {
     decl_ptr: void*?;
     span: Span;
     resolved_type: Type*?;
+    is_const: bool;
+    const_literal: string;
+    is_extern: bool;
 }
 
 /**
@@ -46,7 +49,7 @@ struct Symbol {
  */
 func symbol_create(name: string, kind: SymbolKind, module_name: string, owner_name: string, decl_ptr: void*?,
                    span: Span) -> Symbol* {
-    return new Symbol(name, kind, module_name, owner_name, decl_ptr, span, null);
+    return new Symbol(name, kind, module_name, owner_name, decl_ptr, span, null, false, "", false);
 }
 
 /**

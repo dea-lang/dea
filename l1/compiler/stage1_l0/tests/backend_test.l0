@@ -33,7 +33,7 @@ import util.log;
  * @return New empty driver state.
  */
 func bt_empty_driver_state() -> DriverState* {
-    return new DriverState("", ptr_vec_create(0), sv_create(0), diag_create(), sv_create(0), sv_create(0));
+    return dr_state_create("", null);
 }
 
 /**
@@ -55,14 +55,14 @@ func bt_empty_analysis_result() -> AnalysisResult* {
 func bt_push_source_unit(state: DriverState*, source: string, filename: string) {
     let pr = parse_module_source(source, filename);
     if (pr.root_module == null) {
-        ptr_vec_push(state.units, new DriverUnit("", filename, pr) as void*);
+        dr_register_unit(state, new DriverUnit("", filename, pr));
         return;
     }
 
     let mod = pr.root_module as Module*;
     sv_push(state.source_names, filename);
     sv_push(state.source_texts, source);
-    ptr_vec_push(state.units, new DriverUnit(mod.name, filename, pr) as void*);
+    dr_register_unit(state, new DriverUnit(mod.name, filename, pr));
 }
 
 /**
@@ -74,8 +74,7 @@ func bt_push_source_unit(state: DriverState*, source: string, filename: string) 
  * @return Fully analyzed result.
  */
 func bt_analyze_sources(entry_module: string, filenames: StringVector*, sources: StringVector*) -> AnalysisResult* {
-    let state = new DriverState(entry_module, ptr_vec_create(sv_size(sources)), sv_create(sv_size(sources)), diag_create(),
-        sv_create(sv_size(sources)), sv_create(sv_size(sources)));
+    let state = dr_state_create(entry_module, null);
 
     for (let i = 0; i < sv_size(sources); i = i + 1) {
         bt_push_source_unit(state, sv_get(sources, i), sv_get(filenames, i));

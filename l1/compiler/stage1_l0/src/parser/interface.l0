@@ -5,6 +5,7 @@
 
 module parser.interface;
 
+import std.hashset;
 import std.string;
 import std.text;
 import std.vector;
@@ -423,16 +424,95 @@ func pi_parse_call_literal(self: ParserState*, callee_name: string) -> string {
 }
 
 /**
+ * Parse an array literal recursively.
+ *
+ * Accepts empty, flat, and nested arrays and returns canonical comma-space
+ * formatting.
+ *
+ * @param self Parser state positioned at `[`.
+ * @return Canonical literal text, or `null` on failure.
+ */
+func pi_parse_array_literal(self: ParserState*) -> string? {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "[");
+        ps_advance(self); // consume `[`
+        let first = true;
+        while (!ps_check(self, ord(TT_RBRACKET)) && !ps_check(self, ord(TT_EOF))) {
+            if (!first) {
+                if (ps_expect(self, ord(TT_COMMA), "PAR-0572", "Expected ',' in array literal") == null) {
+                    return null;
+                }
+                if (ps_check(self, ord(TT_RBRACKET))) {
+                    ps_emit_error(self, "PAR-0572", "Expected literal after ',' in array literal", ps_peek(self));
+                    return null;
+                }
+                sb_append(sb, ", ");
+            }
+            first = false;
+            let item = pi_parse_literal(self);
+            if (item == null) {
+                ps_emit_error(self, "PAR-0572", "Expected literal in array literal", ps_peek(self));
+                return null;
+            }
+            sb_append(sb, item as string);
+        }
+        if (ps_expect(self, ord(TT_RBRACKET), "PAR-0572", "Expected ']' after array literal") == null) {
+            return null;
+        }
+        sb_append(sb, "]");
+        return sb_to_string(sb);
+    }
+}
+
+/**
  * Parse a constant literal value.
  *
  * Covers the full emit-time constant subset: primitive literals,
- * zero-field enum variant references, and struct/enum constructors.
+ * zero-field enum variant references, struct/enum constructors, and arrays.
  *
  * @param self Parser state.
  * @return Canonical literal text, or `null` on failure.
  */
 func pi_parse_literal(self: ParserState*) -> string? {
     let tok = ps_peek(self);
+
+    if (ps_check(self, ord(TT_MINUS))) {
+        ps_advance(self);
+        let value_tok = ps_peek(self);
+        if (ps_check_int(self)) {
+            let value_text = token_int_text(value_tok) as string;
+            if (starts_with_s(value_text, "-")) {
+                ps_emit_error(self, "PAR-0572", "Expected numeric literal after '-' in interface const literal",
+                    value_tok);
+                return null;
+            }
+            ps_advance(self);
+            return "-" + value_text;
+        }
+        if (ps_check_bigint(self)) {
+            let value_text2 = bigint_to_string(token_bigint_text(value_tok) as string,
+                token_bigint_base(value_tok) as int);
+            if (starts_with_s(value_text2, "-")) {
+                ps_emit_error(self, "PAR-0572", "Expected numeric literal after '-' in interface const literal",
+                    value_tok);
+                return null;
+            }
+            ps_advance(self);
+            return "-" + value_text2;
+        }
+        if (ps_check_real(self)) {
+            let value_text3 = token_real_text(value_tok) as string;
+            if (starts_with_s(value_text3, "-")) {
+                ps_emit_error(self, "PAR-0572", "Expected numeric literal after '-' in interface const literal",
+                    value_tok);
+                return null;
+            }
+            ps_advance(self);
+            return "-" + value_text3;
+        }
+        ps_emit_error(self, "PAR-0572", "Expected numeric literal after '-' in interface const literal", value_tok);
+        return null;
+    }
 
     if (ps_check_int(self)) {
         ps_advance(self);
@@ -465,6 +545,9 @@ func pi_parse_literal(self: ParserState*) -> string? {
     if (ps_check(self, ord(TT_NULL))) {
         ps_advance(self);
         return "null";
+    }
+    if (ps_check(self, ord(TT_LBRACKET))) {
+        return pi_parse_array_literal(self);
     }
 
     if (ps_check_ident(self)) {
@@ -505,19 +588,44 @@ func pi_parse_literal(self: ParserState*) -> string? {
 }
 
 /**
+ * Register a module-level interface declaration name.
+ *
+ * Enum variants share the same namespace as top-level declarations, so every
+ * parsed declaration and variant name passes through this helper.
+ *
+ * @param self Parser state.
+ * @param seen Names already declared in this interface file.
+ * @param name_tok Newly parsed declaration-name token.
+ * @return `true` when the name was registered, or `false` for a duplicate.
+ */
+func pi_register_decl_name(self: ParserState*, seen: StringSet*, name_tok: Token) -> bool {
+    let name = token_ident_text(name_tok) as string;
+    if (ss_has(seen, name)) {
+        ps_emit_error(self, "PAR-0577", "duplicate top-level declaration '" + name + "' in interface file", name_tok);
+        return false;
+    }
+    ss_add(seen, name);
+    return true;
+}
+
+/**
  * Parse a struct declaration.
  *
  * Expects: `struct Name { field: Type; ... }`
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration names seen so far.
  * @return `true` on success.
  */
-func pi_parse_struct_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+func pi_parse_struct_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*) -> bool {
     ps_advance(self); // consume `struct`
 
     let name_tok = ps_expect_ident(self, "PAR-0573", "Expected struct name");
     if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    if (!pi_register_decl_name(self, seen, name_tok as Token)) {
         return pi_sync_to_semi_or_rbrace(self);
     }
     let name = token_ident_text(name_tok as Token) as string;
@@ -575,9 +683,10 @@ func pi_parse_struct_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration names seen so far.
  * @return `true` on success.
  */
-func pi_parse_opaque_struct_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+func pi_parse_opaque_struct_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*) -> bool {
     ps_advance(self); // consume `opaque`
     if (ps_expect(self, ord(TT_STRUCT), "PAR-0572", "Expected 'struct' after 'opaque'") == null) {
         return pi_sync_to_semi_or_rbrace(self);
@@ -585,6 +694,9 @@ func pi_parse_opaque_struct_decl(self: ParserState*, mi: ModuleInterface*) -> bo
 
     let name_tok = ps_expect_ident(self, "PAR-0573", "Expected struct name");
     if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    if (!pi_register_decl_name(self, seen, name_tok as Token)) {
         return pi_sync_to_semi_or_rbrace(self);
     }
     let name = token_ident_text(name_tok as Token) as string;
@@ -609,13 +721,17 @@ func pi_parse_opaque_struct_decl(self: ParserState*, mi: ModuleInterface*) -> bo
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration and enum-variant names seen so far.
  * @return `true` on success.
  */
-func pi_parse_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+func pi_parse_enum_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*) -> bool {
     ps_advance(self); // consume `enum`
 
     let name_tok = ps_expect_ident(self, "PAR-0573", "Expected enum name");
     if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    if (!pi_register_decl_name(self, seen, name_tok as Token)) {
         return pi_sync_to_semi_or_rbrace(self);
     }
     let name = token_ident_text(name_tok as Token) as string;
@@ -628,6 +744,9 @@ func pi_parse_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
         while (!ps_check(self, ord(TT_RBRACE)) && !ps_check(self, ord(TT_EOF))) {
             let var_tok = ps_expect_ident(self, "PAR-0572", "Expected variant name");
             if (var_tok == null) {
+                return pi_sync_to_semi_or_rbrace(self);
+            }
+            if (!pi_register_decl_name(self, seen, var_tok as Token)) {
                 return pi_sync_to_semi_or_rbrace(self);
             }
             let var_name = token_ident_text(var_tok as Token) as string;
@@ -695,9 +814,10 @@ func pi_parse_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration names seen so far.
  * @return `true` on success.
  */
-func pi_parse_opaque_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+func pi_parse_opaque_enum_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*) -> bool {
     ps_advance(self); // consume `opaque`
     if (ps_expect(self, ord(TT_ENUM), "PAR-0572", "Expected 'enum' after 'opaque'") == null) {
         return pi_sync_to_semi_or_rbrace(self);
@@ -705,6 +825,9 @@ func pi_parse_opaque_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool
 
     let name_tok = ps_expect_ident(self, "PAR-0573", "Expected enum name");
     if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    if (!pi_register_decl_name(self, seen, name_tok as Token)) {
         return pi_sync_to_semi_or_rbrace(self);
     }
     let name = token_ident_text(name_tok as Token) as string;
@@ -729,13 +852,17 @@ func pi_parse_opaque_enum_decl(self: ParserState*, mi: ModuleInterface*) -> bool
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration names seen so far.
  * @return `true` on success.
  */
-func pi_parse_alias_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+func pi_parse_alias_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*) -> bool {
     ps_advance(self); // consume `type`
 
     let name_tok = ps_expect_ident(self, "PAR-0573", "Expected type alias name");
     if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    if (!pi_register_decl_name(self, seen, name_tok as Token)) {
         return pi_sync_to_semi_or_rbrace(self);
     }
     let name = token_ident_text(name_tok as Token) as string;
@@ -768,13 +895,25 @@ func pi_parse_alias_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration names seen so far.
  * @return `true` on success.
  */
-func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, is_unsafe: bool) -> bool {
-    ps_advance(self); // consume `func`
+func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*, is_unsafe: bool,
+                        is_extern: bool) -> bool {
+    if (is_extern) {
+        if (ps_expect(self, ord(TT_EXTERN), "PAR-0572", "Expected 'extern' in interface function declaration") == null) {
+            return pi_sync_to_semi_or_rbrace(self);
+        }
+    }
+    if (ps_expect(self, ord(TT_FUNC), "PAR-0572", "Expected 'func' in interface function declaration") == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
 
     let name_tok = ps_expect_ident(self, "PAR-0573", "Expected function name");
     if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    if (!pi_register_decl_name(self, seen, name_tok as Token)) {
         return pi_sync_to_semi_or_rbrace(self);
     }
     let name = token_ident_text(name_tok as Token) as string;
@@ -840,7 +979,8 @@ func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, is_unsafe: boo
 
         let func_type = type_new_func(param_types as VectorBase*, ret_type as Type*, is_unsafe);
         func_type.is_variadic = is_variadic;
-        let entry = new InterfaceFuncEntry(name, param_names as StringVector*, func_type, hash_opt as string);
+        let entry = new InterfaceFuncEntry(name, param_names as StringVector*, func_type, is_extern,
+            hash_opt as string);
         ptr_vec_push(mi.func_entries, entry as void*);
         param_names = null;
         param_types = null;
@@ -856,13 +996,17 @@ func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, is_unsafe: boo
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration names seen so far.
  * @return `true` on success.
  */
-func pi_parse_const_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+func pi_parse_const_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*) -> bool {
     ps_advance(self); // consume `const`
 
     let name_tok = ps_expect_ident(self, "PAR-0573", "Expected constant name");
     if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    if (!pi_register_decl_name(self, seen, name_tok as Token)) {
         return pi_sync_to_semi_or_rbrace(self);
     }
     let name = token_ident_text(name_tok as Token) as string;
@@ -905,13 +1049,17 @@ func pi_parse_const_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration names seen so far.
  * @return `true` on success.
  */
-func pi_parse_let_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+func pi_parse_let_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*) -> bool {
     ps_advance(self); // consume `let`
 
     let name_tok = ps_expect_ident(self, "PAR-0573", "Expected let name");
     if (name_tok == null) {
+        return pi_sync_to_semi_or_rbrace(self);
+    }
+    if (!pi_register_decl_name(self, seen, name_tok as Token)) {
         return pi_sync_to_semi_or_rbrace(self);
     }
     let name = token_ident_text(name_tok as Token) as string;
@@ -942,49 +1090,56 @@ func pi_parse_let_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
+ * @param seen Module-level declaration and enum-variant names seen so far.
  * @return `false` at EOF; otherwise `true`.
  */
-func pi_parse_one_decl(self: ParserState*, mi: ModuleInterface*) -> bool {
+func pi_parse_one_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*) -> bool {
     if (ps_check(self, ord(TT_EOF))) {
         return false;
     }
 
     if (ps_check(self, ord(TT_OPAQUE))) {
         if (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_STRUCT))) {
-            return pi_parse_opaque_struct_decl(self, mi);
+            return pi_parse_opaque_struct_decl(self, mi, seen);
         }
         if (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_ENUM))) {
-            return pi_parse_opaque_enum_decl(self, mi);
+            return pi_parse_opaque_enum_decl(self, mi, seen);
         }
         ps_emit_error(self, "PAR-0572", "Expected 'struct' or 'enum' after 'opaque' in interface file", ps_peek(self));
         ps_advance(self);
         return pi_sync_to_semi_or_rbrace(self);
     }
     if (ps_check(self, ord(TT_STRUCT))) {
-        return pi_parse_struct_decl(self, mi);
+        return pi_parse_struct_decl(self, mi, seen);
     }
     if (ps_check(self, ord(TT_ENUM))) {
-        return pi_parse_enum_decl(self, mi);
+        return pi_parse_enum_decl(self, mi, seen);
     }
     if (ps_check(self, ord(TT_TYPE))) {
-        return pi_parse_alias_decl(self, mi);
+        return pi_parse_alias_decl(self, mi, seen);
     }
     if (ps_check(self, ord(TT_UNSAFE))) {
         ps_advance(self);
+        if (ps_check(self, ord(TT_EXTERN))) {
+            return pi_parse_func_decl(self, mi, seen, true, true);
+        }
         if (!ps_check(self, ord(TT_FUNC))) {
-            ps_emit_error(self, "PAR-0602", "expected 'func' after 'unsafe' in interface file", ps_peek(self));
+            ps_emit_error(self, "PAR-0602", "expected 'func' or 'extern' after 'unsafe' in interface file", ps_peek(self));
             return pi_sync_to_semi_or_rbrace(self);
         }
-        return pi_parse_func_decl(self, mi, true);
+        return pi_parse_func_decl(self, mi, seen, true, false);
+    }
+    if (ps_check(self, ord(TT_EXTERN))) {
+        return pi_parse_func_decl(self, mi, seen, false, true);
     }
     if (ps_check(self, ord(TT_FUNC))) {
-        return pi_parse_func_decl(self, mi, false);
+        return pi_parse_func_decl(self, mi, seen, false, false);
     }
     if (ps_check(self, ord(TT_CONST))) {
-        return pi_parse_const_decl(self, mi);
+        return pi_parse_const_decl(self, mi, seen);
     }
     if (ps_check(self, ord(TT_LET))) {
-        return pi_parse_let_decl(self, mi);
+        return pi_parse_let_decl(self, mi, seen);
     }
 
     ps_emit_error(self, "PAR-0572", "Unsupported or unexpected token in interface file", ps_peek(self));
@@ -1201,7 +1356,9 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
         }
     }
 
-    while (pi_parse_one_decl(p, mi)) {
+    with (let seen = ss_create() => ss_free(seen)) {
+        while (pi_parse_one_decl(p, mi, seen)) {
+        }
     }
 
     if (ps_has_error(p)) {
