@@ -50,6 +50,7 @@ L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 	test-dea-build \
 	test-dist-fallback \
 	test-release-tags \
+	test-shuffle-sources \
 	test-workflows \
 	test-docker \
 	refresh-goldens \
@@ -88,6 +89,7 @@ help:
 		'  test-dea-build     Validate the Dea build and install-prefix workflows.' \
 		'  test-dist-fallback Validate Stage 2 provenance fallback without Git.' \
 		'  test-release-tags  Validate the monorepo release-tag policy wiring.' \
+		'  test-shuffle-sources Validate randomized production-source selection.' \
 		'  test-workflows     Run all workflow and distribution tests.' \
 		'' \
 		'Docker:' \
@@ -236,7 +238,10 @@ test-dist-fallback: | venv
 test-release-tags: | venv
 	"$(VENV_PYTHON)" ./tests/test_release_tag_policy.py
 
-test-workflows: test-dist test-dea-build test-dist-fallback test-release-tags
+test-shuffle-sources: | venv
+	"$(VENV_PYTHON)" ./tests/test_shuffle_sources.py
+
+test-workflows: test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources
 	@printf 'All workflow tests passed!\n'
 
 test-all: test-stage1 test-stage2 test-stage2-trace check-examples test-workflows
