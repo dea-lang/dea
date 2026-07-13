@@ -63,8 +63,48 @@ resolved links) and update the corresponding `decisions/INDEX.md` in the same co
 - update relevant `Version: YYYY-MM-DD` metadata when editing reference/status docs
 - do not document draft-only future behavior as shipped
 
-4. Run relevant validation before the commit. Scope the run to the level(s) actually touched (determine touched paths
-   from the same `git status --short`/diff review used in step 1 and the Required-context section):
+4. Validate the exact work being committed. Before choosing or running a command from the scope matrix below, apply the
+   mandatory reuse gate.
+
+### Mandatory reuse of just-completed validation
+
+Reuse is a requirement, not an optional optimization. When an applicable full or level test suite completed successfully
+earlier in the same task and its result remains available in the task tool history, including immediately before a user
+says "ok commit", record and reuse that result if the validated inputs have not changed. **Do not run the suite again.**
+
+Treat validation as reusable when all of these are true:
+
+- The completed command covered the current code/build/test scope. A broader passing suite satisfies a narrower scope.
+- No code, tests, build configuration, dependencies, generated source, or compiler/toolchain selection covered by the
+  result changed after the run. Any branch or `HEAD` change preserved the exact validated tree.
+- No user, external process, or other agent modified an input covered by the result after the run.
+- The result was complete and successful, and the current `git status --short`, diff, and task tool history provide
+  enough evidence that it still applies.
+
+A new user message such as "ok commit", activation of this skill, a short passage of time, diff/status inspection, or
+staging unchanged content does not invalidate validation. Plan closure, documentation edits, and Markdown-only hook
+formatting after the suite also do not invalidate code-test results; run the applicable docs checks plus the mandatory
+staged whitespace and pre-commit checks instead.
+
+Do not upgrade a just-passed `test-all` run to `clean test-all` solely because the scope matrix names the clean command.
+The `clean` prefix is how to obtain fresh validation when validation is needed, not a reason to discard a passing result
+for unchanged inputs. Rerun from clean only when the work concerns clean-build behavior, dependency or artifact
+invalidation, or there is concrete reason to distrust the prior artifacts.
+
+If an input covered by the prior suite changed, the suite did not cover the current scope, an external modification
+affected a covered input, or the evidence is uncertain, run the smallest applicable validation not already satisfied by
+a reused result. Always run the staged whitespace check and pre-commit. If pre-commit changes code, tests, build
+configuration, dependencies, or generated source, rerun the affected validation; Markdown-only rewrites require only
+restaging and rerunning the staged checks.
+
+In the final handoff, name every reused validation command and result and state why it remained valid, including the
+absence of intervening relevant or external modifications.
+
+### Validation scope matrix
+
+Use this matrix for each required validation not already satisfied by a reused result. Scope the remaining runs to the
+level(s) actually touched (determine touched paths from the same `git status --short`/diff review used in step 1 and the
+Required-context section):
 
 For history-only rewrites such as squash, reword, or reorder operations:
 
@@ -192,7 +232,8 @@ git log -1 --oneline
 4. Final response must include:
 
 - commit hash and summary
-- validation commands run, or reused validation and tree-identity evidence for a history-only rewrite
+- validation commands run; for every reused result, its command, result, and unchanged-input evidence, plus tree
+  identity for a history-only rewrite
 - any unstaged/untracked files intentionally left alone
 - current branch upstream and the unpushed commit range
 - gated remote or publication actions intentionally left pending
