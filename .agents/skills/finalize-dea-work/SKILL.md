@@ -92,6 +92,13 @@ For history-only rewrites such as squash, reword, or reorder operations:
   `tools/`, root `pyproject.toml`, `uv.lock`, root config, or the root `Makefile`): run the full repo-root
   `make clean test-all` (executes in all `lN` directories).
 
+- Support-script exception: Do not classify a change as cross-cutting solely because it adds a new auxiliary utility
+  under root `scripts/`, plus its focused test and test-target wiring, when it does not change compiler behavior or
+  build behavior. Run the utility's focused regression and any affected lightweight workflow target instead; do not run
+  root `make clean test-all` only because of that root-level script path. This exception does not apply when the change
+  affects compiler source or runtime behavior, compiler source generation, build scripts or flags, artifact layout,
+  bootstrap or launcher behavior, or existing test behavior beyond adding the utility's own coverage.
+
 - For docs-only changes: run `git diff --check`; run docs tooling when the edited docs have a generator/check target
 
 5. Stage explicitly. Use `git add -u <scope>` plus explicit new files. Re-check `git status --short`.
