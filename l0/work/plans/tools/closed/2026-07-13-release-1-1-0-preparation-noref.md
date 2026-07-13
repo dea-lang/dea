@@ -3,7 +3,7 @@
 ## Dea/L0 1.1.0 Release Preparation
 
 - Date: 2026-07-13
-- Status: In Progress
+- Status: Closed (published)
 - Title: Prepare, validate, and publish the Dea/L0 1.1.0 release
 - Kind: Tooling
 - Severity: High
@@ -115,3 +115,19 @@ duplicate GitHub release.
 3. Adding or changing L0 standard-library APIs, compiler modes, CLI flags, or public types as part of release
    preparation.
 4. Publishing an unfiltered commit log as user-facing release notes.
+
+## Completion
+
+- 2026-07-13: Local monorepo tests, L0 documentation generation, release-policy tests, pre-commit checks, and the
+  `DEA_DIST_VERSION=1.1.0` distribution verification passed.
+- Public CI passed on the exact tag target across Linux x86_64, macOS x86_64, macOS arm64, and Windows UCRT64, with
+  documentation and copyright validation green.
+- The annotated `l0-v1.1.0` tag and GitHub release were published only in `googlielmo/dea-lang`. The release body
+  matches `l0/docs/releases/1.1.0.md`; all four platform archives, the API PDF, the API Markdown archive, and
+  `SHA256SUMS` are present, and every published checksum verifies.
+- The release workflow deployed Pages/API documentation and successfully dispatched `blog-docs-update`; the blog
+  repository synchronized the versioned API documentation.
+- The reviewed announcement passed the blog repository's production build and link checks, then was published as
+  [Dea/L0 1.1.0: safer control flow and a frontend that keeps going](https://googlielmo.github.io/posts/dea-l0-v1-1-0-safer-control-flow-and-a-frontend-that-keeps-going/).
+- Every publication check is complete. This plan moved to `l0/work/plans/tools/closed/`; removal of deprecated
+  `case ... else` remains deferred to Dea/L0 2.0.0 in the open Phase 2 plan.
