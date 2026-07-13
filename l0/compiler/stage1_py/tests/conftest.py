@@ -352,7 +352,11 @@ def compile_and_run(runtime_dir: Path):
     """
 
     def _compile_and_run(
-        c_code: str, work_dir: Path, stdin_text: str | None = None
+        c_code: str,
+        work_dir: Path,
+        stdin_text: str | None = None,
+        *,
+        strict_c99: bool = False,
     ) -> tuple[bool, str, str]:
         cc = _find_cc()
         flag_family = _compiler_flag_family(cc)
@@ -369,6 +373,7 @@ def compile_and_run(runtime_dir: Path):
                 str(c_file),
                 "/std:c11",
                 "/Od",
+                *(["/WX"] if strict_c99 else []),
                 f"/I{runtime_dir}",
                 f"/Fe:{exe_file}",
             ]
@@ -377,7 +382,7 @@ def compile_and_run(runtime_dir: Path):
                 cc,
                 "-std=c99",
                 "-Og",
-                "-pedantic",
+                "-pedantic-errors" if strict_c99 and flag_family == "gcc" else "-pedantic",
                 "-I",
                 str(runtime_dir),
                 str(c_file),

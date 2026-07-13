@@ -51,6 +51,33 @@ int main(void) {
 }
 """
 
+ALIGNOF_HARNESS = """
+#define SIPHASH_IMPLEMENTATION
+#include "l0_runtime.h"
+
+struct align_payload {
+    l0_byte tag;
+    l0_int value;
+};
+
+struct align_l0_int_probe {
+    char prefix;
+    l0_int value;
+};
+
+struct align_payload_probe {
+    char prefix;
+    struct align_payload value;
+};
+
+int main(void) {
+    if (_RT_ALIGNOF(l0_byte) != 1) return 2;
+    if (_RT_ALIGNOF(l0_int) != offsetof(struct align_l0_int_probe, value)) return 3;
+    if (_RT_ALIGNOF(struct align_payload) != offsetof(struct align_payload_probe, value)) return 4;
+    return 0;
+}
+"""
+
 
 def _run_churn_harness(compile_and_run, tmp_path, defines: str = ""):
     success, stdout, stderr = compile_and_run(CHURN_HARNESS % {"defines": defines}, tmp_path)
@@ -77,6 +104,11 @@ def test_check_basic_alloc_free_churn_keeps_table_capacity_bounded(compile_and_r
     assert stats["quarantined"] <= 4096
     assert stats["cnt"] <= 4096 + 4096
     assert 256 <= stats["cap"] <= 32768, stats
+
+
+def test_runtime_alignof_is_strict_c99_compatible(compile_and_run, tmp_path):
+    success, _, stderr = compile_and_run(ALIGNOF_HARNESS, tmp_path, strict_c99=True)
+    assert success, stderr
 
 
 STRING_LAZINESS_HARNESS = """
@@ -142,8 +174,10 @@ def test_ramp_memory_invariants_hold_under_large_live_set(compile_and_run, tmp_p
     # records at the peak, with one chunk of slack.
     assert stats["ramp.rec_pool_chunks_peak"] <= live_peak // 256 + 2, stats
 
-    # After free-all plus mixed-size settle churn, the tracker holds only the
-    # bounded quarantine and the table contracts back near the live set.
+    # Free-all must contract independently of allocator address reuse in the
+    # later settle churn, then the contracted table must stay bounded.
+    assert stats["ramp.cnt_after_free"] <= 4096, stats
+    assert stats["ramp.table_cap_after_free"] <= 32768, stats
     assert stats["ramp.live_cnt"] <= 4096 + 8, stats
     assert stats["ramp.table_cap"] <= 32768, stats
     assert stats["ramp.quarantine_count"] <= 4096, stats

@@ -31,7 +31,11 @@
 #endif
 
 #ifndef _RT_ALIGNOF
-#define _RT_ALIGNOF(type) offsetof(struct { char _rt_align_c; type _rt_align_v; }, _rt_align_v)
+#if defined(__clang__) || (defined(__GNUC__) && !defined(__TINYC__))
+#define _RT_ALIGNOF(type) __alignof__(type)
+#else
+#define _RT_ALIGNOF(type) (sizeof(struct { char _rt_align_c; type _rt_align_v; }) - sizeof(type))
+#endif
 #endif
 
 #if defined(DEA_RT_CHECK_BASIC) && defined(DEA_RT_UNCHECKED)

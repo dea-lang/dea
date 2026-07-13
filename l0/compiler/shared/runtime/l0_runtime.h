@@ -52,7 +52,11 @@
 #include "dea_siphash.h"
 
 #ifndef _RT_ALIGNOF
-#define _RT_ALIGNOF(type) offsetof(struct { char _rt_align_c; type _rt_align_v; }, _rt_align_v)
+#if defined(__clang__) || (defined(__GNUC__) && !defined(__TINYC__))
+#define _RT_ALIGNOF(type) __alignof__(type)
+#else
+#define _RT_ALIGNOF(type) (sizeof(struct { char _rt_align_c; type _rt_align_v; }) - sizeof(type))
+#endif
 #endif
 
 #if defined(L0_RT_CHECK_BASIC) && defined(L0_RT_UNCHECKED)
@@ -2878,7 +2882,9 @@ static void _rt_alloc_table_remove(_rt_alloc_record *target) {
             _rt_alloc_table[idx] = _RT_ALLOC_TOMBSTONE;
             _rt_alloc_table_cnt--;
             _rt_alloc_table_tombstones++;
-            if (_rt_alloc_table_tombstones * 2 > _rt_alloc_table_cap) {
+            if (_rt_alloc_table_tombstones > _rt_alloc_table_cap / 2 ||
+                (_rt_alloc_table_cap > _RT_ALLOC_INIT_CAP &&
+                 _rt_alloc_table_cnt < _rt_alloc_table_cap / 4)) {
                 _rt_alloc_table_rehash();
             }
             return;

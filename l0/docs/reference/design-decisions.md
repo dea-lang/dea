@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-07-11
+Version: 2026-07-13
 
 This document records rationale and policy decisions.
 
@@ -89,7 +89,9 @@ Key properties:
   interior pointers.
 - The tracker hash table is rebuilt at a capacity sized from the live record count, so sustained alloc/free churn in
   long-running programs purges lookup tombstones at a stable capacity instead of growing the table with the lifetime
-  number of frees. Allocation-record pool memory is peak-driven and is never returned to the C allocator.
+  number of frees. Removal also rebuilds when the live count falls below one quarter of the current table capacity, so
+  the table contracts after a large live set subsides. Allocation-record pool memory is peak-driven and is never
+  returned to the C allocator.
 - Quarantine retention is tunable when compiling generated C: `_RT_QUARANTINE_MAX_BYTES` (default 16 MiB) and
   `_RT_QUARANTINE_MAX_COUNT` (default 4096) accept `-D` overrides, for example through `L0_CFLAGS`. Smaller retention
   (including 0) speeds allocation-heavy code by returning freed blocks to the C allocator sooner, at the cost of a
@@ -99,9 +101,10 @@ Key properties:
   for performance-sensitive checked deployments because it keeps a meaningful detection window while reducing
   allocation-heavy retention costs. The measured benefit and the value of intermediate settings vary by compiler and
   workload, so deployments that need more temporal depth should benchmark their own 1024-or-higher tradeoff. Record-pool
-  and tracker-table metadata are peak-driven, while quarantined payload memory is bounded by the byte/count caps, so
-  lower caps can reduce retained freed payload memory. For release performance beyond retention tuning, use
-  `--check-basic` or `--unchecked`.
+  metadata is peak-driven, tracker-table capacity follows the current live record count with resize hysteresis, and
+  quarantined payload memory is bounded by the byte/count caps. Lower caps can therefore reduce both the retained live
+  tracker set and freed payload memory. For release performance beyond retention tuning, use `--check-basic` or
+  `--unchecked`.
 - The `l0c --check-basic` flag (valid in `--build`, `--run`, `--gen`; mutually exclusive with `--unchecked` and the
   trace flags) emits `L0_RT_CHECK_BASIC` into the generated C prelude. Basic checked mode keeps exact-base hash
   validation, quarantine, generation caches, null checks, double-drop and untracked-drop diagnostics, exact-base

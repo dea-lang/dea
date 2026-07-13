@@ -214,10 +214,14 @@ static int bench_ramp(long scale) {
         rt_free(live[i]);
     }
     printf("ramp.free_wall_ms=%.3f\n", bench_ms_since(start));
+#ifndef DEA_RT_UNCHECKED
+    printf("ramp.table_cap_after_free=%zu\n", _rt_alloc_table_cap);
+    printf("ramp.cnt_after_free=%zu\n", _rt_alloc_table_cnt);
+#endif
     free(live);
 
-    /* Churn with mixed sizes until tombstone purges rebuild the table at a
-     * contracted size; uniform sizes would reuse addresses and never drift. */
+    /* Mixed-size settle churn checks that the contracted table stays bounded
+     * as tombstones are created and reused across diverse addresses. */
     start = bench_monotonic_ns();
     for (long i = 0; i < live_peak * 2; i++) {
         unsigned draw = bench_rng_next(&rng);

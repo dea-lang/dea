@@ -609,7 +609,9 @@ static void _rt_alloc_table_remove_record(_rt_alloc_record *target) {
             _rt_alloc_table[idx] = _RT_ALLOC_TOMBSTONE;
             _rt_alloc_table_cnt--;
             _rt_alloc_table_tombstones++;
-            if (_rt_alloc_table_tombstones * 2 > _rt_alloc_table_cap) {
+            if (_rt_alloc_table_tombstones > _rt_alloc_table_cap / 2 ||
+                (_rt_alloc_table_cap > _RT_ALLOC_INIT_CAP &&
+                 _rt_alloc_table_cnt < _rt_alloc_table_cap / 4)) {
                 _rt_alloc_table_rehash();
             }
             return;

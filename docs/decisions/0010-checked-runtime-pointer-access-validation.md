@@ -1,7 +1,7 @@
 # ADR-0010: Checked Runtime Pointer Access Validation
 
 - Decision date: 2026-07-03
-- Last edited: 2026-07-11
+- Last edited: 2026-07-13
 - Status: Accepted
 
 ## Context
@@ -87,7 +87,9 @@ runtime sources with `DEA_RT_CHECK_BASIC`.
   as untracked alignment-checked storage.
 - Level runtimes may keep different implementation layouts and symbol surfaces, but the default semantics remain shared.
 - Tracker hash-table rebuilds are sized from the live record count, so sustained alloc/free churn purges tombstones at a
-  stable capacity and long-running services do not accumulate table growth from lifetime frees.
+  stable capacity and long-running services do not accumulate table growth from lifetime frees. Removal also rebuilds
+  when the live count falls below one quarter of the current capacity, so the table contracts after a large live set
+  subsides instead of retaining its peak slot array.
 - Record-pool memory is peak-driven: pool memory is never returned to the C allocator by design, so checked-mode memory
   overhead is bounded by the peak count of live plus quarantined allocations.
 - The tracker state is unsynchronized global state; checked mode assumes a single-threaded program.
@@ -125,6 +127,7 @@ runtime sources with `DEA_RT_CHECK_BASIC`.
 - [work/plans/features/closed/2026-07-04-shared-runtime-alloc-benchmark-noref.md](../../work/plans/features/closed/2026-07-04-shared-runtime-alloc-benchmark-noref.md)
 - [work/plans/features/closed/2026-07-08-shared-runtime-check-basic-mode-noref.md](../../work/plans/features/closed/2026-07-08-shared-runtime-check-basic-mode-noref.md)
 - [work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md](../../work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md)
+- [work/plans/bug-fixes/closed/2026-07-13-shared-checked-runtime-contraction-alignof-noref.md](../../work/plans/bug-fixes/closed/2026-07-13-shared-checked-runtime-contraction-alignof-noref.md)
 
 ## Current Docs
 

@@ -39,11 +39,17 @@ CHURN_HARNESS = """
 #include "{alloc_c}"
 #include "{panic_c}"
 
+struct align_dea_int_probe {{
+    char prefix;
+    dea_int value;
+}};
+
 /* Linker stubs for the panic string path, which this harness never takes. */
 char *_rt_string_bytes(dea_string s) {{ (void)s; return (char*)""; }}
 dea_int rt_strlen(dea_string str) {{ (void)str; return 0; }}
 
 int main(void) {{
+    if (_RT_ALIGNOF(dea_int) != offsetof(struct align_dea_int_probe, value)) return 3;
     static void *live[CHURN_WINDOW];
     unsigned rng = 12345;
     for (int i = 0; i < 300000; i++) {{
@@ -82,9 +88,15 @@ def build_harness(work_dir: Path, cc: str, window: int, extra_defines: list[str]
         ),
         encoding="utf-8",
     )
+    strict_flags = (
+        ["-pedantic"]
+        if "tcc" in Path(cc).name.lower()
+        else ["-Wall", "-Wextra", "-Wno-unused", "-Wno-unused-parameter", "-pedantic-errors"]
+    )
     command = [
         cc,
         "-std=c99",
+        *strict_flags,
         f"-DCHURN_WINDOW={window}",
         *(extra_defines or []),
         f"-I{RUNTIME_INCLUDE}",
@@ -160,13 +172,16 @@ def check_memory_invariants(work_dir: Path, cc: str) -> None:
     exe_file = build_bench_harness(work_dir, cc)
 
     # Ramp: table capacity and record-pool memory stay bounded by the peak
-    # live set, and the table contracts again after free-all plus settle
-    # churn. Only deterministic tracker-internal bounds, never wall-clock.
+    # live set. Free-all contracts independently of later allocator address
+    # reuse, and settle churn keeps the result bounded. Only deterministic
+    # tracker-internal bounds, never wall-clock.
     stats = run_bench_scenario(exe_file, "ramp")
     live_peak = stats["ramp.live_peak"]
     assert stats["ramp.cnt_peak"] == live_peak, stats
     assert stats["ramp.table_cap_peak"] <= 262144, stats
     assert stats["ramp.rec_pool_chunks_peak"] <= live_peak // 256 + 2, stats
+    assert stats["ramp.cnt_after_free"] <= 4096, stats
+    assert stats["ramp.table_cap_after_free"] <= 32768, stats
     assert stats["ramp.live_cnt"] <= 4096 + 8, stats
     assert stats["ramp.table_cap"] <= 32768, stats
     assert stats["ramp.quarantine_count"] <= 4096, stats

@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-07-12
+Version: 2026-07-13
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -631,11 +631,12 @@ default record limit (4096) is detection-first and right for development; `256` 
 performance-sensitive checked deployments, per the corrected monotonic `make bench-runtime` matrix. Smaller caps
 generally reduce allocation-heavy costs, but the magnitude and the value of intermediate settings vary by compiler and
 workload, so deployments that need more temporal depth should measure their own 1024-or-higher tradeoff. Record-pool and
-tracker-table metadata are peak-driven, while quarantined payload memory is bounded by the byte/count caps, so lower
-caps can reduce retained freed payload memory. The `l1c --check-basic` flag selects the prebuilt
-`libdea_rt_check_basic.a` archive variant and defines `DEA_RT_CHECK_BASIC` in generated C; this keeps exact-base hash
-validation, quarantine, generation caches, null checks, double-drop and untracked-drop diagnostics, exact-base
-ARC/static string read-only protection, and alignment checks for hash-miss accesses while compiling out the
+tracker-table metadata have different retention: record-pool memory is peak-driven, while table capacity follows the
+current live record count with resize hysteresis. Quarantined payload memory is bounded by the byte/count caps, so lower
+caps can reduce both the retained live tracker set and freed payload memory. The `l1c --check-basic` flag selects the
+prebuilt `libdea_rt_check_basic.a` archive variant and defines `DEA_RT_CHECK_BASIC` in generated C; this keeps
+exact-base hash validation, quarantine, generation caches, null checks, double-drop and untracked-drop diagnostics,
+exact-base ARC/static string read-only protection, and alignment checks for hash-miss accesses while compiling out the
 interior-pointer treap. The `l1c --unchecked` flag selects the prebuilt `libdea_rt_unchecked.a` archive variant and
 defines `DEA_RT_UNCHECKED` in generated C, compiling pointer tracking and access validation out; neither mode can be
 combined with the trace flags. Basic runtime API argument checks still apply. Externally owned storage can be registered
