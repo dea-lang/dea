@@ -71,6 +71,34 @@ Also see: `../CONTRIBUTING.md`, `../SECURITY.md`.
   `mdformat` (auto-reformats `.md` files; config in `pyproject.toml`) and `copyright-headers` (validates source file
   copyright notices). If mdformat reformats a file, stage the changes and re-commit.
 
+## Release And Documentation Publication
+
+The remote and publication authorization policy in `../CLAUDE.md` applies to every L0 release and documentation
+workflow. Release preparation, release-plan implementation, green CI, and local artifact verification do not authorize
+release-tag creation, any remote write, or publication.
+
+Pushing any `l0-v*` tag starts `.github/workflows/l0-release.yml`. For a valid stable `l0-vX.Y.Z` tag, that workflow:
+
+- validates the canonical release notes and builds the supported platform distributions plus API documentation;
+- creates checksums, creates or reuses a draft GitHub release, uploads assets, and publishes the release;
+- deploys the API documentation to GitHub Pages when Pages is enabled; and
+- can send a `blog-docs-update` repository dispatch to the configured blog repository, which may modify and deploy that
+  separate repository.
+
+Therefore:
+
+- Create a release tag only after a separate, explicit user request naming the exact tag and target commit. A request to
+  implement a release plan that mentions the tag does not satisfy this gate.
+- Before pushing the tag, stop and obtain a separate, fresh user confirmation. Show the exact tag, its target commit,
+  the remote URL, and the release, asset, Pages, and blog-dispatch effects listed above.
+- Do not treat authorization to mirror commits, prepare a release, or create a tag as authorization to push the tag.
+- Do not push L0 commits to a public repository unless the root public-push requirements are satisfied, including an
+  explicitly designated target and a checked-out branch that already tracks the exact public remote and branch.
+- Treat manual runs of `.github/workflows/l0-docs-publish.yml` as publication actions whenever they deploy Pages, attach
+  release assets, or dispatch a blog update. Obtain fresh user confirmation immediately before dispatching them.
+- Do not claim that release notes, announcement copy, or other publication material is reviewed unless the user has
+  reviewed its exact final contents.
+
 ## Commands
 
 Run L0-specific commands from the `l0/` directory. The monorepo root `Makefile` only owns `help`, `venv`, `test-all`,

@@ -117,6 +117,17 @@ If already in an immediate level directory, keep `uv` pointed at the root projec
 uv run --directory .. --group dev pre-commit run --hook-stage pre-commit -c .pre-commit-config.yaml --files $(git -C .. diff --cached --name-only --diff-filter=ACMR)
 ```
 
+## Remote publication boundary
+
+A documentation audit, refresh, local edit, or local commit does not authorize publishing the documentation. While using
+this skill, do not push, dispatch a synchronization workflow, deploy Pages, update a release, or write to a downstream
+documentation or blog repository.
+
+If the repository normally publishes documentation as an automatic effect of a push, treat that push as a deployment
+operation and leave it for a separately authorized follow-up. Neither a plan that includes publication nor any sandbox,
+tool, or escalation approval replaces the required user authorization. End with the local diff or commit and report the
+pending publication action explicitly.
+
 ## Writing rules
 
 - Prefer concise, factual updates over broad rewrites.
@@ -134,3 +145,4 @@ uv run --directory .. --group dev pre-commit run --hook-stage pre-commit -c .pre
 - commit or handoff note explains which docs changed and which audited surfaces needed no edits
 - no metadata-only `Version:` bumps unless the handoff or commit body explicitly says the file was audited against newer
   behavior and required no content changes
+- no push, workflow dispatch, documentation deployment, release update, or downstream repository write

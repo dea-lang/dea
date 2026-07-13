@@ -202,6 +202,29 @@ Use the closest local precedent:
 Do not write an `Outcome`, `Results`, or completed verification section in a brand-new draft plan unless the user is
 actually documenting already landed work.
 
+## Remote and publication approval gates
+
+A plan may describe remote or publication work, but it never authorizes that work. This remains true when the user asks
+to implement the whole plan.
+
+When a plan includes any push, tag, release, workflow dispatch, cross-repository write, documentation deployment, or
+site publication:
+
+- mark each such phase as a manual user-approval gate
+- state the exact remote, branch, tag, artifact, or deployment target governed by the gate
+- state the known automatic effects, including release creation, asset publication, Pages deployment, or downstream
+  repository dispatches
+- require fresh user confirmation immediately before the gated operation; an earlier request to draft or implement the
+  plan does not satisfy the gate
+- keep publication-dependent targets and the plan active until the authorized operation completes and is verified, or
+  until the user explicitly defers or cancels that target
+
+Do not describe material as user-reviewed unless the user reviewed the exact version. Agent review, tests, CI, or an
+implementation request are not substitutes for user review. Any later content change invalidates the prior review and
+requires the updated material to be reviewed again before publication.
+
+Sandbox, tool, or command-escalation approval grants technical capability only. It never satisfies a user-approval gate.
+
 ## Diagnostic-code planning rules
 
 If the planned work may introduce or reassign compiler diagnostic codes, inspect
@@ -297,3 +320,5 @@ Use the next available zero-padded number, carry the initiative metadata block, 
 - diagnostic-code reservation guidance included when the work may add new diagnostics
 - explicit subtree link/update steps followed where required, for example the current `l1/docs/roadmap.md` rule
 - no lifecycle plan written under `docs/`
+- every remote or publication phase has an explicit manual user-approval gate with destination and downstream effects
+- no unverified claim that the user reviewed or approved exact publication material

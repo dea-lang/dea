@@ -17,6 +17,24 @@ work.
 3. If touched paths are under `l1/`, read `l1/CLAUDE.md`.
 4. Check `git status --short` before staging. Never stage unrelated user files.
 
+## Authorization boundary
+
+This skill ends at a local commit and handoff. A request to implement, finalize, prepare, or commit work authorizes the
+local finalization steps below, but never authorizes a remote operation.
+
+While using this skill:
+
+- do not create or push tags
+- do not push commits to any remote
+- do not create, publish, edit, or delete a release
+- do not dispatch workflows or trigger documentation, Pages, package, or site deployments
+- do not write to another repository
+
+Plans that mention those operations do not grant authority to perform them, even when the user asks to implement the
+whole plan. Sandbox, tool, or escalation approval grants capability only and is not user authorization. Stop after the
+local commit, report the current upstream and pending commit range, and leave every remote action for a separately
+authorized follow-up.
+
 ## Finalization workflow
 
 1. Review the diff and classify the work:
@@ -30,6 +48,8 @@ work.
 - active plans that are complete move to `work/plans/<kind>/closed/` or `lN/work/plans/<kind>/closed/`
 - update `Status: Completed`, completion notes, and final repro/validation commands
 - future follow-up work stays as a draft plan in the correct kind, for example `tools` for test-runner/tooling work
+- if completion depends on a push, tag, release, deployment, cross-repository write, or other gated external result,
+  keep the plan active; do not close it based on unauthorized external state
 
 2a. Check for ADR-worthy decisions:
 
@@ -167,3 +187,5 @@ git log -1 --oneline
 - commit hash and summary
 - validation commands run, or reused validation and tree-identity evidence for a history-only rewrite
 - any unstaged/untracked files intentionally left alone
+- current branch upstream and the unpushed commit range
+- gated remote or publication actions intentionally left pending
