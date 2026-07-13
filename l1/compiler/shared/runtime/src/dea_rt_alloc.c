@@ -13,6 +13,7 @@ static void _rt_track_alloc_record(
     const char *loc_file,
     int loc_line
 );
+static void _rt_promote_new_alloc(void *ptr);
 static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_line, const char *op_name);
 static void *_rt_realloc_tracked_alloc(void *ptr, dea_int new_bytes, const char *loc_file, int loc_line);
 
@@ -87,7 +88,7 @@ void *rt_alloc(dea_int bytes) {
 #endif
 
 /**
- * Reallocate memory to a new size.
+ * Reallocate a raw runtime allocation to a new size.
  * Returns NULL on failure.
  * Panics if new_bytes is negative or too large to fit in size_t (platform-dependent).
  * If ptr is NULL, behaves like rt_alloc.
@@ -147,7 +148,7 @@ void *rt_realloc(void *ptr, dea_int new_bytes) {
 #endif
 
 /**
- * Free previously allocated memory.
+ * Free a raw runtime allocation.
  *
  * @param ptr Pointer to free.
  *
@@ -341,7 +342,10 @@ void *rt_array_element(void *array_data, dea_int element_size, dea_int index) {
 
     /* One shared entry point serving every container call site: a single
      * static site slot would thrash across unrelated allocations, so skip
-     * the per-call-site cache and always take the full lookup. */
+     * the per-call-site cache and always take the full lookup. Read mode is
+     * used even for element stores: callers only pass container storage,
+     * which is runtime-owned writable raw memory, so read-only enforcement
+     * never applies here. */
     return _rt_check_index_ptr_site(
         NULL,
         array_data,
@@ -386,7 +390,9 @@ static size_t _rt_alloc_table_cnt = 0;
 static size_t _rt_alloc_table_tombstones = 0;
 static uint64_t _rt_alloc_next_generation = 1;
 
+#ifndef DEA_RT_CHECK_BASIC
 static _rt_alloc_record *_rt_alloc_tree_root = NULL;
+#endif
 static _rt_alloc_record *_rt_rec_free_list = NULL;
 static _rt_alloc_record_cold **_rt_cold_chunks = NULL;
 static size_t _rt_rec_pool_chunks = 0;
@@ -632,6 +638,32 @@ static void _rt_panic_invalid_drop(const char *reason, void *ptr, const char *lo
     );
 }
 
+static void _rt_panic_invalid_release(
+    const char *op_name,
+    const char *reason,
+    void *ptr,
+    const char *loc_file,
+    int loc_line
+) {
+    _rt_panic_fmt(
+        "runtime error: invalid %s\n  reason: %s\n  pointer: %p\n  released at: %s:%d",
+        op_name ? op_name : "release",
+        reason,
+        ptr,
+        loc_file ? loc_file : "<unknown>",
+        loc_line
+    );
+}
+
+static void _rt_trace_invalid_drop(void *ptr, const char *loc_file, int loc_line) {
+    _RT_TRACE_MEM(
+        "op=drop ptr=%p action=panic-not-found loc=\"%s\":%d",
+        ptr,
+        loc_file ? loc_file : "<unknown>",
+        loc_line
+    );
+}
+
 static int _rt_ptr_is_aligned(void *ptr, size_t align) {
     if (align <= 1) return 1;
     return ((uintptr_t)ptr % align) == 0;
@@ -651,6 +683,7 @@ static int _rt_range_contains(void *base, size_t total_size, void *ptr, size_t n
     return 1;
 }
 
+#ifndef DEA_RT_CHECK_BASIC
 static uint32_t _rt_tree_prio_for(void *base) {
     uint64_t v = (uint64_t)(uintptr_t)base;
     uint32_t x = (uint32_t)(v ^ (v >> 32));
@@ -735,6 +768,22 @@ static _rt_alloc_record *_rt_alloc_tree_glb(void *ptr) {
     return best;
 }
 
+/** Return the tracked record with the lowest base at or above `ptr`. */
+static _rt_alloc_record *_rt_alloc_tree_lub(void *ptr) {
+    _rt_alloc_record *node = _rt_alloc_tree_root;
+    _rt_alloc_record *best = NULL;
+    uintptr_t target = (uintptr_t)ptr;
+    while (node != NULL) {
+        if ((uintptr_t)node->base >= target) {
+            best = node;
+            node = node->tree_left;
+        } else {
+            node = node->tree_right;
+        }
+    }
+    return best;
+}
+
 static _rt_alloc_record *_rt_alloc_tree_find_containing(void *ptr, size_t need_size) {
     if (ptr == NULL) return NULL;
 
@@ -753,6 +802,7 @@ static _rt_alloc_record *_rt_alloc_tree_find_containing(void *ptr, size_t need_s
     }
     return NULL;
 }
+#endif /* DEA_RT_CHECK_BASIC */
 
 static size_t _rt_required_size(dea_int required_size) {
     if (required_size < 0) {
@@ -874,7 +924,9 @@ static void _rt_track_alloc_record_kind(
     rec->q_next = NULL;
 
     _rt_alloc_table_insert_record(rec);
+#ifndef DEA_RT_CHECK_BASIC
     _rt_alloc_tree_insert(rec);
+#endif
 }
 
 static void _rt_track_alloc_record(
@@ -885,7 +937,17 @@ static void _rt_track_alloc_record(
     const char *loc_file,
     int loc_line
 ) {
-    _rt_track_alloc_record_kind(ptr, size, align, type_id, _RT_MEM_USER, 0, loc_file, loc_line);
+    _rt_track_alloc_record_kind(ptr, size, align, type_id, _RT_MEM_RAW, 0, loc_file, loc_line);
+}
+
+static void _rt_promote_new_alloc(void *ptr) {
+    if (ptr == NULL) return;
+
+    _rt_alloc_record *rec = _rt_alloc_table_lookup(ptr);
+    if (rec == NULL || rec->state != _RT_ALLOC_LIVE || rec->mem_kind != _RT_MEM_RAW) {
+        _rt_panic_fmt("runtime allocation tracker: cannot promote non-raw allocation %p to new", ptr);
+    }
+    rec->mem_kind = _RT_MEM_NEW;
 }
 
 /**
@@ -907,16 +969,78 @@ void _rt_untrack_arc_alloc(void *ptr) {
     if (rec == NULL) return;
 
     _rt_alloc_table_remove_record(rec);
+#ifndef DEA_RT_CHECK_BASIC
     _rt_alloc_tree_remove(rec);
+#endif
     _rt_rec_recycle(rec);
 }
 
 void _rt_track_static_bytes(const void *ptr, size_t size) {
     if (ptr == NULL) return;
     if (_rt_alloc_table_lookup((void*)ptr) != NULL) return;
+#ifndef DEA_RT_CHECK_BASIC
     if (_rt_alloc_tree_find_containing((void*)ptr, size == 0 ? 1u : size) != NULL) return;
+#endif
 
     _rt_track_alloc_record_kind((void*)ptr, size, 0, 0, _RT_MEM_STATIC, 1, "<static>", 0);
+}
+
+/** Register externally owned storage for checked generated pointer accesses. */
+void rt_register_foreign(void *ptr, dea_int bytes, dea_bool read_only) {
+    if (ptr == NULL) {
+        _rt_panic("rt_register_foreign: null pointer");
+    }
+    if (bytes <= 0) {
+        _rt_panic("rt_register_foreign: invalid byte extent");
+    }
+    if (read_only != 0 && read_only != 1) {
+        _rt_panic("rt_register_foreign: invalid read-only flag");
+    }
+
+    size_t size = (size_t)bytes;
+    uintptr_t base_addr = (uintptr_t)ptr;
+    if (size > UINTPTR_MAX - base_addr) {
+        _rt_panic("rt_register_foreign: address range overflow");
+    }
+
+    _rt_alloc_record *existing = _rt_alloc_table_lookup(ptr);
+    if (existing != NULL) {
+        if (existing->state == _RT_ALLOC_LIVE && existing->mem_kind == _RT_MEM_FOREIGN &&
+            existing->size == size && existing->read_only == (read_only ? 1u : 0u)) {
+            return;
+        }
+        _rt_panic_fmt("rt_register_foreign: conflicting tracked base %p", ptr);
+    }
+
+#ifndef DEA_RT_CHECK_BASIC
+    if (_rt_alloc_tree_find_containing(ptr, 1) != NULL) {
+        _rt_panic_fmt("rt_register_foreign: range overlaps tracked storage at %p", ptr);
+    }
+    _rt_alloc_record *next = _rt_alloc_tree_lub(ptr);
+    if (next != NULL && (uintptr_t)next->base < base_addr + size) {
+        _rt_panic_fmt("rt_register_foreign: range overlaps tracked storage at %p", next->base);
+    }
+#endif
+
+    _rt_track_alloc_record_kind(ptr, size, 0, 0, _RT_MEM_FOREIGN, read_only, "<foreign>", 0);
+}
+
+/** Unregister externally owned storage without releasing its payload. */
+void rt_unregister_foreign(void *ptr) {
+    if (ptr == NULL) {
+        _rt_panic("rt_unregister_foreign: null pointer");
+    }
+
+    _rt_alloc_record *rec = _rt_alloc_table_lookup(ptr);
+    if (rec == NULL || rec->state != _RT_ALLOC_LIVE || rec->mem_kind != _RT_MEM_FOREIGN) {
+        _rt_panic_fmt("rt_unregister_foreign: pointer is not a live foreign base %p", ptr);
+    }
+
+    _rt_alloc_table_remove_record(rec);
+#ifndef DEA_RT_CHECK_BASIC
+    _rt_alloc_tree_remove(rec);
+#endif
+    _rt_rec_recycle(rec);
 }
 
 static void _rt_evict_quarantine(void) {
@@ -932,7 +1056,9 @@ static void _rt_evict_quarantine(void) {
         _rt_quarantine_bytes -= rec->size;
         _rt_quarantine_count--;
         _rt_alloc_table_remove_record(rec);
+#ifndef DEA_RT_CHECK_BASIC
         _rt_alloc_tree_remove(rec);
+#endif
         free(rec->base);
         _rt_rec_recycle(rec);
     }
@@ -958,28 +1084,30 @@ static void _rt_quarantine_alloc_record(_rt_alloc_record *rec, _rt_alloc_record_
 }
 
 static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_line, const char *op_name) {
-    (void)op_name;
     if (ptr == NULL) return;
 
     _rt_alloc_record *rec = _rt_alloc_table_lookup(ptr);
     if (rec == NULL) {
+#ifndef DEA_RT_CHECK_BASIC
         if (_rt_alloc_tree_find_containing(ptr, 1) != NULL) {
-            _rt_panic_invalid_drop("pointer is not an allocation base", ptr, loc_file, loc_line);
+            _rt_panic_invalid_release(op_name, "pointer is not an allocation base", ptr, loc_file, loc_line);
         }
-        _rt_panic_invalid_drop("unregistered pointer", ptr, loc_file, loc_line);
+#endif
+        _rt_panic_invalid_release(op_name, "unregistered pointer", ptr, loc_file, loc_line);
     }
     _rt_alloc_record_cold *cold = _rt_rec_cold(rec);
-    if (rec->mem_kind != _RT_MEM_USER) {
-        _rt_panic_invalid_drop(
-            rec->mem_kind == _RT_MEM_ARC
-                ? "ARC-managed memory is not droppable"
-                : "static memory is not droppable",
-            ptr, loc_file, loc_line
-        );
+    if (rec->mem_kind != _RT_MEM_RAW) {
+        const char *reason = "pointer is not a raw allocation";
+        if (rec->mem_kind == _RT_MEM_NEW) reason = "new allocation must be released with drop";
+        else if (rec->mem_kind == _RT_MEM_ARC) reason = "ARC-managed memory is not raw-owned";
+        else if (rec->mem_kind == _RT_MEM_STATIC) reason = "static memory is not raw-owned";
+        else if (rec->mem_kind == _RT_MEM_FOREIGN) reason = "foreign memory is not runtime-owned";
+        _rt_panic_invalid_release(op_name, reason, ptr, loc_file, loc_line);
     }
     if (rec->state != _RT_ALLOC_LIVE) {
         _rt_panic_fmt(
-            "runtime error: double free/drop\n  pointer: %p\n  first released at: %s:%d\n  second released at: %s:%d",
+            "runtime error: double %s\n  pointer: %p\n  first released at: %s:%d\n  second released at: %s:%d",
+            op_name ? op_name : "release",
             ptr,
             cold->drop_file ? cold->drop_file : "<unknown>",
             cold->drop_line,
@@ -1004,8 +1132,14 @@ static void *_rt_realloc_tracked_alloc(void *ptr, dea_int new_bytes, const char 
     _rt_alloc_record *old_rec = _rt_alloc_table_lookup(ptr);
     _rt_alloc_record_cold *old_cold = old_rec != NULL ? _rt_rec_cold(old_rec) : NULL;
     if (old_rec == NULL || old_rec->state != _RT_ALLOC_LIVE ||
-        old_rec->mem_kind != _RT_MEM_USER) {
-        _rt_panic_invalid_drop("invalid realloc pointer", ptr, loc_file, loc_line);
+        old_rec->mem_kind != _RT_MEM_RAW) {
+        const char *reason = "invalid realloc pointer";
+        if (old_rec != NULL && old_rec->mem_kind == _RT_MEM_NEW) {
+            reason = "new allocation cannot be reallocated";
+        } else if (old_rec != NULL && old_rec->mem_kind == _RT_MEM_FOREIGN) {
+            reason = "foreign memory is not runtime-owned";
+        }
+        _rt_panic_invalid_release("rt_realloc", reason, ptr, loc_file, loc_line);
     }
 
     void *new_ptr = malloc(new_size);
@@ -1055,6 +1189,10 @@ void *_rt_check_ptr_site_slow(_rt_ptr_site *site, void *ptr, dea_int required_si
         return ptr;
     }
 
+#ifdef DEA_RT_CHECK_BASIC
+    _rt_check_ptr_align(ptr, need_align, loc_file, loc_line);
+    return ptr;
+#else
     _rt_alloc_record *owner = _rt_alloc_tree_find_containing(ptr, need_size);
     if (owner != NULL) {
         if (owner->state != _RT_ALLOC_LIVE) {
@@ -1072,6 +1210,7 @@ void *_rt_check_ptr_site_slow(_rt_ptr_site *site, void *ptr, dea_int required_si
 
     _rt_panic_invalid_access("unregistered pointer access", ptr, loc_file, loc_line);
     return ptr;
+#endif
 }
 
 void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, dea_int index, dea_int element_size, dea_int required_align, int access_mode, const char *loc_file, int loc_line) {
@@ -1085,11 +1224,17 @@ void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, dea_int 
     int mode = _rt_index_access_mode(access_mode);
 
     _rt_alloc_record *owner = _rt_alloc_table_lookup(base_ptr);
+#ifndef DEA_RT_CHECK_BASIC
     if (owner == NULL) {
         owner = _rt_alloc_tree_find_containing(base_ptr, 1);
     }
+#endif
     if (owner == NULL) {
+#ifdef DEA_RT_CHECK_BASIC
+        {
+#else
         if (_rt_index_allows_untracked(access_mode)) {
+#endif
             uintptr_t base_addr = (uintptr_t)base_ptr;
             if (index_offset > UINTPTR_MAX - base_addr) {
                 _rt_panic_invalid_access("pointer index outside allocation", base_ptr, loc_file, loc_line);
@@ -1141,28 +1286,42 @@ void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, dea_int 
     return target;
 }
 
-void *_rt_drop_begin_impl(void *ptr, const char *loc_file, int loc_line) {
+void *_rt_drop_begin_impl(
+    void *ptr,
+    dea_int required_size,
+    dea_int required_align,
+    const char *loc_file,
+    int loc_line
+) {
     if (ptr == NULL) {
         return NULL;
     }
 
+    size_t need_size = _rt_required_size(required_size);
+    size_t need_align = _rt_required_align(required_align);
+
     _rt_alloc_record *rec = _rt_alloc_table_lookup(ptr);
     if (rec == NULL) {
+#ifndef DEA_RT_CHECK_BASIC
         if (_rt_alloc_tree_find_containing(ptr, 1) != NULL) {
+            _rt_trace_invalid_drop(ptr, loc_file, loc_line);
             _rt_panic_invalid_drop("pointer is not an allocation base", ptr, loc_file, loc_line);
         }
+#endif
+        _rt_trace_invalid_drop(ptr, loc_file, loc_line);
         _rt_panic_invalid_drop("unregistered pointer", ptr, loc_file, loc_line);
     }
     _rt_alloc_record_cold *cold = _rt_rec_cold(rec);
-    if (rec->mem_kind != _RT_MEM_USER) {
-        _rt_panic_invalid_drop(
-            rec->mem_kind == _RT_MEM_ARC
-                ? "ARC-managed memory is not droppable"
-                : "static memory is not droppable",
-            ptr, loc_file, loc_line
-        );
+    if (rec->mem_kind != _RT_MEM_NEW) {
+        const char *reason = "pointer was not allocated by new";
+        if (rec->mem_kind == _RT_MEM_ARC) reason = "ARC-managed memory is not droppable";
+        else if (rec->mem_kind == _RT_MEM_STATIC) reason = "static memory is not droppable";
+        else if (rec->mem_kind == _RT_MEM_FOREIGN) reason = "foreign memory is not runtime-owned";
+        _rt_trace_invalid_drop(ptr, loc_file, loc_line);
+        _rt_panic_invalid_drop(reason, ptr, loc_file, loc_line);
     }
     if (rec->state != _RT_ALLOC_LIVE) {
+        _rt_trace_invalid_drop(ptr, loc_file, loc_line);
         _rt_panic_fmt(
             "runtime error: double drop\n  pointer: %p\n  first dropped at: %s:%d\n  second dropped at: %s:%d",
             ptr,
@@ -1171,6 +1330,14 @@ void *_rt_drop_begin_impl(void *ptr, const char *loc_file, int loc_line) {
             loc_file ? loc_file : "<unknown>",
             loc_line
         );
+    }
+    if (need_size > rec->size) {
+        _rt_trace_invalid_drop(ptr, loc_file, loc_line);
+        _rt_panic_invalid_drop("drop pointee exceeds allocation size", ptr, loc_file, loc_line);
+    }
+    if (!_rt_ptr_is_aligned(ptr, need_align)) {
+        _rt_trace_invalid_drop(ptr, loc_file, loc_line);
+        _rt_panic_invalid_drop("misaligned drop pointer", ptr, loc_file, loc_line);
     }
 
     return ptr;
@@ -1183,7 +1350,8 @@ void _rt_drop_finish_impl(void *ptr, const char *loc_file, int loc_line) {
     }
 
     _rt_alloc_record *rec = _rt_alloc_table_lookup(ptr);
-    if (rec == NULL || rec->state != _RT_ALLOC_LIVE) {
+    if (rec == NULL || rec->state != _RT_ALLOC_LIVE || rec->mem_kind != _RT_MEM_NEW) {
+        _rt_trace_invalid_drop(ptr, loc_file, loc_line);
         _rt_panic_invalid_drop("drop finish without live drop begin", ptr, loc_file, loc_line);
     }
 
@@ -1207,9 +1375,11 @@ void *_rt_validate_derived_ptr(
     size_t required_align = _rt_required_align(align);
 
     _rt_alloc_record *parent = _rt_alloc_table_lookup(parent_base);
+#ifndef DEA_RT_CHECK_BASIC
     if (parent == NULL) {
         parent = _rt_alloc_tree_find_containing(parent_base, 1);
     }
+#endif
     if (parent == NULL) {
         /* Unregistered parent storage: leave validation to the access site. */
         return derived;
@@ -1239,6 +1409,10 @@ static void _rt_track_alloc_record(
     (void)ptr; (void)size; (void)align; (void)type_id; (void)loc_file; (void)loc_line;
 }
 
+static void _rt_promote_new_alloc(void *ptr) {
+    (void)ptr;
+}
+
 void _rt_track_arc_bytes(void *ptr, size_t size) {
     (void)ptr; (void)size;
 }
@@ -1249,6 +1423,24 @@ void _rt_untrack_arc_alloc(void *ptr) {
 
 void _rt_track_static_bytes(const void *ptr, size_t size) {
     (void)ptr; (void)size;
+}
+
+void rt_register_foreign(void *ptr, dea_int bytes, dea_bool read_only) {
+    if (ptr == NULL) {
+        _rt_panic("rt_register_foreign: null pointer");
+    }
+    if (bytes <= 0) {
+        _rt_panic("rt_register_foreign: invalid byte extent");
+    }
+    if (read_only != 0 && read_only != 1) {
+        _rt_panic("rt_register_foreign: invalid read-only flag");
+    }
+}
+
+void rt_unregister_foreign(void *ptr) {
+    if (ptr == NULL) {
+        _rt_panic("rt_unregister_foreign: null pointer");
+    }
 }
 
 static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_line, const char *op_name) {
@@ -1273,8 +1465,14 @@ void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, dea_int 
     return (void *)((uintptr_t)base_ptr + (uintptr_t)offset);
 }
 
-void *_rt_drop_begin_impl(void *ptr, const char *loc_file, int loc_line) {
-    (void)loc_file; (void)loc_line;
+void *_rt_drop_begin_impl(
+    void *ptr,
+    dea_int required_size,
+    dea_int required_align,
+    const char *loc_file,
+    int loc_line
+) {
+    (void)required_size; (void)required_align; (void)loc_file; (void)loc_line;
     return ptr;
 }
 
@@ -1303,8 +1501,8 @@ void *_rt_validate_derived_ptr(
 #endif /* DEA_RT_UNCHECKED */
 
 /**
- * Allocate a single zero-initialized object for L0 `new`.
- * Panics on failure, and registers the returned pointer for `_rt_drop`.
+ * Allocate a single zero-initialized object for L1 `new`.
+ * Panics on failure, and marks the returned pointer as `new`-owned.
  *
  * @param bytes Allocation size.
  * @return Pointer to allocated object.
@@ -1322,6 +1520,7 @@ void *_rt_alloc_obj_impl(dea_int bytes, const char *_loc_file, int _loc_line) {
         _rt_panic("new: out of memory");
     }
 
+    _rt_promote_new_alloc(ptr);
     _RT_TRACE_MEM("op=new_alloc bytes=%d ptr=%p action=ok loc=\"%s\":%d", (int)bytes, ptr, _loc_file, _loc_line);
     return ptr;
 }
@@ -1339,29 +1538,9 @@ void *_rt_alloc_obj(dea_int bytes) {
         _rt_panic("new: out of memory");
     }
 
+    _rt_promote_new_alloc(ptr);
     _RT_TRACE_MEM("op=new_alloc bytes=%d ptr=%p action=ok", (int)bytes, ptr);
     return ptr;
-}
-#endif
-
-/**
- * Drop a heap-allocated object created by `new`.
- * Frees the memory and unregisters it from the allocation tracker.
- * A NULL pointer is a no-op.
- * Panics on invalid pointers (not previously allocated by `new`).
- *
- * @param ptr Pointer to drop.
- */
-#ifdef DEA_TRACE_MEMORY
-void _rt_drop_impl(void *ptr, const char *_loc_file, int _loc_line) {
-    ptr = _rt_drop_begin_impl(ptr, _loc_file, _loc_line);
-    _rt_drop_finish_impl(ptr, _loc_file, _loc_line);
-}
-#define _rt_drop(ptr) _rt_drop_impl((ptr), __FILE__, __LINE__)
-#else
-void _rt_drop(void *ptr) {
-    ptr = _rt_drop_begin_impl(ptr, "<runtime>", 0);
-    _rt_drop_finish_impl(ptr, "<runtime>", 0);
 }
 #endif
 
@@ -1391,8 +1570,4 @@ void *_rt_alloc_obj(dea_int bytes) {
     return _rt_alloc_obj_impl(bytes, "<runtime>", 0);
 }
 
-#undef _rt_drop
-void _rt_drop(void *ptr) {
-    _rt_drop_impl(ptr, "<runtime>", 0);
-}
 #endif

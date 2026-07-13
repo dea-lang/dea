@@ -663,6 +663,9 @@ func cem_emit_header(self: CEmitter*, opts: CodegenOptions*) {
     if (opts.rt_unchecked) {
         ccb_emit(self.out, "#define L0_RT_UNCHECKED 1");
     }
+    if (opts.rt_check_basic) {
+        ccb_emit(self.out, "#define L0_RT_CHECK_BASIC 1");
+    }
     ccb_emit(self.out, "#include \"l0_runtime.h\"");
     ccb_emit(self.out, "");
 }
@@ -1517,6 +1520,7 @@ func cem_emit_checked_ptr_index_access(self: CEmitter*, c_base_expr: string, c_i
  * @param self Emitter to update.
  * @param c_ptr_expr Pointer expression.
  * @param c_base_type Lowered pointee type.
+ * @param access_mode Runtime access mode expression.
  * @return Checked pointer expression.
  */
 func cem_emit_checked_ptr_access_for_base(self: CEmitter*, c_ptr_expr: string, c_base_type: string, access_mode: string) -> string {
@@ -1535,10 +1539,14 @@ func cem_emit_checked_ptr_access_for_base(self: CEmitter*, c_ptr_expr: string, c
  *
  * @param c_ptr_expr Pointer expression.
  * @param c_ptr_type Lowered pointer type.
+ * @param c_required_size Required pointee byte extent.
+ * @param c_required_align Required pointee alignment.
  * @return Checked pointer expression.
  */
-func cem_emit_drop_begin_expr(c_ptr_expr: string, c_ptr_type: string) -> string {
-    return "((" + c_ptr_type + ")_rt_drop_begin_impl((void*)(" + c_ptr_expr + "), __FILE__, __LINE__))";
+func cem_emit_drop_begin_expr(c_ptr_expr: string, c_ptr_type: string, c_required_size: string,
+                              c_required_align: string) -> string {
+    return "((" + c_ptr_type + ")_rt_drop_begin_impl((void*)(" + c_ptr_expr + "), (l0_int)(" +
+        c_required_size + "), (l0_int)(" + c_required_align + "), __FILE__, __LINE__))";
 }
 
 /**
@@ -2214,16 +2222,6 @@ func cem_emit_case_label(self: CEmitter*, c_value: string) {
  */
 func cem_emit_default_label(self: CEmitter*) {
     ccb_emit(self.out, "default:");
-}
-
-/**
- * Emit a runtime drop call.
- *
- * @param self Emitter to update.
- * @param c_ptr_expr Lowered pointer expression.
- */
-func cem_emit_drop_call(self: CEmitter*, c_ptr_expr: string) {
-    ccb_emit(self.out, "_rt_drop((void*)" + c_ptr_expr + ")" + ";");
 }
 
 /**

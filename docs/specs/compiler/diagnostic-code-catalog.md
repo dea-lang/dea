@@ -247,51 +247,54 @@ diagnostic.
 
 ## Build, Code Generation, and Runtime
 
-| L0 code    | L1 code    | Level   | Meaning                                                                                               |
-| ---------- | ---------- | ------- | ----------------------------------------------------------------------------------------------------- |
-| `L0C-0009` | `L1C-0009` | All     | No C compiler found: use '--c-compiler' or the level-specific C compiler environment variable         |
-| `L0C-0010` | `L1C-0010` | All     | C compilation failed                                                                                  |
-| `L0C-0011` | `L1C-0011` | All     | Invalid entry module name: module components must be valid identifiers                                |
-| `L0C-0012` | `L1C-0012` | All     | Entry module not found in analysis result or does not define a build/run `main` function              |
-| `L0C-0013` | `L1C-0013` | All     | Entry `main` returns a non-preferred type; the generated C entry wrapper ignores the return value     |
-| `L0C-0014` | `L1C-0014` | All     | Runtime library path does not exist or is not a directory                                             |
-|            | `L1C-0015` | L1 only | Runtime library directory does not contain any supported runtime library                              |
-| `L0C-0016` | `L1C-0016` | All     | Missing type information for the entry `main` function                                                |
-| `L0C-0017` | `L1C-0017` | All     | '--output' is ignored in '--run' mode unless '--keep-c' is set; the executable path remains temporary |
-|            | `L1C-0018` | L1 only | Explicit C compiler option violates the L1 floating-point backend contract                            |
-|            | `L1C-0019` | L1 only | Trace flags under '--gen' require the caller to link or compile against the traced runtime surface    |
-|            | `L1C-0020` | L1 only | '--unchecked' under '--gen' requires the caller to link or compile against the unchecked runtime      |
-| `L0C-0020` |            | L0 only | Analysis or AST command failed with an exception                                                      |
-| `L0C-0030` |            | L0 only | Entry module not found in compilation unit                                                            |
-| `L0C-0040` | `L1C-0040` | All     | Cannot read an input source file during token dump                                                    |
-| `L0C-0041` |            | L0 only | Source file encoding error during token dump                                                          |
-| `L0C-0042` |            | L0 only | Unexpected lexer failure during token dump when no structured lexer diagnostic is available           |
-| `L0C-0050` |            | L0 only | Compilation-unit discovery failed during all-modules token dump                                       |
-| `L0C-0060` |            | L0 only | Discovered module path could not be resolved during all-modules token dump                            |
-| `L0C-0070` | `L1C-0070` | All     | Entry module path or unit could not be resolved for token dump or Stage 1 introspection commands      |
-| `L0C-2001` | `L1C-2001` | All     | Unknown command-line option                                                                           |
-| `L0C-2002` | `L1C-2002` | All     | Multiple conflicting mode flags were provided                                                         |
-| `L0C-2003` | `L1C-2003` | All     | Missing value for an option that requires an argument                                                 |
-| `L0C-2010` | `L1C-2010` | All     | '--output' is valid only with artifact modes: build/gen/run, plus L1 interface emission               |
-| `L0C-2011` | `L1C-2011` | All     | '--keep-c' is valid only with '--build' or '--run'                                                    |
-| `L0C-2012` | `L1C-2012` | All     | '--c-compiler' is valid only with '--build' or '--run'                                                |
-| `L0C-2013` | `L1C-2013` | All     | '--c-options' is valid only with '--build' or '--run'                                                 |
-| `L0C-2014` | `L1C-2014` | All     | '--runtime-include' is valid only with '--build' or '--run'                                           |
-| `L0C-2015` | `L1C-2015` | All     | '--runtime-lib' is valid only with '--build' or '--run'                                               |
-| `L0C-2016` | `L1C-2016` | All     | '--no-line-directives' is valid only with '--build', '--gen', or '--run'                              |
-| `L0C-2017` | `L1C-2017` | All     | '--trace-arc' is valid only with '--build', '--gen', or '--run'                                       |
-| `L0C-2018` | `L1C-2018` | All     | '--trace-memory' is valid only with '--build', '--gen', or '--run'                                    |
-| `L0C-2019` | `L1C-2019` | All     | '--all-modules' is valid only with '--ast', '--sym', '--tok', or '--type'                             |
-| `L0C-2020` | `L1C-2020` | All     | '--include-eof' is valid only with '--tok'                                                            |
-| `L0C-2021` | `L1C-2021` | All     | Missing required target module or file name                                                           |
-| `L0C-2022` | `L1C-2022` | All     | '--run' accepts exactly one target; use '--' before runtime program arguments                         |
-| `L0C-2023` | `L1C-2023` | All     | Arguments after '--' are valid only with '--run'                                                      |
-| `L0C-2024` | `L1C-2024` | All     | Multiple targets are not supported yet; pass exactly one target                                       |
-| `L0C-2025` | `L1C-2025` | All     | '--unchecked' is valid only with '--build', '--gen', or '--run'                                       |
-| `L0C-2026` | `L1C-2026` | All     | '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'                               |
-|            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                |
-| `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in Stage 1 yet                                                  |
-| `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                           |
+| L0 code    | L1 code    | Level   | Meaning                                                                                                 |
+| ---------- | ---------- | ------- | -------------------------------------------------------------------------------------------------------|
+| `L0C-0009` | `L1C-0009` | All     | No C compiler found: use '--c-compiler' or the level-specific C compiler environment variable          |
+| `L0C-0010` | `L1C-0010` | All     | C compilation failed                                                                                   |
+| `L0C-0011` | `L1C-0011` | All     | Invalid entry module name: module components must be valid identifiers                                 |
+| `L0C-0012` | `L1C-0012` | All     | Entry module not found in analysis result or does not define a build/run `main` function               |
+| `L0C-0013` | `L1C-0013` | All     | Entry `main` returns a non-preferred type; the generated C entry wrapper ignores the return value      |
+| `L0C-0014` | `L1C-0014` | All     | Runtime library path does not exist or is not a directory                                              |
+|            | `L1C-0015` | L1 only | Runtime library directory does not contain any supported runtime library                               |
+| `L0C-0016` | `L1C-0016` | All     | Missing type information for the entry `main` function                                                 |
+| `L0C-0017` | `L1C-0017` | All     | '--output' is ignored in '--run' mode unless '--keep-c' is set; the executable path remains temporary  |
+|            | `L1C-0018` | L1 only | Explicit C compiler option violates the L1 floating-point backend contract                             |
+|            | `L1C-0019` | L1 only | Trace flags under '--gen' require the caller to link or compile against the traced runtime surface     |
+|            | `L1C-0020` | L1 only | '--unchecked' under '--gen' requires the caller to link or compile against the unchecked runtime       |
+|            | `L1C-0021` | L1 only | '--check-basic' under '--gen' requires the caller to link or compile against the basic checked runtime |
+| `L0C-0020` |            | L0 only | Analysis or AST command failed with an exception                                                       |
+| `L0C-0030` |            | L0 only | Entry module not found in compilation unit                                                             |
+| `L0C-0040` | `L1C-0040` | All     | Cannot read an input source file during token dump                                                     |
+| `L0C-0041` |            | L0 only | Source file encoding error during token dump                                                           |
+| `L0C-0042` |            | L0 only | Unexpected lexer failure during token dump when no structured lexer diagnostic is available            |
+| `L0C-0050` |            | L0 only | Compilation-unit discovery failed during all-modules token dump                                        |
+| `L0C-0060` |            | L0 only | Discovered module path could not be resolved during all-modules token dump                             |
+| `L0C-0070` | `L1C-0070` | All     | Entry module path or unit could not be resolved for token dump or Stage 1 introspection commands       |
+| `L0C-2001` | `L1C-2001` | All     | Unknown command-line option                                                                            |
+| `L0C-2002` | `L1C-2002` | All     | Multiple conflicting mode flags were provided                                                          |
+| `L0C-2003` | `L1C-2003` | All     | Missing value for an option that requires an argument                                                  |
+| `L0C-2010` | `L1C-2010` | All     | '--output' is valid only with artifact modes: build/gen/run, plus L1 interface emission                |
+| `L0C-2011` | `L1C-2011` | All     | '--keep-c' is valid only with '--build' or '--run'                                                     |
+| `L0C-2012` | `L1C-2012` | All     | '--c-compiler' is valid only with '--build' or '--run'                                                 |
+| `L0C-2013` | `L1C-2013` | All     | '--c-options' is valid only with '--build' or '--run'                                                  |
+| `L0C-2014` | `L1C-2014` | All     | '--runtime-include' is valid only with '--build' or '--run'                                            |
+| `L0C-2015` | `L1C-2015` | All     | '--runtime-lib' is valid only with '--build' or '--run'                                                |
+| `L0C-2016` | `L1C-2016` | All     | '--no-line-directives' is valid only with '--build', '--gen', or '--run'                               |
+| `L0C-2017` | `L1C-2017` | All     | '--trace-arc' is valid only with '--build', '--gen', or '--run'                                        |
+| `L0C-2018` | `L1C-2018` | All     | '--trace-memory' is valid only with '--build', '--gen', or '--run'                                     |
+| `L0C-2019` | `L1C-2019` | All     | '--all-modules' is valid only with '--ast', '--sym', '--tok', or '--type'                              |
+| `L0C-2020` | `L1C-2020` | All     | '--include-eof' is valid only with '--tok'                                                             |
+| `L0C-2021` | `L1C-2021` | All     | Missing required target module or file name                                                            |
+| `L0C-2022` | `L1C-2022` | All     | '--run' accepts exactly one target; use '--' before runtime program arguments                          |
+| `L0C-2023` | `L1C-2023` | All     | Arguments after '--' are valid only with '--run'                                                       |
+| `L0C-2024` | `L1C-2024` | All     | Multiple targets are not supported yet; pass exactly one target                                        |
+| `L0C-2025` | `L1C-2025` | All     | '--unchecked' is valid only with '--build', '--gen', or '--run'                                        |
+| `L0C-2026` | `L1C-2026` | All     | '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'                                |
+| `L0C-2027` | `L1C-2027` | All     | '--check-basic' is valid only with '--build', '--gen', or '--run'                                      |
+| `L0C-2028` | `L1C-2028` | All     | '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'               |
+|            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                 |
+| `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in Stage 1 yet                                                   |
+| `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                             |
 
 ## Name Resolution and Import Analysis
 

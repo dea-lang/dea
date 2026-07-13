@@ -211,6 +211,24 @@ func test_emitter_header_honors_unchecked_flag() {
 }
 
 /**
+ * Tests test_emitter_header_honors_check_basic_flag.
+ */
+func test_emitter_header_honors_check_basic_flag() {
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    opts.rt_check_basic = true;
+
+    cem_emit_header(emitter, opts);
+    let text = cem_get_output(emitter);
+
+    assert(contains_s(text, "#define L0_RT_CHECK_BASIC 1"), "check-basic define missing");
+    assert(contains_s(text, "#include \"l0_runtime.h\""), "runtime include missing");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+}
+
+/**
  * Tests test_emitter_line_directives_normalize_windows_paths.
  */
 func test_emitter_line_directives_normalize_windows_paths() {
@@ -347,7 +365,6 @@ func test_emitter_cleanup_and_switch_helpers() {
     let cleanup_maybe_ty = type_new_enum("demo.main", "Maybe");
     cem_emit_value_cleanup(emitter, "pt", cleanup_point_ty);
     cem_emit_enum_cleanup(emitter, "mp", cleanup_maybe_ty);
-    cem_emit_drop_call(emitter, "ptr");
     cem_emit_null_assignment(emitter, "ptr");
 
     let text = cem_get_output(emitter);
@@ -361,7 +378,6 @@ func test_emitter_cleanup_and_switch_helpers() {
     assert(contains_s(text, "rt_string_release((pt).name);"), "struct cleanup helper mismatch");
     assert(contains_s(text, "if (mp != NULL)"), "enum cleanup null guard mismatch");
     assert(contains_s(text, "rt_string_release(mp->data.Some.value);"), "enum cleanup field mismatch");
-    assert(contains_s(text, "_rt_drop((void*)ptr);"), "drop helper mismatch");
     assert(contains_s(text, "ptr = NULL;"), "null assignment helper mismatch");
 
     type_free(cleanup_point_ty);
@@ -587,6 +603,7 @@ func main() {
     test_emitter_type_lowering_and_null_forms();
     test_emitter_header_honors_trace_flags();
     test_emitter_header_honors_unchecked_flag();
+    test_emitter_header_honors_check_basic_flag();
     test_emitter_line_directives_normalize_windows_paths();
     test_emitter_string_literals_use_l0_string_const();
     test_emitter_expression_and_statement_helpers();

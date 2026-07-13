@@ -71,6 +71,14 @@ def test_alloc_free_churn_keeps_table_capacity_bounded(compile_and_run, tmp_path
     assert 256 <= stats["cap"] <= 32768, stats
 
 
+def test_check_basic_alloc_free_churn_keeps_table_capacity_bounded(compile_and_run, tmp_path):
+    stats = _run_churn_harness(compile_and_run, tmp_path, "#define L0_RT_CHECK_BASIC 1")
+
+    assert stats["quarantined"] <= 4096
+    assert stats["cnt"] <= 4096 + 4096
+    assert 256 <= stats["cap"] <= 32768, stats
+
+
 STRING_LAZINESS_HARNESS = """
 #define SIPHASH_IMPLEMENTATION
 #include "l0_runtime.h"

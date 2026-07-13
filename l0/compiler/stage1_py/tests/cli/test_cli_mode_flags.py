@@ -221,6 +221,54 @@ def test_unchecked_is_accepted_in_gen_mode(monkeypatch):
     assert args.unchecked is True
 
 
+def test_check_basic_is_rejected_outside_build_run_gen(monkeypatch, capsys):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main(["--check", "--check-basic", "app.main"])
+
+    assert rc == 2
+    assert calls == []
+    stderr = capsys.readouterr().err
+    assert "[L0C-2027]" in stderr
+    assert "option '--check-basic' is valid only with modes: --build, --gen, --run" in stderr
+
+
+def test_check_basic_is_rejected_with_trace_flags(monkeypatch, capsys):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main(["--run", "--check-basic", "--trace-memory", "app.main"])
+
+    assert rc == 2
+    assert calls == []
+    stderr = capsys.readouterr().err
+    assert "[L0C-2028]" in stderr
+    assert "option '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'" in stderr
+
+
+def test_check_basic_is_rejected_with_unchecked(monkeypatch, capsys):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main(["--run", "--check-basic", "--unchecked", "app.main"])
+
+    assert rc == 2
+    assert calls == []
+    stderr = capsys.readouterr().err
+    assert "[L0C-2028]" in stderr
+    assert "option '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'" in stderr
+
+
+def test_check_basic_is_accepted_in_gen_mode(monkeypatch):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main(["--gen", "--check-basic", "app.main"])
+
+    assert rc == 0
+    assert len(calls) == 1
+    name, args = calls[0]
+    assert name == "gen"
+    assert args.check_basic is True
+
+
 def test_output_is_allowed_in_run_mode(monkeypatch):
     calls = _patch_handlers(monkeypatch)
 

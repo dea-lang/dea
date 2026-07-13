@@ -66,6 +66,8 @@ The current implemented language surface covers the core bootstrap subset used t
 - structured control flow including `if`, `while`, `for`, `match`, `case`, and `with`/`cleanup`,
 - explicit nullability, `new`/`drop`, ARC-managed `string`, casts, postfix `expr?`, value-based `string`
   equality/ordering operators, and the `+` string concatenation operator.
+- checked pointer access with provenance-separated raw/`new`/ARC/static/foreign storage, extent-aware generated drop
+  cleanup, basic and unchecked runtime modes, and explicit foreign lifetime registration in `sys.memory`.
 
 The standard library now includes the core runtime-facing and bootstrap-facing modules for I/O, strings, text, paths,
 filesystem access, the shared integer helper surface in `std.integer`, time, randomness, assertions, optionals, and the

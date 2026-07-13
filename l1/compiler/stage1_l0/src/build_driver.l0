@@ -810,6 +810,9 @@ func bd_runtime_archive_filename(opts: CliOptions*) -> string {
     if (opts.unchecked) {
         return "libdea_rt_unchecked.a";
     }
+    if (opts.check_basic) {
+        return "libdea_rt_check_basic.a";
+    }
     return "libdea_rt.a";
 }
 
@@ -825,6 +828,9 @@ func bd_runtime_archive_link_name(opts: CliOptions*) -> string {
     }
     if (opts.unchecked) {
         return "dea_rt_unchecked";
+    }
+    if (opts.check_basic) {
+        return "dea_rt_check_basic";
     }
     return "dea_rt";
 }
@@ -856,6 +862,8 @@ func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?
         variant = "traced";
     } else if (opts.unchecked) {
         variant = "unchecked";
+    } else if (opts.check_basic) {
+        variant = "check_basic";
     }
     let object_dir = join(join(join(build_dir as string, "runtime"), "tcc"), variant);
     let paths = sv_create(16);
@@ -1246,6 +1254,7 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             cg_opts.trace_arc = opts.trace_arc;
             cg_opts.trace_memory = opts.trace_memory;
             cg_opts.rt_unchecked = opts.unchecked;
+            cg_opts.rt_check_basic = opts.check_basic;
 
             if (!bd_validate_float_c_options(result, extra_opts, cmd_diags)) {
                 dp_print_collector(cmd_diags);

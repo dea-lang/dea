@@ -72,7 +72,7 @@ def resolve_cc() -> str:
     raise AssertionError("no C compiler found: set L1_CC")
 
 
-def build_harness(work_dir: Path, cc: str, window: int) -> Path:
+def build_harness(work_dir: Path, cc: str, window: int, extra_defines: list[str] | None = None) -> Path:
     c_file = work_dir / f"churn_{window}.c"
     exe_file = work_dir / f"churn_{window}"
     c_file.write_text(
@@ -82,17 +82,19 @@ def build_harness(work_dir: Path, cc: str, window: int) -> Path:
         ),
         encoding="utf-8",
     )
+    command = [
+        cc,
+        "-std=c99",
+        f"-DCHURN_WINDOW={window}",
+        *(extra_defines or []),
+        f"-I{RUNTIME_INCLUDE}",
+        f"-I{RUNTIME_INTERNAL}",
+        str(c_file),
+        "-o",
+        str(exe_file),
+    ]
     subprocess.run(
-        [
-            cc,
-            "-std=c99",
-            f"-DCHURN_WINDOW={window}",
-            f"-I{RUNTIME_INCLUDE}",
-            f"-I{RUNTIME_INTERNAL}",
-            str(c_file),
-            "-o",
-            str(exe_file),
-        ],
+        command,
         check=True,
     )
     return exe_file
@@ -189,6 +191,14 @@ def main() -> int:
         # below 32768 slots. The former doubling policy ratcheted past
         # 131072 slots for the same workload.
         stats = run_harness(build_harness(work_dir, cc, window=4096), {})
+        assert stats["quarantined"] <= 4096, stats
+        assert stats["cnt"] <= 4096 + 4096, stats
+        assert 256 <= stats["cap"] <= 32768, stats
+
+        stats = run_harness(
+            build_harness(work_dir, cc, window=4096, extra_defines=["-DDEA_RT_CHECK_BASIC"]),
+            {},
+        )
         assert stats["quarantined"] <= 4096, stats
         assert stats["cnt"] <= 4096 + 4096, stats
         assert 256 <= stats["cap"] <= 32768, stats

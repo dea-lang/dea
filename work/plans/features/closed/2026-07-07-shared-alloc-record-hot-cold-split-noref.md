@@ -83,6 +83,12 @@ declarations and generated-code surfaces stay unchanged.
 
 ## Baseline Measurements
 
+> **Correction (2026-07-11):** The benchmark timings in this plan used process CPU `clock()` and allowed optimized
+> unchecked allocation/string loops to disappear. Timing comparisons in this section are therefore not valid wall-time
+> evidence; layout and deterministic tracker-memory observations remain historical. Corrected monotonic, anti-elision
+> matrices are recorded in
+> [work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md](../../bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md).
+
 Baseline captured on 2026-07-07 before source edits. Commands:
 
 - `make -C l0 bench-runtime`

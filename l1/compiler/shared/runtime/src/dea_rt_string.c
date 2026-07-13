@@ -134,7 +134,7 @@ void _rt_free_string_impl(dea_string str, const char *_loc_file, int _loc_line) 
             );
             _RT_TRACE_MEM_LOC(_loc_file, _loc_line, "op=free_string ptr=%p action=free", (void*)hs);
             hs->refcount = _RT_MEM_SENTINEL; /* prevent double free */
-            _rt_untrack_arc_alloc((void*)hs);
+            _rt_untrack_arc_alloc((void*)hs->bytes);
             free((void*)hs);
         } else {
             _RT_TRACE_ARC_LOC(
@@ -198,7 +198,7 @@ void _rt_free_string(dea_string str) {
             );
             _RT_TRACE_MEM("op=free_string ptr=%p action=free", (void*)hs);
             hs->refcount = _RT_MEM_SENTINEL; /* prevent double free */
-            _rt_untrack_arc_alloc((void*)hs);
+            _rt_untrack_arc_alloc((void*)hs->bytes);
             free((void*)hs);
         } else {
             _RT_TRACE_ARC(
@@ -263,7 +263,7 @@ dea_string _rt_realloc_string(dea_string s, dea_int new_len) {
        and complaining about use-after-free when tracing the old pointer value. */
     volatile uintptr_t old_ptr_addr = (uintptr_t)s.data.h_str;
     size_t new_size = sizeof(_dea_h_string) + new_len + 1;
-    _rt_untrack_arc_alloc(s.data.h_str);
+    _rt_untrack_arc_alloc(s.data.h_str->bytes);
     void *new_mem = realloc((void*)old_ptr_addr, new_size);
     if (new_mem == NULL) {
         _RT_TRACE_MEM("op=realloc_string old_ptr=%p new_len=%d action=panic-oom", (void*)old_ptr_addr, (int)new_len);
@@ -398,7 +398,7 @@ dea_byte *rt_string_bytes_ptr(dea_string s) {
         _rt_track_static_bytes(bytes, (size_t)s.data.s_str.len + 1);
     } else if (s.kind == DEA_STRING_K_HEAP && s.data.h_str != NULL) {
         _dea_h_string *hs = s.data.h_str;
-        _rt_track_arc_bytes((void*)hs, sizeof(_dea_h_string) + (size_t)hs->len + 1);
+        _rt_track_arc_bytes((void*)hs->bytes, (size_t)hs->len + 1);
     }
     return (dea_byte*)bytes;
 }

@@ -95,6 +95,13 @@ def main() -> int:
         f"expected={traced_expected}\n"
         f"actual={traced_actual}\n"
     )
+
+    check_basic_actual = runtime_symbols("libdea_rt_check_basic.a")
+    assert check_basic_actual == expected, (
+        "check-basic runtime symbol manifest mismatch:\n"
+        f"expected={expected}\n"
+        f"actual={check_basic_actual}\n"
+    )
     return 0
 
 

@@ -23,10 +23,8 @@ _rt_cast_dea_ushort_from_unsigned
 _rt_check_index_ptr_site_slow
 _rt_check_ptr_site_slow
 _rt_dea_string_from_const_literal
-_rt_drop
 _rt_drop_begin_impl
 _rt_drop_finish_impl
-_rt_drop_impl
 _rt_fmix32
 _rt_fold_u64_to_u32_fmix
 _rt_free_impl
@@ -139,6 +137,7 @@ rt_read_char
 rt_read_file_all
 rt_read_line
 rt_realloc
+rt_register_foreign
 rt_srand
 rt_stderr_write
 rt_stdin_read
@@ -160,6 +159,7 @@ rt_time_local_offset_sec
 rt_time_monotonic
 rt_time_monotonic_supported
 rt_time_unix
+rt_unregister_foreign
 rt_write_file_all
 siphash13
 siphash13_tag8_bf

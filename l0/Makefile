@@ -26,6 +26,7 @@ endif
 # Optional runtime tuning knobs composed into L0_CFLAGS as C defines.
 L0_RT_TUNING_CFLAGS := $(strip \
 	$(if $(strip $(L0_RT_UNCHECKED)),-DL0_RT_UNCHECKED) \
+	$(if $(strip $(L0_RT_CHECK_BASIC)),-DL0_RT_CHECK_BASIC) \
 	$(if $(strip $(L0_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L0_RT_QUARANTINE_MAX_BYTES)) \
 	$(if $(strip $(L0_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L0_RT_QUARANTINE_MAX_COUNT)))
 L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
@@ -121,6 +122,8 @@ help:
 		'  DOCKER_L0_CC=<compiler>' \
 		'                     Optional C compiler passed into the Docker run as `L0_CC` (`gcc` or `clang`).' \
 		'  L0_RT_UNCHECKED=1  Compose `-DL0_RT_UNCHECKED` into `L0_CFLAGS` for `install`, `dist`, and `install-dev-stage2` (unchecked runtime; same effect as the `l0c --unchecked` flag).' \
+		'  L0_RT_CHECK_BASIC=1' \
+		'                     Compose `-DL0_RT_CHECK_BASIC` into `L0_CFLAGS` for `install`, `dist`, and `install-dev-stage2` (basic checked runtime; same effect as the `l0c --check-basic` flag).' \
 		'  L0_RT_QUARANTINE_MAX_BYTES=<n>' \
 		'                     Compose a checked-runtime quarantine byte limit define into `L0_CFLAGS` (default 16 MiB).' \
 		'  L0_RT_QUARANTINE_MAX_COUNT=<n>' \

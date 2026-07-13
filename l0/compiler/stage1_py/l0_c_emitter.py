@@ -560,6 +560,8 @@ class CEmitter:
             self.out.emit("#define L0_TRACE_MEMORY 1")
         if self.analysis.context.rt_unchecked:
             self.out.emit("#define L0_RT_UNCHECKED 1")
+        if self.analysis.context.rt_check_basic:
+            self.out.emit("#define L0_RT_CHECK_BASIC 1")
         self.out.emit('#include "l0_runtime.h"')
         self.out.emit()
 
@@ -1434,9 +1436,18 @@ class CEmitter:
             access_mode,
         )
 
-    def emit_drop_begin_expr(self, c_ptr_expr: str, c_ptr_type: str) -> str:
+    def emit_drop_begin_expr(
+        self,
+        c_ptr_expr: str,
+        c_ptr_type: str,
+        c_required_size: str,
+        c_required_align: str,
+    ) -> str:
         """Emit the expression that validates and begins a generated drop."""
-        return f"(({c_ptr_type})_rt_drop_begin_impl((void*)({c_ptr_expr}), __FILE__, __LINE__))"
+        return (
+            f"(({c_ptr_type})_rt_drop_begin_impl((void*)({c_ptr_expr}), "
+            f"(l0_int)({c_required_size}), (l0_int)({c_required_align}), __FILE__, __LINE__))"
+        )
 
     def emit_drop_finish_call(self, c_ptr_expr: str) -> None:
         """Emit the runtime call that completes a generated drop."""
@@ -1840,14 +1851,6 @@ class CEmitter:
     def emit_default_label(self) -> None:
         """Emit a C default case label."""
         self.out.emit("default:")
-
-    def emit_drop_call(self, c_ptr_expr: str) -> None:
-        """Emit a heap memory release runtime call.
-
-        Args:
-            c_ptr_expr: C expression evaluating to the object pointer.
-        """
-        self.out.emit(f"_rt_drop((void*){c_ptr_expr});")
 
     def emit_null_assignment(self, c_var: str) -> None:
         """Emit a NULL assignment to a variable.

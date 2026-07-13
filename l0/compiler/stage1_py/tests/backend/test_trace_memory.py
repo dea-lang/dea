@@ -162,6 +162,37 @@ def test_trace_memory_double_drop_validation_precedes_arc_cleanup(
     assert len(heap_release_frees) == 1, f"expected only the first drop to release field ARC data: {arc}"
 
 
+def test_trace_memory_invalid_drop_emits_one_compatible_panic_event(
+    analyze_single, compile_and_run, tmp_path
+):
+    """A rejected drop retains the established panic-not-found trace shape."""
+    ok, _stdout, stderr, mem = _compile_with_trace_memory(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        func main() -> int {
+            let raw: void* = rt_alloc(sizeof(int)) as void*;
+            let p: int* = raw as int*;
+            drop p;
+            return 0;
+        }
+        """,
+    )
+    assert not ok
+    assert "pointer was not allocated by new" in stderr
+
+    panics = [
+        event
+        for event in mem
+        if event.get("op") == "drop" and event.get("action") == "panic-not-found"
+    ]
+    assert len(panics) == 1, f"expected one compatible invalid-drop trace: {mem}"
+
+
 # ---------------------------------------------------------------------------
 # B – Struct default constructor (zero-init)
 # ---------------------------------------------------------------------------

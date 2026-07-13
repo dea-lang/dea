@@ -48,7 +48,8 @@ extern func rt_alloc(bytes: int) -> void*?;
 extern func rt_calloc(count: int, elem_size: int) -> void*?;
 
 /**
- * Resize an existing memory block to a new size.
+ * Resize an existing raw allocation to a new size. Pointers returned by
+ * `new`, ARC storage, and registered foreign storage are rejected in checked builds.
  * Panics if `new_bytes` is zero or negative or in case of overflow.
  * If `ptr` is null, this behaves like `rt_alloc`.
  *
@@ -59,11 +60,30 @@ extern func rt_calloc(count: int, elem_size: int) -> void*?;
 unsafe extern func rt_realloc(ptr: void*?, new_bytes: int) -> void*?;
 
 /**
- * Free a previously allocated memory block.
+ * Free a raw allocation returned by `rt_alloc`, `rt_calloc`, or `rt_realloc`.
+ * Pointers returned by `new` must use `drop` instead.
  *
  * @param ptr The pointer to the memory block to free.
  */
 unsafe extern func rt_free(ptr: void*?) -> void;
+
+/**
+ * Register externally owned storage with the checked pointer runtime.
+ * Repeating an identical live registration is a no-op. The caller must
+ * unregister the storage before its external lifetime ends.
+ *
+ * @param ptr Exact base pointer of the external storage.
+ * @param bytes Accessible byte extent, which must be positive.
+ * @param read_only Whether checked writes must be rejected.
+ */
+unsafe extern func rt_register_foreign(ptr: void*, bytes: int, read_only: bool) -> void;
+
+/**
+ * Remove a live foreign-storage registration without freeing its payload.
+ *
+ * @param ptr Exact base pointer previously passed to `rt_register_foreign`.
+ */
+unsafe extern func rt_unregister_foreign(ptr: void*) -> void;
 
 /**
  * Copy bytes from one memory location to another.

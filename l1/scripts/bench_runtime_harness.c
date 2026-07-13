@@ -27,10 +27,15 @@
  *   strings  Heap-string churn; lazily registered ARC storage stays out of
  *            the tracker.
  *
- * Output is `scenario.key=value` lines plus one process-wide `max_rss_kib`.
+ * Output is `scenario.key=value` lines plus process-wide `bench.ptr_sink` and
+ * `max_rss_kib` values.
  * Scenario and scale come from argv ("harness <scenario> <scale>") or from
  * the BENCH_SCENARIO / BENCH_SCALE defines.
  */
+
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
 
 #ifndef BENCH_SCENARIO
 #define BENCH_SCENARIO "all"
@@ -44,6 +49,12 @@
 #include "dea_rt_panic.c"
 
 #include <time.h>
+
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach/mach_time.h>
+#endif
 
 #if defined(_WIN32)
 static long bench_max_rss_kib(void) {
@@ -64,8 +75,34 @@ static long bench_max_rss_kib(void) {
 }
 #endif
 
-static double bench_ms_since(clock_t start) {
-    return (double)(clock() - start) * 1000.0 / CLOCKS_PER_SEC;
+static uint64_t bench_monotonic_ns(void) {
+#if defined(_WIN32)
+    LARGE_INTEGER counter;
+    LARGE_INTEGER frequency;
+    if (!QueryPerformanceFrequency(&frequency) || !QueryPerformanceCounter(&counter)) {
+        fprintf(stderr, "monotonic clock unavailable\n");
+        exit(2);
+    }
+    return (uint64_t)((double)counter.QuadPart * 1000000000.0 / (double)frequency.QuadPart);
+#elif defined(__APPLE__)
+    mach_timebase_info_data_t timebase;
+    if (mach_timebase_info(&timebase) != KERN_SUCCESS || timebase.denom == 0) {
+        fprintf(stderr, "monotonic clock unavailable\n");
+        exit(2);
+    }
+    return (uint64_t)((double)mach_absolute_time() * (double)timebase.numer / (double)timebase.denom);
+#else
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        fprintf(stderr, "monotonic clock unavailable\n");
+        exit(2);
+    }
+    return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+#endif
+}
+
+static double bench_ms_since(uint64_t start_ns) {
+    return (double)(bench_monotonic_ns() - start_ns) / 1000000.0;
 }
 
 static unsigned bench_rng_next(unsigned *rng) {
@@ -73,7 +110,11 @@ static unsigned bench_rng_next(unsigned *rng) {
     return *rng;
 }
 
-static volatile uintptr_t bench_cached_sink = 0;
+static volatile uintptr_t bench_ptr_sink = 0;
+
+static void bench_escape_ptr(const void *ptr) {
+    bench_ptr_sink ^= (uintptr_t)ptr;
+}
 
 static void bench_print_tracker_stats(const char *scenario) {
 #ifndef DEA_RT_UNCHECKED
@@ -89,13 +130,14 @@ static void bench_print_tracker_stats(const char *scenario) {
 
 static int bench_tight(long scale) {
     long pairs = 1000000L * scale;
-    clock_t start = clock();
+    uint64_t start = bench_monotonic_ns();
     for (long i = 0; i < pairs; i++) {
         void *p = rt_alloc(32);
         if (p == NULL) return 2;
+        bench_escape_ptr(p);
         rt_free(p);
     }
-    printf("tight.wall_ms=%.0f\n", bench_ms_since(start));
+    printf("tight.wall_ms=%.3f\n", bench_ms_since(start));
     printf("tight.ops=%ld\n", pairs);
     bench_print_tracker_stats("tight");
     return 0;
@@ -110,7 +152,7 @@ static int bench_window(long scale) {
     size_t q_count_peak = 0;
     size_t cap_peak = 0;
 
-    clock_t start = clock();
+    uint64_t start = bench_monotonic_ns();
     for (long i = 0; i < ops; i++) {
         int slot = (int)(i % WINDOW);
         if (live[slot] != NULL) {
@@ -124,13 +166,14 @@ static int bench_window(long scale) {
         }
         live[slot] = rt_alloc(size);
         if (live[slot] == NULL) return 2;
+        bench_escape_ptr(live[slot]);
 #ifndef DEA_RT_UNCHECKED
         if (_rt_quarantine_bytes > q_bytes_peak) q_bytes_peak = _rt_quarantine_bytes;
         if (_rt_quarantine_count > q_count_peak) q_count_peak = _rt_quarantine_count;
         if (_rt_alloc_table_cap > cap_peak) cap_peak = _rt_alloc_table_cap;
 #endif
     }
-    printf("window.wall_ms=%.0f\n", bench_ms_since(start));
+    printf("window.wall_ms=%.3f\n", bench_ms_since(start));
     printf("window.ops=%ld\n", ops);
     printf("window.q_bytes_peak=%zu\n", q_bytes_peak);
     printf("window.q_count_peak=%zu\n", q_count_peak);
@@ -151,13 +194,14 @@ static int bench_ramp(long scale) {
     unsigned rng = 67890;
     if (live == NULL) return 2;
 
-    clock_t start = clock();
+    uint64_t start = bench_monotonic_ns();
     for (long i = 0; i < live_peak; i++) {
         unsigned draw = bench_rng_next(&rng);
         live[i] = rt_alloc((dea_int)(8 + (draw >> 20 & 1023)));
         if (live[i] == NULL) return 2;
+        bench_escape_ptr(live[i]);
     }
-    printf("ramp.grow_wall_ms=%.0f\n", bench_ms_since(start));
+    printf("ramp.grow_wall_ms=%.3f\n", bench_ms_since(start));
     printf("ramp.live_peak=%ld\n", live_peak);
 #ifndef DEA_RT_UNCHECKED
     printf("ramp.table_cap_peak=%zu\n", _rt_alloc_table_cap);
@@ -165,23 +209,24 @@ static int bench_ramp(long scale) {
     printf("ramp.rec_pool_chunks_peak=%zu\n", _rt_rec_pool_chunks);
 #endif
 
-    start = clock();
+    start = bench_monotonic_ns();
     for (long i = 0; i < live_peak; i++) {
         rt_free(live[i]);
     }
-    printf("ramp.free_wall_ms=%.0f\n", bench_ms_since(start));
+    printf("ramp.free_wall_ms=%.3f\n", bench_ms_since(start));
     free(live);
 
     /* Churn with mixed sizes until tombstone purges rebuild the table at a
      * contracted size; uniform sizes would reuse addresses and never drift. */
-    start = clock();
+    start = bench_monotonic_ns();
     for (long i = 0; i < live_peak * 2; i++) {
         unsigned draw = bench_rng_next(&rng);
         void *p = rt_alloc((dea_int)(8 + (draw >> 20 & 1023)));
         if (p == NULL) return 2;
+        bench_escape_ptr(p);
         rt_free(p);
     }
-    printf("ramp.settle_wall_ms=%.0f\n", bench_ms_since(start));
+    printf("ramp.settle_wall_ms=%.3f\n", bench_ms_since(start));
     bench_print_tracker_stats("ramp");
     return 0;
 }
@@ -210,21 +255,22 @@ static int bench_cached(long scale) {
             free(sites);
             return 2;
         }
+        bench_escape_ptr(live[i]);
         _rt_check_ptr_site(&sites[i], live[i], 1, 1, _RT_ACCESS_READ, "<bench>", 0);
     }
 
     uintptr_t acc = 0;
-    clock_t start = clock();
+    uint64_t start = bench_monotonic_ns();
     for (long sweep = 0; sweep < sweeps; sweep++) {
         for (long i = 0; i < live_count; i++) {
             acc ^= (uintptr_t)_rt_check_ptr_site(&sites[i], live[i], 1, 1, _RT_ACCESS_READ, "<bench>", 0);
         }
     }
-    bench_cached_sink ^= acc;
-    printf("cached.wall_ms=%.0f\n", bench_ms_since(start));
+    bench_ptr_sink ^= acc;
+    printf("cached.wall_ms=%.3f\n", bench_ms_since(start));
     printf("cached.ops=%ld\n", live_count * sweeps);
     printf("cached.live=%ld\n", live_count);
-    printf("cached.sink=%lu\n", (unsigned long)bench_cached_sink);
+    printf("cached.sink=%lu\n", (unsigned long)bench_ptr_sink);
     bench_print_tracker_stats("cached");
 
     for (long i = 0; i < live_count; i++) {
@@ -237,12 +283,13 @@ static int bench_cached(long scale) {
 
 static int bench_strings(long scale) {
     long pairs = 1000000L * scale;
-    clock_t start = clock();
+    uint64_t start = bench_monotonic_ns();
     for (long i = 0; i < pairs; i++) {
         dea_string s = _rt_alloc_string(24);
+        bench_escape_ptr(s.data.h_str);
         _rt_free_string(s);
     }
-    printf("strings.wall_ms=%.0f\n", bench_ms_since(start));
+    printf("strings.wall_ms=%.3f\n", bench_ms_since(start));
     printf("strings.ops=%ld\n", pairs);
     bench_print_tracker_stats("strings");
     return 0;
@@ -292,6 +339,7 @@ int main(int argc, char **argv) {
         return 2;
     }
 
+    printf("bench.ptr_sink=%lu\n", (unsigned long)bench_ptr_sink);
     printf("max_rss_kib=%ld\n", bench_max_rss_kib());
     return 0;
 }

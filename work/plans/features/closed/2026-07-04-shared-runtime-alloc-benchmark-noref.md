@@ -74,6 +74,11 @@ retention-setting matrix (tcc, clang, gcc-16) as the data for a follow-up decisi
 
 Completed on 2026-07-04.
 
+> **Correction (2026-07-11):** The performance timings below used process CPU `clock()` and allowed optimized unchecked
+> allocation/string loops to disappear, so they are not valid wall-time evidence. The deterministic tracker-memory
+> observations remain historical. Corrected monotonic, anti-elision matrices are recorded in
+> [work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md](../../bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md).
+
 Measured matrix on the macOS x86_64 development host (`make bench-runtime`, scale 5, best of 3, wall ms; scenarios: 5M
 tight pairs, 2.5M window ops, 500k-live ramp, 5M string pairs). L0 header-runtime table shown; the L1 archive runtime
 matched it within run-to-run noise for every cell, as expected for copied runtime code.

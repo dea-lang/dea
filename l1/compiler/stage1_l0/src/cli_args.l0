@@ -51,6 +51,7 @@ struct CliOptions {
     trace_arc: bool;
     trace_memory: bool;
     unchecked: bool;
+    check_basic: bool;
 
     all_modules: bool;
     include_eof: bool;
@@ -91,6 +92,7 @@ func cli_options_create() -> CliOptions* {
         null,
         null,
         null,
+        false,
         false,
         false,
         false,
@@ -335,6 +337,7 @@ func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS]");
     cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
     cli_print_line(to_stderr, "           [--no-line-directives] [--trace-arc] [--trace-memory] [--unchecked]");
+    cli_print_line(to_stderr, "           [--check-basic]");
     cli_print_line(to_stderr, "           [--keep-c]");
     cli_print_line(to_stderr, "           [--all-modules] [--include-eof]");
     cli_print_line(to_stderr, "           targets [targets ...]");
@@ -403,6 +406,9 @@ func cli_print_help() {
     cli_print_line(false, "  --unchecked           Disable runtime pointer validation and use the unchecked");
     cli_print_line(false, "                        runtime archive; with '--gen', generated C defines");
     cli_print_line(false, "                        DEA_RT_UNCHECKED (link libdea_rt_unchecked.a)");
+    cli_print_line(false, "  --check-basic         Use the basic checked runtime archive; with '--gen',");
+    cli_print_line(false, "                        generated C defines DEA_RT_CHECK_BASIC (link");
+    cli_print_line(false, "                        libdea_rt_check_basic.a)");
     cli_print_line(false, "  --keep-c              Keep generated C file (valid in: '--build', '--run';");
     cli_print_line(false, "                        use with '--output' to specify C file path");
     cli_print_line(false, "  --all-modules, -a     Process all modules in the compilation unit (valid in:");
@@ -534,15 +540,31 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         cli_emit_error(diags, "L1C-2025", "option '--unchecked' is valid only with modes: --build, --gen, --run");
     }
 
+    if (opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L1C-2027", "option '--check-basic' is valid only with modes: --build, --gen, --run");
+    }
+
     if (opts.unchecked && (opts.trace_arc || opts.trace_memory)) {
         cli_emit_error(diags, "L1C-2026", "option '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'");
     }
 
-    if (ord(mode) == ord(CM_GEN) && opts.unchecked && !(opts.trace_arc || opts.trace_memory)) {
+    if (opts.check_basic && (opts.unchecked || opts.trace_arc || opts.trace_memory)) {
+        cli_emit_error(diags, "L1C-2028", "option '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'");
+    }
+
+    if (ord(mode) == ord(CM_GEN) && opts.unchecked) {
         cli_emit_warning(
             diags,
             "L1C-0020",
             "'--unchecked' under '--gen' produces unchecked-runtime C; the caller should link against 'libdea_rt_unchecked.a' (or compile with -DDEA_RT_UNCHECKED if linking the runtime sources directly)"
+        );
+    }
+
+    if (ord(mode) == ord(CM_GEN) && opts.check_basic) {
+        cli_emit_warning(
+            diags,
+            "L1C-0021",
+            "'--check-basic' under '--gen' produces basic checked-runtime C; the caller should link against 'libdea_rt_check_basic.a' (or compile with -DDEA_RT_CHECK_BASIC if linking the runtime sources directly)"
         );
     }
 
@@ -692,6 +714,12 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
 
             if (token == "--unchecked") {
                 (opts as CliOptions*).unchecked = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "--check-basic") {
+                (opts as CliOptions*).check_basic = true;
                 i = i + 1;
                 continue;
             }

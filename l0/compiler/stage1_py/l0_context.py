@@ -41,6 +41,8 @@ class CompilationContext:
             (`L0_TRACE_MEMORY`).
         rt_unchecked: If True, generated C disables runtime pointer validation
             and allocation tracking (`L0_RT_UNCHECKED`).
+        rt_check_basic: If True, generated C enables basic checked runtime
+            pointer validation (`L0_RT_CHECK_BASIC`).
         log_rich_format: If True, emit logs in rich format: may include log
             level, timestamps, etc.
         log_level: Current logging level.
@@ -49,6 +51,7 @@ class CompilationContext:
     trace_arc: bool = False
     trace_memory: bool = False
     rt_unchecked: bool = False
+    rt_check_basic: bool = False
     log_rich_format: bool = False
     log_level: LogLevel = LogLevel.WARNING
 

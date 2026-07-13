@@ -266,6 +266,7 @@ def build_compilation_context(args: argparse.Namespace) -> CompilationContext:
         trace_arc=getattr(args, 'trace_arc', False),
         trace_memory=getattr(args, 'trace_memory', False),
         rt_unchecked=getattr(args, 'unchecked', False),
+        rt_check_basic=getattr(args, 'check_basic', False),
         log_rich_format=log_rich_format,
         log_level=log_level,
     )
@@ -700,6 +701,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             trace_arc=getattr(args, 'trace_arc', False),
             trace_memory=getattr(args, 'trace_memory', False),
             unchecked=getattr(args, 'unchecked', False),
+            check_basic=getattr(args, 'check_basic', False),
             log=args.log,
         )
 
@@ -1167,6 +1169,11 @@ def _add_codegen_arg(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Disable runtime pointer validation in generated C code (emits L0_RT_UNCHECKED; valid in: '--build', '--run', '--gen')",
     )
+    parser.add_argument(
+        "--check-basic",
+        action="store_true",
+        help="Use basic checked runtime pointer validation in generated C code (emits L0_RT_CHECK_BASIC; valid in: '--build', '--run', '--gen')",
+    )
 
 
 _OPTIONS_REQUIRING_VALUE = {
@@ -1216,6 +1223,7 @@ def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.
         ("trace_arc", "--trace-arc", {"build", "run", "gen"}, "L0C-2017"),
         ("trace_memory", "--trace-memory", {"build", "run", "gen"}, "L0C-2018"),
         ("unchecked", "--unchecked", {"build", "run", "gen"}, "L0C-2025"),
+        ("check_basic", "--check-basic", {"build", "run", "gen"}, "L0C-2027"),
         ("all_modules", "--all-modules", {"tok", "ast", "sym", "type"}, "L0C-2019"),
         ("include_eof", "--include-eof", {"tok"}, "L0C-2020"),
     ]
@@ -1234,6 +1242,12 @@ def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.
         getattr(args, "trace_arc", False) or getattr(args, "trace_memory", False)
     ):
         parser.error("[L0C-2026] option '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'")
+    if getattr(args, "check_basic", False) and (
+        getattr(args, "unchecked", False)
+        or getattr(args, "trace_arc", False)
+        or getattr(args, "trace_memory", False)
+    ):
+        parser.error("[L0C-2028] option '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'")
 
 
 def main(argv: Optional[List[str]] = None) -> None:
@@ -1329,6 +1343,8 @@ def main(argv: Optional[List[str]] = None) -> None:
                 no_line_directives=False,
                 trace_arc=False,
                 trace_memory=False,
+                unchecked=False,
+                check_basic=False,
             )
             log_info(build_compilation_context(fallback_args), compiler_identity_text())
         raise

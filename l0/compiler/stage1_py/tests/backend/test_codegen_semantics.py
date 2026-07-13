@@ -60,6 +60,32 @@ def test_codegen_unchecked_define_emitted(analyze_single):
     assert unchecked_pos < runtime_pos
 
 
+def test_codegen_check_basic_define_emitted(analyze_single):
+    result = analyze_single(
+        "main",
+        """
+        module main;
+
+        func main() -> int {
+            return 0;
+        }
+        """,
+    )
+
+    assert not result.has_errors(), result.diagnostics
+    result.context.rt_check_basic = True
+
+    from l0_backend import Backend
+
+    c_code = Backend(result).generate()
+
+    basic_pos = c_code.find("#define L0_RT_CHECK_BASIC 1")
+    runtime_pos = c_code.find('#include "l0_runtime.h"')
+    assert basic_pos != -1
+    assert runtime_pos != -1
+    assert basic_pos < runtime_pos
+
+
 def test_codegen_enum_tagging_and_match_switch(codegen_single):
     c_code, _ = codegen_single(
         "main",
@@ -219,7 +245,9 @@ def test_codegen_drop_begin_validation_precedes_struct_cleanup(codegen_single):
     if c_code is None:
         return
 
-    begin = c_code.find("_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)")
+    begin = c_code.find(
+        "_rt_drop_begin_impl((void*)(p), (l0_int)(sizeof(struct l0_main_Box))"
+    )
     release_match = re.search(r"rt_string_release\(l0_drop_\d+->s\);", c_code)
     release = release_match.start() if release_match else -1
     finish = c_code.find("_rt_drop_finish_impl((void*)(")

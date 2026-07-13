@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-07-05
+Version: 2026-07-11
 
 This document records rationale and policy decisions.
 
@@ -61,15 +61,22 @@ Rationale:
 ### 3.3 Runtime pointer access validation and build modes
 
 Generated pointer dereference, pointer field access, pointer indexing, and `drop` are validated at runtime against an
-allocation tracker in checked builds, which are the default. Null, unregistered, freed/quarantined, out-of-range, and
-non-base-drop accesses become defined runtime aborts instead of C undefined behavior.
+allocation tracker in checked builds, which are the default. Null, unregistered, freed/quarantined, out-of-range,
+wrong-provenance, undersized-drop, and non-base-drop accesses become defined runtime aborts instead of C undefined
+behavior.
 
 Key properties:
 
-- Tracked storage covers `new`, `rt_alloc`, `rt_calloc`, and `rt_realloc` allocations, plus heap string blocks
-  (ARC-managed) and static string spans; string storage registers lazily at first `rt_string_bytes_ptr` exposure, so
-  strings that never hand out raw bytes stay out of the tracker. ARC-managed and static records are not droppable, and
-  string records are read-only for checked writes.
+- Tracked provenance distinguishes raw (`rt_alloc`, `rt_calloc`, `rt_realloc`), `new`, ARC, static, and explicitly
+  registered foreign storage. `drop` accepts only `new`, while `rt_free` and `rt_realloc` accept only raw allocations.
+  Heap and static string byte spans register lazily at the exact pointer returned by `rt_string_bytes_ptr`, remain
+  read-only, and cannot enter either release family.
+- Generated drop begin passes the pointee size and alignment and validates them before cleanup touches owned fields.
+  This prevents an undersized `new` allocation cast to a larger ARC-bearing type from reaching out-of-bounds cleanup.
+- `rt_register_foreign(ptr, bytes, read_only)` makes an external lifetime and extent visible to checked access;
+  `rt_unregister_foreign(ptr)` invalidates it without freeing. Registration transfers no ownership, identical live
+  registrations are idempotent in checked modes, and foreign storage cannot be dropped, freed, or reallocated by the
+  checked runtime. Unchecked mode validates registration arguments but retains no foreign tracker state.
 - Checked accesses carry a read or write mode. Stores classify every pointer access on the store path as a write,
   including explicit dereference objects (`(*q).b = ...`) and nested embedded-struct chains (`q.inner.b = ...`), so
   read-only records reject those stores.
@@ -89,16 +96,24 @@ Key properties:
   shorter use-after-drop detection window.
 - Retention guidance, backed by the `make bench-runtime` matrix across tcc, clang, and GCC: the default
   `_RT_QUARANTINE_MAX_COUNT=4096` is detection-first and right for development builds; `256` is the suggested setting
-  for performance-sensitive checked deployments (it keeps a meaningful detection window while removing roughly half of
-  the retention overhead on allocation-heavy churn); intermediate values near 1024 cost about as much as 4096 while
-  shrinking the window, so they are not recommended. Record-pool and tracker-table metadata are peak-driven, while
-  quarantined payload memory is bounded by the byte/count caps, so lower caps can reduce retained freed payload memory.
-  For release performance beyond retention tuning, use `--unchecked`.
+  for performance-sensitive checked deployments because it keeps a meaningful detection window while reducing
+  allocation-heavy retention costs. The measured benefit and the value of intermediate settings vary by compiler and
+  workload, so deployments that need more temporal depth should benchmark their own 1024-or-higher tradeoff. Record-pool
+  and tracker-table metadata are peak-driven, while quarantined payload memory is bounded by the byte/count caps, so
+  lower caps can reduce retained freed payload memory. For release performance beyond retention tuning, use
+  `--check-basic` or `--unchecked`.
+- The `l0c --check-basic` flag (valid in `--build`, `--run`, `--gen`; mutually exclusive with `--unchecked` and the
+  trace flags) emits `L0_RT_CHECK_BASIC` into the generated C prelude. Basic checked mode keeps exact-base hash
+  validation, quarantine, generation caches, null checks, double-drop and untracked-drop diagnostics, exact-base
+  ARC/static string read-only protection, and alignment checks for hash-miss accesses. It compiles out the interior
+  pointer treap and static-overlap checks, so hash-miss pointer accesses no longer prove allocation containment.
 - The `l0c --unchecked` flag (valid in `--build`, `--run`, `--gen`; mutually exclusive with the trace flags) emits
   `L0_RT_UNCHECKED` into the generated C prelude, producing a release build: validation, tracking, and quarantine
   compile out, and allocation/drop call the C allocator directly. Defining `L0_RT_UNCHECKED` through C flags (for
   example `L0_CFLAGS` or the `make` variable `L0_RT_UNCHECKED=1`) achieves the same without the flag. Release builds are
   an explicit opt-out of checked pointer semantics and provide no temporal-safety diagnostics.
+- Runtime allocation benchmarks use monotonic wall time and observable pointer escapes so optimized unchecked allocation
+  and string loops remain part of the measurement.
 
 ### 3.4 No raw pointer arithmetic contract
 

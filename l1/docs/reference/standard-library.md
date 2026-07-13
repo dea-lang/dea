@@ -620,18 +620,27 @@ remainder/decomposition, rounding, and transcendental math.
 
 Low-level raw memory FFI. Misuse can cause undefined behavior.
 
-In checked runtime builds (the default), allocations are tracked and pointer accesses are validated; dropped and freed
-blocks pass through a bounded quarantine before returning to the C allocator. The quarantine limits default to 16 MiB
-and 4096 records and can be retuned per process through the `DEA_RT_QUARANTINE_MAX_BYTES` and
-`DEA_RT_QUARANTINE_MAX_COUNT` environment variables, read once at first tracker use, or baked into the archives with the
-`make` variables `L1_RT_QUARANTINE_MAX_BYTES`/`L1_RT_QUARANTINE_MAX_COUNT`. Smaller retention (including `0`) speeds
-allocation-heavy code at the cost of a shorter use-after-drop detection window. The default record limit (4096) is
-detection-first and right for development; `256` is the suggested setting for performance-sensitive checked deployments,
-per the `make bench-runtime` matrix (intermediate values near 1024 cost about as much as 4096 while shrinking the
-window). Record-pool and tracker-table metadata are peak-driven, while quarantined payload memory is bounded by the
-byte/count caps, so lower caps can reduce retained freed payload memory. The `l1c --unchecked` flag selects the prebuilt
-`libdea_rt_unchecked.a` archive variant and defines `DEA_RT_UNCHECKED` in generated C, compiling tracking and validation
-out entirely; it cannot be combined with the trace flags.
+In checked runtime builds (the default), allocations are tracked with distinct raw, `new`, ARC, static, and foreign
+provenance, and pointer accesses are validated. `drop` accepts only `new` allocations; `rt_free` and `rt_realloc` accept
+only raw allocations. Dropped and freed owned blocks pass through a bounded quarantine before returning to the C
+allocator. The quarantine limits default to 16 MiB and 4096 records and can be retuned per process through the
+`DEA_RT_QUARANTINE_MAX_BYTES` and `DEA_RT_QUARANTINE_MAX_COUNT` environment variables, read once at first tracker use,
+or baked into the archives with the `make` variables `L1_RT_QUARANTINE_MAX_BYTES`/`L1_RT_QUARANTINE_MAX_COUNT`. Smaller
+retention (including `0`) speeds allocation-heavy code at the cost of a shorter use-after-drop detection window. The
+default record limit (4096) is detection-first and right for development; `256` is the suggested setting for
+performance-sensitive checked deployments, per the corrected monotonic `make bench-runtime` matrix. Smaller caps
+generally reduce allocation-heavy costs, but the magnitude and the value of intermediate settings vary by compiler and
+workload, so deployments that need more temporal depth should measure their own 1024-or-higher tradeoff. Record-pool and
+tracker-table metadata are peak-driven, while quarantined payload memory is bounded by the byte/count caps, so lower
+caps can reduce retained freed payload memory. The `l1c --check-basic` flag selects the prebuilt
+`libdea_rt_check_basic.a` archive variant and defines `DEA_RT_CHECK_BASIC` in generated C; this keeps exact-base hash
+validation, quarantine, generation caches, null checks, double-drop and untracked-drop diagnostics, exact-base
+ARC/static string read-only protection, and alignment checks for hash-miss accesses while compiling out the
+interior-pointer treap. The `l1c --unchecked` flag selects the prebuilt `libdea_rt_unchecked.a` archive variant and
+defines `DEA_RT_UNCHECKED` in generated C, compiling pointer tracking and access validation out; neither mode can be
+combined with the trace flags. Basic runtime API argument checks still apply. Externally owned storage can be registered
+for checked access through `rt_register_foreign(ptr, bytes, read_only)` and unregistered without freeing through
+`rt_unregister_foreign(ptr)`; unchecked mode validates basic arguments but keeps no registration state.
 
 ## FFI Inventory (`extern func` / `unsafe extern func`)
 
@@ -735,23 +744,26 @@ These runtime-backed floating-point bindings are provided in matched `float` (`_
 | `rt_real_atan_f` / `rt_real_atan_d`             | `func(x: float) -> float` / `func(x: double) -> double`                                        | Return the arc tangent.                         |
 | `rt_real_atan2_f` / `rt_real_atan2_d`           | `func(x: float, y: float) -> float` / `func(x: double, y: double) -> double`                   | Return the quadrant-aware arc tangent.          |
 
-### Declared in `sys.memory` (11)
+### Declared in `sys.memory` (13)
 
-These are unsafe raw-memory primitives.
+These are unsafe raw-memory primitives. Foreign registration transfers no ownership and never authorizes runtime
+release.
 
-| Function           | Signature                                                                | Description                  |
-| ------------------ | ------------------------------------------------------------------------ | ---------------------------- |
-| `rt_alloc`         | `func(bytes: int) -> void*?`                                             | Allocates raw heap memory.   |
-| `rt_calloc`        | `func(count: int, elem_size: int) -> void*?`                             | Allocates zeroed raw memory. |
-| `rt_realloc`       | `unsafe func(ptr: void*?, new_bytes: int) -> void*?`                     | Resizes raw heap memory.     |
-| `rt_free`          | `unsafe func(ptr: void*?) -> void`                                       | Frees raw heap memory.       |
-| `rt_memcpy`        | `unsafe func(dest: void*, src: void*, bytes: int) -> void*`              | Copies raw bytes.            |
-| `rt_memset`        | `unsafe func(dest: void*, value: int, bytes: int) -> void*`              | Fills raw bytes.             |
-| `rt_memcmp`        | `unsafe func(a: void*, b: void*, bytes: int) -> int`                     | Compares raw bytes.          |
-| `rt_array_element` | `unsafe func(array_data: void*, element_size: int, index: int) -> void*` | Computes an element pointer. |
-| `rt_stdin_read`    | `unsafe func(buf: byte*?, capacity: int) -> int`                         | Reads raw bytes from stdin.  |
-| `rt_stdout_write`  | `unsafe func(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stdout.  |
-| `rt_stderr_write`  | `unsafe func(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stderr.  |
+| Function                | Signature                                                                | Description                                      |
+| ----------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| `rt_alloc`              | `func(bytes: int) -> void*?`                                             | Allocates raw heap memory.                       |
+| `rt_calloc`             | `func(count: int, elem_size: int) -> void*?`                             | Allocates zeroed raw memory.                     |
+| `rt_realloc`            | `unsafe func(ptr: void*?, new_bytes: int) -> void*?`                     | Resizes raw heap memory.                         |
+| `rt_free`               | `unsafe func(ptr: void*?) -> void`                                       | Frees raw heap memory.                           |
+| `rt_register_foreign`   | `unsafe func(ptr: void*, bytes: int, read_only: bool) -> void`           | Registers externally owned storage for checks.   |
+| `rt_unregister_foreign` | `unsafe func(ptr: void*) -> void`                                        | Invalidates a foreign registration without free. |
+| `rt_memcpy`             | `unsafe func(dest: void*, src: void*, bytes: int) -> void*`              | Copies raw bytes.                                |
+| `rt_memset`             | `unsafe func(dest: void*, value: int, bytes: int) -> void*`              | Fills raw bytes.                                 |
+| `rt_memcmp`             | `unsafe func(a: void*, b: void*, bytes: int) -> int`                     | Compares raw bytes.                              |
+| `rt_array_element`      | `unsafe func(array_data: void*, element_size: int, index: int) -> void*` | Computes an element pointer.                     |
+| `rt_stdin_read`         | `unsafe func(buf: byte*?, capacity: int) -> int`                         | Reads raw bytes from stdin.                      |
+| `rt_stdout_write`       | `unsafe func(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stdout.                      |
+| `rt_stderr_write`       | `unsafe func(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stderr.                      |
 
 ### Declared in `sys.hash` (11)
 

@@ -1,6 +1,6 @@
 # Static Pointer-Check Elision Proposal
 
-Version: 2026-07-08
+Version: 2026-07-11
 
 Status: Proposed
 
@@ -33,8 +33,10 @@ identical either way. Consequences of this framing:
   checked runtime. Differential runs (checked versus elided) over the test suites and the bootstrap are the soundness
   gate for the prover itself: a proven-safe site that trips a check in the checked build is a prover bug.
 - **A residue always remains.** Pointers that cross the C FFI boundary and raw `sys.memory` storage have invalidation
-  events the analysis cannot see, so those sites keep runtime checks indefinitely. The checked runtime, quarantine, and
-  the lighter checked modes remain the permanent backstop for that residue and for unproven sites.
+  events the analysis cannot see, so those sites keep runtime checks indefinitely. Foreign pointers make the external
+  lifetime explicit with `rt_register_foreign`/`rt_unregister_foreign`, but that dynamic lifetime still cannot be
+  statically elided in general. The checked runtime, quarantine, and the lighter checked modes remain the permanent
+  backstop for that residue and for unproven sites.
 
 ## Staging
 

@@ -443,23 +443,27 @@ All `extern func` symbols exposed to L0 from stdlib modules are listed here.
 | `rt_file_info`                | `func(path: string) -> RtFileInfo`                | Returns stat-like file metadata.                                                                           |
 | `rt_delete_file`              | `func(path: string) -> bool`                      | Deletes a file by path.                                                                                    |
 
-### Declared in `sys.memory` (11)
+### Declared in `sys.memory` (13)
 
-These are unsafe raw-memory primitives.
+These are unsafe raw-memory primitives. `rt_free` and `rt_realloc` accept only raw allocations; `new` allocations use
+`drop`. Foreign registration supplies checked lifetime/range information without transferring ownership or authorizing
+runtime release.
 
-| Function           | Signature                                                         | Description                  |
-| ------------------ | ----------------------------------------------------------------- | ---------------------------- |
-| `rt_alloc`         | `func(bytes: int) -> void*?`                                      | Allocates raw heap memory.   |
-| `rt_realloc`       | `func(ptr: void*?, new_bytes: int) -> void*?`                     | Resizes raw heap memory.     |
-| `rt_free`          | `func(ptr: void*?) -> void`                                       | Frees raw heap memory.       |
-| `rt_calloc`        | `func(count: int, elem_size: int) -> void*?`                      | Allocates zeroed raw memory. |
-| `rt_memcpy`        | `func(dest: void*, src: void*, bytes: int) -> void*`              | Copies raw bytes.            |
-| `rt_memset`        | `func(dest: void*, value: int, bytes: int) -> void*`              | Fills raw bytes.             |
-| `rt_memcmp`        | `func(a: void*, b: void*, bytes: int) -> int`                     | Compares raw bytes.          |
-| `rt_array_element` | `func(array_data: void*, element_size: int, index: int) -> void*` | Computes an element pointer. |
-| `rt_stdin_read`    | `func(buf: byte*?, capacity: int) -> int`                         | Reads raw bytes from stdin.  |
-| `rt_stdout_write`  | `func(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stdout.  |
-| `rt_stderr_write`  | `func(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stderr.  |
+| Function                | Signature                                                         | Description                                      |
+| ----------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
+| `rt_alloc`              | `func(bytes: int) -> void*?`                                      | Allocates raw heap memory.                       |
+| `rt_realloc`            | `func(ptr: void*?, new_bytes: int) -> void*?`                     | Resizes raw heap memory.                         |
+| `rt_free`               | `func(ptr: void*?) -> void`                                       | Frees raw heap memory.                           |
+| `rt_calloc`             | `func(count: int, elem_size: int) -> void*?`                      | Allocates zeroed raw memory.                     |
+| `rt_register_foreign`   | `func(ptr: void*, bytes: int, read_only: bool) -> void`           | Registers externally owned storage for checks.   |
+| `rt_unregister_foreign` | `func(ptr: void*) -> void`                                        | Invalidates a foreign registration without free. |
+| `rt_memcpy`             | `func(dest: void*, src: void*, bytes: int) -> void*`              | Copies raw bytes.                                |
+| `rt_memset`             | `func(dest: void*, value: int, bytes: int) -> void*`              | Fills raw bytes.                                 |
+| `rt_memcmp`             | `func(a: void*, b: void*, bytes: int) -> int`                     | Compares raw bytes.                              |
+| `rt_array_element`      | `func(array_data: void*, element_size: int, index: int) -> void*` | Computes an element pointer.                     |
+| `rt_stdin_read`         | `func(buf: byte*?, capacity: int) -> int`                         | Reads raw bytes from stdin.                      |
+| `rt_stdout_write`       | `func(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stdout.                      |
+| `rt_stderr_write`       | `func(buf: byte*?, len: int) -> int`                              | Writes raw bytes to stderr.                      |
 
 ### Declared in `sys.hash` (11)
 

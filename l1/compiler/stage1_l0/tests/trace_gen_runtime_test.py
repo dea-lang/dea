@@ -99,7 +99,10 @@ def require_trace_gen_rewrite() -> None:
         assert "dea_string op = _rt_string_concat_impl(a, b, __FILE__, __LINE__);" in c_text
         assert "_rt_string_release_impl(op, __FILE__, __LINE__);" in c_text
         assert "_rt_alloc_obj_impl((dea_int)sizeof(struct __deaM14trace_gen_mainS3Box), __FILE__, __LINE__);" in c_text
-        assert "_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)" in c_text
+        assert (
+            "_rt_drop_begin_impl((void*)(p), "
+            "(dea_int)(sizeof(struct __deaM14trace_gen_mainS3Box))"
+        ) in c_text
         assert "_rt_drop_finish_impl((void*)(" in c_text
 
 

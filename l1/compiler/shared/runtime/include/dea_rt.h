@@ -34,6 +34,10 @@
 #define _RT_ALIGNOF(type) offsetof(struct { char _rt_align_c; type _rt_align_v; }, _rt_align_v)
 #endif
 
+#if defined(DEA_RT_CHECK_BASIC) && defined(DEA_RT_UNCHECKED)
+#error "DEA_RT_CHECK_BASIC cannot be combined with DEA_RT_UNCHECKED"
+#endif
+
 
 /* =========================================================================
  * Compiler-specific builtins and attributes
@@ -418,9 +422,11 @@ dea_int rt_errno(void);
 #define _RT_ALLOC_LIVE 1
 #define _RT_ALLOC_QUARANTINED 2
 #define _RT_ALLOC_POOLED 3
-#define _RT_MEM_USER 0
-#define _RT_MEM_ARC 1
-#define _RT_MEM_STATIC 2
+#define _RT_MEM_RAW 0
+#define _RT_MEM_NEW 1
+#define _RT_MEM_ARC 2
+#define _RT_MEM_STATIC 3
+#define _RT_MEM_FOREIGN 4
 #define _RT_ACCESS_READ 0
 #define _RT_ACCESS_WRITE 1
 #define _RT_ACCESS_UNTRACKED_OK 2
@@ -439,10 +445,20 @@ struct _rt_alloc_record {
     void *base;
     size_t size;
     uint64_t generation;
+#ifdef DEA_RT_CHECK_BASIC
+    /* Sized from the pointer width so the hot layout matches the treap
+     * fields of full checked mode on both 32-bit and 64-bit targets. */
+    uint8_t tree_pad[2 * sizeof(_rt_alloc_record *)];
+#else
     _rt_alloc_record *tree_left;
     _rt_alloc_record *tree_right;
+#endif
     _rt_alloc_record *q_next;
+#ifdef DEA_RT_CHECK_BASIC
+    uint32_t tree_prio_pad;
+#else
     uint32_t tree_prio;
+#endif
     uint32_t cold_index;
     uint8_t state;
     uint8_t read_only;
@@ -603,7 +619,15 @@ void *rt_memset(void *dest, dea_int value, dea_int bytes);
 void *rt_memcpy(void *dest, void *src, dea_int bytes);
 dea_int rt_memcmp(void *a, void *b, dea_int bytes);
 void *rt_array_element(void *array_data, dea_int element_size, dea_int index);
-void *_rt_drop_begin_impl(void *ptr, const char *loc_file, int loc_line);
+void rt_register_foreign(void *ptr, dea_int bytes, dea_bool read_only);
+void rt_unregister_foreign(void *ptr);
+void *_rt_drop_begin_impl(
+    void *ptr,
+    dea_int required_size,
+    dea_int required_align,
+    const char *loc_file,
+    int loc_line
+);
 void _rt_drop_finish_impl(void *ptr, const char *loc_file, int loc_line);
 void *_rt_validate_derived_ptr(
     void *derived,
@@ -615,8 +639,6 @@ void *_rt_validate_derived_ptr(
 );
 void *_rt_alloc_obj_impl(dea_int bytes, const char *_loc_file, int _loc_line);
 void *_rt_alloc_obj(dea_int bytes);
-void _rt_drop_impl(void *ptr, const char *_loc_file, int _loc_line);
-void _rt_drop(void *ptr);
 uint32_t _rt_fmix32(uint32_t x);
 uint32_t _rt_fold_u64_to_u32_fmix(uint64_t h);
 dea_int _rt_hash_bool(dea_bool value, const uint8_t flags);

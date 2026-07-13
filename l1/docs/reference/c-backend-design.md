@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-07-05
+Version: 2026-07-11
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -58,8 +58,9 @@ Current backend target is a single C translation unit. Top-level `const` and con
 into C storage initializers; non-constant top-level `let` initializers lower as zero/default-initialized storage plus
 hidden per-module init assignments.
 
-For `--build` / `--run`, that generated unit now compiles against `dea_rt.h` and links `libdea_rt.a` or
-`libdea_rt_traced.a` instead of inlining the runtime bodies into the user translation unit.
+For `--build` / `--run`, that generated unit now compiles against `dea_rt.h` and links `libdea_rt.a`,
+`libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or `libdea_rt_unchecked.a` instead of inlining the runtime bodies into
+the user translation unit.
 
 ## Type Lowering
 
@@ -99,10 +100,15 @@ The emitter uses these rules to ensure C identifier hygiene and stable link-time
 Generated output now includes the public runtime header `dea_rt.h`. The internal helper `dea_siphash.h` lives only in
 the compiled runtime implementation and is not part of the generated-C surface or the public L1 ABI.
 
-Runtime artifacts are produced per toolchain: the official archives (`libdea_rt.a` and `libdea_rt_traced.a`) match the
-platform compiler's object format, while tcc additionally builds raw `.o` objects under
-`build/dea/runtime/tcc/{default,traced}/`. When the active C compiler family is tcc, the build driver links those
-objects directly to avoid object-format mismatches such as Darwin tcc ELF objects versus platform Mach-O archives.
+Runtime artifacts are produced per toolchain: the official archives (`libdea_rt.a`, `libdea_rt_traced.a`,
+`libdea_rt_check_basic.a`, and `libdea_rt_unchecked.a`) match the platform compiler's object format, while tcc
+additionally builds raw `.o` objects under `build/dea/runtime/tcc/{default,traced,check_basic,unchecked}/`. When the
+active C compiler family is tcc, the build driver links those objects directly to avoid object-format mismatches such as
+Darwin tcc ELF objects versus platform Mach-O archives.
+
+Each archive and tcc object variant depends on a content-sensitive build-configuration stamp recording its compiler,
+runtime flags, mode defines, and baked tuning flags. Make therefore rebuilds affected variants when configuration
+changes and preserves no-op incremental builds when the content is identical.
 
 ### Floating-point backend contract
 
@@ -149,7 +155,8 @@ Implemented lowering currently includes:
 
 - literals, local/global references, unary/binary operators, direct and indirect calls, field/index access, casts, and
   constructors
-- `new` allocation and `drop` deallocation via runtime helpers
+- `new` allocation and sized `drop` begin/finish via runtime helpers; begin validates exact `new` provenance, pointee
+  extent, and alignment before recursive owned-field cleanup
 - `if`, `while`, `for`, `match`, `case`, `with`, `break`, `continue`, and `return`
 - `expr?` null-propagation lowering with early return on empty
 - checked integer arithmetic and narrowing via runtime helpers
@@ -175,9 +182,10 @@ Key rules:
 - enum and struct cleanup recursively releases owned fields for active values
 - arrays whose element type transitively contains ARC-managed data participate in retain and cleanup; cleanup walks
   elements in reverse index order
-- raw-pointer indexing inside `unsafe func` lowers through runtime pointer validation in checked builds and to direct C
-  indexing in `--unchecked` builds; side-effectful lvalue bases or indexes are captured once so writes preserve single
-  evaluation of both operands
+- raw-pointer indexing inside `unsafe func` lowers through runtime pointer validation in checked and `--check-basic`
+  builds, with basic mode retaining exact-base validation while eliding interior treap lookups, and to direct C indexing
+  in `--unchecked` builds; side-effectful lvalue bases or indexes are captured once so writes preserve single evaluation
+  of both operands
 - fixed-size array values lower at the wrapper boundary; flattened nested rows are raw C arrays only inside dedicated
   array helper paths
 - fixed-size array indexing emits a bounds check that calls `_rt_panic_oob(index, length)` before accessing `.data`

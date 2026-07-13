@@ -63,6 +63,7 @@ The following options are enforced by CLI argument validation and are only accep
 | `--trace-arc`                   | `build`, `run`, `gen`       |
 | `--trace-memory`                | `build`, `run`, `gen`       |
 | `--unchecked`                   | `build`, `run`, `gen`       |
+| `--check-basic`                 | `build`, `run`, `gen`       |
 | `--all-modules` / `-a`          | `tok`, `ast`, `sym`, `type` |
 | `--include-eof`                 | `tok`                       |
 
@@ -72,6 +73,10 @@ relaxed in a future revision.
 `--unchecked` disables runtime pointer validation: L0 emits `L0_RT_UNCHECKED` into the generated C prelude, and L1
 additionally selects the unchecked runtime archive. Combining `--unchecked` with `--trace-arc` or `--trace-memory` is a
 fatal CLI error (exit code 2); traced builds assert checked-runtime invariants.
+
+`--check-basic` selects the basic checked runtime mode: L0 emits `L0_RT_CHECK_BASIC` into the generated C prelude, and
+L1 additionally selects the `libdea_rt_check_basic.a` archive. It is mutually exclusive with `--unchecked`,
+`--trace-arc`, and `--trace-memory`.
 
 C compiler flags are merged as: `$L0_CFLAGS` first, then `--c-options`.
 

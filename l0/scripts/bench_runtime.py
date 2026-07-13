@@ -7,10 +7,12 @@
 """Benchmark the checked L0 runtime allocation tracker.
 
 Compiles ``scripts/bench_runtime_harness.c`` against the shared header runtime
-once per quarantine-retention setting (plus an ``L0_RT_UNCHECKED`` baseline)
-for each requested C compiler, runs the scenarios best-of-N, and prints one
-table per compiler. Wall-clock numbers are informational; the deterministic
-memory invariants live in the test suite, not here.
+once per quarantine-retention setting (plus ``L0_RT_UNCHECKED`` and
+``L0_RT_CHECK_BASIC`` baselines) for each requested C compiler, runs the
+scenarios best-of-N, and prints one table per compiler. Timings use a monotonic
+wall clock, and allocation/string pointers escape through an observable sink so
+optimized builds retain the measured work. The numbers are informational; the
+deterministic memory invariants live in the test suite, not here.
 
 Example:
     python scripts/bench_runtime.py --cc "tcc clang gcc-16" --scale 5
@@ -95,6 +97,8 @@ def run_scenario(exe: Path, scenario: str, scale: int) -> dict[str, float]:
         key, _, value = line.partition("=")
         if value:
             values[key] = float(value)
+    if "bench.ptr_sink" not in values:
+        raise RuntimeError(f"{scenario}: benchmark pointer sink is missing")
     return values
 
 
@@ -103,6 +107,8 @@ def bench_cell(exe: Path, scenario: str, scale: int, runs: int) -> dict[str, flo
     for _ in range(runs):
         values = run_scenario(exe, scenario, scale)
         wall = sum(values.get(key, 0.0) for key in WALL_KEYS[scenario])
+        if wall <= 0.0:
+            raise RuntimeError(f"{scenario}: benchmark reported non-positive wall time")
         values["_wall"] = wall
         if best is None or wall < best["_wall"]:
             best = values
@@ -148,7 +154,10 @@ def main() -> int:
             print(header)
             print("-" * len(header))
 
-            variants: list[tuple[str, str]] = [("unchecked", "-DL0_RT_UNCHECKED")]
+            variants: list[tuple[str, str]] = [
+                ("unchecked", "-DL0_RT_UNCHECKED"),
+                ("check_basic", "-DL0_RT_CHECK_BASIC"),
+            ]
             variants.extend((str(n), f"-D_RT_QUARANTINE_MAX_COUNT={n}") for n in settings)
             for label, define in variants:
                 exe = work_dir / f"bench_{cc.replace('/', '_')}_{label}"

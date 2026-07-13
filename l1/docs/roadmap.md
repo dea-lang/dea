@@ -165,8 +165,13 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-06-30-runtime-pointer-access-validation-noref][runtime-pointer-validation] adds runtime pointer access
   validation to L1 under the shared Dea-wide pointer-safety plan; checked builds are the default and `DEA_RT_UNCHECKED`
   compiles validation out for release builds. The prebuilt archive runtime honors `DEA_RT_QUARANTINE_MAX_BYTES` and
-  `DEA_RT_QUARANTINE_MAX_COUNT` environment overrides read once at first tracker use. The `l1c --unchecked` flag selects
-  the prebuilt `libdea_rt_unchecked.a` archive variant and defines `DEA_RT_UNCHECKED` in generated C.
+  `DEA_RT_QUARANTINE_MAX_COUNT` environment overrides read once at first tracker use. The `l1c --check-basic` flag
+  selects `libdea_rt_check_basic.a` and keeps exact-base validation while omitting the interior-pointer treap; the
+  `l1c --unchecked` flag selects `libdea_rt_unchecked.a` and defines `DEA_RT_UNCHECKED` in generated C. Allocation
+  provenance separates raw, `new`, ARC, static, and registered foreign storage: raw memory uses `rt_free`/`rt_realloc`,
+  `new` uses extent-aware generated drop cleanup, and external lifetimes use
+  `rt_register_foreign`/`rt_unregister_foreign` without transferring ownership. Content-sensitive runtime variant stamps
+  rebuild archives and tcc objects when compiler flags or baked settings change.
 
 ## Backlog
 

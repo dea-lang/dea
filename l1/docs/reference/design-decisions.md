@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-07-05
+Version: 2026-07-11
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -122,9 +122,20 @@ Current bootstrap status:
 
 `unsafe func` is a source-level contract boundary, not a promise that every build omits runtime diagnostics. In checked
 runtime builds, pointer dereference, pointer field access, raw pointer indexing, and generated `drop` cleanup validate
-allocation provenance, access range, writeability, and release state before touching storage. In `--unchecked` builds,
-those pointer-access validations compile out and raw pointer indexing lowers to direct C pointer arithmetic and
-dereference; the `unsafe func` author is then solely responsible for the range/provenance proof.
+allocation provenance, access range, writeability, and release state before touching storage. Raw allocations use
+`rt_free`/`rt_realloc`; `new` allocations use the sized drop begin/finish protocol, which validates pointee extent and
+alignment before cleanup. ARC/static string bytes are tracked read-only at the exposed byte pointer. External storage
+requires explicit `rt_register_foreign`/`rt_unregister_foreign` lifetime registration, which never transfers ownership
+or authorizes runtime release. `--check-basic` keeps exact-base hash validation, quarantine, generation caches, null
+checks, double-drop and untracked-drop diagnostics, exact-base ARC/static string read-only protection, and alignment
+checks for hash-miss accesses while compiling out the interior-pointer treap. In `--unchecked` builds, pointer-access
+validations compile out and raw pointer indexing lowers to direct C pointer arithmetic and dereference; the
+`unsafe func` author is then solely responsible for the range/provenance proof.
+
+The L1 runtime archives and tcc object variants use content-sensitive configuration stamps. Compiler selection, runtime
+flags, mode defines, and baked quarantine settings therefore trigger the necessary rebuilds, while repeating an
+identical configuration remains a no-op. Runtime allocation benchmarks use monotonic wall time and observable pointer
+escapes so optimized unchecked loops retain their measured work.
 
 ## 7.1 Fixed-Size Array Policy
 

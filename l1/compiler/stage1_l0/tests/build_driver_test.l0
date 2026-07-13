@@ -249,6 +249,22 @@ func test_runtime_archive_filename_selects_unchecked_when_unchecked_set() {
 }
 
 /**
+ * Tests check-basic runtime archive filename selection.
+ */
+func test_runtime_archive_filename_selects_check_basic_when_check_basic_set() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        opts.check_basic = true;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_check_basic.a", "check-basic archive filename mismatch");
+        assert(bd_runtime_archive_link_name(opts) == "dea_rt_check_basic", "check-basic archive link name mismatch");
+
+        let check_basic_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
+        let check_basic_dir = join(join(join("build-root", "runtime"), "tcc"), "check_basic");
+        assert(sv_get(check_basic_paths, 0) == join(check_basic_dir, "dea_rt_panic.o"), "check-basic tcc object dir mismatch");
+        sv_free(check_basic_paths);
+    }
+}
+
+/**
  * Tests traced runtime archive linker-name selection.
  */
 func test_runtime_archive_link_name_selects_traced_when_either_trace_flag_set() {
@@ -325,6 +341,7 @@ func main() {
     test_exe_name_helpers_are_consistent();
     test_runtime_archive_filename_selects_traced_when_either_trace_flag_set();
     test_runtime_archive_filename_selects_unchecked_when_unchecked_set();
+    test_runtime_archive_filename_selects_check_basic_when_check_basic_set();
     test_runtime_archive_link_name_selects_traced_when_either_trace_flag_set();
     test_runtime_object_paths_return_null_without_l1_build_dir();
     test_runtime_object_paths_return_default_or_traced_dirs();

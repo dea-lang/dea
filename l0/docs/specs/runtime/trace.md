@@ -1,6 +1,6 @@
 # L0 Trace Specification
 
-Version: 2026-04-14
+Version: 2026-07-11
 
 This document specifies the shared trace instrumentation contract for generated C code and runtime behavior in both
 Stage 1 and Stage 2.
@@ -85,7 +85,7 @@ Current memory instrumentation points:
 - `_rt_realloc_string`
 - `_rt_free_string`
 - `_rt_alloc_obj`
-- `_rt_drop`
+- generated drop begin/finish helpers
 
 Typical fields include:
 
@@ -94,6 +94,10 @@ Typical fields include:
 - pointer identities (old/new for realloc)
 - action (`ok`, `fail`, `free`, `noop-*`, `panic-*`)
 - source location (`loc="file":line`) where available
+
+A rejected generated drop emits exactly one `op=drop ... action=panic-not-found` event before the runtime panic. This
+compatibility event covers unregistered, non-base, stale, wrong-provenance, undersized, and misaligned drop failures;
+successful drops emit `action=free` before quarantine eviction can release the pointer record.
 
 ## 6. Compatibility and Defaults
 

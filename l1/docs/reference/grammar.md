@@ -90,8 +90,9 @@ Note: the current bootstrap implementation uses `&` only as the binary bitwise-A
 decision has been made yet on whether prefix address-of will become part of the L<sub>1</sub> language surface. Postfix
 indexing syntax is part of the current surface: `ptr[index]` is the raw-pointer indexing form, accepted only in
 `unsafe func` bodies, with `int` indexes for sized non-`void` pointee types. In checked builds it still participates in
-runtime pointer validation; in `--unchecked` builds it lowers to direct C pointer access. `arr[index]` on fixed-size
-arrays and `slice[index]` on slices are safe, bounds checked before any pointer access, and also require an `int` index.
+runtime pointer validation; in `--check-basic` builds it keeps exact-base validation and hash-miss overflow/alignment
+checks; in `--unchecked` builds it lowers to direct C pointer access. `arr[index]` on fixed-size arrays and
+`slice[index]` on slices are safe, bounds checked before any pointer access, and also require an `int` index.
 
 ### 1.5 Special identifier `_`
 

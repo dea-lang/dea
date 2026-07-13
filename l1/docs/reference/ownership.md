@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-07-05
+Version: 2026-07-11
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -17,15 +17,17 @@ This document describes how ownership works in current Dea/L1 bootstrap builds, 
 
 ## 1. Ownership Model at a Glance
 
-L1 currently uses three cooperating lifetime systems:
+L1 currently uses four cooperating lifetime systems:
 
 1. `new` / `drop` for heap-allocated objects
-2. ARC for `string`
-3. container-level ownership rules inside stdlib collections
+2. raw allocation through `rt_alloc` / `rt_calloc` / `rt_realloc` / `rt_free`
+3. ARC for `string`
+4. container-level ownership rules inside stdlib collections
 
 These systems are separate:
 
-- `_rt_drop` frees memory allocated by `new`
+- generated drop cleanup releases only memory allocated by `new`
+- `rt_free` and `rt_realloc` accept only raw allocations, never `new`, ARC, static, or registered foreign storage
 - `rt_string_release` frees a string payload when its refcount reaches zero
 - dropping an object does not recursively free unrelated child pointers for you
 
@@ -46,7 +48,8 @@ These systems are separate:
 Current lowering policy:
 
 - `new` lowers to runtime allocation helpers
-- `drop` lowers to runtime deallocation helpers
+- `drop` lowers to a sized begin/finish protocol; begin validates exact-base `new` provenance, live state, pointee
+  extent, and alignment before cleanup, and finish releases the allocation
 - `new Struct` and `new Struct()` allocate one zero-initialized object
 - `new Struct(args...)` allocates and initializes fields positionally
 - `new Variant(args...)` allocates the owning enum object for that active variant
@@ -62,6 +65,20 @@ elements first.
 
 Before calling the final drop helper, compiler-generated cleanup may release owned fields such as `string` members.
 Pointer children with independent ownership are still your responsibility.
+
+### Raw and foreign memory boundaries
+
+Use `rt_free`/`rt_realloc` only for pointers returned by the raw allocation family, and use `drop` only for pointers
+returned by `new`. Cross-family release is a checked-runtime error.
+
+External C storage becomes accessible to checked generated pointers only after
+`rt_register_foreign(ptr, bytes, read_only)`. Registration records its lifetime and extent without transferring
+ownership. `rt_unregister_foreign(ptr)` removes tracking without freeing the payload, and must run before the external
+lifetime ends. Later access fails as unregistered in the fully checked runtime; `--check-basic` retains its general
+hash-miss-as-untracked behavior. In checked modes, identical live registrations are idempotent; conflicts and invalid
+unregistration panic. Registered foreign storage cannot be dropped, freed, or reallocated by the checked Dea runtime;
+unchecked mode validates basic registration arguments but keeps no registration state. Both registration calls are
+`unsafe` in L1.
 
 Fixed-size arrays are value types. Copying an array copies the full wrapper value; if the element type transitively
 contains ARC-managed data, generated code retains copied elements and releases overwritten or leaving-scope elements.
@@ -142,9 +159,10 @@ These forms must work without manual retain/release and without restoring clone-
 or runtime behavior differs from this contract, treat it as a compiler bug.
 
 Raw-pointer writes inherit that same slot-replacement rule. In checked builds, `ptr[i] = value` inside an `unsafe func`
-still validates the pointer access dynamically before identifying the destination slot; in `--unchecked` builds the
-access lowers directly and trusts the `unsafe func` contract. Once the destination slot is identified, both modes must
-retain the incoming ARC-managed value before releasing the overwritten contents of that slot.
+still validates the pointer access dynamically before identifying the destination slot; in `--check-basic` builds it
+keeps exact-base validation and hash-miss overflow/alignment checks; in `--unchecked` builds the access lowers directly
+and trusts the `unsafe func` contract. Once the destination slot is identified, every mode must retain the incoming
+ARC-managed value before releasing the overwritten contents of that slot.
 
 ## 5. Optional Unwrap
 

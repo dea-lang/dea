@@ -7,11 +7,13 @@
 """Benchmark the checked L1 runtime allocation tracker.
 
 Compiles ``scripts/bench_runtime_harness.c`` white-box against the shared
-runtime compilation units once checked and once with ``DEA_RT_UNCHECKED`` for
-each requested C compiler. The checked binary honors the
-``DEA_RT_QUARANTINE_MAX_COUNT`` environment override, so the whole retention
-matrix reuses one binary per compiler. Wall-clock numbers are informational;
-the deterministic memory invariants live in the test suite, not here.
+runtime compilation units once checked, once with ``DEA_RT_UNCHECKED``, and
+once with ``DEA_RT_CHECK_BASIC`` for each requested C compiler. The checked
+binary honors the ``DEA_RT_QUARANTINE_MAX_COUNT`` environment override, so the
+whole retention matrix reuses one binary per compiler. Timings use a monotonic
+wall clock, and allocation/string pointers escape through an observable sink so
+optimized builds retain the measured work. The numbers are informational; the
+deterministic memory invariants live in the test suite, not here.
 
 Example:
     python scripts/bench_runtime.py --cc "tcc clang gcc-16" --scale 5
@@ -111,6 +113,8 @@ def run_scenario(exe: Path, scenario: str, scale: int, quarantine_count: int | N
         key, _, value = line.partition("=")
         if value:
             values[key] = float(value)
+    if "bench.ptr_sink" not in values:
+        raise RuntimeError(f"{scenario}: benchmark pointer sink is missing")
     return values
 
 
@@ -119,6 +123,8 @@ def bench_cell(exe: Path, scenario: str, scale: int, runs: int, quarantine_count
     for _ in range(runs):
         values = run_scenario(exe, scenario, scale, quarantine_count)
         wall = sum(values.get(key, 0.0) for key in WALL_KEYS[scenario])
+        if wall <= 0.0:
+            raise RuntimeError(f"{scenario}: benchmark reported non-positive wall time")
         values["_wall"] = wall
         if best is None or wall < best["_wall"]:
             best = values
@@ -171,6 +177,14 @@ def main() -> int:
                 for scenario in SCENARIOS
             }
             print(format_row("unchecked", cells))
+
+            check_basic_exe = work_dir / f"bench_{cc.replace('/', '_')}_check_basic"
+            compile_variant(cc, "-DDEA_RT_CHECK_BASIC", check_basic_exe)
+            cells = {
+                scenario: bench_cell(check_basic_exe, scenario, args.scale, args.runs, None)
+                for scenario in SCENARIOS
+            }
+            print(format_row("check_basic", cells))
 
             checked_exe = work_dir / f"bench_{cc.replace('/', '_')}_checked"
             compile_variant(cc, "", checked_exe)

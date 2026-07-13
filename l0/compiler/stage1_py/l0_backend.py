@@ -2463,7 +2463,7 @@ class Backend:
 
         For structs: releases all string fields.
         For enums: switches on tag, releases strings in active variant.
-        Then calls _rt_drop() to free the memory.
+        Then calls the drop-finish helper to release the memory.
 
         Args:
             stmt: The DropStmt AST node.
@@ -2491,7 +2491,16 @@ class Backend:
         inner_type = ptr_type.inner
         drop_tmp = self.emitter.fresh_tmp("drop")
         c_ptr_type = self.emitter.emit_type(ptr_type)
-        self.emitter.emit_temp_decl(c_ptr_type, drop_tmp, self.emitter.emit_drop_begin_expr(c_name, c_ptr_type))
+        self.emitter.emit_temp_decl(
+            c_ptr_type,
+            drop_tmp,
+            self.emitter.emit_drop_begin_expr(
+                c_name,
+                c_ptr_type,
+                self._sizeof_expr_for_type(inner_type),
+                self._alignof_expr_for_type(inner_type),
+            ),
+        )
 
         # Emit cleanup for owned fields before freeing.
         if isinstance(inner_type, StructType):

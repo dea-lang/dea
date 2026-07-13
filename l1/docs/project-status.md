@@ -65,7 +65,10 @@ The current L1 tree includes:
 - L1 stdlib modules under `compiler/shared/l1/stdlib/`
 - runtime sources under `compiler/shared/runtime/`
 - repo-local runtime deliverables under `build/dea/include/dea_rt.h`, `build/dea/include/l1_real.h`,
-  `build/dea/lib/libdea_rt.a`, and `build/dea/lib/libdea_rt_traced.a`
+  `build/dea/lib/libdea_rt.a`, `build/dea/lib/libdea_rt_traced.a`, `build/dea/lib/libdea_rt_check_basic.a`, and
+  `build/dea/lib/libdea_rt_unchecked.a`
+- content-sensitive per-variant runtime build stamps, so compiler/flag/tuning changes rebuild affected archives and tcc
+  objects while identical builds remain no-ops
 - the current bootstrap test suite under `compiler/stage1_l0/tests/`
 
 This gives the subtree a complete bootstrap environment without claiming a self-hosted L1 compiler yet.
@@ -97,8 +100,12 @@ checks, including:
 - explicit nullability, `T` to `T?` wrapping, integer casts to nullable integer targets, `new` / `drop`, ARC-managed
   `string`, casts, postfix `expr?`, string value comparisons, same-type `T?` equality, same-type pointer identity
   equality, and `is(x, Variant)` enum tag checks
-- raw-pointer indexing `ptr[i]` inside `unsafe func`, checked dynamically in checked runtime builds and lowered directly
-  in `--unchecked` builds on non-null sized pointer bases
+- raw-pointer indexing `ptr[i]` inside `unsafe func`, checked dynamically in checked runtime builds, checked only
+  against exact hash-resident bases plus overflow/alignment in `--check-basic` builds, and lowered directly in
+  `--unchecked` builds on non-null sized pointer bases
+- checked allocation provenance for raw, `new`, ARC, static, and explicitly registered foreign storage; generated drop
+  cleanup is extent-aware, raw/new releases cannot be mixed, and `sys.memory` exposes unsafe foreign lifetime
+  registration without transferring ownership
 
 The stdlib currently includes the core bootstrap modules for I/O, strings, text, paths, filesystem access, time,
 randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.integer`, L1-only

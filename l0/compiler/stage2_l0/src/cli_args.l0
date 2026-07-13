@@ -50,6 +50,7 @@ struct CliOptions {
     trace_arc: bool;
     trace_memory: bool;
     unchecked: bool;
+    check_basic: bool;
 
     all_modules: bool;
     include_eof: bool;
@@ -90,6 +91,7 @@ func cli_options_create() -> CliOptions* {
         null,
         null,
         null,
+        false,
         false,
         false,
         false,
@@ -320,6 +322,7 @@ func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS]");
     cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
     cli_print_line(to_stderr, "           [--no-line-directives] [--trace-arc] [--trace-memory] [--unchecked]");
+    cli_print_line(to_stderr, "           [--check-basic]");
     cli_print_line(to_stderr, "           [--keep-c] [--all-modules] [--include-eof]");
     cli_print_line(to_stderr, "           targets [targets ...]");
 }
@@ -383,6 +386,9 @@ func cli_print_help() {
     cli_print_line(false, "  --unchecked           Disable runtime pointer validation in generated C code");
     cli_print_line(false, "                        (emits L0_RT_UNCHECKED; valid in: '--build', '--run',");
     cli_print_line(false, "                        '--gen')");
+    cli_print_line(false, "  --check-basic         Use basic checked runtime pointer validation in");
+    cli_print_line(false, "                        generated C code (emits L0_RT_CHECK_BASIC; valid in:");
+    cli_print_line(false, "                        '--build', '--run', '--gen')");
     cli_print_line(false, "  --keep-c              Keep generated C file (valid in: '--build', '--run';");
     cli_print_line(false, "                        use with '--output' to specify C file path");
     cli_print_line(false, "  --all-modules, -a     Process all modules in the compilation unit (valid in:");
@@ -505,6 +511,10 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         cli_emit_error(diags, "L0C-2025", "option '--unchecked' is valid only with modes: --build, --gen, --run");
     }
 
+    if (opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L0C-2027", "option '--check-basic' is valid only with modes: --build, --gen, --run");
+    }
+
     if (opts.all_modules &&
         ord(mode) != ord(CM_TOK) &&
         ord(mode) != ord(CM_AST) &&
@@ -519,6 +529,10 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
 
     if (opts.unchecked && (opts.trace_arc || opts.trace_memory)) {
         cli_emit_error(diags, "L0C-2026", "option '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'");
+    }
+
+    if (opts.check_basic && (opts.unchecked || opts.trace_arc || opts.trace_memory)) {
+        cli_emit_error(diags, "L0C-2028", "option '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'");
     }
 }
 
@@ -662,6 +676,12 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
 
             if (token == "--unchecked") {
                 (opts as CliOptions*).unchecked = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "--check-basic") {
+                (opts as CliOptions*).check_basic = true;
                 i = i + 1;
                 continue;
             }

@@ -10,6 +10,40 @@ def _run_l0(codegen_single, compile_and_run, tmp_path, src: str, stdin_text: str
     return compile_and_run(c_code, tmp_path, stdin_text)
 
 
+def _run_l0_with_c_suffix(codegen_single, compile_and_run, tmp_path, src: str, c_suffix: str):
+    c_code, diagnostics = codegen_single("main", src)
+    assert c_code is not None, diagnostics
+    return compile_and_run(c_code + "\n" + c_suffix, tmp_path)
+
+
+def _run_l0_check_basic(
+    analyze_single, compile_and_run, tmp_path, src: str, c_suffix: str = ""
+):
+    result = analyze_single("main", src)
+    assert not result.has_errors(), result.diagnostics
+    result.context.rt_check_basic = True
+
+    from l0_backend import Backend
+
+    c_code = Backend(result).generate()
+    assert "#define L0_RT_CHECK_BASIC 1" in c_code
+    return compile_and_run(c_code + "\n" + c_suffix, tmp_path)
+
+
+def _run_l0_unchecked(
+    analyze_single, compile_and_run, tmp_path, src: str, c_suffix: str = ""
+):
+    result = analyze_single("main", src)
+    assert not result.has_errors(), result.diagnostics
+    result.context.rt_unchecked = True
+
+    from l0_backend import Backend
+
+    c_code = Backend(result).generate()
+    assert "#define L0_RT_UNCHECKED 1" in c_code
+    return compile_and_run(c_code + "\n" + c_suffix, tmp_path)
+
+
 def _assert_runtime_failure(stderr: str, needle: str) -> None:
     assert "Software Failure:" in stderr
     assert needle in stderr
@@ -147,6 +181,98 @@ def test_raw_rt_alloc_is_tracked_for_pointer_access(codegen_single, compile_and_
     )
 
     assert success, stderr
+
+
+def test_drop_rejects_raw_rt_alloc(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        func main() -> int {
+            let raw: void* = rt_alloc(sizeof(int)) as void*;
+            let p: int* = raw as int*;
+            drop p;
+            return 0;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "pointer was not allocated by new")
+
+
+def test_rt_free_rejects_new_allocation(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        func main() -> int {
+            let p: int* = new int(7);
+            rt_free(p as void*?);
+            return 0;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "new allocation must be released with drop")
+
+
+def test_rt_realloc_rejects_new_allocation(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        func main() -> int {
+            let p: int* = new int(7);
+            let q: void*? = rt_realloc(p as void*?, sizeof(int) * 2);
+            if (q == null) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "new allocation cannot be reallocated")
+
+
+def test_drop_rejects_undersized_new_before_field_cleanup(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+
+        struct Box {
+            text: string;
+        }
+
+        func main() -> int {
+            let small: byte* = new byte('X');
+            let box: Box* = (small as void*) as Box*;
+            drop box;
+            return 0;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "drop pointee exceeds allocation size")
 
 
 def test_misaligned_raw_pointer_deref_reports_runtime_error(codegen_single, compile_and_run, tmp_path):
@@ -375,6 +501,213 @@ def test_string_bytes_ptr_of_heap_string_rejects_write(codegen_single, compile_a
     _assert_runtime_failure(stderr, "read-only pointer write")
 
 
+_FOREIGN_INT_PROVIDER = """
+static l0_int _foreign_value = 7;
+l0_int *foreign_value(void) { return &_foreign_value; }
+"""
+
+
+def test_registered_writable_foreign_pointer_is_accessible(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_with_c_suffix(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            rt_register_foreign(p as void*, sizeof(int), false);
+            rt_register_foreign(p as void*, sizeof(int), false);
+            *p = 19;
+            let value: int = *p;
+            rt_unregister_foreign(p as void*);
+            return value - 19;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert success, stderr
+
+
+def test_unregistered_foreign_pointer_is_rejected(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_with_c_suffix(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            return *p;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "unregistered pointer access")
+
+
+def test_registered_read_only_foreign_pointer_rejects_write(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_with_c_suffix(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            rt_register_foreign(p as void*, sizeof(int), true);
+            *p = 19;
+            return 0;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "read-only pointer write")
+
+
+def test_conflicting_foreign_registration_is_rejected(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_with_c_suffix(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            rt_register_foreign(p as void*, sizeof(int), false);
+            rt_register_foreign(p as void*, sizeof(int), true);
+            return 0;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "conflicting tracked base")
+
+
+def test_unchecked_foreign_registration_still_validates_extent(
+    analyze_single, compile_and_run, tmp_path
+):
+    success, _stdout, stderr = _run_l0_unchecked(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            rt_register_foreign(p as void*, 0, false);
+            return 0;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "invalid byte extent")
+
+
+def test_unregistered_foreign_pointer_becomes_inaccessible(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_with_c_suffix(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            rt_register_foreign(p as void*, sizeof(int), false);
+            let before: int = *p;
+            rt_unregister_foreign(p as void*);
+            return *p - before;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "unregistered pointer access")
+
+
+def test_rt_free_rejects_registered_foreign_pointer(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_with_c_suffix(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            rt_register_foreign(p as void*, sizeof(int), false);
+            rt_free(p as void*?);
+            return 0;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "foreign memory is not runtime-owned")
+
+
+def test_drop_rejects_registered_foreign_pointer(codegen_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_with_c_suffix(
+        codegen_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            rt_register_foreign(p as void*, sizeof(int), false);
+            drop p;
+            return 0;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "foreign memory is not runtime-owned")
+
+
 def test_explicit_deref_field_write_rejects_read_only(codegen_single, compile_and_run, tmp_path):
     success, _stdout, stderr = _run_l0(
         codegen_single,
@@ -536,3 +869,177 @@ def test_drop_of_derived_pointer_reports_runtime_error(codegen_single, compile_a
 
     assert not success
     _assert_runtime_failure(stderr, "pointer is not an allocation base")
+
+
+def test_check_basic_base_uaf_reports_runtime_error(analyze_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_check_basic(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+
+        struct Box {
+            value: int;
+        }
+
+        func consume(p: Box*) -> void {
+            drop p;
+        }
+
+        func main() -> int {
+            let p: Box* = new Box(7);
+            consume(p);
+            return p.value;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "use after drop/free")
+
+
+def test_check_basic_double_drop_reports_runtime_error(analyze_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_check_basic(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+
+        struct Box {
+            value: int;
+        }
+
+        func main() -> int {
+            let p: Box* = new Box(7);
+            let q: Box* = p;
+            drop p;
+            drop q;
+            return 0;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "double drop")
+
+
+def test_check_basic_string_bytes_exact_base_rejects_write(analyze_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_check_basic(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.rt;
+
+        func main() -> int {
+            let p: byte* = rt_string_bytes_ptr("Hi");
+            *p = 'X';
+            return 0;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "read-only pointer write")
+
+
+def test_check_basic_heap_string_bytes_exact_base_rejects_write(
+    analyze_single, compile_and_run, tmp_path
+):
+    success, _stdout, stderr = _run_l0_check_basic(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.rt;
+
+        func main() -> int {
+            let a: string = "He";
+            let b: string = a + "llo";
+            let p: byte* = rt_string_bytes_ptr(b);
+            *p = 'X';
+            return 0;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "read-only pointer write")
+
+
+def test_check_basic_registered_foreign_pointer_is_accessible(
+    analyze_single, compile_and_run, tmp_path
+):
+    success, _stdout, stderr = _run_l0_check_basic(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        extern func foreign_value() -> int*;
+
+        func main() -> int {
+            let p: int* = foreign_value();
+            rt_register_foreign(p as void*, sizeof(int), false);
+            *p = 23;
+            let value: int = *p;
+            rt_unregister_foreign(p as void*);
+            return value - 23;
+        }
+        """,
+        _FOREIGN_INT_PROVIDER,
+    )
+
+    assert success, stderr
+
+
+def test_check_basic_stale_derived_access_passes(analyze_single, compile_and_run, tmp_path):
+    success, _stdout, stderr = _run_l0_check_basic(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        func main() -> int {
+            let raw: void* = rt_calloc(2, sizeof(int)) as void*;
+            let elem: int* = rt_array_element(raw, sizeof(int), 1) as int*;
+            *elem = 5;
+            rt_free(raw as void*?);
+            return *elem - 5;
+        }
+        """,
+    )
+
+    assert success, stderr
+
+
+def test_check_basic_drop_of_derived_pointer_reports_unregistered(
+    analyze_single, compile_and_run, tmp_path
+):
+    success, _stdout, stderr = _run_l0_check_basic(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import sys.memory;
+
+        func main() -> int {
+            let raw: void* = rt_calloc(2, sizeof(int)) as void*;
+            let elem: int* = rt_array_element(raw, sizeof(int), 1) as int*;
+            drop elem;
+            return 0;
+        }
+        """,
+    )
+
+    assert not success
+    _assert_runtime_failure(stderr, "unregistered pointer")

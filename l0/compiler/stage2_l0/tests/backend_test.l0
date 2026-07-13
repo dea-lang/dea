@@ -551,7 +551,8 @@ func test_backend_generate_drop_statement() {
         assert(!analysis_has_errors(result), "analysis should succeed for drop fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)"), "drop begin call mismatch");
+        assert(contains_s(generated, "_rt_drop_begin_impl((void*)(p), (l0_int)(sizeof(l0_int)), (l0_int)(_RT_ALIGNOF(l0_int)), __FILE__, __LINE__)"),
+            "sized drop begin call mismatch");
         assert(contains_s(generated, "_rt_drop_finish_impl((void*)("), "drop finish call mismatch");
         assert(contains_s(generated, "p = NULL;"), "drop should null the pointer after release");
 
@@ -588,7 +589,7 @@ func test_backend_generate_drop_begin_before_struct_cleanup() {
         assert(!analysis_has_errors(result), "analysis should succeed for drop begin fixture");
 
         let generated = backend_generate(result, opts, cfg);
-        let begin_idx = find_s(generated, "_rt_drop_begin_impl((void*)(p), __FILE__, __LINE__)");
+        let begin_idx = find_s(generated, "_rt_drop_begin_impl((void*)(p), (l0_int)(sizeof(struct l0_demo_main_Box))");
         let release_idx = find_s(generated, "rt_string_release(l0_drop_");
         let finish_idx = find_s(generated, "_rt_drop_finish_impl((void*)(");
         assert(begin_idx >= 0, "drop begin missing");

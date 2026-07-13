@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-06-24
+Version: 2026-07-11
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -44,7 +44,8 @@ Input is a fully-typed `AnalysisResult`. Output is one C99 translation unit.
 - Implements name mangling and identifier hygiene for C keywords.
 - Converts semantic types to C types.
 - Emits C for operators, constructors, casts, loops, switch/case, labels/gotos.
-- Emits runtime helper calls (checked arithmetic, unwrap helpers, retain/release, allocation/drop).
+- Emits runtime helper calls (checked arithmetic, unwrap helpers, retain/release, allocation, and sized drop
+  begin/finish).
 - Lowers string literals (const and non-const) through one canonical decode/encode path, emitted via
   `L0_STRING_CONST(...)`.
 
@@ -125,7 +126,7 @@ Implemented lowering includes:
 - `case` (scalar switch or string equality chain)
 - `with` (inline or block cleanup forms)
 - `break`, `continue`, `return`
-- `drop` (runtime deallocation + owned-field cleanup)
+- `drop` (provenance/extent validation, owned-field cleanup, then runtime deallocation)
 
 ## Ownership and Cleanup Model
 

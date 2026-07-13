@@ -29,18 +29,32 @@ RUNTIME_SOURCES := $(addprefix $(RUNTIME_ROOT)/src/,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_DEFAULT_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/default/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_TRACED_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/traced/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_UNCHECKED_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/unchecked/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_CHECK_BASIC_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/check_basic/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_TCC_DEFAULT_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/default/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_TCC_TRACED_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/traced/%.o,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_TCC_UNCHECKED_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/unchecked/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_TCC_CHECK_BASIC_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/check_basic/%.o,$(RUNTIME_SOURCE_NAMES))
+# Each object variant depends on a content-sensitive configuration stamp. The
+# stamp recipe runs on every make invocation but preserves its mtime when the
+# compiler/flags/mode content is identical, keeping incremental builds cheap.
+RUNTIME_DEFAULT_CONFIG := $(RUNTIME_BUILD_DIR)/default/.build-config
+RUNTIME_TRACED_CONFIG := $(RUNTIME_BUILD_DIR)/traced/.build-config
+RUNTIME_UNCHECKED_CONFIG := $(RUNTIME_BUILD_DIR)/unchecked/.build-config
+RUNTIME_CHECK_BASIC_CONFIG := $(RUNTIME_BUILD_DIR)/check_basic/.build-config
+RUNTIME_TCC_DEFAULT_CONFIG := $(RUNTIME_TCC_BUILD_DIR)/default/.build-config
+RUNTIME_TCC_TRACED_CONFIG := $(RUNTIME_TCC_BUILD_DIR)/traced/.build-config
+RUNTIME_TCC_UNCHECKED_CONFIG := $(RUNTIME_TCC_BUILD_DIR)/unchecked/.build-config
+RUNTIME_TCC_CHECK_BASIC_CONFIG := $(RUNTIME_TCC_BUILD_DIR)/check_basic/.build-config
 RUNTIME_DEFAULT_LIB := $(RUNTIME_LIB_DIR)/libdea_rt.a
 RUNTIME_TRACED_LIB := $(RUNTIME_LIB_DIR)/libdea_rt_traced.a
 RUNTIME_UNCHECKED_LIB := $(RUNTIME_LIB_DIR)/libdea_rt_unchecked.a
+RUNTIME_CHECK_BASIC_LIB := $(RUNTIME_LIB_DIR)/libdea_rt_check_basic.a
 RUNTIME_PUBLIC_HEADERS := $(RUNTIME_INCLUDE_DIR)/dea_rt.h $(RUNTIME_INCLUDE_DIR)/l1_real.h
 RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples bench-runtime test-all test-docker print-l1-build-dir clean docker
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples bench-runtime test-all test-docker print-l1-build-dir clean docker FORCE
 
 help:
 	@printf '%s\n' \
@@ -48,7 +62,7 @@ help:
 		'' \
 		'Targets:' \
 		'  venv               Delegate to the root `make venv` to create or sync the shared monorepo `../.venv`.' \
-		'  runtime            Build the repo-local L1 runtime archives and public headers under `$(L1_BUILD_DIR)`.' \
+		'  runtime            Build the repo-local L1 runtime archives (`libdea_rt.a`, traced, unchecked, and check-basic) and public headers under `$(L1_BUILD_DIR)`.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  test-all           Run the default L1 validation suite (`test-stage1`, default trace checks, and examples).' \
 		'  test-docker        Run the full L1 validation suite under the repo-owned Linux container (POSIX reference path).' \
@@ -133,6 +147,9 @@ $(RUNTIME_BUILD_DIR)/traced:
 $(RUNTIME_BUILD_DIR)/unchecked:
 	@mkdir -p "$@"
 
+$(RUNTIME_BUILD_DIR)/check_basic:
+	@mkdir -p "$@"
+
 $(RUNTIME_TCC_BUILD_DIR)/default:
 	@mkdir -p "$@"
 
@@ -142,29 +159,80 @@ $(RUNTIME_TCC_BUILD_DIR)/traced:
 $(RUNTIME_TCC_BUILD_DIR)/unchecked:
 	@mkdir -p "$@"
 
+$(RUNTIME_TCC_BUILD_DIR)/check_basic:
+	@mkdir -p "$@"
+
 $(RUNTIME_LIB_DIR):
 	@mkdir -p "$@"
 
 $(RUNTIME_INCLUDE_DIR):
 	@mkdir -p "$@"
 
-$(RUNTIME_BUILD_DIR)/default/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_BUILD_DIR)/default
+FORCE:
+
+define write-runtime-build-config
+	@tmp="$@.tmp"; \
+	{ \
+		printf '%s\n' "compiler=$(strip $(1))"; \
+		printf '%s\n' "cflags=$(strip $(RUNTIME_CFLAGS))"; \
+		printf '%s\n' "tuning=$(strip $(2))"; \
+		printf '%s\n' "mode=$(strip $(3))"; \
+		printf '%s\n' "includes=$(strip $(RUNTIME_INCLUDE_FLAGS))"; \
+	} > "$$tmp"; \
+	if test -r "$@" && cmp -s "$$tmp" "$@"; then \
+		rm -f "$$tmp"; \
+	else \
+		mv -f "$$tmp" "$@"; \
+	fi
+endef
+
+$(RUNTIME_DEFAULT_CONFIG): FORCE | $(RUNTIME_BUILD_DIR)/default
+	$(call write-runtime-build-config,$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS),default)
+
+$(RUNTIME_TRACED_CONFIG): FORCE | $(RUNTIME_BUILD_DIR)/traced
+	$(call write-runtime-build-config,$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS),DEA_TRACE_ARC DEA_TRACE_MEMORY)
+
+$(RUNTIME_UNCHECKED_CONFIG): FORCE | $(RUNTIME_BUILD_DIR)/unchecked
+	$(call write-runtime-build-config,$(L1_RUNTIME_CC),,DEA_RT_UNCHECKED)
+
+$(RUNTIME_CHECK_BASIC_CONFIG): FORCE | $(RUNTIME_BUILD_DIR)/check_basic
+	$(call write-runtime-build-config,$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS),DEA_RT_CHECK_BASIC)
+
+$(RUNTIME_TCC_DEFAULT_CONFIG): FORCE | $(RUNTIME_TCC_BUILD_DIR)/default
+	$(call write-runtime-build-config,$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS),default)
+
+$(RUNTIME_TCC_TRACED_CONFIG): FORCE | $(RUNTIME_TCC_BUILD_DIR)/traced
+	$(call write-runtime-build-config,$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS),DEA_TRACE_ARC DEA_TRACE_MEMORY)
+
+$(RUNTIME_TCC_UNCHECKED_CONFIG): FORCE | $(RUNTIME_TCC_BUILD_DIR)/unchecked
+	$(call write-runtime-build-config,$(L1_TCC_OBJ_CC),,DEA_RT_UNCHECKED)
+
+$(RUNTIME_TCC_CHECK_BASIC_CONFIG): FORCE | $(RUNTIME_TCC_BUILD_DIR)/check_basic
+	$(call write-runtime-build-config,$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS),DEA_RT_CHECK_BASIC)
+
+$(RUNTIME_BUILD_DIR)/default/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_DEFAULT_CONFIG) | $(RUNTIME_BUILD_DIR)/default
 	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
-$(RUNTIME_BUILD_DIR)/traced/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_BUILD_DIR)/traced
+$(RUNTIME_BUILD_DIR)/traced/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_TRACED_CONFIG) | $(RUNTIME_BUILD_DIR)/traced
 	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
-$(RUNTIME_BUILD_DIR)/unchecked/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_BUILD_DIR)/unchecked
+$(RUNTIME_BUILD_DIR)/unchecked/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_UNCHECKED_CONFIG) | $(RUNTIME_BUILD_DIR)/unchecked
 	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) -DDEA_RT_UNCHECKED $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
-$(RUNTIME_TCC_BUILD_DIR)/default/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_TCC_BUILD_DIR)/default
+$(RUNTIME_BUILD_DIR)/check_basic/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_CHECK_BASIC_CONFIG) | $(RUNTIME_BUILD_DIR)/check_basic
+	$(L1_RUNTIME_CC) $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_RT_CHECK_BASIC $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+
+$(RUNTIME_TCC_BUILD_DIR)/default/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_TCC_DEFAULT_CONFIG) | $(RUNTIME_TCC_BUILD_DIR)/default
 	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
-$(RUNTIME_TCC_BUILD_DIR)/traced/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_TCC_BUILD_DIR)/traced
+$(RUNTIME_TCC_BUILD_DIR)/traced/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_TCC_TRACED_CONFIG) | $(RUNTIME_TCC_BUILD_DIR)/traced
 	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
-$(RUNTIME_TCC_BUILD_DIR)/unchecked/%.o: $(RUNTIME_ROOT)/src/%.c | $(RUNTIME_TCC_BUILD_DIR)/unchecked
+$(RUNTIME_TCC_BUILD_DIR)/unchecked/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_TCC_UNCHECKED_CONFIG) | $(RUNTIME_TCC_BUILD_DIR)/unchecked
 	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) -DDEA_RT_UNCHECKED $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+
+$(RUNTIME_TCC_BUILD_DIR)/check_basic/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_TCC_CHECK_BASIC_CONFIG) | $(RUNTIME_TCC_BUILD_DIR)/check_basic
+	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_RT_CHECK_BASIC $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
 
 $(RUNTIME_DEFAULT_LIB): $(RUNTIME_DEFAULT_OBJS) | $(RUNTIME_LIB_DIR)
 	$(AR) rcs "$@" $(RUNTIME_DEFAULT_OBJS)
@@ -174,6 +242,9 @@ $(RUNTIME_TRACED_LIB): $(RUNTIME_TRACED_OBJS) | $(RUNTIME_LIB_DIR)
 
 $(RUNTIME_UNCHECKED_LIB): $(RUNTIME_UNCHECKED_OBJS) | $(RUNTIME_LIB_DIR)
 	$(AR) rcs "$@" $(RUNTIME_UNCHECKED_OBJS)
+
+$(RUNTIME_CHECK_BASIC_LIB): $(RUNTIME_CHECK_BASIC_OBJS) | $(RUNTIME_LIB_DIR)
+	$(AR) rcs "$@" $(RUNTIME_CHECK_BASIC_OBJS)
 
 $(RUNTIME_INCLUDE_DIR)/dea_rt.h: $(RUNTIME_ROOT)/include/dea_rt.h | $(RUNTIME_INCLUDE_DIR)
 	cp "$<" "$@"
@@ -187,10 +258,10 @@ ifeq ($(strip $(L1_TCC_OBJ_CC_IS_EXPLICIT)),)
 	@printf '%s\n' 'make runtime: no tcc: skipping specialized runtime build'
 endif
 else
-runtime-tcc-objects: $(RUNTIME_TCC_DEFAULT_OBJS) $(RUNTIME_TCC_TRACED_OBJS) $(RUNTIME_TCC_UNCHECKED_OBJS)
+runtime-tcc-objects: $(RUNTIME_TCC_DEFAULT_OBJS) $(RUNTIME_TCC_TRACED_OBJS) $(RUNTIME_TCC_UNCHECKED_OBJS) $(RUNTIME_TCC_CHECK_BASIC_OBJS)
 endif
 
-runtime: $(RUNTIME_DEFAULT_LIB) $(RUNTIME_TRACED_LIB) $(RUNTIME_UNCHECKED_LIB) $(RUNTIME_PUBLIC_HEADERS) runtime-tcc-objects
+runtime: $(RUNTIME_DEFAULT_LIB) $(RUNTIME_TRACED_LIB) $(RUNTIME_UNCHECKED_LIB) $(RUNTIME_CHECK_BASIC_LIB) $(RUNTIME_PUBLIC_HEADERS) runtime-tcc-objects
 
 bench-runtime:
 	$(PYTHON) ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")

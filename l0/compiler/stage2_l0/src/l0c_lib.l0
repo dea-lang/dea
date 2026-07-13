@@ -325,6 +325,7 @@ func l0c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
             cg_opts.trace_arc = opts.trace_arc;
             cg_opts.trace_memory = opts.trace_memory;
             cg_opts.rt_unchecked = opts.unchecked;
+            cg_opts.rt_check_basic = opts.check_basic;
 
             let c_code = backend_generate(result, cg_opts, cfg);
             if (opts.output != null) {

@@ -2541,7 +2541,17 @@ func be_emit_drop_stmt(self: Backend*, stmt: StmtNode*) {
     let pointee = (ptr_type as Type*).inner as Type*;
     let drop_tmp = cem_fresh_tmp(self.emitter, "drop");
     let c_ptr_type = cem_emit_type(ptr_type as Type*);
-    cem_emit_temp_decl(self.emitter, c_ptr_type, drop_tmp, cem_emit_drop_begin_expr(c_name, c_ptr_type));
+    cem_emit_temp_decl(
+        self.emitter,
+        c_ptr_type,
+        drop_tmp,
+        cem_emit_drop_begin_expr(
+            c_name,
+            c_ptr_type,
+            be_sizeof_expr_for_type(pointee),
+            be_alignof_expr_for_type(pointee)
+        )
+    );
 
     if (ord(pointee.kind) == ord(TY_STRUCT)) {
         be_emit_struct_cleanup(self, drop_tmp, pointee);

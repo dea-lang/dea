@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-07-03
+Version: 2026-07-11
 
 This document describes how ownership works in L0 today, covering:
 
@@ -18,15 +18,18 @@ This document describes how ownership works in L0 today, covering:
 
 ## 1. Ownership Model at a Glance
 
-L0 uses three cooperating lifetime systems:
+L0 uses four cooperating lifetime systems:
 
 1. **`new` / `drop`** for heap-allocated objects.
-2. **ARC** (automatic reference counting) for `string` values, via `rt_string_retain` / `rt_string_release`.
-3. **Container-level ownership** rules that govern elements stored inside stdlib collections.
+2. **Raw allocation** via `rt_alloc` / `rt_calloc` / `rt_realloc` / `rt_free`.
+3. **ARC** (automatic reference counting) for `string` values, via `rt_string_retain` / `rt_string_release`.
+4. **Container-level ownership** rules that govern elements stored inside stdlib collections.
 
 These systems are deliberately separate:
 
-- `_rt_drop` frees the memory that `new` allocated. It does **not** walk ARC references.
+- Generated drop cleanup releases only memory that `new` allocated. It does **not** recursively walk unrelated child
+  pointers.
+- `rt_free` and `rt_realloc` accept only raw allocations, never `new`, ARC, static, or registered foreign storage.
 - `rt_string_release` frees a string's payload when its refcount reaches zero. It does **not** free `new`-allocated
   object memory.
 
@@ -48,18 +51,19 @@ These systems are deliberately separate:
 How it lowers at runtime:
 
 - `new` lowers to `_rt_alloc_obj(bytes)`.
-- `drop` lowers to `_rt_drop(ptr)`.
+- `drop` lowers to a sized begin/finish protocol. The begin helper validates exact-base `new` provenance, live state,
+  pointee extent, and alignment before generated field cleanup; the finish helper releases the allocation.
 - `new Struct` and `new Struct()` allocate one heap object and zero-initialize it.
 - `new Struct(args...)` allocates one heap object and initializes fields positionally; when arguments are present, the
   constructor requires full struct-field arity.
 - `new Variant(args...)` allocates the owning enum object initialized to that specific variant.
 - The `drop` statement accepts both standard pointers (`T*`) and nullable pointers (`T*?`).
-- `_rt_drop(NULL)` is a safe no-op (e.g. `drop p` where `p` is `null` does nothing).
+- Dropping `null` is a safe no-op (e.g. `drop p` where `p` is `null` does nothing).
 - Dropping a pointer that was not allocated by `new` triggers a runtime panic.
 - Before generated cleanup dereferences a pointee, the backend validates that the pointer is still registered as a `new`
   allocation. This makes stale `drop` failures deterministic even when cleanup must release ARC fields first.
 
-Before calling `_rt_drop`, the compiler may emit field cleanup automatically:
+Between drop begin and finish, the compiler may emit field cleanup automatically:
 
 - If the struct/enum has ARC fields (e.g. `string` members), the current backends insert `rt_string_release` calls for
   those fields before freeing the object.
@@ -67,6 +71,21 @@ Before calling `_rt_drop`, the compiler may emit field cleanup automatically:
   explicitly before dropping the parent.
 
 **Rule of thumb:** if your struct owns child pointers, clean them up yourself before `drop`.
+
+### Raw and foreign memory boundaries
+
+Raw allocations and `new` allocations are intentionally different ownership families. Use `rt_free`/`rt_realloc` only
+for pointers returned by `rt_alloc`, `rt_calloc`, or `rt_realloc`; use `drop` only for pointers returned by `new`.
+Cross-family release is a checked-runtime error.
+
+Storage owned by external C code is untracked until it is explicitly registered with
+`rt_register_foreign(ptr, bytes, read_only)`. Registration supplies an accessible lifetime and extent to checked pointer
+operations but does not transfer ownership. Call `rt_unregister_foreign(ptr)` before the external lifetime ends; it
+removes tracking and never frees the payload. Later access fails as unregistered in the fully checked runtime;
+`--check-basic` retains its general hash-miss-as-untracked behavior. In checked modes, identical live registrations are
+idempotent, while conflicting registrations or invalid unregistration panic. Registered foreign storage cannot be
+dropped, freed, or reallocated by the checked Dea runtime; unchecked mode validates basic registration arguments but
+keeps no registration state.
 
 ## 4. ARC `string` Semantics
 
