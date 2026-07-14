@@ -38,11 +38,12 @@ on:
           - macos-arm64
           - windows-ucrt64
       c_compiler:
-        description: C compiler to use for manual validation runs
+        description: C compiler to use for manual validation runs (default uses the platform compiler)
         required: true
-        default: gcc
+        default: default
         type: choice
         options:
+          - default
           - gcc
           - clang
       l0_make_target:
@@ -203,7 +204,7 @@ jobs:
       - route-levels
       - select-matrix
     if: needs.route-levels.outputs.run_any == 'true'
-    name: unified (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ github.event_name == 'workflow_dispatch' && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
+    name: unified (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ github.event_name == 'workflow_dispatch' && inputs.c_compiler != 'default' && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}
@@ -223,7 +224,7 @@ jobs:
         shell: bash
         run: |
           compiler="${{ matrix.c_compiler }}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.c_compiler }}" != "default" ]; then
             compiler="${{ inputs.c_compiler }}"
             if [ "${{ matrix.os }}" = "darwin" ] && [ "$compiler" = "gcc" ]; then
               compiler="$(python3 -c 'import shutil; print(next((f"gcc-{version}" for version in range(99, 0, -1) if shutil.which(f"gcc-{version}")), ""))')"
