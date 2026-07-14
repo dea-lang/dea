@@ -11,13 +11,15 @@ The root `Makefile` is monorepo maintenance only:
 ```bash
 make help
 make venv
+make test
 make test-all
 make clean
 make clean-all
 ```
 
 Do not use the root `Makefile` as a dispatcher for level-specific build or test commands. `cd` into the relevant level
-directory first. Root `make test-all` is reserved for full validation across every registered level.
+directory first. Root `make test` runs normal validation across every registered level without the dedicated broad trace
+sweeps; root `make test-all` is the full trace-inclusive entrypoint.
 
 ### `l0/`
 
@@ -42,8 +44,12 @@ make test-stage2 TESTS="driver_test l0c_build_run_test"
 make test-stage2-trace
 make triple-test
 make test-workflows
+make -j test
 make -j test-all
 ```
+
+Use `test` for confidently trace-independent work. Use `test-all` when runtime, ownership, emitted lifetime, trace
+infrastructure, or trace-eligible test inputs change, and whenever the classification is uncertain.
 
 Single-test examples:
 
@@ -72,6 +78,8 @@ make use-dev-stage1
 source build/dea/bin/l1-env.sh
 make test-stage1
 make test-stage1 TESTS="parser_test"
+make test
+make test-all
 ```
 
 `l1/` bootstraps with the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2` by default. Use

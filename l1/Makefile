@@ -54,7 +54,7 @@ RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples bench-runtime test-all test-docker print-l1-build-dir clean docker FORCE
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples bench-runtime test-all test-docker print-l1-build-dir clean docker FORCE
 
 help:
 	@printf '%s\n' \
@@ -64,7 +64,8 @@ help:
 		'  venv               Delegate to the root `make venv` to create or sync the shared monorepo `../.venv`.' \
 		'  runtime            Build the repo-local L1 runtime archives (`libdea_rt.a`, traced, unchecked, and check-basic) and public headers under `$(L1_BUILD_DIR)`.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
-		'  test-all           Run the default L1 validation suite (`test-stage1`, default trace checks, and examples).' \
+		'  test               Run the default L1 validation suite without the dedicated trace sweep.' \
+		'  test-all           Run the full L1 validation suite, including the default trace checks.' \
 		'  test-docker        Run the full L1 validation suite under the repo-owned Linux container (POSIX reference path).' \
 		'  test-stage1        Run the L1 Stage 1 `.l0` implementation tests with the built repo-local compiler.' \
 		'  test-stage1-trace  Run default L1 Stage 1 ARC/memory trace checks; skips intentionally slow trace tests.' \
@@ -321,7 +322,9 @@ test-env: venv
 check-examples: build-stage1
 	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L1_BUILD_DIR)/bin/l1c-stage1" --examples-dir examples --extension .l1 --label "L1 Stage 1"
 
-test-all: test-stage1 test-stage1-trace test-env check-examples
+test: test-stage1 test-env check-examples
+
+test-all: test test-stage1-trace
 
 test-docker:
 	$(MAKE) docker CMD=test-all

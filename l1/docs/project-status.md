@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-12
+Version: 2026-07-14
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -125,8 +125,10 @@ source build/dea/bin/l1-env.sh
 l1c --version
 make runtime
 make test-stage1
+make test
 make test-stage1-trace
 make test-stage1-trace-all
+make test-all
 ```
 
 `make use-dev-stage1` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
@@ -139,10 +141,10 @@ tcc object set used by the build driver for tcc links is controlled by `L1_TCC_O
 skips the specialized tcc object build. `make test-stage1-trace` runs the default ARC/memory trace suite and skips
 intentionally slow trace cases such as `math_runtime_compile_test`; pass the test name explicitly or use
 `make test-stage1-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
-latest-stage `--check` coverage for `examples/*.l1`, while `make test-all` combines the implementation tests, default
-ARC/memory trace checks, environment-stackability checks, and example checks. Linux portability is exercised via
-`make test-docker`, which runs `test-all` inside the repo-owned Docker image; run it after runtime, Makefile, or
-build-driver changes.
+latest-stage `--check` coverage for `examples/*.l1`. `make test` combines the implementation tests,
+environment-stackability checks, and example checks without the dedicated broad trace sweep; `make test-all` adds the
+default ARC/memory trace checks. Linux portability is exercised via `make test-docker`, which runs `test-all` inside the
+repo-owned Docker image; run it after runtime, Makefile, or build-driver changes.
 
 Validation is currently centered on:
 
@@ -160,6 +162,9 @@ Validation is currently centered on:
 - `make check-examples` for warning-free latest-stage `--check` coverage across `examples/*.l1`
 
 - `make test-env` for generated launcher and environment-stackability coverage
+
+- `make test` as the normal local Stage 1, environment, and example validation entry point without the dedicated broad
+  trace sweep
 
 - `make test-all` as the combined local Stage 1, trace, environment, and example validation entry point
 

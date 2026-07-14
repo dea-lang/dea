@@ -33,10 +33,15 @@ l1c --help
 l1c --version
 make check-examples
 make test-stage1
+make test
 make test-stage1-trace
 make test-stage1-trace-all
 make test-all
 ```
+
+`make test` combines the normal Stage 1, environment-stackability, and example validation without the dedicated broad
+ARC/memory trace sweep. Use it for confidently trace-independent work. `make test-all` adds the default dedicated trace
+sweep and remains the full CI/Docker backstop.
 
 `make test-stage1-trace` is the default ARC/memory trace suite and skips intentionally slow trace cases such as
 `math_runtime_compile_test`. Use `make test-stage1-trace-all` to include those slow trace checks, or pass a slow test

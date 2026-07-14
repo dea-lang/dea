@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-07-13
+Version: 2026-07-14
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -102,7 +102,7 @@ The monorepo now has a small but real shared top-level layer:
 - root `work/plans/` for Dea-wide planning,
 - root `docs/` for Dea-wide status and reference documents,
 - root `CLAUDE.md` for monorepo-wide workflow policy,
-- root `Makefile` for shared `help`, `venv`, `test-all`, `clean`, and `clean-all`,
+- root `Makefile` for shared `help`, `venv`, normal `test`, full trace-inclusive `test-all`, `clean`, and `clean-all`,
 - root `scripts/dea_tooling/` for shared launcher/bootstrap helpers.
 
 This shared layer is intentionally narrow. Most compiler, language, runtime, and user-facing documentation remains owned

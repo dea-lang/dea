@@ -74,7 +74,8 @@ says "ok commit", record and reuse that result if the validated inputs have not 
 
 Treat validation as reusable when all of these are true:
 
-- The completed command covered the current code/build/test scope. A broader passing suite satisfies a narrower scope.
+- The completed command covered the current code/build/test scope. A passing `test-all` satisfies `test`; a passing
+  `test` does not by itself satisfy `test-all`.
 - No code, tests, build configuration, dependencies, generated source, or compiler/toolchain selection covered by the
   result changed after the run. Any branch or `HEAD` change preserved the exact validated tree.
 - No user, external process, or other agent modified an input covered by the result after the run.
@@ -86,10 +87,17 @@ staging unchanged content does not invalidate validation. Plan closure, document
 formatting after the suite also do not invalidate code-test results; run the applicable docs checks plus the mandatory
 staged whitespace and pre-commit checks instead.
 
-Do not upgrade a just-passed `test-all` run to `clean test-all` solely because the scope matrix names the clean command.
-The `clean` prefix is how to obtain fresh validation when validation is needed, not a reason to discard a passing result
-for unchanged inputs. Rerun from clean only when the work concerns clean-build behavior, dependency or artifact
-invalidation, or there is concrete reason to distrust the prior artifacts.
+When there is no clean-build or artifact-validity reason to rerun normal validation, unchanged inputs already passed
+`test`, and the final classification requires `test-all`, reuse the normal-suite result and run only the missing
+dedicated trace target for each affected level: `make -C l0 test-stage2-trace` and/or `make -C l1 test-stage1-trace`.
+"Affected level" means every level selected by the scope matrix, including all registered levels for root/cross-cutting
+validation. The unchanged passing `test` plus the applicable passing trace target(s) jointly satisfy full validation; do
+not invoke `test-all` merely to repeat the normal work.
+
+Do not upgrade a just-passed applicable `test` or `test-all` run to its `clean` form solely because the scope matrix
+names the clean command. The `clean` prefix is how to obtain fresh validation when validation is needed, not a reason to
+discard a passing result for unchanged inputs. Rerun from clean only when the work concerns clean-build behavior,
+dependency or artifact invalidation, or there is concrete reason to distrust the prior artifacts.
 
 If an input covered by the prior suite changed, the suite did not cover the current scope, an external modification
 affected a covered input, or the evidence is uncertain, run the smallest applicable validation not already satisfied by
@@ -99,6 +107,46 @@ restaging and rerunning the staged checks.
 
 In the final handoff, name every reused validation command and result and state why it remained valid, including the
 absence of intervening relevant or external modifications.
+
+### Validation tier classification
+
+Choose the validation tier from the complete intended commit diff before applying the level scope matrix. Scope and tier
+are independent decisions; reclassify if staging or pre-commit changes that diff:
+
+- `test` is the normal validation aggregate. It preserves the ordinary compiler, example, environment, workflow, and
+  distribution checks owned by the affected level while omitting only the dedicated broad `run_trace_tests.py` sweep.
+  Focused trace regressions already embedded in a normal suite remain included.
+- `test-all` is the full aggregate: `test` plus the affected level's dedicated ARC/memory trace sweep.
+
+Require `test-all` when any functional change can affect trace health or the trace gate itself, including:
+
+- runtime implementation or configuration, allocation tracking, quarantine behavior, pointer provenance/bounds/alignment
+  validation, runtime variants, or compiler/runtime flags that select those behaviors
+- ownership or lifetime behavior such as `new`, `drop`, raw allocation/free/reallocation, ARC retain/release, managed
+  assignment/copy/move/return/argument passing, nullable unwrap, owned container storage, generated cleanup, or
+  allocation-bearing control flow in self-hosted compiler code
+- backend or C-emitter behavior that can alter generated allocation, ownership, lifetime, cleanup, or trace
+  instrumentation
+- trace flags or defines, trace event formats, runner/checker logic, discovery/exclusion/parallelism, artifact handling,
+  trace environment, or Make/CI wiring of dedicated trace targets
+- adding, changing, removing, or renaming a trace-eligible top-level `.l0` test under `l0/compiler/stage2_l0/tests/` or
+  `l1/compiler/stage1_l0/tests/`, or a fixture/dependency whose execution can affect that trace result; when the changed
+  case is intentionally excluded from the default sweep, also run its documented focused trace command because
+  `test-all` will not execute it
+
+`test` is sufficient only when every functional change is confidently trace-independent. Examples include:
+
+- diagnostics, source spans, help/version/output wording, AST/debug printing, and comparable presentation-only edits
+- lexer, parser, name-resolution, or type-analysis changes that do not alter ownership classification, accepted-program
+  memory semantics, emitted cleanup, or the self-hosted compiler's own owning-value/control-flow behavior
+- pure scalar behavior with no allocation, managed values, pointer validation, cleanup, or trace-instrumentation impact
+- new or changed non-trace Python tests and ordinary test harnesses that do not affect trace discovery or execution
+- CI routing, packaging, release, documentation tooling, or Make changes that do not alter trace invocation, inputs,
+  environment, compiler/runtime flags, or artifacts
+
+These categories select the aggregate tier only. Continue to run every focused validation required by the affected
+subsystem. Do not require full validation solely because a path is compiler-, test-, CI-, or tooling-related. If the
+diff mixes trace-independent and trace-sensitive work, or the classification is uncertain, use `test-all`.
 
 ### Validation scope matrix
 
@@ -124,13 +172,20 @@ For history-only rewrites such as squash, reword, or reorder operations:
   `git diff --cached --quiet "$pre_rewrite_commit"` to prove staged tree identity, then verify the replacement commit's
   tree matches the recorded pre-rewrite tree.
 
-- For code changes confined to `l0/`: run `make -C l0 clean test-all`.
+- For trace-independent non-documentation functional changes confined to `l0/`: run `make -C l0 clean test`.
 
-- For code changes confined to `l1/`: run `make -C l1 clean test-all`.
+- For trace-sensitive non-documentation functional changes confined to `l0/`: run `make -C l0 clean test-all`.
 
-- For cross-cutting code changes (touching more than one level, or touching shared/root paths such as `scripts/`,
-  `tools/`, root `pyproject.toml`, `uv.lock`, root config, or the root `Makefile`): run the full repo-root
-  `make clean test-all` (executes in all `lN` directories).
+- For trace-independent non-documentation functional changes confined to `l1/`: run `make -C l1 clean test`.
+
+- For trace-sensitive non-documentation functional changes confined to `l1/`: run `make -C l1 clean test-all`.
+
+- For trace-independent cross-cutting non-documentation functional changes (touching more than one level, or touching
+  shared/root paths such as `scripts/`, `tools/`, root `pyproject.toml`, `uv.lock`, root config, or the root
+  `Makefile`): run the repo-root `make clean test` (executes in all `lN` directories).
+
+- For trace-sensitive cross-cutting non-documentation functional changes: run the repo-root `make clean test-all`
+  (executes in all `lN` directories).
 
 - Support-script exception: Do not classify a change as cross-cutting solely because it adds a new auxiliary utility
   under root `scripts/`, plus its focused test and test-target wiring, when it does not change compiler behavior or
@@ -141,7 +196,8 @@ For history-only rewrites such as squash, reword, or reorder operations:
 
 - For docs-only changes: run `git diff --check`; run docs tooling when the edited docs have a generator/check target
 
-5. Stage explicitly. Use `git add -u <scope>` plus explicit new files. Re-check `git status --short`.
+5. Stage explicitly. Use `git add -u <scope>` plus explicit new files. Re-check `git status --short`, the staged diff,
+   and the validation tier; if staging changes the intended commit, reclassify it before continuing.
 6. Run staged whitespace check:
 
 ```bash
@@ -232,6 +288,7 @@ git log -1 --oneline
 4. Final response must include:
 
 - commit hash and summary
+- selected validation tier, or docs-only classification, and the trace-risk rationale for that classification
 - validation commands run; for every reused result, its command, result, and unchanged-input evidence, plus tree
   identity for a history-only rewrite
 - any unstaged/untracked files intentionally left alone

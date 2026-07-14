@@ -326,6 +326,7 @@ def main() -> int:
             "dist",
             "use-dev-stage1",
             "use-dev-stage2",
+            "test",
             "test-stage1",
             "test-stage2",
             "test-stage2-trace",
@@ -338,6 +339,7 @@ def main() -> int:
             "clean-dea-build",
         ):
             assert_output_contains(help_output, target)
+        assert_output_contains(help_output, "  test               Run Stage 1")
         assert_output_contains(help_output, "PREFIX=<required>")
 
         print_dea_build_output = run_checked(make_command(dea_build_rel, "print-dea-build-dir"))
@@ -520,6 +522,7 @@ def main() -> int:
             "test-stage1": "pytest -n auto",
             "test-stage2": "./compiler/stage2_l0/scripts/run_tests.py",
             "test-stage2-trace": "./compiler/stage2_l0/scripts/run_trace_tests.py",
+            "test": "./compiler/stage2_l0/scripts/run_tests.py",
             "check-examples": "../scripts/check_examples.py",
             "test-dist": "./tests/test_make_dist_workflow.py",
             "triple-test": "./compiler/stage2_l0/tests/l0c_triple_bootstrap_test.py",
@@ -532,9 +535,21 @@ def main() -> int:
             assert_output_contains(output, expected)
             if target in {"test-stage2", "test-stage2-trace", "triple-test", "check-examples"}:
                 assert_output_contains(output, "./scripts/build_stage2_l0c.py")
+            if target in {"test", "test-all"}:
+                for component in (
+                    "pytest -n auto",
+                    "./compiler/stage2_l0/scripts/run_tests.py",
+                    "../scripts/check_examples.py",
+                    "./tests/test_make_dist_workflow.py",
+                    "./tests/test_make_dea_build_workflow.py",
+                    "./tests/test_dist_tools_lib_fallback.py",
+                    "./tests/test_release_tag_policy.py",
+                ):
+                    assert_output_contains(output, component)
+            if target == "test":
+                assert_output_not_contains(output, "./compiler/stage2_l0/scripts/run_trace_tests.py")
             if target == "test-all":
-                assert_output_contains(output, "../scripts/check_examples.py")
-                assert_output_contains(output, "./tests/test_make_dea_build_workflow.py")
+                assert_output_contains(output, "./compiler/stage2_l0/scripts/run_trace_tests.py")
 
         run_checked(make_command(dea_build_rel, "clean-dea-build"))
         if dea_build_dir.exists():

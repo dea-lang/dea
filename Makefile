@@ -24,7 +24,7 @@ PIP_DEPS_CMD = import tomllib,pathlib;\
 	g=tomllib.loads(pathlib.Path('pyproject.toml').read_text()).get('dependency-groups',{});\
 	print(' '.join(d for d in g.get('dev',[])+g.get('docs',[]) if isinstance(d,str)))
 
-.PHONY: help venv clean clean-all test-all _check-level-dirs _check-python _clean-root-paths
+.PHONY: help venv clean clean-all test test-all _check-level-dirs _check-python _clean-root-paths
 
 help:
 	@printf '%s\n' \
@@ -33,7 +33,8 @@ help:
 		'Targets:' \
 		'  help               Show this help text.' \
 		'  venv               Create or sync the shared monorepo `./.venv` (prefer `uv`, fall back to `python -m venv` + `pip`).' \
-		'  test-all           Run `make test-all` in each registered level.' \
+		'  test               Run `make test` in each registered level without dedicated trace sweeps.' \
+		'  test-all           Run full validation, including dedicated trace sweeps, in each registered level.' \
 		'  clean              Run `make clean` in each registered level, then remove root caches/artifacts.' \
 		'  clean-all          Run `make clean-all` in each registered level, then remove root caches/artifacts.' \
 		'' \
@@ -117,6 +118,12 @@ _clean-root-paths:
 				rm -rf -- "$$path"; \
 			fi; \
 		done; \
+	done
+
+test: _check-level-dirs
+	@for level in $(DEA_LEVEL_DIRS); do \
+		printf '==> %s: make test\n' "$$level"; \
+		$(MAKE) -C "$$level" test || exit $$?; \
 	done
 
 test-all: _check-level-dirs

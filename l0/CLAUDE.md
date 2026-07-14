@@ -101,9 +101,10 @@ Therefore:
 
 ## Commands
 
-Run L0-specific commands from the `l0/` directory. The monorepo root `Makefile` only owns `help`, `venv`, `test-all`,
-`clean`, and `clean-all`; root `test-all` is the full registered-level validation entrypoint, not a focused L0 target.
-For normal development, prefer the repo-local switchable `l0c` alias:
+Run L0-specific commands from the `l0/` directory. The monorepo root `Makefile` only owns `help`, `venv`, `test`,
+`test-all`, `clean`, and `clean-all`; root `test` is normal registered-level validation without the dedicated broad
+trace sweeps, while root `test-all` is the full trace-inclusive entrypoint. Neither is a focused L0 target. For normal
+development, prefer the repo-local switchable `l0c` alias:
 
 ```bash
 make use-dev-stage2 # or `make use-dev-stage1`; each builds and installs the launcher automatically
@@ -158,7 +159,8 @@ python scripts/build_stage2_l0c.py # build the stage 2 compiler and place it und
 make use-dev-stage2 # build, install, and select the Stage 2 launcher under build/dea/bin
 source build/dea/bin/l0-env.sh # activate the repo-local Dea build workflow in your shell
 make PREFIX=/tmp/l0-install install # install the self-hosted Stage 2 compiler under one prefix
-make test-all # run the full Stage 1 + Stage 2 validation suite, including example checks
+make test # run normal Stage 1 + Stage 2 validation without the dedicated broad trace sweep
+make test-all # add the dedicated Stage 2 ARC/memory trace sweep
 make triple-test # run the strict triple-bootstrap regression
 ```
 
@@ -184,19 +186,22 @@ make test-stage1                                      # recommended Stage 1 test
 ../.venv/bin/python -m pytest -k "test_name" compiler/stage1_py/tests
 ```
 
-For Stage 2 (`compiler/stage2_l0`) changes, finalization checks should include:
+For trace-independent Stage 2 (`compiler/stage2_l0`) changes, focused finalization checks should include:
 
 ```bash
 make test-stage2
-make test-stage2-trace
 make check-examples
 make triple-test # this is included in test-stage2 but can be run separately if needed
 ```
 
-Full Stage 1 + Stage 2 validation can be run in parallel (recommended finalization step before commit) with:
+Add `make test-stage2-trace` for runtime, ownership, ARC, pointer-validation, emitted-lifetime, trace-infrastructure, or
+trace-eligible-test changes, and whenever trace risk is uncertain.
+
+The aggregate validation tiers can be run in parallel with:
 
 ```bash
-make -j test-all # runs all tests in parallel, including Stage 1, Stage 2, example checks, and trace tests
+make -j test # normal Stage 1, Stage 2, example, workflow, and distribution validation
+make -j test-all # the same validation plus the dedicated broad Stage 2 trace sweep
 ```
 
 For workflow and distribution tooling validation:
@@ -216,8 +221,9 @@ make refresh-goldens                                  # regenerate Stage 2 backe
 These Make targets are self-contained repo-local workflows: they ensure `../.venv`, prepare the Stage 2 artifact under
 `DEA_BUILD_DIR` (default=`build/dea`), and scrub installed-prefix `L0_*` env leakage before running.
 
-`run_trace_tests.py` is an important finalization gate because it validates ARC/memory traces and leak triage across all
-Stage 2 tests.
+`run_trace_tests.py` is the required full-validation gate for trace-sensitive work because it validates ARC/memory
+traces and leak triage across all trace-eligible Stage 2 tests. Routine changes that are confidently trace-independent
+use `make test` instead.
 
 The root `Dockerfile` is a supported Linux test environment, but Docker use is always explicit. Prefer
 `make docker CMD=test-all` when you want the containerized workflow; do not add Docker as an implicit dependency of the
@@ -277,7 +283,8 @@ rules here unless this file defines a narrower L0-specific requirement.
 ### Definition of Done
 
 1. **No UB:** Emitted C99 must be memory-safe and UB-free.
-2. **Trace Validated:** `run_trace_tests.py` must pass with zero leaks.
+2. **Trace Validated When Relevant:** Trace-sensitive work must pass `run_trace_tests.py` with zero leaks; routine work
+   must be affirmatively classified as trace-independent before using the normal `test` tier.
 3. **English Only:** All code names and comments MUST be in English.
 4. **Tests Updated:** All relevant tests must be added/updated in the same PR.
 5. **Documentation Updated:** If behavior changes, corresponding `.md` in `docs/`

@@ -41,6 +41,7 @@ L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 	dist \
 	use-dev-stage1 \
 	use-dev-stage2 \
+	test \
 	test-stage1 \
 	test-stage2 \
 	test-stage2-trace \
@@ -77,7 +78,8 @@ help:
 		'  use-dev-stage1     Install and switch the repo-local `l0c` alias to Stage 1.' \
 		'  use-dev-stage2     Build and switch the repo-local `l0c` alias to Stage 2.' \
 		'  install-dev-stages Prepare both Stage 1 and Stage 2 launchers under DEA_BUILD_DIR.' \
-		'  test-all           Run the full Stage 1, Stage 2, example, workflow, and distribution validation suite.' \
+		'  test               Run Stage 1, Stage 2, example, workflow, and distribution validation without the dedicated trace sweep.' \
+		'  test-all           Run the full validation suite, including the dedicated Stage 2 trace sweep.' \
 		'  test-stage1        Validate the Stage 1 Python compiler test suite.' \
 		'  test-stage2        Validate the Stage 2 compiler test suite; pass TESTS="name1 name2" to run selected cases.' \
 		'  test-stage2-trace  Validate Stage 2 ARC and memory tracing behavior; pass TESTS="name1 name2" to run selected cases.' \
@@ -244,7 +246,9 @@ test-shuffle-sources: | venv
 test-workflows: test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources
 	@printf 'All workflow tests passed!\n'
 
-test-all: test-stage1 test-stage2 test-stage2-trace check-examples test-workflows
+test: test-stage1 test-stage2 check-examples test-workflows
+
+test-all: test test-stage2-trace
 
 refresh-goldens: venv
 	"$(VENV_PYTHON)" ./scripts/refresh_stage2_backend_goldens.py
