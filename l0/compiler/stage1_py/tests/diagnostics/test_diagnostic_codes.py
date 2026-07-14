@@ -21,6 +21,11 @@ WARNING_CODES = {
 # Codes emitted by `l0c` command paths (covered in CLI tests, not here).
 CLI_ONLY_CODES = set(DIAGNOSTIC_CODE_FAMILIES["L0C"])
 
+
+def test_cli_diagnostic_registry_includes_unstructured_token_failure():
+    assert "L0C-0042" in DIAGNOSTIC_CODE_FAMILIES["L0C"]
+
+
 # Internal codes unreachable from user source.
 INTERNAL_CODES = {
     # Parser precondition/guard code paths not reachable from source text.

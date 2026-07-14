@@ -142,7 +142,7 @@ def test_snippet_no_location_prints_only_header(monkeypatch):
 
     lines = _capture_snippet(diag, monkeypatch)
 
-    assert "error: boom" in lines
+    assert lines == ["error: boom"]
 
 
 def test_snippet_point_caret_single_line(tmp_path, monkeypatch):
@@ -159,31 +159,11 @@ def test_snippet_point_caret_single_line(tmp_path, monkeypatch):
     )
 
     lines = _capture_snippet(diag, monkeypatch)
-    assert len(lines) ==6
-
-    header, src_line, caret_line = (lines[index] for index in (1, 3, 5))
-
-    # Header is whatever diag.format() produces
-    assert header == diag.format()
-
-    # Source line with gutter
-    assert src_line.endswith("abcdef")
-    assert src_line.strip().startswith("1 ")
-
-    # Caret alignment: first caret under 'c'
-    # Reconstruct indices based on the implementation logic.
-    width = max (5, len(str(diag.line)))
-    gutter_len_src = len(f"{diag.line:>{width}} | ")
-    gutter_len_caret = len(" " * width + " | ")
-
-    # First caret index in caret_line
-    start_col = max(1, diag.column)
-    first_caret_idx = len(" " * width + " | " + " " * (start_col - 1))
-    assert caret_line[first_caret_idx] == "^"
-
-    # Character under caret in src_line
-    src_idx = gutter_len_src + (start_col - 1)
-    assert src_line[src_idx] == "c"
+    assert lines == [
+        diag.format(),
+        "    1 | abcdef",
+        "      |   ^",
+    ]
 
 
 def test_snippet_span_same_line(tmp_path, monkeypatch):
@@ -203,23 +183,11 @@ def test_snippet_span_same_line(tmp_path, monkeypatch):
     )
 
     lines = _capture_snippet(diag, monkeypatch)
-    assert len(lines) == 6
-
-    src_line = lines[3]
-    caret_line = lines[5]
-
-    assert src_line.endswith("0123456789")
-
-    width = max(5, len(str(diag.line)))
-    start_col = diag.column
-    end_col = diag.end_column
-    expected_width = max(1, end_col - start_col)
-
-    prefix = " " * width + " | " + " " * (start_col - 1)
-    assert caret_line.startswith(prefix)
-    carets = caret_line[len(prefix):]
-    assert set(carets) == {"^"}
-    assert len(carets) == expected_width
+    assert lines == [
+        diag.format(),
+        "    1 | 0123456789",
+        "      |   ^^^^",
+    ]
 
 
 def test_parser_token_span_renders_full_else_keyword(tmp_path, monkeypatch):
@@ -246,16 +214,11 @@ func main() -> int {
     )
 
     lines = _capture_snippet(duplicate_else_diag, monkeypatch)
-    assert len(lines) == 6
-
-    src_line = lines[3]
-    caret_line = lines[5]
-    assert src_line.endswith("        else 3;")
-
-    width = max(5, len(str(duplicate_else_diag.line)))
-    prefix = " " * width + " | " + " " * (duplicate_else_diag.column - 1)
-    carets = caret_line[len(prefix):]
-    assert carets == "^^^^"
+    assert lines == [
+        duplicate_else_diag.format(),
+        "    7 |         else 3;",
+        "      |         ^^^^",
+    ]
 
 
 def test_snippet_span_multiline_end_extends_to_eol(tmp_path, monkeypatch):
@@ -275,22 +238,11 @@ def test_snippet_span_multiline_end_extends_to_eol(tmp_path, monkeypatch):
     )
 
     lines = _capture_snippet(diag, monkeypatch)
-    assert len(lines) == 6
-
-    src_line = lines[3]
-    caret_line = lines[5]
-
-    assert src_line.endswith("abcdef")
-
-    width = max(5, len(str(diag.line)))
-    start_col = diag.column
-    # Implementation uses end_col = len(src_line) + 1 in this case
-    expected_width = len("bcdef") # from col 2 to end of line
-
-    prefix = " " * width + " | " + " " * (start_col - 1)
-    carets = caret_line[len(prefix):]
-    assert set(carets) == {"^"}
-    assert len(carets) == expected_width
+    assert lines == [
+        diag.format(),
+        "    1 | abcdef",
+        "      |  ^^^^^",
+    ]
 
 
 def test_snippet_no_column_prints_no_carets(tmp_path, monkeypatch):
@@ -309,6 +261,7 @@ def test_snippet_no_column_prints_no_carets(tmp_path, monkeypatch):
     lines = _capture_snippet(diag, monkeypatch)
 
     # Header + source line, but no caret line
-    assert len(lines) == 4
-    assert lines[1] == diag.format()
-    assert lines[3].endswith("line only")
+    assert lines == [
+        diag.format(),
+        "    1 | line only",
+    ]

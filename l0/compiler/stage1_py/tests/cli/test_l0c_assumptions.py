@@ -2,6 +2,7 @@
 #  Copyright (c) 2026 gwz
 
 import argparse
+import re
 import textwrap
 from types import SimpleNamespace
 
@@ -60,6 +61,19 @@ class _RunResult:
         self.stderr = stderr
 
 
+def _assert_plain_diagnostic_output(default_stderr: str, rich_stderr: str) -> None:
+    """Assert that a diagnostic bypasses logger fallback and rich formatting."""
+    assert rich_stderr == default_stderr
+    assert "No context provided for logging." not in rich_stderr
+    assert "[ERROR]" not in rich_stderr
+    assert "[WARNING]" not in rich_stderr
+    assert not re.search(
+        r"(?m)^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} "
+        r"\[(?:ERROR|WARNING|INFO|DEBUG)\] ",
+        rich_stderr,
+    )
+
+
 def test_build_fails_when_entry_main_missing(tmp_path, monkeypatch, capsys):
     _write_module(
         tmp_path,
@@ -77,7 +91,7 @@ def test_build_fails_when_entry_main_missing(tmp_path, monkeypatch, capsys):
     assert "[L0C-0012]" in capsys.readouterr().err
 
 
-def test_build_warns_when_entry_main_return_type_is_not_preferred(tmp_path, monkeypatch, capsys):
+def test_build_main_return_warning_is_not_decorated_by_log(tmp_path, monkeypatch, capsys):
     _write_module(
         tmp_path,
         "app.main",
@@ -88,13 +102,21 @@ def test_build_warns_when_entry_main_return_type_is_not_preferred(tmp_path, monk
     )
     monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
 
-    rc = cmd_build(_build_args(tmp_path, "app.main"))
+    default_rc = cmd_build(_build_args(tmp_path, "app.main"))
+    default = capsys.readouterr()
+    rich_rc = cmd_build(_build_args(tmp_path, "app.main", log=True))
+    rich = capsys.readouterr()
 
-    assert rc == 0
-    assert "[L0C-0013]" in capsys.readouterr().err
+    assert (default_rc, rich_rc) == (0, 0)
+    assert default.out == rich.out == ""
+    assert default.err == (
+        "warning: [L0C-0013] entry 'main' returns 'string' "
+        "(preferred: void/int/bool); generated C entry wrapper will ignore the return value\n"
+    )
+    _assert_plain_diagnostic_output(default.err, rich.err)
 
 
-def test_build_surfaces_analysis_warning_for_duplicate_import(tmp_path, monkeypatch, capsys):
+def test_build_structured_duplicate_import_warning_is_not_decorated_by_log(tmp_path, monkeypatch, capsys):
     # Oracle pin: a non-fatal analysis warning must reach stderr in `--build`
     # mode, not only in `--check`.
     _write_module(
@@ -117,10 +139,41 @@ def test_build_surfaces_analysis_warning_for_duplicate_import(tmp_path, monkeypa
     )
     monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
 
-    rc = cmd_build(_build_args(tmp_path, "app.main"))
+    default_rc = cmd_build(_build_args(tmp_path, "app.main"))
+    default = capsys.readouterr()
+    rich_rc = cmd_build(_build_args(tmp_path, "app.main", log=True))
+    rich = capsys.readouterr()
 
+    assert (default_rc, rich_rc) == (0, 0)
+    assert default.out == rich.out == ""
+    _assert_plain_diagnostic_output(default.err, rich.err)
+    lines = default.err.splitlines()
+    assert len(lines) == 3
+    assert "warning: [RES-0036] duplicated 'import dep'" in lines[0]
+    assert " | import dep;" in lines[1]
+    assert "^" in lines[2]
+
+
+def test_build_rich_info_logs_remain_logger_controlled(tmp_path, monkeypatch, capsys):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
+    monkeypatch.setattr("l0_logger.time.strftime", lambda *_args: "2042-01-02 03:04:05")
+
+    rc = cmd_build(_build_args(tmp_path, "main", log=True, verbosity=1))
+
+    captured = capsys.readouterr()
     assert rc == 0
-    assert "[RES-0036] duplicated 'import dep'" in capsys.readouterr().err
+    assert captured.out == ""
+    assert "2042-01-02 03:04:05 [INFO] Generated C code:" in captured.err
+    assert "2042-01-02 03:04:05 [INFO] Using C compiler: cc" in captured.err
+    assert "2042-01-02 03:04:05 [INFO] Built executable:" in captured.err
 
 
 def test_codegen_stdout_preserves_single_trailing_newline(monkeypatch, capsys):
@@ -156,6 +209,24 @@ def test_check_rejects_invalid_entry_module_name(tmp_path, capsys):
 
     assert rc == 1
     assert "[L0C-0011]" in capsys.readouterr().err
+
+
+def test_check_structured_error_is_not_decorated_by_log(tmp_path, capsys):
+    _write_module(tmp_path, "main", "module main; +;")
+
+    default_rc = cmd_check(_inspect_args(tmp_path, "main"))
+    default = capsys.readouterr()
+    rich_rc = cmd_check(_inspect_args(tmp_path, "main", log=True))
+    rich = capsys.readouterr()
+
+    assert (default_rc, rich_rc) == (1, 1)
+    assert default.out == rich.out == ""
+    _assert_plain_diagnostic_output(default.err, rich.err)
+    lines = default.err.splitlines()
+    assert len(lines) == 3
+    assert "error: [PAR-0020]" in lines[0]
+    assert " | module main; +;" in lines[1]
+    assert "^" in lines[2]
 
 
 def test_build_accepts_existing_runtime_lib_directory(tmp_path, monkeypatch):
@@ -525,34 +596,43 @@ def test_run_with_keep_c_and_output_uses_output_stem_for_c_path(tmp_path, monkey
     assert captured["c_output_path"] == "custom_name.c"
 
 
-def test_run_warns_when_output_is_set_without_keep_c(tmp_path, monkeypatch, capsys):
+def test_run_output_warning_is_not_decorated_by_log(tmp_path, monkeypatch, capsys):
     def _fake_cmd_build(args):
         return 1
 
     monkeypatch.setattr("l0c.cmd_build", _fake_cmd_build)
 
-    args = argparse.Namespace(
-        entry="app.main",
-        args=[],
-        output="custom_name",
-        c_compiler="cc",
-        c_options=None,
-        runtime_include=None,
-        runtime_lib=None,
-        keep_c=False,
-        verbosity=0,
-        project_root=[str(tmp_path)],
-        sys_root=[],
-        no_line_directives=False,
-        trace_arc=False,
-        trace_memory=False,
-        log=False,
+    def _args(log: bool) -> argparse.Namespace:
+        return argparse.Namespace(
+            entry="app.main",
+            args=[],
+            output="custom_name",
+            c_compiler="cc",
+            c_options=None,
+            runtime_include=None,
+            runtime_lib=None,
+            keep_c=False,
+            verbosity=0,
+            project_root=[str(tmp_path)],
+            sys_root=[],
+            no_line_directives=False,
+            trace_arc=False,
+            trace_memory=False,
+            log=log,
+        )
+
+    default_rc = cmd_run(_args(log=False))
+    default = capsys.readouterr()
+    rich_rc = cmd_run(_args(log=True))
+    rich = capsys.readouterr()
+
+    assert (default_rc, rich_rc) == (1, 1)
+    assert default.out == rich.out == ""
+    assert default.err == (
+        "warning: [L0C-0017] '--output' is ignored in '--run' mode unless '--keep-c' is set; "
+        "the executable path remains temporary\n"
     )
-
-    rc = cmd_run(args)
-
-    assert rc == 1
-    assert "[L0C-0017]" in capsys.readouterr().err
+    _assert_plain_diagnostic_output(default.err, rich.err)
 
 
 def test_build_fails_when_no_c_compiler_is_available(tmp_path, monkeypatch, capsys):
@@ -656,7 +736,7 @@ def test_ast_reports_missing_entry_module_in_compilation_unit(tmp_path, monkeypa
     assert "[L0C-0030]" in capsys.readouterr().err
 
 
-def test_tok_reports_read_error_for_entry_file(tmp_path, monkeypatch, capsys):
+def test_tok_read_error_is_not_decorated_by_log(tmp_path, monkeypatch, capsys):
     _write_module(
         tmp_path,
         "main",
@@ -667,13 +747,18 @@ def test_tok_reports_read_error_for_entry_file(tmp_path, monkeypatch, capsys):
     )
     monkeypatch.setattr("l0c.load_source_utf8", lambda _path: (_ for _ in ()).throw(OSError("read failed")))
 
-    rc = cmd_tok(_inspect_args(tmp_path, "main"))
+    default_rc = cmd_tok(_inspect_args(tmp_path, "main"))
+    default = capsys.readouterr()
+    rich_rc = cmd_tok(_inspect_args(tmp_path, "main", log=True))
+    rich = capsys.readouterr()
 
-    assert rc == 1
-    assert "[L0C-0040]" in capsys.readouterr().err
+    assert (default_rc, rich_rc) == (1, 1)
+    assert default.out == rich.out == ""
+    assert default.err == f"error: [L0C-0040] cannot read {tmp_path / 'main.l0'}: read failed\n"
+    _assert_plain_diagnostic_output(default.err, rich.err)
 
 
-def test_tok_reports_source_encoding_error_for_entry_file(tmp_path, monkeypatch, capsys):
+def test_tok_source_encoding_error_is_not_decorated_by_log(tmp_path, monkeypatch, capsys):
     _write_module(
         tmp_path,
         "main",
@@ -687,10 +772,45 @@ def test_tok_reports_source_encoding_error_for_entry_file(tmp_path, monkeypatch,
         lambda _path: (_ for _ in ()).throw(SourceEncodingError("main.l0", "invalid UTF-8")),
     )
 
-    rc = cmd_tok(_inspect_args(tmp_path, "main"))
+    default_rc = cmd_tok(_inspect_args(tmp_path, "main"))
+    default = capsys.readouterr()
+    rich_rc = cmd_tok(_inspect_args(tmp_path, "main", log=True))
+    rich = capsys.readouterr()
 
-    assert rc == 1
-    assert "[L0C-0041]" in capsys.readouterr().err
+    assert (default_rc, rich_rc) == (1, 1)
+    assert default.out == rich.out == ""
+    assert default.err == "error: [L0C-0041] main.l0: invalid UTF-8\n"
+    _assert_plain_diagnostic_output(default.err, rich.err)
+
+
+def test_tok_unstructured_lexer_error_is_not_decorated_by_log(tmp_path, monkeypatch, capsys):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+
+    class _ExplodingLexer:
+        def __init__(self, *_args, **_kwargs):
+            self.diagnostics = []
+
+        def tokenize(self):
+            raise RuntimeError("forced lexer failure")
+
+    monkeypatch.setattr("l0c.Lexer", _ExplodingLexer)
+
+    default_rc = cmd_tok(_inspect_args(tmp_path, "main"))
+    default = capsys.readouterr()
+    rich_rc = cmd_tok(_inspect_args(tmp_path, "main", log=True))
+    rich = capsys.readouterr()
+
+    assert (default_rc, rich_rc) == (1, 1)
+    assert default.out == rich.out == ""
+    assert default.err == "error: [L0C-0042] forced lexer failure\n"
+    _assert_plain_diagnostic_output(default.err, rich.err)
 
 
 def test_tok_all_modules_reports_compilation_unit_build_error(tmp_path, monkeypatch, capsys):

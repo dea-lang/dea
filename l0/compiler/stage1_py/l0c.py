@@ -93,40 +93,47 @@ def _load_file_lines(path: str, cache: Dict[str, List[str]]) -> List[str]:
     return cache[path]
 
 
-def print_diagnostics(result: AnalysisResult, context: CompilationContext) -> None:
+def _emit_diagnostic(message: str) -> None:
+    """Write one normative compiler diagnostic line to standard error.
+
+    Args:
+        message: Diagnostic text without a trailing newline.
+    """
+    print(message, file=sys.stderr)
+
+
+def print_diagnostics(result: AnalysisResult) -> None:
     """Print diagnostics from the analysis result.
 
     Args:
         result: The analysis result containing diagnostics.
-        context: The compilation context for logging and formatting.
     """
-    print_diagnostic_list(result.diagnostics, context)
+    print_diagnostic_list(result.diagnostics)
 
 
-def print_diagnostic_list(diagnostics: List[Diagnostic], context: CompilationContext) -> None:
+def print_diagnostic_list(diagnostics: List[Diagnostic]) -> None:
     """Print a list of diagnostics, using a file cache for source snippets.
 
     Args:
         diagnostics: List of diagnostics to print.
-        context: The compilation context for logging and formatting.
     """
     file_cache: Dict[str, List[str]] = {}
 
     for diag in diagnostics:
-        print_diagnostic_with_snippet(diag, file_cache, context)
+        print_diagnostic_with_snippet(diag, file_cache)
 
 
-def print_diagnostic_with_snippet(diag: Diagnostic, file_cache: Dict[str, List[str]],
-                                  context: CompilationContext = None) -> None:
+def print_diagnostic_with_snippet(
+    diag: Diagnostic, file_cache: Dict[str, List[str]]
+) -> None:
     """Print a single diagnostic, including the source line and a caret.
 
     Args:
         diag: The diagnostic to print.
         file_cache: Cache of file lines keyed by path.
-        context: Optional compilation context for logging. Defaults to None.
     """
     # First line: header
-    log_error(context, diag.format())
+    _emit_diagnostic(diag.format())
 
     if not diag.filename or diag.line is None:
         return
@@ -147,7 +154,7 @@ def print_diagnostic_with_snippet(diag: Diagnostic, file_cache: Dict[str, List[s
     width = max(5, len(str(diag.line)))
     gutter = f"{diag.line:>{width}} | "
 
-    log_error(context, gutter + src_line)
+    _emit_diagnostic(gutter + src_line)
 
     if diag.column is None:
         return
@@ -166,7 +173,7 @@ def print_diagnostic_with_snippet(diag: Diagnostic, file_cache: Dict[str, List[s
     # Spaces: same gutter, then (start_col-1) spaces before carets
     caret_prefix = " " * width + " | " + " " * (start_col - 1)
     carets = "^" * caret_width
-    log_error(context, caret_prefix + carets)
+    _emit_diagnostic(caret_prefix + carets)
 
 
 def _is_valid_module_name(module_name: str) -> bool:
@@ -210,8 +217,7 @@ def build_search_paths(context: CompilationContext, args: argparse.Namespace) ->
             args.project_root.append(str(entry_path.parent))
         args.entry = module_name
     if not _is_valid_module_name(args.entry):
-        log_error(
-            context,
+        _emit_diagnostic(
             f"error: [L0C-0011] invalid entry module name '{args.entry}': module components must be valid identifiers",
         )
         return None
@@ -288,7 +294,7 @@ def _run_analysis(args: argparse.Namespace):
         return AnalysisResult(cu=None, context=context), context, 1
     driver = L0Driver(search_paths=search_paths, context=context)
     result = driver.analyze(args.entry)
-    print_diagnostics(result, context=context)
+    print_diagnostics(result)
     exit_code = 1 if (result.cu is None or result.has_errors()) else 0
     return result, context, exit_code
 
@@ -391,62 +397,56 @@ def _output_flags(flag_family: str, exe_path: Path) -> list[str]:
     return ["-o", str(exe_path)]
 
 
-def _check_entry_main_for_build(result: AnalysisResult, entry_name: str, context: CompilationContext) -> bool:
+def _check_entry_main_for_build(result: AnalysisResult, entry_name: str) -> bool:
     """Check that the entry module defines a valid 'main' function for build/run.
 
     Args:
         result: The analysis result.
         entry_name: The name of the entry module.
-        context: The compilation context for logging.
 
     Returns:
         True if a valid 'main' function is found, False otherwise.
     """
     entry_env = result.module_envs.get(entry_name)
     if entry_env is None:
-        log_error(context, f"error: [L0C-0012] entry module '{entry_name}' not found in analysis result")
+        _emit_diagnostic(f"error: [L0C-0012] entry module '{entry_name}' not found in analysis result")
         return False
 
     main_symbol = entry_env.locals.get("main")
     if main_symbol is None or main_symbol.kind != SymbolKind.FUNC:
-        log_error(
-            context,
+        _emit_diagnostic(
             f"error: [L0C-0012] entry module '{entry_name}' must define a 'main' function for build/run",
         )
         return False
 
     main_type = result.func_types.get((entry_name, "main"))
     if main_type is None:
-        log_error(
-            context,
+        _emit_diagnostic(
             f"error: [L0C-0016] missing type information for entry function '{entry_name}::main'",
         )
         return False
 
     ret_type = format_type(main_type.result)
     if ret_type not in {"void", "int", "bool"}:
-        log_error(
-            context,
+        _emit_diagnostic(
             "warning: [L0C-0013] entry 'main' returns "
             f"'{ret_type}' (preferred: void/int/bool); generated C entry wrapper will ignore the return value",
         )
     return True
 
 
-def _validate_runtime_library_path(runtime_lib_path: str, context: CompilationContext) -> bool:
+def _validate_runtime_library_path(runtime_lib_path: str) -> bool:
     """Validate that the provided runtime library path exists and is a directory.
 
     Args:
         runtime_lib_path: Path to the runtime library directory.
-        context: The compilation context for logging.
 
     Returns:
         True if the path is a directory, False otherwise.
     """
     runtime_dir = Path(runtime_lib_path)
     if not runtime_dir.is_dir():
-        log_error(
-            context,
+        _emit_diagnostic(
             f"error: [L0C-0014] runtime library path '{runtime_lib_path}' does not exist or is not a directory",
         )
         return False
@@ -523,12 +523,12 @@ def cmd_build(args: argparse.Namespace) -> int:
     driver = L0Driver(search_paths=search_paths, context=context)
 
     result = driver.analyze(args.entry)
-    print_diagnostics(result, context=context)
+    print_diagnostics(result)
 
     if result.cu is None or result.has_errors():
         return 1
 
-    if not _check_entry_main_for_build(result, args.entry, context):
+    if not _check_entry_main_for_build(result, args.entry):
         return 1
 
     # Generate C code
@@ -536,7 +536,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     try:
         c_code = backend.generate()
     except InternalCompilerError as e:
-        log_error(context, e.format())
+        _emit_diagnostic(e.format())
         return 1
 
     # Determine output executable path
@@ -563,8 +563,9 @@ def cmd_build(args: argparse.Namespace) -> int:
         # Determine C compiler
         compiler = args.c_compiler or _find_cc()
         if compiler is None:
-            log_error(context,
-                      "error: [L0C-0009] no C compiler found: use '--c-compiler' to specify one or set the L0_CC environment variable")
+            _emit_diagnostic(
+                "error: [L0C-0009] no C compiler found: use '--c-compiler' to specify one or set the L0_CC environment variable"
+            )
             return 1
 
         log_info(context, f"Using C compiler: {compiler}")
@@ -618,7 +619,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         # Add runtime library search path
         runtime_lib_path = args.runtime_lib or os.getenv("L0_RUNTIME_LIB")
         if runtime_lib_path:
-            if not _validate_runtime_library_path(runtime_lib_path, context):
+            if not _validate_runtime_library_path(runtime_lib_path):
                 return 1
 
         if args.runtime_lib:
@@ -633,7 +634,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         compile_result = subprocess.run(cmd, capture_output=True, text=True)
 
         if compile_result.returncode != 0:
-            log_error(context, "error: [L0C-0010] C compilation failed:")
+            _emit_diagnostic("error: [L0C-0010] C compilation failed:")
             if compile_result.stderr:
                 log_error(context, compile_result.stderr)
             if compile_result.stdout:
@@ -673,8 +674,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         keep_c = getattr(args, 'keep_c', False)
         output_arg = getattr(args, 'output', None)
         if output_arg and not keep_c:
-            log_error(
-                context,
+            _emit_diagnostic(
                 "warning: [L0C-0017] '--output' is ignored in '--run' mode unless '--keep-c' is set; "
                 "the executable path remains temporary",
             )
@@ -745,7 +745,7 @@ def cmd_codegen(args: argparse.Namespace) -> int:
     try:
         c_code = backend.generate()
     except InternalCompilerError as e:
-        log_error(context, e.format())
+        _emit_diagnostic(e.format())
         return 1
 
     # Write to output file or stdout
@@ -792,9 +792,9 @@ def cmd_ast(args: argparse.Namespace) -> int:
         cu = driver.build_compilation_unit(args.entry)
     except Exception as e:
         if driver.diagnostics:
-            print_diagnostic_list(driver.diagnostics, context)
+            print_diagnostic_list(driver.diagnostics)
         else:
-            log_error(context, f"error: [L0C-0020] {e}")
+            _emit_diagnostic(f"error: [L0C-0020] {e}")
         return 1
 
     if args.all_modules:
@@ -806,7 +806,7 @@ def cmd_ast(args: argparse.Namespace) -> int:
     else:
         mod = cu.modules.get(args.entry)
         if mod is None:
-            log_error(context, f"error: [L0C-0030] entry module '{args.entry}' not found in compilation unit")
+            _emit_diagnostic(f"error: [L0C-0030] entry module '{args.entry}' not found in compilation unit")
             return 1
         print(format_module(mod))
 
@@ -829,13 +829,12 @@ def _format_token_dump_text(tok) -> str:
     return repr(tok.text)
 
 
-def _dump_tokens_for_file(path: Path, include_eof: bool, context: Optional[CompilationContext] = None) -> int:
+def _dump_tokens_for_file(path: Path, include_eof: bool) -> int:
     """Dump lexer tokens for a single file.
 
     Args:
         path: Path to the source file.
         include_eof: Whether to include the EOF token in the output.
-        context: Optional compilation context for logging. Defaults to None.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
@@ -843,10 +842,10 @@ def _dump_tokens_for_file(path: Path, include_eof: bool, context: Optional[Compi
     try:
         text = load_source_utf8(path)
     except OSError as e:
-        log_error(context, f"error: [L0C-0040] cannot read {path}: {e}")
+        _emit_diagnostic(f"error: [L0C-0040] cannot read {path}: {e}")
         return 1
     except SourceEncodingError as e:
-        log_error(context, f"error: [L0C-0041] {e}")
+        _emit_diagnostic(f"error: [L0C-0041] {e}")
         return 1
 
     lexer = Lexer(text, filename=str(path))
@@ -854,9 +853,9 @@ def _dump_tokens_for_file(path: Path, include_eof: bool, context: Optional[Compi
         tokens = lexer.tokenize()
     except Exception as e:
         if lexer.diagnostics:
-            print_diagnostic_list(lexer.diagnostics, context)
+            print_diagnostic_list(lexer.diagnostics)
         else:
-            log_error(context, f"error: [L0C-0042] {e}")
+            _emit_diagnostic(f"error: [L0C-0042] {e}")
         return 1
 
     for tok in tokens:
@@ -894,9 +893,9 @@ def cmd_tok(args: argparse.Namespace) -> int:
             cu = driver.build_compilation_unit(args.entry)
         except Exception as e:
             if driver.diagnostics:
-                print_diagnostic_list(driver.diagnostics, context)
+                print_diagnostic_list(driver.diagnostics)
             else:
-                log_error(context, f"error: [L0C-0050] {e}")
+                _emit_diagnostic(f"error: [L0C-0050] {e}")
             return 1
 
         exit_code = 0
@@ -904,12 +903,12 @@ def cmd_tok(args: argparse.Namespace) -> int:
             try:
                 path = search_paths.resolve(name)
             except FileNotFoundError as e:
-                log_error(context, f"error: [L0C-0060] {e}")
+                _emit_diagnostic(f"error: [L0C-0060] {e}")
                 exit_code = 1
                 continue
 
             print(f"=== Tokens for module {name} ({path}) ===")
-            rc = _dump_tokens_for_file(path, include_eof=args.include_eof, context=context)
+            rc = _dump_tokens_for_file(path, include_eof=args.include_eof)
             if rc != 0:
                 exit_code = rc
             print()
@@ -919,7 +918,7 @@ def cmd_tok(args: argparse.Namespace) -> int:
         try:
             path = search_paths.resolve(args.entry)
         except FileNotFoundError as e:
-            log_error(context, f"error: [L0C-0070] {e}")
+            _emit_diagnostic(f"error: [L0C-0070] {e}")
             return 1
 
         return _dump_tokens_for_file(path, include_eof=args.include_eof)
