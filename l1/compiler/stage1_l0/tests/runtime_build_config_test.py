@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -19,15 +21,63 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 L1_ROOT = REPO_ROOT / "l1"
 
 
-def require_runtime_build(build_dir: Path, quarantine_count: int | None = None) -> str:
-    """Build runtime archives in an isolated directory and return make output."""
+def resolve_runtime_compiler() -> str:
+    """Resolve the configured runtime compiler without changing compiler families."""
+
+    configured = os.environ.get("L1_RUNTIME_CC", "").strip()
+    if not configured:
+        configured = os.environ.get("L1_CC", "").strip()
+    if configured:
+        compiler = shutil.which(configured)
+        if compiler is None:
+            raise AssertionError(f"configured runtime compiler was not found: {configured}")
+        return compiler
 
     compiler = next(
         (candidate for name in ("clang", "gcc", "cc") if (candidate := shutil.which(name))),
         None,
     )
-    if compiler is None:
-        raise AssertionError("runtime build-config test requires a C compiler")
+    if compiler is not None:
+        return compiler
+
+    configured = os.environ.get("CC", "").strip()
+    if configured:
+        compiler = shutil.which(configured)
+        if compiler is not None:
+            return compiler
+    raise AssertionError("runtime build-config test requires a C compiler")
+
+
+def compiler_path_for_shell_regression(compiler: str, tmp_dir: Path) -> tuple[str, Path | None]:
+    """Return a compiler path that exercises native Windows shell escaping."""
+
+    if os.name == "nt":
+        return compiler, None
+
+    alias = tmp_dir / rf"D:\a\_temp\msys64\ucrt64\bin\{Path(compiler).name}"
+    invocation_marker = tmp_dir / "selected-compiler-invoked"
+    alias.write_text(
+        f"#!/bin/sh\n: > {shlex.quote(str(invocation_marker))}\nexec {shlex.quote(compiler)} \"$@\"\n",
+        encoding="utf-8",
+    )
+    alias.chmod(0o755)
+    return str(alias), invocation_marker
+
+
+def build_dir_for_shell_regression(tmp_dir: Path) -> Path:
+    """Return a build path that exercises native Windows shell escaping."""
+
+    if os.name == "nt":
+        return tmp_dir / "dea"
+    return tmp_dir / r"windows\temp\dea"
+
+
+def require_runtime_build(
+    build_dir: Path,
+    compiler: str,
+    quarantine_count: int | None = None,
+) -> str:
+    """Build runtime archives in an isolated directory and return make output."""
 
     command = [
         "make",
@@ -64,9 +114,25 @@ def assert_no_object_rebuild(output: str, label: str) -> None:
 
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
-        build_dir = Path(tmp) / "dea"
+        tmp_dir = Path(tmp)
+        build_dir = build_dir_for_shell_regression(tmp_dir)
+        resolved_compiler = resolve_runtime_compiler()
+        requested_compiler = os.environ.get("L1_RUNTIME_CC", "").strip()
+        if requested_compiler:
+            expected_compiler = shutil.which(requested_compiler)
+            if expected_compiler is None:
+                raise AssertionError(f"configured runtime compiler was not found: {requested_compiler}")
+            if os.path.normcase(os.path.abspath(resolved_compiler)) != os.path.normcase(
+                os.path.abspath(expected_compiler)
+            ):
+                raise AssertionError(
+                    f"L1_RUNTIME_CC={requested_compiler} selected {resolved_compiler}, expected {expected_compiler}"
+                )
+        compiler, invocation_marker = compiler_path_for_shell_regression(resolved_compiler, tmp_dir)
 
-        first = require_runtime_build(build_dir)
+        first = require_runtime_build(build_dir, compiler)
+        if invocation_marker is not None and not invocation_marker.is_file():
+            raise AssertionError("runtime build did not invoke the selected compiler wrapper")
         if "runtime/default/dea_rt_alloc.o" not in first:
             raise AssertionError(f"initial runtime build did not compile default objects:\n{first}")
 
@@ -74,13 +140,15 @@ def main() -> int:
         unchecked_stamp = build_dir / "runtime" / "unchecked" / ".build-config"
         default_before = default_stamp.read_text(encoding="utf-8")
         unchecked_before = unchecked_stamp.read_text(encoding="utf-8")
+        if f"compiler={compiler}\n" not in default_before:
+            raise AssertionError("runtime config stamp did not record the selected compiler")
 
-        identical = require_runtime_build(build_dir)
+        identical = require_runtime_build(build_dir, compiler)
         assert_no_object_rebuild(identical, "identical runtime configuration")
         if default_stamp.read_text(encoding="utf-8") != default_before:
             raise AssertionError("identical build rewrote the default config stamp")
 
-        changed = require_runtime_build(build_dir, quarantine_count=17)
+        changed = require_runtime_build(build_dir, compiler, quarantine_count=17)
         for variant in ("default", "traced", "check_basic"):
             expected = f"runtime/{variant}/dea_rt_alloc.o"
             if expected not in changed:
@@ -92,7 +160,7 @@ def main() -> int:
         if unchecked_stamp.read_text(encoding="utf-8") != unchecked_before:
             raise AssertionError("checked-only tuning rewrote the unchecked config stamp")
 
-        repeated_changed = require_runtime_build(build_dir, quarantine_count=17)
+        repeated_changed = require_runtime_build(build_dir, compiler, quarantine_count=17)
         assert_no_object_rebuild(repeated_changed, "repeated changed runtime configuration")
 
     return 0
