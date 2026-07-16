@@ -331,6 +331,7 @@ def main() -> int:
             "test-stage2",
             "test-stage2-trace",
             "check-examples",
+            "test-compiler-runtime-flags",
             "test-dist",
             "triple-test",
             "test-all",
@@ -341,6 +342,12 @@ def main() -> int:
             assert_output_contains(help_output, target)
         assert_output_contains(help_output, "  test               Run Stage 1")
         assert_output_contains(help_output, "PREFIX=<required>")
+        for variable in (
+            "L0_COMPILER_RT_CHECK_BASIC=1",
+            "L0_COMPILER_RT_QUARANTINE_MAX_COUNT=256",
+        ):
+            if help_output.count(variable) != 1:
+                fail(f"expected exactly one help entry for {variable!r}")
 
         print_dea_build_output = run_checked(make_command(dea_build_rel, "print-dea-build-dir"))
         if print_dea_build_output.strip() != dea_build_rel:
@@ -524,6 +531,7 @@ def main() -> int:
             "test-stage2-trace": "./compiler/stage2_l0/scripts/run_trace_tests.py",
             "test": "./compiler/stage2_l0/scripts/run_tests.py",
             "check-examples": "../scripts/check_examples.py",
+            "test-compiler-runtime-flags": "./tests/test_compiler_runtime_build_flags.py",
             "test-dist": "./tests/test_make_dist_workflow.py",
             "triple-test": "./compiler/stage2_l0/tests/l0c_triple_bootstrap_test.py",
             "test-all": "./compiler/stage2_l0/scripts/run_trace_tests.py",
@@ -540,6 +548,7 @@ def main() -> int:
                     "pytest -n auto",
                     "./compiler/stage2_l0/scripts/run_tests.py",
                     "../scripts/check_examples.py",
+                    "./tests/test_compiler_runtime_build_flags.py",
                     "./tests/test_make_dist_workflow.py",
                     "./tests/test_make_dea_build_workflow.py",
                     "./tests/test_dist_tools_lib_fallback.py",

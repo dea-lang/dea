@@ -13,6 +13,9 @@ HOST_PYTHON ?= $(shell if command -v python3 >/dev/null 2>&1; then printf '%s' p
 VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(VENV_PYTHON_DEFAULT); fi)
 PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
 L1_BUILD_DIR ?= build/dea
+L1_COMPILER_RT_CHECK_BASIC ?= 1
+L1_COMPILER_RT_UNCHECKED ?=
+L1_COMPILER_RT_QUARANTINE_MAX_BYTES ?=
 L1_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 DOCKER_IMAGE ?= l1-test
 AR ?= ar
@@ -63,6 +66,7 @@ help:
 		'Targets:' \
 		'  venv               Delegate to the root `make venv` to create or sync the shared monorepo `../.venv`.' \
 		'  runtime            Build the repo-local L1 runtime archives (`libdea_rt.a`, traced, unchecked, and check-basic) and public headers under `$(L1_BUILD_DIR)`.' \
+		'  build-stage1       Build the native repo-local L1 Stage 1 compiler.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  test               Run the default L1 validation suite without the dedicated trace sweep.' \
 		'  test-all           Run the full L1 validation suite, including the default trace checks.' \
@@ -81,41 +85,55 @@ help:
 		'Docker:' \
 		'  docker             Explicitly run a target in the repo-owned Linux Docker container (CMD=<target>).' \
 		'' \
-		'Variables:' \
+		'Compiler construction variables:' \
 		'  L1_BUILD_DIR=build/dea' \
 		'                     Repo-local L1 build root.' \
 		'  L1_BOOTSTRAP_L0C=<path>' \
 		'                     Explicit upstream L0 Stage 2 compiler wrapper or native binary.' \
-		'  TESTS=""' \
-		'                     Optional Stage 1 test names for `test-stage1` and trace targets; forwarded by `make docker` when set.' \
 		'  L0_CC=<compiler>' \
 		'                     Upstream L0 C compiler used by `l0c-stage2` when building Stage 1 and running `.l0` implementation tests.' \
+		'  L0_CFLAGS=<flags>' \
+		'                     Raw C flags used to build the native L1 Stage 1 compiler, which is an L0 program. Explicit runtime mode and quarantine defines take precedence over compiler-build defaults.' \
+		'  L1_COMPILER_RT_CHECK_BASIC=1' \
+		'                     Build the native L1 compiler with basic checked-runtime pointer validation by default; set explicitly empty for the full checked runtime.' \
+		'  L1_COMPILER_RT_UNCHECKED=1' \
+		'                     Build the native L1 compiler with the unchecked runtime; this suppresses the compiler basic-mode default.' \
+		'  L1_COMPILER_RT_QUARANTINE_MAX_BYTES=<n>' \
+		'                     Bake a quarantine byte limit into the native L1 compiler only; empty preserves the checked runtime default.' \
+		'  L1_COMPILER_RT_QUARANTINE_MAX_COUNT=256' \
+		'                     Bake a quarantine record limit into the native L1 compiler only; empty preserves the checked runtime default.' \
+		'' \
+		'Generated L1 program variables:' \
 		'  L1_CC=<compiler>' \
-		'                     C compiler used by `l1c --build/--run` for L1 fixture snippets; also defaults `L1_RUNTIME_CC` when set.' \
+		'                     C compiler used by `l1c --build/--run`; also defaults `L1_RUNTIME_CC` when set.' \
+		'  L1_CFLAGS=<flags>' \
+		'                     C flags used by `l1c --build/--run` for generated L1 programs; does not configure the compiler binary.' \
+		'' \
+		'Runtime archive variables:' \
 		'  L1_RUNTIME_CC=<compiler>' \
 		'                     Runtime archive C compiler (defaults to `L1_CC`, then clang/gcc/cc, then `CC`). Example: `make clean-runtime runtime L1_RUNTIME_CC=gcc-15`.' \
 		'  L1_RT_QUARANTINE_MAX_BYTES=<n>' \
 		'                     Bake a quarantine byte limit into the checked runtime archives (default 16 MiB). Deployments can also retune at process start with the `DEA_RT_QUARANTINE_MAX_BYTES` environment variable.' \
 		'  L1_RT_QUARANTINE_MAX_COUNT=<n>' \
 		'                     Bake a quarantine record limit into the checked runtime archives (default 4096; `0` disables retention; `256` is the suggested setting for performance-sensitive checked deployments). Runtime counterpart: `DEA_RT_QUARANTINE_MAX_COUNT`.' \
-		'  L1_COMPILER_RT_QUARANTINE_MAX_COUNT=256' \
-		'                     Checked-runtime quarantine record limit used when building the L1 compiler binary only; empty disables this compiler-build default and L1 runtime archive defaults stay unchanged.' \
+		'  L1_TCC_OBJ_CC=<compiler>' \
+		'                     TinyCC compiler for repo-local tcc runtime objects (defaults to `tcc`, then `TCC`). When absent without an explicit override, `make runtime` prints a notice and skips the specialized tcc object build.' \
+		'' \
+		'Test variables:' \
+		'  TESTS=""' \
+		'                     Optional Stage 1 test names for `test-stage1` and trace targets; forwarded by `make docker` when set.' \
+		'  L1_TEST_JOBS=<n>' \
+		'                     Optional normal-test parallelism override; forwarded by `make docker` when set.' \
 		'  L1_TRACE_TEST_JOBS=<n>' \
 		'                     Override parallelism for `test-stage1-trace*`; when unset, trace runs follow the normal default job policy.' \
 		'  L1_TRACE_ARTIFACT_DIR=<dir>' \
 		'                     Optional trace artifact directory. Local trace runs write artifacts there; `make docker` bind-mounts the host directory and preserves artifacts across `docker run --rm`.' \
-		'  L1_TCC_OBJ_CC=<compiler>' \
-		'                     TinyCC compiler for repo-local tcc runtime objects (defaults to `tcc`, then `TCC`). When absent without an explicit override, `make runtime` prints a notice and skips the specialized tcc object build.' \
+		'' \
+		'Docker variables:' \
 		'  DOCKER_IMAGE=l1-test' \
 		'                     Docker image tag used by `make docker`.' \
 		'  DOCKER_L0_CC=<compiler>' \
 		'                     Optional upstream L0 C compiler passed into the Docker run as `L0_CC` (`gcc` or `clang`).' \
-		'  L1_TEST_JOBS=<n>' \
-		'                     Optional normal-test parallelism override; forwarded by `make docker` when set.' \
-		'  L1_TRACE_TEST_JOBS=<n>' \
-		'                     Optional trace-test parallelism override; forwarded by `make docker` when set.' \
-		'  L1_TRACE_ARTIFACT_DIR=<dir>' \
-		'                     Optional host trace-artifact directory; `make docker` mounts it at `/trace-artifacts` and forwards that path into the container.' \
 		'' \
 		'Default local bootstrap flow:' \
 		'  1. `make use-dev-stage1`  # auto-prepares ../l0 Stage 2 if needed' \
@@ -275,7 +293,13 @@ clean-all:
 	@$(MAKE) clean-runtime
 
 build-stage1: venv runtime _ensure-bootstrap-l0-stage2
-	L1_BUILD_DIR="$(L1_BUILD_DIR)" L1_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L1_COMPILER_RT_QUARANTINE_MAX_COUNT)" "$(PYTHON)" ./scripts/build_stage1_l1c.py
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" \
+	L0_CFLAGS="$(L0_CFLAGS)" \
+	L1_COMPILER_RT_CHECK_BASIC="$(L1_COMPILER_RT_CHECK_BASIC)" \
+	L1_COMPILER_RT_UNCHECKED="$(L1_COMPILER_RT_UNCHECKED)" \
+	L1_COMPILER_RT_QUARANTINE_MAX_BYTES="$(L1_COMPILER_RT_QUARANTINE_MAX_BYTES)" \
+	L1_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L1_COMPILER_RT_QUARANTINE_MAX_COUNT)" \
+	"$(PYTHON)" ./scripts/build_stage1_l1c.py
 	@printf 'Repo-local L1 Stage 1 compiler version:\n'
 	@"$(L1_BUILD_DIR)/bin/l1c-stage1" --version
 

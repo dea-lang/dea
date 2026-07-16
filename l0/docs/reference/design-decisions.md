@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-07-13
+Version: 2026-07-16
 
 This document records rationale and policy decisions.
 
@@ -105,6 +105,14 @@ Key properties:
   quarantined payload memory is bounded by the byte/count caps. Lower caps can therefore reduce both the retained live
   tracker set and freed payload memory. For release performance beyond retention tuning, use `--check-basic` or
   `--unchecked`.
+- Native L0 Stage 2 compiler binaries built through the repository helper default to basic checked mode with a
+  256-record quarantine limit. `L0_COMPILER_RT_CHECK_BASIC=1` and `L0_COMPILER_RT_QUARANTINE_MAX_COUNT=256` expose those
+  compiler-only defaults through Make; setting either variable to an empty value disables that default. Explicit
+  `L0_RT_CHECK_BASIC`, `L0_RT_UNCHECKED`, and `L0_RT_QUARANTINE_MAX_*` values override the corresponding compiler
+  default, while an existing raw definition in `L0_CFLAGS` takes precedence without duplication. Mode, byte-limit, and
+  count-limit selection are independent. These build settings affect the compiler binary itself only: programs emitted
+  by that compiler remain full checked with the runtime's normal quarantine defaults unless their own compiler CLI or C
+  flags select another mode or retention limit.
 - The `l0c --check-basic` flag (valid in `--build`, `--run`, `--gen`; mutually exclusive with `--unchecked` and the
   trace flags) emits `L0_RT_CHECK_BASIC` into the generated C prelude. Basic checked mode keeps exact-base hash
   validation, quarantine, generation caches, null checks, double-drop and untracked-drop diagnostics, exact-base

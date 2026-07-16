@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -33,9 +34,16 @@ MONOREPO_ROOT = REPO_ROOT.parent
 DEFAULT_L1_BUILD_DIR = "build/dea"
 L1_BUILD_DIR_ENV = "L1_BUILD_DIR"
 L1_BOOTSTRAP_L0C_ENV = "L1_BOOTSTRAP_L0C"
+L1_COMPILER_RT_CHECK_BASIC_ENV = "L1_COMPILER_RT_CHECK_BASIC"
+L1_COMPILER_RT_UNCHECKED_ENV = "L1_COMPILER_RT_UNCHECKED"
+L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV = "L1_COMPILER_RT_QUARANTINE_MAX_BYTES"
 L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV = "L1_COMPILER_RT_QUARANTINE_MAX_COUNT"
+DEFAULT_L1_COMPILER_RT_CHECK_BASIC = "1"
 DEFAULT_L1_COMPILER_RT_QUARANTINE_MAX_COUNT = "256"
-RT_QUARANTINE_MAX_COUNT_DEFINE = "-D_RT_QUARANTINE_MAX_COUNT="
+L0_RT_CHECK_BASIC_DEFINE = "L0_RT_CHECK_BASIC"
+L0_RT_UNCHECKED_DEFINE = "L0_RT_UNCHECKED"
+RT_QUARANTINE_MAX_BYTES_DEFINE = "_RT_QUARANTINE_MAX_BYTES"
+RT_QUARANTINE_MAX_COUNT_DEFINE = "_RT_QUARANTINE_MAX_COUNT"
 
 
 @dataclass(frozen=True)
@@ -107,28 +115,67 @@ def write_relative_alias(path: Path, target_name: str) -> None:
         path.symlink_to(target_name)
 
 
-def append_cflag(cflags: str, flag: str) -> str:
+def _append_cflag(cflags: str, flag: str) -> str:
     """Append one C flag to an existing flag string."""
 
     return f"{cflags} {flag}".strip()
 
 
-def compiler_runtime_build_env(source_env: dict[str, str]) -> dict[str, str]:
-    """Return an env for building the L1 compiler with checked-runtime tuning."""
+def _has_c_define(cflags: str, name: str) -> bool:
+    """Return whether raw C flags contain an exact preprocessor definition."""
+
+    prefix = f"-D{name}"
+    words = cflags.split()
+    for index, word in enumerate(words):
+        if word == prefix or word.startswith(f"{prefix}="):
+            return True
+        if word == "-D" and index + 1 < len(words):
+            value = words[index + 1]
+            if value == name or value.startswith(f"{name}="):
+                return True
+    return False
+
+
+def compiler_runtime_build_env(source_env: Mapping[str, str]) -> dict[str, str]:
+    """Return an env for building the native L1 compiler runtime."""
 
     build_env = dict(source_env)
     cflags = build_env.get("L0_CFLAGS", "")
-    if RT_QUARANTINE_MAX_COUNT_DEFINE in cflags:
-        return build_env
 
-    count = build_env.get(
-        L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
-        DEFAULT_L1_COMPILER_RT_QUARANTINE_MAX_COUNT,
-    ).strip()
-    if not count:
-        return build_env
+    raw_mode_selected = _has_c_define(cflags, L0_RT_CHECK_BASIC_DEFINE) or _has_c_define(
+        cflags,
+        L0_RT_UNCHECKED_DEFINE,
+    )
+    if not raw_mode_selected:
+        unchecked = build_env.get(L1_COMPILER_RT_UNCHECKED_ENV, "").strip()
+        basic = build_env.get(
+            L1_COMPILER_RT_CHECK_BASIC_ENV,
+            DEFAULT_L1_COMPILER_RT_CHECK_BASIC,
+        ).strip()
+        if unchecked:
+            cflags = _append_cflag(cflags, f"-D{L0_RT_UNCHECKED_DEFINE}")
+        elif basic:
+            cflags = _append_cflag(cflags, f"-D{L0_RT_CHECK_BASIC_DEFINE}")
 
-    build_env["L0_CFLAGS"] = append_cflag(cflags, f"{RT_QUARANTINE_MAX_COUNT_DEFINE}{count}")
+    tuning = (
+        (
+            RT_QUARANTINE_MAX_BYTES_DEFINE,
+            build_env.get(L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV, "").strip(),
+        ),
+        (
+            RT_QUARANTINE_MAX_COUNT_DEFINE,
+            build_env.get(
+                L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
+                DEFAULT_L1_COMPILER_RT_QUARANTINE_MAX_COUNT,
+            ).strip(),
+        ),
+    )
+    for define_name, value in tuning:
+        if value and not _has_c_define(cflags, define_name):
+            cflags = _append_cflag(cflags, f"-D{define_name}={value}")
+
+    if cflags != build_env.get("L0_CFLAGS", ""):
+        build_env["L0_CFLAGS"] = cflags
     return build_env
 
 

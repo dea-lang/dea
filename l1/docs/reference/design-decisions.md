@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-07-11
+Version: 2026-07-16
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -136,6 +136,12 @@ The L1 runtime archives and tcc object variants use content-sensitive configurat
 flags, mode defines, and baked quarantine settings therefore trigger the necessary rebuilds, while repeating an
 identical configuration remains a no-op. Runtime allocation benchmarks use monotonic wall time and observable pointer
 escapes so optimized unchecked loops retain their measured work.
+
+The native L1 Stage 1 compiler is itself an L0 program. Its default compiler-build runtime uses basic pointer validation
+and a 256-record quarantine limit, retaining core checked-runtime diagnostics without the full interior-pointer index.
+`L1_COMPILER_RT_CHECK_BASIC`, `L1_COMPILER_RT_UNCHECKED`, `L1_COMPILER_RT_QUARANTINE_MAX_BYTES`, and
+`L1_COMPILER_RT_QUARANTINE_MAX_COUNT` configure only that native compiler binary. They do not change the full checked
+default of L1 runtime archives or the runtime mode selected for programs produced by `l1c`.
 
 ## 7.1 Fixed-Size Array Policy
 

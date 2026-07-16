@@ -23,10 +23,18 @@ from dist_tools_lib import (
     write_stage2_wrapper,
 )
 
+DEFAULT_COMPILER_RT_CHECK_BASIC = "1"
 DEFAULT_COMPILER_RT_QUARANTINE_MAX_COUNT = "256"
+COMPILER_RT_CHECK_BASIC_ENV = "L0_COMPILER_RT_CHECK_BASIC"
 COMPILER_RT_QUARANTINE_MAX_COUNT_ENV = "L0_COMPILER_RT_QUARANTINE_MAX_COUNT"
+USER_RT_CHECK_BASIC_ENV = "L0_RT_CHECK_BASIC"
+USER_RT_UNCHECKED_ENV = "L0_RT_UNCHECKED"
+USER_RT_QUARANTINE_MAX_BYTES_ENV = "L0_RT_QUARANTINE_MAX_BYTES"
 USER_RT_QUARANTINE_MAX_COUNT_ENV = "L0_RT_QUARANTINE_MAX_COUNT"
-RT_QUARANTINE_MAX_COUNT_DEFINE = "-D_RT_QUARANTINE_MAX_COUNT="
+RT_CHECK_BASIC_DEFINE = "L0_RT_CHECK_BASIC"
+RT_UNCHECKED_DEFINE = "L0_RT_UNCHECKED"
+RT_QUARANTINE_MAX_BYTES_DEFINE = "_RT_QUARANTINE_MAX_BYTES"
+RT_QUARANTINE_MAX_COUNT_DEFINE = "_RT_QUARANTINE_MAX_COUNT"
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,24 +50,59 @@ def _append_cflag(cflags: str, flag: str) -> str:
     return f"{cflags} {flag}".strip()
 
 
+def _has_c_define(cflags: str, name: str) -> bool:
+    """Return whether a raw C flag string defines ``name``."""
+
+    prefix = f"-D{name}"
+    words = cflags.split()
+    for index, word in enumerate(words):
+        if word == prefix or word.startswith(f"{prefix}="):
+            return True
+        if word == "-D" and index + 1 < len(words):
+            value = words[index + 1]
+            if value == name or value.startswith(f"{name}="):
+                return True
+    return False
+
+
 def compiler_runtime_build_env(source_env: Mapping[str, str]) -> dict[str, str]:
-    """Return an env for building compiler binaries with checked-runtime tuning."""
+    """Return an env for building compiler binaries with checked-runtime defaults."""
 
     build_env = dict(source_env)
     cflags = build_env.get("L0_CFLAGS", "")
-    if RT_QUARANTINE_MAX_COUNT_DEFINE in cflags:
-        return build_env
 
-    user_count = build_env.get(USER_RT_QUARANTINE_MAX_COUNT_ENV, "").strip()
-    compiler_count = build_env.get(
-        COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
-        DEFAULT_COMPILER_RT_QUARANTINE_MAX_COUNT,
-    ).strip()
-    selected_count = user_count or compiler_count
-    if not selected_count:
-        return build_env
+    raw_mode = _has_c_define(cflags, RT_CHECK_BASIC_DEFINE) or _has_c_define(cflags, RT_UNCHECKED_DEFINE)
+    if not raw_mode:
+        explicit_mode = False
+        if build_env.get(USER_RT_UNCHECKED_ENV, "").strip():
+            cflags = _append_cflag(cflags, f"-D{RT_UNCHECKED_DEFINE}")
+            explicit_mode = True
+        if build_env.get(USER_RT_CHECK_BASIC_ENV, "").strip():
+            cflags = _append_cflag(cflags, f"-D{RT_CHECK_BASIC_DEFINE}")
+            explicit_mode = True
+        if not explicit_mode and build_env.get(
+            COMPILER_RT_CHECK_BASIC_ENV,
+            DEFAULT_COMPILER_RT_CHECK_BASIC,
+        ).strip():
+            cflags = _append_cflag(cflags, f"-D{RT_CHECK_BASIC_DEFINE}")
 
-    build_env["L0_CFLAGS"] = _append_cflag(cflags, f"{RT_QUARANTINE_MAX_COUNT_DEFINE}{selected_count}")
+    if not _has_c_define(cflags, RT_QUARANTINE_MAX_BYTES_DEFINE):
+        user_bytes = build_env.get(USER_RT_QUARANTINE_MAX_BYTES_ENV, "").strip()
+        if user_bytes:
+            cflags = _append_cflag(cflags, f"-D{RT_QUARANTINE_MAX_BYTES_DEFINE}={user_bytes}")
+
+    if not _has_c_define(cflags, RT_QUARANTINE_MAX_COUNT_DEFINE):
+        user_count = build_env.get(USER_RT_QUARANTINE_MAX_COUNT_ENV, "").strip()
+        compiler_count = build_env.get(
+            COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
+            DEFAULT_COMPILER_RT_QUARANTINE_MAX_COUNT,
+        ).strip()
+        selected_count = user_count or compiler_count
+        if selected_count:
+            cflags = _append_cflag(cflags, f"-D{RT_QUARANTINE_MAX_COUNT_DEFINE}={selected_count}")
+
+    if cflags != build_env.get("L0_CFLAGS", ""):
+        build_env["L0_CFLAGS"] = cflags
     return build_env
 
 

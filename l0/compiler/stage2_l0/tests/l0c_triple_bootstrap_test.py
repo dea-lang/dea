@@ -23,18 +23,18 @@ import time
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent.parent.parent
 RUNNER_DIR = SCRIPT_DIR.parent / "scripts"
 if str(RUNNER_DIR) not in sys.path:
     sys.path.insert(0, str(RUNNER_DIR))
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
+from build_stage2_l0c import compiler_runtime_build_env
 from test_runner_common import require_repo_stage2_test_env
 
-REPO_ROOT = SCRIPT_DIR.parent.parent.parent
 BUILD_TESTS_DIR = REPO_ROOT / "build" / "tests"
-DEFAULT_COMPILER_RT_QUARANTINE_MAX_COUNT = "256"
-COMPILER_RT_QUARANTINE_MAX_COUNT_ENV = "L0_COMPILER_RT_QUARANTINE_MAX_COUNT"
-USER_RT_QUARANTINE_MAX_COUNT_ENV = "L0_RT_QUARANTINE_MAX_COUNT"
-RT_QUARANTINE_MAX_COUNT_DEFINE = "-D_RT_QUARANTINE_MAX_COUNT="
 
 
 class TripleBootstrapFailure(RuntimeError):
@@ -198,20 +198,6 @@ def merge_cflags(existing: str, extra_flags: list[str]) -> str:
         if flag not in words:
             words.append(flag)
     return " ".join(words)
-
-
-def merge_compiler_runtime_cflags(existing: str, env: dict[str, str]) -> str:
-    """Append the compiler-build runtime quarantine setting when not explicit."""
-
-    if RT_QUARANTINE_MAX_COUNT_DEFINE in existing:
-        return existing
-    selected_count = env.get(USER_RT_QUARANTINE_MAX_COUNT_ENV, "").strip() or env.get(
-        COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
-        DEFAULT_COMPILER_RT_QUARANTINE_MAX_COUNT,
-    ).strip()
-    if not selected_count:
-        return existing
-    return merge_cflags(existing, [f"{RT_QUARANTINE_MAX_COUNT_DEFINE}{selected_count}"])
 
 
 def compiler_command_words(command_text: str) -> list[str]:
@@ -590,12 +576,12 @@ def main() -> int:
         _, _, _, repo_env = require_repo_stage2_test_env("l0c_triple_bootstrap_test.py")
         compiler_text = resolve_host_c_compiler(repo_env)
         merged_cflags = merge_cflags(repo_env.get("L0_CFLAGS", ""), deterministic_c_flags(compiler_text))
-        merged_cflags = merge_compiler_runtime_cflags(merged_cflags, repo_env)
+        build_env = compiler_runtime_build_env({**repo_env, "L0_CFLAGS": merged_cflags})
+        merged_cflags = build_env.get("L0_CFLAGS", "")
         notice(f"using host C compiler: {compiler_text}")
         notice(f"using host C flags: {merged_cflags or '(none)'}")
         assert_stable_native_toolchain(compiler_text, merged_cflags, artifact_dir)
 
-        build_env = repo_env.copy()
         build_env["L0_CC"] = compiler_text
         build_env["L0_CFLAGS"] = merged_cflags
         self_build_env = build_env.copy()

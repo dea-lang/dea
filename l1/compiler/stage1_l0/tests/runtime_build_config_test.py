@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shlex
 import shutil
@@ -76,6 +77,7 @@ def require_runtime_build(
     build_dir: Path,
     compiler: str,
     quarantine_count: int | None = None,
+    compiler_runtime_overrides: dict[str, str] | None = None,
 ) -> str:
     """Build runtime archives in an isolated directory and return make output."""
 
@@ -88,6 +90,8 @@ def require_runtime_build(
     ]
     if quarantine_count is not None:
         command.append(f"L1_RT_QUARANTINE_MAX_COUNT={quarantine_count}")
+    for name, value in sorted((compiler_runtime_overrides or {}).items()):
+        command.append(f"{name}={value}")
 
     completed = subprocess.run(
         command,
@@ -110,6 +114,12 @@ def assert_no_object_rebuild(output: str, label: str) -> None:
 
     if " -c \"compiler/shared/runtime/src/" in output or "ar rcs" in output:
         raise AssertionError(f"{label} unexpectedly rebuilt runtime artifacts:\n{output}")
+
+
+def hash_file(path: Path) -> str:
+    """Return the SHA-256 digest of one runtime artifact."""
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def main() -> int:
@@ -162,6 +172,36 @@ def main() -> int:
 
         repeated_changed = require_runtime_build(build_dir, compiler, quarantine_count=17)
         assert_no_object_rebuild(repeated_changed, "repeated changed runtime configuration")
+
+        runtime_artifacts = [
+            build_dir / "runtime" / variant / ".build-config"
+            for variant in ("default", "traced", "unchecked", "check_basic")
+        ]
+        runtime_artifacts.extend(
+            build_dir / "lib" / name
+            for name in (
+                "libdea_rt.a",
+                "libdea_rt_traced.a",
+                "libdea_rt_unchecked.a",
+                "libdea_rt_check_basic.a",
+            )
+        )
+        artifacts_before = {path: hash_file(path) for path in runtime_artifacts}
+        compiler_only = require_runtime_build(
+            build_dir,
+            compiler,
+            quarantine_count=17,
+            compiler_runtime_overrides={
+                "L1_COMPILER_RT_CHECK_BASIC": "",
+                "L1_COMPILER_RT_QUARANTINE_MAX_BYTES": "1024",
+                "L1_COMPILER_RT_QUARANTINE_MAX_COUNT": "9",
+                "L1_COMPILER_RT_UNCHECKED": "1",
+            },
+        )
+        assert_no_object_rebuild(compiler_only, "compiler-only runtime configuration")
+        artifacts_after = {path: hash_file(path) for path in runtime_artifacts}
+        if artifacts_after != artifacts_before:
+            raise AssertionError("compiler-only runtime variables changed L1 runtime archives or config stamps")
 
     return 0
 

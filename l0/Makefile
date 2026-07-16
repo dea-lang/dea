@@ -23,12 +23,10 @@ else
 DIST_L0_CFLAGS_DEFAULT := -O2
 endif
 
-# Optional runtime tuning knobs composed into L0_CFLAGS as C defines.
-L0_RT_TUNING_CFLAGS := $(strip \
-	$(if $(strip $(L0_RT_UNCHECKED)),-DL0_RT_UNCHECKED) \
-	$(if $(strip $(L0_RT_CHECK_BASIC)),-DL0_RT_CHECK_BASIC) \
-	$(if $(strip $(L0_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L0_RT_QUARANTINE_MAX_BYTES)) \
-	$(if $(strip $(L0_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L0_RT_QUARANTINE_MAX_COUNT)))
+# Native compiler binaries use the faster basic checked runtime and a bounded
+# quarantine by default. The compiler-build helper resolves these defaults
+# against raw L0_CFLAGS and explicit L0_RT_* overrides.
+L0_COMPILER_RT_CHECK_BASIC ?= 1
 L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 
 .PHONY: \
@@ -47,6 +45,7 @@ L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 	test-stage2-trace \
 	check-examples \
 	test-dist \
+	test-compiler-runtime-flags \
 	triple-test \
 	test-dea-build \
 	test-dist-fallback \
@@ -87,6 +86,7 @@ help:
 		'  check-examples     Validate all `examples/*.l0` sources with the repo-local Stage 2 compiler; fail on warnings or errors.' \
 		'' \
 		'Workflow testing:' \
+		'  test-compiler-runtime-flags Validate native compiler runtime flag composition.' \
 		'  test-dist          Validate the `make dist` packaging workflow end to end.' \
 		'  test-dea-build     Validate the Dea build and install-prefix workflows.' \
 		'  test-dist-fallback Validate Stage 2 provenance fallback without Git.' \
@@ -125,13 +125,16 @@ help:
 		'                     Docker image tag used by `make docker`.' \
 		'  DOCKER_L0_CC=<compiler>' \
 		'                     Optional C compiler passed into the Docker run as `L0_CC` (`gcc` or `clang`).' \
-		'  L0_RT_UNCHECKED=1  Compose `-DL0_RT_UNCHECKED` into `L0_CFLAGS` for `install`, `dist`, and `install-dev-stage2` (unchecked runtime; same effect as the `l0c --unchecked` flag).' \
+		'  L0_CFLAGS="..."    Raw C compiler flags used to build native L0 compiler binaries.' \
+		'  L0_RT_UNCHECKED=1  Select an unchecked runtime for native L0 compiler binaries, overriding the compiler basic-mode default.' \
 		'  L0_RT_CHECK_BASIC=1' \
-		'                     Compose `-DL0_RT_CHECK_BASIC` into `L0_CFLAGS` for `install`, `dist`, and `install-dev-stage2` (basic checked runtime; same effect as the `l0c --check-basic` flag).' \
+		'                     Explicitly select the basic checked runtime for native L0 compiler binaries.' \
 		'  L0_RT_QUARANTINE_MAX_BYTES=<n>' \
-		'                     Compose a checked-runtime quarantine byte limit define into `L0_CFLAGS` (default 16 MiB).' \
+		'                     Override the checked-runtime quarantine byte limit for native L0 compiler binaries (runtime default 16 MiB).' \
 		'  L0_RT_QUARANTINE_MAX_COUNT=<n>' \
-		'                     Compose a checked-runtime quarantine record limit define into `L0_CFLAGS` (default 4096; `0` disables retention; `256` is the suggested setting for performance-sensitive checked deployments).' \
+		'                     Override the checked-runtime quarantine record limit for native L0 compiler binaries (`0` disables retention).' \
+		'  L0_COMPILER_RT_CHECK_BASIC=1' \
+		'                     Basic checked runtime default used when building L0 compiler binaries only; empty selects full checked mode unless an explicit mode override is present.' \
 		'  L0_COMPILER_RT_QUARANTINE_MAX_COUNT=256' \
 		'                     Checked-runtime quarantine record limit used when building L0 compiler binaries only; empty disables this compiler-build default and user program defaults stay unchanged.'
 
@@ -144,9 +147,7 @@ install-dev-stage1:
 	@printf 'Repo-local Stage 1 compiler version:\n'
 	@"$(DEA_BUILD_DIR)/bin/l0c-stage1" --version
 
-ifneq ($(strip $(L0_RT_TUNING_CFLAGS)),)
-install-dev-stage2: export L0_CFLAGS := $(L0_CFLAGS) $(L0_RT_TUNING_CFLAGS)
-endif
+install-dev-stage2: export L0_COMPILER_RT_CHECK_BASIC := $(L0_COMPILER_RT_CHECK_BASIC)
 install-dev-stage2: export L0_COMPILER_RT_QUARANTINE_MAX_COUNT := $(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)
 install-dev-stage2:
 	DEA_BUILD_DIR="$(DEA_BUILD_DIR)" $(PYTHON) ./scripts/build_stage2_l0c.py
@@ -161,7 +162,7 @@ install:
 		printf '%s\n' 'make install: PREFIX is required; example: make PREFIX=/tmp/l0-install L0_CC=gcc install' >&2; \
 		exit 2; \
 	fi
-	L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}$(if $(L0_RT_TUNING_CFLAGS), $(L0_RT_TUNING_CFLAGS))" $(PYTHON) ./scripts/gen_dist_tools.py install-prefix --prefix "$(PREFIX)"
+	L0_COMPILER_RT_CHECK_BASIC="$(L0_COMPILER_RT_CHECK_BASIC)" L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}" $(PYTHON) ./scripts/gen_dist_tools.py install-prefix --prefix "$(PREFIX)"
 	@printf 'Installed Stage 2 compiler version:\n'
 	@"$(PREFIX)/bin/l0c-stage2" --version
 	@printf '\n------------------------------------------------------------------------------\n'
@@ -185,7 +186,7 @@ list-installed:
 	@$(PYTHON) ./scripts/gen_dist_tools.py list-installed --prefix "$(PREFIX)"
 
 dist: venv
-	L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}$(if $(L0_RT_TUNING_CFLAGS), $(L0_RT_TUNING_CFLAGS))" $(PYTHON) ./scripts/gen_dist_tools.py make-dist
+	L0_COMPILER_RT_CHECK_BASIC="$(L0_COMPILER_RT_CHECK_BASIC)" L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}" $(PYTHON) ./scripts/gen_dist_tools.py make-dist
 
 use-dev-stage1: install-dev-stage1
 	$(PYTHON) ./scripts/gen_dist_tools.py set-alias --dea-build-dir "$(DEA_BUILD_DIR)" --stage stage1
@@ -213,6 +214,7 @@ test-stage1: | venv
 	"$(VENV_PYTHON)" -m pytest -n auto -q --quiet-progress
 
 test-stage2: install-dev-stage2 | venv
+test-stage2: export L0_COMPILER_RT_CHECK_BASIC := $(L0_COMPILER_RT_CHECK_BASIC)
 test-stage2: export L0_COMPILER_RT_QUARANTINE_MAX_COUNT := $(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)
 test-stage2:
 	DEA_BUILD_DIR="$(DEA_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage2_l0/scripts/run_tests.py $(TESTS)
@@ -226,7 +228,11 @@ check-examples: install-dev-stage2
 test-dist: | venv
 	"$(VENV_PYTHON)" ./tests/test_make_dist_workflow.py
 
+test-compiler-runtime-flags: | venv
+	"$(VENV_PYTHON)" -m pytest -q ./tests/test_compiler_runtime_build_flags.py
+
 triple-test: install-dev-stage2 | venv
+triple-test: export L0_COMPILER_RT_CHECK_BASIC := $(L0_COMPILER_RT_CHECK_BASIC)
 triple-test: export L0_COMPILER_RT_QUARANTINE_MAX_COUNT := $(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)
 triple-test:
 	DEA_BUILD_DIR="$(DEA_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage2_l0/tests/l0c_triple_bootstrap_test.py
@@ -243,7 +249,7 @@ test-release-tags: | venv
 test-shuffle-sources: | venv
 	"$(VENV_PYTHON)" ./tests/test_shuffle_sources.py
 
-test-workflows: test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources
+test-workflows: test-compiler-runtime-flags test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources
 	@printf 'All workflow tests passed!\n'
 
 test: test-stage1 test-stage2 check-examples test-workflows

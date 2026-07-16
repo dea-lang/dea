@@ -1,7 +1,7 @@
 # ADR-0010: Checked Runtime Pointer Access Validation
 
 - Decision date: 2026-07-03
-- Last edited: 2026-07-13
+- Last edited: 2026-07-16
 - Status: Accepted
 
 ## Context
@@ -58,6 +58,12 @@ alignment checks for hash-miss accesses while compiling out the interior-pointer
 links `libdea_rt_check_basic.a` for build/run and warns on `--gen` so callers link the matching archive or compile the
 runtime sources with `DEA_RT_CHECK_BASIC`.
 
+Native compiler executables use a compiler-specific checked-runtime profile. L0 Stage 2 and the L0-hosted L1 Stage 1
+compiler default to basic checks with a 256-record quarantine cap. Their Make interfaces retain explicit full and
+unchecked selections plus compiler-specific quarantine overrides. This profile affects only the runtime embedded in the
+compiler executable: generated user programs remain full checked by default, and L1 continues to build and select its
+distinct full, basic, unchecked, and traced runtime archives independently.
+
 ## Rationale
 
 - Checked-by-default access keeps Dea's "no undefined behavior in the language itself" goal intact when raw aliases
@@ -69,6 +75,8 @@ runtime sources with `DEA_RT_CHECK_BASIC`.
   or generated C shape.
 - A compile-time basic checked mode preserves the checked-runtime backstop for exact allocation bases while reducing the
   allocation-tracker and interior-lookup cost that remains before static check elision exists.
+- Using the basic checked mode for native compiler executables recovers a meaningful portion of compiler-only time while
+  preserving exact-base validation and leaving generated-program safety defaults unchanged.
 - Treating runtime-owned strings as read-only tracked storage prevents mutable aliases to ARC-managed and static string
   bytes.
 
@@ -116,6 +124,9 @@ runtime sources with `DEA_RT_CHECK_BASIC`.
 - L1 runtime object variants carry content-sensitive build-configuration stamps. Changing the selected compiler, runtime
   flags, checked-mode defines, or baked tuning values rebuilds the affected archives and tcc objects; repeating an
   identical configuration remains an incremental no-op.
+- Compiler-build runtime controls are separate from generated-program controls. In particular, the L1 compiler's
+  level-named compiler variables configure the L0 runtime embedded in `l1c-stage1.native`; they do not alter L1 runtime
+  archives or the runtime mode selected for programs compiled by that executable.
 
 ## Related Plans
 
@@ -128,6 +139,7 @@ runtime sources with `DEA_RT_CHECK_BASIC`.
 - [work/plans/features/closed/2026-07-08-shared-runtime-check-basic-mode-noref.md](../../work/plans/features/closed/2026-07-08-shared-runtime-check-basic-mode-noref.md)
 - [work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md](../../work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md)
 - [work/plans/bug-fixes/closed/2026-07-13-shared-checked-runtime-contraction-alignof-noref.md](../../work/plans/bug-fixes/closed/2026-07-13-shared-checked-runtime-contraction-alignof-noref.md)
+- [work/plans/features/closed/2026-07-16-shared-compiler-runtime-check-basic-default-noref.md](../../work/plans/features/closed/2026-07-16-shared-compiler-runtime-check-basic-default-noref.md)
 
 ## Current Docs
 
@@ -137,4 +149,6 @@ runtime sources with `DEA_RT_CHECK_BASIC`.
   runtime surfaces affected by pointer validation
 - [l1/docs/reference/standard-library.md](../../l1/docs/reference/standard-library.md): L1 `sys.memory` and `sys.rt`
   runtime surfaces affected by pointer validation
+- [l1/docs/reference/design-decisions.md](../../l1/docs/reference/design-decisions.md): L1 compiler and runtime build
+  defaults
 - [l1/docs/roadmap.md](../../l1/docs/roadmap.md): L1 bootstrap baseline status

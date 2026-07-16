@@ -27,7 +27,11 @@ Root plans live under `work/plans/` and use these categories:
 - `refactors/`
 - `tools/`
 
-Active plans live at the category root. Closed plans live under `<category>/closed/`.
+Active plans live at the category root. Closed plans live under `<category>/closed/`. Supporting plan attachments live
+under `<category>/attachments/` when needed. Attachments hold point-in-time evidence or other lifecycle material that
+does not belong in stable `docs/`; they remain in the category attachment directory when the related plan closes, with
+links updated to the plan's new location. Do not commit raw benchmark samples, build logs, or binaries when a curated
+report is sufficient.
 
 Use a root shared plan by default when any of these are true:
 
