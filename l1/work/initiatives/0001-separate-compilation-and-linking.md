@@ -71,8 +71,9 @@ Relevant facts that constrain the plan at the time of writing:
   the only FFI primitive in the language today.
 - Imports are type-checked by reparsing implementation source files, not from a serialized interface artifact. There is
   no `.l1m` format yet, no fingerprint, and no link-time consistency check beyond what the platform linker surfaces.
-- The current driver CLI uses `-I` and `-L` as runtime-discovery short aliases for `--runtime-include` and
-  `--runtime-lib`. There is no separate-compilation entry point (`-c`) and no interface-search-path option.
+- The shared driver CLI reserves `-c` / `--compile` and ordered `-I` / `--interface-path` syntax, but compile dispatch
+  remains explicitly NYI and performs no interface search or artifact production. Runtime discovery uses `-Ri` / `-Rl`;
+  host-C, root, generated-C, and log controls use the coordinated semantic short namespaces.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today. `compiler/stage2_l1/` is a placeholder for the future
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
   behavior must be ported there with Stage 1 acting as the L1 behavioral oracle.
@@ -157,7 +158,8 @@ and build/run fan-out do not land as one tangled change. In particular:
 1. `.l1m` artifact emission and parser round-trip can land without changing ordinary source-based `--build` or `--run`.
 2. Direct `.l1m` import replay can land as semantic/codegen plumbing before the user-facing driver exposes full separate
    compilation.
-3. `-c` and `-I` become stable user-facing surface only when compile-only output is one implementation module plus
+3. `-c` and `-I` may be reserved and validated before artifact production only while help and diagnostics state that
+   compile mode is NYI. They become a usable workflow only when compile-only output is one implementation module plus
    interface-backed imports, not a renamed whole-closure object.
 4. `--build` and `--run` fan-out belongs to a later orchestration tranche that links the required provider objects.
 
@@ -246,14 +248,15 @@ The implementation is split across explicit tranches:
 2. **Direct interface import tranche:** allow the driver/analyzer/backend to consume a direct imported `.l1m` for
    signatures, transparent public layouts, opaque nominal declarations, and extern declarations. This proves
    interface-backed compilation of a consumer module, but still does not claim full build/run orchestration.
-3. **Compile-only driver tranche:** expose `-c`/`--compile` and `-I` only once `-c` emits exactly one module's generated
-   C/object plus its `.l1m`, consumes imports from interfaces, and does not leave a fresh `.l1m` behind when object
-   compilation fails.
+3. **Compile-only driver tranche:** reserve and validate `-c` / `--compile` and `-I` first, then make the mode operative
+   only once it emits exactly one module's generated C/object plus its `.l1m`, consumes imports from interfaces, and
+   does not leave a fresh `.l1m` behind when object compilation fails.
 4. **Build/run fan-out tranche:** preserve `--build` and `--run` as convenience commands by computing the module graph,
    compiling modules individually as needed, and linking all required provider objects.
 
-The driver ultimately gains three new modes or mode families; the existing whole-program `--build`/`--run` are preserved
-as convenience orchestrators that fan out compile + link:
+The driver ultimately gains three new modes or mode families; the existing whole-program `--build` / `--run` are
+preserved as convenience orchestrators that fan out compile + link. The first two spellings below are currently reserved
+syntax whose operational behavior remains in the open Phase 2.a.2 checkpoint:
 
 - `-c <module>` compiles one module without linking. It emits the module's generated C, object file, and `.l1m`
   artifact.
@@ -354,9 +357,9 @@ Once Phase 2 lands, this is mostly a CLI and build-driver story; the language do
 
 Matches `cc` conventions, since users already know them:
 
-- `-l<name>`: link library.
-- `-L<dir>`: library search path.
-- `-I<dir>`: interface search path for `.l1m` discovery during separate compilation.
+- `-l<name>` or `-l <name>`: link library.
+- `-L<dir>` or `-L <dir>`: library search path.
+- `-I<dir>` or `-I <dir>`: interface search path for `.l1m` discovery during separate compilation.
 - `--rpath=<dir>`: for dynamic libraries.
 - `--link-arg=<flag>`: escape hatch for raw linker flags.
 
@@ -364,9 +367,11 @@ Matches `cc` conventions, since users already know them:
 host linker. `-I` is consumed by the compiler driver during interface discovery for compile-involving flows. L1 has no
 opinion on static vs. dynamic linkage.
 
-The current runtime-specific short aliases therefore need to retire as Phase 2 lands: `-I` is committed to interface
-search, and `-L` returns to its normal library-search meaning. Manual `extern "C"` binding files remain the supported
-FFI workflow, so the core compiler does not need a raw C-header include-path flag.
+The former runtime-specific short aliases retired in the CLI-surface tranche: `-I` is committed to interface search,
+`-L` returns to its normal library-search meaning, and runtime paths use `-Ri` / `-Rl`. Until this phase implements
+external linking, syntactically complete `-L` / `-l` uses report the shared reserved-option diagnostic. Manual
+`extern "C"` binding files remain the supported FFI workflow, so the core compiler does not need a raw C-header
+include-path flag.
 
 ### Manifest support
 
@@ -422,7 +427,7 @@ Recorded near-term tranche checkpoints:
 - [x] Opaque export follow-up: source `export opaque { ... }`, exported-surface checks, and explicit `.l1m` opaque
   projection.
 - [x] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
-- [ ] Phase 2.a.2: `-c` compile-only and `-I` interface-path support.
+- [ ] Phase 2.a.2: operative `-c` artifact production and `-I` interface discovery (syntax is reserved).
 - [ ] Phase 2.b: driver topological sort plus per-module `I4init` emission.
 - [ ] Phase 2.c: fingerprint hashing plus provider metadata embedding in `.o`.
 
@@ -527,8 +532,9 @@ implementation tranche proves that one decision area needs additional design wor
 - Opaque export follow-up: source-level opacity, exported-surface typing, and explicit opaque `.l1m` projection under
   [`l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`][opaque-exports]. Direct
   interface replay and fingerprint canonicalization consume the nominal visibility state this plan introduces.
-- Phase 2.a.1 direct interface imports are complete; Phase 2.a.2 compile-only and interface-path driver work remains
-  under [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
+- Phase 2.a.1 direct interface imports are complete. Phase 2.a.2 syntax is reserved and validated, while operative
+  compile-only artifact generation and interface discovery remain under
+  [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
 - Phase 2.b: multi-CU init ordering and executable wrapper behavior under
   [`l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`][module-init]
 - Phase 2.c: fingerprint hashing, object metadata embedding, and link-time verification under

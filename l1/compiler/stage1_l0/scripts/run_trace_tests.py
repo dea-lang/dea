@@ -130,7 +130,7 @@ def run_one(
             *repo_stage1_command(),
             "--trace-memory",
             "--trace-arc",
-            "-P",
+            "--project-root",
             "compiler/stage1_l0/src",
             "--run",
             str(case_path),

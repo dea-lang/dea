@@ -53,7 +53,7 @@ first.
 
 ```cmd
 call bin\l0-env.cmd
-l0c -P examples --run hello
+l0c -Rp examples --run hello
 ```
 
 The shipped examples live under `examples/`, and the bundled reference docs live under `docs/reference/`.

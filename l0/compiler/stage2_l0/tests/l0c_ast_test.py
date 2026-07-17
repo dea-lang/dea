@@ -48,7 +48,7 @@ def main() -> int:
         ast_stdout = tmp_dir / "ast.stdout"
         ast_stderr = tmp_dir / "ast.stderr"
         run_to_files(
-            [l0c, "--ast", "-P", fixture_root_native, "ok_leaf"],
+            [l0c, "--ast", "--project-root", fixture_root_native, "ok_leaf"],
             ast_stdout,
             ast_stderr,
             env=clean_env(),
@@ -61,7 +61,7 @@ def main() -> int:
         all_stdout = tmp_dir / "all.stdout"
         all_stderr = tmp_dir / "all.stderr"
         run_to_files(
-            [l0c, "--ast", "--all-modules", "-P", fixture_root_native, "ok_main"],
+            [l0c, "--ast", "--all-modules", "--project-root", fixture_root_native, "ok_main"],
             all_stdout,
             all_stderr,
             env=clean_env(),
@@ -79,7 +79,7 @@ def main() -> int:
         bad_stdout = tmp_dir / "bad.stdout"
         bad_stderr = tmp_dir / "bad.stderr"
         completed = run_to_files(
-            [l0c, "--ast", "-P", fixture_root_native, "no_such_module_xyz"],
+            [l0c, "--ast", "--project-root", fixture_root_native, "no_such_module_xyz"],
             bad_stdout,
             bad_stderr,
             env=clean_env(),
@@ -94,7 +94,7 @@ def main() -> int:
         hello_stdout = tmp_dir / "hello.stdout"
         hello_stderr = tmp_dir / "hello.stderr"
         run_to_files(
-            [l0c, "--ast", "-P", native_path(REPO_ROOT / "examples"), "hello"],
+            [l0c, "--ast", "--project-root", native_path(REPO_ROOT / "examples"), "hello"],
             hello_stdout,
             hello_stderr,
             env=clean_env(),

@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-07-11
+Version: 2026-07-16
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -60,6 +60,12 @@ entries remain rejected until transitive closure loading is implemented; the ord
 source-based.
 
 Current CLI entry point: `compiler/stage1_l0/src/l1c.l0`.
+
+The CLI parser reserves `-c` / `--compile` and repeatable `-I` / `--interface-path` values for separate compilation, but
+dispatch currently reports `L1C-9510` before analysis or artifact creation. The ordinary pipeline remains source-based
+until compile-only interface discovery and output land. L1 follows the shared exact-token short namespaces for roots,
+host-C controls, runtime paths, generated C, and log presentation; reserved canonical debug/assembly/link flags report
+`L1C-2032` rather than acquiring L1-specific meanings.
 
 Normal developer workflow:
 
@@ -131,6 +137,7 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Coordinates the pass pipeline.
 - Owns indexed source units and active cloned direct-provider interfaces.
 - Implements CLI mode dispatch and host compiler execution.
+- Reserves compile-only mode and interface-path syntax while keeping the unimplemented path gated before analysis.
 - Produces generated C, built executables, or direct runs depending on CLI mode.
 
 ## 3. Core Data Flow

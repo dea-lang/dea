@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-12
+Version: 2026-07-16
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -113,6 +113,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - The direct-interface replay tranche of Feature [2026-04-24-separate-compilation-driver-surface-noref][compile-driver]
   added dependency-free supplied-provider replay through semantic analysis and C generation, canonical metadata
   round-tripping, source/interface enum export parity, indexed active-provider state, and signed and aggregate literals.
+- The CLI-surface tranche reserved shared `-c` / `--compile` and ordered `-I` / `--interface-path` syntax while keeping
+  compile dispatch explicitly NYI, and coordinated Dea-wide semantic short aliases ahead of L0 2.0.
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
 - Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] made Stage 1 check array

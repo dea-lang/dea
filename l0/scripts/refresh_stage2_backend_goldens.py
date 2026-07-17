@@ -59,7 +59,7 @@ def generate_stage1_golden(case_dir: Path) -> str:
         *source_tree_stage1_command(REPO_ROOT),
         "--gen",
         "--no-line-directives",
-        "-P",
+        "--project-root",
         str(case_dir),
         module,
     ]

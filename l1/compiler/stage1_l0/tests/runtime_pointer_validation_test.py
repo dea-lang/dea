@@ -58,7 +58,7 @@ def run_source(
         return subprocess.run(
             [
                 str(compiler_path()),
-                "-P",
+                "--project-root",
                 str(project_root),
                 "--run",
                 *flags,

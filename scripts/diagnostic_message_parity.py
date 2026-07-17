@@ -171,7 +171,7 @@ def run_case(stage: str, compiler: Path, case_name: str, expected: str, files: d
             env["L0_HOME"] = str(REPO_ROOT / "l0" / "compiler")
             env["L1_HOME"] = str(cwd / "compiler")
         completed = subprocess.run(
-            [*wrapper_command(compiler), "-P", str(root), "--check", "main"],
+            [*wrapper_command(compiler), "--project-root", str(root), "--check", "main"],
             cwd=cwd,
             env=env,
             stdin=subprocess.DEVNULL,

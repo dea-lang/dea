@@ -1,9 +1,9 @@
 # L0 Project Status
 
-Version: 2026-07-13
+Version: 2026-07-16
 
-This document summarizes what is implemented in this repository today and what defines the current Dea/L0 `1.1.0`
-release.
+This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `1.1.0`; the current
+development line targets `2.0.0` and includes a coordinated breaking CLI alias migration.
 
 L0 now lives as one language subtree inside the Dea monorepo; monorepo release tags use the `l0-vX.Y.Z` namespace while
 historical pre-monorepo tags remain legacy references. The monorepo also contains the active Dea/L1 bootstrap subtree
@@ -45,7 +45,7 @@ distribution, and release workflows.
 At a high level, it provides:
 
 - full public CLI parity with Stage 1 across `--check`, `--tok`, `--ast`, `--sym`, `--type`, `--gen`, `--build`, and
-  `--run`,
+  `--run`, plus the shared reserved `--compile` mode and interface-path grammar,
 - self-hosted C99 generation, build, and run flows,
 - repo-local, install-prefix, and distribution delivery paths,
 - strict triple-bootstrap validation via `make triple-test`,
@@ -56,6 +56,11 @@ At a high level, it provides:
   and Windows trace-runner behavior.
 
 Stage 1 remains the behavioral oracle for equivalent Stage 2 paths.
+
+The 2.0 CLI gives conventional driver spellings stable meanings across levels. Dea-specific short options use semantic
+namespaces such as `-Gc`, `-Rp` / `-Rs`, `-Cc` / `-Co`, `-Ri` / `-Rl`, and `-Vl`; the long forms remain unchanged.
+Compile-only output, interface discovery, debug/assembly emission, and external-library forwarding are not implemented
+in L0.
 
 ## Language and Library Coverage
 

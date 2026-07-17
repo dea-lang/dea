@@ -211,10 +211,10 @@ l0c --version                           # print the active compiler stage identi
 ### Multi-module projects
 
 ```shell
-l0c --run -P ./src -P ./lib main        # -P adds a project root to search for modules; main is the target module (main.l0)
+l0c --run -Rp ./src -Rp ./lib main  # -Rp adds an ordered project root; main resolves to main.l0
 ```
 
-The compiler resolves modules from system roots (stdlib) then project roots in order.
+The compiler resolves modules from system roots (stdlib) in declaration order, then project roots in declaration order.
 
 Environment-variable defaults and launcher-specific path behavior are documented in
 [l0/compiler/stage2_l0/README.md](compiler/stage2_l0/README.md), [l0/docs/project-status.md](docs/project-status.md),
@@ -223,7 +223,7 @@ and [l0/README-WINDOWS.md](README-WINDOWS.md).
 ### Examples
 
 ```shell
-l0c -P examples --run hamurabi
+l0c -Rp examples --run hamurabi
 ```
 
 The `examples/` directory covers most language features and is worth reading as code.
@@ -417,20 +417,22 @@ l0c [mode] [options] <target>
 # ./scripts/l0c [mode] [options] <target>
 ```
 
-Global identity and logging options include `--help`, `--version`, `-v/--verbose`, and `-l/--log`. The main mode flags
+Global identity and logging options include `--help`, `--version`, `-v/--verbose`, and `-Vl/--log`. The main mode flags
 are as follows:
 
-| Mode           | Action                      |
-| -------------- | --------------------------- |
-| `--build`      | Compile to binary (default) |
-| `--check`      | Analyze only                |
-| `--run` / `-r` | Compile and execute         |
+| Mode               | Action                                               |
+| ------------------ | ---------------------------------------------------- |
+| `--build`          | Compile to binary (default)                          |
+| `--compile` / `-c` | Reserved compile-without-linking mode; currently NYI |
+| `--gen` / `-Gc`    | Emit generated C                                     |
+| `--check`          | Analyze only                                         |
+| `--run` / `-r`     | Compile and execute                                  |
 
 ```shell
 l0c --build --keep-c hello.l0             # retain the generated C
 l0c --run app.main -- arg1 arg2           # pass arguments to the program
 l0c --run --trace-arc --trace-memory app  # trace ARC and allocation to stderr
-l0c -c clang -C "-Og -DDEBUG" hello.l0    # use a specific C compiler with custom flags
+l0c -Cc clang -Co "-Og -DDEBUG" hello.l0  # use a specific C compiler with custom flags
 ```
 
 Full CLI contract, mode flags, options, targets, identity strings, exit codes, and stage-specific differences:

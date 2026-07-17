@@ -257,7 +257,7 @@ def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], k
         build_args.append("--keep-c")
     else:
         c_output.unlink(missing_ok=True)
-    build_args.extend(["-P", "compiler/stage1_l0/src", "-o", str(native_bin), "l1c"])
+    build_args.extend(["--project-root", "compiler/stage1_l0/src", "-o", str(native_bin), "l1c"])
 
     build_env = compiler_runtime_build_env(os.environ.copy())
     build_env["L0_HOME"] = str(MONOREPO_ROOT / "l0" / "compiler")

@@ -126,8 +126,8 @@ def build_stage2_artifact(
     else:
         c_output.unlink(missing_ok=True)
     for root in extra_project_roots or ():
-        build_args.extend(["-P", root])
-    build_args.extend(["-P", "compiler/stage2_l0/src", "-o", str(native_bin), "l0c"])
+        build_args.extend(["--project-root", root])
+    build_args.extend(["--project-root", "compiler/stage2_l0/src", "-o", str(native_bin), "l0c"])
 
     build_env = os.environ.copy()
     if extra_env is not None:

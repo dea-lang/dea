@@ -76,7 +76,7 @@ def require_trace_gen_rewrite() -> None:
                 "--trace-memory",
                 "--output",
                 str(output_path),
-                "-P",
+                "--project-root",
                 str(fixture_root),
                 "trace_gen_main",
             ],

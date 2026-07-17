@@ -18,6 +18,7 @@ import build_info;
 enum CliMode {
     CM_RUN;
     CM_BUILD;
+    CM_COMPILE;
     CM_EMIT_INTERFACE;
     CM_GEN;
     CM_CHECK;
@@ -39,6 +40,7 @@ struct CliOptions {
 
     project_roots: StringVector*;
     sys_roots: StringVector*;
+    interface_paths: StringVector*;
 
     output: string?;
     keep_c: bool;
@@ -86,6 +88,7 @@ func cli_options_create() -> CliOptions* {
         false,
         sv_create(2),
         sv_create(2),
+        sv_create(2),
         null,
         false,
         null,
@@ -113,6 +116,7 @@ func cli_options_create() -> CliOptions* {
 func cli_options_free(self: CliOptions*) {
     sv_free(self.project_roots);
     sv_free(self.sys_roots);
+    sv_free(self.interface_paths);
     sv_free(self.program_args);
     drop self;
 }
@@ -164,6 +168,38 @@ func cli_emit_error(diags: DiagCollector*, code: string, message: string) {
 }
 
 /**
+ * Emit the standard diagnostic for a recognized canonical option whose
+ * behavior is not implemented yet.
+ *
+ * @param diags Diagnostic collector.
+ * @param option Canonical short option.
+ * @param purpose Reserved option purpose.
+ */
+func cli_emit_reserved_option_error(diags: DiagCollector*, option: string, purpose: string) {
+    cli_emit_error(
+        diags,
+        "L1C-2032",
+        "option '" + option + "' is reserved for " + purpose + " and is not supported yet"
+    );
+}
+
+/**
+ * Return whether a diagnostic collector contains one diagnostic code.
+ *
+ * @param diags Diagnostic collector to inspect.
+ * @param code Diagnostic code to find.
+ * @return `true` when the code is present.
+ */
+func cli_has_diagnostic_code(diags: DiagCollector*, code: string) -> bool {
+    for (let i = 0; i < diag_count(diags); i = i + 1) {
+        if (diag_get(diags, i).code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Emit a command-line warning without source coordinates.
  *
  * @param diags Diagnostic collector.
@@ -193,6 +229,7 @@ func cli_mode_flag(mode: CliMode) -> string {
     match (mode) {
         CM_RUN => { return "--run"; }
         CM_BUILD => { return "--build"; }
+        CM_COMPILE => { return "--compile"; }
         CM_EMIT_INTERFACE => { return "--emit-interface"; }
         CM_GEN => { return "--gen"; }
         CM_CHECK => { return "--check"; }
@@ -213,6 +250,7 @@ func cli_mode_name(mode: CliMode) -> string {
     match (mode) {
         CM_RUN => { return "run"; }
         CM_BUILD => { return "build"; }
+        CM_COMPILE => { return "compile"; }
         CM_EMIT_INTERFACE => { return "emit-interface"; }
         CM_GEN => { return "gen"; }
         CM_CHECK => { return "check"; }
@@ -331,8 +369,9 @@ func cli_print_blank_line(to_stderr: bool) {
  * @param to_stderr Whether the banner should be written to standard error.
  */
 func cli_print_usage(to_stderr: bool) {
-    cli_print_line(to_stderr, "usage: l1c [-h] [--version] [-v] [-l] [-P PROJECT_ROOT] [-S SYS_ROOT] [--run | --build |");
-    cli_print_line(to_stderr, "           --emit-interface | --gen | --check | --tok | --ast | --sym | --type]");
+    cli_print_line(to_stderr, "usage: l1c [-h] [--version] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT] [--run | --build |");
+    cli_print_line(to_stderr, "           -c | --compile | --emit-interface | --gen | --check | --tok | --ast | --sym | --type]");
+    cli_print_line(to_stderr, "           [-I INTERFACE_PATH]");
     cli_print_line(to_stderr, "           [--output OUTPUT]");
     cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS]");
     cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
@@ -359,41 +398,49 @@ func cli_print_help() {
     cli_print_line(false, "  -h, --help            show this help message and exit");
     cli_print_line(false, "  --version             show compiler version and exit");
     cli_print_line(false, "  -v, --verbose         Increase verbosity: -v=INFO, -vvv=DEBUG");
-    cli_print_line(false, "  -l, --log             Enable rich log formatting (timestamps, levels)");
-    cli_print_line(false, "  -P, --project-root PROJECT_ROOT");
+    cli_print_line(false, "  -Vl, --log            Enable rich log formatting (timestamps, levels)");
+    cli_print_line(false, "  -Rp, --project-root PROJECT_ROOT");
     cli_print_line(false, "                        Add a project source root (can be passed multiple");
     cli_print_line(false, "                        times)");
-    cli_print_line(false, "  -S, --sys-root SYS_ROOT");
+    cli_print_line(false, "  -Rs, --sys-root SYS_ROOT");
     cli_print_line(false, "                        Add a system/stdlib source root (can be passed");
     cli_print_line(false, "                        multiple times; default: $L1_SYSTEM as colon-separated");
     cli_print_line(false, "                        paths)");
     cli_print_line(false, "  --run, -r             Build and run a module");
     cli_print_line(false, "  --build               Build an executable (default mode)");
+    cli_print_line(false, "  -c, --compile         Reserve compile-only mode for Phase 3 artifact production");
     cli_print_line(false, "  --emit-interface      Emit the module interface (.l1m) text for the target module");
-    cli_print_line(false, "  --gen, -g, --codegen  Generate C code");
+    cli_print_line(false, "  --gen, -Gc, --codegen Generate C code");
     cli_print_line(false, "  --check, --analyze    Parse and analyze a module");
     cli_print_line(false, "  --tok, --tokens       Dump lexer tokens");
     cli_print_line(false, "  --ast                 Pretty-print the AST");
     cli_print_line(false, "  --sym, --symbols      Dump module-level symbols");
     cli_print_line(false, "  --type, --types       Dump resolved types");
     cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--emit-interface', '--gen', '--run')");
-    cli_print_line(false, "  --c-compiler, -c C_COMPILER");
+    cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");
     cli_print_line(false, "                        C compiler to use (default: $L1_CC has highest");
     cli_print_line(false, "                        precedence if set; then tcc, gcc, clang, cc from PATH,");
     cli_print_line(false, "                        or $CC, in that order; valid in: '--build', '--run')");
-    cli_print_line(false, "  --c-options, -C C_OPTIONS");
+    cli_print_line(false, "  --c-options, -Co C_OPTIONS");
     cli_print_line(false, "                        Extra options to pass to the C compiler (default");
     cli_print_line(false, "                        prepends $L1_CFLAGS; options from --c-options are");
-    cli_print_line(false, "                        appended after env options; e.g. -C=\"-Og -DDEBUG\";");
+    cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\";");
     cli_print_line(false, "                        valid in: '--build', '--run')");
-    cli_print_line(false, "  --runtime-include, -I RUNTIME_INCLUDE");
+    cli_print_line(false, "  -I, --interface-path INTERFACE_PATH");
+    cli_print_line(false, "                        Add an interface search path (repeatable; valid in:");
+    cli_print_line(false, "                        '--compile'; interface loading lands in Phase 3)");
+    cli_print_line(false, "  --runtime-include, -Ri RUNTIME_INCLUDE");
     cli_print_line(false, "                        Path to Dea runtime headers such as `dea_rt.h`");
     cli_print_line(false, "                        (default: $L1_RUNTIME_INCLUDE or");
     cli_print_line(false, "                        $L1_BUILD_DIR/include; valid in: '--build', '--run')");
-    cli_print_line(false, "  --runtime-lib, -L RUNTIME_LIB");
+    cli_print_line(false, "  --runtime-lib, -Rl RUNTIME_LIB");
     cli_print_line(false, "                        Path to Dea runtime library search directory");
     cli_print_line(false, "                        (default: $L1_RUNTIME_LIB or");
     cli_print_line(false, "                        $L1_BUILD_DIR/lib; valid in: '--build', '--run')");
+    cli_print_line(false, "  -g                    Reserved debug-information option (not supported yet)");
+    cli_print_line(false, "  -S                    Reserved assembly-output option (not supported yet)");
+    cli_print_line(false, "  -L LIBRARY_PATH       Reserved library search path (not supported yet)");
+    cli_print_line(false, "  -l LIBRARY            Reserved library link option (not supported yet)");
     cli_print_line(false, "  --no-line-directives, -NLD");
     cli_print_line(false, "                        Disable #line directives in generated C code (valid");
     cli_print_line(false, "                        in: '--build', '--run', '--gen')");
@@ -456,13 +503,13 @@ func cli_verbose_cluster_count(token: string) -> int {
  *
  * @param argv Full argument vector.
  * @param i Index of the option token.
- * @param opt_name Option name used in diagnostics.
+ * @param option Exact option token used in diagnostics.
  * @param diags Diagnostic collector.
  * @return Following argument value, or `null` after emitting a missing-value error.
  */
-func cli_require_next_value(argv: StringVector*, i: int, opt_name: string, diags: DiagCollector*) -> string? {
-    if (i + 1 >= sv_size(argv)) {
-        cli_emit_error(diags, "L1C-2003", "missing value for option '" + opt_name + "'");
+func cli_require_next_value(argv: StringVector*, i: int, option: string, diags: DiagCollector*) -> string? {
+    if (i + 1 >= sv_size(argv) || sv_get(argv, i + 1) == "--") {
+        cli_emit_error(diags, "L1C-2003", "missing value for option '" + option + "'");
         return null;
     }
     return sv_get(argv, i + 1);
@@ -490,6 +537,10 @@ func cli_assign_target(opts: CliOptions*, token: string) {
  */
 func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     let mode = opts.mode;
+
+    if (sv_size(opts.interface_paths) > 0 && ord(mode) != ord(CM_COMPILE)) {
+        cli_emit_error(diags, "L1C-2031", "option '--interface-path' is valid only with mode: --compile");
+    }
 
     if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
         ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_EMIT_INTERFACE)) {
@@ -651,12 +702,17 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 i = i + 1;
                 continue;
             }
+            if (token == "-c" || token == "--compile") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_COMPILE);
+                i = i + 1;
+                continue;
+            }
             if (token == "--emit-interface") {
                 cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_EMIT_INTERFACE);
                 i = i + 1;
                 continue;
             }
-            if (token == "--gen" || token == "--codegen" || token == "-g") {
+            if (token == "--gen" || token == "--codegen" || token == "-Gc") {
                 cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_GEN);
                 i = i + 1;
                 continue;
@@ -700,7 +756,7 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "-l" || token == "--log") {
+            if (token == "-Vl" || token == "--log") {
                 (opts as CliOptions*).log = true;
                 i = i + 1;
                 continue;
@@ -754,8 +810,8 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "-P" || token == "--project-root") {
-                let value = cli_require_next_value(argv, i, "--project-root", diags as DiagCollector*);
+            if (token == "-Rp" || token == "--project-root") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
                 } else {
@@ -772,8 +828,15 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "-S" || token == "--sys-root") {
-                let value = cli_require_next_value(argv, i, "--sys-root", diags as DiagCollector*);
+            if (starts_with_s(token, "-Rp=")) {
+                let value = slice_s(token, len_s("-Rp="), len_s(token));
+                sv_push((opts as CliOptions*).project_roots, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Rs" || token == "--sys-root") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
                 } else {
@@ -790,8 +853,15 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
+            if (starts_with_s(token, "-Rs=")) {
+                let value = slice_s(token, len_s("-Rs="), len_s(token));
+                sv_push((opts as CliOptions*).sys_roots, value);
+                i = i + 1;
+                continue;
+            }
+
             if (token == "-o" || token == "--output") {
-                let value = cli_require_next_value(argv, i, "--output", diags as DiagCollector*);
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
                 } else {
@@ -807,8 +877,8 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "-c" || token == "--c-compiler") {
-                let value = cli_require_next_value(argv, i, "--c-compiler", diags as DiagCollector*);
+            if (token == "-Cc" || token == "--c-compiler") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
                 } else {
@@ -824,8 +894,14 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "-C" || token == "--c-options") {
-                let value = cli_require_next_value(argv, i, "--c-options", diags as DiagCollector*);
+            if (starts_with_s(token, "-Cc=")) {
+                (opts as CliOptions*).c_compiler = slice_s(token, len_s("-Cc="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Co" || token == "--c-options") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
                 } else {
@@ -841,8 +917,40 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "-I" || token == "--runtime-include") {
-                let value = cli_require_next_value(argv, i, "--runtime-include", diags as DiagCollector*);
+            if (starts_with_s(token, "-Co=")) {
+                (opts as CliOptions*).c_options = slice_s(token, len_s("-Co="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-I" || token == "--interface-path") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    sv_push((opts as CliOptions*).interface_paths, value as string);
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--interface-path=")) {
+                let value = slice_s(token, len_s("--interface-path="), len_s(token));
+                sv_push((opts as CliOptions*).interface_paths, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-I") && len_s(token) > len_s("-I") &&
+                char_at_s(token, len_s("-I")) != '=') {
+                let value = slice_s(token, len_s("-I"), len_s(token));
+                sv_push((opts as CliOptions*).interface_paths, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Ri" || token == "--runtime-include") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
                 } else {
@@ -858,8 +966,14 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "-L" || token == "--runtime-lib") {
-                let value = cli_require_next_value(argv, i, "--runtime-lib", diags as DiagCollector*);
+            if (starts_with_s(token, "-Ri=")) {
+                (opts as CliOptions*).runtime_include = slice_s(token, len_s("-Ri="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Rl" || token == "--runtime-lib") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
                 } else {
@@ -875,6 +989,60 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
+            if (starts_with_s(token, "-Rl=")) {
+                (opts as CliOptions*).runtime_lib = slice_s(token, len_s("-Rl="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-g") {
+                cli_emit_reserved_option_error(diags as DiagCollector*, "-g", "debug information");
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-S") {
+                cli_emit_reserved_option_error(diags as DiagCollector*, "-S", "assembly output");
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-L") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    cli_emit_reserved_option_error(diags as DiagCollector*, "-L", "external library search");
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "-L") && len_s(token) > len_s("-L") &&
+                char_at_s(token, len_s("-L")) != '=') {
+                cli_emit_reserved_option_error(diags as DiagCollector*, "-L", "external library search");
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-l") {
+                let value2 = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value2 == null) {
+                    i = i + 1;
+                } else {
+                    cli_emit_reserved_option_error(diags as DiagCollector*, "-l", "external library selection");
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "-l") && len_s(token) > len_s("-l") &&
+                char_at_s(token, len_s("-l")) != '=') {
+                cli_emit_reserved_option_error(diags as DiagCollector*, "-l", "external library selection");
+                i = i + 1;
+                continue;
+            }
+
             if (starts_with_s(token, "-")) {
                 cli_emit_error(diags as DiagCollector*, "L1C-2001", "unknown option '" + token + "'");
                 i = i + 1;
@@ -883,6 +1051,24 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
 
             cli_assign_target(opts as CliOptions*, token);
             i = i + 1;
+        }
+
+        if (cli_has_diagnostic_code(diags as DiagCollector*, "L1C-2003")) {
+            let missing_value_verbosity = (opts as CliOptions*).verbosity;
+            let missing_value_log = (opts as CliOptions*).log;
+            cli_options_free(opts as CliOptions*);
+            opts = null;
+
+            let missing_value_result = new CliParseResult(
+                null,
+                diags as DiagCollector*,
+                false,
+                false,
+                missing_value_verbosity,
+                missing_value_log
+            );
+            diags = null;
+            return missing_value_result;
         }
 
         if ((opts as CliOptions*).entry_target == null) {
@@ -898,7 +1084,7 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 );
             }
         } else {
-            if (sv_size((opts as CliOptions*).program_args) > 0) {
+            if (split_idx >= 0) {
                 cli_emit_error(
                     diags as DiagCollector*,
                     "L1C-2023",

@@ -111,7 +111,7 @@ def run_one(
             *source_tree_l0c_command(),
             "--trace-memory",
             "--trace-arc",
-            "-P",
+            "--project-root",
             "compiler/stage2_l0/src",
             "--run",
             str(case_path),

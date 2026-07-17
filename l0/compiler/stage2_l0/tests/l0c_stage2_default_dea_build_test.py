@@ -41,7 +41,7 @@ def main() -> int:
         assert_file(l0c)
         assert_file(native)
         assert_no_file(test_dea_build / "bin" / "l0c-stage2.c")
-        run([l0c, "--check", "-P", "examples", "hello"], env=clean_env())
+        run([l0c, "--check", "--project-root", "examples", "hello"], env=clean_env())
     except ToolTestFailure as exc:
         return fail(str(exc))
     finally:

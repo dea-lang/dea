@@ -314,7 +314,7 @@ After you have already run `make use-dev-stage1`:
 ```cmd
 call build\dea\bin\l0-env.cmd
 l0c --version
-l0c --check -P examples hello
+l0c --check -Rp examples hello
 ```
 
 Direct stage-specific invocation also works:

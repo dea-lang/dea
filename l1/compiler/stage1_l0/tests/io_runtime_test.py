@@ -40,7 +40,7 @@ def run_mode(mode: str, stdin_text: str = "", extra_flags: list[str] | None = No
     return subprocess.run(
         [
             str(compiler_path()),
-            "-P",
+            "--project-root",
             "compiler/stage1_l0/tests/fixtures/io_runtime",
             *(extra_flags or []),
             "--run",

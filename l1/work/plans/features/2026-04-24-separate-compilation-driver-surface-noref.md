@@ -3,7 +3,7 @@
 ## Add the separate-compilation driver surface
 
 - Date: 2026-06-13
-- Status: Draft
+- Status: In Progress
 - Title: Add the separate-compilation driver surface
 - Kind: Feature
 - Severity: High
@@ -67,7 +67,8 @@ compilation orchestration.
 2. Stage 1 still treats one requested entry module plus its import closure as one generated C program build.
 3. The current CLI mode matrix is centered on `--build`, `--run`, and inspection modes, not compile-only output.
 4. The driver does not search an interface-path list for `.l1m` files.
-5. Current runtime short-option plumbing still occupies `-I` / `-L` in a pre-separate-compilation way.
+5. Before Phase 2, shared runtime short-option plumbing occupied `-I` / `-L` in a pre-separate-compilation way and L0
+   used `-c` for host-C selection, so reclaiming canonical driver syntax required one coordinated breaking migration.
 6. The abandoned local `module-interface-implementation` branch proved that direct `.l1m` imports are useful, but also
    showed that exposing `-I` to `--build`/`--run` before provider objects are linked leaves unresolved externs, and that
    compile-only must not emit a whole source closure into one object.
@@ -79,13 +80,14 @@ compilation orchestration.
 1. `-c <module>` (long alias `--compile <module>`) is the stable compile-only user surface.
 2. `-I <dir>` (long alias `--interface-path <dir>`) becomes the interface-search path used during compile-involving
    flows.
-3. The old runtime-specific `-I` / `-L` short aliases are withdrawn. The long forms `--runtime-include` and
-   `--runtime-lib` keep working unchanged, and this plan introduces fresh two-letter short aliases `-Ri` and `-Rl` for
-   them respectively (bikeshed-friendly; finalize during CLI implementation if a different convention is chosen).
-4. Whole-program `--build` and `--run` remain convenience orchestrators. They do not accept interface-backed imports as
+3. The old runtime-specific `-I` / `-L` short aliases are withdrawn across L0 and L1. The long forms `--runtime-include`
+   and `--runtime-lib` keep working unchanged, with `-Ri` and `-Rl` as their semantic short aliases.
+4. Shared Dea-specific controls use exact semantic namespaces: `-Gc`, `-Rp` / `-Rs`, `-Cc` / `-Co`, `-Ri` / `-Rl`, and
+   `-Vl`. Conventional `-g`, `-S`, `-L`, and `-l` meanings are reserved until their capabilities land.
+5. Whole-program `--build` and `--run` remain convenience orchestrators. They do not accept interface-backed imports as
    a complete user-facing workflow until the fan-out/link tranche can provide every required provider object.
-5. The driver continues to own import-closure computation rather than pushing build-graph logic into ad hoc scripts.
-6. External-library linker flags are not part of this plan beyond the short-alias reclamation above.
+6. The driver continues to own import-closure computation rather than pushing build-graph logic into ad hoc scripts.
+7. External-library linker flags are not part of this plan beyond reserving their canonical syntax.
 
 ## Goal
 
@@ -152,12 +154,13 @@ make -C l1 clean test-all
 
 Results: 48 normal tests, 37 default trace tests, the environment stackability check, and all four L1 examples passed.
 
-### Phase 2: CLI option and mode design
+### Phase 2: CLI option and mode design (completed 2026-07-16)
 
 Extend CLI parsing and validation for:
 
 - `-c` / `--compile`,
 - `-I` / `--interface-path`,
+- `-Gc`, `-Rp` / `-Rs`, `-Cc` / `-Co`, and `-Vl` as shared semantic aliases,
 - `-Ri` (new short alias for the existing `--runtime-include`),
 - `-Rl` (new short alias for the existing `--runtime-lib`),
 - any internal/testing-only long-form interface-emission mode needed to support Stage 1 development.
@@ -168,6 +171,36 @@ with the new separate-compilation model. The long forms `--runtime-include` / `-
 CLI parsing may land before all orchestration is complete only if mode validation prevents users from entering
 half-supported workflows. In particular, `--build` and `--run` must not accept interface-backed imports until their
 provider objects are linked.
+
+All current compiler stages now reserve `-c` / `--compile` for compile-only mode, store repeatable `-I` /
+`--interface-path` values in declaration order, and gate interface paths to compile mode with paired `L0C-2031` /
+`L1C-2031`. The coordinated L0 2.0/L1 alias migration uses exact semantic namespaces for Dea-specific controls. The
+canonical `-g`, `-S`, `-L`, and `-l` spellings report paired `L0C-2032` / `L1C-2032` until debug, assembly, and external
+linking support lands. Compile mode deliberately dispatches to `L0C-9510` / `L1C-9510` without analysis or artifact
+creation, so Phase 3 remains responsible for interface discovery and atomic `.c`, `.o`, and `.l1m` output.
+
+Implementation review closed the remaining parity gaps in this surface. L0 Stage 1 fallback presentation now skips
+value-option arguments and retains empty-value presence for mode validation. All active drivers reject a bare `--`
+outside run mode, while self-hosted missing-value diagnostics preserve the exact short or long token. The L1 Stage 1
+build inherits raw `L0_CFLAGS`, and resolver tests plus live docs pin system roots before project roots while preserving
+declaration order inside each group.
+
+The completed tranche passed focused CLI, library-driver, source-path, and build-environment tests across L0 and L1,
+normal full monorepo validation, and both full self-hosted trace sweeps:
+
+```bash
+make -C l0 test-stage1
+make -C l0 test-stage2 TESTS="cli_args_test l0c_lib_test source_paths_test"
+make -C l0 test-stage2-trace
+make -C l1 test-stage1 TESTS="cli_args_test l1c_lib_test source_paths_test compiler_runtime_build_env_test.py"
+make -C l1 test-stage1-trace
+make test
+```
+
+Results: L0 Stage 1 passed 1,412 tests; the focused L0 Stage 2 and L1 Stage 1 matrices passed 3/3 and 4/4 targets. Root
+`make test` passed L0 Stage 2 (54/54 normal tests, 8/8 examples, and all workflow checks) and L1 Stage 1 (53/53 normal
+tests, the environment stackability check, and 4/4 examples). The full L0 Stage 2 and L1 Stage 1 trace sweeps passed
+33/33 and 37/37 eligible tests.
 
 ### Phase 3: Compile-only driver flow
 
@@ -218,8 +251,8 @@ provider objects or explicit external-link inputs.
 01. Direct `.l1m` imports replay into analysis and codegen without requiring the provider source.
 02. `-c` / `--compile` and `-I` / `--interface-path` parse, validate, and participate in the driver only for supported
     modes.
-03. `-Ri` and `-Rl` resolve to `--runtime-include` and `--runtime-lib` respectively, and the old `-I` / `-L` runtime
-    short aliases are no longer accepted.
+03. Shared exact aliases resolve as documented, the historical meanings of `-c`, `-I`, `-L`, `-l`, `-g`, `-S`, `-P`, and
+    `-C` are retired, and long option names remain stable.
 04. `--compile` emits exactly one implementation module's object and does not smuggle source-import definitions into
     that object.
 05. A failed object compilation does not leave a fresh `.l1m` interface artifact behind.

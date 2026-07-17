@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-14
+Version: 2026-07-16
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -57,6 +57,12 @@ The bootstrap compiler can emit deterministic textual `.l1m` module interface ar
 direct provider interfaces through semantic analysis and C generation without loading provider source. Ordinary CLI
 imports remain source-based today; `.l1m` files are not yet normal compile/build/run inputs, and transitive interface
 dependencies are rejected until closure loading is implemented.
+
+The CLI reserves `-c` / `--compile` for compile-only mode and accepts repeatable `-I` / `--interface-path` values only
+with that mode. Compile mode currently exits with `L1C-9510` and produces no artifacts; interface-path discovery and
+per-module `.c`, `.o`, and `.l1m` output remain future work. The shared semantic aliases are `-Gc` for generated C,
+`-Rp` / `-Rs` for source roots, `-Cc` / `-Co` for host-C controls, `-Ri` / `-Rl` for runtime paths, and `-Vl` for rich
+logging. The conventional `-g`, `-S`, `-L`, and `-l` meanings are reserved but not implemented.
 
 ### Runtime and Standard Library
 

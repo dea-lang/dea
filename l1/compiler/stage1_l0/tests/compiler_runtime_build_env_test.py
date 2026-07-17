@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -193,11 +194,54 @@ def require_make_help_parity() -> None:
             raise AssertionError(f"make help listed {variable} {occurrences} times, expected once")
 
 
+def require_make_preserves_environment_cflags() -> None:
+    """Require the Stage 1 recipe to inherit raw C flags without Make expansion."""
+
+    literal_cflags = "-Wl,-rpath,$ORIGIN/lib"
+    env = os.environ.copy()
+    env["L0_CFLAGS"] = literal_cflags
+    completed = subprocess.run(
+        [
+            "make",
+            "--dry-run",
+            "--old-file=venv",
+            "--old-file=runtime",
+            "--old-file=_ensure-bootstrap-l0-stage2",
+            "build-stage1",
+        ],
+        cwd=L1_ROOT,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"make --dry-run build-stage1 exited with {completed.returncode}:\n{completed.stdout}"
+        )
+    if "./scripts/build_stage1_l1c.py" not in completed.stdout:
+        raise AssertionError("make --dry-run omitted the build-stage1 recipe")
+    if "L0_CFLAGS=" in completed.stdout:
+        raise AssertionError(
+            "build-stage1 must inherit L0_CFLAGS instead of reinjecting it into the recipe:\n"
+            f"{completed.stdout}"
+        )
+    if "$ORIGIN/lib" in completed.stdout or "RIGIN/lib" in completed.stdout:
+        raise AssertionError(
+            "build-stage1 exposed or mangled the literal $ORIGIN environment value:\n"
+            f"{completed.stdout}"
+        )
+
+
 def main() -> int:
     """Run native compiler build-environment regressions."""
 
     require_build_env_cases()
     require_make_help_parity()
+    require_make_preserves_environment_cflags()
     return 0
 
 

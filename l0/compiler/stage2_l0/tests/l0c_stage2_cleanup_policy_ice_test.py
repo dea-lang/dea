@@ -70,7 +70,7 @@ def run_ice_case(case_name: str, source: str, expected_ice: str, artifact_dir: P
     stderr_path = artifact_dir / f"{case_name}.stderr.log"
 
     run_result = subprocess.run(
-        [str(compiler), "-P", "compiler/stage2_l0/src", "--run", str(source_path)],
+        [str(compiler), "--project-root", "compiler/stage2_l0/src", "--run", str(source_path)],
         cwd=L0_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

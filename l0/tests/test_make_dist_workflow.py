@@ -375,7 +375,7 @@ def main() -> int:
             [
                 stage2_launcher_path(unpacked_dist / "bin" / "l0c-stage2"),
                 "--build",
-                "-P",
+                "--project-root",
                 str(project_dir),
                 "-o",
                 str(hello_bin),

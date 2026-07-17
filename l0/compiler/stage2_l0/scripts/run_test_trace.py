@@ -109,7 +109,7 @@ def main() -> int:
     result = run_captured_binary_output(
         [
             *source_tree_l0c_command(),
-            "-P",
+            "--project-root",
             "compiler/stage2_l0/src",
             "--run",
             "--trace-arc",

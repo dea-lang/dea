@@ -1,6 +1,6 @@
 # L0 Compiler Architecture
 
-Version: 2026-06-10
+Version: 2026-07-16
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
@@ -87,14 +87,15 @@ Current Stage 2 CLI entry point: `compiler/stage2_l0/src/l0c.l0`. Recommended de
 `source /tmp/l0-install/bin/l0-env.sh`. Repo-independent Stage 2 distribution workflow: `make dist`, which emits a
 temporary `build/.../dea-l0` tree plus a host-native `dea-l0-lang_<os>-<arch>_YYYYMMDD-HHMMSS` archive for that same
 relocatable layout. `make install` requires an explicit `PREFIX=...`; there is no implicit install destination.
-Source-tree execution path: `./scripts/l0c -P compiler/stage2_l0/src --run l0c -- ...` (`./scripts/l0c` is the Stage 1
+Source-tree execution path: `./scripts/l0c -Rp compiler/stage2_l0/src --run l0c -- ...` (`./scripts/l0c` is the Stage 1
 source-tree wrapper). Repo-local bootstrap artifact path: `python scripts/build_stage2_l0c.py`, then
 `./build/dea/bin/l0c-stage2 ...`. Triple-bootstrap fixed-point regression: `make triple-test`. `make install` installs
 the self-hosted Stage 2 compiler (`S1 -> S2`, then `S2 -> S2`) plus copied shared stdlib/runtime assets under `PREFIX`.
 `make dist` packages that same relocatable Stage 2 layout under `dea-l0/` and archives it as `.tar.gz` on POSIX hosts or
 `.zip` on Windows with the lower-case host OS/architecture and UTC build timestamp embedded in the archive filename. The
-implemented Stage 2 CLI modes are `--check`, `--tok`, `--sym`, `--type`, `--ast`, `--gen`, `--build`, and `--run`; Stage
-2 public CLI parity with Stage 1 is complete for the current public surface.
+implemented Stage 2 CLI modes are `--check`, `--tok`, `--sym`, `--type`, `--ast`, `--gen`, `--build`, and `--run`.
+`--compile` / `-c` is recognized as a shared reserved mode and reports `L0C-9510` without producing artifacts. Stage 2
+public CLI parity with Stage 1 is complete for the current public surface.
 
 ## 2. Pass Responsibilities
 

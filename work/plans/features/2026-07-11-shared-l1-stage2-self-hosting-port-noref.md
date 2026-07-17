@@ -157,7 +157,7 @@ This plan adds no install, distribution, release, or docs-publishing interface.
 1. Add `l1/scripts/build_stage2_l1c.py`, reusing the current L1 build-layout validation and shared launcher rendering
    behavior rather than introducing a parallel artifact layout.
 2. Make `build-stage2` depend on a current repo-local Stage 1 compiler and the L1 runtime archives.
-3. Invoke `l1c-stage1 --build -P compiler/stage2_l1/src -o <build>/bin/l1c-stage2.native l1c`, adding `--keep-c` when
+3. Invoke `l1c-stage1 --build -Rp compiler/stage2_l1/src -o <build>/bin/l1c-stage2.native l1c`, adding `--keep-c` when
    requested.
 4. Generate POSIX and Windows Stage 2 wrappers that set repo-relative `L1_HOME` and `L1_BUILD_DIR` consistently with
    Stage 1.
@@ -257,7 +257,7 @@ The plan closes only when all of the following are true:
 
 01. `make -C l1 test-stage1` and the default Stage 1 trace suite remain green after the source snapshot.
 02. `make -C l1 build-stage2` produces runnable Stage 2 wrapper and native artifacts under `L1_BUILD_DIR`.
-03. `l1c-stage2 --check -P compiler/stage2_l1/src l1c` succeeds.
+03. `l1c-stage2 --check -Rp compiler/stage2_l1/src l1c` succeeds.
 04. `make -C l1 test-stage2` passes the complete ported normal test surface.
 05. `make -C l1 test-stage2-trace` passes the default Stage 2 trace surface without ARC or memory leaks.
 06. Focused parity tests confirm matching Stage 1 and Stage 2 CLI behavior, diagnostics, and representative accepted and

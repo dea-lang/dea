@@ -27,7 +27,7 @@ func test_run_trace_slice_backing_arrays() {
         sv_push(argv, "--run");
         sv_push(argv, "--trace-arc");
         sv_push(argv, "--trace-memory");
-        sv_push(argv, "-P");
+        sv_push(argv, "--project-root");
         sv_push(argv, fixture_root());
         sv_push(argv, "slice_trace_main");
 

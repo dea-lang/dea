@@ -249,7 +249,7 @@ def build_normal_test_command(case: TestCase, build_dir: Path) -> list[str]:
     """Return the subprocess command for one normal L1 Stage 1 implementation test."""
 
     if case.kind == "l0":
-        return [*repo_stage1_command(), "-P", "compiler/stage1_l0/src", "--run", str(case.path)]
+        return [*repo_stage1_command(), "--project-root", "compiler/stage1_l0/src", "--run", str(case.path)]
     if case.kind == "python":
         return [str(REPO_VENV_PYTHON), str(case.path)]
     raise ValueError(f"Unsupported test kind: {case.kind}")

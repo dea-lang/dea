@@ -130,18 +130,18 @@ def main() -> int:
         assert_file(bootstrap_dir / "bin" / "l0c-stage2.native")
         assert_no_file(bootstrap_dir / "bin" / "l0c-stage2.c")
 
-        run([l0c, "--check", "-P", "examples", "hello"], env=clean_env())
-        run([l0c, "--check", "-P", "examples", "newdrop"], env=clean_env())
-        run([l0c, "--check", "-P", "examples", "hamurabi"], env=clean_env())
+        run([l0c, "--check", "--project-root", "examples", "hello"], env=clean_env())
+        run([l0c, "--check", "--project-root", "examples", "newdrop"], env=clean_env())
+        run([l0c, "--check", "--project-root", "examples", "hamurabi"], env=clean_env())
 
         probe_root = make_temp_dir("l0_stage2_probe.", BUILD_TESTS_ROOT)
         write_text(probe_root / "qualified_expr.l0", QUALIFIED_EXPR)
         write_text(probe_root / "control_flow_cond.l0", CONTROL_FLOW_COND)
         write_text(probe_root / "logical_expr.l0", LOGICAL_EXPR)
-        run([l0c, "--check", "-P", native_path(probe_root), "qualified_expr"], env=clean_env())
+        run([l0c, "--check", "--project-root", native_path(probe_root), "qualified_expr"], env=clean_env())
 
         cond_output = BUILD_TESTS_ROOT / f"l0_stage2_bootstrap_cond_{os.getpid()}.out"
-        cond_result = run([l0c, "--run", "-P", native_path(probe_root), "control_flow_cond"], env=clean_env())
+        cond_result = run([l0c, "--run", "--project-root", native_path(probe_root), "control_flow_cond"], env=clean_env())
         cond_output.write_text(cond_result.stdout, encoding="utf-8")
         assert_contains(cond_output, "0")
         assert_contains(cond_output, "1")
@@ -149,7 +149,7 @@ def main() -> int:
             raise ToolTestFailure("expected control_flow_cond loop to stop after i=1")
 
         logic_output = BUILD_TESTS_ROOT / f"l0_stage2_bootstrap_logic_{os.getpid()}.out"
-        logic_result = run([l0c, "--run", "-P", native_path(probe_root), "logical_expr"], env=clean_env())
+        logic_result = run([l0c, "--run", "--project-root", native_path(probe_root), "logical_expr"], env=clean_env())
         logic_output.write_text(logic_result.stdout, encoding="utf-8")
         assert_contains(logic_output, "9")
         assert_contains(logic_output, "10")
@@ -161,7 +161,7 @@ def main() -> int:
 
         gen_output = BUILD_TESTS_ROOT / f"l0_stage2_bootstrap_gen_{os.getpid()}.c"
         gen_result = run(
-            [l0c, "--gen", "--no-line-directives", "-P", "examples", "hello"],
+            [l0c, "--gen", "--no-line-directives", "--project-root", "examples", "hello"],
             env=clean_env(),
         )
         gen_output.write_text(gen_result.stdout, encoding="utf-8")
@@ -175,7 +175,7 @@ def main() -> int:
                 l0c,
                 "--build",
                 "--keep-c",
-                "-P",
+                "--project-root",
                 "examples",
                 "-o",
                 native_path(hello_output),
@@ -191,7 +191,7 @@ def main() -> int:
         assert_contains(hello_out, "Hello, world! This is Dea/L0.")
 
         run_output = BUILD_TESTS_ROOT / f"l0_stage2_bootstrap_run_{os.getpid()}.out"
-        run_result = run([l0c, "--run", "-P", "examples", "hello"], env=clean_env())
+        run_result = run([l0c, "--run", "--project-root", "examples", "hello"], env=clean_env())
         run_output.write_text(run_result.stdout, encoding="utf-8")
         assert_contains(run_output, "Hello, world! This is Dea/L0.")
 

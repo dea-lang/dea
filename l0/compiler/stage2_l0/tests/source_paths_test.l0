@@ -7,6 +7,7 @@ module source_paths_test;
 
 import std.assert;
 import std.io;
+import std.path;
 import std.string;
 import std.vector;
 import util.diag;
@@ -87,6 +88,54 @@ func test_path_target_parent_suppresses_default_dot_root() {
 }
 
 /**
+ * Tests test_system_roots_precede_project_roots.
+ */
+func test_system_roots_precede_project_roots() {
+    with (let paths = sp_create() => sp_free(paths)) {
+        let project_root = "compiler/stage2_l0/tests/fixtures/source_paths/project_first";
+        let system_root = "compiler/stage2_l0/tests/fixtures/source_paths/system_second";
+        sp_add_project_root(paths, project_root);
+        sp_add_system_root(paths, system_root);
+
+        let resolved = sp_resolve(paths, "duplicate");
+        assert(resolved != null, "expected duplicate module to resolve");
+        assert(resolved as string == join(system_root, "duplicate.l0"), "system root must precede project root");
+    }
+}
+
+/**
+ * Tests test_system_root_declaration_order.
+ */
+func test_system_root_declaration_order() {
+    with (let paths = sp_create() => sp_free(paths)) {
+        let first_root = "compiler/stage2_l0/tests/fixtures/source_paths/system_first";
+        let second_root = "compiler/stage2_l0/tests/fixtures/source_paths/system_second";
+        sp_add_system_root(paths, first_root);
+        sp_add_system_root(paths, second_root);
+
+        let resolved = sp_resolve(paths, "duplicate");
+        assert(resolved != null, "expected duplicate system module to resolve");
+        assert(resolved as string == join(first_root, "duplicate.l0"), "first declared system root must win");
+    }
+}
+
+/**
+ * Tests test_project_root_declaration_order.
+ */
+func test_project_root_declaration_order() {
+    with (let paths = sp_create() => sp_free(paths)) {
+        let first_root = "compiler/stage2_l0/tests/fixtures/source_paths/project_first";
+        let second_root = "compiler/stage2_l0/tests/fixtures/source_paths/project_second";
+        sp_add_project_root(paths, first_root);
+        sp_add_project_root(paths, second_root);
+
+        let resolved = sp_resolve(paths, "duplicate");
+        assert(resolved != null, "expected duplicate project module to resolve");
+        assert(resolved as string == join(first_root, "duplicate.l0"), "first declared project root must win");
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -96,5 +145,8 @@ func main() {
     test_explicit_sys_root_suppresses_defaults();
     test_format_root_list_matches_stage1_contract();
     test_path_target_parent_suppresses_default_dot_root();
+    test_system_roots_precede_project_roots();
+    test_system_root_declaration_order();
+    test_project_root_declaration_order();
     printl_s("source_paths_test: all tests passed");
 }

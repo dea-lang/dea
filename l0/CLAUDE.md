@@ -124,14 +124,14 @@ The source-tree `./scripts/l0c` entrypoint is Stage 1 only and is mainly useful 
 tooling, and Stage 1-focused testing:
 
 ```bash
-./scripts/l0c -P examples --run hello     # build + run
-./scripts/l0c -P examples --build hello   # build executable
-./scripts/l0c -P examples --gen hello     # emit C only
-./scripts/l0c -P examples --check hello   # parse + type-check
-./scripts/l0c -P examples --tok hello     # dump tokens
-./scripts/l0c -P examples --ast hello     # pretty-print AST
-./scripts/l0c -P examples --sym hello     # dump symbols
-./scripts/l0c -P examples --type hello    # dump resolved top-level types
+./scripts/l0c -Rp examples --run hello     # build + run
+./scripts/l0c -Rp examples --build hello   # build executable
+./scripts/l0c -Rp examples --gen hello     # emit C only
+./scripts/l0c -Rp examples --check hello   # parse + type-check
+./scripts/l0c -Rp examples --tok hello     # dump tokens
+./scripts/l0c -Rp examples --ast hello     # pretty-print AST
+./scripts/l0c -Rp examples --sym hello     # dump symbols
+./scripts/l0c -Rp examples --type hello    # dump resolved top-level types
 python scripts/gen_docs.py --strict    # generate docs; fail on warnings and synthetic __padN__ regressions
 python scripts/gen_docs.py --pdf       # also build/copy build/docs/pdf/dea_l0_api_reference.pdf
 python scripts/gen_docs.py --pdf-fast  # faster preview PDF build (single pdflatex pass)
@@ -144,7 +144,7 @@ make docker CMD=test-all DOCKER_L0_CC=gcc
 
 Verbosity: `-v` (info), `-vvv` (debug).
 
-C compiler selection: `-c <compiler>`. Auto-detection order (used by `l0c` and Stage 1 tests): `$L0_CC`, then `tcc`,
+C compiler selection: `-Cc <compiler>`. Auto-detection order (used by `l0c` and Stage 1 tests): `$L0_CC`, then `tcc`,
 `gcc`, `clang`, `cc` from PATH, then `$CC`.
 
 Trace toggles (codegen/build/run): `--trace-arc`, `--trace-memory`.
@@ -153,9 +153,9 @@ For direct Stage 2 artifact usage, use:
 
 ```bash
 python scripts/build_stage2_l0c.py # build the stage 2 compiler and place it under build/dea/bin/l0c-stage2
-./build/dea/bin/l0c-stage2 --check -P examples hello # run the stage 2 compiler directly
-./build/dea/bin/l0c-stage2 --build -P examples hello # build directly with the stage 2 compiler
-./build/dea/bin/l0c-stage2 --run -P examples hello # build and run directly with the stage 2 compiler
+./build/dea/bin/l0c-stage2 --check -Rp examples hello # run the stage 2 compiler directly
+./build/dea/bin/l0c-stage2 --build -Rp examples hello # build directly with the stage 2 compiler
+./build/dea/bin/l0c-stage2 --run -Rp examples hello # build and run directly with the stage 2 compiler
 make use-dev-stage2 # build, install, and select the Stage 2 launcher under build/dea/bin
 source build/dea/bin/l0-env.sh # activate the repo-local Dea build workflow in your shell
 make PREFIX=/tmp/l0-install install # install the self-hosted Stage 2 compiler under one prefix

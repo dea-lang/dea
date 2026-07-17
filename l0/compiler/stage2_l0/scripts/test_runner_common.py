@@ -301,7 +301,7 @@ def build_normal_test_command(case: TestCase, python_path: Path) -> list[str]:
     """Return the subprocess command for one normal Stage 2 test."""
 
     if case.kind == "l0":
-        return [*source_tree_l0c_command(), "-P", "compiler/stage2_l0/src", "--run", str(case.path)]
+        return [*source_tree_l0c_command(), "--project-root", "compiler/stage2_l0/src", "--run", str(case.path)]
     if case.kind == "python":
         return [str(python_path), str(case.path)]
     raise ValueError(f"Unsupported test kind: {case.kind}")

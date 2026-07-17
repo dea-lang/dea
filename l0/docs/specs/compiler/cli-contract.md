@@ -1,6 +1,6 @@
 # L0 Compiler CLI Contract
 
-Version: 2026-07-12
+Version: 2026-07-16
 
 This document is the normative shared CLI contract for the L0 compiler across Stage 1 and Stage 2. Stage-specific
 differences are called out explicitly in [Section 9](#9-stage-specific-differences).
@@ -21,7 +21,8 @@ Primary mode flags:
 
 - `--run` (short: `-r`)
 - `--build` (default mode when omitted)
-- `--gen` (short: `-g`; alias flag: `--codegen`)
+- `--compile` (short: `-c`; reserved and currently reports `L0C-9510` without producing artifacts)
+- `--gen` (short: `-Gc`; alias flag: `--codegen`)
 - `--check` (alias flag: `--analyze`)
 - `--tok` (alias flag: `--tokens`)
 - `--ast`
@@ -40,9 +41,9 @@ Global options are accepted with any mode:
 - `--help` / `-h`
 - `--version`
 - `-v` / `--verbose` (counted; `-v` = info, `-vv` currently equivalent to `-v`, `-vvv` = debug)
-- `-l` / `--log`
-- `-P` / `--project-root`
-- `-S` / `--sys-root`
+- `-Vl` / `--log`
+- `-Rp` / `--project-root`
+- `-Rs` / `--sys-root`
 
 `--help` and `--version` short-circuit all other parsing and validation; remaining flags are ignored when either is
 present.
@@ -55,10 +56,11 @@ The following options are enforced by CLI argument validation and are only accep
 | ------------------------------- | --------------------------- |
 | `-o` / `--output`               | `build`, `gen`, `run`       |
 | `--keep-c`                      | `build`, `run`              |
-| `-c` / `--c-compiler`           | `build`, `run`              |
-| `-C` / `--c-options`            | `build`, `run`              |
-| `-I` / `--runtime-include`      | `build`, `run`              |
-| `-L` / `--runtime-lib`          | `build`, `run`              |
+| `-I` / `--interface-path`       | `compile`                   |
+| `-Cc` / `--c-compiler`          | `build`, `run`              |
+| `-Co` / `--c-options`           | `build`, `run`              |
+| `-Ri` / `--runtime-include`     | `build`, `run`              |
+| `-Rl` / `--runtime-lib`         | `build`, `run`              |
 | `-NLD` / `--no-line-directives` | `build`, `run`, `gen`       |
 | `--trace-arc`                   | `build`, `run`, `gen`       |
 | `--trace-memory`                | `build`, `run`, `gen`       |
@@ -83,6 +85,18 @@ C compiler flags are merged as: `$L0_CFLAGS` first, then `--c-options`.
 `--runtime-lib` / `$L0_RUNTIME_LIB` provide an additional runtime library search directory for build/run. When supplied,
 the path must exist and be a directory.
 
+Interface paths are repeatable, preserve declaration order, and are accepted only with `--compile`. The current compile
+command reports `L0C-9510` before analysis or artifact creation, so the paths are recorded but not searched and their
+directories are not validated yet.
+
+`-g`, `-S`, `-L`, and `-l` are recognized as reserved canonical driver syntax for debug information, assembly output,
+external-library search, and external-library selection. Syntactically complete uses report `L0C-2032`; those
+capabilities are not implemented in L0. `-L` and `-l` accept either attached or following values at the syntax layer.
+
+Namespaced short options are exact, case-sensitive tokens. Their values use a following token or `=VALUE`, not an
+attached suffix. `-I`, `-L`, and `-l` accept directly attached and following values, but their `=VALUE` spellings are
+invalid. Only `-vv...` is a valid short-option cluster.
+
 ## 4. Target and Separator Rules
 
 - Exactly one target is required per invocation. Omitting the target or providing multiple targets is a fatal CLI error
@@ -101,8 +115,8 @@ The compiler resolves a target to a source file using the following rules, appli
 1. **Absolute path or path with directory separator (`/` or `\`):** treated as a filesystem path directly. The project
    root is derived as the parent directory of the resolved `.l0` file.
 2. **Relative path with `.` or `..` prefix:** resolved relative to the current working directory.
-3. **Dotted module name (e.g. `std.io`):** mapped to path segments (`std/io.l0`) and searched under each project root,
-   then each system root, in declaration order.
+3. **Dotted module name (e.g. `std.io`):** mapped to path segments (`std/io.l0`) and searched under each system root,
+   then each project root, preserving declaration order within each root group.
 4. **Plain name with `.l0` extension (e.g. `hello.l0`):** resolved relative to the project root(s).
 5. **Plain name without extension:** resolved as `<name>.l0` under project root(s).
 
@@ -110,11 +124,11 @@ A target containing a path separator always bypasses the module-name search path
 
 ## 6. Search-Path and Root Defaults
 
-- **Project root (`-P`):** defaults to the current working directory when not specified.
-- **System root (`-S`):** defaults to `$L0_SYSTEM` when set; otherwise derived from `$L0_HOME` as
+- **Project root (`-Rp`):** defaults to the current working directory when not specified.
+- **System root (`-Rs`):** defaults to `$L0_SYSTEM` when set; otherwise derived from `$L0_HOME` as
   `$L0_HOME/shared/l0/stdlib`.
-- **Search order:** project root(s) are searched before system root(s).
-- Multiple `-P` and `-S` values accumulate; search is in declaration order within each group.
+- **Search order:** system root(s) are searched before project root(s).
+- Multiple `-Rp` and `-Rs` values accumulate; search is in declaration order within each group.
 
 Environment variables that affect root and path derivation:
 
@@ -122,7 +136,7 @@ Environment variables that affect root and path derivation:
 | -------------------- | ------------------------------------------------------------------------------- |
 | `L0_HOME`            | Repo or install root; launcher derives stdlib and runtime include paths from it |
 | `L0_SYSTEM`          | Override for the stdlib system root                                             |
-| `L0_RUNTIME_INCLUDE` | Default runtime header include path; overridden (not extended) by `-I`          |
+| `L0_RUNTIME_INCLUDE` | Default runtime header include path; overridden (not extended) by `-Ri`         |
 | `L0_CFLAGS`          | Prepended to C compiler flags before `--c-options`                              |
 
 `L0_HOME` is derived by the launcher from the install prefix or repository root and is normally set automatically;

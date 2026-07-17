@@ -65,6 +65,29 @@ def main() -> int:
         assert_contains(help_stdout, "Dea language / L0 compiler")
         assert_contains(help_stdout, "  -h, --help            show this help message and exit")
         assert_contains(help_stdout, "  --version             show compiler version and exit")
+        assert_contains(help_stdout, "  -Vl, --log")
+        assert_contains(help_stdout, "  -Rp, --project-root PROJECT_ROOT")
+        assert_contains(help_stdout, "  -Rs, --sys-root SYS_ROOT")
+        assert_contains(help_stdout, "  -c, --compile")
+        assert_contains(help_stdout, "  -Gc, --gen, --codegen")
+        assert_contains(help_stdout, "  -I, --interface-path INTERFACE_PATH")
+        assert_contains(help_stdout, "  --c-compiler, -Cc C_COMPILER")
+        assert_contains(help_stdout, "  --c-options, -Co C_OPTIONS")
+        assert_contains(help_stdout, "  --runtime-include, -Ri RUNTIME_INCLUDE")
+        assert_contains(help_stdout, "  --runtime-lib, -Rl RUNTIME_LIB")
+        assert_contains(help_stdout, "  -g                    Request debug information")
+        assert_contains(help_stdout, "  -S                    Request assembly output")
+        assert_contains(help_stdout, "  -L LIBRARY_PATH       Add an external-library search path")
+        assert_contains(help_stdout, "  -l LIBRARY            Link an external library")
+        assert_contains(help_stdout, "Namespaced value options accept a separate value or '=VALUE'; only -v may be")
+        assert_not_contains(help_stdout, "  -l, --log")
+        assert_not_contains(help_stdout, "  -P, --project-root")
+        assert_not_contains(help_stdout, "  -S, --sys-root")
+        assert_not_contains(help_stdout, "  --gen, -g, --codegen")
+        assert_not_contains(help_stdout, "  --c-compiler, -c C_COMPILER")
+        assert_not_contains(help_stdout, "  --c-options, -C C_OPTIONS")
+        assert_not_contains(help_stdout, "  --runtime-include, -I RUNTIME_INCLUDE")
+        assert_not_contains(help_stdout, "  --runtime-lib, -L RUNTIME_LIB")
         assert_not_contains(help_stdout, "commit: ")
         assert_empty(help_stderr)
 
@@ -85,7 +108,7 @@ def main() -> int:
         verbose_stdout = tmp_dir / "verbose.stdout"
         verbose_stderr = tmp_dir / "verbose.stderr"
         run_to_files(
-            [l0c, "-v", "--check", "-P", "examples", "hello"],
+            [l0c, "-v", "--check", "--project-root", "examples", "hello"],
             verbose_stdout,
             verbose_stderr,
             env=clean_env(),

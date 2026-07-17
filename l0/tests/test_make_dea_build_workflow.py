@@ -264,7 +264,7 @@ def source_env_and_check(dea_build_dir: Path) -> None:
     command = [
         "bash",
         "-lc",
-        f"source {shlex.quote(str(env_script))} && l0c --check -P examples hello",
+        f"source {shlex.quote(str(env_script))} && l0c --check --project-root examples hello",
     ]
     run_checked(command)
 
@@ -420,7 +420,7 @@ def main() -> int:
             assert_same_text(alias_cmd_path, stage1_cmd_path)
             stage1_env_output = run_cmd_activated(
                 env_cmd_path,
-                "echo L0_HOME=%L0_HOME% && l0c --check -P examples hello",
+                "echo L0_HOME=%L0_HOME% && l0c --check --project-root examples hello",
             )
             assert_output_contains(
                 normalize_path_text(stage1_env_output),
@@ -449,7 +449,7 @@ def main() -> int:
                 env_cmd_path,
                 "call "
                 + cmd_quote(str(env_cmd_path))
-                + " && echo PATH=%PATH% && echo L0_HOME=%L0_HOME% && l0c --check -P examples hello",
+                + " && echo PATH=%PATH% && echo L0_HOME=%L0_HOME% && l0c --check --project-root examples hello",
             )
             normalized_stage2_env_output = normalize_path_text(stage2_env_output)
             assert_output_contains(
@@ -489,7 +489,7 @@ def main() -> int:
         if is_windows_host():
             prefix_env_output = run_cmd_activated(
                 prefix_env_cmd_path,
-                f"echo L0_HOME=%L0_HOME% && l0c --run -P {cmd_quote(str(project_dir))} hello",
+                f"echo L0_HOME=%L0_HOME% && l0c --run --project-root {cmd_quote(str(project_dir))} hello",
             )
             assert_output_contains(
                 normalize_path_text(prefix_env_output),

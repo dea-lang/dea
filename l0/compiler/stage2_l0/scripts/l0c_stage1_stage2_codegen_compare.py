@@ -265,7 +265,7 @@ def main() -> int:
         if not stage2_wrapper.is_file():
             fail("bootstrap build did not produce the expected Stage 2 wrapper", artifact_dir)
 
-        gen_args = ["--gen", "--no-line-directives", "-P", "compiler/stage2_l0/src", "l0c"]
+        gen_args = ["--gen", "--no-line-directives", "--project-root", "compiler/stage2_l0/src", "l0c"]
 
         notice("generating whole-compiler C with Stage 1")
         _, _, stage1_elapsed = run_codegen(

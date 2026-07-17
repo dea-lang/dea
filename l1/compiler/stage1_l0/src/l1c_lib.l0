@@ -844,6 +844,9 @@ func run_with_argv(argv: StringVector*) -> int {
             CM_BUILD => {
                 rc = bd_cmd_build(opts, cfg);
             }
+            CM_COMPILE => {
+                rc = l1c_cmd_nyi(opts.mode, cfg);
+            }
             CM_EMIT_INTERFACE => {
                 rc = l1c_cmd_emit_interface(opts, cfg);
             }

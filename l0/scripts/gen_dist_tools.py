@@ -169,9 +169,9 @@ def main() -> int:
                         [
                             *stage2_wrapper_command(stage2_wrapper),
                             "--build",
-                            "-P",
+                            "--project-root",
                             str(overlay.overlay_root),
-                            "-P",
+                            "--project-root",
                             "compiler/stage2_l0/src",
                             "-o",
                             str(self_hosted_native),
@@ -225,9 +225,9 @@ def main() -> int:
                         [
                             *stage2_wrapper_command(stage2_wrapper),
                             "--build",
-                            "-P",
+                            "--project-root",
                             str(overlay.overlay_root),
-                            "-P",
+                            "--project-root",
                             "compiler/stage2_l0/src",
                             "-o",
                             str(self_hosted_native),

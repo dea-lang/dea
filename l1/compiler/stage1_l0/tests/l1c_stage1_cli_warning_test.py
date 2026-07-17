@@ -67,7 +67,7 @@ def run_mode(mode: str, artifact_dir: Path) -> tuple[int, str, str]:
     stderr_path = artifact_dir / f"{mode.lstrip('-')}.stderr.log"
 
     result = subprocess.run(
-        [str(compiler), mode, "-P", str(DRIVER_FIXTURES), "dup_import_main"],
+        [str(compiler), mode, "--project-root", str(DRIVER_FIXTURES), "dup_import_main"],
         cwd=L1_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

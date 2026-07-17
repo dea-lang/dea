@@ -33,8 +33,8 @@ Once separate compilation lands, L1 needs a normal external-library linking surf
 against host libraries without bespoke runtime-only flags. This plan adds the conventional linker-facing flags committed
 by Initiative `0001`:
 
-- `-l<name>`
-- `-L<dir>`
+- `-l<name>` or `-l <name>`
+- `-L<dir>` or `-L <dir>`
 - `--rpath=<dir>`
 - `--link-arg=<flag>`
 
@@ -43,13 +43,15 @@ It also completes the cleanup that frees `-I` for interface-path lookup rather t
 ## Current State
 
 1. Current Stage 1 linking is centered on compiling one generated C program plus runtime-path forwarding.
-2. Runtime-specific short aliases occupy `-I` and `-L` in ways that do not match the post-separate-compilation design.
-3. There is no dedicated CLI surface for user-requested external link libraries or runtime search paths.
+2. Runtime-specific short aliases have moved to `-Ri` / `-Rl`; `-I` is the interface path and `-L` / `-l` are recognized
+   as reserved canonical syntax that currently reports the shared `L1C-2032` capability diagnostic.
+3. There is no implemented CLI forwarding surface for user-requested external link libraries or runtime search paths.
 4. Manual C binding modules cannot yet express their host-library link requirements through the L1 compiler.
 
 ## Defaults Chosen
 
-1. `-l`, `-L`, `--rpath`, and `--link-arg` follow host-compiler conventions directly.
+1. `-l`, `-L`, `--rpath`, and `--link-arg` follow host-compiler conventions directly; `-l` / `-L` accept attached and
+   following values.
 2. `-I` is reserved for interface-file discovery and is not repurposed as a C-header include-path flag in core L1.
 3. The compiler forwards external-linking options to the host toolchain rather than abstracting static vs dynamic
    linkage.
@@ -60,7 +62,7 @@ It also completes the cleanup that frees `-I` for interface-path lookup rather t
 
 1. Add external-library and rpath flags to the L1 CLI.
 2. Forward them through build/link flows deterministically.
-3. Retire the conflicting runtime-specific short-option meanings.
+3. Replace the reserved `-L` / `-l` capability diagnostic with implemented link-option validation.
 4. Document the intended FFI binding plus linker-flags workflow.
 
 ## Implementation Phases
@@ -74,9 +76,8 @@ Teach CLI parsing and validation for:
 - `--rpath`,
 - `--link-arg`.
 
-This phase should also make the old runtime-specific short aliases unavailable in favor of the new separate-compilation
-option surface. The long forms `--runtime-include` and `--runtime-lib` stay available; fresh short aliases for them are
-defined in the separate-compilation driver plan so the short-form surface stays coordinated across tranches.
+The coordinated CLI-surface tranche has already removed the old runtime meanings and assigned `-Ri` / `-Rl`. This phase
+turns the reserved `-L` / `-l` grammar into usable link inputs without changing the runtime-path aliases.
 
 ### Phase 2: Link-driver forwarding
 

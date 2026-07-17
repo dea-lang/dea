@@ -40,23 +40,69 @@ def compiler_identity_text() -> str:
     return "Dea language / L0 compiler (Stage 1)"
 
 
-def _count_cli_verbosity(argv: Sequence[str]) -> int:
-    """Count verbosity flags in compiler CLI args before `--`."""
-    cli_argv, _ = _split_cli_and_program_args(argv)
-    count = 0
-    for token in cli_argv:
-        if token == "--verbose":
-            count += 1
+_CLI_LONG_VALUE_OPTIONS = {
+    "--project-root",
+    "--sys-root",
+    "--c-compiler",
+    "--c-options",
+    "--runtime-include",
+    "--runtime-lib",
+    "--interface-path",
+    "--output",
+}
+_CLI_NAMESPACED_SHORT_VALUE_OPTIONS = {
+    "-Rp",
+    "-Rs",
+    "-Cc",
+    "-Co",
+    "-Ri",
+    "-Rl",
+}
+_CLI_CANONICAL_SHORT_VALUE_OPTIONS = {
+    "-I",
+    "-L",
+    "-l",
+}
+_CLI_OTHER_SHORT_VALUE_OPTIONS = {
+    "-o",
+}
+_CLI_VALUE_OPTIONS = (
+    _CLI_LONG_VALUE_OPTIONS
+    | _CLI_NAMESPACED_SHORT_VALUE_OPTIONS
+    | _CLI_CANONICAL_SHORT_VALUE_OPTIONS
+    | _CLI_OTHER_SHORT_VALUE_OPTIONS
+)
+
+
+def _scan_cli_presentation_options(argv: Sequence[str]) -> Tuple[int, bool]:
+    """Return fallback verbosity and rich-log settings before `--`.
+
+    Values following value-taking options are skipped even when they resemble
+    presentation flags, matching the normalization grammar used for parsing.
+
+    Args:
+        argv: The complete list of command-line arguments.
+
+    Returns:
+        A tuple of (verbosity count, rich-log enabled).
+    """
+    cli_argv, _, _ = _split_cli_and_program_args(argv)
+    verbosity = 0
+    rich_log = False
+    i = 0
+    while i < len(cli_argv):
+        token = cli_argv[i]
+        if token in _CLI_VALUE_OPTIONS:
+            i += 2
             continue
-        if len(token) >= 2 and token.startswith("-") and set(token[1:]) == {"v"}:
-            count += len(token) - 1
-    return count
-
-
-def _has_cli_log_flag(argv: Sequence[str]) -> bool:
-    """Report whether compiler CLI args enable rich logging before `--`."""
-    cli_argv, _ = _split_cli_and_program_args(argv)
-    return any(token in {"-l", "--log"} for token in cli_argv)
+        if token == "--verbose":
+            verbosity += 1
+        elif len(token) >= 2 and token.startswith("-") and set(token[1:]) == {"v"}:
+            verbosity += len(token) - 1
+        elif token in {"-Vl", "--log"}:
+            rich_log = True
+        i += 1
+    return verbosity, rich_log
 
 
 def _emit_verbose_compiler_identity(args: argparse.Namespace) -> None:
@@ -498,7 +544,7 @@ def _get_optimize_flag(flag_family: str, extra_opts: List[str]) -> Optional[str]
     if _is_windows_host() and flag_family == "gcc":
         return "-O0"
 
-    # Default quick optimization level for non-debug builds (can be overridden with --c-options/-C or L0_CFLAGS)
+    # Default quick optimization level for non-debug builds (can be overridden with --c-options/-Co or L0_CFLAGS)
     if flag_family in {"gcc", "tcc"}:
         return "-O1"
     elif flag_family == "msvc":
@@ -768,6 +814,22 @@ def cmd_check(args: argparse.Namespace) -> int:
     """
     _, _, exit_code = _run_analysis(args)
     return exit_code
+
+
+def cmd_compile(args: argparse.Namespace) -> int:
+    """Report that separate compilation is not implemented in Stage 1 yet.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        Exit code 1.
+    """
+    del args
+    _emit_diagnostic(
+        "error: [L0C-9510] mode '--compile' is not implemented in Stage 1 yet"
+    )
+    return 1
 
 
 def cmd_ast(args: argparse.Namespace) -> int:
@@ -1117,7 +1179,7 @@ def _add_runtime_args(parser: argparse.ArgumentParser) -> None:
         parser: The argument parser to update.
     """
     parser.add_argument(
-        "--c-compiler", "-c",
+        "-Cc", "--c-compiler",
         help=(
             "C compiler to use (default: $L0_CC has highest precedence if set;"
             " then tcc, gcc, clang, cc from PATH, or $CC, in that order;"
@@ -1125,19 +1187,19 @@ def _add_runtime_args(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
-        "--c-options", "-C",
+        "-Co", "--c-options",
         help=(
             "Extra options to pass to the C compiler "
             "(default prepends $L0_CFLAGS; options from --c-options are appended after env options; "
-            "e.g. -C=\"-Og -DDEBUG\"; valid in: '--build', '--run')"
+            "e.g. -Co=\"-Og -DDEBUG\"; valid in: '--build', '--run')"
         ),
     )
     parser.add_argument(
-        "--runtime-include", "-I",
+        "-Ri", "--runtime-include",
         help="Path to L0 runtime headers (default: $L0_RUNTIME_INCLUDE; valid in: '--build', '--run')",
     )
     parser.add_argument(
-        "--runtime-lib", "-L",
+        "-Rl", "--runtime-lib",
         help="Path to L0 runtime library search directory (default: $L0_RUNTIME_LIB; valid in: '--build', '--run')",
     )
 
@@ -1175,31 +1237,165 @@ def _add_codegen_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
-_OPTIONS_REQUIRING_VALUE = {
-    "-P", "--project-root",
-    "-S", "--sys-root",
-    "-c", "--c-compiler",
-    "-C", "--c-options",
-    "-I", "--runtime-include",
-    "-L", "--runtime-lib",
-    "-o", "--output",
-}
-
-
-def _split_cli_and_program_args(argv: Sequence[str]) -> Tuple[List[str], List[str]]:
+def _split_cli_and_program_args(
+    argv: Sequence[str],
+) -> Tuple[List[str], List[str], bool]:
     """Split compiler CLI arguments from program arguments.
 
     Args:
         argv: The complete list of command-line arguments.
 
     Returns:
-        A tuple of (compiler_args, program_args).
+        A tuple of (compiler_args, program_args, separator_present).
     """
     argv_list = list(argv)
     if "--" not in argv_list:
-        return argv_list, []
+        return argv_list, [], False
     idx = argv_list.index("--")
-    return argv_list[:idx], argv_list[idx + 1:]
+    return argv_list[:idx], argv_list[idx + 1:], True
+
+
+def _normalize_cli_argv(
+    parser: argparse.ArgumentParser, argv: Sequence[str]
+) -> List[str]:
+    """Normalize exact short-option spellings before passing them to argparse.
+
+    Namespaced value options support a following value or `=VALUE`, but not a
+    concatenated value. Canonical `-I`, `-L`, and `-l` options accept attached
+    or following values, but not `=VALUE`. Only `-v` may form a cluster.
+
+    Args:
+        parser: The argument parser for reporting errors.
+        argv: Compiler arguments before the optional `--` separator.
+
+    Returns:
+        A normalized compiler argument list.
+    """
+    short_flags = {
+        "-h",
+        "-v",
+        "-Vl",
+        "-r",
+        "-c",
+        "-Gc",
+        "-g",
+        "-S",
+        "-NLD",
+        "-a",
+    }
+    long_flags = {
+        "--help",
+        "--version",
+        "--verbose",
+        "--log",
+        "--run",
+        "--build",
+        "--compile",
+        "--gen",
+        "--codegen",
+        "--check",
+        "--analyze",
+        "--tok",
+        "--tokens",
+        "--ast",
+        "--sym",
+        "--symbols",
+        "--type",
+        "--types",
+        "--no-line-directives",
+        "--trace-arc",
+        "--trace-memory",
+        "--unchecked",
+        "--check-basic",
+        "--keep-c",
+        "--all-modules",
+        "--include-eof",
+    }
+    mode_flags = {
+        "-r": "--run",
+        "--run": "--run",
+        "--build": "--build",
+        "-c": "--compile",
+        "--compile": "--compile",
+        "-Gc": "--gen",
+        "--gen": "--gen",
+        "--codegen": "--gen",
+        "--check": "--check",
+        "--analyze": "--check",
+        "--tok": "--tok",
+        "--tokens": "--tok",
+        "--ast": "--ast",
+        "--sym": "--sym",
+        "--symbols": "--sym",
+        "--type": "--type",
+        "--types": "--type",
+    }
+
+    normalized: List[str] = []
+    selected_mode: Optional[str] = None
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token in _CLI_VALUE_OPTIONS:
+            if i + 1 >= len(argv):
+                parser.error(f"[L0C-2003] missing value for option '{token}'")
+            normalized.append(f"{token}={argv[i + 1]}")
+            i += 2
+            continue
+
+        if not token.startswith("-"):
+            normalized.append(token)
+            i += 1
+            continue
+
+        if token in short_flags or token in long_flags:
+            requested_mode = mode_flags.get(token)
+            if requested_mode is not None:
+                if selected_mode is None:
+                    selected_mode = requested_mode
+                elif selected_mode != requested_mode:
+                    parser.error(
+                        "[L0C-2002] multiple mode flags provided: "
+                        f"{selected_mode} conflicts with {requested_mode}"
+                    )
+            normalized.append(token)
+            i += 1
+            continue
+
+        if len(token) >= 2 and set(token[1:]) == {"v"}:
+            normalized.append(token)
+            i += 1
+            continue
+
+        if any(
+            token.startswith(f"{option}=")
+            for option in _CLI_LONG_VALUE_OPTIONS
+        ):
+            normalized.append(token)
+            i += 1
+            continue
+
+        if any(
+            token.startswith(f"{option}=")
+            for option in _CLI_NAMESPACED_SHORT_VALUE_OPTIONS
+        ):
+            normalized.append(token)
+            i += 1
+            continue
+
+        if any(
+            token.startswith(option)
+            and len(token) > len(option)
+            and token[len(option)] != "="
+            for option in _CLI_CANONICAL_SHORT_VALUE_OPTIONS
+        ):
+            normalized.append(token)
+            i += 1
+            continue
+
+        parser.error(f"[L0C-2001] unknown option '{token}'")
+
+    return normalized
 
 
 def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -1225,17 +1421,28 @@ def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.
         ("check_basic", "--check-basic", {"build", "run", "gen"}, "L0C-2027"),
         ("all_modules", "--all-modules", {"tok", "ast", "sym", "type"}, "L0C-2019"),
         ("include_eof", "--include-eof", {"tok"}, "L0C-2020"),
+        ("interface_paths", "--interface-path", {"compile"}, "L0C-2031"),
     ]
+    optional_string_attrs = {
+        "output",
+        "c_compiler",
+        "c_options",
+        "runtime_include",
+        "runtime_lib",
+    }
 
     for attr, flag_name, valid_modes, code in scoped_flags:
         value = getattr(args, attr)
-        provided = bool(value)
+        provided = value is not None if attr in optional_string_attrs else bool(value)
         if not provided:
             continue
         if mode in valid_modes:
             continue
         modes_msg = ", ".join(f"--{m}" for m in sorted(valid_modes))
-        parser.error(f"[{code}] option '{flag_name}' is valid only with modes: {modes_msg}")
+        if code == "L0C-2031":
+            parser.error(f"[{code}] option '{flag_name}' is valid only with mode: {modes_msg}")
+        else:
+            parser.error(f"[{code}] option '{flag_name}' is valid only with modes: {modes_msg}")
 
     if getattr(args, "unchecked", False) and (
         getattr(args, "trace_arc", False) or getattr(args, "trace_memory", False)
@@ -1249,6 +1456,38 @@ def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.
         parser.error("[L0C-2028] option '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'")
 
 
+def _validate_reserved_canonical_flags(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
+    """Reject canonical compiler options whose behavior is not implemented.
+
+    Args:
+        parser: The argument parser for reporting errors.
+        args: The parsed command-line arguments.
+    """
+    reserved_options = [
+        (
+            "reserved_debug",
+            "option '-g' is reserved for debug information and is not supported yet",
+        ),
+        (
+            "reserved_assembly",
+            "option '-S' is reserved for assembly output and is not supported yet",
+        ),
+        (
+            "reserved_library_paths",
+            "option '-L' is reserved for external library search and is not supported yet",
+        ),
+        (
+            "reserved_libraries",
+            "option '-l' is reserved for external library selection and is not supported yet",
+        ),
+    ]
+    for attr, message in reserved_options:
+        if getattr(args, attr):
+            parser.error(f"[L0C-2032] {message}")
+
+
 def main(argv: Optional[List[str]] = None) -> None:
     """Parse CLI arguments, dispatch the selected mode, and exit.
 
@@ -1259,6 +1498,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(
         prog="l0c",
         description=compiler_identity_text(),
+        allow_abbrev=False,
         epilog=(
             "Modes are selected with flags (default: --build). "
             "Use '--' to pass program arguments for --run."
@@ -1276,18 +1516,18 @@ def main(argv: Optional[List[str]] = None) -> None:
                         default=0,
                         dest='verbosity',
                         help="Increase verbosity: -v=INFO, -vvv=DEBUG")
-    parser.add_argument("-l", "--log",
+    parser.add_argument("-Vl", "--log",
                         action='store_true',
                         default=False,
                         help="Enable rich log formatting (timestamps, levels)")
     parser.add_argument(
-        "-P", "--project-root",
+        "-Rp", "--project-root",
         action="append",
         default=[],
         help="Add a project source root (can be passed multiple times)",
     )
     parser.add_argument(
-        "-S", "--sys-root",
+        "-Rs", "--sys-root",
         action="append",
         default=[],
         help="Add a system/stdlib source root (can be passed multiple times; default: $L0_SYSTEM as colon-separated paths)",
@@ -1298,7 +1538,9 @@ def main(argv: Optional[List[str]] = None) -> None:
                             help="Build and run a module")
     mode_group.add_argument("--build", action="store_const", const="build", dest="mode",
                             help="Build an executable (default mode)")
-    mode_group.add_argument("--gen", "-g", "--codegen", action="store_const", const="gen", dest="mode",
+    mode_group.add_argument("-c", "--compile", action="store_const", const="compile", dest="mode",
+                            help="Compile one target without linking (not implemented in Stage 1 yet)")
+    mode_group.add_argument("--gen", "-Gc", "--codegen", action="store_const", const="gen", dest="mode",
                             help="Generate C code")
     mode_group.add_argument("--check", "--analyze", action="store_const", const="check", dest="mode",
                             help="Parse and analyze a module")
@@ -1319,6 +1561,45 @@ def main(argv: Optional[List[str]] = None) -> None:
         ),
     )
     _add_runtime_args(parser)
+    parser.add_argument(
+        "-I", "--interface-path",
+        action="append",
+        default=[],
+        dest="interface_paths",
+        metavar="INTERFACE_PATH",
+        help=(
+            "Add an interface search path (can be passed multiple times; "
+            "valid in: '--compile'; interface loading is not implemented yet)"
+        ),
+    )
+    parser.add_argument(
+        "-g",
+        action="store_true",
+        dest="reserved_debug",
+        help="Generate debug information (reserved; not supported yet)",
+    )
+    parser.add_argument(
+        "-S",
+        action="store_true",
+        dest="reserved_assembly",
+        help="Emit assembly output (reserved; not supported yet)",
+    )
+    parser.add_argument(
+        "-L",
+        action="append",
+        default=[],
+        dest="reserved_library_paths",
+        metavar="LIBRARY_PATH",
+        help="Add an external library search path (reserved; not supported yet)",
+    )
+    parser.add_argument(
+        "-l",
+        action="append",
+        default=[],
+        dest="reserved_libraries",
+        metavar="LIBRARY",
+        help="Select an external library (reserved; not supported yet)",
+    )
     _add_codegen_arg(parser)
     parser.add_argument(
         "--keep-c",
@@ -1331,14 +1612,28 @@ def main(argv: Optional[List[str]] = None) -> None:
     _add_target_args(parser)
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
-    cli_argv, program_args = _split_cli_and_program_args(raw_argv)
+    cli_argv, program_args, separator_present = _split_cli_and_program_args(raw_argv)
     try:
-        args = parser.parse_args(cli_argv)
+        early_exit = next(
+            (
+                token
+                for token in cli_argv
+                if token in {"-h", "--help", "--version"}
+            ),
+            None,
+        )
+        if early_exit is not None:
+            parser.parse_args([early_exit])
+        normalized_cli_argv = _normalize_cli_argv(parser, cli_argv)
+        if not any(not token.startswith("-") for token in normalized_cli_argv):
+            parser.error("[L0C-2021] missing required target module/file name")
+        args = parser.parse_args(normalized_cli_argv)
     except SystemExit as exc:
-        if exc.code == 2 and _count_cli_verbosity(raw_argv) >= 1:
+        fallback_verbosity, fallback_log = _scan_cli_presentation_options(raw_argv)
+        if exc.code == 2 and fallback_verbosity >= 1:
             fallback_args = argparse.Namespace(
-                verbosity=_count_cli_verbosity(raw_argv),
-                log=_has_cli_log_flag(raw_argv),
+                verbosity=fallback_verbosity,
+                log=fallback_log,
                 no_line_directives=False,
                 trace_arc=False,
                 trace_memory=False,
@@ -1354,18 +1649,20 @@ def main(argv: Optional[List[str]] = None) -> None:
         args.entry = args.targets[0]
         args.args = program_args
     else:
-        if program_args:
+        if separator_present:
             parser.error("[L0C-2023] arguments after '--' are valid only with '--run'")
         if len(args.targets) > 1:
             parser.error("[L0C-2024] multiple targets are not supported yet; pass exactly one target")
         args.entry = args.targets[0]
 
+    _validate_reserved_canonical_flags(parser, args)
     _validate_mode_scoped_flags(parser, args)
     _emit_verbose_compiler_identity(args)
 
     dispatch = {
         "run": cmd_run,
         "build": cmd_build,
+        "compile": cmd_compile,
         "gen": cmd_codegen,
         "check": cmd_check,
         "tok": cmd_tok,

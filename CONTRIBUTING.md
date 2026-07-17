@@ -126,8 +126,8 @@ Verify the compiler works end-to-end:
 
 ```bash
 l0c --version # ensure the expected version is printed
-l0c -P examples --run hello    # build and run hello.l0
-l0c -P examples --check hello  # parse and type-check only
+l0c -Rp examples --run hello    # build and run hello.l0
+l0c -Rp examples --check hello  # parse and type-check only
 ```
 
 ### Debugging
@@ -135,8 +135,8 @@ l0c -P examples --check hello  # parse and type-check only
 Use verbose flags to see compilation stages:
 
 ```bash
-l0c -v -P examples --check hello     # info-level
-l0c -vvv -P examples --check hello   # debug-level
+l0c -v -Rp examples --check hello     # info-level
+l0c -vvv -Rp examples --check hello   # debug-level
 ```
 
 ## Making changes

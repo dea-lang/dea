@@ -4,7 +4,8 @@ This directory contains the self-hosted Stage 2 compiler for the L0 programming 
 tests, and utilities for the compiler and its runtime traces.
 
 Like the Stage 1 compiler, it compiles L0 source code to C99, but is itself implemented in L0. Stage 2 implements the
-full current public CLI surface: `--check`, `--tok`, `--sym`, `--type`, `--ast`, `--gen`, `--build`, and `--run`.
+full implemented CLI surface: `--check`, `--tok`, `--sym`, `--type`, `--ast`, `--gen`, `--build`, and `--run`, plus the
+shared reserved `--compile` mode.
 
 ## Bootstrap artifact
 
@@ -12,10 +13,10 @@ Build a repo-local Stage 2 compiler artifact:
 
 ```bash
 python scripts/build_stage2_l0c.py
-./build/dea/bin/l0c-stage2 --check -P examples hello
-./build/dea/bin/l0c-stage2 --gen -P examples hello
-./build/dea/bin/l0c-stage2 --build -P examples hello
-./build/dea/bin/l0c-stage2 --run -P examples hello
+./build/dea/bin/l0c-stage2 --check -Rp examples hello
+./build/dea/bin/l0c-stage2 --gen -Rp examples hello
+./build/dea/bin/l0c-stage2 --build -Rp examples hello
+./build/dea/bin/l0c-stage2 --run -Rp examples hello
 ```
 
 Optional builder environment variables:
@@ -44,7 +45,7 @@ launcher automatically):
 ```bash
 make use-dev-stage2      # or: make use-dev-stage1
 source build/dea/bin/l0-env.sh
-l0c --check -P examples hello
+l0c --check -Rp examples hello
 l0c --version
 ```
 
@@ -60,7 +61,7 @@ Install a repo-independent Stage 2 toolchain under one prefix:
 ```bash
 make PREFIX=/tmp/l0-install install
 source /tmp/l0-install/bin/l0-env.sh
-l0c --check -P examples hello
+l0c --check -Rp examples hello
 ```
 
 `make install` requires an explicit `PREFIX=...`; there is no implicit default install root.
@@ -220,8 +221,8 @@ export L0_CFLAGS="-frandom-seed=l0c-stage2"
 # Linux: append `-Wl,--build-id=none`.
 
 DEA_BUILD_DIR=build/tests/triple-manual KEEP_C=1 python scripts/build_stage2_l0c.py
-L0_HOME="$PWD/compiler" ./build/tests/triple-manual/bin/l0c-stage2 --build --keep-c -P compiler/stage2_l0/src -o build/tests/triple-manual/l0c-stage2-second.native l0c
-L0_HOME="$PWD/compiler" ./build/tests/triple-manual/l0c-stage2-second.native --build --keep-c -P compiler/stage2_l0/src -o build/tests/triple-manual/l0c-stage2-third.native l0c
+L0_HOME="$PWD/compiler" ./build/tests/triple-manual/bin/l0c-stage2 --build --keep-c -Rp compiler/stage2_l0/src -o build/tests/triple-manual/l0c-stage2-second.native l0c
+L0_HOME="$PWD/compiler" ./build/tests/triple-manual/l0c-stage2-second.native --build --keep-c -Rp compiler/stage2_l0/src -o build/tests/triple-manual/l0c-stage2-third.native l0c
 cmp build/tests/triple-manual/l0c-stage2-second.c build/tests/triple-manual/l0c-stage2-third.c
 cp build/tests/triple-manual/l0c-stage2-second.native build/tests/triple-manual/l0c-stage2-second.stripped
 cp build/tests/triple-manual/l0c-stage2-third.native build/tests/triple-manual/l0c-stage2-third.stripped
@@ -239,7 +240,7 @@ for name in ("second", "third"):
 PY
 fi
 cmp build/tests/triple-manual/l0c-stage2-second.stripped build/tests/triple-manual/l0c-stage2-third.stripped
-L0_HOME="$PWD/compiler" ./build/tests/triple-manual/l0c-stage2-third.native --run -P examples hello
+L0_HOME="$PWD/compiler" ./build/tests/triple-manual/l0c-stage2-third.native --run -Rp examples hello
 ```
 
 When the host compiler is `tcc`, keep the retained-C comparison but skip the native-binary `cmp` step above. Do the same
@@ -266,7 +267,7 @@ DEA_BUILD_DIR=build/dev-dea ../.venv/bin/python compiler/stage2_l0/scripts/l0c_s
 This script:
 
 1. builds a fresh Stage 2 bootstrap compiler under `build/tests/...` from trusted Stage 1 input
-2. runs `--gen --no-line-directives -P compiler/stage2_l0/src l0c` through Stage 1
+2. runs `--gen --no-line-directives -Rp compiler/stage2_l0/src l0c` through Stage 1
 3. runs the same command through the fresh Stage 2 compiler
 4. compares the generated C programs byte-for-byte and fails with a retained diff if they differ
 
@@ -307,7 +308,7 @@ The test argument accepts either `parser_test` or `parser_test.l0`.
 This runs:
 
 ```bash
-./scripts/l0c -P compiler/stage2_l0/src --run --trace-arc --trace-memory compiler/stage2_l0/tests/parser_test.l0
+./scripts/l0c -Rp compiler/stage2_l0/src --run --trace-arc --trace-memory compiler/stage2_l0/tests/parser_test.l0
 ```
 
 By default, output files are written under `/tmp` and printed at the end:

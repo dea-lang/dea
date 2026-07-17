@@ -619,7 +619,7 @@ def main() -> int:
                 *stage2_wrapper_command(stage2_wrapper),
                 "--build",
                 "--keep-c",
-                "-P",
+                "--project-root",
                 "compiler/stage2_l0/src",
                 "-o",
                 str(second_native),
@@ -650,7 +650,7 @@ def main() -> int:
                 str(second_native),
                 "--build",
                 "--keep-c",
-                "-P",
+                "--project-root",
                 "compiler/stage2_l0/src",
                 "-o",
                 str(third_native),
@@ -693,7 +693,7 @@ def main() -> int:
         notice("running final smoke check through the third self-built compiler")
         smoke_log, smoke_elapsed = run_logged(
             "third_self_smoke",
-            [str(third_native), "--run", "-P", "examples", "hello"],
+            [str(third_native), "--run", "--project-root", "examples", "hello"],
             env=self_build_env,
             artifact_dir=artifact_dir,
         )

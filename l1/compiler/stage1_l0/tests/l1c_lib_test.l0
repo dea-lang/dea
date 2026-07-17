@@ -120,7 +120,7 @@ func named_args_c_output_path() -> string {
 func test_check_ok() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--check");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "ok_main");
 
@@ -130,12 +130,57 @@ func test_check_ok() {
 }
 
 /**
+ * Tests compile mode remains an explicit NYI command until Phase 3.
+ */
+func test_compile_mode_is_nyi() {
+    let target = "compiler/stage1_l0/tests/.tmp-compile-only";
+    let c_path = target + ".c";
+    let object_path = target + ".o";
+    let interface_path = target + ".l1m";
+    rt_delete_file(c_path);
+    rt_delete_file(object_path);
+    rt_delete_file(interface_path);
+
+    with (let argv = sv_create(3) => sv_free(argv)) {
+        sv_push(argv, "-c");
+        sv_push(argv, target);
+        let rc = run_with_argv(argv);
+        assert(rc == 1, "-c should report NYI until Phase 3");
+    }
+
+    with (let argv2 = sv_create(3) => sv_free(argv2)) {
+        sv_push(argv2, "--compile");
+        sv_push(argv2, target);
+        let rc2 = run_with_argv(argv2);
+        assert(rc2 == 1, "--compile should report NYI until Phase 3");
+    }
+
+    assert(!exists(c_path), "compile NYI path must not emit C");
+    assert(!exists(object_path), "compile NYI path must not emit an object");
+    assert(!exists(interface_path), "compile NYI path must not emit an interface");
+}
+
+/**
+ * Tests a bare argument separator keeps compile mode in the CLI-error path.
+ */
+func test_compile_bare_separator_is_cli_error() {
+    with (let argv = sv_create(4) => sv_free(argv)) {
+        sv_push(argv, "--compile");
+        sv_push(argv, "compiler/stage1_l0/tests/.tmp-compile-only");
+        sv_push(argv, "--");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 2, "bare separator outside --run should return the CLI-error status");
+    }
+}
+
+/**
  * Tests test_check_cycle_fails.
  */
 func test_check_cycle_fails() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--check");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "cycle_a");
 
@@ -150,7 +195,7 @@ func test_check_cycle_fails() {
 func test_check_semantic_failure() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--check");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, semantics_fixture_root());
         sv_push(argv, "infer_fail_main");
 
@@ -166,7 +211,7 @@ func test_tok_ok() {
     with (let argv = sv_create(10) => sv_free(argv)) {
         sv_push(argv, "--tok");
         sv_push(argv, "--include-eof");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "ok_main");
 
@@ -182,7 +227,7 @@ func test_gen_ok_stdout() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--gen");
         sv_push(argv, "--no-line-directives");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "ok_main");
 
@@ -201,7 +246,7 @@ func test_gen_ok_output_file() {
     with (let argv = sv_create(10) => sv_free(argv)) {
         sv_push(argv, "--gen");
         sv_push(argv, "--no-line-directives");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -225,7 +270,7 @@ func test_gen_ok_output_file() {
 func test_emit_interface_stdout() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--emit-interface");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, interface_fixture_root());
         sv_push(argv, "iface_demo");
 
@@ -243,7 +288,7 @@ func test_emit_interface_output_file() {
 
     with (let argv = sv_create(10) => sv_free(argv)) {
         sv_push(argv, "--emit-interface");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, interface_fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -275,7 +320,7 @@ func test_gen_trace_defines() {
         sv_push(argv, "--no-line-directives");
         sv_push(argv, "--trace-arc");
         sv_push(argv, "--trace-memory");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -318,7 +363,7 @@ func test_default_build_mode_succeeds() {
     rt_delete_file(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -342,7 +387,7 @@ func test_default_build_mode_succeeds() {
 func test_run_exit_code_passthrough() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "exit_seven");
 
@@ -363,7 +408,7 @@ func test_run_keep_c_output_file() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -385,7 +430,7 @@ func test_run_keep_c_output_file() {
 func test_run_cleanup_return_precedence() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "cleanup_return_main");
 
@@ -400,7 +445,7 @@ func test_run_cleanup_return_precedence() {
 func test_run_try_chain_short_circuits() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "try_chain_main");
 
@@ -415,7 +460,7 @@ func test_run_try_chain_short_circuits() {
 func test_run_shadowed_qualified_variant() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, semantics_fixture_root());
         sv_push(argv, "shadow_warn_main");
 
@@ -436,7 +481,7 @@ func test_run_named_args_main() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, semantics_fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -462,7 +507,7 @@ func test_run_bitwise_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -499,7 +544,7 @@ func test_run_function_pointer_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -537,7 +582,7 @@ func test_run_variadic_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -578,7 +623,7 @@ func test_run_variadic_trace() {
         sv_push(argv, "--run");
         sv_push(argv, "--trace-arc");
         sv_push(argv, "--trace-memory");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "variadic_main");
 
@@ -599,7 +644,7 @@ func test_run_string_equality_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -634,7 +679,7 @@ func test_run_pointer_identity_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -654,7 +699,7 @@ func test_run_pointer_identity_build_and_keep_c() {
 func test_run_opaque_handle_round_trip() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "opaque_handle_main");
 
@@ -675,7 +720,7 @@ func test_run_nullable_identity_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -702,7 +747,7 @@ func test_run_nullable_identity_build_and_keep_c() {
 func test_run_optional_struct_field_order_builds() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "optional_struct_field_order_main");
 
@@ -723,7 +768,7 @@ func test_run_same_type_struct_cast_builds() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -750,7 +795,7 @@ func test_run_same_type_struct_cast_builds() {
 func test_run_std_types_opt_string_builds() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "std_types_opt_string_main");
 
@@ -765,7 +810,7 @@ func test_run_std_types_opt_string_builds() {
 func test_run_single_statement_bodies() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "single_stmt_bodies_main");
 
@@ -786,7 +831,7 @@ func test_run_string_relational_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -826,7 +871,7 @@ func test_run_string_concat_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -857,7 +902,7 @@ func test_run_const_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -890,7 +935,7 @@ func test_run_nonconstant_top_level_let_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -937,7 +982,7 @@ func test_run_module_lifecycle_name_collision_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -973,7 +1018,7 @@ func test_run_float_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -1009,7 +1054,7 @@ func test_run_float_ops_build_and_keep_c() {
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--keep-c");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -1045,7 +1090,7 @@ func test_build_float_zero_division_keep_c() {
     rt_delete_file(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -1076,7 +1121,7 @@ func test_build_float_rejects_invalid_math_mode_option() {
     rt_delete_file(c_path);
 
     with (let argv = sv_create(14) => sv_free(argv)) {
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "--output");
         sv_push(argv, out_path);
@@ -1126,7 +1171,7 @@ func test_merge_c_option_words_ignores_empty_inputs() {
 func test_type_ok() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--type");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, semantics_fixture_root());
         sv_push(argv, "ok_main");
 
@@ -1141,7 +1186,7 @@ func test_type_ok() {
 func test_sym_ok() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--sym");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, semantics_fixture_root());
         sv_push(argv, "ok_main");
 
@@ -1157,7 +1202,7 @@ func test_sym_all_modules_ok() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--sym");
         sv_push(argv, "--all-modules");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, semantics_fixture_root());
         sv_push(argv, "ok_main");
 
@@ -1169,7 +1214,7 @@ func test_sym_all_modules_ok() {
 func test_run_real_classify() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "real_classify_main");
 
@@ -1181,7 +1226,7 @@ func test_run_real_classify() {
 func test_run_real_basic() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "real_basic_main");
 
@@ -1193,7 +1238,7 @@ func test_run_real_basic() {
 func test_run_real_round() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "real_round_main");
 
@@ -1205,7 +1250,7 @@ func test_run_real_round() {
 func test_run_real_decompose() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "real_decompose_main");
 
@@ -1217,7 +1262,7 @@ func test_run_real_decompose() {
 func test_run_real_transcendental() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "real_transcendental_main");
 
@@ -1229,7 +1274,7 @@ func test_run_real_transcendental() {
 func test_run_fixed_array_oob_fails() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "fixed_array_oob_main");
 
@@ -1244,7 +1289,7 @@ func test_run_fixed_array_oob_fails() {
 func test_run_slice_ok() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "slice_main");
 
@@ -1259,7 +1304,7 @@ func test_run_slice_ok() {
 func test_run_slice_oob_fails() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--run");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "slice_oob_main");
 
@@ -1276,7 +1321,7 @@ func test_run_trace_slice_non_owning() {
         sv_push(argv, "--run");
         sv_push(argv, "--trace-arc");
         sv_push(argv, "--trace-memory");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "slice_trace_main");
 
@@ -1293,7 +1338,7 @@ func test_run_trace_fixed_array_arc_paths() {
         sv_push(argv, "--run");
         sv_push(argv, "--trace-arc");
         sv_push(argv, "--trace-memory");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "fixed_array_trace_main");
 
@@ -1310,7 +1355,7 @@ func test_run_trace_fixed_array_nested_return() {
         sv_push(argv, "--run");
         sv_push(argv, "--trace-arc");
         sv_push(argv, "--trace-memory");
-        sv_push(argv, "-P");
+        sv_push(argv, "-Rp");
         sv_push(argv, fixture_root());
         sv_push(argv, "fixed_array_nested_return_main");
 
@@ -1324,6 +1369,8 @@ func test_run_trace_fixed_array_nested_return() {
  */
 func main() {
     test_check_ok();
+    test_compile_mode_is_nyi();
+    test_compile_bare_separator_is_cli_error();
     test_check_cycle_fails();
     test_check_semantic_failure();
     test_tok_ok();

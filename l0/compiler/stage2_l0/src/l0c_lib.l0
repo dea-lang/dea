@@ -787,6 +787,9 @@ func run_with_argv(argv: StringVector*) -> int {
             CM_BUILD => {
                 rc = bd_cmd_build(opts, cfg);
             }
+            CM_COMPILE => {
+                rc = l0c_cmd_nyi(opts.mode, cfg);
+            }
             CM_GEN => {
                 rc = l0c_cmd_gen(opts, cfg);
             }

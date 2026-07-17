@@ -57,7 +57,7 @@ def main() -> int:
         v_stdout = tmp_dir / "v.stdout"
         v_stderr = tmp_dir / "v.stderr"
         run_to_files(
-            [l0c, "-v", "--build", "-P", fixture_root_expected, "ok_main"],
+            [l0c, "-v", "--build", "--project-root", fixture_root_expected, "ok_main"],
             v_stdout,
             v_stderr,
             env=clean_env(),
@@ -88,7 +88,7 @@ def main() -> int:
         vvv_stdout = tmp_dir / "vvv.stdout"
         vvv_stderr = tmp_dir / "vvv.stderr"
         run_to_files(
-            [l0c, "-vvv", "--build", "-P", fixture_root_expected, "ok_main"],
+            [l0c, "-vvv", "--build", "--project-root", fixture_root_expected, "ok_main"],
             vvv_stdout,
             vvv_stderr,
             env=clean_env(),
@@ -133,7 +133,7 @@ def main() -> int:
         run_stdout = tmp_dir / "run.stdout"
         run_stderr = tmp_dir / "run.stderr"
         run_to_files(
-            [l0c, "-v", "--run", "-P", fixture_root_expected, "ok_main"],
+            [l0c, "-v", "--run", "--project-root", fixture_root_expected, "ok_main"],
             run_stdout,
             run_stderr,
             env=clean_env(),

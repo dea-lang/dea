@@ -1,6 +1,6 @@
 # L0 Trace Specification
 
-Version: 2026-07-11
+Version: 2026-07-16
 
 This document specifies the shared trace instrumentation contract for generated C code and runtime behavior in both
 Stage 1 and Stage 2.
@@ -39,7 +39,7 @@ When enabled, generated C emitted by either stage writes preprocessor defines im
 
 These defines gate runtime trace code with `#ifdef` so trace logic is fully excluded when flags are off.
 
-Manual C defines passed via `-C` (for example `-C "-DL0_TRACE_ARC"`) remain compatible.
+Manual C defines passed via `-Co` (for example `-Co "-DL0_TRACE_ARC"`) remain compatible.
 
 ## 4. Runtime Output Contract
 

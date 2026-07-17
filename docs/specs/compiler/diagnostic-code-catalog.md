@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-12
+Version: 2026-07-16
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -247,8 +247,8 @@ diagnostic.
 
 ## Build, Code Generation, and Runtime
 
-| L0 code    | L1 code    | Level   | Meaning                                                                                                 |
-| ---------- | ---------- | ------- | -------------------------------------------------------------------------------------------------------|
+| L0 code    | L1 code    | Level   | Meaning                                                                                                |
+| ---------- | ---------- | ------- | ------------------------------------------------------------------------------------------------------ |
 | `L0C-0009` | `L1C-0009` | All     | No C compiler found: use '--c-compiler' or the level-specific C compiler environment variable          |
 | `L0C-0010` | `L1C-0010` | All     | C compilation failed                                                                                   |
 | `L0C-0011` | `L1C-0011` | All     | Invalid entry module name: module components must be valid identifiers                                 |
@@ -291,10 +291,12 @@ diagnostic.
 | `L0C-2025` | `L1C-2025` | All     | '--unchecked' is valid only with '--build', '--gen', or '--run'                                        |
 | `L0C-2026` | `L1C-2026` | All     | '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'                                |
 | `L0C-2027` | `L1C-2027` | All     | '--check-basic' is valid only with '--build', '--gen', or '--run'                                      |
-| `L0C-2028` | `L1C-2028` | All     | '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'               |
+| `L0C-2028` | `L1C-2028` | All     | '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'              |
 |            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                 |
-| `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in Stage 1 yet                                                   |
-| `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                             |
+| `L0C-2031` | `L1C-2031` | All     | Interface search paths are valid only with the reserved compile-only mode                              |
+| `L0C-2032` | `L1C-2032` | All     | Recognized canonical driver option is reserved but its capability is not implemented yet               |
+| `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                    |
+| `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                            |
 
 ## Name Resolution and Import Analysis
 

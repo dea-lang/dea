@@ -1,6 +1,6 @@
 # Diagnostic Code Policy
 
-Version: 2026-04-12
+Version: 2026-07-16
 
 Normative L0 Stage 1/Stage 2 supplement for compiler diagnostic-code assignment and reuse.
 
@@ -68,6 +68,6 @@ used with a different meaning elsewhere in the repository.
 
 ## Examples
 
-- Valid new code: `L0C-9510` for Stage 2 NYI mode behavior with no Stage 1 equivalent.
+- Valid reuse: `L0C-9510` in Stage 2 for the same compile-mode NYI condition implemented by Stage 1.
 - Invalid reuse: assigning Stage 2 `ICE-1300` to a new emitter precondition if Stage 1 already uses `ICE-1300` for a
   different backend invariant.

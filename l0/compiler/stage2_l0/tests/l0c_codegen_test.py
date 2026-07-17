@@ -120,7 +120,7 @@ def main() -> int:
             expected = case_dir / f"{case_name}.golden.c"
 
             gen_result = run(
-                [l0c, "--gen", "--no-line-directives", "-P", native_path(case_dir), entry_module],
+                [l0c, "--gen", "--no-line-directives", "--project-root", native_path(case_dir), entry_module],
                 expected_returncode=None,
             )
             generated.write_text(gen_result.stdout, encoding="utf-8")

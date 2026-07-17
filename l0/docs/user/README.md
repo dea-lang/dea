@@ -28,13 +28,13 @@ l0c --version
 Then try an example:
 
 ```bash
-l0c -P examples --run hello
+l0c -Rp examples --run hello
 ```
 
 Or use the installed examples as a starting point for your own project:
 
 ```bash
-l0c --build -P examples -o hello examples/hello.l0
+l0c --build -Rp examples -o hello examples/hello.l0
 ```
 
 On Windows, see [README-WINDOWS.md](README-WINDOWS.md) before using `--build` or `--run`; the validated Windows path

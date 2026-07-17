@@ -196,7 +196,7 @@ def run_compiler(stage: str, compiler: Path, root: Path, target: str) -> tuple[i
         env["L0_HOME"] = str(REPO_ROOT / "l0" / "compiler")
         env["L1_HOME"] = str(cwd / "compiler")
     completed = subprocess.run(
-        [*wrapper_command(compiler), "-P", str(root), "--check", target],
+        [*wrapper_command(compiler), "--project-root", str(root), "--check", target],
         cwd=cwd,
         env=env,
         stdin=subprocess.DEVNULL,

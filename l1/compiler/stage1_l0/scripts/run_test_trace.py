@@ -66,7 +66,7 @@ def main() -> int:
             *repo_stage1_command(),
             "--trace-memory",
             "--trace-arc",
-            "-P",
+            "--project-root",
             "compiler/stage1_l0/src",
             "--run",
             str(test_path),

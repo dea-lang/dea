@@ -75,7 +75,7 @@ def run_prefix_env_probe(prefix_dir: Path, project_dir: Path, env_run_output: Pa
             f"if not \"%L0_HOME%\"==\"{prefix_dir}\" exit /b 3\r\n"
             "if defined L0_SYSTEM exit /b 4\r\n"
             "if defined L0_RUNTIME_INCLUDE exit /b 5\r\n"
-            f"l0c --run -P \"{native_path(project_dir)}\" hello\r\n",
+            f"l0c --run --project-root \"{native_path(project_dir)}\" hello\r\n",
             encoding="utf-8",
         )
         command = ["cmd.exe", "/d", "/s", "/c", str(cmd_script)]
@@ -91,7 +91,7 @@ def run_prefix_env_probe(prefix_dir: Path, project_dir: Path, env_run_output: Pa
                 f'[ "$L0_HOME" = "{prefix_dir}" ] && '
                 '[ -z "${L0_SYSTEM-}" ] && '
                 '[ -z "${L0_RUNTIME_INCLUDE-}" ] && '
-                f'l0c --run -P "{native_path(project_dir)}" hello'
+                f'l0c --run --project-root "{native_path(project_dir)}" hello'
             ),
         ]
     completed = subprocess.run(
@@ -199,7 +199,7 @@ func main() -> int {
             [
                 stage2_launcher_path(prefix_dir / "bin" / "l0c-stage2"),
                 "--check",
-                "-P",
+                "--project-root",
                 native_path(project_dir),
                 "hello",
             ],
@@ -210,7 +210,7 @@ func main() -> int {
             [
                 stage2_launcher_path(prefix_dir / "bin" / "l0c-stage2"),
                 "--build",
-                "-P",
+                "--project-root",
                 native_path(project_dir),
                 "-o",
                 native_path(hello_bin),

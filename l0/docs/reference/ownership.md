@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-07-11
+Version: 2026-07-16
 
 This document describes how ownership works in L0 today, covering:
 
@@ -320,6 +320,6 @@ Primary source files:
 Repro-style checks:
 
 ```bash
-./scripts/l0c -P compiler/stage2_l0/tests -S compiler/shared/l0/stdlib --gen -o /tmp/map_test.c map_test
-./scripts/l0c -P compiler/stage2_l0/tests -S compiler/shared/l0/stdlib --gen -o /tmp/hashmap_test.c hashmap_test
+./scripts/l0c -Rp compiler/stage2_l0/tests -Rs compiler/shared/l0/stdlib --gen -o /tmp/map_test.c map_test
+./scripts/l0c -Rp compiler/stage2_l0/tests -Rs compiler/shared/l0/stdlib --gen -o /tmp/hashmap_test.c hashmap_test
 ```

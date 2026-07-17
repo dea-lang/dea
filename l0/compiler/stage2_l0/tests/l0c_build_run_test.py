@@ -132,7 +132,7 @@ def main() -> int:
                 l0c,
                 "--build",
                 "--keep-c",
-                "-P",
+                "--project-root",
                 native_path(fixture_root),
                 "-o",
                 native_path(ok_main_bin),
@@ -150,7 +150,7 @@ def main() -> int:
             [
                 stage2_native,
                 "--run",
-                "-P",
+                "--project-root",
                 native_path(fixture_root),
                 "argv_dump",
                 "--",
@@ -178,14 +178,14 @@ def main() -> int:
             (work_dir / "argv.diff").write_text(diff, encoding="utf-8")
             raise ToolTestFailure(f"argv forwarding output mismatch\n{diff}")
 
-        demo_result = run([l0c, "--run", "-P", "examples", "demo", "--", "add", "2", "3"])
+        demo_result = run([l0c, "--run", "--project-root", "examples", "demo", "--", "add", "2", "3"])
         (work_dir / "demo.stdout").write_text(demo_result.stdout, encoding="utf-8")
         (work_dir / "demo.stderr").write_text(demo_result.stderr, encoding="utf-8")
         write_text(work_dir / "demo.tail", last_non_empty_line(demo_result.stdout))
         assert_text_equals(work_dir / "demo.tail", "= 5")
 
         exit_result = run(
-            [l0c, "--run", "-P", native_path(fixture_root), "exit_seven"],
+            [l0c, "--run", "--project-root", native_path(fixture_root), "exit_seven"],
             expected_returncode=None,
         )
         (work_dir / "exit_seven.out").write_text(exit_result.stdout + exit_result.stderr, encoding="utf-8")
@@ -199,7 +199,7 @@ def main() -> int:
                 l0c,
                 "--run",
                 "--keep-c",
-                "-P",
+                "--project-root",
                 native_path(fixture_root),
                 "-o",
                 native_path(work_dir / "kept-name"),
@@ -212,7 +212,7 @@ def main() -> int:
             [
                 l0c,
                 "--run",
-                "-P",
+                "--project-root",
                 native_path(fixture_root),
                 "-o",
                 native_path(work_dir / "ignored-output"),
@@ -226,7 +226,7 @@ def main() -> int:
         # A compile warning must surface during `--run` (on stderr) without
         # becoming fatal and without corrupting the program's stdout.
         dup_run = run(
-            [l0c, "--run", "-P", native_path(fixture_root), "dup_import_main"],
+            [l0c, "--run", "--project-root", native_path(fixture_root), "dup_import_main"],
         )
         (work_dir / "dup_run.stdout").write_text(dup_run.stdout, encoding="utf-8")
         (work_dir / "dup_run.stderr").write_text(dup_run.stderr, encoding="utf-8")
@@ -242,7 +242,7 @@ def main() -> int:
             [
                 l0c,
                 "--build",
-                "-P",
+                "--project-root",
                 native_path(fixture_root),
                 "-o",
                 native_path(dup_build_bin),
@@ -255,7 +255,7 @@ def main() -> int:
 
         # `--gen` must surface the warning on stderr while emitting C on stdout.
         dup_gen = run(
-            [l0c, "--gen", "-P", native_path(fixture_root), "dup_import_main"],
+            [l0c, "--gen", "--project-root", native_path(fixture_root), "dup_import_main"],
         )
         (work_dir / "dup_gen.stdout").write_text(dup_gen.stdout, encoding="utf-8")
         (work_dir / "dup_gen.stderr").write_text(dup_gen.stderr, encoding="utf-8")
@@ -266,7 +266,7 @@ def main() -> int:
         empty_bin.mkdir()
         prepare_windows_runtime_bin(empty_bin)
         no_cc = run(
-            [stage2_native, "--build", "-P", native_path(fixture_root), "ok_main"],
+            [stage2_native, "--build", "--project-root", native_path(fixture_root), "ok_main"],
             env=no_compiler_env(empty_bin),
             expected_returncode=None,
         )
@@ -282,7 +282,7 @@ def main() -> int:
             )
 
         compile_fail = run(
-            [l0c, "--build", "--c-compiler", "false", "-P", native_path(fixture_root), "ok_main"],
+            [l0c, "--build", "--c-compiler", "false", "--project-root", native_path(fixture_root), "ok_main"],
             expected_returncode=None,
         )
         (work_dir / "compile_fail.log").write_text(
@@ -298,7 +298,7 @@ def main() -> int:
                 "--build",
                 "--runtime-lib",
                 native_path(work_dir / "missing-lib"),
-                "-P",
+                "--project-root",
                 native_path(fixture_root),
                 "ok_main",
             ],
@@ -318,7 +318,7 @@ def main() -> int:
                 "--build",
                 "--runtime-lib",
                 native_path(work_dir / "empty-lib"),
-                "-P",
+                "--project-root",
                 native_path(fixture_root),
                 "ok_main",
             ],
@@ -330,7 +330,7 @@ def main() -> int:
             raise ToolTestFailure(f"did not expect retired L0C-0015 in {work_dir / 'runtime_lib_empty.log'}")
 
         no_main = run(
-            [l0c, "--build", "-P", native_path(fixture_root), "no_main"],
+            [l0c, "--build", "--project-root", native_path(fixture_root), "no_main"],
             expected_returncode=None,
         )
         (work_dir / "no_main.log").write_text(no_main.stdout + no_main.stderr, encoding="utf-8")
@@ -343,7 +343,7 @@ def main() -> int:
                 l0c,
                 "--build",
                 "--keep-c",
-                "-P",
+                "--project-root",
                 native_path(fixture_root),
                 "-o",
                 native_path(byte_main_bin),

@@ -14,6 +14,80 @@ import util.diag;
 import cli_args;
 
 /**
+ * Return whether a CLI parse result contains one diagnostic code.
+ *
+ * @param parsed Parse result to inspect.
+ * @param code Diagnostic code to find.
+ * @return `true` when the code is present.
+ */
+func cli_result_has_code(parsed: CliParseResult*, code: string) -> bool {
+    for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
+        if (diag_get(parsed.diags, i).code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Count diagnostics with one code in a CLI parse result.
+ *
+ * @param parsed Parse result to inspect.
+ * @param code Diagnostic code to count.
+ * @return Number of matching diagnostics.
+ */
+func cli_result_count_code(parsed: CliParseResult*, code: string) -> int {
+    let count = 0;
+    for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
+        if (diag_get(parsed.diags, i).code == code) {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+/**
+ * Assert that a separated value option immediately before `--` reports one
+ * missing-value diagnostic and does not consume the separator.
+ *
+ * @param option Value-taking option spelling to test.
+ */
+func assert_separator_boundary_missing_value(option: string) {
+    with (let argv = sv_create(4) => sv_free(argv)) {
+        sv_push(argv, "app.main");
+        sv_push(argv, option);
+        sv_push(argv, "--");
+        sv_push(argv, "program-arg");
+
+        let parsed = cli_parse(argv);
+        assert(diag_count(parsed.diags) == 1, "separator-boundary value error must be the only diagnostic");
+        assert(diag_get(parsed.diags, 0).code == "L0C-2003", "expected separator-boundary missing-value diagnostic");
+        assert(
+            diag_get(parsed.diags, 0).message == "missing value for option '" + option + "'",
+            "missing-value diagnostic must preserve the exact option token"
+        );
+        cli_parse_result_free(parsed);
+    }
+}
+
+/**
+ * Assert that a canonical attached `=VALUE` spelling is unknown.
+ *
+ * @param option Complete option token to reject.
+ */
+func assert_canonical_equals_value_unknown(option: string) {
+    with (let argv = sv_create(3) => sv_free(argv)) {
+        sv_push(argv, option);
+        sv_push(argv, "app.main");
+
+        let parsed = cli_parse(argv);
+        assert(diag_count(parsed.diags) == 1, "canonical =VALUE rejection must be the only diagnostic");
+        assert(diag_get(parsed.diags, 0).code == "L0C-2001", "expected canonical =VALUE spelling to be unknown");
+        cli_parse_result_free(parsed);
+    }
+}
+
+/**
  * Tests test_default_mode_build.
  */
 func test_default_mode_build() {
@@ -56,12 +130,26 @@ func test_run_accepts_program_args_after_separator() {
 
         cli_parse_result_free(parsed);
     }
+
+    with (let argv2 = sv_create(4) => sv_free(argv2)) {
+        sv_push(argv2, "--run");
+        sv_push(argv2, "app.main");
+        sv_push(argv2, "--");
+
+        let parsed2 = cli_parse(argv2);
+        assert(!diag_has_errors(parsed2.diags), "expected bare run separator to parse");
+        let opts2 = parsed2.options as CliOptions*;
+        assert(ord(opts2.mode) == ord(CM_RUN), "expected run mode for bare separator");
+        assert(sv_size(opts2.program_args) == 0, "bare run separator must produce no program args");
+
+        cli_parse_result_free(parsed2);
+    }
 }
 
 /**
- * Tests test_non_run_rejects_program_args_separator.
+ * Tests test_non_run_rejects_separator.
  */
-func test_non_run_rejects_program_args_separator() {
+func test_non_run_rejects_separator() {
     with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "--check");
         sv_push(argv, "app.main");
@@ -71,8 +159,22 @@ func test_non_run_rejects_program_args_separator() {
         let parsed = cli_parse(argv);
         assert(diag_has_errors(parsed.diags), "expected parse errors for -- outside run");
         assert(parsed.options == null, "options must be null on parse errors");
+        assert(cli_result_has_code(parsed, "L0C-2023"), "expected non-run separator diagnostic");
 
         cli_parse_result_free(parsed);
+    }
+
+    with (let argv2 = sv_create(4) => sv_free(argv2)) {
+        sv_push(argv2, "--compile");
+        sv_push(argv2, "app.main");
+        sv_push(argv2, "--");
+
+        let parsed2 = cli_parse(argv2);
+        assert(diag_count(parsed2.diags) == 1, "bare non-run separator should emit one diagnostic");
+        assert(cli_result_has_code(parsed2, "L0C-2023"), "expected bare non-run separator diagnostic");
+        assert(parsed2.options == null, "bare non-run separator must invalidate parsed options");
+
+        cli_parse_result_free(parsed2);
     }
 }
 
@@ -110,6 +212,365 @@ func test_multiple_targets_rejected() {
 }
 
 /**
+ * Tests both compile-mode aliases and every interface-path spelling.
+ */
+func test_compile_mode_and_interface_paths_parsed() {
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "-c");
+        sv_push(argv, "-I");
+        sv_push(argv, "interfaces/first");
+        sv_push(argv, "-Iinterfaces/second");
+        sv_push(argv, "--interface-path");
+        sv_push(argv, "interfaces/third");
+        sv_push(argv, "--interface-path=interfaces/fourth");
+        sv_push(argv, "app.main");
+
+        let parsed = cli_parse(argv);
+        assert(!diag_has_errors(parsed.diags), "expected compile-mode parse success");
+        assert(parsed.options != null, "expected compile-mode options");
+        let opts = parsed.options as CliOptions*;
+        assert(ord(opts.mode) == ord(CM_COMPILE), "expected CM_COMPILE");
+        assert(opts.entry_target as string == "app.main", "compile target mismatch");
+        assert(sv_size(opts.interface_paths) == 4, "expected four interface paths");
+        assert(sv_get(opts.interface_paths, 0) == "interfaces/first", "first interface path mismatch");
+        assert(sv_get(opts.interface_paths, 1) == "interfaces/second", "second interface path mismatch");
+        assert(sv_get(opts.interface_paths, 2) == "interfaces/third", "third interface path mismatch");
+        assert(sv_get(opts.interface_paths, 3) == "interfaces/fourth", "fourth interface path mismatch");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let argv2 = sv_create(3) => sv_free(argv2)) {
+        sv_push(argv2, "--compile");
+        sv_push(argv2, "app.main");
+        let parsed2 = cli_parse(argv2);
+        assert(!diag_has_errors(parsed2.diags), "expected --compile parse success");
+        assert(ord((parsed2.options as CliOptions*).mode) == ord(CM_COMPILE), "expected long compile alias");
+        cli_parse_result_free(parsed2);
+    }
+}
+
+/**
+ * Tests compile target, mode-conflict, and build-only option validation.
+ */
+func test_compile_mode_validation() {
+    with (let missing = sv_create(1) => sv_free(missing)) {
+        sv_push(missing, "--compile");
+        let parsed = cli_parse(missing);
+        assert(cli_result_has_code(parsed, "L0C-2021"), "expected missing compile target diagnostic");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let multiple = sv_create(4) => sv_free(multiple)) {
+        sv_push(multiple, "--compile");
+        sv_push(multiple, "app.main");
+        sv_push(multiple, "app.extra");
+        let parsed2 = cli_parse(multiple);
+        assert(cli_result_has_code(parsed2, "L0C-2024"), "expected multiple compile target diagnostic");
+        cli_parse_result_free(parsed2);
+    }
+
+    with (let conflict = sv_create(4) => sv_free(conflict)) {
+        sv_push(conflict, "--compile");
+        sv_push(conflict, "--build");
+        sv_push(conflict, "app.main");
+        let parsed3 = cli_parse(conflict);
+        assert(cli_result_has_code(parsed3, "L0C-2002"), "expected conflicting compile mode diagnostic");
+        cli_parse_result_free(parsed3);
+    }
+
+    with (let scoped = sv_create(14) => sv_free(scoped)) {
+        sv_push(scoped, "--compile");
+        sv_push(scoped, "--output");
+        sv_push(scoped, "out.o");
+        sv_push(scoped, "-Cc");
+        sv_push(scoped, "clang");
+        sv_push(scoped, "-Co=-O0");
+        sv_push(scoped, "-Ri");
+        sv_push(scoped, "runtime/include");
+        sv_push(scoped, "-Rl=runtime/lib");
+        sv_push(scoped, "app.main");
+        let parsed4 = cli_parse(scoped);
+        assert(cli_result_has_code(parsed4, "L0C-2010"), "expected compile output scope diagnostic");
+        assert(cli_result_has_code(parsed4, "L0C-2012"), "expected compile C compiler scope diagnostic");
+        assert(cli_result_has_code(parsed4, "L0C-2013"), "expected compile C options scope diagnostic");
+        assert(cli_result_has_code(parsed4, "L0C-2014"), "expected compile runtime include scope diagnostic");
+        assert(cli_result_has_code(parsed4, "L0C-2015"), "expected compile runtime lib scope diagnostic");
+        cli_parse_result_free(parsed4);
+    }
+}
+
+/**
+ * Tests interface paths require values and are valid only in compile mode.
+ */
+func test_interface_path_scope_and_value_validation() {
+    with (let missing = sv_create(3) => sv_free(missing)) {
+        sv_push(missing, "--compile");
+        sv_push(missing, "-I");
+        let parsed = cli_parse(missing);
+        assert(cli_result_has_code(parsed, "L0C-2003"), "expected missing interface-path value diagnostic");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let build = sv_create(5) => sv_free(build)) {
+        sv_push(build, "--build");
+        sv_push(build, "-Iinterfaces");
+        sv_push(build, "app.main");
+        let parsed2 = cli_parse(build);
+        assert(cli_result_has_code(parsed2, "L0C-2031"), "expected build interface-path scope diagnostic");
+        cli_parse_result_free(parsed2);
+    }
+
+    with (let run = sv_create(5) => sv_free(run)) {
+        sv_push(run, "--run");
+        sv_push(run, "--interface-path=interfaces");
+        sv_push(run, "app.main");
+        let parsed3 = cli_parse(run);
+        assert(cli_result_has_code(parsed3, "L0C-2031"), "expected run interface-path scope diagnostic");
+        cli_parse_result_free(parsed3);
+    }
+
+    with (let inspect = sv_create(5) => sv_free(inspect)) {
+        sv_push(inspect, "--check");
+        sv_push(inspect, "--interface-path");
+        sv_push(inspect, "interfaces");
+        sv_push(inspect, "app.main");
+        let parsed4 = cli_parse(inspect);
+        assert(cli_result_has_code(parsed4, "L0C-2031"), "expected inspection interface-path scope diagnostic");
+        cli_parse_result_free(parsed4);
+    }
+}
+
+/**
+ * Tests the coordinated namespaced aliases and unchanged long forms.
+ */
+func test_namespaced_aliases_and_long_forms() {
+    with (let roots = sv_create(12) => sv_free(roots)) {
+        sv_push(roots, "--check");
+        sv_push(roots, "-Vl");
+        sv_push(roots, "-Rp");
+        sv_push(roots, "project/first");
+        sv_push(roots, "-Rp=project/second");
+        sv_push(roots, "-Rs");
+        sv_push(roots, "system/first");
+        sv_push(roots, "-Rs=system/second");
+        sv_push(roots, "app.main");
+        let parsed = cli_parse(roots);
+        assert(!diag_has_errors(parsed.diags), "expected namespaced root aliases to parse");
+        let opts = parsed.options as CliOptions*;
+        assert(opts.log, "expected -Vl to enable rich logging");
+        assert(sv_size(opts.project_roots) == 2, "expected two project roots");
+        assert(sv_get(opts.project_roots, 0) == "project/first", "first project root mismatch");
+        assert(sv_get(opts.project_roots, 1) == "project/second", "second project root mismatch");
+        assert(sv_size(opts.sys_roots) == 2, "expected two system roots");
+        assert(sv_get(opts.sys_roots, 0) == "system/first", "first system root mismatch");
+        assert(sv_get(opts.sys_roots, 1) == "system/second", "second system root mismatch");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let gen = sv_create(3) => sv_free(gen)) {
+        sv_push(gen, "-Gc");
+        sv_push(gen, "app.main");
+        let parsed2 = cli_parse(gen);
+        assert(!diag_has_errors(parsed2.diags), "expected -Gc parse success");
+        assert(ord((parsed2.options as CliOptions*).mode) == ord(CM_GEN), "expected -Gc to select gen mode");
+        cli_parse_result_free(parsed2);
+    }
+
+    with (let build = sv_create(12) => sv_free(build)) {
+        sv_push(build, "--build");
+        sv_push(build, "-Cc");
+        sv_push(build, "clang");
+        sv_push(build, "-Co=-O2");
+        sv_push(build, "-Ri");
+        sv_push(build, "runtime/include");
+        sv_push(build, "-Rl=runtime/lib");
+        sv_push(build, "app.main");
+        let parsed3 = cli_parse(build);
+        assert(!diag_has_errors(parsed3.diags), "expected namespaced build aliases to parse");
+        let build_opts = parsed3.options as CliOptions*;
+        assert(build_opts.c_compiler as string == "clang", "C compiler alias mismatch");
+        assert(build_opts.c_options as string == "-O2", "C options alias mismatch");
+        assert(build_opts.runtime_include as string == "runtime/include", "runtime include alias mismatch");
+        assert(build_opts.runtime_lib as string == "runtime/lib", "runtime lib alias mismatch");
+        cli_parse_result_free(parsed3);
+    }
+
+    with (let long_forms = sv_create(12) => sv_free(long_forms)) {
+        sv_push(long_forms, "--build");
+        sv_push(long_forms, "--c-compiler=cc");
+        sv_push(long_forms, "--c-options");
+        sv_push(long_forms, "-O0");
+        sv_push(long_forms, "--runtime-include=runtime/include-long");
+        sv_push(long_forms, "--runtime-lib");
+        sv_push(long_forms, "runtime/lib-long");
+        sv_push(long_forms, "app.main");
+        let parsed4 = cli_parse(long_forms);
+        assert(!diag_has_errors(parsed4.diags), "expected unchanged long build options to parse");
+        let long_opts = parsed4.options as CliOptions*;
+        assert(long_opts.c_compiler as string == "cc", "long C compiler option mismatch");
+        assert(long_opts.c_options as string == "-O0", "long C options mismatch");
+        assert(long_opts.runtime_include as string == "runtime/include-long", "long runtime include mismatch");
+        assert(long_opts.runtime_lib as string == "runtime/lib-long", "long runtime lib mismatch");
+        cli_parse_result_free(parsed4);
+    }
+}
+
+/**
+ * Tests namespaced value options reject concatenated values and mixed clusters.
+ */
+func test_namespaced_values_and_clusters_are_exact() {
+    with (let concatenated = sv_create(12) => sv_free(concatenated)) {
+        sv_push(concatenated, "--build");
+        sv_push(concatenated, "-Rpproject");
+        sv_push(concatenated, "-Rssystem");
+        sv_push(concatenated, "-Ccclang");
+        sv_push(concatenated, "-Co-O2");
+        sv_push(concatenated, "-Riruntime/include");
+        sv_push(concatenated, "-Rlruntime/lib");
+        sv_push(concatenated, "-Vlmore");
+        sv_push(concatenated, "-Gcmore");
+        sv_push(concatenated, "app.main");
+        let parsed = cli_parse(concatenated);
+        assert(cli_result_count_code(parsed, "L0C-2001") == 8, "expected every concatenated namespaced option to be unknown");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let verbose = sv_create(3) => sv_free(verbose)) {
+        sv_push(verbose, "-vvv");
+        sv_push(verbose, "app.main");
+        let parsed2 = cli_parse(verbose);
+        assert(!diag_has_errors(parsed2.diags), "expected pure verbosity cluster to parse");
+        assert((parsed2.options as CliOptions*).verbosity == 3, "expected three verbosity increments");
+        cli_parse_result_free(parsed2);
+    }
+
+    with (let mixed = sv_create(3) => sv_free(mixed)) {
+        sv_push(mixed, "-vVl");
+        sv_push(mixed, "app.main");
+        let parsed3 = cli_parse(mixed);
+        assert(cli_result_has_code(parsed3, "L0C-2001"), "expected mixed short cluster to be unknown");
+        cli_parse_result_free(parsed3);
+    }
+
+    with (let missing = sv_create(1) => sv_free(missing)) {
+        sv_push(missing, "-Cc");
+        let parsed4 = cli_parse(missing);
+        assert(cli_result_has_code(parsed4, "L0C-2003"), "expected missing namespaced value diagnostic");
+        cli_parse_result_free(parsed4);
+    }
+}
+
+/**
+ * Tests separated value options stop at the compiler/program separator.
+ */
+func test_value_options_reject_separator_as_value() {
+    assert_separator_boundary_missing_value("-Rp");
+    assert_separator_boundary_missing_value("--project-root");
+    assert_separator_boundary_missing_value("-Rs");
+    assert_separator_boundary_missing_value("--sys-root");
+    assert_separator_boundary_missing_value("-o");
+    assert_separator_boundary_missing_value("--output");
+    assert_separator_boundary_missing_value("-Cc");
+    assert_separator_boundary_missing_value("--c-compiler");
+    assert_separator_boundary_missing_value("-Co");
+    assert_separator_boundary_missing_value("--c-options");
+    assert_separator_boundary_missing_value("-I");
+    assert_separator_boundary_missing_value("--interface-path");
+    assert_separator_boundary_missing_value("-Ri");
+    assert_separator_boundary_missing_value("--runtime-include");
+    assert_separator_boundary_missing_value("-Rl");
+    assert_separator_boundary_missing_value("--runtime-lib");
+    assert_separator_boundary_missing_value("-L");
+    assert_separator_boundary_missing_value("-l");
+}
+
+/**
+ * Tests canonical attached values do not accept an equals separator.
+ */
+func test_canonical_equals_value_spellings_rejected() {
+    assert_canonical_equals_value_unknown("-I=interfaces");
+    assert_canonical_equals_value_unknown("-L=external/lib");
+    assert_canonical_equals_value_unknown("-l=dea");
+}
+
+/**
+ * Tests canonical reserved options and the retirement of historical aliases.
+ */
+func test_canonical_reservations_and_retired_aliases() {
+    with (let flags = sv_create(4) => sv_free(flags)) {
+        sv_push(flags, "-g");
+        sv_push(flags, "-S");
+        sv_push(flags, "app.main");
+        let parsed = cli_parse(flags);
+        assert(cli_result_count_code(parsed, "L0C-2032") == 2, "expected two reserved-option diagnostics");
+        assert(diag_get(parsed.diags, 0).message == "option '-g' is reserved for debug information and is not supported yet",
+            "unexpected -g diagnostic message");
+        assert(diag_get(parsed.diags, 1).message == "option '-S' is reserved for assembly output and is not supported yet",
+            "unexpected -S diagnostic message");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let libraries = sv_create(8) => sv_free(libraries)) {
+        sv_push(libraries, "-Lexternal/lib");
+        sv_push(libraries, "-l");
+        sv_push(libraries, "dea");
+        sv_push(libraries, "app.main");
+        let parsed2 = cli_parse(libraries);
+        assert(cli_result_count_code(parsed2, "L0C-2032") == 2, "expected attached/separated library diagnostics");
+        assert(diag_get(parsed2.diags, 0).message == "option '-L' is reserved for external library search and is not supported yet",
+            "unexpected -L diagnostic message");
+        assert(diag_get(parsed2.diags, 1).message == "option '-l' is reserved for external library selection and is not supported yet",
+            "unexpected -l diagnostic message");
+        cli_parse_result_free(parsed2);
+    }
+
+    with (let libraries2 = sv_create(8) => sv_free(libraries2)) {
+        sv_push(libraries2, "-L");
+        sv_push(libraries2, "external/lib");
+        sv_push(libraries2, "-ldea");
+        sv_push(libraries2, "app.main");
+        let parsed3 = cli_parse(libraries2);
+        assert(cli_result_count_code(parsed3, "L0C-2032") == 2, "expected separated/attached library diagnostics");
+        cli_parse_result_free(parsed3);
+    }
+
+    with (let missing_l_path = sv_create(1) => sv_free(missing_l_path)) {
+        sv_push(missing_l_path, "-L");
+        let parsed4 = cli_parse(missing_l_path);
+        assert(cli_result_has_code(parsed4, "L0C-2003"), "expected missing -L value diagnostic");
+        assert(!cli_result_has_code(parsed4, "L0C-2032"), "missing -L must not also emit unavailable diagnostic");
+        cli_parse_result_free(parsed4);
+    }
+
+    with (let missing_lib = sv_create(1) => sv_free(missing_lib)) {
+        sv_push(missing_lib, "-l");
+        let parsed5 = cli_parse(missing_lib);
+        assert(cli_result_has_code(parsed5, "L0C-2003"), "expected missing -l value diagnostic");
+        assert(!cli_result_has_code(parsed5, "L0C-2032"), "missing -l must not also emit unavailable diagnostic");
+        cli_parse_result_free(parsed5);
+    }
+
+    with (let old_roots = sv_create(6) => sv_free(old_roots)) {
+        sv_push(old_roots, "-P");
+        sv_push(old_roots, "project");
+        sv_push(old_roots, "-C");
+        sv_push(old_roots, "app.main");
+        let parsed6 = cli_parse(old_roots);
+        assert(cli_result_count_code(parsed6, "L0C-2001") == 2, "expected retired -P and -C aliases to be unknown");
+        cli_parse_result_free(parsed6);
+    }
+
+    with (let old_cc = sv_create(4) => sv_free(old_cc)) {
+        sv_push(old_cc, "-c");
+        sv_push(old_cc, "clang");
+        sv_push(old_cc, "app.main");
+        let parsed7 = cli_parse(old_cc);
+        assert(cli_result_has_code(parsed7, "L0C-2024"), "expected -c to be compile mode, not C compiler selection");
+        cli_parse_result_free(parsed7);
+    }
+}
+
+/**
  * Tests test_help_flag_short_circuits_validation.
  */
 func test_help_flag_short_circuits_validation() {
@@ -123,6 +584,16 @@ func test_help_flag_short_circuits_validation() {
         assert(parsed.options == null, "help should not return parsed options");
 
         cli_parse_result_free(parsed);
+    }
+
+    with (let argv2 = sv_create(3) => sv_free(argv2)) {
+        sv_push(argv2, "--help");
+        sv_push(argv2, "--");
+
+        let parsed2 = cli_parse(argv2);
+        assert(parsed2.help_requested, "help before a bare separator should still short-circuit");
+        assert(!diag_has_errors(parsed2.diags), "help before a bare separator should not emit diagnostics");
+        cli_parse_result_free(parsed2);
     }
 }
 
@@ -142,6 +613,16 @@ func test_version_flag_short_circuits_validation() {
         assert(parsed.verbosity == 0, "version request should preserve parsed verbosity");
 
         cli_parse_result_free(parsed);
+    }
+
+    with (let argv2 = sv_create(3) => sv_free(argv2)) {
+        sv_push(argv2, "--version");
+        sv_push(argv2, "--");
+
+        let parsed2 = cli_parse(argv2);
+        assert(parsed2.version_requested, "version before a bare separator should still short-circuit");
+        assert(!diag_has_errors(parsed2.diags), "version before a bare separator should not emit diagnostics");
+        cli_parse_result_free(parsed2);
     }
 }
 
@@ -334,9 +815,17 @@ func test_check_basic_rejected_with_trace_or_unchecked_flags() {
 func main() {
     test_default_mode_build();
     test_run_accepts_program_args_after_separator();
-    test_non_run_rejects_program_args_separator();
+    test_non_run_rejects_separator();
     test_mode_scoped_flag_validation();
     test_multiple_targets_rejected();
+    test_compile_mode_and_interface_paths_parsed();
+    test_compile_mode_validation();
+    test_interface_path_scope_and_value_validation();
+    test_namespaced_aliases_and_long_forms();
+    test_namespaced_values_and_clusters_are_exact();
+    test_value_options_reject_separator_as_value();
+    test_canonical_equals_value_spellings_rejected();
+    test_canonical_reservations_and_retired_aliases();
     test_help_flag_short_circuits_validation();
     test_version_flag_short_circuits_validation();
     test_no_legacy_command_rewrite();
