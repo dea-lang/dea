@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-16
+Version: 2026-07-17
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -110,11 +110,11 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-06-24-stage1-scalar-const-expression-flow-noref][scalar-const-flow] extended Stage 1 `const` evaluation
   with checked 32-bit `int` operators, short-circuit booleans, folded interfaces/static initializers, const-valued
   array/case contexts, and const-guided boolean liveness flow.
-- The direct-interface replay tranche of Feature [2026-04-24-separate-compilation-driver-surface-noref][compile-driver]
-  added dependency-free supplied-provider replay through semantic analysis and C generation, canonical metadata
-  round-tripping, source/interface enum export parity, indexed active-provider state, and signed and aggregate literals.
-- The CLI-surface tranche reserved shared `-c` / `--compile` and ordered `-I` / `--interface-path` syntax while keeping
-  compile dispatch explicitly NYI, and coordinated Dea-wide semantic short aliases ahead of L0 2.0.
+- Closed Feature [2026-04-24-separate-compilation-driver-surface-noref][compile-foundation] added dependency-free
+  supplied-provider replay through semantic analysis and C generation, canonical metadata round-tripping,
+  source/interface enum export parity, indexed active-provider state, and signed and aggregate literals. Its CLI tranche
+  reserved shared `-c` / `--compile` and ordered `-I` / `--interface-path` syntax while keeping compile dispatch
+  explicitly NYI.
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
 - Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] made Stage 1 check array
@@ -150,12 +150,20 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   1 runtime fixtures.
 - Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
   first-position anonymous embedded struct member with promoted field access.
-- Feature [2026-04-24-separate-compilation-driver-surface-noref][compile-driver] adds `-c`, `-I`, and the
-  compile-orchestration driver surface for separate compilation.
-- Feature [2026-04-24-interface-fingerprints-and-object-metadata-noref][interface-fingerprints] adds `.l1m`
-  fingerprints, consumer verification, and provider-object metadata checks.
-- Feature [2026-04-24-multi-cu-initialization-and-link-order-noref][module-init] adapts `I4init` module lifecycle
-  ordering and executable-wrapper initialization to the multi-CU build model.
+- Feature [2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref][artifact-graph] defines canonical
+  artifact association, transitive `.l1m` discovery, and the deterministic source/interface module graph.
+- Feature [2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints] adds
+  whole-module `.l1m` fingerprint production and consumer verification.
+- Feature [2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref][lifecycle-entrypoints] emits one module per C
+  translation unit with external `I4init`, `I4fini`, and conditional `I5entry` lifecycle symbols.
+- Feature [2026-07-17-object-metadata-emission-and-readers-noref][object-metadata] emits Dea object records and adds
+  bounded ELF, Mach-O, and PE/COFF readers with valid, absent, and malformed metadata classification.
+- Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] makes `-c` transactionally publish one
+  module's generated C, object, and `.l1m` artifact set.
+- Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] adds verified Dea-object linking, explicit foreign C
+  objects, entry selection, lifecycle wrapper generation, and host linking.
+- Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] converts `--build` and `--run` to the shared
+  multi-CU compile/link APIs.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `--rpath`, and `--link-arg`
   as the external-library linking surface.
 - Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
@@ -248,13 +256,16 @@ update to be promoted to an initiative or plan:
 
 [abi-prefix]: ../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md
 [arrays-unsafe]: ../work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md
+[artifact-graph]: ../work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[build-run]: ../work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md
 [cheap-string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md
 [child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
-[compile-driver]: ../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
+[compile-foundation]: ../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
+[compile-only]: ../work/plans/features/2026-07-17-compile-only-artifact-production-noref.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
 [const-scalar-casts]: ../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
@@ -267,14 +278,16 @@ update to be promoted to an initiative or plan:
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
 [interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
-[interface-fingerprints]: ../work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
+[interface-fingerprints]: ../work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md
-[module-init]: ../work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md
+[lifecycle-entrypoints]: ../work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[link-set]: ../work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md
 [nullable-equality]: ../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
+[object-metadata]: ../work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md

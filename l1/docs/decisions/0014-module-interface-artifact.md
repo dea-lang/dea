@@ -1,7 +1,7 @@
 # ADR-0014: Module Interface Artifact
 
 - Decision date: 2026-06-13
-- Last edited: 2026-07-12
+- Last edited: 2026-07-19
 - Status: Accepted
 
 ## Context
@@ -17,8 +17,8 @@ L1 uses a textual `.l1m` module interface artifact with a constrained source-lik
 - The file starts with `module interface <dotted-module-name>;` and a required `fingerprint "<hash>";` line.
 - Exported structs, enums, type aliases, function signatures, consts, and top-level lets are emitted in canonical
   declaration-group order.
-- Every exported declaration carries a `== "<hash>";` suffix. Empty hashes are valid placeholders until fingerprint
-  verification lands.
+- Every exported declaration currently carries a `== "<hash>";` suffix and emits an empty placeholder. The planned
+  whole-module fingerprint migration removes these declaration suffixes instead of populating them.
 - Surface-tier dependency lines use `require <module>::<symbol> == "<hash>";`.
 - Implementation-tier dependency lines use `link <module>::<symbol> == "<hash>";`, but semantic population of `link`
   entries is deferred to build/run fan-out work.
@@ -32,7 +32,8 @@ tranche.
 
 - Textual, source-like interfaces are easy to inspect, diff, and round-trip during bootstrap.
 - Canonical declaration order gives deterministic artifacts before hash verification exists.
-- Reserving fingerprint and per-symbol hash slots avoids changing the file grammar when verification lands.
+- The dedicated module fingerprint and dependency hash slots support the planned whole-module verification contract;
+  declaration hash slots are transitional and are retired by that migration.
 - Separating `require` from `link` lets later tranches distinguish public-surface typechecking dependencies from
   implementation-only link dependencies.
 - Keeping interface discovery out of ordinary imports prevents a half-complete driver surface from producing unresolved
@@ -49,8 +50,10 @@ tranche.
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md][interface-plan]
-- [l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md][driver-plan]
-- [l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md][fingerprints-plan]
+- [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md][driver-plan]
+- [l1/work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
+- [l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints-plan]
+- [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][metadata-plan]
 
 ## Related Initiatives
 
@@ -58,14 +61,16 @@ tranche.
 
 ## Current Docs
 
-- [l1/docs/specs/compiler/module-interface-format.md][format-spec]: textual `.l1m` artifact format (Version 2026-07-12)
+- [l1/docs/specs/compiler/module-interface-format.md][format-spec]: textual `.l1m` artifact format (Version 2026-07-19)
 - [l1/docs/specs/compiler/module-visibility-and-imports.md][visibility-spec]: export surface feeding interface emission
 - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]: registered `.l1m` parser diagnostics
 
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
-[driver-plan]: ../../work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
-[fingerprints-plan]: ../../work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
+[driver-plan]: ../../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
+[fingerprints-plan]: ../../work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [format-spec]: ../specs/compiler/module-interface-format.md
+[graph-plan]: ../../work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [initiative]: ../../work/initiatives/0001-separate-compilation-and-linking.md
 [interface-plan]: ../../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
+[metadata-plan]: ../../work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
 [visibility-spec]: ../specs/compiler/module-visibility-and-imports.md

@@ -53,7 +53,7 @@ For legibility, prefer reference-style file links with short, readable ids and e
 
 Use initiative and plan filenames as the visible link text where that is the clearest reader-facing label, for example
 `[0001-separate-compilation-and-linking][separate-compilation]` or
-`[2026-04-24-interface-fingerprints-and-object-metadata-noref][interface-fingerprints]`.
+`[2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints]`.
 
 Keep reference ids short and readable, usually one or two words joined with hyphens. Avoid dates, numeric prefixes,
 `noref`, and file extensions in the reference id unless a real uniqueness conflict leaves no cleaner option. For other

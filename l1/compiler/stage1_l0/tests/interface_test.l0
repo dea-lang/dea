@@ -725,33 +725,47 @@ func test_interface_variadic_cross_module_kind_with_peers() {
 
 /**
  * Tests that the new per-symbol `require` and `link` dependency-line forms
- * (including algorithm-tagged hash strings) parse, sort/deduplicate, and
- * round-trip through emit -> parse -> emit byte-for-byte.
+ * (including canonical-looking lowercase algorithm-tagged hash strings) parse,
+ * sort/deduplicate, and round-trip through emit -> parse -> emit byte-for-byte.
  */
 func test_interface_dep_lines_round_trip() {
-    let text = "module interface m;\nfingerprint \"sip13:F03142B8C9A7E6F1\";\n\nrequire myapp.rectangle::Rectangle == \"sip13:62649B8C7D5E4F3A\";\nrequire std.integer::Value == \"\";\n\nlink std.io::printl_s == \"sip13:91744A73B8C9D0E5\";\nlink std.real::sqrt_d == \"\";\n\nfunc ping() -> void == \"sip13:0A3862D838283DDD\";\n";
+    let text = "module interface m;\nfingerprint \"sip13:f03142b8c9a7e6f1\";\n\nrequire myapp.rectangle::Rectangle == \"sip13:62649b8c7d5e4f3a\";\nrequire std.integer::Value == \"\";\n\nlink std.io::printl_s == \"sip13:91744a73b8c9d0e5\";\nlink std.real::sqrt_d == \"\";\n\nfunc ping() -> void == \"sip13:0a3862d838283ddd\";\n";
 
     let parsed = pi_parse_interface(text, "<dep-lines>");
     assert(!ipr_has_errors(parsed), "dep-line interface should parse");
     let mi = parsed.interface as ModuleInterface*;
-    assert(mi.fingerprint == "sip13:F03142B8C9A7E6F1", "fingerprint string must round-trip including algorithm tag");
+    assert(mi.fingerprint == "sip13:f03142b8c9a7e6f1", "fingerprint string must round-trip including algorithm tag");
     assert(vec_size(mi.require_entries) == 2, "expected two require entries");
     assert(vec_size(mi.link_entries) == 2, "expected two link entries");
 
     let req0 = ptr_vec_get(mi.require_entries, 0) as InterfaceDepEntry*;
     assert(req0.provider_module == "myapp.rectangle", "first require provider module mismatch");
     assert(req0.symbol_name == "Rectangle", "first require symbol mismatch");
-    assert(req0.hash == "sip13:62649B8C7D5E4F3A", "first require hash mismatch");
+    assert(req0.hash == "sip13:62649b8c7d5e4f3a", "first require hash mismatch");
 
     let link0 = ptr_vec_get(mi.link_entries, 0) as InterfaceDepEntry*;
     assert(link0.provider_module == "std.io", "first link provider module mismatch");
     assert(link0.symbol_name == "printl_s", "first link symbol mismatch");
 
     let func_entry = ptr_vec_get(mi.func_entries, 0) as InterfaceFuncEntry*;
-    assert(func_entry.hash == "sip13:0A3862D838283DDD", "func per-symbol hash must round-trip");
+    assert(func_entry.hash == "sip13:0a3862d838283ddd", "func per-symbol hash must round-trip");
 
     let re_emitted = ie_emit(mi);
     assert(re_emitted == text, "dep-line interface must round-trip byte-for-byte");
+    ipr_free(parsed);
+}
+
+/**
+ * Tests constrained parsing preserves a deliberately non-canonical uppercase
+ * fingerprint token without treating that parser-only behavior as validation.
+ */
+func test_interface_noncanonical_hash_token_round_trip() {
+    let text = "module interface opaque_hash;\nfingerprint \"sip13:ABCDEF0123456789\";\n";
+    let parsed = pi_parse_interface(text, "<noncanonical-hash-token>");
+    assert(!ipr_has_errors(parsed), "opaque hash token should parse before fingerprint verification exists");
+    let mi = parsed.interface as ModuleInterface*;
+    assert(mi.fingerprint == "sip13:ABCDEF0123456789", "parser must preserve opaque fingerprint spelling");
+    assert(ie_emit(mi) == text, "opaque fingerprint spelling must round-trip byte-for-byte");
     ipr_free(parsed);
 }
 
@@ -803,6 +817,7 @@ func main() {
     test_interface_variadic_round_trip();
     test_interface_variadic_cross_module_kind_with_peers();
     test_interface_dep_lines_round_trip();
+    test_interface_noncanonical_hash_token_round_trip();
     test_interface_decl_hash_suffix_diagnostics();
     printl_s("interface_test: all tests passed");
 }

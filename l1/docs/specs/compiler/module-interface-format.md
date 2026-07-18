@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-07-12
+Version: 2026-07-19
 
 Status: Draft artifact contract
 
@@ -23,11 +23,14 @@ form:
 - tests can assert byte-stable output and parser/emitter round-trip behavior
 - the internal `--emit-interface` mode can write the artifact for developer/testing use
 
-Hash strings are algorithm-tagged opaque tokens (for example `"sip13:F03142B8C9A7E6F1"`); the empty string `""` means no
-compatibility check is performed. The fingerprint algorithm, the canonical hash inputs, and provider/consumer
+The current parser treats every hash string as an opaque token and preserves it byte-for-byte. Examples use the planned
+canonical spelling `sip13:<16 lowercase hexadecimal digits>`, such as `"sip13:f03142b8c9a7e6f1"`; the emitter uses the
+empty string `""` as its placeholder. No compatibility check is performed in the current tranche, and the parser does
+not validate the tag, digest, or casing. The fingerprint algorithm, canonical hash inputs, and future provider/consumer
 verification are specified separately in
-[l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md][interface-fingerprints]. The
-schema in this document reserves the hash slots; their values can be `""` until those compatibility checks are wired in.
+[l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints].
+The schema in this document reserves the hash slots; their values can be `""` until those compatibility checks are wired
+in.
 
 ## File Structure
 
@@ -58,8 +61,9 @@ The `module interface` header uses the module's canonical dotted source path. Fi
 inside the `.l1m` payload.
 
 The fingerprint slot is always present. Until the fingerprint tranche lands it is emitted as the empty string `""`; the
-parser accepts both `""` and any algorithm-tagged value such as `"sip13:F03142B8C9A7E6F1"` without changing the rest of
-the file shape.
+parser accepts `""`, canonical-looking values such as `"sip13:f03142b8c9a7e6f1"`, and non-canonical strings without
+changing the rest of the file shape. Operational verification will require the tag and canonical lowercase spelling; an
+untagged digest will not select an implicit algorithm.
 
 ## Dependency Manifest
 
@@ -74,11 +78,12 @@ against. It is split into two tiers:
 
 A symbol that is both surface-named and implementation-named appears only as `require`.
 
-Each dependency line names the provider symbol with a fully qualified `<provider_module>::<symbol_name>` token and
-carries the expected algorithm-tagged compatibility hash:
+Each dependency line names the provider symbol with a fully qualified `<provider_module>::<symbol_name>` token and an
+opaque compatibility-hash slot. The planned fingerprint tranche defines a populated slot as the provider module's
+canonical tagged whole-module fingerprint:
 
 ```dea
-require myapp.rectangle::Rectangle == "sip13:62649B8C7D5E4F3A";
+require myapp.rectangle::Rectangle == "sip13:62649b8c7d5e4f3a";
 link std.io::printl_s == "";
 ```
 
@@ -88,11 +93,11 @@ The `require` group is emitted first, then the `link` group. Within each group t
 The dependency manifest is **not** part of the whole-module fingerprint input: adding or removing a private import does
 not change the module's own ABI hash and must not force consumers to recompile.
 
-Today the emitter records direct uses only: the per-symbol compatibility hash captures transitive layout closure (when
-populated), so the consumer's own dependency lines stay tied to symbols its surface actually names. The
-implementation-tier `link` group is reserved by the schema; per-symbol tracking of implementation-only uses is not yet
-populated by the emitter and is a follow-up owned by the build/run fan-out work. Until then `link` lines round-trip
-through the parser but are not produced by `mi_project`.
+Today the emitter records direct surface uses with empty hash placeholders; it computes neither per-symbol nor
+whole-module compatibility values. The implementation-tier `link` group is reserved by the schema and is not yet
+produced by `mi_project`, although supplied lines round-trip through the parser. The module-graph and fingerprint plans
+will populate dependency records with the provider's tagged whole-module fingerprint while retaining symbol-qualified
+textual lines.
 
 ## Export Surface
 
@@ -128,8 +133,9 @@ This ordering is part of the `.l1m` contract so byte-identical public surfaces p
 
 ## Declaration Forms
 
-Every declaration form carries a trailing per-symbol hash suffix `== "<hash>";`. The hash is opaque; until the
-fingerprint tranche populates it, declarations emit `== ""`.
+Every declaration form currently carries a trailing per-symbol hash suffix `== "<hash>";`. The hash is opaque and
+declarations emit `== ""`. The fingerprint tranche removes these declaration suffixes instead of populating them; module
+and dependency fingerprints remain.
 
 ### Structs
 
@@ -165,7 +171,8 @@ enum Color {
 ```
 
 Variant payload fields carry the names from the analyzed source. The names appear in the textual form so consumers can
-use named-argument construct syntax; they are not part of the per-symbol hash input.
+use named-argument construct syntax. No fingerprint input is computed today; the planned whole-module canonicalizer
+includes these public payload labels.
 
 Opaque enums use an explicit name-only interface form:
 
@@ -285,7 +292,8 @@ cross-module symbol.
 The constrained `.l1m` parser accepts:
 
 - the `module interface` header
-- the `fingerprint` declaration (any string, including algorithm-tagged values such as `"sip13:<hex>"`)
+- the `fingerprint` declaration (any string, including canonical-looking values such as `"sip13:0123456789abcdef"` and
+  non-canonical opaque values)
 - zero or more `require` lines followed by zero or more `link` lines
 - top-level `struct`, `enum`, `type`, `func`, `unsafe func`, `extern func`, `unsafe extern func`, `const`, and `let`,
   each with a trailing `== "<hash>";` suffix
@@ -313,7 +321,7 @@ variadic placement and `PAR-0602` for malformed unsafe declarations, registered 
 This format specification does not define:
 
 - the fingerprint algorithm or object-metadata embedding
-- the driver-side enforcement of per-symbol compatibility hashes
+- whole-module fingerprint and provider-dependency verification
 - driver search paths or `.l1m` discovery rules
 - compile-only object output
 - provider-object linking or build/run fan-out
@@ -323,4 +331,4 @@ This format specification does not define:
 
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [initiative-0001]: ../../../work/initiatives/0001-separate-compilation-and-linking.md
-[interface-fingerprints]: ../../../work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
+[interface-fingerprints]: ../../../work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md

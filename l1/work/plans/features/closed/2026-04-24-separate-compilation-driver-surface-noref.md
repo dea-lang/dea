@@ -1,10 +1,10 @@
 # Feature Plan
 
-## Add the separate-compilation driver surface
+## Add direct interface replay and reserve the separate-compilation CLI surface
 
 - Date: 2026-06-13
-- Status: In Progress
-- Title: Add the separate-compilation driver surface
+- Status: Closed (implemented)
+- Title: Add direct interface replay and reserve the separate-compilation CLI surface
 - Kind: Feature
 - Severity: High
 - Stage: L1
@@ -48,17 +48,11 @@
 
 ## Summary
 
-Initiative `0001` now commits L1 to a real separate-compilation workflow built around per-module `.l1m`, generated C,
-and object files. This plan owns the driver/CLI side of that workflow, but it is split into implementation tranches so
-the repo does not land a half-wired user surface:
-
-1. direct `.l1m` import replay and codegen plumbing,
-2. CLI option parsing and validation for the future surface,
-3. correct compile-only output for one implementation module,
-4. build/run fan-out and link orchestration.
-
-Link-option expansion for external libraries is tracked separately so this driver plan can stay focused on module
-compilation orchestration.
+This closed plan records the implemented foundation for Initiative `0001`: dependency-free direct `.l1m` replay through
+semantic analysis and C generation, plus reservation and validation of the future compile-only CLI surface. Operational
+compile-only artifacts, transitive interface discovery, standalone linking, and build/run fan-out were deliberately not
+implemented here. They now live in dependency-bounded successor plans so the repository does not expose incomplete or
+mutually dependent artifact contracts.
 
 ## Current State
 
@@ -91,11 +85,10 @@ compilation orchestration.
 
 ## Goal
 
-1. Add interface-backed semantic and codegen plumbing for direct imports.
-2. Add compile-only and interface-path options to the L1 CLI/driver when their behavior is coherent.
-3. Teach build/run orchestration to compile modules individually in a later fan-out tranche.
-4. Preserve current bootstrap ergonomics for ordinary `--build` and `--run` users.
-5. Establish the command surface that later link and external-library plans can build on.
+1. Add interface-backed semantic and codegen plumbing for dependency-free direct imports.
+2. Reserve and validate compile-only and interface-path options without claiming artifact production.
+3. Preserve current bootstrap ergonomics for ordinary `--build` and `--run` users.
+4. Establish the implemented foundation consumed by the remaining separate-compilation plans.
 
 ## Implementation Phases
 
@@ -202,36 +195,26 @@ Results: L0 Stage 1 passed 1,412 tests; the focused L0 Stage 2 and L1 Stage 1 ma
 tests, the environment stackability check, and 4/4 examples). The full L0 Stage 2 and L1 Stage 1 trace sweeps passed
 33/33 and 37/37 eligible tests.
 
-### Phase 3: Compile-only driver flow
+## Closure Notes
 
-Teach the driver/library entry points to compile a single module into generated C, object output, and `.l1m`, with
-imported modules loaded through interface discovery rather than always rebuilding the whole closure as one generated C
-unit.
+The two completed phases above are the whole implemented scope of this plan. The unimplemented portions were split on
+2026-07-17 into dependency-safe successors:
 
-The compile-only artifact writer must treat `.l1m` as part of a successful output set, not as an early side effect. If C
-compilation or object writing fails, the command must not leave a newly written interface file that can be mistaken for
-a valid provider artifact on a later build.
+- artifact layout, transitive interface discovery, and module-graph construction under [artifact graph];
+- transactional single-module `.c`, object, and `.l1m` production under [compile-only];
+- standalone object-set linking and executable-wrapper construction under [link-set];
+- `--build` / `--run` multi-CU fan-out under [build-run].
 
-### Phase 4: Build/run fan-out orchestration
-
-Update `--build` and `--run` to compute the import closure, compile modules individually, and prepare the later link
-stage inputs deterministically. This phase owns passing every provider object needed by an interface-backed consumer to
-the linker.
-
-This phase also owns walking the transitive `.l1m` dependency graph for interface-backed builds and ensuring any
-implementation-tier dependency records that feed linking, including populated `link` entries, correspond to concrete
-provider objects or explicit external-link inputs.
+Closing this plan does not claim that `-c`, `--link`, or multi-CU build/run orchestration is operational.
 
 ## Diagnostics
 
-1. This plan is expected to need new driver diagnostics for interface-path handling, compile-only target resolution, and
-   new mode-validation failures.
-2. Provisionally reserve `DRV-0070` to `DRV-0089` for separate-compilation target and interface-search-path discovery
-   diagnostics.
-3. Provisionally reserve `L1C-2030` to `L1C-2049` for new CLI mode validation and compile-only/build orchestration
-   failures.
-4. Re-check the live catalog at implementation time before assigning final numbers. If any proposed slot has been used
-   in the meantime, choose a different free block then.
+1. Direct-interface replay assigned `DRV-0070` and `DRV-0071` for unsupported dependency-bearing interfaces and
+   duplicate supplied providers.
+2. The CLI/interface-emission work assigned `L1C-2030` through `L1C-2032`, with paired shared codes where applicable,
+   for projection failure, interface-path scoping, and reserved canonical options.
+3. The unused portions of the former provisional ranges are owned explicitly by the successor plans rather than by this
+   closed plan.
 
 ## Non-Goals
 
@@ -248,21 +231,20 @@ provider objects or explicit external-link inputs.
 
 ## Verification Criteria
 
-01. Direct `.l1m` imports replay into analysis and codegen without requiring the provider source.
-02. `-c` / `--compile` and `-I` / `--interface-path` parse, validate, and participate in the driver only for supported
-    modes.
-03. Shared exact aliases resolve as documented, the historical meanings of `-c`, `-I`, `-L`, `-l`, `-g`, `-S`, `-P`, and
-    `-C` are retired, and long option names remain stable.
-04. `--compile` emits exactly one implementation module's object and does not smuggle source-import definitions into
-    that object.
-05. A failed object compilation does not leave a fresh `.l1m` interface artifact behind.
-06. `--build` and `--run` preserve current user-facing behavior until the fan-out tranche links all provider objects.
-07. Interfaces with transitive `require` / `link` dependencies are either resolved through the interface closure or
-    rejected with a clear diagnostic until closure loading is implemented.
-08. Implementation-tier `link` dependency records are populated before any build/run or link-verification path relies on
-    them to select provider objects.
-09. Direct interface replay tests cover pointer-only use of imported opaque nominal types without requiring imported
-    layout, reject layout-dependent `drop` on opaque pointees, and retain by-value opaque rejection coverage.
-10. Driver tests cover invalid mode combinations, missing interface paths, direct interface imports, and successful
-    compile-only flows.
-11. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+1. Direct `.l1m` imports replay into analysis and codegen without requiring the provider source.
+2. `-c` / `--compile` and `-I` / `--interface-path` parse, validate, and participate in the driver only for supported
+   modes.
+3. Shared exact aliases resolve as documented, the historical meanings of `-c`, `-I`, `-L`, `-l`, `-g`, `-S`, `-P`, and
+   `-C` are retired, and long option names remain stable.
+4. `--build` and `--run` preserve their source-based user-facing behavior while compile mode remains explicitly NYI.
+5. Dependency-bearing interfaces are rejected with a clear diagnostic until closure loading is implemented.
+6. Direct interface replay tests cover pointer-only use of imported opaque nominal types without requiring imported
+   layout, reject layout-dependent `drop` on opaque pointees, and retain by-value opaque rejection coverage.
+7. Driver tests cover invalid mode combinations, missing interface paths, and direct interface imports without claiming
+   successful compile-only output.
+8. Assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+
+[artifact graph]: ../2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
+[compile-only]: ../2026-07-17-compile-only-artifact-production-noref.md
+[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md

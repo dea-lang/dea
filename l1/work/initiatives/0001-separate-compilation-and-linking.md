@@ -1,18 +1,25 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-07-12
+- Version: 2026-07-19
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`
-  - `l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`
-  - `l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`
+  - `l1/work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`
+  - `l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`
+  - `l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`
+  - `l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`
+  - `l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`
+  - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
+  - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
   - `l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`
   - `l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`
+  - `l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md`
+  - `l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md`
+  - `l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`
 
 ## Summary
 
@@ -36,7 +43,9 @@ This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
   once 0002 has settled archive linkage and the trace-variant story.
 - **Initiative 0003 - C FFI** ([`0003-c-ffi.md`][c-ffi]) is a downstream consumer. C FFI requires the LBI mangling
   defined here, the separate-compilation driver surface, and the external-library linking CLI before it can express
-  `extern "C"` declarations and the closed FFI-safe boundary.
+  `extern "C"` declarations and the closed FFI-safe boundary. This initiative also owns the explicit `--foreign-object`
+  path by which metadata-free C relocatable objects satisfy current unmangled `extern func` declarations and future
+  `extern "C"` declarations without joining the Dea module graph.
 
 ## Non-goals
 
@@ -69,11 +78,13 @@ Relevant facts that constrain the plan at the time of writing:
 - Generated L1-defined source symbols use LBI `M...S...` names, and compiler-generated module lifecycle symbols use LBI
   `M...I...` names. Everything inside a legacy `extern func` declaration is intentionally **not name-mangled**; this is
   the only FFI primitive in the language today.
-- Imports are type-checked by reparsing implementation source files, not from a serialized interface artifact. There is
-  no `.l1m` format yet, no fingerprint, and no link-time consistency check beyond what the platform linker surfaces.
+- Deterministic textual `.l1m` emission, constrained parsing, and dependency-free direct-provider replay are
+  implemented. Ordinary build/run imports remain source-based, dependency-bearing supplied interfaces are rejected,
+  fingerprints remain empty/unchecked, and there is no provider-object consistency check yet.
 - The shared driver CLI reserves `-c` / `--compile` and ordered `-I` / `--interface-path` syntax, but compile dispatch
   remains explicitly NYI and performs no interface search or artifact production. Runtime discovery uses `-Ri` / `-Rl`;
-  host-C, root, generated-C, and log controls use the coordinated semantic short namespaces.
+  host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link`,
+  `--entry`, and `--foreign-object` do not exist yet.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today. `compiler/stage2_l1/` is a placeholder for the future
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
   behavior must be ported there with Stage 1 acting as the L1 behavioral oracle.
@@ -185,23 +196,33 @@ and a single embedding strategy:
   hash-flooding key. The constant is part of the LBI ABI and is stable across stages. The exact key bytes are an
   implementation detail of the spawned fingerprint plan and are recorded in [`l1/docs/specs/compiler/abi.md`][abi] once
   chosen.
-- **Digest size and encoding:** 64-bit digest. Encoded as 16 lowercase hex digits in `.l1m` (`fingerprint "<hash>";`)
-  and embedded as 8 raw bytes in object metadata.
-- **Object embedding:** every per-module object file emits two portable C99 `const uint8_t` arrays with mangled names
-  (one for the producer's exported fingerprint, one for the consumer's
-  `(imported module, expected dependency fingerprint)` records). Both arrays are referenced from the module lifecycle
+- **Digest size and encoding:** 64-bit digest. Textual `.l1m` values use the mandatory canonical spelling
+  `sip13:<16 lowercase hexadecimal digits>`; an omitted tag does not select an implicit algorithm. SipHash-1-3 is the
+  only supported version 1 algorithm. Object metadata version 1 embeds only the 8 raw digest bytes because its format
+  version fixes the algorithm; a future algorithm requires a metadata-version change.
+- **Object embedding:** every Dea per-module object emits portable C99 `const uint8_t` arrays with mangled names for its
+  module identity, exported fingerprint, entry presence, and ordered
+  `(imported module, expected dependency fingerprint)` records. The arrays are referenced from the module lifecycle
   `I4init` entry point so the platform linker's dead-strip pass cannot remove them. The driver discovers the records via
-  symbol-table lookup, which is the same mechanism every supported object format already exposes (ELF, Mach-O, PE/COFF)
-  and is also `tcc`-compatible.
+  bounded symbol-table readers for ELF, Mach-O, and PE/COFF, which also keeps the design `tcc`-compatible.
+- **Metadata-free objects:** absence of the reserved Dea metadata marker is a distinct reader result, not an implicit
+  authorization to join a link set. Metadata-free C relocatable objects enter only through `--foreign-object`; a present
+  but malformed marker is always an error, and a metadata-bearing Dea object cannot be reclassified as foreign to bypass
+  fingerprint, lifecycle, or entry checks.
 
 The threat model is build-time staleness and corruption, not adversaries; cryptographic strength (BLAKE3, SHA-256) is
 not required and would only add bootstrap-vendoring cost. Custom object sections were rejected because they require
 per-format emitter and reader paths plus quirky compiler attributes that `tcc` does not fully support.
 
-Sub-choices that remain implementation details, owned by
-[`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][interface-fingerprints]: the
-exact 16-byte key constant, the on-disk record layout (small magic + version prefix + flat little-endian fields is the
-expected default), the exact symbol-name mangling, and the canonicalization rules over the public surface.
+Sub-choices that remain implementation details are split between [interface fingerprints][interface-fingerprints] and
+[object metadata][object-metadata]: the exact 16-byte key constant and public-surface canonicalization belong to the
+former; record layout, symbol naming, and bounded object-reader limits belong to the latter.
+
+## Phase 1 - Runtime as a static library
+
+Phase 1 moved to [Initiative 0002 - L1 Runtime Library][runtime-library] and is complete. It split the L1 runtime into
+public headers, normal and traced static archives, and the corresponding build-driver linkage model consumed here. The
+phase number is retained in this initiative so the original four-phase sequence remains visible.
 
 ## Phase 2 - Separate compilation of L1 CUs (Goal 1)
 
@@ -240,32 +261,39 @@ the split:
                             cc -c -> .o
 ```
 
-The implementation is split across explicit tranches:
+The implemented interface artifact, direct replay, and CLI-reservation work form the closed foundation. The remaining
+work is split by dependency, not by the former whole-plan labels:
 
-1. **Interface artifact tranche:** project exports into `.l1m`, parse the file back, and test deterministic round-trips.
-   This may expose an explicit `--emit-interface` developer mode, but it does not make `.l1m` a normal import input for
-   build/run.
-2. **Direct interface import tranche:** allow the driver/analyzer/backend to consume a direct imported `.l1m` for
-   signatures, transparent public layouts, opaque nominal declarations, and extern declarations. This proves
-   interface-backed compilation of a consumer module, but still does not claim full build/run orchestration.
-3. **Compile-only driver tranche:** reserve and validate `-c` / `--compile` and `-I` first, then make the mode operative
-   only once it emits exactly one module's generated C/object plus its `.l1m`, consumes imports from interfaces, and
-   does not leave a fresh `.l1m` behind when object compilation fails.
-4. **Build/run fan-out tranche:** preserve `--build` and `--run` as convenience commands by computing the module graph,
-   compiling modules individually as needed, and linking all required provider objects.
+1. **Artifact layout and module graph:** define canonical `.l1m`/object association, explicit source/interface
+   precedence, transitive interface closure, ordered direct-import edges, and semantic `require` / `link` population.
+2. **Interface fingerprints:** define the canonical whole-module hash input and verify emitted and consumed `.l1m`
+   fingerprints. This can proceed independently of step 1 after the closed foundation.
+3. **Per-module backend and lifecycle ABI:** emit only the target module's definitions, imported declarations only,
+   always-present external `I4init` / `I4fini`, and `I5entry` for every valid source `main`.
+4. **Object metadata and readers:** emit the graph, fingerprint, and entry records against the finalized lifecycle
+   anchor and add bounded ELF, Mach-O, and PE/COFF readers with valid/absent/malformed results.
+5. **Compile-only artifacts:** make `-c` operational only after the final metadata-bearing artifact shape exists, and
+   publish the generated C, object, and `.l1m` as one transaction-like set.
+6. **Standalone link set:** validate Dea and explicit foreign objects, resolve the entry module, generate the executable
+   wrapper, and invoke the host linker.
+7. **Build/run fan-out:** preserve `--build` and `--run` as convenience commands by reusing the same compile and link
+   APIs over the source/interface graph.
+8. **External libraries:** extend the ordered link-input stream with libraries, rpaths, and raw host-driver arguments.
 
-The driver ultimately gains three new modes or mode families; the existing whole-program `--build` / `--run` are
-preserved as convenience orchestrators that fan out compile + link. The first two spellings below are currently reserved
-syntax whose operational behavior remains in the open Phase 2.a.2 checkpoint:
+The driver ultimately exposes these contracts:
 
-- `-c <module>` compiles one module without linking. It emits the module's generated C, object file, and `.l1m`
-  artifact.
-- `-I <dir>` adds an interface-search path used to resolve imported `.l1m` files during `-c`, `--build`, and `--run`.
-- `--link <module> [<module> ...] -o <out>` drives the C linker, writes the executable. At least one module must define
-  `main`.
+- `-c <module> [-o <canonical-object-path>]` compiles one module without linking and transactionally publishes sibling
+  generated C, object, and `.l1m` artifacts.
+- `-I <dir>` adds an interface-search root. Explicit interfaces take precedence for imports; compile-only requires an
+  interface for every import, while build/run may fall back to source and schedule that module for compilation.
+- `--link <dea-object> [<dea-object> ...] [--foreign-object <c-object>]... [--entry <module>] -o <out>` links an
+  executable. Positional objects require valid Dea metadata; metadata-free C relocatable objects require the explicit
+  repeatable foreign-object option.
 
-`--build` and `--run` compute the import closure, fan out per-module compile, then link. This preserves the current
-developer experience and keeps the bootstrap simple.
+`--link` infers the entry when exactly one Dea object exposes `I5entry`. Multiple candidates require `--entry`; zero
+candidates, an unknown selection, or a selected module without `I5entry` fail before host linking. `--build` and `--run`
+use their source target as the internal entry selection, compute the import closure, fan out per-module compile, then
+call the same link API.
 
 Name resolution also moves away from the current flat import surface. `import math as m;` introduces qualified access
 through `m::abs(...)`, while `import abs, pi from math;` selectively imports named exports from the provider module. The
@@ -287,10 +315,15 @@ imported transparent struct as a C declaration in its own CU, identically mangle
 types instead replay as name-visible, layout-hidden declarations: consumers may name them and use pointers to them, but
 cannot emit by-value operations that require layout.
 
-A new "main wrapper" pseudo-module produces the `main(int argc, char **argv)` shim and is compiled separately when an
-executable is requested. It depends only on the entry module's interface. The driver topologically sorts the module
-dependency graph and emits calls to each module's `I4init` lifecycle entry point in dependency order before control
-reaches the user `main`.
+Every compiled Dea module exposes external, no-op-capable `I4init` and `I4fini` lifecycle functions. A module defining a
+valid source `main` also exposes `I5entry`, which can call a non-exported source function inside the owning CU and
+normalize `int`, `bool`, or other accepted return forms to a C `int` status.
+
+A new wrapper pseudo-module produces the process-level `main(int argc, char **argv)` shim when an executable is
+requested. The driver validates the metadata-bearing Dea graph, selects one `I5entry`, emits dependency-first `I4init`
+calls, invokes only the selected entry bridge, emits `I4fini` calls in exact reverse order, and returns the normalized
+status. Explicit foreign objects never participate in graph ordering, lifecycle calls, fingerprint verification, or
+entry selection.
 
 ### 2c. Interface-file consistency and verification contract
 
@@ -307,12 +340,18 @@ not hashed verbatim; only the effective surface it produces participates. Verifi
    verifies that every consumer's recorded dependency fingerprint matches the provider object's embedded fingerprint
    before invoking the platform linker.
 
+The textual dependency-record grammar remains, but each populated `require` / `link` hash is the referenced provider's
+canonical `sip13:<16 lowercase hexadecimal digits>` whole-module fingerprint, repeated where necessary, rather than a
+per-symbol ABI hash. Object consumer records collapse dependencies by module while retaining ordered direct-import
+edges, including side-effect-only imports that a used-symbol list cannot reconstruct.
+
 The fingerprint algorithm and the object-embedding strategy are anchored in §0.6. In short: SipHash-1-3 with a fixed
 key, 64-bit digest, embedded in each `.o` as portable C99 `const uint8_t` arrays with mangled names, anchored against
 dead-strip from the module's `I4init` lifecycle entry point, and discovered by the driver via symbol-table lookup.
 
 This replaces any per-symbol ABI hash scheme. The diagnostic goal is a clean stale-interface or stale-object failure
-instead of undefined-symbol noise from the platform linker.
+instead of undefined-symbol noise from the platform linker. Metadata-free foreign objects are outside this contract and
+may satisfy only ordinary unmangled C symbols; they cannot satisfy a Dea module dependency record.
 
 ### 2d. Make and bootstrap
 
@@ -363,15 +402,18 @@ Matches `cc` conventions, since users already know them:
 - `--rpath=<dir>`: for dynamic libraries.
 - `--link-arg=<flag>`: escape hatch for raw linker flags.
 
-`-l`, `-L`, `--rpath`, and `--link-arg` are accepted by `--link`, `--build`, and `--run` and are forwarded as-is to the
-host linker. `-I` is consumed by the compiler driver during interface discovery for compile-involving flows. L1 has no
+`-l`, `-L`, `--rpath`, and `--link-arg` are accepted by `--link`, `--build`, and `--run`. They extend the typed ordered
+link-input stream established for Dea and foreign objects; order-sensitive operands are not regrouped by category.
+`--link-arg` denotes one host compiler-driver argument, while rpath spelling is translated per supported compiler
+family. `-I` is consumed by the compiler driver during interface discovery for compile-involving flows. L1 has no
 opinion on static vs. dynamic linkage.
 
 The former runtime-specific short aliases retired in the CLI-surface tranche: `-I` is committed to interface search,
-`-L` returns to its normal library-search meaning, and runtime paths use `-Ri` / `-Rl`. Until this phase implements
-external linking, syntactically complete `-L` / `-l` uses report the shared reserved-option diagnostic. Manual
-`extern "C"` binding files remain the supported FFI workflow, so the core compiler does not need a raw C-header
-include-path flag.
+`-L` returns to its normal library-search meaning, and runtime paths use `-Ri` / `-Rl`. The validated runtime archive is
+linked by its selected exact path so a user `-L` directory cannot shadow it. Until this phase implements external
+linking, syntactically complete `-L` / `-l` uses report the shared reserved-option diagnostic. Today's binding workflow
+uses legacy unmangled `extern func`; Initiative 0003 later adds `extern "C"`. Neither workflow requires a raw C-header
+include-path flag in the core compiler.
 
 ### Manifest support
 
@@ -391,31 +433,45 @@ module + linker flags).
 
 ## Phase 4 - Full C FFI
 
-Moved to [Initiative 0003 - C FFI][c-ffi].
+Phase 4 moved to [Initiative 0003 - C FFI][c-ffi] and remains downstream of this initiative. It owns `extern "C"`,
+`cstr`, and the closed FFI-safe type boundary. The phase number is retained here to preserve the original sequence.
 
 ## Sequencing and dependencies
 
 ```
-Initiative 0002 (runtime -> static lib) ---+
-                                           | (soft prereq: link mechanics learned here)
-                                           v
-                                    Phase 0 (decisions)
-                                           |
-                                           v
-                                    Phase 2 (separate compilation)
-                                           |
-                                           +-----> Phase 3 (external libs)
-                                                          |
-                                                          v
-                                                   Initiative 0003 (full C FFI)
+implemented interface/CLI foundation
+             |
+             +----> artifact layout + module graph ----> lifecycle ABI ----+
+             |                                                             |
+             +----> interface fingerprints --------------------------------+
+                                                                           |
+                                                                           v
+                                                                  object metadata
+                                                                           |
+                                                                           v
+                                                              compile-only artifacts
+                                                                           |
+                                                                           v
+                                                                 standalone link
+                                                                           |
+                                                                           v
+                                                                 build/run fan-out
+                                                                           |
+                                                                           v
+                                                                  external libraries
+                                                                           |
+                                                                           v
+                                                                Initiative 0003 FFI
 ```
 
-- Initiative 0002 (runtime split) is independently shippable and de-risks the link mechanics this initiative depends on;
-  it is a soft prerequisite, not a hard one.
-- Phase 2 is the longest piece and gates Phase 3 plus Initiative 0003.
-- Phase 3 falls out almost for free once Phase 2 lands.
-- Initiative 0003 (full C FFI) is the most language-design-heavy downstream consumer and is best done after the
-  link/compile mechanics no longer move underneath it.
+- Initiative 0002 is complete and supplies the runtime-archive model consumed by the link plans.
+- Artifact-graph and fingerprint work may proceed independently after the closed foundation. Object metadata is the join
+  point because it needs the graph, final fingerprint contract, and lifecycle anchor.
+- Compile-only artifacts do not become operational until they contain final lifecycle and metadata records.
+- Standalone link owns object classification and wrapper construction; build/run then reuse that API rather than
+  creating a second link path.
+- External-library options extend the finished ordered input model. Initiative 0003 consumes both external libraries and
+  the explicit metadata-free `--foreign-object` boundary.
 
 Recorded near-term tranche checkpoints:
 
@@ -427,9 +483,15 @@ Recorded near-term tranche checkpoints:
 - [x] Opaque export follow-up: source `export opaque { ... }`, exported-surface checks, and explicit `.l1m` opaque
   projection.
 - [x] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
-- [ ] Phase 2.a.2: operative `-c` artifact production and `-I` interface discovery (syntax is reserved).
-- [ ] Phase 2.b: driver topological sort plus per-module `I4init` emission.
-- [ ] Phase 2.c: fingerprint hashing plus provider metadata embedding in `.o`.
+- [x] Reserve and validate `-c` / `--compile` plus ordered `-I` / `--interface-path`; compile dispatch remains NYI.
+- [ ] Define artifact layout, transitive interface discovery, and the deterministic module graph.
+- [ ] Implement canonical whole-module fingerprints and `.l1m` verification.
+- [ ] Emit one module per CU with external `I4init`, `I4fini`, and conditional `I5entry`.
+- [ ] Emit and inspect provider/consumer object metadata.
+- [ ] Make compile-only artifact production operational.
+- [ ] Implement standalone Dea/foreign-object linking and entry selection.
+- [ ] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
+- [ ] Add ordered external-library and raw host-driver inputs.
 
 ## Cross-cutting concerns
 
@@ -488,29 +550,36 @@ per the `1.0.0` scope boundary.
 
 ## Resolved decisions
 
-The four originally-open questions are closed. Each decision is anchored elsewhere in this initiative; this section
-summarizes the chosen answer and points at the owning section.
+The cross-cutting questions are closed. Each decision is anchored elsewhere in this initiative; this section summarizes
+the chosen answer and points at the owning section.
 
 1. **Fingerprint hash algorithm:** SipHash-1-3 from the shared runtime, keyed with a fixed compile-time-constant 16-byte
-   fingerprint key, 64-bit digest, encoded as 16 lowercase hex digits in `.l1m` and 8 raw bytes in object metadata.
-   Cryptographic strength is not required for the build-time staleness threat model. Anchored in §0.6; sub-choices
-   (exact key constant, encoding details, canonicalization rules) are owned by
-   [`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][interface-fingerprints].
+   fingerprint key and a 64-bit digest. Textual `.l1m` values require the lowercase `sip13:` tag plus 16 lowercase
+   hexadecimal digits; there is no untagged default. Object metadata version 1 stores 8 raw digest bytes and fixes the
+   algorithm through its format version. Cryptographic strength is not required for the build-time staleness threat
+   model. Anchored in §0.6; sub-choices (exact key constant, encoding details, canonicalization rules) are owned by
+   [interface fingerprints][interface-fingerprints].
 2. **Object metadata format:** portable C99 `const uint8_t` arrays with mangled names, anchored against linker
    dead-strip from each module's `I4init` lifecycle entry point. Driver-side discovery uses symbol-table lookup, which
    works uniformly across ELF, Mach-O, and PE/COFF and stays compatible with `tcc`. Custom object sections were rejected
    because they force per-format emitter and reader paths plus quirky compiler attributes. Anchored in §0.6 and §2c;
-   record layout and naming details are owned by the same spawned phase plan.
+   record layout, naming, size limits, and valid/absent/malformed classification are owned by
+   [object metadata][object-metadata].
 3. **Diagnostic family split:** keep the existing phase-based families (`PAR-*`, `RES-*`, `SIG-*`, `TYP-*`, `DRV-*`,
    `L1C-*`). New `MOD-*` or `LNK-*` families are introduced only if a concrete phase plan demonstrates the existing
-   split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. The provisional reservations recorded
-   in the spawned fingerprint plan (`SIG-0240` to `SIG-0259`, `L1C-2050` to `L1C-2069`) stand and must be re-checked
-   against the live catalog at implementation time. Anchored in §2e and §Diagnostic-code registration.
+   split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. The fingerprint plan uses the
+   provisionally free `SIG-0280` to `SIG-0299` block because `SIG-0240` to `SIG-0259` is already reserved by the active
+   anonymous embedded-struct plan. Object metadata retains `L1C-2050` to `L1C-2069`; every successor records its own
+   non-overlapping provisional range and re-check requirement. Anchored in §2e and §Diagnostic-code registration.
 4. **External-library manifest format:** deferred indefinitely unless and until Dea decides to adopt package management.
    Phase 3 ships with CLI flags only (`-l`, `-L`, `--rpath`, `--link-arg`, plus `-I` for interface search). No
    per-module `[link]` sidecar, no `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit this if FFI
    bindings prove a binding-module-local hint mechanism is necessary, in which case extending CLI ergonomics is
    preferred over a new file format. Anchored in §Phase 3 / Manifest support.
+5. **Foreign relocatable objects:** positional `--link` objects are verified Dea CUs. A metadata-free C relocatable
+   object enters through repeatable `--foreign-object`; it may satisfy unmangled C symbols but has no Dea graph,
+   fingerprint, lifecycle, or entry-point role. Valid or malformed Dea metadata cannot be hidden behind the foreign
+   option. Archives and shared libraries remain under the external-library options. Anchored in §0.6 and §2a.
 
 FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery open questions live in
 [Initiative 0002][runtime-library].
@@ -532,13 +601,16 @@ implementation tranche proves that one decision area needs additional design wor
 - Opaque export follow-up: source-level opacity, exported-surface typing, and explicit opaque `.l1m` projection under
   [`l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`][opaque-exports]. Direct
   interface replay and fingerprint canonicalization consume the nominal visibility state this plan introduces.
-- Phase 2.a.1 direct interface imports are complete. Phase 2.a.2 syntax is reserved and validated, while operative
-  compile-only artifact generation and interface discovery remain under
-  [`l1/work/plans/features/2026-04-24-separate-compilation-driver-surface-noref.md`][compile-driver]
-- Phase 2.b: multi-CU init ordering and executable wrapper behavior under
-  [`l1/work/plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md`][module-init]
-- Phase 2.c: fingerprint hashing, object metadata embedding, and link-time verification under
-  [`l1/work/plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][interface-fingerprints]
+- Direct interface replay and compile-CLI reservation are complete under the closed
+  [compile foundation][compile-foundation]. The former initialization and end-to-end fingerprint drafts were closed as
+  superseded when the dependency-safe split was recorded.
+- Artifact association, interface discovery, and module-graph construction under [artifact graph][artifact-graph].
+- Canonical whole-module hashing and `.l1m` verification under [interface fingerprints][interface-fingerprints].
+- Per-module definitions plus `I4init`, `I4fini`, and `I5entry` under [lifecycle entrypoints][lifecycle-entrypoints].
+- Provider/consumer metadata and bounded object readers under [object metadata][object-metadata].
+- Transactional single-module artifact production under [compile only][compile-only].
+- Standalone Dea/foreign-object linking, entry selection, and wrapper construction under [link set][link-set].
+- `--build` / `--run` graph fan-out through shared compile/link APIs under [build/run fan-out][build-run].
 - Phase 3: external-library linking CLI under
   [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][library-linking]
 
@@ -551,20 +623,27 @@ implementation tranche proves that one decision area needs additional design wor
 - **Fingerprint**: deterministic content hash over a module's canonicalized public surface, written to `.l1m` and
   embedded in the provider object metadata.
 - **Link set**: the set of `.o` files plus libraries presented to the linker to produce one executable or library.
+- **Foreign object**: an explicitly supplied metadata-free C relocatable object. It may satisfy unmangled C symbols but
+  is not a Dea module and has no fingerprint, lifecycle, dependency, or entry semantics.
 
 [abi]: ../../docs/specs/compiler/abi.md
+[artifact-graph]: ../plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [backend-design]: ../../docs/reference/c-backend-design.md
+[build-run]: ../plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: 0003-c-ffi.md
-[compile-driver]: ../plans/features/2026-04-24-separate-compilation-driver-surface-noref.md
+[compile-foundation]: ../plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
+[compile-only]: ../plans/features/2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [export-imports]: ../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [interface-emission]: ../plans/features/closed/2026-04-24-module-interface-emission-noref.md
-[interface-fingerprints]: ../plans/features/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
+[interface-fingerprints]: ../plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [library-linking]: ../plans/features/2026-04-24-external-library-linking-cli-noref.md
+[lifecycle-entrypoints]: ../plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[link-set]: ../plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [linking]: ../../docs/user/linking.md
-[module-init]: ../plans/features/2026-04-24-multi-cu-initialization-and-link-order-noref.md
 [module-interface]: ../../docs/specs/compiler/module-interface-format.md
 [module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
+[object-metadata]: ../plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [roadmap]: ../../docs/roadmap.md
 [runtime-library]: closed/0002-runtime-static-library.md

@@ -3,7 +3,7 @@
 ## Extend module initialization to the multi-CU model
 
 - Date: 2026-06-11
-- Status: Draft
+- Status: Closed (superseded)
 - Title: Extend module initialization to the multi-CU model
 - Kind: Feature
 - Severity: Medium
@@ -40,6 +40,19 @@ initialization itself.
 The driver-surface plan owns producing a complete per-module build graph and provider-object link set. This plan
 consumes that graph to define executable-wrapper initialization order; it does not make direct `.l1m` import replay or
 compile-only output complete by itself.
+
+## Closure Notes
+
+This draft was superseded on 2026-07-17 before implementation. Review showed that lifecycle ABI emission, wrapper
+selection, and build/run fan-out could not safely remain one tranche: object metadata needs an always-present lifecycle
+anchor before compile-only artifacts stabilize, while wrapper construction needs the finished object graph and link-set
+driver. Its responsibilities now live under:
+
+- per-module definitions plus external `I4init`, `I4fini`, and `I5entry` emission in [lifecycle];
+- standalone entry selection, dependency-ordered initialization, and reverse finalization in [link-set];
+- source-graph fan-out through the shared compile/link APIs in [build-run].
+
+No behavior described by this draft is claimed as implemented by its closure.
 
 ## Current State
 
@@ -101,3 +114,7 @@ modules and not just the old single-CU build shape.
 1. Existing top-level initializer behavior remains unchanged when modules are built separately.
 2. The executable wrapper calls `_dea_init` helpers in deterministic dependency order across multiple objects.
 3. Driver/backend tests cover modules with and without deferred initialization and imported-state dependencies.
+
+[build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
+[lifecycle]: ../2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md

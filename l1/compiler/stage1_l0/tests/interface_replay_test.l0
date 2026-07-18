@@ -93,28 +93,30 @@ func provider_interface_text() -> string {
 
 /**
  * Minimal interface used to exercise projection from interface-backed symbols.
+ * The hash values have canonical lowercase spelling but remain opaque fixtures
+ * until fingerprint computation and verification are implemented.
  *
  * @return Parsed `.l1m` text for the projection provider.
  */
 func projection_provider_interface_text() -> string {
     return "module interface replay_projection_provider;\n" +
-        "fingerprint \"sip13:PROJECTION\";\n" +
+        "fingerprint \"sip13:0000000000000001\";\n" +
         "\n" +
-        "type Number = int == \"sip13:NUMBER\";\n" +
+        "type Number = int == \"sip13:0000000000000002\";\n" +
         "\n" +
-        "func collect(prefix: int, values: int...) -> int == \"sip13:COLLECT\";\n" +
+        "func collect(prefix: int, values: int...) -> int == \"sip13:0000000000000003\";\n" +
         "\n" +
-        "func identity(value: Number) -> Number == \"sip13:IDENTITY\";\n" +
+        "func identity(value: Number) -> Number == \"sip13:0000000000000004\";\n" +
         "\n" +
-        "extern func ping(value: int) -> int == \"sip13:PING\";\n" +
+        "extern func ping(value: int) -> int == \"sip13:0000000000000005\";\n" +
         "\n" +
-        "unsafe extern func touch(value: int*) -> void == \"sip13:TOUCH\";\n" +
+        "unsafe extern func touch(value: int*) -> void == \"sip13:0000000000000006\";\n" +
         "\n" +
-        "const min_offset: int = -5 == \"sip13:MIN_OFFSET\";\n" +
+        "const min_offset: int = -5 == \"sip13:0000000000000007\";\n" +
         "\n" +
-        "const values: int[3] = [1, 2, 3] == \"sip13:VALUES\";\n" +
+        "const values: int[3] = [1, 2, 3] == \"sip13:0000000000000008\";\n" +
         "\n" +
-        "let current: int == \"sip13:CURRENT\";\n";
+        "let current: int == \"sip13:0000000000000009\";\n";
 }
 
 /**
@@ -450,7 +452,7 @@ func test_project_interface_backed_metadata() {
         "projected interface-backed metadata should round-trip byte-for-byte");
     let reparsed = pi_parse_interface(emitted_text, "<reprojected.l1m>");
     assert(!ipr_has_errors(reparsed), "reprojected interface should parse");
-    assert((reparsed.interface as ModuleInterface*).fingerprint == "sip13:PROJECTION",
+    assert((reparsed.interface as ModuleInterface*).fingerprint == "sip13:0000000000000001",
         "reprojected interface should preserve its fingerprint");
     ipr_free(reparsed);
 

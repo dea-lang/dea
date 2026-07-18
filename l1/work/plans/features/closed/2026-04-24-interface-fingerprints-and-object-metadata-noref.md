@@ -3,7 +3,7 @@
 ## Add interface fingerprints and provider-object metadata
 
 - Date: 2026-06-13
-- Status: Draft
+- Status: Closed (superseded)
 - Title: Add interface fingerprints and provider-object metadata
 - Kind: Feature
 - Severity: High
@@ -36,6 +36,20 @@ three-tier verification contract:
 3. link-time verification against metadata embedded in the provider object.
 
 This plan owns that contract end to end.
+
+## Closure Notes
+
+This draft was superseded on 2026-07-17 before implementation. The end-to-end scope was cyclic: canonical interface
+hashing can land independently, object records require the finalized module graph and lifecycle anchor, and enforcement
+belongs to the later link-set driver. The work is now split across:
+
+- canonical whole-module hashing plus `.l1m` producer/consumer verification in [fingerprints];
+- provider/consumer record emission and bounded object readers in [object-metadata];
+- object-set consistency enforcement before host linking in [link-set].
+
+The former provisional `SIG-0240` to `SIG-0259` reservation also collided with the active anonymous embedded-struct
+plan. The fingerprint successor uses the currently free `SIG-0280` to `SIG-0299` block instead. No fingerprint or
+object-metadata behavior is claimed as implemented by this closure.
 
 ## Current State
 
@@ -122,11 +136,12 @@ incomplete graph.
 
 1. This plan is expected to need diagnostics for fingerprint mismatch, stale provider objects, and verification metadata
    failures.
-2. Provisionally reserve `SIG-0240` to `SIG-0259` for interface fingerprint and public-surface compatibility
-   diagnostics.
-3. Provisionally reserve `L1C-2050` to `L1C-2069` for provider-object metadata and link-time verification failures.
-4. Re-check the live catalog at implementation time before assigning final numbers. If any proposed slot has been used
-   in the meantime, choose a different free block then.
+2. The superseded `SIG-0240` to `SIG-0259` proposal is not an active reservation; the fingerprint successor owns
+   `SIG-0280` to `SIG-0299` provisionally.
+3. The object-metadata successor retains `L1C-2050` to `L1C-2069` provisionally for provider-object metadata and reader
+   failures; this superseded plan no longer owns that range.
+4. The successor re-checks the live catalog at implementation time before assigning final numbers and moves the block if
+   any proposed slot has been used in the meantime.
 
 ## Non-Goals
 
@@ -143,3 +158,7 @@ incomplete graph.
 4. Verification behavior is covered by deterministic analysis/driver tests.
 5. Tests prove that transparent-to-opaque and opaque-to-transparent export changes produce different fingerprints.
 6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+
+[fingerprints]: ../2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
+[object-metadata]: ../2026-07-17-object-metadata-emission-and-readers-noref.md

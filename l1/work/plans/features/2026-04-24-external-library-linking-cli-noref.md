@@ -15,8 +15,10 @@
   - `l1/compiler/stage1_l0/src/build_driver.l0`
   - `l1/compiler/stage1_l0/src/driver.l0`
   - `l1/compiler/stage1_l0/src/l1c.l0`
+  - `docs/specs/compiler/cli-contract.md`
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
+  - `l1/docs/user/linking.md`
 - Test modules:
   - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
@@ -24,21 +26,24 @@
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
+  - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="cli_args_test build_driver_test driver_test"`
 
 ## Summary
 
-Once separate compilation lands, L1 needs a normal external-library linking surface so FFI binding modules can link
-against host libraries without bespoke runtime-only flags. This plan adds the conventional linker-facing flags committed
-by Initiative `0001`:
+Once the standalone link-set and build/run fan-out plans land, L1 needs a normal external-library surface so binding
+modules can link against host libraries without bespoke runtime-only flags. This final Initiative `0001` tranche adds:
 
 - `-l<name>` or `-l <name>`
 - `-L<dir>` or `-L <dir>`
 - `--rpath=<dir>`
 - `--link-arg=<flag>`
 
-It also completes the cleanup that frees `-I` for interface-path lookup rather than raw linker/include-path behavior.
+It extends the typed ordered input stream already established for verified Dea objects and explicit `--foreign-object` C
+relocatables. It also completes the cleanup that frees `-I` for interface-path lookup rather than raw
+linker/include-path behavior.
 
 ## Current State
 
@@ -47,21 +52,31 @@ It also completes the cleanup that frees `-I` for interface-path lookup rather t
    as reserved canonical syntax that currently reports the shared `L1C-2032` capability diagnostic.
 3. There is no implemented CLI forwarding surface for user-requested external link libraries or runtime search paths.
 4. Manual C binding modules cannot yet express their host-library link requirements through the L1 compiler.
+5. Standalone `--link`, ordered object inputs, and repeatable `--foreign-object` are prerequisites owned by the link-set
+   plan; build/run propagation is owned by the following fan-out plan.
 
 ## Defaults Chosen
 
-1. `-l`, `-L`, `--rpath`, and `--link-arg` follow host-compiler conventions directly; `-l` / `-L` accept attached and
+1. `-l`, `-L`, `--rpath`, and `--link-arg` follow host-compiler-driver conventions; `-l` / `-L` accept attached and
    following values.
 2. `-I` is reserved for interface-file discovery and is not repurposed as a C-header include-path flag in core L1.
-3. The compiler forwards external-linking options to the host toolchain rather than abstracting static vs dynamic
-   linkage.
-4. Manual `extern "C"` binding modules remain the intended workflow; package manifests and automatic dependency metadata
-   remain undecided and stay out of scope unless and until Dea adopts a package-management direction.
+3. The driver preserves declaration order for order-sensitive objects, libraries, and raw arguments rather than sorting
+   inputs by category. `--link-arg` contributes one host compiler-driver argument; it is not implicitly rewritten as a
+   native-linker argument.
+4. `--rpath` is translated for each supported compiler family; unsupported host/platform combinations receive a driver
+   diagnostic rather than an invented spelling.
+5. The already selected runtime archive is passed by exact path so user `-L` entries cannot shadow it.
+6. Existing legacy `extern func` binding modules are the workflow available when this plan lands. Initiative `0003`
+   later adds `extern "C"`; package manifests and automatic dependency metadata stay out of scope.
+7. `--link-arg` cannot bypass object classification. A value that directly or through a supported host-driver
+   pass-through spelling introduces a relocatable object is rejected with guidance to use a positional verified Dea
+   object or `--foreign-object`. Opaque response-file indirection is rejected. Archive and shared-library operands
+   remain valid external-library inputs.
 
 ## Goal
 
 1. Add external-library and rpath flags to the L1 CLI.
-2. Forward them through build/link flows deterministically.
+2. Add them to the common ordered link-input model used by `--link`, `--build`, and `--run`.
 3. Replace the reserved `-L` / `-l` capability diagnostic with implemented link-option validation.
 4. Document the intended FFI binding plus linker-flags workflow.
 
@@ -81,13 +96,17 @@ turns the reserved `-L` / `-l` grammar into usable link inputs without changing 
 
 ### Phase 2: Link-driver forwarding
 
-Thread the accepted flags through `--link`, `--build`, and `--run` so the final host link invocation receives them in a
-deterministic order.
+Thread the accepted flags through `--link`, `--build`, and `--run` using the common typed input stream. Preserve the
+user's order across Dea objects, `--foreign-object` operands, libraries, and raw host-driver arguments wherever order is
+semantically observable. Translate rpath values per supported compiler family and pass the validated runtime archive by
+exact path. Validate raw host-driver arguments before invocation so relocatable objects and response-file indirection
+cannot evade the Dea/foreign classification boundary.
 
 ### Phase 3: Docs and smoke coverage
 
-Add user-facing documentation that explains the expected pattern: manual binding module plus explicit library flags,
-with platform notes for `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
+Add user-facing documentation that first describes today's legacy `extern func` binding module plus explicit foreign
+objects/libraries, then points to Initiative `0003` for the future typed `extern "C"` surface. Include platform notes
+for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 
 ## Diagnostics
 
@@ -108,5 +127,10 @@ with platform notes for `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 
 1. `-l`, `-L`, `--rpath`, and `--link-arg` parse and validate as specified.
 2. Link-involving flows forward the requested flags to the host toolchain deterministically.
-3. The roadmap and user docs clearly describe the intended external-linking workflow for FFI modules.
-4. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+3. Mixed Dea objects, explicit foreign objects, libraries, rpaths, and raw host-driver arguments retain the documented
+   order, and user search paths cannot shadow the validated runtime archive.
+4. A relocatable object supplied directly or through a supported host-driver pass-through spelling in `--link-arg` fails
+   with classification guidance, and response-file indirection cannot hide object inputs. Archives and shared libraries
+   remain valid external inputs.
+5. The roadmap and user docs distinguish the currently usable `extern func` workflow from future `extern "C"` support.
+6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.

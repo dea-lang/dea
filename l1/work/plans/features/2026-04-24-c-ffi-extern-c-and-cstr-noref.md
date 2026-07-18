@@ -33,6 +33,8 @@
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
   - `l1/work/initiatives/0003-c-ffi.md`
+  - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
+  - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
   - `l1/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
   - `l1/work/proposals/cstr-and-c-string-guards.md`
   - `l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md`
@@ -58,6 +60,9 @@ strings.
    (`sys.rt::rt_string_bytes_ptr`, the C-only `_rt_string_bytes`) already expose the underlying byte pointer, but there
    is no typed `string -> cstr` conversion surface that uses them.
 4. The analyzer does not enforce a closed FFI-safe type set for the broader C boundary.
+5. Initiative `0001` plans repeatable `--foreign-object` inputs for metadata-free C relocatable objects. This plan
+   consumes that mechanism rather than treating C objects as Dea modules or bypassing object verification through raw
+   positional inputs.
 
 The draft [cheap string slices plan] would allow a logical `string` view whose end is not NUL-terminated. The
 [C-string guard proposal] records the resulting alternative to this plan's current zero-cost reinterpretation default.
@@ -65,25 +70,28 @@ Phase 3 must not implement the conversion contract until that proposal is accept
 
 ## Defaults Chosen
 
-1. `extern "C"` is the only new declaration envelope in this plan.
-2. Inside an `extern "C"` block, L1 supports `func`, `struct`, opaque `struct`, `type`, `enum`, and `let` declarations.
-3. Declarations inside the block bypass LBI mangling entirely.
-4. `cstr` is a builtin FFI boundary type distinct from `string` and bit-compatible with `byte*`. It is a distinct
-   surface type with its own typing rules: conversion between `cstr` and `byte*` requires an explicit cast in either
-   direction, with no implicit assignment or call-site compatibility, so the trailing-null guarantee is enforced at the
-   type level even though the representations are identical.
-5. `string -> cstr` conversion is a zero-cost reinterpretation of the string's byte pointer, not a copy. It is backed by
-   the existing runtime primitives (`sys.rt::rt_string_bytes_ptr`, or the C-only `_rt_string_bytes`). The trailing null
-   terminator is guaranteed by the `string` construction invariant, not by conversion-time work.
-6. The conversion entrypoint lives as a boundary-level builtin or `sys.*` surface; `std.string` is user-facing and is
-   not the right home for a runtime-lowering helper.
-7. Ordinary `string` does not cross the C boundary unwrapped.
-8. This plan focuses on the non-variadic typed core. C variadic FFI is a separate sibling tranche under Initiative
-   `0003` per its §Resolved decisions; it does not land here regardless of how cleanly it would couple, so the main
-   `extern "C"` surface ships independently of platform-specific variadic ABI work.
-9. Declarations inside `extern "C"` blocks support an optional per-symbol link-name override. The exact syntax (trailing
-   `= "..."`, attribute-style, or prefix annotation) is settled in Phase 1 of this plan; the closed answer at the
-   initiative level (Initiative 0003 §Resolved decisions) is that the override exists in v1.
+01. `extern "C"` is the only new declaration envelope in this plan.
+02. Inside an `extern "C"` block, L1 supports `func`, `struct`, opaque `struct`, `type`, `enum`, and `let` declarations.
+03. Declarations inside the block bypass LBI mangling entirely.
+04. `cstr` is a builtin FFI boundary type distinct from `string` and bit-compatible with `byte*`. It is a distinct
+    surface type with its own typing rules: conversion between `cstr` and `byte*` requires an explicit cast in either
+    direction, with no implicit assignment or call-site compatibility, so the trailing-null guarantee is enforced at the
+    type level even though the representations are identical.
+05. `string -> cstr` conversion is a zero-cost reinterpretation of the string's byte pointer, not a copy. It is backed
+    by the existing runtime primitives (`sys.rt::rt_string_bytes_ptr`, or the C-only `_rt_string_bytes`). The trailing
+    null terminator is guaranteed by the `string` construction invariant, not by conversion-time work.
+06. The conversion entrypoint lives as a boundary-level builtin or `sys.*` surface; `std.string` is user-facing and is
+    not the right home for a runtime-lowering helper.
+07. Ordinary `string` does not cross the C boundary unwrapped.
+08. This plan focuses on the non-variadic typed core. C variadic FFI is a separate sibling tranche under Initiative
+    `0003` per its §Resolved decisions; it does not land here regardless of how cleanly it would couple, so the main
+    `extern "C"` surface ships independently of platform-specific variadic ABI work.
+09. Declarations inside `extern "C"` blocks support an optional per-symbol link-name override. The exact syntax
+    (trailing `= "..."`, attribute-style, or prefix annotation) is settled in Phase 1 of this plan; the closed answer at
+    the initiative level (Initiative 0003 §Resolved decisions) is that the override exists in v1.
+10. A raw C provider object is passed explicitly with `--foreign-object`; it has no Dea fingerprint, module identity,
+    lifecycle, or entry semantics. Libraries and their search/rpath requirements use Initiative `0001`'s external-link
+    options.
 
 ## Goal
 
@@ -136,6 +144,8 @@ Update grammar/design-decision docs and add regression coverage for:
 - opaque-vs-concrete extern types,
 - invalid FFI-safe type crossings,
 - `string` to `cstr` conversion behavior.
+- an end-to-end fixture that compiles a tiny C provider to a relocatable object, links it through `--foreign-object`,
+  calls it through `extern "C"`, and runs successfully.
 
 ## Diagnostics
 
@@ -162,7 +172,9 @@ Update grammar/design-decision docs and add regression coverage for:
 3. `cstr` exists as a distinct boundary type; `string -> cstr` conversion is a zero-cost reinterpretation backed by the
    existing runtime string-bytes primitives and does not touch `std.string`.
 4. The roadmap and design-decision docs clearly distinguish this FFI surface from L1-defined variadic functions.
-5. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+5. A metadata-free C provider object links only through `--foreign-object` and satisfies the declared unmangled C symbol
+   without participating in Dea metadata, lifecycle, or entry selection.
+6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
 
 [c-string guard proposal]: ../../proposals/cstr-and-c-string-guards.md
 [cheap string slices plan]: 2026-06-21-cheap-string-slices-noref.md
