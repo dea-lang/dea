@@ -1,0 +1,609 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module module_graph;
+
+import sys.rt;
+
+import std.hashmap;
+import std.path;
+import std.string;
+import std.vector;
+import util.diag;
+
+import source_paths;
+
+/**
+ * Selects the fallback allowed when an imported interface is absent.
+ */
+enum ModuleResolutionPolicy {
+    MRP_REQUIRE_INTERFACE;
+    MRP_ALLOW_SOURCE_FALLBACK;
+}
+
+/**
+ * Identifies the selected origin of one canonical module.
+ */
+enum ModuleOriginKind {
+    MOK_SOURCE;
+    MOK_INTERFACE;
+    MOK_REGISTRY;
+    MOK_VIRTUAL;
+}
+
+/**
+ * Identifies one interface dependency tier.
+ */
+enum ModuleDependencyKind {
+    MDK_REQUIRE;
+    MDK_LINK;
+}
+
+/**
+ * Tracks recursive module-graph resolution without confusing cache hits with cycles.
+ */
+enum ModuleNodeState {
+    MNS_UNRESOLVED;
+    MNS_RESOLVING;
+    MNS_RESOLVED;
+    MNS_FAILED;
+}
+
+/**
+ * Canonical sibling artifacts associated with one real module.
+ */
+struct ModuleArtifactPaths {
+    c_path: string;
+    object_path: string;
+    interface_path: string;
+}
+
+/**
+ * Selected source of one graph node.
+ *
+ * `path` is present for filesystem source and interface origins and absent for
+ * programmatic registry and compiler-synthesized virtual origins.
+ */
+struct ModuleOrigin {
+    kind: ModuleOriginKind;
+    path: string?;
+}
+
+/**
+ * One per-symbol dependency retained by the module graph.
+ *
+ * `expected_fingerprint` is an opaque whole-provider expectation. This layer
+ * carries it without computing or validating it.
+ */
+struct ModuleDependency {
+    kind: ModuleDependencyKind;
+    provider_module: string;
+    symbol_name: string;
+    expected_fingerprint: string;
+}
+
+/**
+ * One canonical module in a module graph.
+ */
+struct ModuleGraphNode {
+    module_name: string;
+    origin: ModuleOrigin*;
+    artifacts: ModuleArtifactPaths*?;
+    state: ModuleNodeState;
+    dependencies: VectorBase*; // ModuleDependency*
+    direct_imports: StringVector*; // exact source declaration order
+}
+
+/**
+ * Canonical module graph with deterministic public enumeration.
+ */
+struct ModuleGraph {
+    nodes: VectorBase*; // owned ModuleGraphNode*
+    nodes_by_name: StringPtrMap*; // canonical module name -> borrowed ModuleGraphNode*
+}
+
+/**
+ * Create a pointer-element vector without depending on AST helpers.
+ *
+ * @param initial_capacity Initial pointer capacity.
+ * @return New owned pointer vector.
+ */
+func _mg_ptr_vec_create(initial_capacity: int) -> VectorBase* {
+    return vec_create(sizeof(void*), initial_capacity);
+}
+
+/**
+ * Append one pointer to a pointer-element vector.
+ *
+ * @param self Pointer vector to update.
+ * @param value Pointer value to append.
+ */
+func _mg_ptr_vec_push(self: VectorBase*, value: void*) {
+    vec_push_ptr(self, value);
+}
+
+/**
+ * Return one pointer from a pointer-element vector.
+ *
+ * @param self Pointer vector to inspect.
+ * @param index Zero-based index.
+ * @return Pointer value at `index`.
+ */
+func _mg_ptr_vec_get(self: VectorBase*, index: int) -> void* {
+    return *(vec_get(self, index) as void**);
+}
+
+/**
+ * Emit an invalid artifact-association diagnostic.
+ *
+ * @param diags Diagnostic collector to update.
+ * @param message Diagnostic message.
+ * @param filename Related path when one is available.
+ */
+func _mg_artifact_error(diags: DiagCollector*, message: string, filename: string) {
+    diag_error(diags, "Driver", "DRV-0072", message, filename, 0, 0, 0, 0);
+}
+
+/**
+ * Validate a canonical module name for artifact construction.
+ *
+ * @param module_name Module name to validate.
+ * @param diags Diagnostic collector to update on failure.
+ * @return `true` when `module_name` is a valid dotted module name.
+ */
+func _mg_validate_artifact_module(module_name: string, diags: DiagCollector*) -> bool {
+    if (sp_is_valid_module_name(module_name)) {
+        return true;
+    }
+
+    _mg_artifact_error(
+        diags,
+        "invalid canonical module name '" + module_name + "' for separate-compilation artifacts",
+        ""
+    );
+    return false;
+}
+
+/**
+ * Check whether a path syntactically names a regular file with an extension.
+ *
+ * @param path Path to inspect.
+ * @param extension Required final extension.
+ * @return `true` when the non-directory path has `extension`.
+ */
+func _mg_has_regular_extension(path: string, extension: string) -> bool {
+    if (is_empty_s(path)) {
+        return false;
+    }
+    if (is_sep(char_at_s(path, len_s(path) - 1))) {
+        return false;
+    }
+    return has_extension(path, extension);
+}
+
+/**
+ * Construct a complete artifact set from a shared path stem.
+ *
+ * @param artifact_stem Full path without an artifact suffix.
+ * @return New owned artifact association.
+ */
+func _mg_artifacts_from_stem(artifact_stem: string) -> ModuleArtifactPaths* {
+    return new ModuleArtifactPaths(
+        artifact_stem + ".c",
+        artifact_stem + ".o",
+        artifact_stem + ".l1m"
+    );
+}
+
+/**
+ * Construct canonical artifacts beneath a caller-selected artifact root.
+ *
+ * @param artifact_root Root beneath which the dotted module stem is placed.
+ * @param module_name Canonical dotted module name.
+ * @param diags Diagnostic collector for `DRV-0072` validation failures.
+ * @return Complete owned artifact set, or `null` without a partial set.
+ */
+func mg_artifacts_for_module(
+    artifact_root: string,
+    module_name: string,
+    diags: DiagCollector*
+) -> ModuleArtifactPaths*? {
+    if (!_mg_validate_artifact_module(module_name, diags)) {
+        return null;
+    }
+
+    let relstem = sp_module_relstem(module_name);
+    if (relstem == null) {
+        return null;
+    }
+    return _mg_artifacts_from_stem(join(artifact_root, relstem as string));
+}
+
+/**
+ * Construct canonical companions for an explicit compile-only object path.
+ *
+ * @param module_name Canonical dotted module name.
+ * @param object_path Explicit canonical `.o` path.
+ * @param diags Diagnostic collector for `DRV-0072` validation failures.
+ * @return Complete owned artifact set, or `null` without a partial set.
+ */
+func mg_artifacts_from_object(
+    module_name: string,
+    object_path: string,
+    diags: DiagCollector*
+) -> ModuleArtifactPaths*? {
+    if (!_mg_validate_artifact_module(module_name, diags)) {
+        return null;
+    }
+    if (!_mg_has_regular_extension(object_path, ".o")) {
+        _mg_artifact_error(
+            diags,
+            "explicit object path '" + object_path + "' must name a regular '.o' file",
+            object_path
+        );
+        return null;
+    }
+
+    let artifact_stem = slice_s(object_path, 0, len_s(object_path) - len_s(".o"));
+    return _mg_artifacts_from_stem(artifact_stem);
+}
+
+/**
+ * Construct canonical companions for a discovered module interface.
+ *
+ * @param module_name Canonical dotted module name.
+ * @param interface_path Selected `.l1m` path.
+ * @param diags Diagnostic collector for `DRV-0072` validation failures.
+ * @return Complete owned artifact set, or `null` without a partial set.
+ */
+func mg_artifacts_from_interface(
+    module_name: string,
+    interface_path: string,
+    diags: DiagCollector*
+) -> ModuleArtifactPaths*? {
+    if (!_mg_validate_artifact_module(module_name, diags)) {
+        return null;
+    }
+    if (!_mg_has_regular_extension(interface_path, ".l1m")) {
+        _mg_artifact_error(
+            diags,
+            "discovered interface path '" + interface_path + "' must name a regular '.l1m' file",
+            interface_path
+        );
+        return null;
+    }
+
+    let artifact_stem = slice_s(interface_path, 0, len_s(interface_path) - len_s(".l1m"));
+    return _mg_artifacts_from_stem(artifact_stem);
+}
+
+/**
+ * Free an optional artifact association.
+ *
+ * @param artifacts Artifact set to free, or `null`.
+ */
+func mg_artifacts_free(artifacts: ModuleArtifactPaths*?) {
+    if (artifacts != null) {
+        let owned = artifacts as ModuleArtifactPaths*;
+        drop owned;
+    }
+}
+
+/**
+ * Create one selected module origin.
+ *
+ * @param kind Origin category.
+ * @param path Filesystem path for source/interface origins, otherwise `null`.
+ * @return New owned origin.
+ */
+func _mg_origin_create(kind: ModuleOriginKind, path: string?) -> ModuleOrigin* {
+    return new ModuleOrigin(kind, path);
+}
+
+/**
+ * Create a graph node with owned origin and artifact associations.
+ *
+ * @param module_name Canonical module name.
+ * @param origin Owned selected origin.
+ * @param artifacts Owned artifact set, or `null` for non-filesystem modules.
+ * @return New owned unresolved graph node.
+ */
+func _mg_node_create(
+    module_name: string,
+    origin: ModuleOrigin*,
+    artifacts: ModuleArtifactPaths*?
+) -> ModuleGraphNode* {
+    return new ModuleGraphNode(
+        module_name,
+        origin,
+        artifacts,
+        MNS_UNRESOLVED,
+        _mg_ptr_vec_create(2),
+        sv_create(2)
+    );
+}
+
+/**
+ * Associate a source module with its canonical artifact set.
+ *
+ * Ownership of `artifacts` transfers to the returned node.
+ *
+ * @param module_name Canonical module name.
+ * @param source_path Selected source implementation path.
+ * @param artifacts Owned canonical artifact association, or `null` when the
+ * consuming mode has not selected an artifact root.
+ * @return New owned source node.
+ */
+func mg_node_from_source(
+    module_name: string,
+    source_path: string,
+    artifacts: ModuleArtifactPaths*?
+) -> ModuleGraphNode* {
+    return _mg_node_create(module_name, _mg_origin_create(MOK_SOURCE, source_path), artifacts);
+}
+
+/**
+ * Associate a filesystem interface with its canonical sibling artifacts.
+ *
+ * Ownership of `artifacts` transfers to the returned node.
+ *
+ * @param module_name Canonical module name.
+ * @param interface_path Selected interface path.
+ * @param artifacts Owned canonical artifact association.
+ * @return New owned interface node.
+ */
+func mg_node_from_interface(
+    module_name: string,
+    interface_path: string,
+    artifacts: ModuleArtifactPaths*
+) -> ModuleGraphNode* {
+    return _mg_node_create(module_name, _mg_origin_create(MOK_INTERFACE, interface_path), artifacts);
+}
+
+/**
+ * Associate a programmatically supplied interface with no filesystem artifacts.
+ *
+ * @param module_name Canonical module name.
+ * @return New owned registry-backed node.
+ */
+func mg_node_from_registry(module_name: string) -> ModuleGraphNode* {
+    return _mg_node_create(module_name, _mg_origin_create(MOK_REGISTRY, null), null);
+}
+
+/**
+ * Associate a compiler-synthesized module with no filesystem artifacts.
+ *
+ * @param module_name Canonical module name.
+ * @return New owned virtual node.
+ */
+func mg_node_virtual(module_name: string) -> ModuleGraphNode* {
+    return _mg_node_create(module_name, _mg_origin_create(MOK_VIRTUAL, null), null);
+}
+
+/**
+ * Free one dependency entry.
+ *
+ * @param dependency Dependency to free.
+ */
+func mg_dependency_free(dependency: ModuleDependency*) {
+    drop dependency;
+}
+
+/**
+ * Free one graph node and all associations it owns.
+ *
+ * @param node Graph node to free.
+ */
+func mg_node_free(node: ModuleGraphNode*) {
+    for (let i = 0; i < vec_size(node.dependencies); i = i + 1) {
+        mg_dependency_free(_mg_ptr_vec_get(node.dependencies, i) as ModuleDependency*);
+    }
+    vec_free(node.dependencies);
+    sv_free(node.direct_imports);
+    mg_artifacts_free(node.artifacts);
+    let origin = node.origin;
+    drop origin;
+    drop node;
+}
+
+/**
+ * Append one manifest dependency without changing direct-import order.
+ *
+ * @param node Graph node to update.
+ * @param kind Dependency tier.
+ * @param provider_module Canonical provider module.
+ * @param symbol_name Referenced provider symbol.
+ * @param expected_fingerprint Opaque whole-provider fingerprint expectation.
+ */
+func mg_node_add_dependency(
+    node: ModuleGraphNode*,
+    kind: ModuleDependencyKind,
+    provider_module: string,
+    symbol_name: string,
+    expected_fingerprint: string
+) {
+    _mg_ptr_vec_push(
+        node.dependencies,
+        new ModuleDependency(kind, provider_module, symbol_name, expected_fingerprint) as void*
+    );
+}
+
+/**
+ * Return the number of retained manifest dependencies.
+ *
+ * @param node Graph node to inspect.
+ * @return Dependency count.
+ */
+func mg_node_dependency_count(node: ModuleGraphNode*) -> int {
+    return vec_size(node.dependencies);
+}
+
+/**
+ * Return one retained manifest dependency.
+ *
+ * @param node Graph node to inspect.
+ * @param index Zero-based dependency index.
+ * @return Borrowed dependency at `index`.
+ */
+func mg_node_dependency_get(node: ModuleGraphNode*, index: int) -> ModuleDependency* {
+    return _mg_ptr_vec_get(node.dependencies, index) as ModuleDependency*;
+}
+
+/**
+ * Append one exact source direct-import edge.
+ *
+ * Entries retain declaration order and duplicates; manifest sorting or
+ * deduplication never mutates this vector.
+ *
+ * @param node Source graph node to update.
+ * @param module_name Imported canonical module name.
+ */
+func mg_node_add_direct_import(node: ModuleGraphNode*, module_name: string) {
+    sv_push(node.direct_imports, module_name);
+}
+
+/**
+ * Return the number of exact source direct-import edges.
+ *
+ * @param node Graph node to inspect.
+ * @return Direct-import count.
+ */
+func mg_node_direct_import_count(node: ModuleGraphNode*) -> int {
+    return sv_size(node.direct_imports);
+}
+
+/**
+ * Return one exact source direct-import edge.
+ *
+ * @param node Graph node to inspect.
+ * @param index Zero-based declaration-order index.
+ * @return Borrowed canonical module name at `index`.
+ */
+func mg_node_direct_import_get(node: ModuleGraphNode*, index: int) -> string {
+    return sv_get(node.direct_imports, index);
+}
+
+/**
+ * Set one node's recursive resolution state.
+ *
+ * @param node Graph node to update.
+ * @param state New state.
+ */
+func mg_node_set_state(node: ModuleGraphNode*, state: ModuleNodeState) {
+    node.state = state;
+}
+
+/**
+ * Return one node's recursive resolution state.
+ *
+ * @param node Graph node to inspect.
+ * @return Current state.
+ */
+func mg_node_state(node: ModuleGraphNode*) -> ModuleNodeState {
+    return node.state;
+}
+
+/**
+ * Create an empty canonical module graph.
+ *
+ * @return New owned graph.
+ */
+func mg_create() -> ModuleGraph* {
+    return new ModuleGraph(_mg_ptr_vec_create(8), spm_create());
+}
+
+/**
+ * Free a graph and all registered nodes.
+ *
+ * @param self Graph to free.
+ */
+func mg_free(self: ModuleGraph*) {
+    spm_free(self.nodes_by_name);
+    for (let i = 0; i < vec_size(self.nodes); i = i + 1) {
+        mg_node_free(_mg_ptr_vec_get(self.nodes, i) as ModuleGraphNode*);
+    }
+    vec_free(self.nodes);
+    drop self;
+}
+
+/**
+ * Add one uniquely named canonical node.
+ *
+ * Ownership transfers to `self` only when this function returns `true`.
+ * Duplicate or invalid module names return `false` and leave `node` owned by
+ * the caller.
+ *
+ * @param self Graph to update.
+ * @param node Candidate owned node.
+ * @return `true` when the graph accepted and now owns `node`.
+ */
+func mg_add_node(self: ModuleGraph*, node: ModuleGraphNode*) -> bool {
+    if (!sp_is_valid_module_name(node.module_name) || spm_has(self.nodes_by_name, node.module_name)) {
+        return false;
+    }
+
+    _mg_ptr_vec_push(self.nodes, node as void*);
+    spm_put(self.nodes_by_name, node.module_name, node as void*);
+    return true;
+}
+
+/**
+ * Find one graph node by canonical module name.
+ *
+ * @param self Graph to inspect.
+ * @param module_name Canonical module name.
+ * @return Borrowed node, or `null` when absent.
+ */
+func mg_find_node(self: ModuleGraph*, module_name: string) -> ModuleGraphNode*? {
+    let node = spm_get(self.nodes_by_name, module_name);
+    if (node == null) {
+        return null;
+    }
+    return node as ModuleGraphNode*;
+}
+
+/**
+ * Return the number of registered nodes.
+ *
+ * @param self Graph to inspect.
+ * @return Node count.
+ */
+func mg_node_count(self: ModuleGraph*) -> int {
+    return vec_size(self.nodes);
+}
+
+/**
+ * Enumerate canonical module names in lexical order.
+ *
+ * @param self Graph to inspect.
+ * @return New owned sorted name vector.
+ */
+func mg_node_names_sorted(self: ModuleGraph*) -> StringVector* {
+    let names = spm_keys(self.nodes_by_name);
+    sv_sort(names);
+    return names;
+}
+
+/**
+ * Enumerate graph nodes in canonical module-name order.
+ *
+ * The returned vector is owned by the caller and contains borrowed node
+ * pointers; freeing it does not free the nodes.
+ *
+ * @param self Graph to inspect.
+ * @return New owned pointer vector containing borrowed sorted nodes.
+ */
+func mg_nodes_sorted(self: ModuleGraph*) -> VectorBase* {
+    let out = _mg_ptr_vec_create(mg_node_count(self));
+    with (let names = mg_node_names_sorted(self) => sv_free(names)) {
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let node = mg_find_node(self, sv_get(names, i));
+            if (node != null) {
+                _mg_ptr_vec_push(out, node as void*);
+            }
+        }
+    }
+    return out;
+}

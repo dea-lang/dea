@@ -1,0 +1,4 @@
+module interface graph.linked;
+fingerprint "linked-fingerprint";
+
+func helper() -> int == "";

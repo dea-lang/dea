@@ -1,0 +1,6 @@
+module interface graph.required;
+fingerprint "required-fingerprint";
+
+struct Thing {
+  value: int;
+} == "";

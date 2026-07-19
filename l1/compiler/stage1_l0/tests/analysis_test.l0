@@ -11,6 +11,8 @@ import std.assert;
 import std.vector;
 
 import analysis;
+import driver;
+import module_graph;
 import sem_context;
 import source_paths;
 import util.log;
@@ -64,6 +66,33 @@ func test_analysis_ok_main() {
         assert(analysis_signature_tables(result) != null, "expected signature tables");
         assert(analysis_locals(result) != null, "expected locals data");
         assert(sv_size(analysis_source_names(result)) == 3, "expected 3 cached sources");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests the resolution-aware analysis entry point runs the shared semantic
+ * pipeline and retains the driver's resolved module graph.
+ */
+func test_analysis_resolution_entrypoint() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let interface_roots = sv_create(0) => sv_free(interface_roots)) {
+        let result = analysis_analyze_entry_with_resolution(
+            sp,
+            "ok_main",
+            interface_roots,
+            MRP_ALLOW_SOURCE_FALLBACK,
+            null,
+            cfg
+        );
+        assert(!analysis_has_errors(result), "resolution-aware analysis should preserve source-fallback behavior");
+        assert(analysis_name_resolution(result) != null, "resolution-aware analysis should run semantic passes");
+        assert(mg_find_node(driver_graph(result.driver_state), "ok_main") != null,
+            "resolution-aware analysis should retain the entry graph node");
+        assert(mg_find_node(driver_graph(result.driver_state), "shared_types") != null,
+            "resolution-aware analysis should retain dependency graph nodes");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -199,6 +228,7 @@ func test_analysis_imported_opaque_layout_errors() {
  */
 func main() {
     test_analysis_ok_main();
+    test_analysis_resolution_entrypoint();
     test_analysis_semantic_failure();
     test_analysis_alias_imports();
     test_analysis_opaque_export_surfaces();

@@ -28,7 +28,7 @@
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/fixtures/object_metadata`
 - Related:
-  - [`l1/work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
+  - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
   - [`l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
@@ -258,5 +258,5 @@ hand the typed inspection result to the later link-set plan without changing cur
 [interface-format]: ../../../docs/specs/compiler/module-interface-format.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
-[module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [superseded-metadata]: closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md

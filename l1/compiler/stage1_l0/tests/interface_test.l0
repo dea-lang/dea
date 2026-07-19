@@ -16,6 +16,7 @@ import ast;
 import interface_emitter;
 import mi_utils;
 import module_interface;
+import name_resolver;
 import parser.interface;
 import sem_context;
 import source_paths;
@@ -724,6 +725,187 @@ func test_interface_variadic_cross_module_kind_with_peers() {
 }
 
 /**
+ * Return the synthetic provider interface used to exercise semantic
+ * dependency classification and provider-fingerprint propagation.
+ *
+ * @return Parseable provider `.l1m` text.
+ */
+func dependency_provider_interface_text() -> string {
+    return "module interface iface_dependency_provider;\n" +
+        "fingerprint \"opaque:PROVIDER-v1\";\n" +
+        "\n" +
+        "struct RemotePoint {\n" +
+        "  value: int;\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "struct LayoutOne {\n" +
+        "  value: int;\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "struct LayoutTwo {\n" +
+        "  value: int;\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "enum RemoteColor {\n" +
+        "  Red;\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "enum ImplColor {\n" +
+        "  Green;\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "type RemoteAlias = RemotePoint == \"\";\n" +
+        "\n" +
+        "func remote_value() -> int == \"\";\n" +
+        "\n" +
+        "const public_seed: int = 40 == \"\";\n";
+}
+
+/**
+ * Count ledger entries matching one canonical resolved-symbol identity.
+ *
+ * @param nr Name-resolution ledger to inspect.
+ * @param consumer_module Consumer module name.
+ * @param provider_module Provider module name.
+ * @param symbol_name Canonical provider symbol name.
+ * @return Matching entry count.
+ */
+func resolved_ref_count(nr: NameResolution*, consumer_module: string, provider_module: string,
+                        symbol_name: string) -> int {
+    let count = 0;
+    for (let i = 0; i < nr_resolved_symbol_count(nr); i = i + 1) {
+        let ref = nr_resolved_symbol_get(nr, i);
+        if (ref.consumer_module == consumer_module && ref.provider_module == provider_module &&
+            ref.symbol_name == symbol_name) {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+/**
+ * Tests semantic `require`/`link` projection, canonical ledger deduplication,
+ * imported-alias preservation, enum-owner normalization, folded-const walking,
+ * virtual-module exclusion, and provider-wide fingerprint propagation.
+ */
+func test_emit_interface_semantic_dependencies() {
+    let parsed = pi_parse_interface(dependency_provider_interface_text(), "<iface_dependency_provider.l1m>");
+    assert(!ipr_has_errors(parsed), "synthetic dependency provider should parse");
+    assert(parsed.interface != null, "synthetic dependency provider should produce metadata");
+
+    let interfaces = ptr_vec_create(1);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry_with_interfaces(
+            sp,
+            "iface_dependency_consumer",
+            interfaces,
+            cfg
+        );
+        assert(!analysis_has_errors(result), "dependency consumer should analyze against its provider interface");
+
+        let text_opt = analysis_emit_interface(result, "iface_dependency_consumer");
+        assert(text_opt != null, "dependency consumer should project an interface");
+        let text = text_opt as string;
+
+        assert(contains_s(text,
+            "require iface_dependency_provider::RemoteAlias == \"opaque:PROVIDER-v1\";"),
+            "public TypeRef walk must preserve the imported alias identity");
+        assert(contains_s(text,
+            "require iface_dependency_provider::RemoteColor == \"opaque:PROVIDER-v1\";"),
+            "public nominal type must become a require dependency");
+        assert(contains_s(text,
+            "require iface_dependency_provider::public_seed == \"opaque:PROVIDER-v1\";"),
+            "folded exported const initializer must still be walked");
+        assert(!contains_s(text, "require iface_dependency_provider::RemotePoint"),
+            "imported aliases must not be replaced by their resolved nominal target in dependencies");
+        assert(contains_s(text,
+            "const alias_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red == \"\";"),
+            "alias-qualified const literals must emit canonical provider identity");
+        assert(contains_s(text,
+            "const selective_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red == \"\";"),
+            "selectively imported const literals must emit canonical provider identity");
+
+        assert(contains_s(text,
+            "link iface_dependency_provider::ImplColor == \"opaque:PROVIDER-v1\";"),
+            "implementation enum variant must normalize to its owning enum");
+        assert(contains_s(text,
+            "link iface_dependency_provider::remote_value == \"opaque:PROVIDER-v1\";"),
+            "implementation-only function use must become a link dependency");
+        assert(contains_s(text,
+            "link iface_dependency_provider::LayoutOne == \"opaque:PROVIDER-v1\";"),
+            "unqualified sizeof type lookup must become a link dependency");
+        assert(contains_s(text,
+            "link iface_dependency_provider::LayoutTwo == \"opaque:PROVIDER-v1\";"),
+            "qualified sizeof type lookup must become a link dependency");
+        assert(!contains_s(text, "link iface_dependency_provider::Green"),
+            "enum variants must not survive as variant-level dependencies");
+        assert(!contains_s(text, "link iface_dependency_provider::public_seed"),
+            "require dependencies must be subtracted from link dependencies");
+        assert(!contains_s(text, "require dea::") && !contains_s(text, "link dea::"),
+            "compiler-synthesized virtual symbols must not enter dependency manifests");
+
+        let nr = result.names as NameResolution*;
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "remote_value") == 1,
+            "repeated implementation lookups must deduplicate in the canonical ledger");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "ImplColor") == 1,
+            "variant lookup must use one owner-normalized ledger entry");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "LayoutOne") == 1,
+            "unqualified sizeof type lookup must enter the canonical ledger");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "LayoutTwo") == 1,
+            "qualified sizeof type lookup must enter the canonical ledger");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "Green") == 0,
+            "variant name must not appear in the canonical ledger");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "dea", "sizeof") == 0,
+            "virtual-module lookup must not appear in the canonical ledger");
+
+        analysis_result_free(result);
+
+        let open_result = analysis_analyze_entry_with_interfaces(
+            sp,
+            "iface_dependency_open_consumer",
+            interfaces,
+            cfg
+        );
+        assert(!analysis_has_errors(open_result), "open-import dependency consumer should analyze");
+        let open_text_opt = analysis_emit_interface(open_result, "iface_dependency_open_consumer");
+        assert(open_text_opt != null, "open-import dependency consumer should project an interface");
+        let open_text = open_text_opt as string;
+        assert(contains_s(open_text,
+            "const open_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red == \"\";"),
+            "open-import const literals must emit canonical provider identity");
+        analysis_result_free(open_result);
+    }
+    sp_free(sp);
+    vec_free(interfaces);
+    ipr_free(parsed);
+}
+
+/**
+ * Tests emitter-level tier subtraction preserves parsed expectation values.
+ */
+func test_interface_require_subtracts_link() {
+    let text = "module interface overlap;\n" +
+        "fingerprint \"\";\n" +
+        "\n" +
+        "require provider::shared == \"require-expectation\";\n" +
+        "\n" +
+        "link provider::shared == \"link-expectation\";\n" +
+        "link provider::unique == \"unique-expectation\";\n";
+    let parsed = pi_parse_interface(text, "<overlap>");
+    assert(!ipr_has_errors(parsed), "overlapping parsed dependency tiers should parse");
+    let emitted = ie_emit(parsed.interface as ModuleInterface*);
+    assert(contains_s(emitted, "require provider::shared == \"require-expectation\";"),
+        "require tier must preserve its parsed expectation");
+    assert(!contains_s(emitted, "link provider::shared"),
+        "require tier must suppress the same canonical link key");
+    assert(contains_s(emitted, "link provider::unique == \"unique-expectation\";"),
+        "unshadowed link tier must preserve its parsed expectation");
+    ipr_free(parsed);
+}
+
+/**
  * Tests that the new per-symbol `require` and `link` dependency-line forms
  * (including canonical-looking lowercase algorithm-tagged hash strings) parse,
  * sort/deduplicate, and round-trip through emit -> parse -> emit byte-for-byte.
@@ -816,6 +998,8 @@ func main() {
     test_interface_ordered_type_suffix_round_trip();
     test_interface_variadic_round_trip();
     test_interface_variadic_cross_module_kind_with_peers();
+    test_emit_interface_semantic_dependencies();
+    test_interface_require_subtracts_link();
     test_interface_dep_lines_round_trip();
     test_interface_noncanonical_hash_token_round_trip();
     test_interface_decl_hash_suffix_diagnostics();

@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-16
+Version: 2026-07-19
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -235,15 +235,21 @@ diagnostic.
 
 ## Driver and Environment
 
-| Code       | Level | Meaning                                                                               |
-| ---------- | ----- | ------------------------------------------------------------------------------------- |
-| `DRV-0010` | All   | File-related driver error, e.g. module source file not found                          |
-| `DRV-0011` | All   | Cannot read source file for a resolved module                                         |
-| `DRV-0020` | All   | Input validation error, e.g. declared module name does not match the requested module |
-| `DRV-0030` | All   | Import-related driver error, e.g. cyclic module imports                               |
-| `DRV-0040` | All   | Source decoding error, e.g. input file is not valid UTF-8                             |
-| `DRV-0070` | L1+   | Supplied module interface requires unsupported transitive `require` or `link` replay  |
-| `DRV-0071` | L1+   | Duplicate supplied module interface for the same module                               |
+| Code       | Level | Meaning                                                                                |
+| ---------- | ----- | -------------------------------------------------------------------------------------- |
+| `DRV-0010` | All   | File-related driver error, e.g. module source file not found                           |
+| `DRV-0011` | All   | Cannot read source file for a resolved module                                          |
+| `DRV-0020` | All   | Input validation error, e.g. declared module name does not match the requested module  |
+| `DRV-0030` | All   | Import-related driver error, e.g. cyclic module imports                                |
+| `DRV-0040` | All   | Source decoding error, e.g. input file is not valid UTF-8                              |
+| `DRV-0070` | L1+   | Reserved; former unsupported transitive interface replay diagnostic, no longer emitted |
+| `DRV-0071` | L1+   | Duplicate supplied-interface registry entry for the same canonical module              |
+| `DRV-0072` | L1+   | Invalid canonical module or separate-compilation artifact identity                     |
+| `DRV-0073` | L1+   | Invalid interface search root                                                          |
+| `DRV-0074` | L1+   | Required module interface is missing                                                   |
+| `DRV-0075` | L1+   | Selected module interface is unreadable or is not a regular file                       |
+| `DRV-0076` | L1+   | Selected module interface is not valid UTF-8                                           |
+| `DRV-0077` | L1+   | Conflicting canonical module identity in the module graph                              |
 
 ## Build, Code Generation, and Runtime
 

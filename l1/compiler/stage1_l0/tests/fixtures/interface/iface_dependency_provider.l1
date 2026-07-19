@@ -1,0 +1,36 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module iface_dependency_provider;
+
+export RemotePoint, LayoutOne, LayoutTwo, RemoteColor, ImplColor, RemoteAlias, remote_value, public_seed;
+
+struct RemotePoint {
+    value: int;
+}
+
+struct LayoutOne {
+    value: int;
+}
+
+struct LayoutTwo {
+    value: int;
+}
+
+enum RemoteColor {
+    Red;
+}
+
+enum ImplColor {
+    Green;
+}
+
+type RemoteAlias = RemotePoint;
+
+func remote_value() -> int {
+    return 7;
+}
+
+const public_seed: int = 40;

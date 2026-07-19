@@ -72,6 +72,30 @@ func test_format_root_list_matches_stage1_contract() {
 }
 
 /**
+ * Tests test_validated_module_relative_paths.
+ */
+func test_validated_module_relative_paths() {
+    let relstem = sp_module_relstem("foo.bar_baz");
+    assert(relstem != null && relstem as string == "foo/bar_baz", "validated relative stem mismatch");
+
+    let source_relpath = sp_module_source_relpath("foo.bar_baz");
+    assert(
+        source_relpath != null && source_relpath as string == "foo/bar_baz.l1",
+        "validated source relative path mismatch"
+    );
+
+    let interface_relpath = sp_module_interface_relpath("foo.bar_baz");
+    assert(
+        interface_relpath != null && interface_relpath as string == "foo/bar_baz.l1m",
+        "validated interface relative path mismatch"
+    );
+
+    assert(sp_module_relstem("foo..bar") == null, "empty dotted component must reject a relative stem");
+    assert(sp_module_source_relpath("9foo") == null, "invalid source module name must be rejected");
+    assert(sp_module_interface_relpath("foo/bar") == null, "path syntax must not enter module identity");
+}
+
+/**
  * Tests test_path_target_parent_suppresses_default_dot_root.
  */
 func test_path_target_parent_suppresses_default_dot_root() {
@@ -144,6 +168,7 @@ func main() {
     test_default_sys_roots_l0_home_fallback();
     test_explicit_sys_root_suppresses_defaults();
     test_format_root_list_matches_stage1_contract();
+    test_validated_module_relative_paths();
     test_path_target_parent_suppresses_default_dot_root();
     test_system_roots_precede_project_roots();
     test_system_root_declaration_order();

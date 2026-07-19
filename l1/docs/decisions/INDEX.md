@@ -19,3 +19,4 @@
 | [0015](0015-slice-types-and-intrinsics.md)                       | Slice Types and `len`/`slice` Intrinsics         | Accepted |
 | [0016](0016-compile-time-constant-value-contexts.md)             | Compile-Time Constant Value Contexts             | Accepted |
 | [0017](0017-l1-variadic-functions.md)                            | L1 Variadic Functions                            | Accepted |
+| [0018](0018-canonical-artifact-association-and-module-graph.md)  | Canonical Artifact Association and Module Graph  | Accepted |

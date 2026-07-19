@@ -4,7 +4,6 @@
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`
   - `l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`
   - `l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`
   - `l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`
@@ -18,6 +17,7 @@
   - `l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`
   - `l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md`
+  - `l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`
 
@@ -78,12 +78,12 @@ Relevant facts that constrain the plan at the time of writing:
 - Generated L1-defined source symbols use LBI `M...S...` names, and compiler-generated module lifecycle symbols use LBI
   `M...I...` names. Everything inside a legacy `extern func` declaration is intentionally **not name-mangled**; this is
   the only FFI primitive in the language today.
-- Deterministic textual `.l1m` emission, constrained parsing, and dependency-free direct-provider replay are
-  implemented. Ordinary build/run imports remain source-based, dependency-bearing supplied interfaces are rejected,
-  fingerprints remain empty/unchecked, and there is no provider-object consistency check yet.
+- Deterministic textual `.l1m` emission, constrained parsing, canonical artifact association, interface-first discovery,
+  and transitive graph-backed replay are implemented through internal APIs. Ordinary build/run imports remain
+  source-based, fingerprints remain empty/unchecked, and there is no provider-object consistency check yet.
 - The shared driver CLI reserves `-c` / `--compile` and ordered `-I` / `--interface-path` syntax, but compile dispatch
-  remains explicitly NYI and performs no interface search or artifact production. Runtime discovery uses `-Ri` / `-Rl`;
-  host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link`,
+  remains explicitly NYI and does not invoke the internal resolver or produce artifacts. Runtime discovery uses `-Ri` /
+  `-Rl`; host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link`,
   `--entry`, and `--foreign-object` do not exist yet.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today. `compiler/stage2_l1/` is a placeholder for the future
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
@@ -484,7 +484,7 @@ Recorded near-term tranche checkpoints:
   projection.
 - [x] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
 - [x] Reserve and validate `-c` / `--compile` plus ordered `-I` / `--interface-path`; compile dispatch remains NYI.
-- [ ] Define artifact layout, transitive interface discovery, and the deterministic module graph.
+- [x] Define artifact layout, transitive interface discovery, and the deterministic module graph.
 - [ ] Implement canonical whole-module fingerprints and `.l1m` verification.
 - [ ] Emit one module per CU with external `I4init`, `I4fini`, and conditional `I5entry`.
 - [ ] Emit and inspect provider/consumer object metadata.
@@ -604,7 +604,8 @@ implementation tranche proves that one decision area needs additional design wor
 - Direct interface replay and compile-CLI reservation are complete under the closed
   [compile foundation][compile-foundation]. The former initialization and end-to-end fingerprint drafts were closed as
   superseded when the dependency-safe split was recorded.
-- Artifact association, interface discovery, and module-graph construction under [artifact graph][artifact-graph].
+- Artifact association, interface discovery, and module-graph construction completed under
+  [artifact graph][artifact-graph].
 - Canonical whole-module hashing and `.l1m` verification under [interface fingerprints][interface-fingerprints].
 - Per-module definitions plus `I4init`, `I4fini`, and `I5entry` under [lifecycle entrypoints][lifecycle-entrypoints].
 - Provider/consumer metadata and bounded object readers under [object metadata][object-metadata].
@@ -627,7 +628,7 @@ implementation tranche proves that one decision area needs additional design wor
   is not a Dea module and has no fingerprint, lifecycle, dependency, or entry semantics.
 
 [abi]: ../../docs/specs/compiler/abi.md
-[artifact-graph]: ../plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[artifact-graph]: ../plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [backend-design]: ../../docs/reference/c-backend-design.md
 [build-run]: ../plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: 0003-c-ffi.md

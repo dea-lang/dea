@@ -1,0 +1,4 @@
+module interface graph.unused;
+fingerprint "unused-fingerprint";
+
+func side_effect_anchor() -> void == "";

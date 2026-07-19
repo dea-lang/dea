@@ -1,0 +1,8 @@
+module interface cycle.one;
+fingerprint "cycle-one";
+
+require cycle.two::Two == "";
+
+struct One {
+  value: int;
+} == "";

@@ -1,0 +1,7 @@
+module interface graph.provider;
+fingerprint "first-root";
+
+require graph.required::Thing == "require-expectation";
+link graph.linked::helper == "link-expectation";
+
+func value() -> int == "";

@@ -6,10 +6,10 @@ Status: Draft artifact contract
 
 This document specifies the textual `.l1m` module interface artifact for the current Dea/L1 bootstrap compiler tranche.
 It defines the on-disk file shape, canonical declaration order, type/literal formatting rules, the per-symbol dependency
-manifest syntax, and the constrained parse contract shared by interface emission and round-trip tests.
+manifest syntax, and the constrained parse, discovery, and transitive-closure contracts.
 
-This document does not make `.l1m` files normal user-facing compile inputs yet. Ordinary `--build` and `--run` flows
-remain source-based until the separate-compilation driver surface lands under
+This document does not make `.l1m` files normal user-facing compile inputs yet. `-c` remains gated without producing
+artifacts, while ordinary `--build` and `--run` flows remain source-based under
 [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative-0001].
 
 ## Scope
@@ -19,7 +19,8 @@ form:
 
 - the emitter projects analyzed source into canonical text
 - the constrained parser reconstructs the interface model from that text
-- internal analysis entry points can replay a supplied dependency-free direct provider without loading its source
+- internal analysis entry points can discover interfaces from ordered roots and recursively load dependency closure
+- programmatic supplied-interface registries use the same graph contract for focused semantic tests
 - tests can assert byte-stable output and parser/emitter round-trip behavior
 - the internal `--emit-interface` mode can write the artifact for developer/testing use
 
@@ -74,7 +75,8 @@ against. It is split into two tiers:
   surface (a parameter, return, field, alias target, let/const type, or const value). A consumer that loads only this
   module's `.l1m` for type-checking must eventually resolve every `require` entry transitively.
 - **`link`**: implementation-tier dependencies. The provider symbol is used by this module's implementation but does not
-  appear in the public surface. Needed for link closure and initialization order, not for downstream typechecking.
+  appear in the public surface. Needed for link closure, not for downstream typechecking. Initialization order instead
+  follows the graph's exact ordered direct-import sequence.
 
 A symbol that is both surface-named and implementation-named appears only as `require`.
 
@@ -93,11 +95,40 @@ The `require` group is emitted first, then the `link` group. Within each group t
 The dependency manifest is **not** part of the whole-module fingerprint input: adding or removing a private import does
 not change the module's own ABI hash and must not force consumers to recompile.
 
-Today the emitter records direct surface uses with empty hash placeholders; it computes neither per-symbol nor
-whole-module compatibility values. The implementation-tier `link` group is reserved by the schema and is not yet
-produced by `mi_project`, although supplied lines round-trip through the parser. The module-graph and fingerprint plans
-will populate dependency records with the provider's tagged whole-module fingerprint while retaining symbol-qualified
-textual lines.
+The emitter classifies resolved cross-module symbol references into these tiers. References that appear in the exported
+surface become `require`; other implementation references become `link`; and `require` wins when the same provider
+symbol appears in both. It copies the provider's whole-module fingerprint string into each entry when one is available,
+but computes neither a per-symbol nor a whole-module fingerprint. Empty provider placeholders therefore remain valid
+until the fingerprint tranche lands.
+
+Public-surface collection walks parsed type references so an imported alias remains the dependency identity instead of
+being replaced by its nominal target. It covers exported layouts and signatures, exported binding types, and exported
+const initializers even when their scalar value was folded. Enum variant references normalize to their owning enum.
+Parsed interface expectation strings are preserved verbatim during replay.
+
+## Interface Discovery and Closure
+
+The internal module-graph resolver applies these rules:
+
+1. The requested compilation target is source-backed even if a matching interface exists.
+2. For each imported canonical module, ordered interface roots are searched for the dotted relative path with an `.l1m`
+   suffix. The first existing candidate wins.
+3. A selected interface is authoritative. A non-regular or unreadable file, invalid UTF-8, parser failure, or
+   header/module-name mismatch fails without source fallback.
+4. When no interface exists, `MRP_REQUIRE_INTERFACE` reports a missing-interface diagnostic. `MRP_ALLOW_SOURCE_FALLBACK`
+   uses the existing system-roots-before-project-roots source precedence and preserves declaration order within each
+   root tier.
+5. Compiler-synthesized virtual modules retain their special handling and do not require interface files.
+
+The loader recursively resolves provider modules named by both dependency tiers. A `require` dependency activates the
+provider interface for semantic replay; a `link` dependency creates a graph obligation without exposing provider names
+inside the importing module. Programmatic registry providers follow the same closure logic, while duplicate registry
+entries retain `DRV-0071`. Filesystem discovery is first-root-wins and does not report lower-priority matches as an
+ambiguity.
+
+Graph node enumeration is sorted by canonical module name. Source nodes separately retain every direct import in exact
+declaration order, including duplicates and imports that contribute no referenced symbol. That ordered sequence is not
+reconstructed from or deduplicated with the sorted per-symbol dependency manifest.
 
 ## Export Surface
 
@@ -306,8 +337,7 @@ those names or another variant name.
 It rejects ordinary source-only forms such as function bodies. Dotted module names in the header and in dependency lines
 are accepted and preserved.
 
-Internal direct replay currently accepts only dependency-free provider interfaces. An active interface containing
-`require` or `link` entries is rejected by the driver until transitive interface closure loading is implemented.
+Internal replay accepts dependency-bearing interfaces and resolves their transitive closure through the module graph.
 
 The parser accepts explicit `opaque struct` and `opaque enum` declarations. Opacity is never inferred from a missing
 body.
@@ -316,17 +346,18 @@ Parser failures use the dedicated `PAR-0560` through `PAR-0577` diagnostic range
 variadic placement and `PAR-0602` for malformed unsafe declarations, registered in
 [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog].
 
+Discovery and graph failures use `DRV-0072` through `DRV-0077` where the existing source lookup, header-validation,
+parser, or cycle diagnostics do not already describe the failure exactly.
+
 ## Non-goals
 
 This format specification does not define:
 
 - the fingerprint algorithm or object-metadata embedding
 - whole-module fingerprint and provider-dependency verification
-- driver search paths or `.l1m` discovery rules
 - compile-only object output
 - provider-object linking or build/run fan-out
-- semantic population of implementation-tier `link` entries
-- switching ordinary imports from source analysis to interface loading
+- making `-c`, standalone linking, or multi-CU build/run operational
 - package or library distribution layout
 
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md

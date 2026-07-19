@@ -16,8 +16,10 @@ import types;
  * `link` (implementation-tier) group; the two are kept as separate vectors on
  * `ModuleInterface` to preserve the dependency tier.
  *
- * `hash` is the algorithm-tagged expected provider-symbol hash, or the empty
- * string when no compatibility check is performed yet.
+ * `hash` carries the provider module's opaque whole-interface fingerprint
+ * expectation, repeated for each used symbol, or the empty string when the
+ * selected provider has no fingerprint yet. Parsing and projection preserve
+ * this value without validating its spelling or contents.
  */
 struct InterfaceDepEntry {
     provider_module: string;

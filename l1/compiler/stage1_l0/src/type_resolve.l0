@@ -187,6 +187,24 @@ func tr_type_free_opt(ty: Type*?) {
 }
 
 /**
+ * Record and return one successful symbol-lookup result.
+ *
+ * Keeping this operation at the `tr_symbol_lookup` boundary ensures every
+ * semantic caller contributes to the same canonical dependency ledger.
+ *
+ * @param nr Name-resolution data receiving the lookup record.
+ * @param env Consumer module environment.
+ * @param sym Optional resolved symbol.
+ * @return `sym` unchanged.
+ */
+func tr_symbol_lookup_result(nr: NameResolution*, env: ModuleEnv*, sym: Symbol*?) -> Symbol*? {
+    if (sym != null) {
+        nr_record_resolved_symbol(nr, env, sym as Symbol*);
+    }
+    return sym;
+}
+
+/**
  * Resolve a symbol visible from a module environment.
  *
  * @param nr Name-resolution data containing module environments.
@@ -203,7 +221,7 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
             if (nr_module_env_is_ambiguous(env, name)) {
                 return null;
             }
-            return nr_module_env_all(env, name);
+            return tr_symbol_lookup_result(nr, env, nr_module_env_all(env, name));
         }
 
         if (sv_size(name_qualifier as StringVector*) != 1) {
@@ -221,7 +239,7 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
         if (s.owner_name != sv_get(name_qualifier as StringVector*, 0)) {
             return null;
         }
-        return s;
+        return tr_symbol_lookup_result(nr, env, s);
     }
 
     let target_module = tr_module_from_path(module_path as StringVector*);
@@ -245,9 +263,10 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
 
     if (name_qualifier == null) {
         if (use_exports) {
-            return nr_map_symbol_get((target_env as ModuleEnv*).exports, name);
+            return tr_symbol_lookup_result(nr, env,
+                nr_map_symbol_get((target_env as ModuleEnv*).exports, name));
         }
-        return nr_module_env_local(target_env as ModuleEnv*, name);
+        return tr_symbol_lookup_result(nr, env, nr_module_env_local(target_env as ModuleEnv*, name));
     }
 
     if (sv_size(name_qualifier as StringVector*) != 1) {
@@ -270,7 +289,7 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
     if (s2.owner_name != sv_get(name_qualifier as StringVector*, 0)) {
         return null;
     }
-    return s2;
+    return tr_symbol_lookup_result(nr, env, s2);
 }
 
 /**

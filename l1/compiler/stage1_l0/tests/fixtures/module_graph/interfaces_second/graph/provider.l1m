@@ -1,0 +1,4 @@
+module interface graph.provider;
+fingerprint "second-root";
+
+func value() -> int == "";

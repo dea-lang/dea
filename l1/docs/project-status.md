@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-16
+Version: 2026-07-19
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -53,16 +53,26 @@ components where needed, nominal types use `S` / `E`, and compiler-generated mod
 consts in the current backend.
 
 The bootstrap compiler can emit deterministic textual `.l1m` module interface artifacts through the internal
-`--emit-interface` mode, round-trip them through a constrained interface parser, and replay supplied dependency-free
-direct provider interfaces through semantic analysis and C generation without loading provider source. Ordinary CLI
-imports remain source-based today; `.l1m` files are not yet normal compile/build/run inputs, and transitive interface
-dependencies are rejected until closure loading is implemented.
+`--emit-interface` mode and round-trip them through a constrained interface parser. Resolution-aware internal entry
+points now discover imported interfaces from ordered roots, select the first matching `.l1m`, recursively close over
+`require` and `link` dependencies, and replay activated `require` providers without loading their source. Focused tests
+can supply registry-backed interfaces through the same graph contract.
+
+The deterministic module graph records one source, interface, registry, or virtual origin per canonical module. It
+provides sorted node enumeration, canonical sibling `.c`, `.o`, and `.l1m` path associations, dependency-tier edges, and
+direct source imports in exact declaration order. Interface projection classifies resolved cross-module public surface
+references as `require` and remaining implementation references as `link`; whole-module fingerprint values remain opaque
+and unchecked pending the fingerprint plan.
+
+Ordinary CLI imports remain source-based today, and `.l1m` files are not yet normal compile/build/run inputs.
 
 The CLI reserves `-c` / `--compile` for compile-only mode and accepts repeatable `-I` / `--interface-path` values only
-with that mode. Compile mode currently exits with `L1C-9510` and produces no artifacts; interface-path discovery and
-per-module `.c`, `.o`, and `.l1m` output remain future work. The shared semantic aliases are `-Gc` for generated C,
-`-Rp` / `-Rs` for source roots, `-Cc` / `-Co` for host-C controls, `-Ri` / `-Rl` for runtime paths, and `-Vl` for rich
-logging. The conventional `-g`, `-S`, `-L`, and `-l` meanings are reserved but not implemented.
+with that mode. Compile mode currently exits with `L1C-9510` and produces no artifacts; connecting the reserved CLI
+surface to graph resolution and transactional per-module `.c`, `.o`, and `.l1m` publication remains future work. The
+shared semantic aliases are `-Gc` for generated C, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` for host-C controls,
+`-Ri` / `-Rl` for runtime paths, and `-Vl` for rich logging. The conventional `-g`, `-S`, `-L`, and `-l` meanings are
+reserved but not implemented. Standalone linking does not exist, and `--build` / `--run` remain source-based single-CU
+operations.
 
 ### Runtime and Standard Library
 
@@ -196,9 +206,10 @@ These remain true today:
 
 1. There is no implemented `stage2_l1` compiler yet.
 2. Backend output is one C translation unit.
-3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
+3. Compile-only artifact production, standalone linking, and multi-CU build/run orchestration are not operational.
+4. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
-4. Address-of (`&`) and generics are not part of the current active language surface.
+5. Address-of (`&`) and generics are not part of the current active language surface.
 
 ## Near-Term Direction
 

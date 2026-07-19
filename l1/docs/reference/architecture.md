@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-07-16
+Version: 2026-07-19
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -34,6 +34,9 @@ lexer.l0 -> Token stream
 parser.l0 -> AST
   |
   v
+driver.l0 + module_graph.l0 -> deterministic source/interface module graph
+  |
+  v
 name_resolver.l0 -> ModuleEnv per module
   |
   v
@@ -53,19 +56,23 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
                                    build_driver.l0 --> host C compiler / executable launch
 ```
 
-Internal analysis entry points may also supply a parsed, dependency-free direct-provider `.l1m`. The driver activates
-that interface only when a source import selects it, then name resolution, signature resolution, expression typing, and
-the backend consume its cloned metadata instead of loading provider source. Interfaces carrying `require` or `link`
-entries remain rejected until transitive closure loading is implemented; the ordinary CLI pipeline above is still
-source-based.
+Internal analysis entry points can build a deterministic `ModuleGraph` from an entry source, ordered interface roots, a
+resolution policy, and an optional artifact root. The entry stays source-backed. Imported modules prefer the first
+matching `.l1m`; `MRP_REQUIRE_INTERFACE` rejects a missing interface, while `MRP_ALLOW_SOURCE_FALLBACK` retains the
+existing source-root precedence when no interface exists. Programmatic interface registries use the same graph model.
+
+The driver closes over both interface dependency tiers. `require` providers are activated for semantic replay, while
+`link` providers remain graph obligations without entering the consumer's semantic environment. Source nodes retain
+their direct imports in declaration order, separately from sorted graph enumeration and interface manifests. The
+ordinary CLI pipeline above is still source-based.
 
 Current CLI entry point: `compiler/stage1_l0/src/l1c.l0`.
 
 The CLI parser reserves `-c` / `--compile` and repeatable `-I` / `--interface-path` values for separate compilation, but
-dispatch currently reports `L1C-9510` before analysis or artifact creation. The ordinary pipeline remains source-based
-until compile-only interface discovery and output land. L1 follows the shared exact-token short namespaces for roots,
-host-C controls, runtime paths, generated C, and log presentation; reserved canonical debug/assembly/link flags report
-`L1C-2032` rather than acquiring L1-specific meanings.
+dispatch currently reports `L1C-9510` before analysis or artifact creation. A later compile-only tranche connects that
+surface to the internal resolver and transactional artifact writer. L1 follows the shared exact-token short namespaces
+for roots, host-C controls, runtime paths, generated C, and log presentation; reserved canonical debug/assembly/link
+flags report `L1C-2032` rather than acquiring L1-specific meanings.
 
 Normal developer workflow:
 
@@ -100,7 +107,7 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.3 Name Resolution (`name_resolver.l0`, `symbols.l0`)
 
 - Builds module environments across the import closure.
-- Populates selected provider environments from active interface metadata when supplied through the internal replay API.
+- Populates selected provider environments from interfaces activated by the module graph.
 - Resolves opened imports and reports ambiguity diagnostics.
 
 ### 2.4 Signature Resolution (`signatures.l0`, `type_resolve.l0`, `types.l0`)
@@ -123,9 +130,9 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.7 Interface Projection (`interface_emitter.l0`, `module_interface.l0`, `mi_utils.l0`)
 
 - Projects exported declarations from a completed analysis result.
+- Classifies resolved cross-module symbol uses into public-surface `require` and implementation-tier `link` records.
 - Emits deterministic textual `.l1m` artifacts through the internal `--emit-interface` mode.
-- Parses the constrained interface grammar for round-trip validation; ordinary source imports do not consume `.l1m`
-  files yet.
+- Parses the constrained interface grammar for round-trip validation and graph-backed internal replay.
 
 ### 2.8 Backend (`backend.l0`, `c_emitter.l0`, `string_escape.l0`)
 
@@ -135,7 +142,9 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.9 Driver and CLI (`driver.l0`, `l1c_lib.l0`, `cli_args.l0`, `build_driver.l0`)
 
 - Coordinates the pass pipeline.
-- Owns indexed source units and active cloned direct-provider interfaces.
+- Builds and exposes the deterministic module graph, canonical artifact associations, and active cloned interfaces.
+- Exposes resolution-aware internal entry points with ordered interface roots, caller-selected source fallback, and an
+  optional artifact root.
 - Implements CLI mode dispatch and host compiler execution.
 - Reserves compile-only mode and interface-path syntax while keeping the unimplemented path gated before analysis.
 - Produces generated C, built executables, or direct runs depending on CLI mode.
@@ -147,9 +156,10 @@ Primary aggregates in the current implementation include:
 - token streams from `tokens.l0`
 - parsed AST nodes from `ast.l0`
 - parsed and active module interfaces from `module_interface.l0`
+- `ModuleGraph`, `ModuleGraphNode`, `ModuleOrigin`, `ModuleDependency`, and `ModuleArtifactPaths` from `module_graph.l0`
 - module and symbol environments from `name_resolver.l0`
 - typed semantic state from `analysis.l0`
-- projected and parsed module interfaces from `module_interface.l0`
+- projected module interfaces carrying populated `require` and `link` dependency tiers
 - checked scalar constant values evaluated through `type_resolve.l0`
 
 Important analysis tables include:
@@ -162,14 +172,15 @@ Important analysis tables include:
 - `let_types`
 - `expr_types`
 - `var_ref_resolution`
+- `resolved_symbols`
 - `intrinsic_targets`
 - `diagnostics`
 
 ## 4. Invariants
 
 1. The current L1 compiler is bootstrap-only and implemented in Dea/L0.
-2. Import closure construction is explicit and checked before later semantic passes; a selected direct provider may be
-   satisfied by one active dependency-free interface instead of source.
+2. Import closure construction is explicit and checked before later semantic passes; each canonical module has one
+   source, interface, registry, or virtual origin in the module graph.
 3. Source locations are propagated for diagnostics.
 4. Diagnostic columns follow a logical-source contract: every non-newline Unicode code point, including ASCII horizontal
    tabs, advances the stored column by exactly one; UTF-8 continuation bytes do not advance it. Snippet rendering
@@ -178,8 +189,10 @@ Important analysis tables include:
    of scope for this contract.
 5. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
 6. Generated output is currently one C99 translation unit.
-7. Interface emission is deterministic, but `.l1m` artifacts are not normal compile/build/run inputs yet.
-8. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in the
+7. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
+   preserve declaration order and duplicates.
+8. `.l1m` artifacts are available to internal resolution-aware APIs but are not normal compile/build/run inputs yet.
+9. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in the
    other L1 reference documents.
 
 ## 5. File/Module Layout
@@ -204,6 +217,7 @@ Main current compiler modules under `compiler/stage1_l0/src/`:
 - `lexer.l0`
 - `locals.l0`
 - `mi_utils.l0`
+- `module_graph.l0`
 - `module_interface.l0`
 - `name_resolver.l0`
 - `parser.l0`

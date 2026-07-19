@@ -244,7 +244,7 @@ Closing this plan does not claim that `-c`, `--link`, or multi-CU build/run orch
    successful compile-only output.
 8. Assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
 
-[artifact graph]: ../2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[artifact graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: ../2026-07-17-compile-only-artifact-production-noref.md
 [link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md

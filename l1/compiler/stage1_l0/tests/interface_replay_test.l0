@@ -537,29 +537,71 @@ func test_source_and_interface_enum_exports_match() {
 }
 
 /**
- * Tests dependency-bearing interfaces are rejected for direct replay.
+ * Tests registry-backed `require` dependencies activate a transitive semantic
+ * interface closure without validating opaque fingerprint expectations.
  */
-func test_direct_interface_replay_rejects_dependencies() {
-    let bad_text = "module interface replay_provider;\n" +
-        "fingerprint \"\";\n" +
+func test_direct_interface_replay_loads_require_closure() {
+    let provider = parse_provider_interface();
+    let provider_mi = provider.interface as ModuleInterface*;
+    ptr_vec_push(provider_mi.require_entries,
+        new InterfaceDepEntry("replay_other", "Thing", "deliberately-not-validated") as void*);
+    ptr_vec_push(provider_mi.link_entries,
+        new InterfaceDepEntry("replay_link_only", "helper", "also-not-validated") as void*);
+
+    let other_text = "module interface replay_other;\n" +
+        "fingerprint \"opaque:OTHER-v1\";\n" +
         "\n" +
-        "require other::Thing == \"\";\n" +
+        "struct Thing {\n" +
+        "  value: int;\n" +
+        "} == \"\";\n";
+    let other = pi_parse_interface(other_text, "<replay_other.l1m>");
+    assert(!ipr_has_errors(other), "transitive provider interface should parse");
+
+    let link_only_text = "module interface replay_link_only;\n" +
+        "fingerprint \"opaque:LINK-v1\";\n" +
         "\n" +
-        "func ping() -> void == \"\";\n";
-    let parsed = pi_parse_interface(bad_text, "<replay_bad.l1m>");
-    assert(!ipr_has_errors(parsed), "dependency-bearing interface should parse");
-    let interfaces = ptr_vec_create(1);
-    ptr_vec_push(interfaces, parsed.interface as void*);
+        "func helper() -> int == \"\";\n";
+    let link_only = pi_parse_interface(link_only_text, "<replay_link_only.l1m>");
+    assert(!ipr_has_errors(link_only), "link-only provider interface should parse");
+
+    let interfaces = ptr_vec_create(3);
+    ptr_vec_push(interfaces, provider.interface as void*);
+    ptr_vec_push(interfaces, other.interface as void*);
+    ptr_vec_push(interfaces, link_only.interface as void*);
 
     let sp = make_paths();
     let cfg = log_config_create(LL_SILENT, false);
     let result = analysis_analyze_entry_with_interfaces(sp, "replay_open", interfaces, cfg);
-    assert(analysis_has_errors(result), "dependency-bearing interface should be rejected");
-    assert(has_diag_code(result, "DRV-0070"), "expected DRV-0070 for require/link replay dependency");
+    assert(!analysis_has_errors(result), "dependency-bearing provider should replay through registry closure");
+    assert(driver_interface_count(result.driver_state) == 2,
+        "direct provider plus transitive require provider should be active");
+    assert(driver_find_interface(result.driver_state, "replay_provider") != null,
+        "direct provider should remain active");
+    assert(driver_find_interface(result.driver_state, "replay_other") != null,
+        "transitive require provider should be active for semantic replay");
+    assert(driver_find_graph_interface(result.driver_state, "replay_link_only") != null,
+        "link-only provider should remain resolved in the graph interface registry");
+    assert(driver_find_interface(result.driver_state, "replay_link_only") == null,
+        "link-only provider must not activate for semantic replay");
+    assert(driver_find_projection_interface(result.driver_state, "replay_link_only") == null,
+        "link-only provider must not activate for interface projection");
+    assert(driver_provider_fingerprint(result.driver_state, "replay_other") == "opaque:OTHER-v1",
+        "raw transitive provider fingerprint should remain available without expectation validation");
+    assert(driver_provider_fingerprint(result.driver_state, "replay_link_only") == "opaque:LINK-v1",
+        "link-only provider fingerprint should remain available to graph consumers");
+
+    let names = analysis_name_resolution(result) as NameResolution*;
+    let consumer_env = nr_env_find(names, "replay_open") as ModuleEnv*;
+    assert(!nr_module_env_imports_module(consumer_env, "replay_other"),
+        "transitive require closure must not become a direct source import");
+    assert(nr_module_env_imported(consumer_env, "Thing") == null,
+        "transitive provider names must not open into the direct consumer scope");
 
     analysis_result_free(result);
     vec_free(interfaces);
-    ipr_free(parsed);
+    ipr_free(link_only);
+    ipr_free(other);
+    ipr_free(provider);
     drop cfg;
     sp_free(sp);
 }
@@ -641,7 +683,7 @@ func main() {
     test_project_interface_backed_metadata();
     test_direct_interface_replay_sys_real_runtime_support();
     test_source_and_interface_enum_exports_match();
-    test_direct_interface_replay_rejects_dependencies();
+    test_direct_interface_replay_loads_require_closure();
     test_direct_interface_replay_ignores_unused_interfaces();
     test_direct_interface_replay_rejects_duplicate_interfaces();
     printl_s("interface_replay_test: all tests passed");

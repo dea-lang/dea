@@ -1,0 +1,243 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module module_graph_test;
+
+import std.assert;
+import std.io;
+import std.vector;
+import util.diag;
+
+import module_graph;
+
+/**
+ * Assert that one diagnostic collector contains exactly `DRV-0072`.
+ *
+ * @param diags Diagnostic collector to inspect.
+ */
+func assert_drv_0072(diags: DiagCollector*) {
+    assert(diag_count(diags) == 1, "expected one artifact-association diagnostic");
+    assert(diag_get(diags, 0).code == "DRV-0072", "expected DRV-0072");
+}
+
+/**
+ * Return one borrowed node from a pointer-element vector.
+ *
+ * @param nodes Pointer vector to inspect.
+ * @param index Zero-based index.
+ * @return Borrowed node at `index`.
+ */
+func mgt_node_at(nodes: VectorBase*, index: int) -> ModuleGraphNode* {
+    let value = *(vec_get(nodes, index) as void**);
+    return value as ModuleGraphNode*;
+}
+
+/**
+ * Tests test_artifacts_for_canonical_module.
+ */
+func test_artifacts_for_canonical_module() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let artifacts_opt = mg_artifacts_for_module("build/artifacts", "foo.bar", diags);
+        assert(artifacts_opt != null, "expected canonical module artifacts");
+        let artifacts = artifacts_opt as ModuleArtifactPaths*;
+        assert(artifacts.c_path == "build/artifacts/foo/bar.c", "canonical C path mismatch");
+        assert(artifacts.object_path == "build/artifacts/foo/bar.o", "canonical object path mismatch");
+        assert(artifacts.interface_path == "build/artifacts/foo/bar.l1m", "canonical interface path mismatch");
+        assert(diag_count(diags) == 0, "valid canonical artifacts must not emit diagnostics");
+        mg_artifacts_free(artifacts);
+    }
+}
+
+/**
+ * Tests test_explicit_object_companions.
+ */
+func test_explicit_object_companions() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let artifacts_opt = mg_artifacts_from_object("foo.bar", "custom/out-name.o", diags);
+        assert(artifacts_opt != null, "expected explicit object companions");
+        let artifacts = artifacts_opt as ModuleArtifactPaths*;
+        assert(artifacts.c_path == "custom/out-name.c", "explicit C companion mismatch");
+        assert(artifacts.object_path == "custom/out-name.o", "explicit object path mismatch");
+        assert(artifacts.interface_path == "custom/out-name.l1m", "explicit interface companion mismatch");
+        mg_artifacts_free(artifacts);
+    }
+}
+
+/**
+ * Tests test_discovered_interface_companions.
+ */
+func test_discovered_interface_companions() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let artifacts_opt = mg_artifacts_from_interface("foo.bar", "iface-root/foo/bar.l1m", diags);
+        assert(artifacts_opt != null, "expected discovered interface companions");
+        let artifacts = artifacts_opt as ModuleArtifactPaths*;
+        assert(artifacts.c_path == "iface-root/foo/bar.c", "discovered C companion mismatch");
+        assert(artifacts.object_path == "iface-root/foo/bar.o", "discovered object companion mismatch");
+        assert(artifacts.interface_path == "iface-root/foo/bar.l1m", "selected interface path mismatch");
+        mg_artifacts_free(artifacts);
+    }
+}
+
+/**
+ * Tests test_invalid_artifact_associations_are_atomic.
+ */
+func test_invalid_artifact_associations_are_atomic() {
+    with (let name_diags = diag_create() => diag_free(name_diags)) {
+        let invalid_name = mg_artifacts_for_module("out", "foo..bar", name_diags);
+        assert(invalid_name == null, "invalid module name must not return a partial artifact set");
+        assert_drv_0072(name_diags);
+    }
+
+    with (let object_diags = diag_create() => diag_free(object_diags)) {
+        let invalid_object = mg_artifacts_from_object("foo.bar", "out/foo/bar.obj", object_diags);
+        assert(invalid_object == null, "non-.o output must not return a partial artifact set");
+        assert_drv_0072(object_diags);
+    }
+
+    with (let directory_diags = diag_create() => diag_free(directory_diags)) {
+        let directory_object = mg_artifacts_from_object("foo.bar", "out/foo.o/", directory_diags);
+        assert(directory_object == null, "directory-like .o path must be rejected");
+        assert_drv_0072(directory_diags);
+    }
+
+    with (let interface_diags = diag_create() => diag_free(interface_diags)) {
+        let invalid_interface = mg_artifacts_from_interface("foo.bar", "iface/foo/bar.l1", interface_diags);
+        assert(invalid_interface == null, "non-.l1m discovery must not return a partial artifact set");
+        assert_drv_0072(interface_diags);
+    }
+}
+
+/**
+ * Tests test_origin_artifact_associations.
+ */
+func test_origin_artifact_associations() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let source_artifacts = mg_artifacts_for_module("out", "app.main", diags);
+        assert(source_artifacts != null, "expected source artifacts");
+        let source_node = mg_node_from_source(
+            "app.main",
+            "src/app/main.l1",
+            source_artifacts as ModuleArtifactPaths*
+        );
+        assert(ord(source_node.origin.kind) == ord(MOK_SOURCE), "expected source origin");
+        assert(source_node.origin.path != null, "source origin requires a path");
+        assert(source_node.origin.path as string == "src/app/main.l1", "source origin path mismatch");
+        assert(source_node.artifacts != null, "source node requires artifacts");
+        mg_node_free(source_node);
+
+        let source_without_root = mg_node_from_source("scratch.main", "scratch/main.l1", null);
+        assert(
+            source_without_root.artifacts == null,
+            "source node must not invent artifacts before a consuming mode selects a root"
+        );
+        mg_node_free(source_without_root);
+
+        let interface_artifacts = mg_artifacts_from_interface("lib.api", "ifaces/lib/api.l1m", diags);
+        assert(interface_artifacts != null, "expected interface artifacts");
+        let interface_node = mg_node_from_interface(
+            "lib.api",
+            "ifaces/lib/api.l1m",
+            interface_artifacts as ModuleArtifactPaths*
+        );
+        assert(ord(interface_node.origin.kind) == ord(MOK_INTERFACE), "expected interface origin");
+        assert(interface_node.origin.path != null, "interface origin requires a path");
+        assert(interface_node.artifacts != null, "filesystem interface requires artifacts");
+        mg_node_free(interface_node);
+
+        let registry_node = mg_node_from_registry("fixture.api");
+        assert(ord(registry_node.origin.kind) == ord(MOK_REGISTRY), "expected registry origin");
+        assert(registry_node.origin.path == null, "registry origin must not invent a path");
+        assert(registry_node.artifacts == null, "registry interface must not invent artifacts");
+        mg_node_free(registry_node);
+
+        let virtual_node = mg_node_virtual("dea.prelude");
+        assert(ord(virtual_node.origin.kind) == ord(MOK_VIRTUAL), "expected virtual origin");
+        assert(virtual_node.origin.path == null, "virtual origin must not invent a path");
+        assert(virtual_node.artifacts == null, "virtual module must not invent artifacts");
+        mg_node_free(virtual_node);
+    }
+}
+
+/**
+ * Tests test_graph_sorted_enumeration_and_exact_edges.
+ */
+func test_graph_sorted_enumeration_and_exact_edges() {
+    with (
+        let graph = mg_create() => mg_free(graph),
+        let diags = diag_create() => diag_free(diags)
+    ) {
+        let beta = mg_node_from_registry("pkg.beta");
+        let alpha_artifacts = mg_artifacts_for_module("out", "pkg.alpha", diags);
+        assert(alpha_artifacts != null, "expected alpha artifacts");
+        let alpha = mg_node_from_source("pkg.alpha", "src/pkg/alpha.l1", alpha_artifacts as ModuleArtifactPaths*);
+        let zeta = mg_node_virtual("pkg.zeta");
+
+        assert(mg_add_node(graph, beta), "expected beta insertion");
+        assert(mg_add_node(graph, zeta), "expected zeta insertion");
+        assert(mg_add_node(graph, alpha), "expected alpha insertion");
+        assert(mg_node_count(graph) == 3, "graph node count mismatch");
+        let found_alpha = mg_find_node(graph, "pkg.alpha");
+        assert(found_alpha != null, "canonical lookup must find alpha");
+        assert((found_alpha as ModuleGraphNode*).module_name == alpha.module_name, "canonical lookup mismatch");
+        assert(mg_find_node(graph, "pkg.missing") == null, "missing lookup must return null");
+
+        with (let names = mg_node_names_sorted(graph) => sv_free(names)) {
+            assert(sv_size(names) == 3, "sorted name count mismatch");
+            assert(sv_get(names, 0) == "pkg.alpha", "first sorted name mismatch");
+            assert(sv_get(names, 1) == "pkg.beta", "second sorted name mismatch");
+            assert(sv_get(names, 2) == "pkg.zeta", "third sorted name mismatch");
+        }
+
+        with (let nodes = mg_nodes_sorted(graph) => vec_free(nodes)) {
+            assert(vec_size(nodes) == 3, "sorted node count mismatch");
+            assert(mgt_node_at(nodes, 0).module_name == "pkg.alpha", "first sorted node mismatch");
+            assert(mgt_node_at(nodes, 1).module_name == "pkg.beta", "second sorted node mismatch");
+            assert(mgt_node_at(nodes, 2).module_name == "pkg.zeta", "third sorted node mismatch");
+        }
+
+        mg_node_add_direct_import(alpha, "pkg.zeta");
+        mg_node_add_direct_import(alpha, "pkg.beta");
+        mg_node_add_direct_import(alpha, "pkg.zeta");
+        assert(mg_node_direct_import_count(alpha) == 3, "direct imports must retain duplicates");
+        assert(mg_node_direct_import_get(alpha, 0) == "pkg.zeta", "first direct import order mismatch");
+        assert(mg_node_direct_import_get(alpha, 1) == "pkg.beta", "second direct import order mismatch");
+        assert(mg_node_direct_import_get(alpha, 2) == "pkg.zeta", "third direct import order mismatch");
+
+        mg_node_add_dependency(alpha, MDK_REQUIRE, "pkg.beta", "Widget", "sha256:provider");
+        mg_node_add_dependency(alpha, MDK_LINK, "pkg.zeta", "helper", "sha256:provider-z");
+        assert(mg_node_dependency_count(alpha) == 2, "dependency count mismatch");
+        let require_dep = mg_node_dependency_get(alpha, 0);
+        assert(ord(require_dep.kind) == ord(MDK_REQUIRE), "require dependency tier mismatch");
+        assert(require_dep.provider_module == "pkg.beta", "require provider mismatch");
+        assert(require_dep.symbol_name == "Widget", "require symbol mismatch");
+        assert(require_dep.expected_fingerprint == "sha256:provider", "provider fingerprint mismatch");
+        assert(ord(mg_node_dependency_get(alpha, 1).kind) == ord(MDK_LINK), "link dependency tier mismatch");
+
+        assert(ord(mg_node_state(alpha)) == ord(MNS_UNRESOLVED), "new node must start unresolved");
+        mg_node_set_state(alpha, MNS_RESOLVING);
+        assert(ord(mg_node_state(alpha)) == ord(MNS_RESOLVING), "node state update mismatch");
+
+        let duplicate = mg_node_from_registry("pkg.alpha");
+        assert(!mg_add_node(graph, duplicate), "duplicate graph identity must be rejected");
+        mg_node_free(duplicate);
+
+        let invalid = mg_node_virtual("pkg/bad");
+        assert(!mg_add_node(graph, invalid), "invalid graph identity must be rejected");
+        mg_node_free(invalid);
+    }
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_artifacts_for_canonical_module();
+    test_explicit_object_companions();
+    test_discovered_interface_companions();
+    test_invalid_artifact_associations_are_atomic();
+    test_origin_artifact_associations();
+    test_graph_sorted_enumeration_and_exact_edges();
+    printl_s("module_graph_test: all tests passed");
+}

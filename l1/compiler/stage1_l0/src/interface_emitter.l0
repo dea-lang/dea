@@ -339,6 +339,26 @@ func ie_collect_dep_keys(vec: VectorBase*) -> StringVector* {
 }
 
 /**
+ * Collect sorted, deduplicated dependency keys not present in another tier.
+ *
+ * @param vec Vector whose `InterfaceDepEntry*` keys should be collected.
+ * @param excluded Higher-priority dependency vector whose keys are omitted.
+ * @return New sorted StringVector with duplicates and excluded keys removed.
+ */
+func ie_collect_dep_keys_excluding(vec: VectorBase*, excluded: VectorBase*) -> StringVector* {
+    with (let keys = ie_collect_dep_keys(vec) => sv_free(keys)) {
+        let filtered = sv_create(sv_size(keys));
+        for (let i = 0; i < sv_size(keys); i = i + 1) {
+            let key = sv_get(keys, i);
+            if (ie_find_dep_by_key(excluded, key) == null) {
+                sv_push(filtered, key);
+            }
+        }
+        return filtered;
+    }
+}
+
+/**
  * Find a StructInfo in the interface by name.
  *
  * @param mi Module interface to search.
@@ -540,9 +560,9 @@ func ie_emit(mi: ModuleInterface*) -> string {
             }
         }
 
-        if (vec_size(mi.link_entries) > 0) {
-            sb_append(sb, "\n");
-            with (let keys = ie_collect_dep_keys(mi.link_entries) => sv_free(keys)) {
+        with (let keys = ie_collect_dep_keys_excluding(mi.link_entries, mi.require_entries) => sv_free(keys)) {
+            if (sv_size(keys) > 0) {
+                sb_append(sb, "\n");
                 for (let i = 0; i < sv_size(keys); i = i + 1) {
                     let entry = ie_find_dep_by_key(mi.link_entries, sv_get(keys, i)) as InterfaceDepEntry*;
                     ie_emit_dep(sb, "link", entry);

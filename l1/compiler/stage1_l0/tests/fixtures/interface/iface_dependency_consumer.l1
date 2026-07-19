@@ -1,0 +1,34 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module iface_dependency_consumer;
+
+export PublicAlias, PublicHolder, alias_color, selective_color, public_folded, public_identity;
+
+import iface_dependency_provider as dep;
+import Red, RemoteColor, LayoutOne from iface_dependency_provider;
+
+struct PublicHolder {
+    value: dep::RemoteAlias;
+    tone: dep::RemoteColor;
+}
+
+type PublicAlias = dep::RemoteAlias;
+
+const alias_color: dep::RemoteColor = dep::Red;
+const selective_color: RemoteColor = Red;
+const public_folded: int = dep::public_seed + dep::public_seed;
+
+func public_identity(value: dep::RemoteAlias) -> dep::RemoteAlias {
+    return value;
+}
+
+func _implementation_only() -> int {
+    let first = dep::remote_value();
+    let second = dep::remote_value();
+    let shade = dep::Green;
+    return first + second + dep::public_seed + dea::sizeof(int) + dea::sizeof(LayoutOne) +
+        dea::sizeof(iface_dependency_provider::LayoutTwo);
+}

@@ -1249,7 +1249,15 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
         if (sym == null) {
             return null;
         }
-        return etc_symbol_as_type(self, sym as Symbol*);
+        let resolved = etc_symbol_as_type(self, sym as Symbol*);
+        if (resolved != null) {
+            nr_record_resolved_symbol(
+                self.result.names as NameResolution*,
+                self.current_env as ModuleEnv*,
+                sym as Symbol*
+            );
+        }
+        return resolved;
     }
 
     let target_module = tr_module_from_path(expr.module_path as StringVector*);
@@ -1273,7 +1281,15 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
     if (sym2 == null) {
         return null;
     }
-    return etc_symbol_as_type(self, sym2 as Symbol*);
+    let resolved2 = etc_symbol_as_type(self, sym2 as Symbol*);
+    if (resolved2 != null) {
+        nr_record_resolved_symbol(
+            self.result.names as NameResolution*,
+            self.current_env as ModuleEnv*,
+            sym2 as Symbol*
+        );
+    }
+    return resolved2;
 }
 
 /**

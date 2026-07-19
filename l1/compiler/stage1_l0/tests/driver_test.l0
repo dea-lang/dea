@@ -6,11 +6,15 @@
 module driver_test;
 
 import std.io;
+import std.fs;
+import std.path;
 import std.string;
 import std.assert;
+import std.vector;
 
 import source_paths;
 import driver;
+import module_graph;
 import util.log;
 
 /**
@@ -20,6 +24,15 @@ import util.log;
  */
 func fixture_root() -> string {
     return "compiler/stage1_l0/tests/fixtures/driver";
+}
+
+/**
+ * Return the root containing filesystem interface-resolution fixtures.
+ *
+ * @return Module-graph fixture directory.
+ */
+func interface_fixture_root() -> string {
+    return "compiler/stage1_l0/tests/fixtures/module_graph";
 }
 
 /**
@@ -66,6 +79,23 @@ func driver_diag_code_count(result: DriverState*, code: string) -> int {
         }
     }
     return found;
+}
+
+/**
+ * Return the first message carrying one diagnostic code.
+ *
+ * @param result Driver result to inspect.
+ * @param code Diagnostic code to match.
+ * @return Matching message, or `null`.
+ */
+func driver_diag_message(result: DriverState*, code: string) -> string? {
+    for (let i = 0; i < driver_diag_count(result); i = i + 1) {
+        let d = driver_diag_get(result, i);
+        if (d.code == code) {
+            return d.message;
+        }
+    }
+    return null;
 }
 
 /**
@@ -153,6 +183,306 @@ func test_lexer_errors_recover_into_parser() {
 }
 
 /**
+ * Tests the requested target remains source-backed even when a matching
+ * malformed interface exists and strict interface policy is selected.
+ */
+func test_resolution_entry_is_always_source() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "interfaces_first"));
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "ok_leaf", roots, MRP_REQUIRE_INTERFACE, null, cfg
+        );
+        assert(!driver_has_errors(result), "matching entry interface must be ignored");
+        assert(driver_unit_count(result) == 1, "entry should be parsed from source");
+        let node = mg_find_node(driver_graph(result), "ok_leaf") as ModuleGraphNode*;
+        assert(ord(node.origin.kind) == ord(MOK_SOURCE), "entry graph node must be source-backed");
+        assert(mg_node_count(driver_graph(result)) == 2, "source-only graph should also contain virtual dea");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests first-root interface selection, recursive require/link closure,
+ * semantic activation, artifacts, sorted enumeration, and exact imports.
+ */
+func test_interface_first_transitive_graph_contract() {
+    let sp = make_paths();
+    let roots = sv_create(2);
+    let first = join(interface_fixture_root(), "interfaces_first");
+    let second = join(interface_fixture_root(), "interfaces_second");
+    sv_push(roots, first);
+    sv_push(roots, second);
+
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "graph_entry", roots, MRP_REQUIRE_INTERFACE, "build/module-artifacts", cfg
+        );
+        assert(!driver_has_errors(result), "interface-first graph should resolve");
+        assert(driver_unit_count(result) == 1, "interface providers must not load source");
+        assert(driver_provider_fingerprint(result, "graph.provider") == "first-root",
+            "first matching interface root must win");
+
+        let graph = driver_graph(result);
+        assert(mg_node_count(graph) == 6, "expected entry, dea, and four interface graph nodes");
+        with (let names = mg_node_names_sorted(graph) => sv_free(names),
+              let names2 = mg_node_names_sorted(graph) => sv_free(names2)) {
+            assert(sv_size(names) == 6 && sv_size(names2) == 6, "sorted graph enumeration size mismatch");
+            assert(sv_get(names, 0) == "dea", "dea should sort first");
+            assert(sv_get(names, 1) == "graph.linked", "link provider ordering mismatch");
+            assert(sv_get(names, 2) == "graph.provider", "direct provider ordering mismatch");
+            assert(sv_get(names, 3) == "graph.required", "require provider ordering mismatch");
+            assert(sv_get(names, 4) == "graph.unused", "unused direct import ordering mismatch");
+            assert(sv_get(names, 5) == "graph_entry", "entry ordering mismatch");
+            for (let i = 0; i < sv_size(names); i = i + 1) {
+                assert(sv_get(names, i) == sv_get(names2, i), "graph enumeration must be stable");
+            }
+        }
+
+        let entry = mg_find_node(graph, "graph_entry") as ModuleGraphNode*;
+        assert(mg_node_direct_import_count(entry) == 3, "direct imports must retain duplicates and unused entries");
+        assert(mg_node_direct_import_get(entry, 0) == "graph.provider", "first direct import mismatch");
+        assert(mg_node_direct_import_get(entry, 1) == "graph.unused", "unused direct import mismatch");
+        assert(mg_node_direct_import_get(entry, 2) == "graph.provider", "duplicate direct import mismatch");
+        assert(entry.artifacts != null, "source artifact root should associate artifacts");
+        assert((entry.artifacts as ModuleArtifactPaths*).interface_path ==
+            "build/module-artifacts/graph_entry.l1m", "source artifact spelling mismatch");
+
+        let provider = mg_find_node(graph, "graph.provider") as ModuleGraphNode*;
+        assert(ord(provider.origin.kind) == ord(MOK_INTERFACE), "provider should be filesystem-interface backed");
+        assert(provider.origin.path != null && provider.origin.path as string == join(first, "graph/provider.l1m"),
+            "selected provider path mismatch");
+        assert(provider.artifacts != null, "filesystem interface must derive sibling artifacts");
+        assert((provider.artifacts as ModuleArtifactPaths*).c_path == join(first, "graph/provider.c"),
+            "interface sibling C path mismatch");
+        assert(mg_node_dependency_count(provider) == 2, "provider manifest edge count mismatch");
+        let require_dep = mg_node_dependency_get(provider, 0);
+        let link_dep = mg_node_dependency_get(provider, 1);
+        assert(ord(require_dep.kind) == ord(MDK_REQUIRE), "first edge must retain require tier");
+        assert(require_dep.expected_fingerprint == "require-expectation", "require expectation must be opaque");
+        assert(ord(link_dep.kind) == ord(MDK_LINK), "second edge must retain link tier");
+        assert(link_dep.expected_fingerprint == "link-expectation", "link expectation must be opaque");
+
+        assert(driver_interface_count(result) == 3,
+            "direct providers plus transitive require providers should activate exactly once");
+        assert(driver_find_interface(result, "graph.provider") != null, "direct provider should activate");
+        assert(driver_find_interface(result, "graph.unused") != null, "unused direct import should activate");
+        assert(driver_find_interface(result, "graph.required") != null, "transitive require provider should activate");
+        assert(driver_find_interface(result, "graph.linked") == null, "link-only provider must not enter semantic scope");
+        assert(driver_find_graph_interface(result, "graph.linked") != null,
+            "link-only provider must remain available through the graph");
+        assert(!has_driver_diag_code(result, "DRV-0030"), "duplicate imports are cache hits, not cycles");
+        driver_state_free(result);
+    }
+
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests strict resolution rejects a missing imported interface without using
+ * otherwise available source fallback.
+ */
+func test_required_interface_missing_is_specific() {
+    let sp = sp_create();
+    sp_add_project_root(sp, fixture_root());
+    sp_add_system_root(sp, join(fixture_root(), "source_system"));
+    let roots = sv_create(0);
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "fallback_entry", roots, MRP_REQUIRE_INTERFACE, null, cfg
+        );
+        assert(driver_has_errors(result), "strict policy should reject missing provider interface");
+        assert(has_driver_diag_code(result, "DRV-0074"), "expected DRV-0074");
+        assert(driver_find_unit(result, "graph.fallback") == null, "strict policy must not load provider source");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests source fallback retains system-root-before-project-root precedence.
+ */
+func test_source_fallback_preserves_root_precedence() {
+    let sp = sp_create();
+    let system_root = join(fixture_root(), "source_system");
+    let project_root = join(fixture_root(), "source_project");
+    sp_add_system_root(sp, system_root);
+    sp_add_project_root(sp, fixture_root());
+    sp_add_project_root(sp, project_root);
+    let roots = sv_create(0);
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "fallback_entry", roots, MRP_ALLOW_SOURCE_FALLBACK, null, cfg
+        );
+        assert(!driver_has_errors(result), "source fallback should resolve");
+        let unit = driver_find_unit(result, "graph.fallback") as DriverUnit*;
+        assert(unit.path == join(system_root, "graph/fallback.l1"), "system source root must win fallback");
+        let node = mg_find_node(driver_graph(result), "graph.fallback") as ModuleGraphNode*;
+        assert(ord(node.origin.kind) == ord(MOK_SOURCE), "fallback provider should be source-backed");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests interface roots are validated before source loading begins.
+ */
+func test_invalid_interface_root_reports_drv_0073() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "does-not-exist"));
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "ok_leaf", roots, MRP_ALLOW_SOURCE_FALLBACK, null, cfg
+        );
+        assert(driver_has_errors(result), "invalid root should fail graph loading");
+        assert(has_driver_diag_code(result, "DRV-0073"), "expected DRV-0073");
+        assert(driver_unit_count(result) == 0, "invalid roots should fail before entry parsing");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests the first existing malformed interface is authoritative over source.
+ */
+func test_selected_malformed_interface_is_authoritative() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "interfaces_bad_parse"));
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "provider_entry", roots, MRP_ALLOW_SOURCE_FALLBACK, null, cfg
+        );
+        assert(driver_has_errors(result), "malformed selected interface should fail");
+        assert(has_driver_diag_code(result, "PAR-0561"), "selected interface should retain parser diagnostics");
+        assert(driver_diag_code_count(result, "PAR-0561") == 1, "selected interface must be parsed only once");
+        assert(!has_driver_diag_code(result, "DRV-0030"), "a repeated failed-node lookup is not a cycle");
+        assert(driver_find_unit(result, "graph.provider") == null, "malformed selection must not fall back to source");
+        let node = mg_find_node(driver_graph(result), "graph.provider") as ModuleGraphNode*;
+        assert(ord(node.state) == ord(MNS_FAILED), "selected malformed interface node must remain failed");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests conflicting attempts to register one canonical graph identity use the
+ * dedicated DRV-0077 diagnostic and preserve the first origin.
+ */
+func test_conflicting_graph_identity_reports_drv_0077() {
+    let state = dr_state_create("conflict", null);
+    let first = mg_node_from_source("conflict", "first/conflict.l1", null);
+    let second = mg_node_from_source("conflict", "second/conflict.l1", null);
+    assert(dr_add_graph_node(state, first), "first canonical graph identity should register");
+    assert(!dr_add_graph_node(state, second), "conflicting canonical graph identity should fail");
+    assert(has_driver_diag_code(state, "DRV-0077"), "expected DRV-0077");
+    let retained = mg_find_node(driver_graph(state), "conflict") as ModuleGraphNode*;
+    assert(retained.origin.path != null && retained.origin.path as string == "first/conflict.l1",
+        "graph must preserve the first selected origin");
+    driver_state_free(state);
+}
+
+/**
+ * Tests interface header identity mismatch reuses DRV-0020 authoritatively.
+ */
+func test_selected_interface_header_mismatch_is_authoritative() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "interfaces_bad_header"));
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "provider_entry", roots, MRP_ALLOW_SOURCE_FALLBACK, null, cfg
+        );
+        assert(driver_has_errors(result), "mismatched selected interface should fail");
+        assert(has_driver_diag_code(result, "DRV-0020"), "expected DRV-0020 for interface identity mismatch");
+        assert(driver_find_unit(result, "graph.provider") == null, "mismatch must not fall back to source");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests a selected non-regular interface path reports DRV-0075.
+ */
+func test_selected_nonregular_interface_reports_drv_0075() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "interfaces_nonregular"));
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "provider_entry", roots, MRP_ALLOW_SOURCE_FALLBACK, null, cfg
+        );
+        assert(driver_has_errors(result), "non-regular selected interface should fail");
+        assert(has_driver_diag_code(result, "DRV-0075"), "expected DRV-0075");
+        assert(driver_find_unit(result, "graph.provider") == null, "non-regular selection must not fall back");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests invalid selected interface UTF-8 reports DRV-0076 authoritatively.
+ */
+func test_selected_invalid_utf8_interface_reports_drv_0076() {
+    let path = "build/utf8_provider.l1m";
+    assert(write_file(path, byte_to_s(255 as byte)) != null, "expected invalid UTF-8 fixture write");
+
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, "build");
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "utf8_entry", roots, MRP_ALLOW_SOURCE_FALLBACK, null, cfg
+        );
+        assert(driver_has_errors(result), "invalid interface UTF-8 should fail");
+        assert(has_driver_diag_code(result, "DRV-0076"), "expected DRV-0076");
+        assert(driver_find_unit(result, "utf8_provider") == null, "invalid interface must not fall back");
+        driver_state_free(result);
+    }
+    std.fs::delete_file(path);
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests interface require/link cycles report the complete canonical chain and
+ * never transition failed nodes to resolved cache entries.
+ */
+func test_interface_cycle_reports_complete_chain_and_failed_state() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "interfaces_cycle"));
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "interface_cycle_entry", roots, MRP_REQUIRE_INTERFACE, null, cfg
+        );
+        assert(driver_has_errors(result), "interface cycle should fail");
+        let message = driver_diag_message(result, "DRV-0030");
+        assert(message != null, "expected DRV-0030 cycle diagnostic");
+        assert(contains_s(message as string, "cycle.one -> cycle.two -> cycle.one"),
+            "cycle diagnostic must contain the complete canonical chain");
+        let one = mg_find_node(driver_graph(result), "cycle.one") as ModuleGraphNode*;
+        let two = mg_find_node(driver_graph(result), "cycle.two") as ModuleGraphNode*;
+        assert(ord(one.state) == ord(MNS_FAILED), "cycle.one must remain failed");
+        assert(ord(two.state) == ord(MNS_FAILED), "cycle.two must remain failed");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -161,5 +491,16 @@ func main() {
     test_module_name_mismatch_reports_error();
     test_read_failure_reports_error();
     test_lexer_errors_recover_into_parser();
+    test_resolution_entry_is_always_source();
+    test_interface_first_transitive_graph_contract();
+    test_required_interface_missing_is_specific();
+    test_source_fallback_preserves_root_precedence();
+    test_invalid_interface_root_reports_drv_0073();
+    test_selected_malformed_interface_is_authoritative();
+    test_conflicting_graph_identity_reports_drv_0077();
+    test_selected_interface_header_mismatch_is_authoritative();
+    test_selected_nonregular_interface_reports_drv_0075();
+    test_selected_invalid_utf8_interface_reports_drv_0076();
+    test_interface_cycle_reports_complete_chain_and_failed_state();
     printl_s("driver_test: all tests passed");
 }

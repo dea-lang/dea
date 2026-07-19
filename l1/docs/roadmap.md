@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-17
+Version: 2026-07-19
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -15,6 +15,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - `compiler/stage2_l1/` is a placeholder for a future self-hosted L1 compiler.
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
 - The current backend emits one C99 translation unit per program.
+- Internal resolution-aware APIs expose canonical artifact associations and a deterministic source/interface module
+  graph; compile-only, standalone linking, and multi-CU build/run remain non-operational.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 - Exact generated-C golden-file parity and L1 triple-bootstrap are not part of the current Stage 1 contract.
@@ -115,6 +117,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   source/interface enum export parity, indexed active-provider state, and signed and aggregate literals. Its CLI tranche
   reserved shared `-c` / `--compile` and ordered `-I` / `--interface-path` syntax while keeping compile dispatch
   explicitly NYI.
+- Feature [2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref][artifact-graph] added canonical
+  module-to-artifact association, interface-first discovery with caller-selected source fallback, recursive `.l1m`
+  closure, deterministic graph enumeration, ordered direct-import edges, and populated `require` / `link` manifests. It
+  left compile-only, standalone linking, and multi-CU build/run non-operational.
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
 - Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] made Stage 1 check array
@@ -150,8 +156,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   1 runtime fixtures.
 - Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
   first-position anonymous embedded struct member with promoted field access.
-- Feature [2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref][artifact-graph] defines canonical
-  artifact association, transitive `.l1m` discovery, and the deterministic source/interface module graph.
 - Feature [2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints] adds
   whole-module `.l1m` fingerprint production and consumer verification.
 - Feature [2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref][lifecycle-entrypoints] emits one module per C
@@ -256,7 +260,7 @@ update to be promoted to an initiative or plan:
 
 [abi-prefix]: ../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md
 [arrays-unsafe]: ../work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md
-[artifact-graph]: ../work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[artifact-graph]: ../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
 [build-run]: ../work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md

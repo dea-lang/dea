@@ -59,6 +59,21 @@ struct PendingExternShadow {
 struct NameResolution {
     envs: VectorBase*;               // ModuleEnv*
     by_name: StringPtrMap*;          // string -> ModuleEnv* (non-owning)
+    resolved_symbols: VectorBase*;   // ResolvedSymbolRef*
+    resolved_symbol_keys: StringSet*;
+}
+
+/**
+ * Represents one canonical cross-module symbol resolved from a consumer.
+ *
+ * Enum-variant lookups are normalized to their owning enum before entries are
+ * recorded. Same-module and compiler-synthesized virtual-module lookups never
+ * enter this ledger.
+ */
+struct ResolvedSymbolRef {
+    consumer_module: string;
+    provider_module: string;
+    symbol_name: string;
 }
 
 /**
@@ -280,7 +295,82 @@ func nr_free(self: NameResolution*) {
     }
     vec_free(self.envs);
     spm_free(self.by_name);
+    for (let ref_i = 0; ref_i < vec_size(self.resolved_symbols); ref_i = ref_i + 1) {
+        let resolved_ref = ptr_vec_get(self.resolved_symbols, ref_i) as ResolvedSymbolRef*;
+        drop resolved_ref;
+    }
+    vec_free(self.resolved_symbols);
+    ss_free(self.resolved_symbol_keys);
     drop self;
+}
+
+/**
+ * Return the canonical dependency name for a resolved symbol.
+ *
+ * @param sym Resolved symbol to normalize.
+ * @return Owning enum name for a variant, otherwise the symbol's own name.
+ */
+func nr_dependency_symbol_name(sym: Symbol*) -> string {
+    if (ord(sym.kind) == ord(SYM_ENUM_VARIANT)) {
+        return sym.owner_name;
+    }
+    return sym.name;
+}
+
+/**
+ * Report whether a resolved symbol is a real cross-module dependency.
+ *
+ * @param consumer_module Module from which the lookup was performed.
+ * @param sym Successfully resolved symbol.
+ * @return `true` for non-virtual provider symbols owned by another module.
+ */
+func nr_is_cross_module_symbol(consumer_module: string, sym: Symbol*) -> bool {
+    return sym.module_name != consumer_module && !dea_is_virtual_module_name(sym.module_name);
+}
+
+/**
+ * Record one successful cross-module symbol lookup in the canonical ledger.
+ *
+ * Repeated lookups of the same provider-owned symbol from one consumer are
+ * deduplicated. Enum variants share their owning enum's ledger identity.
+ *
+ * @param self Name-resolution result receiving the lookup.
+ * @param consumer_env Environment from which the lookup was performed.
+ * @param sym Successfully resolved symbol.
+ */
+func nr_record_resolved_symbol(self: NameResolution*, consumer_env: ModuleEnv*, sym: Symbol*) {
+    if (!nr_is_cross_module_symbol(consumer_env.module_name, sym)) {
+        return;
+    }
+    let symbol_name = nr_dependency_symbol_name(sym);
+    let key = consumer_env.module_name + "|" + sym.module_name + "::" + symbol_name;
+    if (ss_has(self.resolved_symbol_keys, key)) {
+        return;
+    }
+    ss_add(self.resolved_symbol_keys, key);
+    ptr_vec_push(self.resolved_symbols,
+        new ResolvedSymbolRef(consumer_env.module_name, sym.module_name, symbol_name) as void*);
+}
+
+/**
+ * Return the number of canonical cross-module resolved-symbol entries.
+ *
+ * @param self Name-resolution result to inspect.
+ * @return Resolved-symbol entry count.
+ */
+func nr_resolved_symbol_count(self: NameResolution*) -> int {
+    return vec_size(self.resolved_symbols);
+}
+
+/**
+ * Return one canonical cross-module resolved-symbol entry.
+ *
+ * @param self Name-resolution result to inspect.
+ * @param index Zero-based entry index.
+ * @return Borrowed resolved-symbol entry.
+ */
+func nr_resolved_symbol_get(self: NameResolution*, index: int) -> ResolvedSymbolRef* {
+    return ptr_vec_get(self.resolved_symbols, index) as ResolvedSymbolRef*;
 }
 
 /**
@@ -1186,7 +1276,12 @@ func nr_env_names_sorted(self: NameResolution*) -> StringVector* {
  * @return Name-resolution result containing per-module environments.
  */
 func nr_resolve(driver_state: DriverState*, diags: DiagCollector*) -> NameResolution* {
-    let result = new NameResolution(ptr_vec_create(driver_unit_count(driver_state) + driver_interface_count(driver_state) + 1), spm_create());
+    let result = new NameResolution(
+        ptr_vec_create(driver_unit_count(driver_state) + driver_interface_count(driver_state) + 1),
+        spm_create(),
+        ptr_vec_create(16),
+        ss_create()
+    );
 
     for (let i = 0; i < driver_unit_count(driver_state); i = i + 1) {
         let unit = driver_unit_get(driver_state, i);

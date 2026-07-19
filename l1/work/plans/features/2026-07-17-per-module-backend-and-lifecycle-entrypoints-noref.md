@@ -23,7 +23,7 @@
   - `l1/compiler/stage1_l0/tests/fixtures/driver/toplet_init_dep.l1`
   - `l1/compiler/stage1_l0/tests/fixtures/driver/toplet_init_main.l1`
 - Related:
-  - [`l1/work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
+  - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md`][superseded-init]
@@ -189,6 +189,6 @@ the legacy generator until the fan-out plan removes it.
 
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
-[module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
 [superseded-init]: closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md

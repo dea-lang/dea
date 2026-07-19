@@ -132,12 +132,12 @@ func sp_format_root_list(roots: StringVector*) -> string {
 }
 
 /**
- * Convert a dotted module name to its relative `.l1` path.
+ * Convert a dotted module name to an unchecked relative path stem.
  *
  * @param module_name Dotted module name such as `foo.bar`.
- * @return Relative source path such as `foo/bar.l1`.
+ * @return Relative path stem such as `foo/bar`.
  */
-func sp_module_relpath(module_name: string) -> string {
+func _sp_module_relstem_unchecked(module_name: string) -> string {
     with (let cb = cb_create() => cb_free(cb)) {
         for (let i = 0; i < len_s(module_name); i = i + 1) {
             let c = char_at_s(module_name, i);
@@ -147,9 +147,22 @@ func sp_module_relpath(module_name: string) -> string {
                 cb_append(cb, c);
             }
         }
-        cb_append_s(cb, ".l1");
         return cb_to_string(cb);
     }
+}
+
+/**
+ * Convert a dotted module name to its relative `.l1` path.
+ *
+ * This compatibility helper assumes that the caller already validated the
+ * module name. New artifact and interface discovery code should use
+ * `sp_module_source_relpath` or `sp_module_interface_relpath` instead.
+ *
+ * @param module_name Dotted module name such as `foo.bar`.
+ * @return Relative source path such as `foo/bar.l1`.
+ */
+func sp_module_relpath(module_name: string) -> string {
+    return _sp_module_relstem_unchecked(module_name) + ".l1";
 }
 
 /**
@@ -160,7 +173,11 @@ func sp_module_relpath(module_name: string) -> string {
  * @return First matching source path, or `null` if the module is not found.
  */
 func sp_resolve(self: SourceSearchPaths*, module_name: string) -> string? {
-    let rel = sp_module_relpath(module_name);
+    let rel_opt = sp_module_source_relpath(module_name);
+    if (rel_opt == null) {
+        return null;
+    }
+    let rel = rel_opt as string;
 
     for (let i = 0; i < sv_size(self.system_roots); i = i + 1) {
         let candidate = join(sv_get(self.system_roots, i), rel);
@@ -226,6 +243,47 @@ func sp_is_valid_module_name(module_name: string) -> bool {
     }
 
     return true;
+}
+
+/**
+ * Convert a validated dotted module name to its relative artifact stem.
+ *
+ * @param module_name Canonical dotted module name such as `foo.bar`.
+ * @return Relative stem such as `foo/bar`, or `null` when invalid.
+ */
+func sp_module_relstem(module_name: string) -> string? {
+    if (!sp_is_valid_module_name(module_name)) {
+        return null;
+    }
+    return _sp_module_relstem_unchecked(module_name);
+}
+
+/**
+ * Convert a validated dotted module name to its relative source path.
+ *
+ * @param module_name Canonical dotted module name such as `foo.bar`.
+ * @return Relative `.l1` path such as `foo/bar.l1`, or `null` when invalid.
+ */
+func sp_module_source_relpath(module_name: string) -> string? {
+    let relstem = sp_module_relstem(module_name);
+    if (relstem == null) {
+        return null;
+    }
+    return relstem as string + ".l1";
+}
+
+/**
+ * Convert a validated dotted module name to its relative interface path.
+ *
+ * @param module_name Canonical dotted module name such as `foo.bar`.
+ * @return Relative `.l1m` path such as `foo/bar.l1m`, or `null` when invalid.
+ */
+func sp_module_interface_relpath(module_name: string) -> string? {
+    let relstem = sp_module_relstem(module_name);
+    if (relstem == null) {
+        return null;
+    }
+    return relstem as string + ".l1m";
 }
 
 /**

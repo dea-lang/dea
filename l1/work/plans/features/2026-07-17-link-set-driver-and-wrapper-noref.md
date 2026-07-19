@@ -32,7 +32,7 @@
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
-  - [`l1/work/plans/features/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
+  - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
   - [`l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
@@ -207,5 +207,5 @@ repeats the path with `extern "C"`.
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
