@@ -44,6 +44,8 @@ struct DriverUnit {
 struct DriverState {
     entry_module: string;
     graph: ModuleGraph*;
+    /** Module lookups that failed before graph-node creation. */
+    failed_resolutions: StringSet*;
     units: VectorBase*; // DriverUnit*
     units_by_name: StringPtrMap*; // module name -> DriverUnit*
     graph_interfaces: VectorBase*; // raw ModuleInterface* selected by the graph
@@ -109,6 +111,7 @@ func dr_interfaces_free(interfaces: VectorBase*?) {
  * @param self Driver state to free.
  */
 func driver_state_free(self: DriverState*) {
+    ss_free(self.failed_resolutions);
     spm_free(self.units_by_name);
     spm_free(self.graph_interfaces_by_name);
     spm_free(self.interfaces_by_name);
@@ -449,6 +452,7 @@ func dr_state_create(entry_module: string, interfaces: VectorBase*?) -> DriverSt
     let state = new DriverState(
         entry_module,
         mg_create(),
+        ss_create(),
         ptr_vec_create(8),
         spm_create(),
         ptr_vec_create(interface_capacity),
@@ -658,9 +662,15 @@ func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResu
 func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_paths: SourceSearchPaths*,
                        interface_roots: StringVector*, policy: ModuleResolutionPolicy, artifact_root: string?,
                        stack: StringVector*, module_name: string, force_source: bool, cfg: LogConfig*) -> bool {
+    if (ss_has(state.failed_resolutions, module_name)) {
+        log_debug(cfg, "Module '" + module_name + "' retains its failed pre-graph resolution state");
+        return false;
+    }
+
     if (!sp_is_valid_module_name(module_name)) {
         dr_emit_error(state.diags, "DRV-0072",
             "invalid canonical module name: '" + module_name + "'", "");
+        ss_add(state.failed_resolutions, module_name);
         return false;
     }
 
@@ -734,6 +744,7 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
                 let interface_path = interface_path_opt as string;
                 let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
                 if (artifacts == null) {
+                    ss_add(state.failed_resolutions, module_name);
                     return false;
                 }
                 let node2 = mg_node_from_interface(module_name, interface_path, artifacts as ModuleArtifactPaths*);
@@ -813,6 +824,7 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
             if (ord(policy) == ord(MRP_REQUIRE_INTERFACE)) {
                 dr_emit_error(state.diags, "DRV-0074",
                     "required module interface for '" + module_name + "' was not found", "");
+                ss_add(state.failed_resolutions, module_name);
                 return false;
             }
         }
@@ -821,6 +833,7 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
         if (path_opt == null) {
             dr_emit_error(state.diags, "DRV-0010",
                 "Module '" + module_name + "' not found in system_roots or project_roots", "");
+            ss_add(state.failed_resolutions, module_name);
             return false;
         }
         let path = path_opt as string;
@@ -828,6 +841,7 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
         if (artifact_root != null) {
             artifacts2 = mg_artifacts_for_module(artifact_root as string, module_name, state.diags);
             if (artifacts2 == null) {
+                ss_add(state.failed_resolutions, module_name);
                 return false;
             }
         }
@@ -895,11 +909,21 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
  * @param state Driver state containing raw parsed interfaces.
  */
 func dr_normalize_graph_interfaces(state: DriverState*) {
-    for (let i = 0; i < vec_size(state.graph_interfaces); i = i + 1) {
-        pi_normalize_interface_types(
-            ptr_vec_get(state.graph_interfaces, i) as ModuleInterface*,
-            state.graph_interfaces
-        );
+    with (let source_modules = ptr_vec_create(vec_size(state.units)) => vec_free(source_modules)) {
+        for (let unit_i = 0; unit_i < vec_size(state.units); unit_i = unit_i + 1) {
+            let unit = ptr_vec_get(state.units, unit_i) as DriverUnit*;
+            if (unit.parse_result.root_module != null) {
+                ptr_vec_push(source_modules, unit.parse_result.root_module as void*);
+            }
+        }
+
+        for (let i = 0; i < vec_size(state.graph_interfaces); i = i + 1) {
+            pi_normalize_interface_types_with_sources(
+                ptr_vec_get(state.graph_interfaces, i) as ModuleInterface*,
+                state.graph_interfaces,
+                source_modules
+            );
+        }
     }
 }
 

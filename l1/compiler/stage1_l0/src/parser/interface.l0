@@ -1207,27 +1207,89 @@ func pi_normalize_against_peers(peers: VectorBase*, ty: Type*) -> bool {
 }
 
 /**
- * Normalize one parsed type against the fully parsed local nominal tables and
- * an optional peer interface registry.
+ * Report whether one source module declares an enum with the requested name.
+ *
+ * @param mod Borrowed parsed source module.
+ * @param name Nominal type name.
+ * @return `true` when `name` identifies an enum declaration in `mod`.
+ */
+func pi_source_has_enum(mod: Module*, name: string) -> bool {
+    for (let i = 0; i < vec_size(mod.decls); i = i + 1) {
+        let decl = ptr_vec_get(mod.decls, i) as TopLevelDecl*;
+        if (ord(decl.kind) == ord(TD_ENUM) && (decl.data as EnumDecl*).name == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Report whether one source module declares a struct with the requested name.
+ *
+ * @param mod Borrowed parsed source module.
+ * @param name Nominal type name.
+ * @return `true` when `name` identifies a struct declaration in `mod`.
+ */
+func pi_source_has_struct(mod: Module*, name: string) -> bool {
+    for (let i = 0; i < vec_size(mod.decls); i = i + 1) {
+        let decl = ptr_vec_get(mod.decls, i) as TopLevelDecl*;
+        if (ord(decl.kind) == ord(TD_STRUCT) && (decl.data as StructDecl*).name == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Look up a cross-module nominal name in parsed source modules.
+ *
+ * @param sources Vector of borrowed `Module*` source modules to consult.
+ * @param ty Type carrying the qualified `module_name`/`name` to resolve.
+ * @return `true` when `ty.kind` was normalized against a matching source declaration.
+ */
+func pi_normalize_against_sources(sources: VectorBase*, ty: Type*) -> bool {
+    for (let i = 0; i < vec_size(sources); i = i + 1) {
+        let mod = ptr_vec_get(sources, i) as Module*;
+        if (mod.name != ty.module_name) {
+            continue;
+        }
+        if (pi_source_has_enum(mod, ty.name)) {
+            ty.kind = TY_ENUM;
+            return true;
+        }
+        if (pi_source_has_struct(mod, ty.name)) {
+            ty.kind = TY_STRUCT;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Normalize one parsed type against the fully parsed local nominal tables,
+ * peer interfaces, and parsed source modules.
  *
  * @param mi Module interface owning the type.
  * @param ty Type to normalize in place.
  * @param peers Optional vector of `ModuleInterface*` peers used to resolve
  *              cross-module nominal kinds.
+ * @param sources Optional vector of borrowed `Module*` source modules used to
+ *                resolve cross-module nominal kinds.
  */
-func pi_normalize_type(mi: ModuleInterface*, ty: Type*, peers: VectorBase*?) {
+func pi_normalize_type_with_sources(mi: ModuleInterface*, ty: Type*, peers: VectorBase*?,
+                                    sources: VectorBase*?) {
     if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE) ||
         ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_SLICE)) {
-        pi_normalize_type(mi, ty.inner as Type*, peers);
+        pi_normalize_type_with_sources(mi, ty.inner as Type*, peers, sources);
         return;
     }
 
     if (ord(ty.kind) == ord(TY_FUNC)) {
         let params = ty.params as VectorBase*;
         for (let i = 0; i < vec_size(params); i = i + 1) {
-            pi_normalize_type(mi, ptr_vec_get(params, i) as Type*, peers);
+            pi_normalize_type_with_sources(mi, ptr_vec_get(params, i) as Type*, peers, sources);
         }
-        pi_normalize_type(mi, ty.result as Type*, peers);
+        pi_normalize_type_with_sources(mi, ty.result as Type*, peers, sources);
         return;
     }
 
@@ -1258,23 +1320,44 @@ func pi_normalize_type(mi: ModuleInterface*, ty: Type*, peers: VectorBase*?) {
     }
 
     if (peers != null && ty.module_name != mi.module_name) {
-        pi_normalize_against_peers(peers as VectorBase*, ty);
+        if (pi_normalize_against_peers(peers as VectorBase*, ty)) {
+            return;
+        }
+    }
+    if (sources != null && ty.module_name != mi.module_name) {
+        pi_normalize_against_sources(sources as VectorBase*, ty);
     }
 }
 
 /**
- * Normalize every parsed type inside a module interface.
+ * Normalize one parsed type without parsed source-module peers.
+ *
+ * @param mi Module interface owning the type.
+ * @param ty Type to normalize in place.
+ * @param peers Optional vector of `ModuleInterface*` peers used to resolve
+ *              cross-module nominal kinds.
+ */
+func pi_normalize_type(mi: ModuleInterface*, ty: Type*, peers: VectorBase*?) {
+    pi_normalize_type_with_sources(mi, ty, peers, null);
+}
+
+/**
+ * Normalize every parsed type inside a module interface against interface and
+ * source peers.
  *
  * @param mi Module interface to normalize in place.
  * @param peers Optional vector of `ModuleInterface*` peers used to resolve
  *              cross-module nominal kinds.
+ * @param sources Optional vector of borrowed `Module*` source modules used to
+ *                resolve cross-module nominal kinds.
  */
-func pi_normalize_interface_types(mi: ModuleInterface*, peers: VectorBase*?) {
+func pi_normalize_interface_types_with_sources(mi: ModuleInterface*, peers: VectorBase*?,
+                                               sources: VectorBase*?) {
     for (let i = 0; i < vec_size(mi.struct_infos); i = i + 1) {
         let info = ptr_vec_get(mi.struct_infos, i) as StructInfo*;
         for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
             let field = ptr_vec_get(info.fields, field_i) as StructFieldInfo*;
-            pi_normalize_type(mi, field.field_type, peers);
+            pi_normalize_type_with_sources(mi, field.field_type, peers, sources);
         }
     }
 
@@ -1283,22 +1366,54 @@ func pi_normalize_interface_types(mi: ModuleInterface*, peers: VectorBase*?) {
         for (let var_i = 0; var_i < vec_size(info2.variants); var_i = var_i + 1) {
             let variant = ptr_vec_get(info2.variants, var_i) as EnumVariantInfo*;
             for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
-                pi_normalize_type(mi, ptr_vec_get(variant.field_types, field_i2) as Type*, peers);
+                pi_normalize_type_with_sources(
+                    mi,
+                    ptr_vec_get(variant.field_types, field_i2) as Type*,
+                    peers,
+                    sources
+                );
             }
         }
     }
 
     for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
-        pi_normalize_type(mi, (ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*).ty, peers);
+        pi_normalize_type_with_sources(
+            mi,
+            (ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*).ty,
+            peers,
+            sources
+        );
     }
 
     for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
-        pi_normalize_type(mi, (ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*).ty, peers);
+        pi_normalize_type_with_sources(
+            mi,
+            (ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*).ty,
+            peers,
+            sources
+        );
     }
 
     for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
-        pi_normalize_type(mi, (ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*).ty, peers);
+        pi_normalize_type_with_sources(
+            mi,
+            (ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*).ty,
+            peers,
+            sources
+        );
     }
+}
+
+/**
+ * Normalize every parsed type inside a module interface without parsed source
+ * peers.
+ *
+ * @param mi Module interface to normalize in place.
+ * @param peers Optional vector of `ModuleInterface*` peers used to resolve
+ *              cross-module nominal kinds.
+ */
+func pi_normalize_interface_types(mi: ModuleInterface*, peers: VectorBase*?) {
+    pi_normalize_interface_types_with_sources(mi, peers, null);
 }
 
 /**

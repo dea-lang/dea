@@ -305,6 +305,55 @@ func test_required_interface_missing_is_specific() {
 }
 
 /**
+ * Tests repeated manifest edges to one absent provider retain every graph edge
+ * while reporting and searching for that provider only once.
+ */
+func test_repeated_missing_provider_is_resolved_once() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "interfaces_repeated_missing"));
+
+    with (let strict_cfg = log_config_create(LL_SILENT, false) => drop strict_cfg) {
+        let strict = driver_analyze_entry_with_resolution(
+            sp, "repeated_missing_entry", roots, MRP_REQUIRE_INTERFACE, null, strict_cfg
+        );
+        assert(driver_has_errors(strict), "strict policy should reject the absent provider");
+        assert(driver_diag_code_count(strict, "DRV-0074") == 1,
+            "strict policy should report one missing-interface diagnostic per provider");
+        assert(driver_diag_code_count(strict, "DRV-0010") == 0,
+            "strict policy must not attempt source fallback");
+        let strict_fanout = mg_find_node(driver_graph(strict), "missing.fanout") as ModuleGraphNode*;
+        assert(ord(strict_fanout.state) == ord(MNS_FAILED), "fanout node should retain failed state");
+        assert(mg_node_dependency_count(strict_fanout) == 3,
+            "resolution caching must retain all require and link edges");
+        assert(mg_find_node(driver_graph(strict), "missing.provider") == null,
+            "an absent provider must not create a public graph node");
+        driver_state_free(strict);
+    }
+
+    with (let fallback_cfg = log_config_create(LL_SILENT, false) => drop fallback_cfg) {
+        let fallback = driver_analyze_entry_with_resolution(
+            sp, "repeated_missing_entry", roots, MRP_ALLOW_SOURCE_FALLBACK, null, fallback_cfg
+        );
+        assert(driver_has_errors(fallback), "fallback policy should reject the absent source provider");
+        assert(driver_diag_code_count(fallback, "DRV-0010") == 1,
+            "fallback policy should report one missing-source diagnostic per provider");
+        assert(driver_diag_code_count(fallback, "DRV-0074") == 0,
+            "fallback policy should not report a strict-interface diagnostic");
+        let fallback_fanout = mg_find_node(driver_graph(fallback), "missing.fanout") as ModuleGraphNode*;
+        assert(ord(fallback_fanout.state) == ord(MNS_FAILED), "fanout node should retain failed state");
+        assert(mg_node_dependency_count(fallback_fanout) == 3,
+            "fallback caching must retain all require and link edges");
+        assert(mg_find_node(driver_graph(fallback), "missing.provider") == null,
+            "an absent source provider must not create a public graph node");
+        driver_state_free(fallback);
+    }
+
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
  * Tests source fallback retains system-root-before-project-root precedence.
  */
 func test_source_fallback_preserves_root_precedence() {
@@ -494,6 +543,7 @@ func main() {
     test_resolution_entry_is_always_source();
     test_interface_first_transitive_graph_contract();
     test_required_interface_missing_is_specific();
+    test_repeated_missing_provider_is_resolved_once();
     test_source_fallback_preserves_root_precedence();
     test_invalid_interface_root_reports_drv_0073();
     test_selected_malformed_interface_is_authoritative();

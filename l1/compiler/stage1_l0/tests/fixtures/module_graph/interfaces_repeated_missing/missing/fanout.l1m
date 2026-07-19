@@ -1,0 +1,8 @@
+module interface missing.fanout;
+fingerprint "fanout";
+
+require missing.provider::First == "missing-first";
+require missing.provider::Second == "missing-second";
+link missing.provider::helper == "missing-helper";
+
+func anchor() -> int == "";

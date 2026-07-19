@@ -6,6 +6,7 @@
 module analysis_test;
 
 import std.io;
+import std.path;
 import std.string;
 import std.assert;
 import std.vector;
@@ -24,6 +25,15 @@ import util.log;
  */
 func fixture_root() -> string {
     return "compiler/stage1_l0/tests/fixtures/semantics";
+}
+
+/**
+ * Return the root containing filesystem interface-resolution fixtures.
+ *
+ * @return Module-graph fixture directory.
+ */
+func interface_fixture_root() -> string {
+    return "compiler/stage1_l0/tests/fixtures/module_graph";
 }
 
 /**
@@ -93,6 +103,44 @@ func test_analysis_resolution_entrypoint() {
             "resolution-aware analysis should retain the entry graph node");
         assert(mg_find_node(driver_graph(result.driver_state), "shared_types") != null,
             "resolution-aware analysis should retain dependency graph nodes");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests filesystem interfaces normalize qualified enum types against
+ * source-fallback providers before semantic interface replay.
+ */
+func test_analysis_interface_enum_from_source_fallback() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let interface_roots = sv_create(1) => sv_free(interface_roots)) {
+        sv_push(interface_roots, join(interface_fixture_root(), "interfaces_mixed"));
+        let result = analysis_analyze_entry_with_resolution(
+            sp,
+            "mixed_fallback_enum_entry",
+            interface_roots,
+            MRP_ALLOW_SOURCE_FALLBACK,
+            null,
+            cfg
+        );
+        assert(!analysis_has_errors(result),
+            "interface enum types should normalize against source-fallback providers");
+        assert(!has_diag_code(result, "TYP-0310"),
+            "source-backed enum must not be replayed as a struct");
+
+        let graph = driver_graph(result.driver_state);
+        let facade_opt = mg_find_node(graph, "mixed.facade");
+        let provider_opt = mg_find_node(graph, "mixed.source_enum");
+        assert(facade_opt != null, "expected interface-backed facade graph node");
+        assert(provider_opt != null, "expected source-backed enum provider graph node");
+        let facade = facade_opt as ModuleGraphNode*;
+        let provider = provider_opt as ModuleGraphNode*;
+        assert(ord(facade.origin.kind) == ord(MOK_INTERFACE),
+            "facade should remain interface-backed");
+        assert(ord(provider.origin.kind) == ord(MOK_SOURCE),
+            "enum provider should use source fallback");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -229,6 +277,7 @@ func test_analysis_imported_opaque_layout_errors() {
 func main() {
     test_analysis_ok_main();
     test_analysis_resolution_entrypoint();
+    test_analysis_interface_enum_from_source_fallback();
     test_analysis_semantic_failure();
     test_analysis_alias_imports();
     test_analysis_opaque_export_surfaces();

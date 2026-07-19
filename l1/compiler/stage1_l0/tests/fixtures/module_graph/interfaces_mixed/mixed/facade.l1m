@@ -1,0 +1,6 @@
+module interface mixed.facade;
+fingerprint "mixed-facade";
+
+require mixed.source_enum::Color == "source-enum";
+
+func make_color() -> mixed.source_enum::Color == "";
