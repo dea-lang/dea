@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-19
+Version: 2026-07-20
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -56,7 +56,11 @@ The bootstrap compiler can emit deterministic textual `.l1m` module interface ar
 `--emit-interface` mode and round-trip them through a constrained interface parser. Resolution-aware internal entry
 points now discover imported interfaces from ordered roots, select the first matching `.l1m`, recursively close over
 `require` and `link` dependencies, and replay activated `require` providers without loading their source. Focused tests
-can supply registry-backed interfaces through the same graph contract.
+can supply registry-backed interfaces through the same graph contract. After signature replay, semantic type trees
+materialize nominal kinds and transparent aliases across interface- and source-backed providers while graph and
+projection interfaces retain their parsed spelling. Each resolved interface surface is validated against its own
+semantic `require` closure, which follows interface `require` edges and source direct imports but excludes `link` edges.
+References outside that closure report `RES-0040`.
 
 The deterministic module graph records one source, interface, registry, or virtual origin per canonical module. It
 provides sorted node enumeration, canonical sibling `.c`, `.o`, and `.l1m` path associations, dependency-tier edges, and

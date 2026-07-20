@@ -58,7 +58,7 @@ modes.
 
 ## Dependencies and Ownership
 
-1. The [module graph][module-graph] owns canonical artifact association, ordered edges, and `AllowSourceFallback`.
+1. The [module graph][module-graph] owns canonical artifact association, ordered edges, and `MRP_ALLOW_SOURCE_FALLBACK`.
 2. [Fingerprints], [lifecycle emission][lifecycle], and [object metadata][object-metadata] define the Dea artifacts that
    this plan mixes with source-built units.
 3. [Compile-only production][compile-only] establishes the reusable one-module analysis, C emission, object compilation,
@@ -97,7 +97,7 @@ modes.
 
 ## Graph Expansion and Provider Selection
 
-1. Begin with the requested source target and expand its full ordered module closure using `AllowSourceFallback`.
+1. Begin with the requested source target and expand its full ordered module closure using `MRP_ALLOW_SOURCE_FALLBACK`.
 2. For every non-virtual import, an interface found through explicit `-I` roots remains authoritative. The driver does
    not replace it with source merely because a source implementation is also available.
 3. An interface-backed node resolves its sibling `.o` through the canonical artifact association. The object must exist,
@@ -165,8 +165,8 @@ Extract the reusable one-module compile operation and common link request/result
 
 ### Phase 2: Build/run graph fan-out
 
-Expand `AllowSourceFallback`, resolve interface/object pairs, compile source-backed nodes once in deterministic order,
-and pass the complete object set to the common linker.
+Expand `MRP_ALLOW_SOURCE_FALLBACK`, resolve interface/object pairs, compile source-backed nodes once in deterministic
+order, and pass the complete object set to the common linker.
 
 ### Phase 3: Foreign objects and execution
 

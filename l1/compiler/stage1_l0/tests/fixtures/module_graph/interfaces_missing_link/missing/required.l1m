@@ -1,0 +1,6 @@
+module interface missing.required;
+fingerprint "required-for-missing-link";
+
+struct Thing {
+  value: int;
+} == "";

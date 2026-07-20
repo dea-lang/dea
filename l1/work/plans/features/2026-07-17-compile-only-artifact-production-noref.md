@@ -53,7 +53,8 @@ must not leave a fresh interface paired with a missing or stale object.
 
 ## Dependencies and Ownership
 
-1. The [module graph][module-graph] owns canonical paths, `RequireInterface` discovery, and transitive dependency state.
+1. The [module graph][module-graph] owns canonical paths, `MRP_REQUIRE_INTERFACE` discovery, and transitive dependency
+   state.
 2. [Interface fingerprints][fingerprints] must make emitted `.l1m` files self-verifying.
 3. The [lifecycle plan][lifecycle] must define final one-module C output, and [object metadata][object-metadata] must
    make the resulting object a complete Dea link input.
@@ -69,8 +70,8 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH]
 ```
 
 1. `MODULE` resolves to one source implementation. An interface cannot replace the compilation target.
-2. Every non-virtual import uses the module graph's `RequireInterface` policy. Missing, malformed, or dependency-broken
-   interfaces fail; compile-only never falls back to provider source.
+2. Every non-virtual import uses the module graph's `MRP_REQUIRE_INTERFACE` policy. Missing, malformed, or
+   dependency-broken interfaces fail; compile-only never falls back to provider source.
 3. Without `-o`, the current working directory is the artifact root and the canonical dotted module path supplies the
    stem. `foo.bar` produces `foo/bar.c`, `foo/bar.o`, and `foo/bar.l1m`.
 4. With `-o`, the value must be an `.o` file path. The same stem and directory with `.c` and `.l1m` suffixes are its

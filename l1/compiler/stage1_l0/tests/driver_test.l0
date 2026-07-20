@@ -12,6 +12,7 @@ import std.string;
 import std.assert;
 import std.vector;
 
+import ast;
 import source_paths;
 import driver;
 import module_graph;
@@ -140,6 +141,16 @@ func test_module_name_mismatch_reports_error() {
 
         assert(driver_has_errors(result), "expected mismatch errors");
         assert(has_driver_diag_code(result, "DRV-0020"), "expected DRV-0020 for module mismatch");
+        assert(driver_unit_count(result) == 1, "mismatched parse shell must remain owned");
+        let unit = driver_unit_get(result, 0);
+        assert(unit.module_name == "mismatch", "unit must retain its requested identity");
+        assert(unit.parse_result.root_module != null, "mismatch fixture must retain a parsed header");
+        assert((unit.parse_result.root_module as Module*).name == "wrong_name",
+            "fixture must retain its mismatched declared identity");
+        assert(driver_find_unit(result, "mismatch") == null,
+            "mismatched requested identity must not enter the unit index");
+        assert(driver_find_unit(result, "wrong_name") == null,
+            "mismatched declared identity must not enter the unit index");
 
         driver_state_free(result);
     }
@@ -176,6 +187,8 @@ func test_lexer_errors_recover_into_parser() {
         assert(driver_unit_count(result) == 1, "expected one failed unit shell after lexer errors");
         let unit = driver_unit_get(result, 0);
         assert(unit.parse_result.root_module == null, "expected no parsed module without a module header");
+        assert(driver_find_unit(result, "invalid_chars") == null,
+            "failed lexer shell must not enter the validated unit index");
 
         driver_state_free(result);
     }
@@ -347,6 +360,48 @@ func test_repeated_missing_provider_is_resolved_once() {
         assert(mg_find_node(driver_graph(fallback), "missing.provider") == null,
             "an absent source provider must not create a public graph node");
         driver_state_free(fallback);
+    }
+
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/**
+ * Tests strict resolution keeps a resolved semantic dependency and both
+ * manifest edges when a distinct link-only provider is absent.
+ */
+func test_missing_link_only_provider_retains_resolved_require() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "interfaces_missing_link"));
+
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "repeated_missing_entry", roots, MRP_REQUIRE_INTERFACE, null, cfg
+        );
+        assert(driver_has_errors(result), "strict policy should reject the absent link provider");
+        assert(driver_diag_code_count(result, "DRV-0074") == 1,
+            "strict policy should report the absent link provider exactly once");
+        assert(driver_diag_code_count(result, "DRV-0010") == 0,
+            "strict policy must not attempt source fallback for the absent link provider");
+
+        let graph = driver_graph(result);
+        let consumer = mg_find_node(graph, "missing.fanout") as ModuleGraphNode*;
+        assert(ord(consumer.state) == ord(MNS_FAILED),
+            "interface consumer must retain failed state after its link dependency fails");
+        assert(mg_node_dependency_count(consumer) == 2,
+            "interface consumer must retain both require and link edges");
+        assert(ord(mg_node_dependency_get(consumer, 0).kind) == ord(MDK_REQUIRE),
+            "first retained manifest edge must be require");
+        assert(ord(mg_node_dependency_get(consumer, 1).kind) == ord(MDK_LINK),
+            "second retained manifest edge must be link");
+
+        let required = mg_find_node(graph, "missing.required") as ModuleGraphNode*;
+        assert(ord(required.state) == ord(MNS_RESOLVED),
+            "resolvable require provider must remain resolved");
+        assert(mg_find_node(graph, "missing.linked") == null,
+            "absent link-only provider must not create a graph placeholder");
+        driver_state_free(result);
     }
 
     sv_free(roots);
@@ -544,6 +599,7 @@ func main() {
     test_interface_first_transitive_graph_contract();
     test_required_interface_missing_is_specific();
     test_repeated_missing_provider_is_resolved_once();
+    test_missing_link_only_provider_retains_resolved_require();
     test_source_fallback_preserves_root_precedence();
     test_invalid_interface_root_reports_drv_0073();
     test_selected_malformed_interface_is_authoritative();

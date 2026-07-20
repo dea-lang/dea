@@ -757,6 +757,7 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                         continue;
                     }
                     let let_ty = type_clone(ty_opt as Type*);
+                    assert(sym.decl_ptr != null, "source let symbol must retain its declaration");
                     let decl = sym.decl_ptr as LetDecl*;
                     if (decl.type_ref != null) {
                         mi_collect_public_type_ref(result, nr, env, decl.type_ref as TypeRef*, module_name,

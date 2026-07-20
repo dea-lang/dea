@@ -12,6 +12,7 @@
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`

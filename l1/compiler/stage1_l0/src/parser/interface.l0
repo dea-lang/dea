@@ -1269,6 +1269,9 @@ func pi_normalize_against_sources(sources: VectorBase*, ty: Type*) -> bool {
  * Normalize one parsed type against the fully parsed local nominal tables,
  * peer interfaces, and parsed source modules.
  *
+ * This pass classifies only direct enum and struct declarations. Transparent
+ * aliases expand later during semantic type materialization.
+ *
  * @param mi Module interface owning the type.
  * @param ty Type to normalize in place.
  * @param peers Optional vector of `ModuleInterface*` peers used to resolve

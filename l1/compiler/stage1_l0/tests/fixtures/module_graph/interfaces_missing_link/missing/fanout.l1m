@@ -1,0 +1,7 @@
+module interface missing.fanout;
+fingerprint "fanout-missing-link";
+
+require missing.required::Thing == "required-thing";
+link missing.linked::helper == "missing-link-helper";
+
+func anchor() -> int == "";

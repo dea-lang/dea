@@ -33,6 +33,7 @@ import ast;
  * Represents the DriverUnit structure.
  */
 struct DriverUnit {
+    /** Canonical identity requested from the resolver, not the parsed declaration. */
     module_name: string;
     path: string;
     parse_result: ParseResult*;
@@ -44,9 +45,16 @@ struct DriverUnit {
 struct DriverState {
     entry_module: string;
     graph: ModuleGraph*;
-    /** Module lookups that failed before graph-node creation. */
+    /**
+     * Module lookups that failed before graph-node creation.
+     *
+     * Invalid or absent providers intentionally have no public placeholder
+     * node; this private ledger suppresses repeated resolution attempts.
+     */
     failed_without_node: StringSet*;
+    /** Every owned parsed unit shell, including failed or mismatched units. */
     units: VectorBase*; // DriverUnit*
+    /** Validated requested module identity -> borrowed DriverUnit*. */
     units_by_name: StringPtrMap*; // module name -> DriverUnit*
     graph_interfaces: VectorBase*; // raw ModuleInterface* selected by the graph
     graph_interfaces_by_name: StringPtrMap*; // module name -> raw ModuleInterface*
@@ -176,17 +184,17 @@ func driver_diag_get(self: DriverState*, index: int) -> Diagnostic* {
 }
 
 /**
- * Return the number of loaded driver units.
+ * Return the number of owned parsed unit shells.
  *
  * @param self Driver state to inspect.
- * @return Loaded module count.
+ * @return Unit count, including parser failures and identity mismatches.
  */
 func driver_unit_count(self: DriverState*) -> int {
     return vec_size(self.units);
 }
 
 /**
- * Return a loaded driver unit by index.
+ * Return an owned parsed unit shell by index.
  *
  * @param self Driver state to inspect.
  * @param index Zero-based unit index.
@@ -239,13 +247,25 @@ func dr_interface_func_key(module_name: string, name: string) -> string {
 }
 
 /**
- * Register a loaded unit in ordered storage and lookup indexes.
+ * Register a parsed unit in ordered ownership and, when valid, by identity.
+ *
+ * Ordered storage owns every unit shell produced once parsing starts, including
+ * lexer/parser failures and header mismatches. The lookup index is narrower:
+ * it exposes a unit only when a parsed module header exists and its declared
+ * name matches the canonical identity requested by the resolver.
  *
  * @param self Driver state to update.
  * @param unit Owned unit to register.
  */
 func dr_register_unit(self: DriverState*, unit: DriverUnit*) {
     ptr_vec_push(self.units, unit as void*);
+    if (unit.parse_result.root_module == null) {
+        return;
+    }
+    let mod = unit.parse_result.root_module as Module*;
+    if (mod.name != unit.module_name) {
+        return;
+    }
     spm_put(self.units_by_name, unit.module_name, unit as void*);
 }
 
@@ -290,11 +310,11 @@ func dr_register_projection_interface(self: DriverState*, mi: ModuleInterface*) 
 }
 
 /**
- * Find a loaded driver unit by module name.
+ * Find an identity-validated driver unit by requested module name.
  *
  * @param self Driver state to inspect.
  * @param module_name Module name to search for.
- * @return Matching driver unit, or `null` if not loaded.
+ * @return Matching driver unit, or `null` if absent or its header did not match.
  */
 func driver_find_unit(self: DriverState*, module_name: string) -> DriverUnit*? {
     let unit = spm_get(self.units_by_name, module_name);
@@ -400,7 +420,7 @@ func driver_clone_interface_func_param_names(self: DriverState*, module_name: st
 }
 
 /**
- * Return loaded module names in sorted order.
+ * Return identity-validated loaded module names in sorted order.
  *
  * @param self Driver state to inspect.
  * @return New vector containing sorted module names.
@@ -433,6 +453,22 @@ func dr_copy_parse_diags(dst: DiagCollector*, pr: ParseResult*) {
  */
 func dr_emit_error(diags: DiagCollector*, code: string, message: string, filename: string) {
     diag_error(diags, "Driver", code, message, filename, 0, 0, 0, 0);
+}
+
+/**
+ * Cache a module-resolution failure that occurred before node construction.
+ *
+ * The public graph records selected provider identities, so an invalid or
+ * absent provider receives no placeholder node. This private cache retains the
+ * failure solely to suppress repeated searches and duplicate diagnostics.
+ *
+ * @param state Driver state receiving the cached failure.
+ * @param module_name Canonical identity whose lookup failed.
+ * @return Always `false`, for direct use from resolution failure branches.
+ */
+func dr_fail_without_node(state: DriverState*, module_name: string) -> bool {
+    ss_add(state.failed_without_node, module_name);
+    return false;
 }
 
 /**
@@ -691,8 +727,7 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
     if (!sp_is_valid_module_name(module_name)) {
         dr_emit_error(state.diags, "DRV-0072",
             "invalid canonical module name: '" + module_name + "'", "");
-        ss_add(state.failed_without_node, module_name);
-        return false;
+        return dr_fail_without_node(state, module_name);
     }
 
     let existing_opt = mg_find_node(state.graph, module_name);
@@ -745,8 +780,7 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                 let interface_path = interface_path_opt as string;
                 let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
                 if (artifacts == null) {
-                    ss_add(state.failed_without_node, module_name);
-                    return false;
+                    return dr_fail_without_node(state, module_name);
                 }
                 let node2 = mg_node_from_interface(module_name, interface_path, artifacts as ModuleArtifactPaths*);
                 node2.state = MNS_RESOLVING;
@@ -806,8 +840,7 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
             if (ord(ctx.policy) == ord(MRP_REQUIRE_INTERFACE)) {
                 dr_emit_error(state.diags, "DRV-0074",
                     "required module interface for '" + module_name + "' was not found", "");
-                ss_add(state.failed_without_node, module_name);
-                return false;
+                return dr_fail_without_node(state, module_name);
             }
         }
 
@@ -815,16 +848,14 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
         if (path_opt == null) {
             dr_emit_error(state.diags, "DRV-0010",
                 "Module '" + module_name + "' not found in system_roots or project_roots", "");
-            ss_add(state.failed_without_node, module_name);
-            return false;
+            return dr_fail_without_node(state, module_name);
         }
         let path = path_opt as string;
         let artifacts2: ModuleArtifactPaths*? = null;
         if (ctx.artifact_root != null) {
             artifacts2 = mg_artifacts_for_module(ctx.artifact_root as string, module_name, state.diags);
             if (artifacts2 == null) {
-                ss_add(state.failed_without_node, module_name);
-                return false;
+                return dr_fail_without_node(state, module_name);
             }
         }
         let node3 = mg_node_from_source(module_name, path, artifacts2);

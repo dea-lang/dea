@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-07-19
+Version: 2026-07-20
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -115,6 +115,10 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Resolves top-level type references.
 - Populates function, struct, enum, and top-level binding type tables.
 - Detects alias and type-dependency cycles.
+- Finalizes semantic type trees after signature replay, materializing nominal kinds and transparent aliases across
+  interface- and source-backed providers while preserving the parsed spelling in graph and projection interfaces.
+- Validates each resolved interface surface against its own semantic `require` closure, following interface `require`
+  edges and source direct imports but excluding `link` edges; violations report `RES-0040`.
 
 ### 2.5 Local Resolution (`locals.l0`, `scope_context.l0`, `sem_context.l0`)
 
