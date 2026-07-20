@@ -30,6 +30,8 @@ func _implementation_only() -> int {
     let first = dep::remote_value();
     let second = dep::remote_value();
     let shade = dep::Green;
+    let ordinal = dea::ord(dep::OrdBlue);
+    let matches = dea::is(dep::IsGreen, dep::IsGreen);
     return first + second + dep::public_seed + dea::sizeof(int) + dea::sizeof(LayoutOne) +
-        dea::sizeof(dep::LayoutTwo);
+        dea::sizeof(dep::LayoutTwo) + ordinal;
 }

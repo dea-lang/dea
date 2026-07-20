@@ -1320,6 +1320,64 @@ func test_typing_is_intrinsic_qualified_ok() {
 }
 
 /**
+ * Tests successful `is` variant lookup through an alias-only import.
+ */
+func test_typing_is_alias_qualified_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_alias_qualified_ok", cfg);
+        assert(!analysis_has_errors(result), "expected alias-qualified `is` lookup to succeed");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that an alias-only import does not enable canonical `is` qualification.
+ */
+func test_typing_is_alias_canonical_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_alias_canonical_err", cfg);
+        assert(analysis_has_errors(result), "expected canonical `is` lookup after alias-only import to fail");
+        assert(count_diag_code(result, "TYP-0247") == 1,
+            "expected one enum-variant-reference diagnostic for alias-only import");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that a selective import does not enable canonical `is` qualification.
+ */
+func test_typing_is_selective_canonical_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_selective_canonical_err", cfg);
+        assert(analysis_has_errors(result), "expected canonical `is` lookup after selective import to fail");
+        assert(count_diag_code(result, "TYP-0247") == 1,
+            "expected one enum-variant-reference diagnostic for selective import");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that qualified `is` lookup cannot expose a private enum's variant.
+ */
+func test_typing_is_private_qualified_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_private_qualified_err", cfg);
+        assert(analysis_has_errors(result), "expected private qualified `is` variant lookup to fail");
+        assert(count_diag_code(result, "TYP-0247") == 1,
+            "expected one enum-variant-reference diagnostic for the private variant");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests diagnostic reporting for invalid `is` intrinsic usage.
  */
 func test_typing_is_intrinsic_err() {
@@ -1708,6 +1766,10 @@ func main() {
     test_typing_sizeof_private_qualified_err();
     test_typing_is_intrinsic_ok();
     test_typing_is_intrinsic_qualified_ok();
+    test_typing_is_alias_qualified_ok();
+    test_typing_is_alias_canonical_err();
+    test_typing_is_selective_canonical_err();
+    test_typing_is_private_qualified_err();
     test_typing_is_intrinsic_err();
     test_typing_fixed_array_err();
     test_typing_const_value_contexts_ok();

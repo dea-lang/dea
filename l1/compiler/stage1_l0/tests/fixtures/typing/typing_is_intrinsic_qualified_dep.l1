@@ -10,6 +10,10 @@ enum ConfigKey {
     Number;
 }
 
+enum _PrivateConfigKey {
+    Hidden;
+}
+
 func get_config_key(name: string) -> ConfigKey {
     return String;
 }

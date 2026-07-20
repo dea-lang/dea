@@ -758,6 +758,14 @@ func dependency_provider_interface_text() -> string {
         "  Green;\n" +
         "} == \"\";\n" +
         "\n" +
+        "enum OrdColor {\n" +
+        "  OrdBlue;\n" +
+        "} == \"\";\n" +
+        "\n" +
+        "enum IsColor {\n" +
+        "  IsGreen;\n" +
+        "} == \"\";\n" +
+        "\n" +
         "type RemoteAlias = RemotePoint == \"\";\n" +
         "\n" +
         "func remote_value() -> int == \"\";\n" +
@@ -849,8 +857,18 @@ func test_emit_interface_semantic_dependencies() {
         assert(contains_s(text,
             "link iface_dependency_provider::LayoutTwo == \"opaque:PROVIDER-v1\";"),
             "alias-qualified sizeof type lookup must become a canonical link dependency");
+        assert(contains_s(text,
+            "link iface_dependency_provider::OrdColor == \"opaque:PROVIDER-v1\";"),
+            "alias-qualified ord value lookup must link the canonical owning enum");
+        assert(contains_s(text,
+            "link iface_dependency_provider::IsColor == \"opaque:PROVIDER-v1\";"),
+            "alias-qualified is variant lookup must link the canonical owning enum");
         assert(!contains_s(text, "link iface_dependency_provider::Green"),
             "enum variants must not survive as variant-level dependencies");
+        assert(!contains_s(text, "link iface_dependency_provider::OrdBlue"),
+            "ord dependencies must not retain the referenced variant name");
+        assert(!contains_s(text, "link iface_dependency_provider::IsGreen"),
+            "is dependencies must not retain the referenced variant name");
         assert(!contains_s(text, "link iface_dependency_provider::public_seed"),
             "require dependencies must be subtracted from link dependencies");
         assert(!contains_s(text, "link iface_dependency_provider::InferredColor"),
@@ -867,10 +885,22 @@ func test_emit_interface_semantic_dependencies() {
             "unqualified sizeof type lookup must enter the canonical ledger");
         assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "LayoutTwo") == 1,
             "alias-qualified sizeof type lookup must enter the canonical ledger under its canonical provider");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "OrdColor") == 1,
+            "ord value lookup must enter the canonical ledger under its owning enum");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "IsColor") == 1,
+            "is variant lookup must deduplicate under its owning enum");
         assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "Green") == 0,
             "variant name must not appear in the canonical ledger");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "OrdBlue") == 0,
+            "ord variant name must not appear in the canonical ledger");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "IsGreen") == 0,
+            "is variant name must not appear in the canonical ledger");
         assert(resolved_ref_count(nr, "iface_dependency_consumer", "dea", "sizeof") == 0,
             "virtual-module lookup must not appear in the canonical ledger");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "dea", "ord") == 0,
+            "ord intrinsic lookup must not appear in the canonical ledger");
+        assert(resolved_ref_count(nr, "iface_dependency_consumer", "dea", "is") == 0,
+            "is intrinsic lookup must not appear in the canonical ledger");
 
         analysis_result_free(result);
 
