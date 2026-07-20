@@ -5,7 +5,7 @@
 
 module iface_dependency_consumer;
 
-export PublicAlias, PublicHolder, alias_color, selective_color, public_folded, public_identity;
+export PublicAlias, PublicHolder, alias_color, selective_color, inferred_color, public_folded, public_identity;
 
 import iface_dependency_provider as dep;
 import Red, RemoteColor, LayoutOne from iface_dependency_provider;
@@ -19,6 +19,7 @@ type PublicAlias = dep::RemoteAlias;
 
 const alias_color: dep::RemoteColor = dep::Red;
 const selective_color: RemoteColor = Red;
+let inferred_color = dep::Blue;
 const public_folded: int = dep::public_seed + dep::public_seed;
 
 func public_identity(value: dep::RemoteAlias) -> dep::RemoteAlias {
@@ -30,5 +31,5 @@ func _implementation_only() -> int {
     let second = dep::remote_value();
     let shade = dep::Green;
     return first + second + dep::public_seed + dea::sizeof(int) + dea::sizeof(LayoutOne) +
-        dea::sizeof(iface_dependency_provider::LayoutTwo);
+        dea::sizeof(dep::LayoutTwo);
 }

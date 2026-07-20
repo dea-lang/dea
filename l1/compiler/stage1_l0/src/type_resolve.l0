@@ -16,6 +16,7 @@ import util.numbers;
 import ast;
 import driver;
 import lexer;
+import module_interface;
 import name_resolver;
 import parser.shared;
 import symbols;
@@ -205,6 +206,58 @@ func tr_symbol_lookup_result(nr: NameResolution*, env: ModuleEnv*, sym: Symbol*?
 }
 
 /**
+ * Classifies one qualified semantic lookup prefix.
+ */
+enum SymbolLookupTargetKind {
+    SLT_LOCAL;
+    SLT_EXPORTS;
+    SLT_UNKNOWN_MODULE;
+    SLT_NOT_IMPORTED;
+}
+
+/**
+ * Describes the borrowed environment and visibility selected by a qualifier.
+ */
+struct SymbolLookupTarget {
+    kind: SymbolLookupTargetKind;
+    env: ModuleEnv*?;
+}
+
+/**
+ * Classify the target selected by one qualified lookup prefix.
+ *
+ * This helper is ledger-neutral: it resolves an alias, the current module, or
+ * an imported canonical namespace without recording a symbol use. It also
+ * distinguishes an unavailable imported module from a namespace that the
+ * consumer never imported.
+ *
+ * @param nr Name-resolution data containing module environments.
+ * @param env Current module environment.
+ * @param target_module Parsed dotted module path or local import alias.
+ * @return Lookup target with a borrowed environment when one is available.
+ */
+func tr_symbol_lookup_target(nr: NameResolution*, env: ModuleEnv*, target_module: string) -> SymbolLookupTarget {
+    let alias_env = nr_module_env_alias_target(env, target_module);
+    if (alias_env != null) {
+        return SymbolLookupTarget(SLT_EXPORTS, alias_env);
+    }
+    if (target_module == env.module_name) {
+        return SymbolLookupTarget(SLT_LOCAL, env);
+    }
+    if (nr_module_env_qualifies_module(env, target_module)) {
+        let qualified_env = nr_env_find(nr, target_module);
+        if (qualified_env == null) {
+            return SymbolLookupTarget(SLT_UNKNOWN_MODULE, null);
+        }
+        return SymbolLookupTarget(SLT_EXPORTS, qualified_env);
+    }
+    if (nr_module_env_imports_module(env, target_module) && nr_env_find(nr, target_module) == null) {
+        return SymbolLookupTarget(SLT_UNKNOWN_MODULE, null);
+    }
+    return SymbolLookupTarget(SLT_NOT_IMPORTED, null);
+}
+
+/**
  * Resolve a symbol visible from a module environment.
  *
  * @param nr Name-resolution data containing module environments.
@@ -243,30 +296,19 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
     }
 
     let target_module = tr_module_from_path(module_path as StringVector*);
-    let target_env: ModuleEnv*? = null;
-    let use_exports = false;
-    let alias_env = nr_module_env_alias_target(env, target_module);
-    if (alias_env != null) {
-        target_env = alias_env as ModuleEnv*;
-        use_exports = true;
-    } else if (target_module == env.module_name) {
-        target_env = env;
-    } else if (nr_module_env_qualifies_module(env, target_module)) {
-        target_env = nr_env_find(nr, target_module);
-        use_exports = true;
-    } else {
+    let lookup_target = tr_symbol_lookup_target(nr, env, target_module);
+    if (lookup_target.env == null) {
         return null;
     }
-    if (target_env == null) {
-        return null;
-    }
+    let target = lookup_target.env as ModuleEnv*;
+    let use_exports = ord(lookup_target.kind) == ord(SLT_EXPORTS);
 
     if (name_qualifier == null) {
         if (use_exports) {
             return tr_symbol_lookup_result(nr, env,
-                nr_map_symbol_get((target_env as ModuleEnv*).exports, name));
+                nr_map_symbol_get(target.exports, name));
         }
-        return tr_symbol_lookup_result(nr, env, nr_module_env_local(target_env as ModuleEnv*, name));
+        return tr_symbol_lookup_result(nr, env, nr_module_env_local(target, name));
     }
 
     if (sv_size(name_qualifier as StringVector*) != 1) {
@@ -275,9 +317,9 @@ func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module
 
     let sym2: Symbol*? = null;
     if (use_exports) {
-        sym2 = nr_map_symbol_get((target_env as ModuleEnv*).exports, name);
+        sym2 = nr_map_symbol_get(target.exports, name);
     } else {
-        sym2 = nr_module_env_local(target_env as ModuleEnv*, name);
+        sym2 = nr_module_env_local(target, name);
     }
     if (sym2 == null) {
         return null;
@@ -1511,32 +1553,51 @@ func tr_expr_names_resolved_const(ctx: ConstEvalContext*, env: ModuleEnv*, expr_
  */
 func tr_resolve_alias(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
                        sym: Symbol*, diags: DiagCollector*, seen: StringSet*) -> Type*? {
-    if (sym.resolved_type != null) {
-        return type_clone(sym.resolved_type as Type*);
-    }
-
     let key = tr_key(sym.module_name, sym.name);
+    if (ss_has(tables.failed_aliases, key)) {
+        return null;
+    }
     if (ss_has(seen, key)) {
+        ss_add(tables.failed_aliases, key);
+        let owner_env = nr_env_find(nr, sym.module_name);
+        let filename = env.module_ptr.filename;
+        if (owner_env != null) {
+            filename = (owner_env as ModuleEnv*).module_ptr.filename;
+        }
         tr_diag_error(
             diags,
             "SIG-0020",
             "cyclic type alias involving '" + sym.name + "' in module '" + sym.module_name + "'",
-            env.module_ptr.filename,
+            filename,
             sym.span
         );
         tr_diag_error(
             diags,
             "TYP-0270",
             "type alias '" + sym.name + "' does not have a resolved type",
-            env.module_ptr.filename,
+            filename,
             sym.span
         );
         return null;
     }
 
     ss_add(seen, key);
+    if (sym.resolved_type != null) {
+        let cached = type_clone(sym.resolved_type as Type*);
+        let ok = tr_finalize_materialized_type(tables, nr, driver_state, sym.module_name, cached, diags, seen);
+        ss_remove(seen, key);
+        if (!ok) {
+            ss_add(tables.failed_aliases, key);
+            type_free(cached);
+            return null;
+        }
+        symbol_set_type_clone(sym, cached);
+        return cached;
+    }
+
     if (sym.decl_ptr == null) {
         ss_remove(seen, key);
+        ss_add(tables.failed_aliases, key);
         tr_diag_error(
             diags,
             "SIG-0021",
@@ -1548,13 +1609,286 @@ func tr_resolve_alias(tables: SignatureTables*, nr: NameResolution*, driver_stat
     }
 
     let decl = sym.decl_ptr as TypeAliasDecl*;
-    let resolved = tr_resolve_type_ref(tables, nr, driver_state, nr_env_find(nr, sym.module_name) as ModuleEnv*,
-        decl.target, diags, seen);
+    let owner_env = nr_env_find(nr, sym.module_name);
+    if (owner_env == null) {
+        ss_remove(seen, key);
+        ss_add(tables.failed_aliases, key);
+        return null;
+    }
+    let resolved = tr_resolve_type_ref(tables, nr, driver_state, owner_env as ModuleEnv*, decl.target, diags, seen);
     ss_remove(seen, key);
     if (resolved != null) {
         symbol_set_type_clone(sym, resolved as Type*);
+    } else {
+        ss_add(tables.failed_aliases, key);
     }
     return resolved;
+}
+
+/**
+ * Replace one childless nominal type with an owned materialized target.
+ *
+ * @param dst Nominal destination to mutate in place.
+ * @param replacement Owned replacement whose child graph transfers to `dst`.
+ */
+func tr_replace_materialized_nominal(dst: Type*, replacement: Type*) {
+    dst.kind = replacement.kind;
+    dst.module_name = replacement.module_name;
+    dst.name = replacement.name;
+    dst.inner = replacement.inner;
+    dst.array_len = replacement.array_len;
+    dst.params = replacement.params;
+    dst.result = replacement.result;
+    dst.is_unsafe = replacement.is_unsafe;
+    dst.is_variadic = replacement.is_variadic;
+
+    replacement.inner = null;
+    replacement.params = null;
+    replacement.result = null;
+    drop replacement;
+}
+
+/**
+ * Find the semantic symbol named by a materialized nominal type.
+ *
+ * This lookup is deliberately ledger-neutral. Same-module references consult
+ * locals; cross-module references consult only the provider's export surface.
+ *
+ * @param nr Name-resolution data containing semantic module environments.
+ * @param current_module Module that owns an unqualified type spelling.
+ * @param ty Nominal type to resolve.
+ * @return Matching semantic type symbol, or `null`.
+ */
+func tr_materialized_type_symbol(nr: NameResolution*, current_module: string, ty: Type*) -> Symbol*? {
+    let target_module = ty.module_name;
+    if (target_module == "") {
+        target_module = current_module;
+    }
+    let target_env = nr_env_find(nr, target_module);
+    if (target_env == null) {
+        return null;
+    }
+    if (target_module == current_module) {
+        return nr_module_env_local(target_env as ModuleEnv*, ty.name);
+    }
+    return nr_map_symbol_get((target_env as ModuleEnv*).exports, ty.name);
+}
+
+/**
+ * Finalize nominal kinds and transparent aliases inside one semantic type.
+ *
+ * The traversal mutates only materialized semantic copies. It performs direct
+ * environment lookups and therefore never records a dependency-ledger use.
+ * Cached interface alias targets are recursively finalized under the same
+ * alias-cycle stack.
+ *
+ * @param tables Signature tables available to source alias resolution.
+ * @param nr Name-resolution data containing semantic symbols.
+ * @param driver_state Driver state containing source and interface providers.
+ * @param current_module Module owning unqualified nominal spellings.
+ * @param ty Semantic type tree to mutate.
+ * @param diags Diagnostic collector for alias-cycle failures.
+ * @param seen Alias keys currently being expanded.
+ * @return `true` when finalization did not encounter an alias failure.
+ */
+func tr_finalize_materialized_type(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*,
+                                    current_module: string, ty: Type*, diags: DiagCollector*,
+                                    seen: StringSet*) -> bool {
+    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE) ||
+        ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_SLICE)) {
+        return tr_finalize_materialized_type(tables, nr, driver_state, current_module, ty.inner as Type*, diags,
+            seen);
+    }
+
+    if (ord(ty.kind) == ord(TY_FUNC)) {
+        let ok = true;
+        let params = ty.params as VectorBase*;
+        for (let param_i = 0; param_i < vec_size(params); param_i = param_i + 1) {
+            if (!tr_finalize_materialized_type(tables, nr, driver_state, current_module,
+                ptr_vec_get(params, param_i) as Type*, diags, seen)) {
+                ok = false;
+            }
+        }
+        if (!tr_finalize_materialized_type(tables, nr, driver_state, current_module, ty.result as Type*, diags,
+            seen)) {
+            ok = false;
+        }
+        return ok;
+    }
+
+    if (ord(ty.kind) != ord(TY_STRUCT) && ord(ty.kind) != ord(TY_ENUM)) {
+        return true;
+    }
+
+    let sym_opt = tr_materialized_type_symbol(nr, current_module, ty);
+    if (sym_opt == null) {
+        return true;
+    }
+    let sym = sym_opt as Symbol*;
+    if (ord(sym.kind) == ord(SYM_STRUCT)) {
+        ty.kind = TY_STRUCT;
+        ty.module_name = sym.module_name;
+        ty.name = sym.name;
+        return true;
+    }
+    if (ord(sym.kind) == ord(SYM_ENUM)) {
+        ty.kind = TY_ENUM;
+        ty.module_name = sym.module_name;
+        ty.name = sym.name;
+        return true;
+    }
+    if (ord(sym.kind) != ord(SYM_TYPE_ALIAS) || sym.resolved_type == null) {
+        return true;
+    }
+
+    let target_env = nr_env_find(nr, sym.module_name);
+    if (target_env == null) {
+        return true;
+    }
+    let replacement = tr_resolve_alias(tables, nr, driver_state, target_env as ModuleEnv*, sym, diags, seen);
+    if (replacement == null) {
+        return false;
+    }
+    tr_replace_materialized_nominal(ty, replacement as Type*);
+    return true;
+}
+
+/**
+ * Finalize all owned type trees in one active semantic interface.
+ *
+ * @param tables Signature tables available during finalization.
+ * @param nr Name-resolution data containing semantic symbols.
+ * @param driver_state Driver state owning the interface.
+ * @param mi Active semantic interface to mutate.
+ * @param diags Diagnostic collector.
+ * @param seen Reusable alias-cycle stack.
+ */
+func tr_finalize_interface_types(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*,
+                                  mi: ModuleInterface*, diags: DiagCollector*, seen: StringSet*) {
+    for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name, info.struct_type, diags, seen);
+        for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+            tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+                (ptr_vec_get(info.fields, field_i) as StructFieldInfo*).field_type, diags, seen);
+        }
+    }
+    for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+        let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name, info2.enum_type, diags, seen);
+        for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+            let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+            for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+                    ptr_vec_get(variant.field_types, field_i2) as Type*, diags, seen);
+            }
+        }
+    }
+    for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+            (ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*).ty, diags, seen);
+    }
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+            (ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*).ty, diags, seen);
+    }
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+            (ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*).ty, diags, seen);
+    }
+}
+
+/**
+ * Finalize semantic interfaces, name-resolution symbols, and signature tables.
+ *
+ * Raw graph interfaces and projection interfaces are intentionally excluded so
+ * interface parsing and projection preserve their original type spelling.
+ *
+ * @param tables Signature tables to update.
+ * @param nr Name-resolution data to update.
+ * @param driver_state Driver state owning active semantic interfaces.
+ * @param diags Diagnostic collector.
+ */
+func tr_finalize_materialized_types(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*,
+                                     diags: DiagCollector*) {
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let iface_i = 0; iface_i < driver_interface_count(driver_state); iface_i = iface_i + 1) {
+            tr_finalize_interface_types(tables, nr, driver_state, driver_interface_get(driver_state, iface_i), diags,
+                seen);
+        }
+
+        for (let env_i = 0; env_i < nr_env_count(nr); env_i = env_i + 1) {
+            let env = nr_env_get(nr, env_i);
+            for (let sym_i = 0; sym_i < spm_capacity(env.locals); sym_i = sym_i + 1) {
+                if (!spm_slot_occupied(env.locals, sym_i)) {
+                    continue;
+                }
+                let sym = spm_slot_value(env.locals, sym_i) as Symbol*;
+                if (sym.resolved_type == null) {
+                    continue;
+                }
+                if (ord(sym.kind) == ord(SYM_TYPE_ALIAS)) {
+                    let resolved = tr_resolve_alias(tables, nr, driver_state, env, sym, diags, seen);
+                    if (resolved != null) {
+                        type_free(resolved as Type*);
+                    }
+                } else {
+                    tr_finalize_materialized_type(tables, nr, driver_state, env.module_name,
+                        sym.resolved_type as Type*, diags, seen);
+                }
+            }
+        }
+
+        for (let func_i = 0; func_i < spm_capacity(tables.func_types); func_i = func_i + 1) {
+            if (spm_slot_occupied(tables.func_types, func_i)) {
+                let ty = spm_slot_value(tables.func_types, func_i) as Type*;
+                let key = spm_slot_key(tables.func_types, func_i);
+                let split = find_s(key, "::");
+                let module_name = key;
+                if (split >= 0) {
+                    module_name = slice_s(key, 0, split);
+                }
+                tr_finalize_materialized_type(tables, nr, driver_state, module_name, ty, diags, seen);
+            }
+        }
+        for (let let_i = 0; let_i < spm_capacity(tables.let_types); let_i = let_i + 1) {
+            if (spm_slot_occupied(tables.let_types, let_i)) {
+                let ty2 = spm_slot_value(tables.let_types, let_i) as Type*;
+                let key2 = spm_slot_key(tables.let_types, let_i);
+                let split2 = find_s(key2, "::");
+                let module_name2 = key2;
+                if (split2 >= 0) {
+                    module_name2 = slice_s(key2, 0, split2);
+                }
+                tr_finalize_materialized_type(tables, nr, driver_state, module_name2, ty2, diags, seen);
+            }
+        }
+        for (let struct_i = 0; struct_i < spm_capacity(tables.struct_infos); struct_i = struct_i + 1) {
+            if (!spm_slot_occupied(tables.struct_infos, struct_i)) {
+                continue;
+            }
+            let info = spm_slot_value(tables.struct_infos, struct_i) as StructInfo*;
+            tr_finalize_materialized_type(tables, nr, driver_state, info.module_name, info.struct_type, diags, seen);
+            for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+                tr_finalize_materialized_type(tables, nr, driver_state, info.module_name,
+                    (ptr_vec_get(info.fields, field_i) as StructFieldInfo*).field_type, diags, seen);
+            }
+        }
+        for (let enum_i = 0; enum_i < spm_capacity(tables.enum_infos); enum_i = enum_i + 1) {
+            if (!spm_slot_occupied(tables.enum_infos, enum_i)) {
+                continue;
+            }
+            let info2 = spm_slot_value(tables.enum_infos, enum_i) as EnumInfo*;
+            tr_finalize_materialized_type(tables, nr, driver_state, info2.module_name, info2.enum_type, diags, seen);
+            for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+                let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+                for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                    tr_finalize_materialized_type(tables, nr, driver_state, info2.module_name,
+                        ptr_vec_get(variant.field_types, field_i2) as Type*, diags, seen);
+                }
+            }
+        }
+    }
 }
 
 /**

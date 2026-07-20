@@ -6,6 +6,7 @@
 module types;
 
 import std.hashmap;
+import std.hashset;
 import std.string;
 import std.text;
 import std.vector;
@@ -97,6 +98,7 @@ struct SignatureTables {
     struct_infos: StringPtrMap*; // key -> StructInfo*
     enum_infos: StringPtrMap*;   // key -> EnumInfo*
     let_types: StringPtrMap*;    // key -> Type*
+    failed_aliases: StringSet*;  // fully qualified aliases already diagnosed as unresolved
 }
 
 /**
@@ -746,5 +748,6 @@ func sig_tables_free(self: SignatureTables*) {
     spm_free(self.struct_infos);
     spm_free(self.enum_infos);
     spm_free(self.let_types);
+    ss_free(self.failed_aliases);
     drop self;
 }

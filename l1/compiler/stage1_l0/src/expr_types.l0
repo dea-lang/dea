@@ -1223,7 +1223,8 @@ func etc_diag_type_ref_failure(self: ExpressionTypeChecker*, tref: TypeRef*, fal
  *
  * @param self Expression checker state.
  * @param expr Identifier expression to interpret as a type.
- * @return Resolved type, or `null` when the identifier should be treated as a value expression.
+ * @return Resolved type, an `int` recovery type after a qualified-lookup diagnostic,
+ *         or `null` when the identifier should be treated as a value expression.
  */
 func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type*? {
     if (expr.module_path == null) {
@@ -1245,51 +1246,39 @@ func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) ->
             return null;
         }
 
-        let sym = nr_module_env_all(self.current_env as ModuleEnv*, expr.text_value);
+        let sym = etc_lookup_symbol(self, expr.text_value, null, null);
         if (sym == null) {
             return null;
         }
-        let resolved = etc_symbol_as_type(self, sym as Symbol*);
-        if (resolved != null) {
-            nr_record_resolved_symbol(
-                self.result.names as NameResolution*,
-                self.current_env as ModuleEnv*,
-                sym as Symbol*
-            );
-        }
-        return resolved;
+        return etc_symbol_as_type(self, sym as Symbol*);
     }
 
     let target_module = tr_module_from_path(expr.module_path as StringVector*);
-    if (target_module != (self.current_env as ModuleEnv*).module_name &&
-        !nr_module_env_imports_module(self.current_env as ModuleEnv*, target_module)) {
-        etc_diag_error(self, "TYP-0301",
-            "unknown type '" + target_module + "::" + expr.text_value + "' (module '" + target_module + "' not imported)",
-            (self.current_unit as DriverUnit*).path, expr.span);
-        return null;
+    let sym2 = etc_lookup_symbol(self, expr.text_value, expr.module_path, null);
+    if (sym2 != null) {
+        return etc_symbol_as_type(self, sym2 as Symbol*);
     }
 
-    let target_env = nr_env_find(self.result.names as NameResolution*, target_module);
-    if (target_env == null) {
+    let current_env = self.current_env as ModuleEnv*;
+    let lookup_target = tr_symbol_lookup_target(self.result.names as NameResolution*, current_env, target_module);
+    if (ord(lookup_target.kind) == ord(SLT_LOCAL) || ord(lookup_target.kind) == ord(SLT_EXPORTS)) {
+        etc_diag_error(self, "TYP-0159",
+            "unknown identifier '" + target_module + "::" + expr.text_value + "'",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return type_builtin_int();
+    }
+
+    if (ord(lookup_target.kind) == ord(SLT_UNKNOWN_MODULE)) {
         etc_diag_error(self, "TYP-0300",
             "unknown type '" + target_module + "::" + expr.text_value + "' (unknown module '" + target_module + "')",
             (self.current_unit as DriverUnit*).path, expr.span);
-        return null;
+        return type_builtin_int();
     }
 
-    let sym2 = nr_module_env_local(target_env as ModuleEnv*, expr.text_value);
-    if (sym2 == null) {
-        return null;
-    }
-    let resolved2 = etc_symbol_as_type(self, sym2 as Symbol*);
-    if (resolved2 != null) {
-        nr_record_resolved_symbol(
-            self.result.names as NameResolution*,
-            self.current_env as ModuleEnv*,
-            sym2 as Symbol*
-        );
-    }
-    return resolved2;
+    etc_diag_error(self, "TYP-0301",
+        "unknown type '" + target_module + "::" + expr.text_value + "' (module '" + target_module + "' not imported)",
+        (self.current_unit as DriverUnit*).path, expr.span);
+    return type_builtin_int();
 }
 
 /**

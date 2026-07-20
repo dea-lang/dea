@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-19
+Version: 2026-07-20
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -324,6 +324,7 @@ diagnostic.
 | `RES-0037` | L1+   | Exported surface references an unexported type                                             |
 | `RES-0038` | L1+   | Opaque type is used where transparent layout is required                                   |
 | `RES-0039` | L1+   | `opaque` export qualifier is applied to a non-type symbol                                  |
+| `RES-0040` | L1+   | Interface surface references a provider outside its semantic require closure               |
 
 ## Signature Analysis and Type Resolution for Type Declarations, Type Aliases, and Type References
 

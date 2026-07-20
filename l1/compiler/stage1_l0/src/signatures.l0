@@ -16,11 +16,24 @@ import util.numbers;
 import ast;
 import driver;
 import mi_utils;
+import module_graph;
 import module_interface;
 import name_resolver;
 import symbols;
 import type_resolve;
 import types;
+
+/**
+ * Defers one source-declaration shape check until all aliases materialize.
+ */
+struct SigPendingShapeCheck {
+    module_name: string;
+    ty: Type*;
+    code: string;
+    message: string;
+    filename: string;
+    span: Span;
+}
 
 /**
  * Build a fully qualified signature-table key.
@@ -31,6 +44,38 @@ import types;
  */
 func sig_key(module_name: string, name: string) -> string {
     return module_name + "::" + name;
+}
+
+/**
+ * Return the declared name carried by one top-level AST entry.
+ *
+ * @param top Top-level declaration to inspect.
+ * @return Declaration name.
+ */
+func sig_top_decl_name(top: TopLevelDecl*) -> string {
+    match (top.kind) {
+        TD_STRUCT => { return (top.data as StructDecl*).name; }
+        TD_ENUM => { return (top.data as EnumDecl*).name; }
+        TD_FUNC => { return (top.data as FuncDecl*).name; }
+        TD_TYPE_ALIAS => { return (top.data as TypeAliasDecl*).name; }
+        TD_LET => { return (top.data as LetDecl*).name; }
+    }
+}
+
+/**
+ * Return the source span carried by one top-level AST entry.
+ *
+ * @param top Top-level declaration to inspect.
+ * @return Declaration span.
+ */
+func sig_top_decl_span(top: TopLevelDecl*) -> Span {
+    match (top.kind) {
+        TD_STRUCT => { return (top.data as StructDecl*).span; }
+        TD_ENUM => { return (top.data as EnumDecl*).span; }
+        TD_FUNC => { return (top.data as FuncDecl*).span; }
+        TD_TYPE_ALIAS => { return (top.data as TypeAliasDecl*).span; }
+        TD_LET => { return (top.data as LetDecl*).span; }
+    }
 }
 
 /**
@@ -151,6 +196,41 @@ func sig_enum_variant_vec_temp_free(items: VectorBase*?) {
 }
 
 /**
+ * Retain one resolved temporary type for post-finalization shape checking.
+ *
+ * @param checks Vector receiving an owned pending check.
+ * @param module_name Module that owns unqualified names inside `ty`.
+ * @param ty Resolved temporary type to clone.
+ * @param code Diagnostic code to emit for an invalid shape.
+ * @param message Diagnostic message to emit.
+ * @param filename Source filename.
+ * @param span Source span.
+ */
+func sig_pending_shape_add(checks: VectorBase*, module_name: string, ty: Type*, code: string,
+                           message: string, filename: string, span: Span) {
+    ptr_vec_push(checks,
+        new SigPendingShapeCheck(module_name, type_clone(ty), code, message, filename, span) as void*);
+}
+
+/**
+ * Free deferred shape checks and their owned type clones.
+ *
+ * @param checks Optional vector of `SigPendingShapeCheck*` values.
+ */
+func sig_pending_shapes_free(checks: VectorBase*?) {
+    if (checks == null) {
+        return;
+    }
+    let vec = checks as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let check = ptr_vec_get(vec, i) as SigPendingShapeCheck*;
+        type_free(check.ty);
+        drop check;
+    }
+    vec_free(vec);
+}
+
+/**
  * Look up a resolved function type.
  *
  * @param self Signature tables to inspect.
@@ -220,7 +300,7 @@ func sig_lookup_let_type(self: SignatureTables*, module_name: string, name: stri
  * @return New signature tables.
  */
 func sig_make_tables() -> SignatureTables* {
-    return new SignatureTables(spm_create(), spm_create(), spm_create(), spm_create());
+    return new SignatureTables(spm_create(), spm_create(), spm_create(), spm_create(), ss_create());
 }
 
 /**
@@ -261,6 +341,83 @@ func sig_reject_slice_escape(ty: Type*, code: string, message: string, diags: Di
 }
 
 /**
+ * Finalize and check exact type positions retained from source declarations.
+ *
+ * Keeping these clones alive until every source signature is resolved
+ * preserves independent slice diagnostics without running shape checks before
+ * cross-provider aliases can be materialized.
+ *
+ * @param checks Deferred shape checks to process.
+ * @param tables Finalized signature tables.
+ * @param nr Name-resolution data containing source and interface aliases.
+ * @param driver_state Driver state containing provider interfaces and units.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_pending_materialized_shapes(checks: VectorBase*, tables: SignatureTables*, nr: NameResolution*,
+                                           driver_state: DriverState*, diags: DiagCollector*) {
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let i = 0; i < vec_size(checks); i = i + 1) {
+            let check = ptr_vec_get(checks, i) as SigPendingShapeCheck*;
+            tr_finalize_materialized_type(tables, nr, driver_state, check.module_name, check.ty, diags, seen);
+            sig_reject_slice_escape(check.ty, check.code, check.message, diags, check.filename, check.span);
+        }
+    }
+}
+
+/**
+ * Check interface slice placement after every semantic type has materialized.
+ *
+ * Source declarations are checked through their retained per-declaration type
+ * clones. This pass only covers active interface surfaces, whose semantic
+ * clones have no parsed declaration counterpart.
+ *
+ * @param nr Name-resolution data containing synthetic interface modules.
+ * @param driver_state Driver state containing finalized semantic interfaces.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_materialized_interface_shapes(nr: NameResolution*, driver_state: DriverState*,
+                                             diags: DiagCollector*) {
+    for (let iface_i = 0; iface_i < driver_interface_count(driver_state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(driver_state, iface_i);
+        let env_opt = nr_env_find(nr, mi.module_name);
+        if (env_opt == null) {
+            continue;
+        }
+        let env = env_opt as ModuleEnv*;
+        for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+            let info3 = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+            for (let field_i3 = 0; field_i3 < vec_size(info3.fields); field_i3 = field_i3 + 1) {
+                sig_reject_slice_escape((ptr_vec_get(info3.fields, field_i3) as StructFieldInfo*).field_type,
+                    "TYP-0811", "slice type may not be used as a struct field", diags,
+                    env.module_ptr.filename, info3.span);
+            }
+        }
+        for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+            let info4 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+            for (let variant_i2 = 0; variant_i2 < vec_size(info4.variants); variant_i2 = variant_i2 + 1) {
+                let variant2 = ptr_vec_get(info4.variants, variant_i2) as EnumVariantInfo*;
+                for (let field_i4 = 0; field_i4 < vec_size(variant2.field_types); field_i4 = field_i4 + 1) {
+                    sig_reject_slice_escape(ptr_vec_get(variant2.field_types, field_i4) as Type*, "TYP-0813",
+                        "slice type may not be used as an enum payload field", diags, env.module_ptr.filename,
+                        info4.span);
+                }
+            }
+        }
+        for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+            let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+            sig_reject_slice_escape(entry.ty.result as Type*, "TYP-0810",
+                "slice type may not be a function return type", diags, env.module_ptr.filename,
+                env.module_ptr.span);
+        }
+        for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+            let entry2 = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
+            sig_reject_slice_escape(entry2.ty, "TYP-0812", "slice type may not be used in a top-level let", diags,
+                env.module_ptr.filename, env.module_ptr.span);
+        }
+    }
+}
+
+/**
  * Resolve one struct declaration into stored signature metadata.
  *
  * @param tables Signature tables receiving resolved struct info.
@@ -268,9 +425,10 @@ func sig_reject_slice_escape(ty: Type*, code: string, message: string, diags: Di
  * @param env Module environment owning the declaration.
  * @param decl Struct declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
+ * @param pending_shapes Deferred per-declaration shape checks.
  */
 func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
-                        decl: StructDecl*, diags: DiagCollector*) {
+                        decl: StructDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
     with (let fields: VectorBase*? = ptr_vec_create(vec_size(decl.fields)) => sig_struct_field_vec_temp_free(fields),
           let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
         let ok = true;
@@ -282,9 +440,8 @@ func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, driver_st
                 ok = false;
                 continue;
             }
-            sig_reject_slice_escape(field_type as Type*, "TYP-0811",
-                "slice type may not be used as a struct field", diags, env.module_ptr.filename,
-                field_decl.type_ref.span);
+            sig_pending_shape_add(pending_shapes, env.module_name, field_type as Type*, "TYP-0811",
+                "slice type may not be used as a struct field", env.module_ptr.filename, field_decl.type_ref.span);
             ptr_vec_push(fields as VectorBase*, new StructFieldInfo(field_decl.name, field_type as Type*) as void*);
         }
 
@@ -323,9 +480,10 @@ func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, driver_st
  * @param env Module environment owning the declaration.
  * @param decl Enum declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
+ * @param pending_shapes Deferred per-declaration shape checks.
  */
 func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
-                      decl: EnumDecl*, diags: DiagCollector*) {
+                      decl: EnumDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
     with (let variants: VectorBase*? = ptr_vec_create(vec_size(decl.variants)) => sig_enum_variant_vec_temp_free(variants),
           let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
         let ok = true;
@@ -341,8 +499,8 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, driver_stat
                     ok = false;
                     continue;
                 }
-                sig_reject_slice_escape(field_type as Type*, "TYP-0813",
-                    "slice type may not be used as an enum payload field", diags, env.module_ptr.filename,
+                sig_pending_shape_add(pending_shapes, env.module_name, field_type as Type*, "TYP-0813",
+                    "slice type may not be used as an enum payload field", env.module_ptr.filename,
                     field_decl.type_ref.span);
                 ptr_vec_push(field_types, field_type as void*);
                 sv_push(field_names, field_decl.name);
@@ -385,9 +543,10 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, driver_stat
  * @param env Module environment owning the declaration.
  * @param decl Function declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
+ * @param pending_shapes Deferred per-declaration shape checks.
  */
 func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
-                      decl: FuncDecl*, diags: DiagCollector*) {
+                      decl: FuncDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
     with (let params: VectorBase*? = ptr_vec_create(vec_size(decl.params)) => sig_type_vec_free_opt(params),
           let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
         let ok = true;
@@ -407,8 +566,8 @@ func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, driver_stat
         if (ret_type == null) {
             ok = false;
         } else {
-            sig_reject_slice_escape(ret_type as Type*, "TYP-0810",
-                "slice type may not be a function return type", diags, env.module_ptr.filename,
+            sig_pending_shape_add(pending_shapes, env.module_name, ret_type as Type*, "TYP-0810",
+                "slice type may not be a function return type", env.module_ptr.filename,
                 (decl.return_type as TypeRef*).span);
         }
 
@@ -654,9 +813,10 @@ func sig_expr_is_const_initializer(tables: SignatureTables*, nr: NameResolution*
  * @param driver_state Driver state providing parsed ASTs.
  * @param decl `let` declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
+ * @param pending_shapes Deferred per-declaration shape checks.
  */
 func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, driver_state: DriverState*,
-                     decl: LetDecl*, diags: DiagCollector*) {
+                     decl: LetDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
     let let_type: Type*? = null;
     if (decl.type_ref != null) {
         with (let seen = ss_create() => ss_free(seen)) {
@@ -693,9 +853,8 @@ func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleE
     if (let_type == null) {
         return;
     }
-
-    sig_reject_slice_escape(let_type as Type*, "TYP-0812",
-        "slice type may not be used in a top-level let", diags, env.module_ptr.filename, decl.span);
+    sig_pending_shape_add(pending_shapes, env.module_name, let_type as Type*, "TYP-0812",
+        "slice type may not be used in a top-level let", env.module_ptr.filename, decl.span);
 
     if (decl.is_const) {
         let unit = driver_find_unit(driver_state, env.module_name);
@@ -1180,6 +1339,150 @@ func sig_replay_interfaces(tables: SignatureTables*, driver_state: DriverState*)
 }
 
 /**
+ * Check one raw interface type against its module's semantic closure.
+ *
+ * @param owner_module Interface module whose surface contains `ty`.
+ * @param ty Wire-preserving interface type to inspect.
+ * @param closure Semantic provider closure for `owner_module`.
+ * @param reported Provider modules already diagnosed for this interface.
+ * @param diags Diagnostic collector.
+ * @param filename Synthetic interface filename for diagnostics.
+ * @param span Interface span for diagnostics.
+ * @return `true` when every referenced provider is in `closure`.
+ */
+func sig_check_interface_closure_type(owner_module: string, ty: Type*, closure: StringSet*,
+                                      reported: StringSet*, diags: DiagCollector*, filename: string,
+                                      span: Span) -> bool {
+    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE) ||
+        ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_SLICE)) {
+        return sig_check_interface_closure_type(owner_module, ty.inner as Type*, closure, reported, diags,
+            filename, span);
+    }
+    if (ord(ty.kind) == ord(TY_FUNC)) {
+        let ok = true;
+        let params = ty.params as VectorBase*;
+        for (let param_i = 0; param_i < vec_size(params); param_i = param_i + 1) {
+            if (!sig_check_interface_closure_type(owner_module, ptr_vec_get(params, param_i) as Type*, closure,
+                reported, diags, filename, span)) {
+                ok = false;
+            }
+        }
+        if (!sig_check_interface_closure_type(owner_module, ty.result as Type*, closure, reported, diags,
+            filename, span)) {
+            ok = false;
+        }
+        return ok;
+    }
+    if (ord(ty.kind) != ord(TY_STRUCT) && ord(ty.kind) != ord(TY_ENUM)) {
+        return true;
+    }
+    if (ty.module_name == "" || ty.module_name == owner_module || ss_has(closure, ty.module_name)) {
+        return true;
+    }
+    if (!ss_has(reported, ty.module_name)) {
+        ss_add(reported, ty.module_name);
+        sig_diag_error(
+            diags,
+            "RES-0040",
+            "interface surface references a provider outside its semantic require closure",
+            filename,
+            span
+        );
+    }
+    return false;
+}
+
+/**
+ * Check every type-bearing declaration in one interface clone.
+ *
+ * @param mi Interface surface to inspect.
+ * @param closure Semantic provider closure for `mi`.
+ * @param reported Provider modules already diagnosed across interface clones.
+ * @param diags Diagnostic collector.
+ * @param filename Synthetic interface filename for diagnostics.
+ * @param default_span Fallback span for entries without declaration metadata.
+ */
+func sig_check_interface_closure_surface(mi: ModuleInterface*, closure: StringSet*, reported: StringSet*,
+                                         diags: DiagCollector*, filename: string, default_span: Span) {
+    for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+        for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+            sig_check_interface_closure_type(mi.module_name,
+                (ptr_vec_get(info.fields, field_i) as StructFieldInfo*).field_type, closure, reported, diags,
+                filename, info.span);
+        }
+    }
+    for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+        let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+        for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+            let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+            for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                sig_check_interface_closure_type(mi.module_name,
+                    ptr_vec_get(variant.field_types, field_i2) as Type*, closure, reported, diags, filename,
+                    info2.span);
+            }
+        }
+    }
+    for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
+        sig_check_interface_closure_type(mi.module_name,
+            (ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*).ty, closure, reported, diags, filename,
+            default_span);
+    }
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        sig_check_interface_closure_type(mi.module_name,
+            (ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*).ty, closure, reported, diags, filename,
+            default_span);
+    }
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        sig_check_interface_closure_type(mi.module_name,
+            (ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*).ty, closure, reported, diags, filename,
+            default_span);
+    }
+}
+
+/**
+ * Enforce semantic require closure for every resolved interface surface.
+ *
+ * Validation reads every selected raw graph interface, including link-only
+ * nodes that have no name-resolution environment. Active interfaces receive a
+ * second pass over their finalized semantic clone so providers exposed by
+ * transparent alias expansion are also checked.
+ *
+ * @param driver_state Driver state containing the graph and interface clones.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_interface_semantic_closures(driver_state: DriverState*, diags: DiagCollector*) {
+    let graph = driver_graph(driver_state);
+    with (let nodes = mg_nodes_sorted(graph) => vec_free(nodes)) {
+        for (let node_i = 0; node_i < vec_size(nodes); node_i = node_i + 1) {
+            let node = ptr_vec_get(nodes, node_i) as ModuleGraphNode*;
+            if (ord(node.state) != ord(MNS_RESOLVED) ||
+                (ord(node.origin.kind) != ord(MOK_INTERFACE) && ord(node.origin.kind) != ord(MOK_REGISTRY))) {
+                continue;
+            }
+            let raw_opt = driver_find_graph_interface(driver_state, node.module_name);
+            if (raw_opt == null) {
+                continue;
+            }
+            let raw = raw_opt as ModuleInterface*;
+            let filename = "<interface:" + node.module_name + ">";
+            if (node.origin.path != null) {
+                filename = node.origin.path as string;
+            }
+            with (let closure = mg_semantic_closure(graph, node.module_name) => ss_free(closure),
+                  let reported = ss_create() => ss_free(reported)) {
+                sig_check_interface_closure_surface(raw, closure, reported, diags, filename, Span(0, 0, 0, 0));
+                let semantic_opt = driver_find_interface(driver_state, node.module_name);
+                if (semantic_opt != null) {
+                    sig_check_interface_closure_surface(semantic_opt as ModuleInterface*, closure, reported, diags,
+                        filename, Span(0, 0, 0, 0));
+                }
+            }
+        }
+    }
+}
+
+/**
  * Resolve top-level type signatures for parsed modules.
  *
  * @param driver_state Parsed driver state.
@@ -1189,6 +1492,7 @@ func sig_replay_interfaces(tables: SignatureTables*, driver_state: DriverState*)
  */
 func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCollector*) -> SignatureTables* {
     let tables = sig_make_tables();
+    let pending_shapes = ptr_vec_create(4);
 
     sig_replay_interfaces(tables, driver_state);
 
@@ -1197,15 +1501,29 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
         let mod = env.module_ptr;
         for (let j = 0; j < vec_size(mod.decls); j = j + 1) {
             let top = ptr_vec_get(mod.decls, j) as TopLevelDecl*;
+            let canonical_sym = nr_module_env_local(env, sig_top_decl_name(top));
+            if (canonical_sym != null) {
+                let canonical_span = (canonical_sym as Symbol*).span;
+                let top_span = sig_top_decl_span(top);
+                if (canonical_span.start_line != top_span.start_line ||
+                    canonical_span.start_column != top_span.start_column ||
+                    canonical_span.end_line != top_span.end_line ||
+                    canonical_span.end_column != top_span.end_column) {
+                    continue;
+                }
+            }
             match (top.kind) {
                 TD_STRUCT => {
-                    sig_resolve_struct(tables, nr, driver_state, env, top.data as StructDecl*, diags);
+                    sig_resolve_struct(tables, nr, driver_state, env, top.data as StructDecl*, diags,
+                        pending_shapes);
                 }
                 TD_ENUM => {
-                    sig_resolve_enum(tables, nr, driver_state, env, top.data as EnumDecl*, diags);
+                    sig_resolve_enum(tables, nr, driver_state, env, top.data as EnumDecl*, diags,
+                        pending_shapes);
                 }
                 TD_FUNC => {
-                    sig_resolve_func(tables, nr, driver_state, env, top.data as FuncDecl*, diags);
+                    sig_resolve_func(tables, nr, driver_state, env, top.data as FuncDecl*, diags,
+                        pending_shapes);
                 }
                 TD_TYPE_ALIAS => {
                     let sym = nr_module_env_local(env, (top.data as TypeAliasDecl*).name);
@@ -1220,14 +1538,20 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
                     }
                 }
                 TD_LET => {
-                    sig_resolve_let(tables, nr, env, driver_state, top.data as LetDecl*, diags);
+                    sig_resolve_let(tables, nr, env, driver_state, top.data as LetDecl*, diags,
+                        pending_shapes);
                 }
             }
         }
     }
 
+    tr_finalize_materialized_types(tables, nr, driver_state, diags);
+    sig_check_interface_semantic_closures(driver_state, diags);
+    sig_check_pending_materialized_shapes(pending_shapes, tables, nr, driver_state, diags);
+    sig_check_materialized_interface_shapes(nr, driver_state, diags);
     sig_detect_value_type_cycles(tables, diags);
     sig_check_pending_extern_shadows(tables, nr, diags);
     sig_check_exported_surfaces(tables, nr, diags);
+    sig_pending_shapes_free(pending_shapes);
     return tables;
 }

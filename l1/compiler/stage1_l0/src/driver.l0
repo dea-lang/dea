@@ -45,7 +45,7 @@ struct DriverState {
     entry_module: string;
     graph: ModuleGraph*;
     /** Module lookups that failed before graph-node creation. */
-    failed_resolutions: StringSet*;
+    failed_without_node: StringSet*;
     units: VectorBase*; // DriverUnit*
     units_by_name: StringPtrMap*; // module name -> DriverUnit*
     graph_interfaces: VectorBase*; // raw ModuleInterface* selected by the graph
@@ -58,6 +58,22 @@ struct DriverState {
     diags: DiagCollector*;
     source_names: StringVector*; // source cache: file paths
     source_texts: StringVector*; // source cache: file contents
+}
+
+/**
+ * Carries borrowed, recursion-invariant module-resolution inputs.
+ *
+ * This context owns none of its pointer or optional-string fields. Its caller
+ * must keep every referenced value alive for the complete resolution walk.
+ */
+struct DriverResolutionContext {
+    state: DriverState*;
+    candidates: StringPtrMap*;
+    search_paths: SourceSearchPaths*;
+    interface_roots: StringVector*;
+    policy: ModuleResolutionPolicy;
+    artifact_root: string?;
+    cfg: LogConfig*;
 }
 
 /**
@@ -111,7 +127,7 @@ func dr_interfaces_free(interfaces: VectorBase*?) {
  * @param self Driver state to free.
  */
 func driver_state_free(self: DriverState*) {
-    ss_free(self.failed_resolutions);
+    ss_free(self.failed_without_node);
     spm_free(self.units_by_name);
     spm_free(self.graph_interfaces_by_name);
     spm_free(self.interfaces_by_name);
@@ -546,32 +562,6 @@ func dr_validate_interface_roots(state: DriverState*, interface_roots: StringVec
 }
 
 /**
- * Return the first existing interface candidate in declaration order.
- *
- * Existence, rather than usability, selects the authoritative candidate.
- * Later roots are therefore never consulted after this function returns a
- * path.
- *
- * @param interface_roots Ordered interface roots.
- * @param module_name Canonical module name.
- * @return Selected path, or `null` when no candidate exists.
- */
-func dr_select_interface_path(interface_roots: StringVector*, module_name: string) -> string? {
-    let rel_opt = sp_module_interface_relpath(module_name);
-    if (rel_opt == null) {
-        return null;
-    }
-    let rel = rel_opt as string;
-    for (let i = 0; i < sv_size(interface_roots); i = i + 1) {
-        let candidate = join(sv_get(interface_roots, i), rel);
-        if (exists(candidate)) {
-            return candidate;
-        }
-    }
-    return null;
-}
-
-/**
  * Copy interface parser diagnostics into the driver collector.
  *
  * @param dst Destination diagnostic collector.
@@ -645,32 +635,63 @@ func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResu
 }
 
 /**
+ * Resolve and record every semantic and link dependency from one interface.
+ *
+ * Both tiers are always traversed even after one provider fails, preserving
+ * every manifest edge and allowing provider-level failure caching to suppress
+ * duplicate diagnostics.
+ *
+ * @param ctx Borrowed resolution context.
+ * @param node Interface-backed graph node receiving manifest edges.
+ * @param raw Selected raw interface providing dependency entries.
+ * @param stack Canonical resolution stack including `node`.
+ * @return `true` when every dependency resolves.
+ */
+func dr_resolve_interface_dependencies(ctx: DriverResolutionContext*, node: ModuleGraphNode*,
+                                       raw: ModuleInterface*, stack: StringVector*) -> bool {
+    let ok = true;
+    for (let req_i = 0; req_i < vec_size(raw.require_entries); req_i = req_i + 1) {
+        let dep = ptr_vec_get(raw.require_entries, req_i) as InterfaceDepEntry*;
+        mg_node_add_dependency(node, MDK_REQUIRE, dep.provider_module, dep.symbol_name, dep.hash);
+        if (!dr_resolve_module(ctx, stack, dep.provider_module)) {
+            ok = false;
+        }
+    }
+    for (let link_i = 0; link_i < vec_size(raw.link_entries); link_i = link_i + 1) {
+        let dep2 = ptr_vec_get(raw.link_entries, link_i) as InterfaceDepEntry*;
+        mg_node_add_dependency(node, MDK_LINK, dep2.provider_module, dep2.symbol_name, dep2.hash);
+        if (!dr_resolve_module(ctx, stack, dep2.provider_module)) {
+            ok = false;
+        }
+    }
+
+    if (ok) {
+        node.state = MNS_RESOLVED;
+    } else {
+        node.state = MNS_FAILED;
+    }
+    return ok;
+}
+
+/**
  * Recursively resolve one canonical module into the graph.
  *
- * @param state Driver state under construction.
- * @param candidates Borrowed supplied-interface registry.
- * @param search_paths Source search paths.
- * @param interface_roots Ordered interface roots.
- * @param policy Missing-interface policy.
- * @param artifact_root Optional source artifact root.
+ * @param ctx Borrowed recursion-invariant resolution inputs.
  * @param stack Canonical resolution stack.
  * @param module_name Requested module.
- * @param force_source Force source selection for the entry module.
- * @param cfg Logging configuration.
  * @return `true` when this node reaches the resolved state.
  */
-func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_paths: SourceSearchPaths*,
-                       interface_roots: StringVector*, policy: ModuleResolutionPolicy, artifact_root: string?,
-                       stack: StringVector*, module_name: string, force_source: bool, cfg: LogConfig*) -> bool {
-    if (ss_has(state.failed_resolutions, module_name)) {
-        log_debug(cfg, "Module '" + module_name + "' retains its failed pre-graph resolution state");
+func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, module_name: string) -> bool {
+    let state = ctx.state;
+    if (ss_has(state.failed_without_node, module_name)) {
+        log_debug(ctx.cfg, "Module '" + module_name + "' retains its failed pre-graph resolution state");
         return false;
     }
 
     if (!sp_is_valid_module_name(module_name)) {
         dr_emit_error(state.diags, "DRV-0072",
             "invalid canonical module name: '" + module_name + "'", "");
-        ss_add(state.failed_resolutions, module_name);
+        ss_add(state.failed_without_node, module_name);
         return false;
     }
 
@@ -678,11 +699,11 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
     if (existing_opt != null) {
         let existing = existing_opt as ModuleGraphNode*;
         if (ord(existing.state) == ord(MNS_RESOLVED)) {
-            log_debug(cfg, "Module '" + module_name + "' already resolved (cache hit)");
+            log_debug(ctx.cfg, "Module '" + module_name + "' already resolved (cache hit)");
             return true;
         }
         if (ord(existing.state) == ord(MNS_FAILED)) {
-            log_debug(cfg, "Module '" + module_name + "' retains its failed resolution state");
+            log_debug(ctx.cfg, "Module '" + module_name + "' retains its failed resolution state");
             return false;
         }
         if (ord(existing.state) == ord(MNS_RESOLVING)) {
@@ -697,15 +718,15 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
     }
 
     if (dea_is_virtual_module_name(module_name)) {
-        log_debug(cfg, "Treating module '" + module_name + "' as compiler-synthesized prelude");
+        log_debug(ctx.cfg, "Treating module '" + module_name + "' as compiler-synthesized prelude");
         return true;
     }
 
     with (let next_stack = us_sv_clone(stack) => sv_free(next_stack)) {
         sv_push(next_stack, module_name);
 
-        if (!force_source) {
-            let candidate = spm_get(candidates, module_name);
+        if (module_name != state.entry_module) {
+            let candidate = spm_get(ctx.candidates, module_name);
             if (candidate != null) {
                 let node = mg_node_from_registry(module_name);
                 node.state = MNS_RESOLVING;
@@ -715,36 +736,16 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
 
                 let raw = miu_clone_interface(candidate as ModuleInterface*);
                 dr_register_graph_interface(state, raw);
-                log_debug(cfg, "Using supplied interface for module '" + module_name + "'");
-
-                let ok = true;
-                for (let req_i = 0; req_i < vec_size(raw.require_entries); req_i = req_i + 1) {
-                    let dep = ptr_vec_get(raw.require_entries, req_i) as InterfaceDepEntry*;
-                    mg_node_add_dependency(node, MDK_REQUIRE, dep.provider_module, dep.symbol_name, dep.hash);
-                    if (!dr_resolve_module(state, candidates, search_paths, interface_roots, policy, artifact_root,
-                                           next_stack, dep.provider_module, false, cfg)) {
-                        ok = false;
-                    }
-                }
-                for (let link_i = 0; link_i < vec_size(raw.link_entries); link_i = link_i + 1) {
-                    let dep2 = ptr_vec_get(raw.link_entries, link_i) as InterfaceDepEntry*;
-                    mg_node_add_dependency(node, MDK_LINK, dep2.provider_module, dep2.symbol_name, dep2.hash);
-                    if (!dr_resolve_module(state, candidates, search_paths, interface_roots, policy, artifact_root,
-                                           next_stack, dep2.provider_module, false, cfg)) {
-                        ok = false;
-                    }
-                }
-                if (ok) node.state = MNS_RESOLVED;
-                else node.state = MNS_FAILED;
-                return ok;
+                log_debug(ctx.cfg, "Using supplied interface for module '" + module_name + "'");
+                return dr_resolve_interface_dependencies(ctx, node, raw, next_stack);
             }
 
-            let interface_path_opt = dr_select_interface_path(interface_roots, module_name);
+            let interface_path_opt = sp_resolve_interface(ctx.interface_roots, module_name);
             if (interface_path_opt != null) {
                 let interface_path = interface_path_opt as string;
                 let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
                 if (artifacts == null) {
-                    ss_add(state.failed_resolutions, module_name);
+                    ss_add(state.failed_without_node, module_name);
                     return false;
                 }
                 let node2 = mg_node_from_interface(module_name, interface_path, artifacts as ModuleArtifactPaths*);
@@ -799,49 +800,30 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
                 }
 
                 dr_register_graph_interface(state, raw2);
-                let ok2 = true;
-                for (let req_i2 = 0; req_i2 < vec_size(raw2.require_entries); req_i2 = req_i2 + 1) {
-                    let dep3 = ptr_vec_get(raw2.require_entries, req_i2) as InterfaceDepEntry*;
-                    mg_node_add_dependency(node2, MDK_REQUIRE, dep3.provider_module, dep3.symbol_name, dep3.hash);
-                    if (!dr_resolve_module(state, candidates, search_paths, interface_roots, policy, artifact_root,
-                                           next_stack, dep3.provider_module, false, cfg)) {
-                        ok2 = false;
-                    }
-                }
-                for (let link_i2 = 0; link_i2 < vec_size(raw2.link_entries); link_i2 = link_i2 + 1) {
-                    let dep4 = ptr_vec_get(raw2.link_entries, link_i2) as InterfaceDepEntry*;
-                    mg_node_add_dependency(node2, MDK_LINK, dep4.provider_module, dep4.symbol_name, dep4.hash);
-                    if (!dr_resolve_module(state, candidates, search_paths, interface_roots, policy, artifact_root,
-                                           next_stack, dep4.provider_module, false, cfg)) {
-                        ok2 = false;
-                    }
-                }
-                if (ok2) node2.state = MNS_RESOLVED;
-                else node2.state = MNS_FAILED;
-                return ok2;
+                return dr_resolve_interface_dependencies(ctx, node2, raw2, next_stack);
             }
 
-            if (ord(policy) == ord(MRP_REQUIRE_INTERFACE)) {
+            if (ord(ctx.policy) == ord(MRP_REQUIRE_INTERFACE)) {
                 dr_emit_error(state.diags, "DRV-0074",
                     "required module interface for '" + module_name + "' was not found", "");
-                ss_add(state.failed_resolutions, module_name);
+                ss_add(state.failed_without_node, module_name);
                 return false;
             }
         }
 
-        let path_opt = sp_resolve(search_paths, module_name);
+        let path_opt = sp_resolve(ctx.search_paths, module_name);
         if (path_opt == null) {
             dr_emit_error(state.diags, "DRV-0010",
                 "Module '" + module_name + "' not found in system_roots or project_roots", "");
-            ss_add(state.failed_resolutions, module_name);
+            ss_add(state.failed_without_node, module_name);
             return false;
         }
         let path = path_opt as string;
         let artifacts2: ModuleArtifactPaths*? = null;
-        if (artifact_root != null) {
-            artifacts2 = mg_artifacts_for_module(artifact_root as string, module_name, state.diags);
+        if (ctx.artifact_root != null) {
+            artifacts2 = mg_artifacts_for_module(ctx.artifact_root as string, module_name, state.diags);
             if (artifacts2 == null) {
-                ss_add(state.failed_resolutions, module_name);
+                ss_add(state.failed_without_node, module_name);
                 return false;
             }
         }
@@ -851,7 +833,7 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
             return false;
         }
 
-        log_debug(cfg, "Resolved '" + module_name + "' to " + path);
+        log_debug(ctx.cfg, "Resolved '" + module_name + "' to " + path);
         let source_opt = read_file(path);
         if (source_opt == null) {
             dr_emit_error(state.diags, "DRV-0011", "cannot read source file: " + path, path);
@@ -868,7 +850,7 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
         sv_push(state.source_names, path);
         sv_push(state.source_texts, source);
 
-        let pr = dr_parse_source(path, source, cfg);
+        let pr = dr_parse_source(path, source, ctx.cfg);
         let unit = new DriverUnit(module_name, path, pr);
         dr_register_unit(state, unit);
         dr_copy_parse_diags(state.diags, pr);
@@ -890,8 +872,7 @@ func dr_resolve_module(state: DriverState*, candidates: StringPtrMap*, search_pa
                 }
                 for (let imp_i2 = 0; imp_i2 < vec_size(mod.imports); imp_i2 = imp_i2 + 1) {
                     let imp2 = ptr_vec_get(mod.imports, imp_i2) as Import*;
-                    if (!dr_resolve_module(state, candidates, search_paths, interface_roots, policy, artifact_root,
-                                           next_stack, imp2.name, false, cfg)) {
+                    if (!dr_resolve_module(ctx, next_stack, imp2.name)) {
                         ok3 = false;
                     }
                 }
@@ -1026,9 +1007,13 @@ func dr_analyze_entry_core(search_paths: SourceSearchPaths*, entry_module: strin
     let state = dr_state_create(entry_module, interfaces);
     with (let candidates = dr_build_interface_candidates(state, interfaces) => spm_free(candidates)) {
         if (dr_validate_interface_roots(state, interface_roots) && !driver_has_errors(state)) {
-            with (let stack = sv_create(8) => sv_free(stack)) {
-                dr_resolve_module(state, candidates, search_paths, interface_roots, policy, artifact_root,
-                                  stack, entry_module, true, cfg);
+            with (
+                let ctx = new DriverResolutionContext(
+                    state, candidates, search_paths, interface_roots, policy, artifact_root, cfg
+                ) => drop ctx,
+                let stack = sv_create(8) => sv_free(stack)
+            ) {
+                dr_resolve_module(ctx, stack, entry_module);
             }
         }
         if (!driver_has_errors(state)) {

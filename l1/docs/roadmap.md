@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-19
+Version: 2026-07-20
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -121,6 +121,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   module-to-artifact association, interface-first discovery with caller-selected source fallback, recursive `.l1m`
   closure, deterministic graph enumeration, ordered direct-import edges, and populated `require` / `link` manifests. It
   left compile-only, standalone linking, and multi-CU build/run non-operational.
+- Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
+  type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
 - Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] made Stage 1 check array
@@ -288,6 +290,7 @@ update to be promoted to an initiative or plan:
 [library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
+[module-interface-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
 [named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md
 [nullable-equality]: ../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md

@@ -23,6 +23,7 @@ import parser.interface;
 import sem_context;
 import signatures;
 import source_paths;
+import symbols;
 import types;
 import util.log;
 
@@ -607,6 +608,358 @@ func test_direct_interface_replay_loads_require_closure() {
 }
 
 /**
+ * Tests nested interface aliases finalize through a source-backed alias while
+ * wire-preserving projection retains the original provider spelling.
+ */
+func test_cross_provider_alias_materialization_and_projection() {
+    let leaf = pi_parse_interface(
+        "module interface replay_alias_leaf;\n" +
+        "fingerprint \"\";\n\n" +
+        "require replay_alias_source::SourceAlias == \"\";\n\n" +
+        "type LeafAlias = replay_alias_source::SourceAlias == \"\";\n",
+        "<replay_alias_leaf.l1m>"
+    );
+    let peer = pi_parse_interface(
+        "module interface replay_alias_peer;\n" +
+        "fingerprint \"\";\n\n" +
+        "require replay_alias_leaf::LeafAlias == \"\";\n\n" +
+        "type PeerAlias = replay_alias_leaf::LeafAlias == \"\";\n",
+        "<replay_alias_peer.l1m>"
+    );
+    let facade = pi_parse_interface(
+        "module interface replay_alias_facade;\n" +
+        "fingerprint \"\";\n\n" +
+        "require replay_alias_peer::PeerAlias == \"\";\n\n" +
+        "enum Envelope {\n" +
+        "  Empty;\n" +
+        "  Item(value: replay_alias_peer::PeerAlias);\n" +
+        "} == \"\";\n\n" +
+        "func identity(value: replay_alias_peer::PeerAlias) -> replay_alias_peer::PeerAlias == \"\";\n",
+        "<replay_alias_facade.l1m>"
+    );
+    assert(!ipr_has_errors(leaf) && !ipr_has_errors(peer) && !ipr_has_errors(facade),
+        "nested alias interfaces should parse");
+
+    let interfaces = ptr_vec_create(3);
+    ptr_vec_push(interfaces, leaf.interface as void*);
+    ptr_vec_push(interfaces, peer.interface as void*);
+    ptr_vec_push(interfaces, facade.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_alias_closure_consumer", interfaces, cfg);
+
+    assert(!analysis_has_errors(result), "nested interface/source aliases should finalize semantically");
+    assert(driver_find_unit(result.driver_state, "replay_alias_source") != null,
+        "leaf require dependency should use source fallback");
+    let identity = sig_lookup_func_type(result.signatures as SignatureTables*, "replay_alias_facade", "identity");
+    assert(identity != null &&
+        type_format(identity as Type*) ==
+            "func(replay_alias_source::SourceState) -> replay_alias_source::SourceState",
+        "nested transparent aliases should materialize to the source enum");
+    let semantic_facade = driver_find_interface(result.driver_state, "replay_alias_facade");
+    assert(semantic_facade != null, "facade semantic interface should be active");
+    let semantic_identity = ptr_vec_get((semantic_facade as ModuleInterface*).func_entries, 0) as InterfaceFuncEntry*;
+    assert(type_format(semantic_identity.ty) ==
+        "func(replay_alias_source::SourceState) -> replay_alias_source::SourceState",
+        "active semantic interface should receive materialized alias targets");
+    let names = analysis_name_resolution(result) as NameResolution*;
+    let peer_env = nr_env_find(names, "replay_alias_peer");
+    assert(peer_env != null, "peer interface environment should be active");
+    let peer_alias = nr_module_env_local(peer_env as ModuleEnv*, "PeerAlias");
+    assert(peer_alias != null && (peer_alias as Symbol*).resolved_type != null &&
+        type_format((peer_alias as Symbol*).resolved_type as Type*) == "replay_alias_source::SourceState",
+        "name-resolution alias symbols should receive materialized targets");
+    let envelope = sig_lookup_enum_info(result.signatures as SignatureTables*, "replay_alias_facade", "Envelope");
+    assert(envelope != null, "facade enum should replay");
+    let item = ptr_vec_get((envelope as EnumInfo*).variants, 1) as EnumVariantInfo*;
+    let payload = ptr_vec_get(item.field_types, 0) as Type*;
+    assert(ord(payload.kind) == ord(TY_ENUM) && type_format(payload) == "replay_alias_source::SourceState",
+        "enum payload aliases should finalize to the source enum kind");
+
+    let projected = analysis_emit_interface(result, "replay_alias_facade");
+    assert(projected != null, "facade projection should remain available");
+    assert(contains_s(projected as string,
+        "Item(value: replay_alias_peer::PeerAlias);"),
+        "enum payload projection should preserve peer alias spelling");
+    assert(contains_s(projected as string,
+        "func identity(value: replay_alias_peer::PeerAlias) -> replay_alias_peer::PeerAlias"),
+        "function projection should preserve peer alias spelling");
+
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(facade);
+    ipr_free(peer);
+    ipr_free(leaf);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests aliases spanning cached interface targets retain cycle diagnostics.
+ */
+func test_cross_interface_alias_cycle_reports_sig_0020() {
+    let a = pi_parse_interface(
+        "module interface replay_alias_cycle_a;\n" +
+        "fingerprint \"\";\n\n" +
+        "require replay_alias_cycle_b::B == \"\";\n\n" +
+        "type A = replay_alias_cycle_b::B == \"\";\n",
+        "<replay_alias_cycle_a.l1m>"
+    );
+    let b = pi_parse_interface(
+        "module interface replay_alias_cycle_b;\n" +
+        "fingerprint \"\";\n\n" +
+        "type B = replay_alias_cycle_a::A == \"\";\n",
+        "<replay_alias_cycle_b.l1m>"
+    );
+    assert(!ipr_has_errors(a) && !ipr_has_errors(b), "cross-interface alias cycle fixtures should parse");
+
+    let interfaces = ptr_vec_create(2);
+    ptr_vec_push(interfaces, a.interface as void*);
+    ptr_vec_push(interfaces, b.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_alias_cycle_consumer", interfaces, cfg);
+
+    assert(analysis_has_errors(result), "cross-interface aliases should report their semantic cycle");
+    assert(diag_code_count(result, "SIG-0020") == 1,
+        "cached interface alias cycle should emit one SIG-0020 across materialized copies");
+    assert(diag_code_count(result, "TYP-0270") == 1,
+        "cached interface alias cycle should emit one recovery diagnostic across materialized copies");
+
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(b);
+    ipr_free(a);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests public surfaces reject interface providers reachable only through
+ * `link` and accept the same provider through `require`.
+ */
+func test_interface_surface_requires_interface_provider() {
+    let provider_text = "module interface replay_alias_provider;\n" +
+        "fingerprint \"\";\n\n" +
+        "struct Thing { value: int; } == \"\";\n";
+    let linked = pi_parse_interface(
+        "module interface replay_alias_facade;\n" +
+        "fingerprint \"\";\n\n" +
+        "link replay_alias_provider::Thing == \"\";\n\n" +
+        "func expose() -> replay_alias_provider::Thing == \"\";\n",
+        "<replay_alias_facade-link.l1m>"
+    );
+    let linked_provider = pi_parse_interface(provider_text, "<replay_alias_provider-link.l1m>");
+    let linked_interfaces = ptr_vec_create(2);
+    ptr_vec_push(linked_interfaces, linked.interface as void*);
+    ptr_vec_push(linked_interfaces, linked_provider.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let linked_result = analysis_analyze_entry_with_interfaces(sp, "replay_alias_closure_consumer",
+        linked_interfaces, cfg);
+    assert(analysis_has_errors(linked_result), "link-only interface surface provider should be rejected");
+    assert(has_diag_code(linked_result, "RES-0040"), "link-only interface surface should report RES-0040");
+    analysis_result_free(linked_result);
+    vec_free(linked_interfaces);
+    ipr_free(linked_provider);
+    ipr_free(linked);
+
+    let required = pi_parse_interface(
+        "module interface replay_alias_facade;\n" +
+        "fingerprint \"\";\n\n" +
+        "require replay_alias_provider::Thing == \"\";\n\n" +
+        "func expose() -> replay_alias_provider::Thing == \"\";\n",
+        "<replay_alias_facade-require.l1m>"
+    );
+    let required_provider = pi_parse_interface(provider_text, "<replay_alias_provider-require.l1m>");
+    let required_interfaces = ptr_vec_create(2);
+    ptr_vec_push(required_interfaces, required.interface as void*);
+    ptr_vec_push(required_interfaces, required_provider.interface as void*);
+    let required_result = analysis_analyze_entry_with_interfaces(sp, "replay_alias_closure_consumer",
+        required_interfaces, cfg);
+    assert(!analysis_has_errors(required_result), "required interface surface provider should be accepted");
+    analysis_result_free(required_result);
+    vec_free(required_interfaces);
+    ipr_free(required_provider);
+    ipr_free(required);
+
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests public surfaces reject source-fallback providers reachable only
+ * through `link` and accept the same provider through `require`.
+ */
+func test_interface_surface_requires_source_provider() {
+    let linked = pi_parse_interface(
+        "module interface replay_alias_facade;\n" +
+        "fingerprint \"\";\n\n" +
+        "link replay_alias_source::SourceState == \"\";\n\n" +
+        "func expose() -> replay_alias_source::SourceState == \"\";\n",
+        "<replay_alias_facade-source-link.l1m>"
+    );
+    let linked_interfaces = ptr_vec_create(1);
+    ptr_vec_push(linked_interfaces, linked.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let linked_result = analysis_analyze_entry_with_interfaces(sp, "replay_alias_closure_consumer",
+        linked_interfaces, cfg);
+    assert(analysis_has_errors(linked_result), "link-only source surface provider should be rejected");
+    assert(has_diag_code(linked_result, "RES-0040"), "link-only source surface should report RES-0040");
+    analysis_result_free(linked_result);
+    vec_free(linked_interfaces);
+    ipr_free(linked);
+
+    let required = pi_parse_interface(
+        "module interface replay_alias_facade;\n" +
+        "fingerprint \"\";\n\n" +
+        "require replay_alias_source::SourceState == \"\";\n\n" +
+        "func expose() -> replay_alias_source::SourceState == \"\";\n",
+        "<replay_alias_facade-source-require.l1m>"
+    );
+    let required_interfaces = ptr_vec_create(1);
+    ptr_vec_push(required_interfaces, required.interface as void*);
+    let required_result = analysis_analyze_entry_with_interfaces(sp, "replay_alias_closure_consumer",
+        required_interfaces, cfg);
+    assert(!analysis_has_errors(required_result), "required source surface provider should be accepted");
+    analysis_result_free(required_result);
+    vec_free(required_interfaces);
+    ipr_free(required);
+
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests post-finalization shape checks reject a slice exposed through a peer
+ * interface alias.
+ */
+func test_cross_interface_alias_slice_shape_error() {
+    let peer = pi_parse_interface(
+        "module interface replay_alias_peer;\n" +
+        "fingerprint \"\";\n\n" +
+        "type Items = int[] == \"\";\n",
+        "<replay_alias_peer-slice.l1m>"
+    );
+    let facade = pi_parse_interface(
+        "module interface replay_alias_facade;\n" +
+        "fingerprint \"\";\n\n" +
+        "require replay_alias_peer::Items == \"\";\n\n" +
+        "func bad() -> replay_alias_peer::Items == \"\";\n",
+        "<replay_alias_facade-slice.l1m>"
+    );
+    assert(!ipr_has_errors(peer) && !ipr_has_errors(facade), "slice alias interfaces should parse");
+
+    let interfaces = ptr_vec_create(2);
+    ptr_vec_push(interfaces, peer.interface as void*);
+    ptr_vec_push(interfaces, facade.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_alias_closure_consumer", interfaces, cfg);
+
+    assert(analysis_has_errors(result), "slice return hidden by peer alias should fail");
+    assert(has_diag_code(result, "TYP-0810"),
+        "post-finalization function shape check should report TYP-0810");
+
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(facade);
+    ipr_free(peer);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests an incomplete source declaration retains its successfully resolved
+ * field types until aliases targeting a later source module can materialize.
+ */
+func test_incomplete_source_shape_check_materializes_late_alias() {
+    let peer = pi_parse_interface(
+        "module interface replay_alias_recovery_peer;\n" +
+        "fingerprint \"\";\n\n" +
+        "require replay_alias_recovery_source::SourceItems == \"\";\n\n" +
+        "type RecoveryItems = replay_alias_recovery_source::SourceItems == \"\";\n",
+        "<replay_alias_recovery_peer.l1m>"
+    );
+    assert(!ipr_has_errors(peer), "shape-recovery peer interface should parse");
+
+    let interfaces = ptr_vec_create(1);
+    ptr_vec_push(interfaces, peer.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(
+        sp,
+        "replay_alias_shape_recovery_consumer",
+        interfaces,
+        cfg
+    );
+
+    assert(analysis_has_errors(result), "unknown field and recovered slice field should fail");
+    assert(has_diag_code(result, "SIG-0019"), "unknown field should retain SIG-0019");
+    assert(has_diag_code(result, "TYP-0811"),
+        "retained field type should materialize the later source slice and report TYP-0811");
+    assert(driver_find_unit(result.driver_state, "replay_alias_recovery_source") != null,
+        "interface require should load the later source alias provider");
+
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(peer);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
+ * Tests closure validation also covers invalid surfaces on interfaces reached
+ * only through another module's `link` edge.
+ */
+func test_nested_link_only_interface_surface_is_validated() {
+    let facade = pi_parse_interface(
+        "module interface replay_alias_facade;\n" +
+        "fingerprint \"\";\n\n" +
+        "link replay_alias_link_mid::helper == \"\";\n\n" +
+        "func entry() -> int == \"\";\n",
+        "<replay_alias_facade-nested-link.l1m>"
+    );
+    let mid = pi_parse_interface(
+        "module interface replay_alias_link_mid;\n" +
+        "fingerprint \"\";\n\n" +
+        "link replay_alias_link_leaf::Thing == \"\";\n\n" +
+        "func helper() -> replay_alias_link_leaf::Thing == \"\";\n",
+        "<replay_alias_link_mid.l1m>"
+    );
+    let leaf = pi_parse_interface(
+        "module interface replay_alias_link_leaf;\n" +
+        "fingerprint \"\";\n\n" +
+        "struct Thing { value: int; } == \"\";\n",
+        "<replay_alias_link_leaf.l1m>"
+    );
+    assert(!ipr_has_errors(facade) && !ipr_has_errors(mid) && !ipr_has_errors(leaf),
+        "nested link-only interfaces should parse");
+
+    let interfaces = ptr_vec_create(3);
+    ptr_vec_push(interfaces, facade.interface as void*);
+    ptr_vec_push(interfaces, mid.interface as void*);
+    ptr_vec_push(interfaces, leaf.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_alias_closure_consumer", interfaces, cfg);
+
+    assert(analysis_has_errors(result), "invalid nested link-only interface surface should fail");
+    assert(has_diag_code(result, "RES-0040"), "nested link-only interface should report RES-0040");
+    assert(driver_find_interface(result.driver_state, "replay_alias_link_mid") == null,
+        "nested link-only interface should remain outside semantic activation");
+
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(leaf);
+    ipr_free(mid);
+    ipr_free(facade);
+    drop cfg;
+    sp_free(sp);
+}
+
+/**
  * Tests unused supplied interfaces are ignored, including dependency-bearing ones.
  */
 func test_direct_interface_replay_ignores_unused_interfaces() {
@@ -684,6 +1037,13 @@ func main() {
     test_direct_interface_replay_sys_real_runtime_support();
     test_source_and_interface_enum_exports_match();
     test_direct_interface_replay_loads_require_closure();
+    test_cross_provider_alias_materialization_and_projection();
+    test_cross_interface_alias_cycle_reports_sig_0020();
+    test_interface_surface_requires_interface_provider();
+    test_interface_surface_requires_source_provider();
+    test_cross_interface_alias_slice_shape_error();
+    test_incomplete_source_shape_check_materializes_late_alias();
+    test_nested_link_only_interface_surface_is_validated();
     test_direct_interface_replay_ignores_unused_interfaces();
     test_direct_interface_replay_rejects_duplicate_interfaces();
     printl_s("interface_replay_test: all tests passed");

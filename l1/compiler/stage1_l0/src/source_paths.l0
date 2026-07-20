@@ -152,17 +152,24 @@ func _sp_module_relstem_unchecked(module_name: string) -> string {
 }
 
 /**
- * Convert a dotted module name to its relative `.l1` path.
+ * Return the first existing path below an ordered root list.
  *
- * This compatibility helper assumes that the caller already validated the
- * module name. New artifact and interface discovery code should use
- * `sp_module_source_relpath` or `sp_module_interface_relpath` instead.
+ * Existence, rather than file kind or readability, selects the authoritative
+ * candidate. Callers validate the selected path according to its artifact
+ * contract.
  *
- * @param module_name Dotted module name such as `foo.bar`.
- * @return Relative source path such as `foo/bar.l1`.
+ * @param roots Ordered roots to inspect.
+ * @param rel Validated relative artifact path.
+ * @return First existing candidate, or `null` when none exists.
  */
-func sp_module_relpath(module_name: string) -> string {
-    return _sp_module_relstem_unchecked(module_name) + ".l1";
+func _sp_resolve_roots(roots: StringVector*, rel: string) -> string? {
+    for (let i = 0; i < sv_size(roots); i = i + 1) {
+        let candidate = join(sv_get(roots, i), rel);
+        if (exists(candidate)) {
+            return candidate;
+        }
+    }
+    return null;
 }
 
 /**
@@ -179,21 +186,12 @@ func sp_resolve(self: SourceSearchPaths*, module_name: string) -> string? {
     }
     let rel = rel_opt as string;
 
-    for (let i = 0; i < sv_size(self.system_roots); i = i + 1) {
-        let candidate = join(sv_get(self.system_roots, i), rel);
-        if (exists(candidate)) {
-            return candidate;
-        }
+    let system_match = _sp_resolve_roots(self.system_roots, rel);
+    if (system_match != null) {
+        return system_match;
     }
 
-    for (let project_i = 0; project_i < sv_size(self.project_roots); project_i = project_i + 1) {
-        let candidate = join(sv_get(self.project_roots, project_i), rel);
-        if (exists(candidate)) {
-            return candidate;
-        }
-    }
-
-    return null;
+    return _sp_resolve_roots(self.project_roots, rel);
 }
 
 /**
@@ -284,6 +282,25 @@ func sp_module_interface_relpath(module_name: string) -> string? {
         return null;
     }
     return relstem as string + ".l1m";
+}
+
+/**
+ * Resolve an interface module name against ordered interface roots.
+ *
+ * The first existing candidate is authoritative even when it is not a regular
+ * file; interface loading reports usability diagnostics for that selected
+ * path instead of falling through to later roots.
+ *
+ * @param interface_roots Ordered interface roots to inspect.
+ * @param module_name Canonical dotted module name to resolve.
+ * @return First existing interface path, or `null` when none exists.
+ */
+func sp_resolve_interface(interface_roots: StringVector*, module_name: string) -> string? {
+    let rel_opt = sp_module_interface_relpath(module_name);
+    if (rel_opt == null) {
+        return null;
+    }
+    return _sp_resolve_roots(interface_roots, rel_opt as string);
 }
 
 /**

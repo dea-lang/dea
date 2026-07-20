@@ -6,6 +6,7 @@
 module module_graph_test;
 
 import std.assert;
+import std.hashset;
 import std.io;
 import std.vector;
 import util.diag;
@@ -230,6 +231,36 @@ func test_graph_sorted_enumeration_and_exact_edges() {
 }
 
 /**
+ * Tests semantic closure follows source imports and interface `require` edges
+ * while excluding `link`-only providers.
+ */
+func test_semantic_closure_excludes_link_edges() {
+    with (let graph = mg_create() => mg_free(graph)) {
+        let facade = mg_node_from_registry("pkg.facade");
+        let required_source = mg_node_from_source("pkg.required", "src/pkg/required.l1", null);
+        let transitive = mg_node_from_registry("pkg.transitive");
+        let link_only = mg_node_from_registry("pkg.link_only");
+
+        mg_node_add_dependency(facade, MDK_REQUIRE, "pkg.required", "Visible", "");
+        mg_node_add_dependency(facade, MDK_LINK, "pkg.link_only", "helper", "");
+        mg_node_add_direct_import(required_source, "pkg.transitive");
+        mg_node_add_dependency(transitive, MDK_LINK, "pkg.link_only", "helper", "");
+
+        assert(mg_add_node(graph, facade), "expected facade insertion");
+        assert(mg_add_node(graph, required_source), "expected required source insertion");
+        assert(mg_add_node(graph, transitive), "expected transitive insertion");
+        assert(mg_add_node(graph, link_only), "expected link-only insertion");
+
+        with (let closure = mg_semantic_closure(graph, "pkg.facade") => ss_free(closure)) {
+            assert(ss_has(closure, "pkg.facade"), "semantic closure should include its root");
+            assert(ss_has(closure, "pkg.required"), "semantic closure should follow require edges");
+            assert(ss_has(closure, "pkg.transitive"), "semantic closure should follow source direct imports");
+            assert(!ss_has(closure, "pkg.link_only"), "semantic closure must exclude link-only providers");
+        }
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -239,5 +270,6 @@ func main() {
     test_invalid_artifact_associations_are_atomic();
     test_origin_artifact_associations();
     test_graph_sorted_enumeration_and_exact_edges();
+    test_semantic_closure_excludes_link_edges();
     printl_s("module_graph_test: all tests passed");
 }

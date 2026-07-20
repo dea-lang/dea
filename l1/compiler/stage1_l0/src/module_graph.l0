@@ -8,6 +8,7 @@ module module_graph;
 import sys.rt;
 
 import std.hashmap;
+import std.hashset;
 import std.path;
 import std.string;
 import std.vector;
@@ -562,6 +563,63 @@ func mg_find_node(self: ModuleGraph*, module_name: string) -> ModuleGraphNode*? 
         return null;
     }
     return node as ModuleGraphNode*;
+}
+
+/**
+ * Add one node and its semantic dependencies to a closure set.
+ *
+ * Source nodes contribute their direct imports. Interface and registry nodes
+ * contribute only `require` dependencies; implementation-only `link` edges do
+ * not make a provider available to public surface semantics.
+ *
+ * @param self Graph to traverse.
+ * @param module_name Canonical module name to visit.
+ * @param closure Set receiving visited module names.
+ */
+func _mg_add_semantic_closure(self: ModuleGraph*, module_name: string, closure: StringSet*) {
+    if (ss_has(closure, module_name)) {
+        return;
+    }
+
+    let node_opt = mg_find_node(self, module_name);
+    if (node_opt == null) {
+        return;
+    }
+    let node = node_opt as ModuleGraphNode*;
+    ss_add(closure, module_name);
+
+    if (ord(node.origin.kind) == ord(MOK_SOURCE)) {
+        for (let import_i = 0; import_i < mg_node_direct_import_count(node); import_i = import_i + 1) {
+            _mg_add_semantic_closure(self, mg_node_direct_import_get(node, import_i), closure);
+        }
+        return;
+    }
+
+    if (ord(node.origin.kind) != ord(MOK_INTERFACE) && ord(node.origin.kind) != ord(MOK_REGISTRY)) {
+        return;
+    }
+    for (let dep_i = 0; dep_i < mg_node_dependency_count(node); dep_i = dep_i + 1) {
+        let dep = mg_node_dependency_get(node, dep_i);
+        if (ord(dep.kind) == ord(MDK_REQUIRE)) {
+            _mg_add_semantic_closure(self, dep.provider_module, closure);
+        }
+    }
+}
+
+/**
+ * Compute the semantic provider closure for one graph node.
+ *
+ * The returned set includes `module_name` when that node exists. The caller
+ * owns the set.
+ *
+ * @param self Graph to traverse.
+ * @param module_name Canonical root module name.
+ * @return Owned set of modules reachable through semantic edges.
+ */
+func mg_semantic_closure(self: ModuleGraph*, module_name: string) -> StringSet* {
+    let closure = ss_create();
+    _mg_add_semantic_closure(self, module_name, closure);
+    return closure;
 }
 
 /**

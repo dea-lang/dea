@@ -688,13 +688,10 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                         continue;
                     }
                     let alias_ty = type_clone(sym.resolved_type as Type*);
-                    if (sym.decl_ptr != null) {
-                        let alias_decl = sym.decl_ptr as TypeAliasDecl*;
-                        mi_collect_public_type_ref(result, nr, env, alias_decl.target, module_name,
-                            require_entries);
-                    } else {
-                        mi_collect_type_refs(result, alias_ty, module_name, require_entries);
-                    }
+                    assert(sym.decl_ptr != null, "source alias symbol must retain its declaration");
+                    let alias_decl = sym.decl_ptr as TypeAliasDecl*;
+                    mi_collect_public_type_ref(result, nr, env, alias_decl.target, module_name,
+                        require_entries);
                     let entry = new InterfaceAliasEntry(key, alias_ty, "");
                     ptr_vec_push(alias_entries, entry as void*);
                 }
@@ -705,18 +702,12 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     }
                     let cloned_struct = miu_clone_struct_info(info_opt as StructInfo*);
                     if (!cloned_struct.is_opaque) {
-                        if (sym.decl_ptr != null) {
-                            let struct_decl = sym.decl_ptr as StructDecl*;
-                            for (let fi = 0; fi < vec_size(struct_decl.fields); fi = fi + 1) {
-                                let field_decl = ptr_vec_get(struct_decl.fields, fi) as FieldDecl*;
-                                mi_collect_public_type_ref(result, nr, env, field_decl.type_ref, module_name,
-                                    require_entries);
-                            }
-                        } else {
-                            for (let fi2 = 0; fi2 < vec_size(cloned_struct.fields); fi2 = fi2 + 1) {
-                                let field = ptr_vec_get(cloned_struct.fields, fi2) as StructFieldInfo*;
-                                mi_collect_type_refs(result, field.field_type, module_name, require_entries);
-                            }
+                        assert(sym.decl_ptr != null, "source struct symbol must retain its declaration");
+                        let struct_decl = sym.decl_ptr as StructDecl*;
+                        for (let fi = 0; fi < vec_size(struct_decl.fields); fi = fi + 1) {
+                            let field_decl = ptr_vec_get(struct_decl.fields, fi) as FieldDecl*;
+                            mi_collect_public_type_ref(result, nr, env, field_decl.type_ref, module_name,
+                                require_entries);
                         }
                     }
                     ptr_vec_push(struct_infos, cloned_struct as void*);
@@ -728,24 +719,14 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     }
                     let cloned_enum = miu_clone_enum_info(info_opt as EnumInfo*);
                     if (!cloned_enum.is_opaque) {
-                        if (sym.decl_ptr != null) {
-                            let enum_decl = sym.decl_ptr as EnumDecl*;
-                            for (let vi = 0; vi < vec_size(enum_decl.variants); vi = vi + 1) {
-                                let variant_decl = ptr_vec_get(enum_decl.variants, vi) as EnumVariant*;
-                                for (let vfi = 0; vfi < vec_size(variant_decl.fields); vfi = vfi + 1) {
-                                    let field_decl2 = ptr_vec_get(variant_decl.fields, vfi) as FieldDecl*;
-                                    mi_collect_public_type_ref(result, nr, env, field_decl2.type_ref, module_name,
-                                        require_entries);
-                                }
-                            }
-                        } else {
-                            for (let vi2 = 0; vi2 < vec_size(cloned_enum.variants); vi2 = vi2 + 1) {
-                                let variant = ptr_vec_get(cloned_enum.variants, vi2) as EnumVariantInfo*;
-                                for (let vfi2 = 0; vfi2 < vec_size(variant.field_types); vfi2 = vfi2 + 1) {
-                                    mi_collect_type_refs(result,
-                                        ptr_vec_get(variant.field_types, vfi2) as Type*, module_name,
-                                        require_entries);
-                                }
+                        assert(sym.decl_ptr != null, "source enum symbol must retain its declaration");
+                        let enum_decl = sym.decl_ptr as EnumDecl*;
+                        for (let vi = 0; vi < vec_size(enum_decl.variants); vi = vi + 1) {
+                            let variant_decl = ptr_vec_get(enum_decl.variants, vi) as EnumVariant*;
+                            for (let vfi = 0; vfi < vec_size(variant_decl.fields); vfi = vfi + 1) {
+                                let field_decl2 = ptr_vec_get(variant_decl.fields, vfi) as FieldDecl*;
+                                mi_collect_public_type_ref(result, nr, env, field_decl2.type_ref, module_name,
+                                    require_entries);
                             }
                         }
                     }
@@ -757,18 +738,15 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                         continue;
                     }
                     let func_ty = type_clone(ty_opt as Type*);
-                    if (sym.decl_ptr != null) {
-                        let func_decl = sym.decl_ptr as FuncDecl*;
-                        for (let pi = 0; pi < vec_size(func_decl.params); pi = pi + 1) {
-                            let param = ptr_vec_get(func_decl.params, pi) as Param*;
-                            mi_collect_public_type_ref(result, nr, env, param.type_ref, module_name,
-                                require_entries);
-                        }
-                        mi_collect_public_type_ref(result, nr, env, func_decl.return_type, module_name,
+                    assert(sym.decl_ptr != null, "source function symbol must retain its declaration");
+                    let func_decl = sym.decl_ptr as FuncDecl*;
+                    for (let pi = 0; pi < vec_size(func_decl.params); pi = pi + 1) {
+                        let param = ptr_vec_get(func_decl.params, pi) as Param*;
+                        mi_collect_public_type_ref(result, nr, env, param.type_ref, module_name,
                             require_entries);
-                    } else {
-                        mi_collect_type_refs(result, func_ty, module_name, require_entries);
                     }
+                    mi_collect_public_type_ref(result, nr, env, func_decl.return_type, module_name,
+                        require_entries);
                     let param_names = mi_collect_param_names(sym);
                     let entry = new InterfaceFuncEntry(key, param_names, func_ty, sym.is_extern, "");
                     ptr_vec_push(func_entries, entry as void*);

@@ -1,6 +1,6 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-07-19
+- Version: 2026-07-20
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -12,6 +12,7 @@
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`
@@ -606,6 +607,7 @@ implementation tranche proves that one decision area needs additional design wor
   superseded when the dependency-safe split was recorded.
 - Artifact association, interface discovery, and module-graph construction completed under
   [artifact graph][artifact-graph].
+- Stage 1 module-interface resolution hardening completed under [module-interface-hardening].
 - Canonical whole-module hashing and `.l1m` verification under [interface fingerprints][interface-fingerprints].
 - Per-module definitions plus `I4init`, `I4fini`, and `I5entry` under [lifecycle entrypoints][lifecycle-entrypoints].
 - Provider/consumer metadata and bounded object readers under [object metadata][object-metadata].
@@ -643,6 +645,7 @@ implementation tranche proves that one decision area needs additional design wor
 [link-set]: ../plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [linking]: ../../docs/user/linking.md
 [module-interface]: ../../docs/specs/compiler/module-interface-format.md
+[module-interface-hardening]: ../plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
 [module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
 [object-metadata]: ../plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md

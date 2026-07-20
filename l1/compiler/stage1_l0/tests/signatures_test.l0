@@ -168,6 +168,23 @@ func test_infer_fail_reports_error() {
 }
 
 /**
+ * Tests shape checks remain bound to each declaration when duplicate names
+ * overwrite the corresponding signature-table key.
+ */
+func test_duplicate_declarations_keep_exact_shape_checks() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "duplicate_shape_main", cfg);
+        assert(analysis_has_errors(result), "expected duplicate declaration and slice-shape diagnostics");
+        assert(has_analysis_diag_code(result, "RES-0010"), "expected duplicate top-level diagnostic");
+        assert(has_analysis_diag_code(result, "TYP-0811"),
+            "expected the first duplicate struct's retained slice-field diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -176,5 +193,6 @@ func main() {
     test_alias_cycle_reports_error();
     test_value_cycle_reports_error();
     test_infer_fail_reports_error();
+    test_duplicate_declarations_keep_exact_shape_checks();
     printl_s("signatures_test: all tests passed");
 }

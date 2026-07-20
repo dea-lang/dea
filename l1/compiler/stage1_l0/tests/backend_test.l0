@@ -249,7 +249,7 @@ func test_analysis_has_arc_data_for_struct_and_nullable_pointer() {
         false
     );
 
-    result.signatures = new SignatureTables(spm_create(), spm_create(), spm_create(), spm_create());
+    result.signatures = sig_make_tables();
     spm_put((result.signatures as SignatureTables*).struct_infos, "demo.main::Thing", struct_info as void*);
 
     let query_struct = type_new_struct("demo.main", "Thing");

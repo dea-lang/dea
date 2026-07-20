@@ -750,6 +750,10 @@ func dependency_provider_interface_text() -> string {
         "  Red;\n" +
         "} == \"\";\n" +
         "\n" +
+        "enum InferredColor {\n" +
+        "  Blue;\n" +
+        "} == \"\";\n" +
+        "\n" +
         "enum ImplColor {\n" +
         "  Green;\n" +
         "} == \"\";\n" +
@@ -826,6 +830,12 @@ func test_emit_interface_semantic_dependencies() {
         assert(contains_s(text,
             "const selective_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red == \"\";"),
             "selectively imported const literals must emit canonical provider identity");
+        assert(contains_s(text,
+            "require iface_dependency_provider::InferredColor == \"opaque:PROVIDER-v1\";"),
+            "inferred exported bindings must add their resolved provider type to require");
+        assert(contains_s(text,
+            "let inferred_color: iface_dependency_provider::InferredColor == \"\";"),
+            "inferred exported bindings must preserve resolved-type dependency projection");
 
         assert(contains_s(text,
             "link iface_dependency_provider::ImplColor == \"opaque:PROVIDER-v1\";"),
@@ -838,11 +848,13 @@ func test_emit_interface_semantic_dependencies() {
             "unqualified sizeof type lookup must become a link dependency");
         assert(contains_s(text,
             "link iface_dependency_provider::LayoutTwo == \"opaque:PROVIDER-v1\";"),
-            "qualified sizeof type lookup must become a link dependency");
+            "alias-qualified sizeof type lookup must become a canonical link dependency");
         assert(!contains_s(text, "link iface_dependency_provider::Green"),
             "enum variants must not survive as variant-level dependencies");
         assert(!contains_s(text, "link iface_dependency_provider::public_seed"),
             "require dependencies must be subtracted from link dependencies");
+        assert(!contains_s(text, "link iface_dependency_provider::InferredColor"),
+            "inferred exported binding types must not remain implementation-tier links");
         assert(!contains_s(text, "require dea::") && !contains_s(text, "link dea::"),
             "compiler-synthesized virtual symbols must not enter dependency manifests");
 
@@ -854,7 +866,7 @@ func test_emit_interface_semantic_dependencies() {
         assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "LayoutOne") == 1,
             "unqualified sizeof type lookup must enter the canonical ledger");
         assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "LayoutTwo") == 1,
-            "qualified sizeof type lookup must enter the canonical ledger");
+            "alias-qualified sizeof type lookup must enter the canonical ledger under its canonical provider");
         assert(resolved_ref_count(nr, "iface_dependency_consumer", "iface_dependency_provider", "Green") == 0,
             "variant name must not appear in the canonical ledger");
         assert(resolved_ref_count(nr, "iface_dependency_consumer", "dea", "sizeof") == 0,

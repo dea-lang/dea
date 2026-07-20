@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-07-19
+Version: 2026-07-20
 
 Status: Draft artifact contract
 
@@ -125,6 +125,17 @@ provider interface for semantic replay; a `link` dependency creates a graph obli
 inside the importing module. Programmatic registry providers follow the same closure logic, while duplicate registry
 entries retain `DRV-0071`. Filesystem discovery is first-root-wins and does not report lower-priority matches as an
 ambiguity.
+
+Each interface surface is type-checked against its own **semantic require closure**. The closure starts with that
+interface, follows only transitive `require` edges through interface-backed providers, and follows direct source imports
+when source fallback supplies a provider. It never follows `link` edges. Every provider named by a materialized public
+surface type, including a provider reached while expanding a transparent alias, must be in the applicable semantic
+closure. A surface that can be satisfied only from the broader link graph is invalid and reports `RES-0040`,
+`interface surface references a provider outside its semantic require closure`.
+
+This validation does not rewrite the parsed dependency manifest or canonical declaration spelling. Semantic interface
+copies may finalize nominal kinds and expand transparent aliases for analysis and code generation, while graph and
+projection interfaces retain the parsed form for byte-stable round trips.
 
 Graph node enumeration is sorted by canonical module name. Source nodes separately retain every direct import in exact
 declaration order, including duplicates and imports that contribute no referenced symbol. That ordered sequence is not

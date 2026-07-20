@@ -5,7 +5,7 @@
 
 module iface_dependency_provider;
 
-export RemotePoint, LayoutOne, LayoutTwo, RemoteColor, ImplColor, RemoteAlias, remote_value, public_seed;
+export RemotePoint, LayoutOne, LayoutTwo, RemoteColor, InferredColor, ImplColor, RemoteAlias, remote_value, public_seed;
 
 struct RemotePoint {
     value: int;
@@ -21,6 +21,10 @@ struct LayoutTwo {
 
 enum RemoteColor {
     Red;
+}
+
+enum InferredColor {
+    Blue;
 }
 
 enum ImplColor {

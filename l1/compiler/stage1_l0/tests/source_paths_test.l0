@@ -160,6 +160,44 @@ func test_project_root_declaration_order() {
 }
 
 /**
+ * Tests ordered interface roots select the first existing candidate.
+ */
+func test_interface_root_declaration_order() {
+    with (let roots = sv_create(2) => sv_free(roots)) {
+        let fixture_root = "compiler/stage1_l0/tests/fixtures/module_graph";
+        let first_root = join(fixture_root, "interfaces_first");
+        let second_root = join(fixture_root, "interfaces_second");
+        sv_push(roots, first_root);
+        sv_push(roots, second_root);
+
+        let resolved = sp_resolve_interface(roots, "graph.provider");
+        assert(resolved != null, "expected provider interface to resolve");
+        assert(resolved as string == join(first_root, "graph/provider.l1m"),
+            "first declared interface root must win");
+        assert(sp_resolve_interface(roots, "graph/provider") == null,
+            "invalid interface module names must not resolve");
+    }
+}
+
+/**
+ * Tests an existing non-regular candidate remains authoritative.
+ */
+func test_interface_nonregular_candidate_is_authoritative() {
+    with (let roots = sv_create(2) => sv_free(roots)) {
+        let fixture_root = "compiler/stage1_l0/tests/fixtures/module_graph";
+        let nonregular_root = join(fixture_root, "interfaces_nonregular");
+        let regular_root = join(fixture_root, "interfaces_first");
+        sv_push(roots, nonregular_root);
+        sv_push(roots, regular_root);
+
+        let resolved = sp_resolve_interface(roots, "graph.provider");
+        assert(resolved != null, "expected existing non-regular candidate to resolve");
+        assert(resolved as string == join(nonregular_root, "graph/provider.l1m"),
+            "later regular interfaces must not override the first existing path");
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -173,5 +211,7 @@ func main() {
     test_system_roots_precede_project_roots();
     test_system_root_declaration_order();
     test_project_root_declaration_order();
+    test_interface_root_declaration_order();
+    test_interface_nonregular_candidate_is_authoritative();
     printl_s("source_paths_test: all tests passed");
 }

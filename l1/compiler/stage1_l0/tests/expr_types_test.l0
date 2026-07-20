@@ -1246,6 +1246,54 @@ func test_typing_dea_intrinsic_ref_err() {
 }
 
 /**
+ * Tests that alias-only imports do not also enable canonical qualification in `sizeof`.
+ */
+func test_typing_sizeof_alias_canonical_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_sizeof_alias_canonical_err", cfg);
+        assert(analysis_has_errors(result), "expected canonical qualification after alias-only import to fail");
+        assert(count_diag_code(result, "TYP-0301") == 1,
+            "expected one not-imported namespace diagnostic for alias-only import");
+        assert(!has_diag_code(result, "TYP-0154"), "did not expect a secondary module-path diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that selective imports do not also enable canonical qualification in `sizeof`.
+ */
+func test_typing_sizeof_selective_canonical_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_sizeof_selective_canonical_err", cfg);
+        assert(analysis_has_errors(result), "expected canonical qualification after selective import to fail");
+        assert(count_diag_code(result, "TYP-0301") == 1,
+            "expected one not-imported namespace diagnostic for selective import");
+        assert(!has_diag_code(result, "TYP-0154"), "did not expect a secondary module-path diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that qualified `sizeof` cannot expose a provider's private type.
+ */
+func test_typing_sizeof_private_qualified_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_sizeof_private_qualified_err", cfg);
+        assert(analysis_has_errors(result), "expected alias-qualified private type lookup to fail");
+        assert(count_diag_code(result, "TYP-0159") == 1,
+            "expected one unknown-identifier diagnostic for the private type");
+        assert(!has_diag_code(result, "TYP-0154"), "did not expect a secondary module-path diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests successful typing for the `is` enum-tag intrinsic.
  */
 func test_typing_is_intrinsic_ok() {
@@ -1655,6 +1703,9 @@ func main() {
     test_typing_dea_local_shadow_ok();
     test_typing_dea_import_shadow_ok();
     test_typing_dea_intrinsic_ref_err();
+    test_typing_sizeof_alias_canonical_err();
+    test_typing_sizeof_selective_canonical_err();
+    test_typing_sizeof_private_qualified_err();
     test_typing_is_intrinsic_ok();
     test_typing_is_intrinsic_qualified_ok();
     test_typing_is_intrinsic_err();

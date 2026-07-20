@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_alias_closure_consumer;
+
+import replay_alias_facade;
+
+func main() -> int {
+    return 0;
+}
