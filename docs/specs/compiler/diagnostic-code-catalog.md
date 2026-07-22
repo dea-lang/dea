@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-20
+Version: 2026-07-22
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -50,30 +50,30 @@ The diagnostic code meanings below do not change when a diagnostic is deferred i
 no-recovery wrapper that the parser skips logically. `LEX-0070` is trivia and remains an unrecoverable block-comment
 diagnostic.
 
-| Code       | Level   | Meaning                                                |
-| ---------- | ------- | ------------------------------------------------------ |
-| `LEX-0010` | All     | Unterminated string literal                            |
-| `LEX-0020` | All     | Unterminated char literal                              |
-| `LEX-0021` | All     | Invalid char literal, expected closing single quote    |
-| `LEX-0030` | All     | Character literal must represent a single byte         |
-| `LEX-0031` | All     | Character literal hex escape out of range (0-255)      |
-| `LEX-0040` | All     | invalid character in source                            |
-| `LEX-0050` | All     | Invalid hex escape sequence                            |
-| `LEX-0051` | All     | Invalid unicode escape sequence (\\u)                  |
-| `LEX-0052` | All     | Invalid unicode escape sequence (\\U)                  |
-| `LEX-0053` | All     | Octal escape sequence out of range (0-255)             |
-| `LEX-0054` | All     | Unicode code point out of range (must be \<= 0x10FFFF) |
-| `LEX-0059` | All     | Unknown escape sequence                                |
-| `LEX-0060` | L0 only | Integer literal exceeds 32-bit signed range            |
-| `LEX-0061` | All     | Invalid character after integer literal                |
-| `LEX-0062` | L1+     | Invalid hexadecimal integer literal                    |
-| `LEX-0063` | L1+     | Invalid binary integer literal                         |
-| `LEX-0064` | L1+     | Invalid octal integer literal                          |
-| `LEX-0065` | L1+     | Invalid real literal: missing exponent digits          |
-| `LEX-0066` | L1+     | Invalid character after real literal                   |
-| `LEX-0067` | L1+     | Invalid suffix after real literal                      |
-| `LEX-0068` | L1+     | Invalid float suffix after integer literal             |
-| `LEX-0070` | All     | Unterminated block comment                             |
+| Code       | Level   | Meaning                                                    |
+| ---------- | ------- | ---------------------------------------------------------- |
+| `LEX-0010` | All     | Unterminated string literal                                |
+| `LEX-0020` | All     | Unterminated char literal                                  |
+| `LEX-0021` | All     | Invalid char literal, expected closing single quote        |
+| `LEX-0030` | All     | Character literal must represent a single byte             |
+| `LEX-0031` | All     | Character literal hex escape out of range (0-255)          |
+| `LEX-0040` | All     | invalid character in source                                |
+| `LEX-0050` | All     | Invalid hex escape sequence                                |
+| `LEX-0051` | All     | Invalid unicode escape sequence (\\u)                      |
+| `LEX-0052` | All     | Invalid unicode escape sequence (\\U)                      |
+| `LEX-0053` | All     | Octal escape sequence out of range (0-255)                 |
+| `LEX-0054` | All     | Invalid Unicode scalar value (above U+10FFFF or surrogate) |
+| `LEX-0059` | All     | Unknown escape sequence                                    |
+| `LEX-0060` | L0 only | Integer literal exceeds 32-bit signed range                |
+| `LEX-0061` | All     | Invalid character after integer literal                    |
+| `LEX-0062` | L1+     | Invalid hexadecimal integer literal                        |
+| `LEX-0063` | L1+     | Invalid binary integer literal                             |
+| `LEX-0064` | L1+     | Invalid octal integer literal                              |
+| `LEX-0065` | L1+     | Invalid real literal: missing exponent digits              |
+| `LEX-0066` | L1+     | Invalid character after real literal                       |
+| `LEX-0067` | L1+     | Invalid suffix after real literal                          |
+| `LEX-0068` | L1+     | Invalid float suffix after integer literal                 |
+| `LEX-0070` | All     | Unterminated block comment                                 |
 
 ## Parsing and Parse-Time Analysis
 
@@ -219,9 +219,9 @@ diagnostic.
 | `PAR-0571` | L1+     | Expected ';' after const declaration in interface file                   |
 | `PAR-0572` | L1+     | Unsupported or unexpected token in interface file                        |
 | `PAR-0573` | L1+     | Expected identifier after keyword in interface declaration               |
-| `PAR-0574` | L1+     | Expected `==` after declaration in interface file                        |
-| `PAR-0575` | L1+     | Expected hash string literal after `==` in interface declaration         |
-| `PAR-0576` | L1+     | Expected ';' after declaration with hash suffix in interface file        |
+| `PAR-0574` | L1+     | Expected `==` after dependency symbol in interface file                  |
+| `PAR-0575` | L1+     | Expected provider fingerprint string after `==` in interface dependency  |
+| `PAR-0576` | L1+     | Expected ';' after dependency fingerprint in interface file              |
 | `PAR-0577` | L1+     | Duplicate module-level declaration name in interface file                |
 | `PAR-0600` | L1+     | Expected `func` or `extern` after `unsafe` in top-level declaration      |
 | `PAR-0601` | L1+     | Expected `func` after `unsafe` in function type                          |
@@ -341,6 +341,11 @@ diagnostic.
 | `SIG-0200` | L1+   | `const` initializer must be compile-time constant                                 |
 | `SIG-0201` | L1+   | Compile-time constant cycle                                                       |
 | `SIG-0220` | L1+   | `extern func` declarations cannot be variadic                                     |
+| `SIG-0280` | L1+   | Malformed module-interface or provider fingerprint                                |
+| `SIG-0281` | L1+   | Unsupported module-interface fingerprint algorithm                                |
+| `SIG-0282` | L1+   | Declared module-interface fingerprint does not match its canonical public surface |
+| `SIG-0283` | L1+   | Module-interface public model cannot be canonicalized consistently                |
+| `SIG-0284` | L1+   | Conflicting fingerprints for one dependency provider module                       |
 | `SIG-9029` | All   | Internal error: a type-alias symbol does not reference a type-alias declaration   |
 
 ## Expression Type Checking, Type Inference, and Type-Related Semantic Analysis

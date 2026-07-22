@@ -1,8 +1,8 @@
 module interface cycle.two;
-fingerprint "cycle-two";
+fingerprint "sip13:343ca337842b9a25";
 
-link cycle.one::One == "";
+link cycle.one::One == "sip13:027650b36316dec9";
 
 struct Two {
   value: int;
-} == "";
+}

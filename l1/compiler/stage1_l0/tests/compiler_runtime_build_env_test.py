@@ -26,8 +26,16 @@ from build_stage1_l1c import (  # noqa: E402
     L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV,
     L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
     L1_COMPILER_RT_UNCHECKED_ENV,
+    STAGE1_SUPPORT_SOURCE,
     compiler_runtime_build_env,
+    stage1_support_build_env,
 )
+
+STAGE1_TEST_SCRIPTS_ROOT = L1_ROOT / "compiler" / "stage1_l0" / "scripts"
+if str(STAGE1_TEST_SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(STAGE1_TEST_SCRIPTS_ROOT))
+
+from test_runner_common import build_repo_test_env  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -147,13 +155,32 @@ def require_build_env_cases() -> None:
         if result is case.source:
             raise AssertionError(f"{case.name}: helper returned the source mapping")
 
+        support_source = str(STAGE1_SUPPORT_SOURCE)
+        expected_cflags = f"{case.expected_cflags or ''} {support_source}".strip()
         actual_cflags = result.get("L0_CFLAGS")
-        if actual_cflags != case.expected_cflags:
+        if actual_cflags != expected_cflags:
             raise AssertionError(
-                f"{case.name}: expected L0_CFLAGS={case.expected_cflags!r}, got {actual_cflags!r}"
+                f"{case.name}: expected L0_CFLAGS={expected_cflags!r}, got {actual_cflags!r}"
             )
         if compiler_runtime_build_env(result) != result:
             raise AssertionError(f"{case.name}: repeated composition duplicated compiler flags")
+
+
+def require_support_source_composition() -> None:
+    """Require compiler and test builds to link the support source exactly once."""
+
+    support_source = str(STAGE1_SUPPORT_SOURCE)
+    source = {"L0_CFLAGS": f"-O2 {support_source}"}
+    source_before = dict(source)
+    result = stage1_support_build_env(source)
+    if source != source_before:
+        raise AssertionError("support-source composition mutated its source mapping")
+    if result.get("L0_CFLAGS", "").split().count(support_source) != 1:
+        raise AssertionError("support-source composition duplicated its C translation unit")
+
+    test_env = build_repo_test_env("build/dea", L1_ROOT / "build" / "dea")
+    if test_env.get("L0_CFLAGS", "").split().count(support_source) != 1:
+        raise AssertionError("Stage 1 test environment did not inject the support source exactly once")
 
 
 def require_make_help_parity() -> None:
@@ -240,6 +267,7 @@ def main() -> int:
     """Run native compiler build-environment regressions."""
 
     require_build_env_cases()
+    require_support_source_composition()
     require_make_help_parity()
     require_make_preserves_environment_cflags()
     return 0

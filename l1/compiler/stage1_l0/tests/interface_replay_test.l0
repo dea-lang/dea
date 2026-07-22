@@ -16,8 +16,10 @@ import backend;
 import build_driver;
 import codegen_options;
 import driver;
+import interface_fingerprint;
 import mi_utils;
 import module_interface;
+import module_graph;
 import name_resolver;
 import parser.interface;
 import sem_context;
@@ -47,6 +49,32 @@ func make_paths() -> SourceSearchPaths* {
     return sp;
 }
 
+/** Canonical placeholder used for dependency expectations in synthetic interfaces. */
+let TEST_PROVIDER_FINGERPRINT: string = "sip13:1111111111111111";
+
+/** Assign valid dependency values and the interface's computed fingerprint. */
+func assign_test_interface(parsed: InterfaceParseResult*, filename: string) {
+    assert(!ipr_has_errors(parsed), "synthetic interface should parse before fingerprint assignment");
+    assert(parsed.interface != null, "synthetic interface should produce metadata");
+    let mi = parsed.interface as ModuleInterface*;
+    for (let i = 0; i < vec_size(mi.require_entries); i = i + 1) {
+        (ptr_vec_get(mi.require_entries, i) as InterfaceDepEntry*).provider_fingerprint =
+            TEST_PROVIDER_FINGERPRINT;
+    }
+    for (let j = 0; j < vec_size(mi.link_entries); j = j + 1) {
+        (ptr_vec_get(mi.link_entries, j) as InterfaceDepEntry*).provider_fingerprint =
+            TEST_PROVIDER_FINGERPRINT;
+    }
+    assert(ifp_assign(mi, parsed.diags, filename), "synthetic interface fingerprint assignment should succeed");
+}
+
+/** Parse suffix-free interface text and assign a verified canonical fingerprint. */
+func parse_test_interface(text: string, filename: string) -> InterfaceParseResult* {
+    let parsed = pi_parse_interface(text, filename);
+    assign_test_interface(parsed, filename);
+    return parsed;
+}
+
 /**
  * Provider interface used by consumer fixtures.
  *
@@ -54,48 +82,48 @@ func make_paths() -> SourceSearchPaths* {
  */
 func provider_interface_text() -> string {
     return "module interface replay_provider;\n" +
-        "fingerprint \"\";\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
         "\n" +
         "struct Point {\n" +
         "  x: int;\n" +
         "  y: int;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "enum Shade {\n" +
         "  Red;\n" +
         "  Rgb(red: int, green: int, blue: int);\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "enum Message {\n" +
         "  Empty;\n" +
         "  Text(value: string);\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
-        "opaque struct Handle == \"\";\n" +
-        "opaque enum Token == \"\";\n" +
+        "opaque struct Handle;\n" +
+        "opaque enum Token;\n" +
         "\n" +
-        "type PointAlias = Point == \"\";\n" +
-        "func allocate_point() -> Point* == \"\";\n" +
-        "func make_handle() -> Handle* == \"\";\n" +
-        "func make_token() -> Token*? == \"\";\n" +
-        "func make_point(px: int, py: int) -> Point == \"\";\n" +
-        "func mix(color: Shade, point: PointAlias) -> int == \"\";\n" +
-        "func borrow(handle: Handle*?) -> Handle*? == \"\";\n" +
-        "extern func c_score(value: int) -> int == \"\";\n" +
-        "unsafe extern func c_touch(handle: Handle*?) -> void == \"\";\n" +
-        "func collect(prefix: int, values: int...) -> int == \"\";\n" +
-        "const origin_x: int = 1 == \"\";\n" +
-        "const min_offset: int = -5 == \"\";\n" +
-        "const enabled: bool = true == \"\";\n" +
-        "const origin_point: Point = Point(1, 2) == \"\";\n" +
-        "const weights: int[3] = [2, 3, 5] == \"\";\n" +
-        "let current: Point? == \"\";\n";
+        "type PointAlias = Point;\n" +
+        "func allocate_point() -> Point*;\n" +
+        "func make_handle() -> Handle*;\n" +
+        "func make_token() -> Token*?;\n" +
+        "func make_point(px: int, py: int) -> Point;\n" +
+        "func mix(color: Shade, point: PointAlias) -> int;\n" +
+        "func borrow(handle: Handle*?) -> Handle*?;\n" +
+        "extern func c_score(value: int) -> int;\n" +
+        "unsafe extern func c_touch(handle: Handle*?) -> void;\n" +
+        "func collect(prefix: int, values: int...) -> int;\n" +
+        "const origin_x: int = 1;\n" +
+        "const min_offset: int = -5;\n" +
+        "const enabled: bool = true;\n" +
+        "const origin_point: Point = Point(1, 2);\n" +
+        "const weights: int[3] = [2, 3, 5];\n" +
+        "let current: Point?;\n";
 }
 
 /**
  * Minimal interface used to exercise projection from interface-backed symbols.
- * The hash values have canonical lowercase spelling but remain opaque fixtures
- * until fingerprint computation and verification are implemented.
+ * The placeholder header is replaced with the computed whole-module value by
+ * `parse_test_interface` before the interface is supplied to the driver.
  *
  * @return Parsed `.l1m` text for the projection provider.
  */
@@ -103,21 +131,21 @@ func projection_provider_interface_text() -> string {
     return "module interface replay_projection_provider;\n" +
         "fingerprint \"sip13:0000000000000001\";\n" +
         "\n" +
-        "type Number = int == \"sip13:0000000000000002\";\n" +
+        "type Number = int;\n" +
         "\n" +
-        "func collect(prefix: int, values: int...) -> int == \"sip13:0000000000000003\";\n" +
+        "func collect(prefix: int, values: int...) -> int;\n" +
         "\n" +
-        "func identity(value: Number) -> Number == \"sip13:0000000000000004\";\n" +
+        "func identity(value: Number) -> Number;\n" +
         "\n" +
-        "extern func ping(value: int) -> int == \"sip13:0000000000000005\";\n" +
+        "extern func ping(value: int) -> int;\n" +
         "\n" +
-        "unsafe extern func touch(value: int*) -> void == \"sip13:0000000000000006\";\n" +
+        "unsafe extern func touch(value: int*) -> void;\n" +
         "\n" +
-        "const min_offset: int = -5 == \"sip13:0000000000000007\";\n" +
+        "const min_offset: int = -5;\n" +
         "\n" +
-        "const values: int[3] = [1, 2, 3] == \"sip13:0000000000000008\";\n" +
+        "const values: int[3] = [1, 2, 3];\n" +
         "\n" +
-        "let current: int == \"sip13:0000000000000009\";\n";
+        "let current: int;\n";
 }
 
 /**
@@ -127,9 +155,9 @@ func projection_provider_interface_text() -> string {
  */
 func sys_real_interface_text() -> string {
     return "module interface sys.real;\n" +
-        "fingerprint \"\";\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
         "\n" +
-        "extern func rt_real_sqrt_d(x: double) -> double == \"\";\n";
+        "extern func rt_real_sqrt_d(x: double) -> double;\n";
 }
 
 /**
@@ -138,9 +166,7 @@ func sys_real_interface_text() -> string {
  * @return Parsed interface result.
  */
 func parse_provider_interface() -> InterfaceParseResult* {
-    let parsed = pi_parse_interface(provider_interface_text(), "<replay_provider.l1m>");
-    assert(!ipr_has_errors(parsed), "provider interface should parse");
-    assert(parsed.interface != null, "provider interface should produce metadata");
+    let parsed = parse_test_interface(provider_interface_text(), "<replay_provider.l1m>");
     return parsed;
 }
 
@@ -170,12 +196,10 @@ func analyze_with_provider(module_name: string) -> AnalysisResult* {
  * @return Analysis result retaining an active clone of the provider interface.
  */
 func analyze_with_projection_provider() -> AnalysisResult* {
-    let parsed = pi_parse_interface(
+    let parsed = parse_test_interface(
         projection_provider_interface_text(),
         "<replay_projection_provider.l1m>"
     );
-    assert(!ipr_has_errors(parsed), "projection provider interface should parse");
-    assert(parsed.interface != null, "projection provider interface should produce metadata");
 
     let interfaces = ptr_vec_create(1);
     ptr_vec_push(interfaces, parsed.interface as void*);
@@ -196,9 +220,7 @@ func analyze_with_projection_provider() -> AnalysisResult* {
  * @return Analysis result retaining an active `sys.real` interface clone.
  */
 func analyze_with_sys_real_interface() -> AnalysisResult* {
-    let parsed = pi_parse_interface(sys_real_interface_text(), "<sys.real.l1m>");
-    assert(!ipr_has_errors(parsed), "sys.real provider interface should parse");
-    assert(parsed.interface != null, "sys.real provider interface should produce metadata");
+    let parsed = parse_test_interface(sys_real_interface_text(), "<sys.real.l1m>");
 
     let interfaces = ptr_vec_create(1);
     ptr_vec_push(interfaces, parsed.interface as void*);
@@ -449,11 +471,14 @@ func test_project_interface_backed_metadata() {
     let emitted = analysis_emit_interface(result, "replay_projection_provider");
     assert(emitted != null, "active interface-backed provider should project to `.l1m`");
     let emitted_text = emitted as string;
-    assert(emitted_text == projection_provider_interface_text(),
-        "projected interface-backed metadata should round-trip byte-for-byte");
+    assert(!contains_s(emitted_text, " == \""),
+        "projected interface-backed metadata must use suffix-free declarations");
     let reparsed = pi_parse_interface(emitted_text, "<reprojected.l1m>");
     assert(!ipr_has_errors(reparsed), "reprojected interface should parse");
-    assert((reparsed.interface as ModuleInterface*).fingerprint == "sip13:0000000000000001",
+    assert(ifp_verify(reparsed.interface as ModuleInterface*, reparsed.diags, "<reprojected.l1m>"),
+        "reprojected interface should verify");
+    assert((reparsed.interface as ModuleInterface*).fingerprint ==
+        driver_provider_fingerprint(result.driver_state, "replay_projection_provider"),
         "reprojected interface should preserve its fingerprint");
     ipr_free(reparsed);
 
@@ -539,31 +564,31 @@ func test_source_and_interface_enum_exports_match() {
 
 /**
  * Tests registry-backed `require` dependencies activate a transitive semantic
- * interface closure without validating opaque fingerprint expectations.
+ * interface closure without comparing expectations to loaded providers.
  */
 func test_direct_interface_replay_loads_require_closure() {
     let provider = parse_provider_interface();
     let provider_mi = provider.interface as ModuleInterface*;
     ptr_vec_push(provider_mi.require_entries,
-        new InterfaceDepEntry("replay_other", "Thing", "deliberately-not-validated") as void*);
+        new InterfaceDepEntry("replay_other", "Thing", TEST_PROVIDER_FINGERPRINT) as void*);
     ptr_vec_push(provider_mi.link_entries,
-        new InterfaceDepEntry("replay_link_only", "helper", "also-not-validated") as void*);
+        new InterfaceDepEntry("replay_link_only", "helper", TEST_PROVIDER_FINGERPRINT) as void*);
+    assert(ifp_assign(provider_mi, provider.diags, "<replay_provider.l1m>"),
+        "dependency-bearing provider fingerprint assignment should succeed");
 
     let other_text = "module interface replay_other;\n" +
-        "fingerprint \"opaque:OTHER-v1\";\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
         "\n" +
         "struct Thing {\n" +
         "  value: int;\n" +
-        "} == \"\";\n";
-    let other = pi_parse_interface(other_text, "<replay_other.l1m>");
-    assert(!ipr_has_errors(other), "transitive provider interface should parse");
+        "}\n";
+    let other = parse_test_interface(other_text, "<replay_other.l1m>");
 
     let link_only_text = "module interface replay_link_only;\n" +
-        "fingerprint \"opaque:LINK-v1\";\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
         "\n" +
-        "func helper() -> int == \"\";\n";
-    let link_only = pi_parse_interface(link_only_text, "<replay_link_only.l1m>");
-    assert(!ipr_has_errors(link_only), "link-only provider interface should parse");
+        "func helper() -> int;\n";
+    let link_only = parse_test_interface(link_only_text, "<replay_link_only.l1m>");
 
     let interfaces = ptr_vec_create(3);
     ptr_vec_push(interfaces, provider.interface as void*);
@@ -586,9 +611,11 @@ func test_direct_interface_replay_loads_require_closure() {
         "link-only provider must not activate for semantic replay");
     assert(driver_find_projection_interface(result.driver_state, "replay_link_only") == null,
         "link-only provider must not activate for interface projection");
-    assert(driver_provider_fingerprint(result.driver_state, "replay_other") == "opaque:OTHER-v1",
-        "raw transitive provider fingerprint should remain available without expectation validation");
-    assert(driver_provider_fingerprint(result.driver_state, "replay_link_only") == "opaque:LINK-v1",
+    assert(driver_provider_fingerprint(result.driver_state, "replay_other") ==
+        (other.interface as ModuleInterface*).fingerprint,
+        "verified transitive provider fingerprint should remain available without expectation comparison");
+    assert(driver_provider_fingerprint(result.driver_state, "replay_link_only") ==
+        (link_only.interface as ModuleInterface*).fingerprint,
         "link-only provider fingerprint should remain available to graph consumers");
 
     let names = analysis_name_resolution(result) as NameResolution*;
@@ -612,29 +639,29 @@ func test_direct_interface_replay_loads_require_closure() {
  * wire-preserving projection retains the original provider spelling.
  */
 func test_cross_provider_alias_materialization_and_projection() {
-    let leaf = pi_parse_interface(
+    let leaf = parse_test_interface(
         "module interface replay_alias_leaf;\n" +
-        "fingerprint \"\";\n\n" +
-        "require replay_alias_source::SourceAlias == \"\";\n\n" +
-        "type LeafAlias = replay_alias_source::SourceAlias == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "require replay_alias_source::SourceAlias == \"sip13:0000000000000000\";\n\n" +
+        "type LeafAlias = replay_alias_source::SourceAlias;\n",
         "<replay_alias_leaf.l1m>"
     );
-    let peer = pi_parse_interface(
+    let peer = parse_test_interface(
         "module interface replay_alias_peer;\n" +
-        "fingerprint \"\";\n\n" +
-        "require replay_alias_leaf::LeafAlias == \"\";\n\n" +
-        "type PeerAlias = replay_alias_leaf::LeafAlias == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "require replay_alias_leaf::LeafAlias == \"sip13:0000000000000000\";\n\n" +
+        "type PeerAlias = replay_alias_leaf::LeafAlias;\n",
         "<replay_alias_peer.l1m>"
     );
-    let facade = pi_parse_interface(
+    let facade = parse_test_interface(
         "module interface replay_alias_facade;\n" +
-        "fingerprint \"\";\n\n" +
-        "require replay_alias_peer::PeerAlias == \"\";\n\n" +
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "require replay_alias_peer::PeerAlias == \"sip13:0000000000000000\";\n\n" +
         "enum Envelope {\n" +
         "  Empty;\n" +
         "  Item(value: replay_alias_peer::PeerAlias);\n" +
-        "} == \"\";\n\n" +
-        "func identity(value: replay_alias_peer::PeerAlias) -> replay_alias_peer::PeerAlias == \"\";\n",
+        "}\n\n" +
+        "func identity(value: replay_alias_peer::PeerAlias) -> replay_alias_peer::PeerAlias;\n",
         "<replay_alias_facade.l1m>"
     );
     assert(!ipr_has_errors(leaf) && !ipr_has_errors(peer) && !ipr_has_errors(facade),
@@ -698,17 +725,17 @@ func test_cross_provider_alias_materialization_and_projection() {
  * Tests aliases spanning cached interface targets retain cycle diagnostics.
  */
 func test_cross_interface_alias_cycle_reports_sig_0020() {
-    let a = pi_parse_interface(
+    let a = parse_test_interface(
         "module interface replay_alias_cycle_a;\n" +
-        "fingerprint \"\";\n\n" +
-        "require replay_alias_cycle_b::B == \"\";\n\n" +
-        "type A = replay_alias_cycle_b::B == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "require replay_alias_cycle_b::B == \"sip13:0000000000000000\";\n\n" +
+        "type A = replay_alias_cycle_b::B;\n",
         "<replay_alias_cycle_a.l1m>"
     );
-    let b = pi_parse_interface(
+    let b = parse_test_interface(
         "module interface replay_alias_cycle_b;\n" +
-        "fingerprint \"\";\n\n" +
-        "type B = replay_alias_cycle_a::A == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "type B = replay_alias_cycle_a::A;\n",
         "<replay_alias_cycle_b.l1m>"
     );
     assert(!ipr_has_errors(a) && !ipr_has_errors(b), "cross-interface alias cycle fixtures should parse");
@@ -740,16 +767,16 @@ func test_cross_interface_alias_cycle_reports_sig_0020() {
  */
 func test_interface_surface_requires_interface_provider() {
     let provider_text = "module interface replay_alias_provider;\n" +
-        "fingerprint \"\";\n\n" +
-        "struct Thing { value: int; } == \"\";\n";
-    let linked = pi_parse_interface(
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "struct Thing { value: int; }\n";
+    let linked = parse_test_interface(
         "module interface replay_alias_facade;\n" +
-        "fingerprint \"\";\n\n" +
-        "link replay_alias_provider::Thing == \"\";\n\n" +
-        "func expose() -> replay_alias_provider::Thing == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "link replay_alias_provider::Thing == \"sip13:0000000000000000\";\n\n" +
+        "func expose() -> replay_alias_provider::Thing;\n",
         "<replay_alias_facade-link.l1m>"
     );
-    let linked_provider = pi_parse_interface(provider_text, "<replay_alias_provider-link.l1m>");
+    let linked_provider = parse_test_interface(provider_text, "<replay_alias_provider-link.l1m>");
     let linked_interfaces = ptr_vec_create(2);
     ptr_vec_push(linked_interfaces, linked.interface as void*);
     ptr_vec_push(linked_interfaces, linked_provider.interface as void*);
@@ -764,14 +791,14 @@ func test_interface_surface_requires_interface_provider() {
     ipr_free(linked_provider);
     ipr_free(linked);
 
-    let required = pi_parse_interface(
+    let required = parse_test_interface(
         "module interface replay_alias_facade;\n" +
-        "fingerprint \"\";\n\n" +
-        "require replay_alias_provider::Thing == \"\";\n\n" +
-        "func expose() -> replay_alias_provider::Thing == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "require replay_alias_provider::Thing == \"sip13:0000000000000000\";\n\n" +
+        "func expose() -> replay_alias_provider::Thing;\n",
         "<replay_alias_facade-require.l1m>"
     );
-    let required_provider = pi_parse_interface(provider_text, "<replay_alias_provider-require.l1m>");
+    let required_provider = parse_test_interface(provider_text, "<replay_alias_provider-require.l1m>");
     let required_interfaces = ptr_vec_create(2);
     ptr_vec_push(required_interfaces, required.interface as void*);
     ptr_vec_push(required_interfaces, required_provider.interface as void*);
@@ -792,11 +819,11 @@ func test_interface_surface_requires_interface_provider() {
  * through `link` and accept the same provider through `require`.
  */
 func test_interface_surface_requires_source_provider() {
-    let linked = pi_parse_interface(
+    let linked = parse_test_interface(
         "module interface replay_alias_facade;\n" +
-        "fingerprint \"\";\n\n" +
-        "link replay_alias_source::SourceState == \"\";\n\n" +
-        "func expose() -> replay_alias_source::SourceState == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "link replay_alias_source::SourceState == \"sip13:0000000000000000\";\n\n" +
+        "func expose() -> replay_alias_source::SourceState;\n",
         "<replay_alias_facade-source-link.l1m>"
     );
     let linked_interfaces = ptr_vec_create(1);
@@ -811,11 +838,11 @@ func test_interface_surface_requires_source_provider() {
     vec_free(linked_interfaces);
     ipr_free(linked);
 
-    let required = pi_parse_interface(
+    let required = parse_test_interface(
         "module interface replay_alias_facade;\n" +
-        "fingerprint \"\";\n\n" +
-        "require replay_alias_source::SourceState == \"\";\n\n" +
-        "func expose() -> replay_alias_source::SourceState == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "require replay_alias_source::SourceState == \"sip13:0000000000000000\";\n\n" +
+        "func expose() -> replay_alias_source::SourceState;\n",
         "<replay_alias_facade-source-require.l1m>"
     );
     let required_interfaces = ptr_vec_create(1);
@@ -836,17 +863,17 @@ func test_interface_surface_requires_source_provider() {
  * interface alias.
  */
 func test_cross_interface_alias_slice_shape_error() {
-    let peer = pi_parse_interface(
+    let peer = parse_test_interface(
         "module interface replay_alias_peer;\n" +
-        "fingerprint \"\";\n\n" +
-        "type Items = int[] == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "type Items = int[];\n",
         "<replay_alias_peer-slice.l1m>"
     );
-    let facade = pi_parse_interface(
+    let facade = parse_test_interface(
         "module interface replay_alias_facade;\n" +
-        "fingerprint \"\";\n\n" +
-        "require replay_alias_peer::Items == \"\";\n\n" +
-        "func bad() -> replay_alias_peer::Items == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "require replay_alias_peer::Items == \"sip13:0000000000000000\";\n\n" +
+        "func bad() -> replay_alias_peer::Items;\n",
         "<replay_alias_facade-slice.l1m>"
     );
     assert(!ipr_has_errors(peer) && !ipr_has_errors(facade), "slice alias interfaces should parse");
@@ -875,11 +902,11 @@ func test_cross_interface_alias_slice_shape_error() {
  * field types until aliases targeting a later source module can materialize.
  */
 func test_incomplete_source_shape_check_materializes_late_alias() {
-    let peer = pi_parse_interface(
+    let peer = parse_test_interface(
         "module interface replay_alias_recovery_peer;\n" +
-        "fingerprint \"\";\n\n" +
-        "require replay_alias_recovery_source::SourceItems == \"\";\n\n" +
-        "type RecoveryItems = replay_alias_recovery_source::SourceItems == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "require replay_alias_recovery_source::SourceItems == \"sip13:0000000000000000\";\n\n" +
+        "type RecoveryItems = replay_alias_recovery_source::SourceItems;\n",
         "<replay_alias_recovery_peer.l1m>"
     );
     assert(!ipr_has_errors(peer), "shape-recovery peer interface should parse");
@@ -914,24 +941,24 @@ func test_incomplete_source_shape_check_materializes_late_alias() {
  * only through another module's `link` edge.
  */
 func test_nested_link_only_interface_surface_is_validated() {
-    let facade = pi_parse_interface(
+    let facade = parse_test_interface(
         "module interface replay_alias_facade;\n" +
-        "fingerprint \"\";\n\n" +
-        "link replay_alias_link_mid::helper == \"\";\n\n" +
-        "func entry() -> int == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "link replay_alias_link_mid::helper == \"sip13:0000000000000000\";\n\n" +
+        "func entry() -> int;\n",
         "<replay_alias_facade-nested-link.l1m>"
     );
-    let mid = pi_parse_interface(
+    let mid = parse_test_interface(
         "module interface replay_alias_link_mid;\n" +
-        "fingerprint \"\";\n\n" +
-        "link replay_alias_link_leaf::Thing == \"\";\n\n" +
-        "func helper() -> replay_alias_link_leaf::Thing == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "link replay_alias_link_leaf::Thing == \"sip13:0000000000000000\";\n\n" +
+        "func helper() -> replay_alias_link_leaf::Thing;\n",
         "<replay_alias_link_mid.l1m>"
     );
-    let leaf = pi_parse_interface(
+    let leaf = parse_test_interface(
         "module interface replay_alias_link_leaf;\n" +
-        "fingerprint \"\";\n\n" +
-        "struct Thing { value: int; } == \"\";\n",
+        "fingerprint \"sip13:0000000000000000\";\n\n" +
+        "struct Thing { value: int; }\n",
         "<replay_alias_link_leaf.l1m>"
     );
     assert(!ipr_has_errors(facade) && !ipr_has_errors(mid) && !ipr_has_errors(leaf),
@@ -965,11 +992,11 @@ func test_nested_link_only_interface_surface_is_validated() {
 func test_direct_interface_replay_ignores_unused_interfaces() {
     let provider = parse_provider_interface();
     let unused_text = "module interface replay_unused;\n" +
-        "fingerprint \"\";\n" +
+        "fingerprint \"malformed-and-deliberately-unused\";\n" +
         "\n" +
-        "require other::Thing == \"\";\n" +
+        "require other::Thing == \"also-invalid\";\n" +
         "\n" +
-        "func ping() -> void == \"\";\n";
+        "func ping() -> void;\n";
     let unused = pi_parse_interface(unused_text, "<replay_unused.l1m>");
     assert(!ipr_has_errors(unused), "unused dependency-bearing interface should parse");
     let interfaces = ptr_vec_create(2);
@@ -994,6 +1021,87 @@ func test_direct_interface_replay_ignores_unused_interfaces() {
     vec_free(interfaces);
     ipr_free(unused);
     ipr_free(provider);
+    drop cfg;
+    sp_free(sp);
+}
+
+/** Analyze `replay_open` with one selected provider carrying an overridden fingerprint. */
+func analyze_with_overridden_provider_fingerprint(value: string) -> AnalysisResult* {
+    let parsed = parse_provider_interface();
+    (parsed.interface as ModuleInterface*).fingerprint = value;
+    let interfaces = ptr_vec_create(1);
+    ptr_vec_push(interfaces, parsed.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(sp, "replay_open", interfaces, cfg);
+    vec_free(interfaces);
+    ipr_free(parsed);
+    drop cfg;
+    sp_free(sp);
+    return result;
+}
+
+/** Selected registry interfaces reject malformed, unsupported, and mismatched fingerprints before replay. */
+func test_selected_registry_interface_fingerprint_validation() {
+    let malformed = analyze_with_overridden_provider_fingerprint("not-tagged");
+    assert(analysis_has_errors(malformed), "malformed selected fingerprint should fail");
+    assert(has_diag_code(malformed, "SIG-0280"), "malformed selected fingerprint should report SIG-0280");
+    assert(driver_find_interface(malformed.driver_state, "replay_provider") == null,
+        "malformed provider must not activate");
+    assert(mg_find_node(driver_graph(malformed.driver_state), "replay_provider") == null,
+        "malformed provider must not enter the module graph");
+    analysis_result_free(malformed);
+
+    let unknown = analyze_with_overridden_provider_fingerprint("sha256:0000000000000000");
+    assert(analysis_has_errors(unknown), "unsupported selected fingerprint should fail");
+    assert(has_diag_code(unknown, "SIG-0281"), "unsupported selected fingerprint should report SIG-0281");
+    assert(mg_find_node(driver_graph(unknown.driver_state), "replay_provider") == null,
+        "unsupported provider must not enter the module graph");
+    analysis_result_free(unknown);
+
+    let mismatch = analyze_with_overridden_provider_fingerprint("sip13:0000000000000000");
+    assert(analysis_has_errors(mismatch), "mismatched selected fingerprint should fail");
+    assert(has_diag_code(mismatch, "SIG-0282"), "mismatched selected fingerprint should report SIG-0282");
+    assert(mg_find_node(driver_graph(mismatch.driver_state), "replay_provider") == null,
+        "mismatched provider must not enter the module graph");
+    analysis_result_free(mismatch);
+}
+
+/** Selected registry interfaces validate dependency spelling and same-provider consistency. */
+func test_selected_registry_dependency_fingerprint_validation() {
+    let malformed = parse_provider_interface();
+    ptr_vec_push((malformed.interface as ModuleInterface*).require_entries,
+        new InterfaceDepEntry("bad.dep", "Thing", "not-tagged") as void*);
+    let malformed_interfaces = ptr_vec_create(1);
+    ptr_vec_push(malformed_interfaces, malformed.interface as void*);
+    let sp = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let malformed_result = analysis_analyze_entry_with_interfaces(
+        sp, "replay_open", malformed_interfaces, cfg
+    );
+    assert(analysis_has_errors(malformed_result), "malformed dependency fingerprint should fail");
+    assert(has_diag_code(malformed_result, "SIG-0280"),
+        "malformed dependency fingerprint should report SIG-0280");
+    analysis_result_free(malformed_result);
+    vec_free(malformed_interfaces);
+    ipr_free(malformed);
+
+    let conflict = parse_provider_interface();
+    let conflict_mi = conflict.interface as ModuleInterface*;
+    ptr_vec_push(conflict_mi.require_entries,
+        new InterfaceDepEntry("same.dep", "First", "sip13:1111111111111111") as void*);
+    ptr_vec_push(conflict_mi.link_entries,
+        new InterfaceDepEntry("same.dep", "Second", "sip13:2222222222222222") as void*);
+    let conflict_interfaces = ptr_vec_create(1);
+    ptr_vec_push(conflict_interfaces, conflict.interface as void*);
+    let conflict_result = analysis_analyze_entry_with_interfaces(sp, "replay_open", conflict_interfaces, cfg);
+    assert(analysis_has_errors(conflict_result), "conflicting dependency fingerprints should fail");
+    assert(has_diag_code(conflict_result, "SIG-0284"),
+        "conflicting dependency fingerprints should report SIG-0284");
+    analysis_result_free(conflict_result);
+    vec_free(conflict_interfaces);
+    ipr_free(conflict);
+
     drop cfg;
     sp_free(sp);
 }
@@ -1045,6 +1153,8 @@ func main() {
     test_incomplete_source_shape_check_materializes_late_alias();
     test_nested_link_only_interface_surface_is_validated();
     test_direct_interface_replay_ignores_unused_interfaces();
+    test_selected_registry_interface_fingerprint_validation();
+    test_selected_registry_dependency_fingerprint_validation();
     test_direct_interface_replay_rejects_duplicate_interfaces();
     printl_s("interface_replay_test: all tests passed");
 }

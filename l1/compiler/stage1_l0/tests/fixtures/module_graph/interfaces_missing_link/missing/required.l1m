@@ -1,6 +1,6 @@
 module interface missing.required;
-fingerprint "required-for-missing-link";
+fingerprint "sip13:8abfe6a8eaf1bb84";
 
 struct Thing {
   value: int;
-} == "";
+}

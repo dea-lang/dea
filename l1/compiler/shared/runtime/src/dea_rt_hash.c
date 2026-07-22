@@ -6,7 +6,7 @@
 #define SIPHASH_IMPLEMENTATION
 
 #include "../include/dea_rt.h"
-#include "dea_siphash.h"
+#include "dea_interface_fingerprint.h"
 
 /* =========================================================================
  * Runtime support for hashing (using SipHash-1-3).
@@ -40,6 +40,21 @@ uint32_t _rt_fold_u64_to_u32_fmix(uint64_t h) {
 
 typedef uint8_t _rt_siphash_key_t[16];
 typedef uint8_t _rt_siphash_tag8_t[8];
+
+/**
+ * Compute the canonical L1 interface fingerprint digest as lowercase hex.
+ *
+ * @param data Canonical interface bytes.
+ * @param len Byte length of `data`; must be non-negative.
+ * @param out_hex Exact 16-byte output buffer; no NUL terminator is written.
+ */
+void l1c_interface_fingerprint_sip13_hex(
+    const uint8_t *data,
+    int32_t len,
+    uint8_t out_hex[16]
+) {
+    _dea_l1_interface_fingerprint_sip13_hex(data, len, out_hex);
+}
 
 /* Type tags for L0 runtime type identification */
 static const _rt_siphash_tag8_t _dea_sh_tag_bool   = { 0, 'b', 'o', 'o', 'l' };

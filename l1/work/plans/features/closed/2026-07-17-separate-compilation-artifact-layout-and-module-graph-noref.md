@@ -34,7 +34,7 @@
   - `l1/compiler/stage1_l0/tests/interface_replay_test.l0`
 - Related:
   - [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md][foundation]
-  - [l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
+  - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
   - [l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
   - [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
   - [l1/docs/specs/compiler/module-interface-format.md][module-format]
@@ -75,16 +75,16 @@ stable APIs to consume. It does not make `-c`, `--link`, `--build`, or `--run` o
    `DRV-0077` cover invalid module/artifact identity, invalid interface roots, missing required interfaces, unreadable
    selected interfaces, invalid interface UTF-8, and conflicting graph identity.
 7. Live docs and ADR-0014 now describe graph-backed replay, and ADR-0018 records the canonical artifact and graph
-   decision. Fingerprint verification, object metadata, artifact publication, standalone linking, and build/run fan-out
-   remain owned by the open successor plans.
+   decision. Fingerprint verification subsequently landed in the [completed fingerprint plan][fingerprints]; object
+   metadata, artifact publication, standalone linking, and build/run fan-out remain owned by open successor plans.
 8. `-c` still exits with `L1C-9510`, standalone link mode is absent, and ordinary `--build` / `--run` remain
    source-based single-CU operations.
 
 ## Dependencies and ordering
 
 1. The [closed foundation plan][foundation] supplies direct interface replay and the reserved `-c` / `-I` CLI model.
-2. This plan and the [fingerprint plan][fingerprints] may land in either order. This plan carries dependency fingerprint
-   strings as opaque provider-module values; it does not compute or validate them.
+2. This graph plan landed first and initially carried dependency fingerprint strings as opaque provider-module values.
+   The later [fingerprint plan][fingerprints] now computes and validates them without changing graph topology.
 3. The per-module backend/lifecycle plan may begin after this graph exists.
 4. [Object metadata][object-metadata] consumes ordered direct-import edges only after this plan and fingerprinting are
    complete.
@@ -145,8 +145,8 @@ stable APIs to consume. It does not make `-c`, `--link`, `--build`, or `--run` o
 5. A provider symbol used in both tiers appears only in `require`. Within each tier, entries remain sorted and
    deduplicated by `provider_module::symbol` for deterministic `.l1m` emission.
 6. Dependency entry values are module-level expectations. Every entry naming one provider repeats that provider
-   interface's whole-module fingerprint; no code in this plan computes a per-symbol hash. Until the parallel
-   [fingerprint plan][fingerprints] lands, the resolver may carry the provider's existing placeholder value opaquely.
+   interface's whole-module fingerprint; no code in this plan computes a per-symbol hash. The completed
+   [fingerprint plan][fingerprints] now populates and validates those values.
 7. Sorted per-symbol interface records cannot reconstruct side-effect-only imports or sibling order. The graph therefore
    exposes ordered direct source-import edges separately; the [object-metadata plan][object-metadata] serializes that
    ordered module-level sequence into provider objects for later standalone linking.
@@ -205,9 +205,9 @@ speculative graph edges.
 ### Phase 4: Integration boundary and documentation
 
 Expose the completed graph through analysis/library entry points used later by compile-only, metadata emission, and
-build/run fan-out. Update the module-interface format documentation for recursive closure and populated `link` records,
-while leaving fingerprint spelling and verification to the [fingerprint plan][fingerprints]. Keep CLI help explicit that
-`-c` remains reserved until the [compile-only plan][compile-only] lands.
+build/run fan-out. Update the module-interface format documentation for recursive closure and populated `link` records.
+Fingerprint spelling and verification were left to, and later completed by, the [fingerprint plan][fingerprints]. Keep
+CLI help explicit that `-c` remains reserved until the [compile-only plan][compile-only] lands.
 
 ## Diagnostics
 
@@ -253,7 +253,7 @@ while leaving fingerprint spelling and verification to the [fingerprint plan][fi
 
 [compile-only]: ../2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[fingerprints]: ../2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [foundation]: 2026-04-24-separate-compilation-driver-surface-noref.md
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [module-format]: ../../../../docs/specs/compiler/module-interface-format.md

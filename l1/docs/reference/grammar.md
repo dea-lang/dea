@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> Grammar
 
-Version: 2026-07-11
+Version: 2026-07-22
 
 The following is the formal grammar for the Dea/L<sub>1</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -56,6 +56,11 @@ EscapedChar         ::=     '"' | '\' | 'n' | 't' | 'r' | "'" | Oct1to3
 String literal payload text may contain Unicode characters encoded as UTF-8, subject to the delimiter and escape rules
 above. Comments may also contain Unicode text valid under the source encoding. Outside those free-text regions, the
 language vocabulary remains ASCII-only.
+
+Within a string, `\xH+`, `\uHHHH`, and `\UHHHHHHHH` denote one Unicode scalar value and contribute its UTF-8 bytes.
+Surrogates and values above `U+10FFFF` are invalid. An octal escape denotes one raw byte from `0` through `255` instead
+of a Unicode scalar, so raw UTF-8 and equivalent scalar escapes have the same value while octal escapes remain
+byte-oriented.
 
 Note: ambiguity between `-` as a unary operator and as part of a negative literal is resolved in context by the lexer.
 

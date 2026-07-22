@@ -1,6 +1,6 @@
 module interface graph.required;
-fingerprint "required-fingerprint";
+fingerprint "sip13:8abfe6a8eaf1bb84";
 
 struct Thing {
   value: int;
-} == "";
+}

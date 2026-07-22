@@ -78,13 +78,14 @@ definition in the defining module.
 Update the `.l1m` emitter so opaque types project as explicit name-only declarations:
 
 ```dea
-opaque struct T == "";
-opaque enum E == "";
+opaque struct T;
+opaque enum E;
 ```
 
 Transparent types continue to project with full layout (the rule collapses to "project the exported fields"). Round-trip
 the explicit opaque declarations through the interface parser, reject bodyless non-opaque declarations such as
-`struct T == "";`, and reject `opaque` before non-nominal interface declarations.
+`struct T;`, and reject `opaque` before non-nominal interface declarations. The later whole-module fingerprint tranche
+removed the declaration-level compatibility suffixes without changing this opacity contract.
 
 ## Diagnostics
 

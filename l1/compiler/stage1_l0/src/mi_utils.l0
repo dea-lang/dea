@@ -35,7 +35,6 @@ func miu_clone_struct_info(info: StructInfo*) -> StructInfo* {
         info.span,
         type_clone(info.struct_type),
         fields,
-        info.iface_hash,
         info.is_opaque
     );
 }
@@ -64,7 +63,6 @@ func miu_clone_enum_info(info: EnumInfo*) -> EnumInfo* {
         info.span,
         type_clone(info.enum_type),
         variants,
-        info.iface_hash,
         info.is_opaque
     );
 }
@@ -76,7 +74,7 @@ func miu_clone_enum_info(info: EnumInfo*) -> EnumInfo* {
  * @return New dependency entry.
  */
 func miu_clone_dep_entry(entry: InterfaceDepEntry*) -> InterfaceDepEntry* {
-    return new InterfaceDepEntry(entry.provider_module, entry.symbol_name, entry.hash);
+    return new InterfaceDepEntry(entry.provider_module, entry.symbol_name, entry.provider_fingerprint);
 }
 
 /**
@@ -86,8 +84,7 @@ func miu_clone_dep_entry(entry: InterfaceDepEntry*) -> InterfaceDepEntry* {
  * @return New function entry.
  */
 func miu_clone_func_entry(entry: InterfaceFuncEntry*) -> InterfaceFuncEntry* {
-    return new InterfaceFuncEntry(entry.name, us_sv_clone(entry.param_names), type_clone(entry.ty), entry.is_extern,
-        entry.hash);
+    return new InterfaceFuncEntry(entry.name, us_sv_clone(entry.param_names), type_clone(entry.ty), entry.is_extern);
 }
 
 /**
@@ -97,7 +94,7 @@ func miu_clone_func_entry(entry: InterfaceFuncEntry*) -> InterfaceFuncEntry* {
  * @return New let entry.
  */
 func miu_clone_let_entry(entry: InterfaceLetEntry*) -> InterfaceLetEntry* {
-    return new InterfaceLetEntry(entry.name, type_clone(entry.ty), entry.is_const, entry.literal, entry.hash);
+    return new InterfaceLetEntry(entry.name, type_clone(entry.ty), entry.is_const, entry.literal);
 }
 
 /**
@@ -107,7 +104,7 @@ func miu_clone_let_entry(entry: InterfaceLetEntry*) -> InterfaceLetEntry* {
  * @return New alias entry.
  */
 func miu_clone_alias_entry(entry: InterfaceAliasEntry*) -> InterfaceAliasEntry* {
-    return new InterfaceAliasEntry(entry.name, type_clone(entry.ty), entry.hash);
+    return new InterfaceAliasEntry(entry.name, type_clone(entry.ty));
 }
 
 /**

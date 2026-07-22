@@ -551,7 +551,9 @@ func tr_const_eval_interface_literal_raw(literal: string) -> ConstValue*? {
                 TT_INT(text, value) => { return tr_const_value_new(CV_INT, value, false, "", 0); }
                 TT_BIGINT(text2, base) => { return tr_const_value_new(CV_BIGINT, 0, false, text2, base); }
                 TT_BYTE(text3, value2) => { return tr_const_value_new(CV_BYTE, value2 as int, false, text3, 0); }
-                TT_STRING(text4, value3) => { return tr_const_value_new(CV_STRING, 0, false, value3, 0); }
+                TT_STRING(text4, value3) => {
+                    return tr_const_value_new(CV_STRING, 0, false, value3, 0);
+                }
                 TT_REALNUM(sig, exp_text, is_float) => {
                     let kind = CV_DOUBLE;
                     if (is_float) {

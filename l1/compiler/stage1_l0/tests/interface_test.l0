@@ -14,6 +14,7 @@ import std.vector;
 import analysis;
 import ast;
 import interface_emitter;
+import interface_fingerprint;
 import mi_utils;
 import module_interface;
 import name_resolver;
@@ -90,6 +91,21 @@ func assert_parse_rejected(source: string, expected_code: string, filename: stri
     ipr_free(parsed);
 }
 
+/** Assert obsolete declaration suffix syntax never uses dependency diagnostics. */
+func assert_decl_suffix_rejected(source: string, expected_code: string, filename: string) {
+    let parsed = pi_parse_interface(source, filename);
+    assert(ipr_has_errors(parsed), "expected obsolete declaration suffix rejection for " + filename);
+    assert(diag_count(parsed.diags) > 0, "expected obsolete declaration suffix diagnostic for " + filename);
+    assert(diag_get(parsed.diags, 0).code == expected_code,
+        "unexpected obsolete declaration suffix diagnostic for " + filename);
+    for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
+        let code = diag_get(parsed.diags, i).code;
+        assert(code != "PAR-0574" && code != "PAR-0575" && code != "PAR-0576",
+            "declaration suffix must not use dependency fingerprint diagnostics");
+    }
+    ipr_free(parsed);
+}
+
 /**
  * Tests that emitted interfaces are deterministic and omit non-export surface.
  */
@@ -98,36 +114,79 @@ func test_emit_interface_deterministic() {
     let second = emit_demo_interface();
 
     assert(first == second, "interface emission must be deterministic");
-    assert(contains_s(first, "module interface iface_demo;\nfingerprint \"\";\n"), "expected interface header");
-    assert(contains_s(first, "struct Point {\n  x: int;\n  y: int;\n} == \"\";"), "expected exported struct");
-    assert(contains_s(first, "enum Color {\n  Red;\n  Green;\n  Blue;\n  Rgb(red: int, green: int, blue: int);\n} == \"\";"), "expected exported enum");
-    assert(contains_s(first, "type Dims = Size == \"\";"), "expected exported alias");
-    assert(contains_s(first, "func area(s: Size) -> int == \"\";"), "expected exported function");
-    assert(contains_s(first, "const origin: Point = Point(0, 0) == \"\";"), "expected struct const literal");
-    assert(contains_s(first, "const scale_factor: double = 2.5 == \"\";"), "expected scalar const literal");
-    assert(contains_s(first, "const cast_count: int = 25 == \"\";"), "expected folded integer cast const literal");
-    assert(contains_s(first, "const cast_float: float = 2.5f == \"\";"), "expected folded real cast const literal");
-    assert(contains_s(first, "const folded_count: int = 10 == \"\";"), "expected folded scalar const expression");
-    assert(contains_s(first, "const neg_seed: int = -25 == \"\";"), "expected folded negative const literal");
-    assert(contains_s(first, "const sample_values: int[3] = [1, 2, 3] == \"\";"),
+    assert(contains_s(first, "module interface iface_demo;\nfingerprint \"sip13:"), "expected canonical interface header");
+    assert(contains_s(first, "struct Point {\n  x: int;\n  y: int;\n}"), "expected exported struct");
+    assert(contains_s(first, "enum Color {\n  Red;\n  Green;\n  Blue;\n  Rgb(red: int, green: int, blue: int);\n}"), "expected exported enum");
+    assert(contains_s(first, "type Dims = Size;"), "expected exported alias");
+    assert(contains_s(first, "func area(s: Size) -> int;"), "expected exported function");
+    assert(contains_s(first, "const origin: Point = Point(0, 0);"), "expected struct const literal");
+    assert(contains_s(first, "const scale_factor: double = 2.5;"), "expected scalar const literal");
+    assert(contains_s(first, "const cast_count: int = 25;"), "expected folded integer cast const literal");
+    assert(contains_s(first, "const cast_float: float = 2.5f;"), "expected folded real cast const literal");
+    assert(contains_s(first, "const folded_count: int = 10;"), "expected folded scalar const expression");
+    assert(contains_s(first, "const neg_seed: int = -25;"), "expected folded negative const literal");
+    assert(contains_s(first, "const sample_values: int[3] = [1, 2, 3];"),
         "expected fixed-array const literal");
     assert(!contains_s(first, " as "), "interface const casts must serialize as folded literals");
-    assert(contains_s(first, "const zero_color: Color = Red == \"\";"), "expected enum-variant const literal");
-    assert(contains_s(first, "const vivid_color: Color = Rgb(255, 0, 0) == \"\";"), "expected multi-field enum const literal");
-    assert(contains_s(first, "let current_offset: Point? == \"\";"), "expected exported let");
+    assert(contains_s(first, "const zero_color: Color = Red;"), "expected enum-variant const literal");
+    assert(contains_s(first, "const vivid_color: Color = Rgb(255, 0, 0);"), "expected multi-field enum const literal");
+    assert(contains_s(first, "let current_offset: Point?;"), "expected exported let");
     assert(!contains_s(first, "helper"), "private helper must not be emitted");
     assert(!contains_s(first, "export "), "interface files must not emit export manifests");
 
     let point_index = find_s(first, "struct Point");
-    let alias_index = find_s(first, "type Dims = Size == \"\";");
-    let func_index = find_s(first, "func area(s: Size) -> int == \"\";");
-    let const_index = find_s(first, "const origin: Point = Point(0, 0) == \"\";");
-    let let_index = find_s(first, "let current_offset: Point? == \"\";");
+    let alias_index = find_s(first, "type Dims = Size;");
+    let func_index = find_s(first, "func area(s: Size) -> int;");
+    let const_index = find_s(first, "const origin: Point = Point(0, 0);");
+    let let_index = find_s(first, "let current_offset: Point?;");
     assert(point_index >= 0, "expected struct Point in emitted interface");
     assert(alias_index > point_index, "aliases must follow nominal type declarations");
     assert(func_index > alias_index, "functions must follow aliases");
     assert(const_index > func_index, "consts must follow functions");
     assert(let_index > const_index, "lets must follow consts");
+}
+
+/** Test private declarations, bodies, imports, and module identity are excluded. */
+func test_emit_interface_private_changes_preserve_fingerprint() {
+    let first_text = emit_interface_for("iface_fingerprint_private_a");
+    let second_text = emit_interface_for("iface_fingerprint_private_b");
+    let first = pi_parse_interface(first_text, "<private-fingerprint-a>");
+    let second = pi_parse_interface(second_text, "<private-fingerprint-b>");
+    assert(!ipr_has_errors(first) && !ipr_has_errors(second),
+        "private-change interface fixtures should parse");
+    assert((first.interface as ModuleInterface*).fingerprint ==
+        (second.interface as ModuleInterface*).fingerprint,
+        "private declarations, bodies, imports, and module identity must not alter fingerprints");
+    assert(contains_s(first_text, "func stable(value: int) -> int;") &&
+        contains_s(second_text, "func stable(value: int) -> int;"),
+        "private-change fixtures must expose the same public surface");
+    assert(!contains_s(first_text, "helper") && !contains_s(second_text, "another_private"),
+        "private helpers must remain absent from emitted interfaces");
+    ipr_free(first);
+    ipr_free(second);
+}
+
+/** Test raw and escaped Unicode source values share canonical interface identity. */
+func test_emit_interface_unicode_spelling_equivalence() {
+    let raw_text = emit_interface_for("iface_fingerprint_unicode_raw");
+    let escaped_text = emit_interface_for("iface_fingerprint_unicode_escaped");
+    let raw = pi_parse_interface(raw_text, "<unicode-fingerprint-raw>");
+    let escaped = pi_parse_interface(escaped_text, "<unicode-fingerprint-escaped>");
+    assert(!ipr_has_errors(raw) && !ipr_has_errors(escaped),
+        "Unicode spelling-equivalence interfaces should parse");
+    assert((raw.interface as ModuleInterface*).fingerprint ==
+        (escaped.interface as ModuleInterface*).fingerprint,
+        "raw and escaped Unicode scalar and aggregate values must fingerprint identically");
+    assert(contains_s(raw_text, "const scalar: string = \"\\303\\251\";") &&
+        contains_s(escaped_text, "const scalar: string = \"\\303\\251\";"),
+        "equivalent scalar strings must emit the same canonical UTF-8 bytes");
+    assert(contains_s(raw_text,
+        "const aggregate: string[2] = [\"\\303\\251\", \"\\360\\237\\230\\200\"];") &&
+        contains_s(escaped_text,
+        "const aggregate: string[2] = [\"\\303\\251\", \"\\360\\237\\230\\200\"];"),
+        "equivalent aggregate strings must emit the same canonical UTF-8 bytes");
+    ipr_free(raw);
+    ipr_free(escaped);
 }
 
 /**
@@ -141,7 +200,7 @@ func test_interface_round_trip() {
 
     let mi = parsed.interface as ModuleInterface*;
     assert(mi.module_name == "iface_demo", "module name mismatch");
-    assert(mi.fingerprint == "", "fingerprint placeholder mismatch");
+    assert(starts_with_s(mi.fingerprint, "sip13:"), "canonical fingerprint tag mismatch");
     assert(vec_size(mi.struct_infos) == 2, "expected 2 exported structs");
     assert(vec_size(mi.enum_infos) == 1, "expected 1 exported enum");
     assert(vec_size(mi.alias_entries) == 1, "expected 1 exported alias");
@@ -164,7 +223,7 @@ func test_interface_header_rejection() {
  * Tests dotted module names in interface headers.
  */
 func test_interface_dotted_module_header() {
-    let parsed = pi_parse_interface("module interface demo.main;\nfingerprint \"\";\nfunc ping() -> void == \"\";\n", "<dotted>");
+    let parsed = pi_parse_interface("module interface demo.main;\nfingerprint \"\";\nfunc ping() -> void;\n", "<dotted>");
     assert(!ipr_has_errors(parsed), "expected dotted module header to parse");
     assert(parsed.interface != null, "expected parsed interface for dotted module header");
     let mi = parsed.interface as ModuleInterface*;
@@ -179,7 +238,7 @@ func test_interface_dotted_module_header() {
 func test_interface_targeted_diagnostics() {
     assert_parse_rejected("interface demo.main;\nfingerprint \"\";\n", "PAR-0560", "<missing-module>");
     assert_parse_rejected("module interface demo.main\nfingerprint \"\";\n", "PAR-0563", "<missing-header-semi>");
-    assert_parse_rejected("module interface demo.main;\nfingerprint \"\";\nfunc ping() -> void == \"\"\n", "PAR-0568", "<missing-func-semi>");
+    assert_parse_rejected("module interface demo.main;\nfingerprint \"\";\nfunc ping() -> void\n", "PAR-0568", "<missing-func-semi>");
     assert_parse_rejected("module interface demo.main;\nfingerprint \"\";\nimport iface_dep;\n", "PAR-0572", "<unexpected-decl>");
 }
 
@@ -191,14 +250,14 @@ func test_emit_interface_cross_module_types() {
 
     assert(contains_s(emitted, "point: iface_dep::RemotePoint;"), "expected qualified struct field type");
     assert(contains_s(emitted, "tone: iface_dep::RemoteColor;"), "expected qualified enum field type");
-    assert(contains_s(emitted, "type RemoteAlias = iface_dep::RemotePoint == \"\";"), "expected qualified alias target");
-    assert(contains_s(emitted, "func remote_identity(point: iface_dep::RemotePoint) -> iface_dep::RemotePoint == \"\";"),
+    assert(contains_s(emitted, "type RemoteAlias = iface_dep::RemotePoint;"), "expected qualified alias target");
+    assert(contains_s(emitted, "func remote_identity(point: iface_dep::RemotePoint) -> iface_dep::RemotePoint;"),
         "expected qualified function signature");
-    assert(contains_s(emitted, "let remote_slot: iface_dep::RemotePoint? == \"\";"), "expected qualified nullable let type");
+    assert(contains_s(emitted, "let remote_slot: iface_dep::RemotePoint?;"), "expected qualified nullable let type");
 
-    assert(contains_s(emitted, "require iface_dep::RemotePoint == \"\";"),
+    assert(contains_s(emitted, "require iface_dep::RemotePoint == \"sip13:"),
         "expected per-symbol require for cross-module struct directly named in surface");
-    assert(contains_s(emitted, "require iface_dep::RemoteColor == \"\";"),
+    assert(contains_s(emitted, "require iface_dep::RemoteColor == \"sip13:"),
         "expected per-symbol require for cross-module enum directly named in surface");
 
     let require_index = find_s(emitted, "require iface_dep::RemoteColor");
@@ -211,11 +270,11 @@ func test_emit_interface_cross_module_types() {
  * Tests that const values referencing cross-module enum variants do not add
  * variant-level require lines: the parent enum is captured (via the const's
  * declared type), and the variant reaches the consumer transitively through
- * the enum's per-symbol hash.
+ * the provider's whole-module fingerprint.
  */
 func test_emit_interface_require_from_const_value() {
     let emitted = emit_interface_for("iface_dotted_main");
-    assert(contains_s(emitted, "require pkg.sub::Color == \"\";"),
+    assert(contains_s(emitted, "require pkg.sub::Color == \"sip13:"),
         "expected require for cross-module const type");
     assert(!contains_s(emitted, "require pkg.sub::Red"),
         "enum-variant references must not produce variant-level require entries");
@@ -246,9 +305,9 @@ func test_interface_null_type_rejection() {
  */
 func test_emit_interface_implicit_default() {
     let emitted = emit_interface_for("iface_implicit");
-    assert(contains_s(emitted, "module interface iface_implicit;\nfingerprint \"\";\n"), "expected header");
+    assert(contains_s(emitted, "module interface iface_implicit;\nfingerprint \"sip13:"), "expected header");
     assert(contains_s(emitted, "struct Point"), "expected exported struct");
-    assert(contains_s(emitted, "func area(p: Point) -> int == \"\";"), "expected exported func");
+    assert(contains_s(emitted, "func area(p: Point) -> int;"), "expected exported func");
     assert(!contains_s(emitted, "_helper"), "private _-prefixed func must not be exported with implicit default");
 }
 
@@ -257,9 +316,9 @@ func test_emit_interface_implicit_default() {
  */
 func test_emit_interface_export_star() {
     let emitted = emit_interface_for("iface_export_star");
-    assert(contains_s(emitted, "module interface iface_export_star;\nfingerprint \"\";\n"), "expected header");
+    assert(contains_s(emitted, "module interface iface_export_star;\nfingerprint \"sip13:"), "expected header");
     assert(contains_s(emitted, "struct Point"), "expected exported struct");
-    assert(contains_s(emitted, "func area(p: Point) -> int == \"\";"), "expected exported func");
+    assert(contains_s(emitted, "func area(p: Point) -> int;"), "expected exported func");
     assert(contains_s(emitted, "_helper"), "_-prefixed func must be exported with export *");
 }
 
@@ -268,12 +327,12 @@ func test_emit_interface_export_star() {
  */
 func test_emit_interface_opaque_nominals() {
     let emitted = emit_interface_for("iface_opaque");
-    assert(contains_s(emitted, "opaque struct Handle == \"\";"), "expected opaque struct declaration");
-    assert(contains_s(emitted, "opaque enum State == \"\";"), "expected opaque enum declaration");
+    assert(contains_s(emitted, "opaque struct Handle;"), "expected opaque struct declaration");
+    assert(contains_s(emitted, "opaque enum State;"), "expected opaque enum declaration");
     assert(!contains_s(emitted, "struct Handle {"), "opaque struct must not emit fields");
     assert(!contains_s(emitted, "enum State {"), "opaque enum must not emit variants");
-    assert(contains_s(emitted, "func make_handle(value: int) -> Handle* == \"\";"), "expected pointer-return signature");
-    assert(contains_s(emitted, "func step(handle: Handle*, state: State*) -> Handle* == \"\";"), "expected opaque pointer parameters");
+    assert(contains_s(emitted, "func make_handle(value: int) -> Handle*;"), "expected pointer-return signature");
+    assert(contains_s(emitted, "func step(handle: Handle*, state: State*) -> Handle*;"), "expected opaque pointer parameters");
 
     let parsed = pi_parse_interface(emitted, "<iface-opaque>");
     assert(!ipr_has_errors(parsed), "opaque interface parse should succeed");
@@ -296,9 +355,9 @@ func test_emit_interface_opaque_nominals() {
  * Tests malformed opaque interface declarations.
  */
 func test_interface_opaque_decl_rejection() {
-    assert_parse_rejected("module interface m;\nfingerprint \"\";\nopaque func f() -> void == \"\";\n", "PAR-0572", "<opaque-func>");
-    assert_parse_rejected("module interface m;\nfingerprint \"\";\nstruct Handle == \"\";\n", "PAR-0572", "<bodyless-struct>");
-    assert_parse_rejected("module interface m;\nfingerprint \"\";\nenum State == \"\";\n", "PAR-0572", "<bodyless-enum>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nopaque func f() -> void;\n", "PAR-0572", "<opaque-func>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nstruct Handle;\n", "PAR-0572", "<bodyless-struct>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nenum State;\n", "PAR-0572", "<bodyless-enum>");
 }
 
 /**
@@ -340,7 +399,7 @@ func test_interface_missing_colon() {
  * Tests PAR-0569: missing ';' after let declaration.
  */
 func test_interface_missing_let_semi() {
-    assert_parse_rejected("module interface m;\nfingerprint \"\";\nlet x: int == \"\"\n", "PAR-0569", "<missing-let-semi>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nlet x: int\n", "PAR-0569", "<missing-let-semi>");
 }
 
 /**
@@ -354,7 +413,7 @@ func test_interface_missing_const_value() {
  * Tests PAR-0571: missing ';' after const declaration.
  */
 func test_interface_missing_const_semi() {
-    assert_parse_rejected("module interface m;\nfingerprint \"\";\nconst x: int = 0 == \"\"\n", "PAR-0571", "<missing-const-semi>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nconst x: int = 0\n", "PAR-0571", "<missing-const-semi>");
 }
 
 /**
@@ -453,7 +512,7 @@ func test_interface_cross_module_kind_without_peers() {
  * round-trip through emission.
  */
 func test_interface_dotted_module_literal_round_trip() {
-    let text = "module interface m;\nfingerprint \"\";\n\nconst x: pkg.sub::Color = pkg.sub::Red == \"\";\n\nconst y: pkg.sub::Color = pkg.sub::Rgb(255, 0, 0) == \"\";\n";
+    let text = "module interface m;\nfingerprint \"\";\n\nconst x: pkg.sub::Color = pkg.sub::Red;\n\nconst y: pkg.sub::Color = pkg.sub::Rgb(255, 0, 0);\n";
 
     let parsed = pi_parse_interface(text, "<dotted-literal>");
     assert(!ipr_has_errors(parsed), "dotted-literal const should parse");
@@ -488,11 +547,11 @@ func test_interface_array_literal_round_trip() {
     let text = "module interface arrays;\n" +
         "fingerprint \"\";\n" +
         "\n" +
-        "const empty: int[2] = [] == \"\";\n" +
+        "const empty: int[2] = [];\n" +
         "\n" +
-        "const flat: int[3] = [1, 2, 3] == \"\";\n" +
+        "const flat: int[3] = [1, 2, 3];\n" +
         "\n" +
-        "const nested: int[2][2] = [[1, 2], [3, 4]] == \"\";\n";
+        "const nested: int[2][2] = [[1, 2], [3, 4]];\n";
     let parsed = pi_parse_interface(text, "<arrays>");
     assert(!ipr_has_errors(parsed), "array const interface should parse");
     assert(parsed.interface != null, "array const interface should produce metadata");
@@ -501,12 +560,12 @@ func test_interface_array_literal_round_trip() {
     ipr_free(parsed);
 
     assert_parse_rejected(
-        "module interface arrays;\nfingerprint \"\";\nconst bad: int[2] = [1,] == \"\";\n",
+        "module interface arrays;\nfingerprint \"\";\nconst bad: int[2] = [1,];\n",
         "PAR-0572",
         "<array-trailing-comma>"
     );
     assert_parse_rejected(
-        "module interface arrays;\nfingerprint \"\";\nconst bad: int[2] = [1 2] == \"\";\n",
+        "module interface arrays;\nfingerprint \"\";\nconst bad: int[2] = [1 2];\n",
         "PAR-0572",
         "<array-missing-comma>"
     );
@@ -520,13 +579,13 @@ func test_interface_negative_literal_round_trip() {
     let text = "module interface signed_literals;\n" +
         "fingerprint \"\";\n" +
         "\n" +
-        "const int_min: int = -2147483648 == \"\";\n" +
+        "const int_min: int = -2147483648;\n" +
         "\n" +
-        "const min_offset: int = -5 == \"\";\n" +
+        "const min_offset: int = -5;\n" +
         "\n" +
-        "const min_real: double = -2.5 == \"\";\n" +
+        "const min_real: double = -2.5;\n" +
         "\n" +
-        "const offsets: int[3] = [1, -2, 3] == \"\";\n";
+        "const offsets: int[3] = [1, -2, 3];\n";
     let parsed = pi_parse_interface(text, "<signed-literals>");
     assert(!ipr_has_errors(parsed), "signed numeric const interface should parse");
     assert(parsed.interface != null, "signed numeric const interface should produce metadata");
@@ -537,16 +596,16 @@ func test_interface_negative_literal_round_trip() {
     let spaced_text = "module interface signed_literals;\n" +
         "fingerprint \"\";\n" +
         "\n" +
-        "const int_min: int = -2147483648 == \"\";\n" +
+        "const int_min: int = -2147483648;\n" +
         "\n" +
-        "const min_offset: int = -5 == \"\";\n" +
+        "const min_offset: int = -5;\n" +
         "\n" +
-        "const min_real: double = -2.5 == \"\";\n";
+        "const min_real: double = -2.5;\n";
     let spaced = pi_parse_interface(
         "module interface signed_literals;\nfingerprint \"\";\n" +
-            "const int_min: int = - 2147483648 == \"\";\n" +
-            "const min_offset: int = - 5 == \"\";\n" +
-            "const min_real: double = - 2.5 == \"\";\n",
+            "const int_min: int = - 2147483648;\n" +
+            "const min_offset: int = - 5;\n" +
+            "const min_real: double = - 2.5;\n",
         "<split-signed-literal>"
     );
     assert(!ipr_has_errors(spaced), "split-token signed numeric const interface should parse");
@@ -555,12 +614,12 @@ func test_interface_negative_literal_round_trip() {
     ipr_free(spaced);
 
     assert_parse_rejected(
-        "module interface signed_literals;\nfingerprint \"\";\nconst bad: bool = -true == \"\";\n",
+        "module interface signed_literals;\nfingerprint \"\";\nconst bad: bool = -true;\n",
         "PAR-0572",
         "<signed-nonnumeric>"
     );
     assert_parse_rejected(
-        "module interface signed_literals;\nfingerprint \"\";\nconst bad: int = - -5 == \"\";\n",
+        "module interface signed_literals;\nfingerprint \"\";\nconst bad: int = - -5;\n",
         "PAR-0572",
         "<double-signed-numeric>"
     );
@@ -571,17 +630,17 @@ func test_interface_negative_literal_round_trip() {
  */
 func test_interface_duplicate_declaration_rejected() {
     assert_parse_rejected(
-        "module interface duplicates;\nfingerprint \"\";\nfunc value() -> int == \"\";\nconst value: int = 1 == \"\";\n",
+        "module interface duplicates;\nfingerprint \"\";\nfunc value() -> int;\nconst value: int = 1;\n",
         "PAR-0577",
         "<duplicate-func-const>"
     );
     assert_parse_rejected(
-        "module interface duplicates;\nfingerprint \"\";\nenum Value { Ready; } == \"\";\nfunc Ready() -> int == \"\";\n",
+        "module interface duplicates;\nfingerprint \"\";\nenum Value { Ready; }\nfunc Ready() -> int;\n",
         "PAR-0577",
         "<duplicate-variant-func>"
     );
     assert_parse_rejected(
-        "module interface duplicates;\nfingerprint \"\";\nopaque struct Hidden == \"\";\nopaque enum Hidden == \"\";\n",
+        "module interface duplicates;\nfingerprint \"\";\nopaque struct Hidden;\nopaque enum Hidden;\n",
         "PAR-0577",
         "<duplicate-opaque-nominals>"
     );
@@ -593,11 +652,11 @@ func test_interface_duplicate_declaration_rejected() {
  */
 func test_emit_interface_dotted_module_literal() {
     let emitted = emit_interface_for("iface_dotted_main");
-    assert(contains_s(emitted, "module interface iface_dotted_main;\nfingerprint \"\";\n"),
+    assert(contains_s(emitted, "module interface iface_dotted_main;\nfingerprint \"sip13:"),
         "expected dotted-main interface header");
-    assert(contains_s(emitted, "const accent_color: pkg.sub::Color = pkg.sub::Rgb(255, 0, 0) == \"\";"),
+    assert(contains_s(emitted, "const accent_color: pkg.sub::Color = pkg.sub::Rgb(255, 0, 0);"),
         "expected dotted-module call literal");
-    assert(contains_s(emitted, "const bg_color: pkg.sub::Color = pkg.sub::Red == \"\";"),
+    assert(contains_s(emitted, "const bg_color: pkg.sub::Color = pkg.sub::Red;"),
         "expected dotted-module variant literal");
     assert(!contains_s(emitted, "pkg::sub::"),
         "dotted module path must use '.' between segments, not '::'");
@@ -619,13 +678,13 @@ func test_interface_dotted_literal_missing_double_colon() {
  */
 func test_interface_unsafe_function_markers() {
     let emitted = emit_interface_for("iface_unsafe");
-    assert(contains_s(emitted, "unsafe func borrow(cb: unsafe func(int) -> int) -> unsafe func(int) -> int == \"\";"),
+    assert(contains_s(emitted, "unsafe func borrow(cb: unsafe func(int) -> int) -> unsafe func(int) -> int;"),
         "expected unsafe function signature in emitted interface");
-    assert(contains_s(emitted, "extern func puts(value: string) -> int == \"\";"),
+    assert(contains_s(emitted, "extern func puts(value: string) -> int;"),
         "expected extern function signature in emitted interface");
-    assert(contains_s(emitted, "unsafe extern func raw_sink(value: int*) -> void == \"\";"),
+    assert(contains_s(emitted, "unsafe extern func raw_sink(value: int*) -> void;"),
         "expected unsafe extern function signature in emitted interface");
-    assert(contains_s(emitted, "type UnsafeCb = unsafe func(int) -> int == \"\";"),
+    assert(contains_s(emitted, "type UnsafeCb = unsafe func(int) -> int;"),
         "expected unsafe function alias in emitted interface");
 
     let parsed = pi_parse_interface(emitted, "<iface_unsafe>");
@@ -657,7 +716,7 @@ func test_interface_unsafe_function_markers() {
  * Tests ordered pointer and nullable suffixes round-trip through interfaces.
  */
 func test_interface_ordered_type_suffix_round_trip() {
-    let text = "module interface ordered_suffix;\nfingerprint \"\";\n\ntype A = int?* == \"\";\n\ntype B = int*? == \"\";\n\ntype C = int?? == \"\";\n\ntype D = int[2][3]? == \"\";\n\nfunc f(a: int?*, row: int[3]) -> int*? == \"\";\n";
+    let text = "module interface ordered_suffix;\nfingerprint \"\";\n\ntype A = int?*;\n\ntype B = int*?;\n\ntype C = int??;\n\ntype D = int[2][3]?;\n\nfunc f(a: int?*, row: int[3]) -> int*?;\n";
     let parsed = pi_parse_interface(text, "<ordered-suffix>");
     assert(!ipr_has_errors(parsed), "ordered suffix interface should parse");
     assert(parsed.interface != null, "expected ordered suffix interface");
@@ -670,7 +729,7 @@ func test_interface_ordered_type_suffix_round_trip() {
  * Tests variadic declarations and function types round-trip through interfaces.
  */
 func test_interface_variadic_round_trip() {
-    let text = "module interface variadic_iface;\nfingerprint \"\";\n\nstruct Point {\n  value: int;\n} == \"\";\n\ntype V = func(int, Point...) -> int == \"\";\n\nfunc collect(prefix: int, values: Point...) -> int == \"\";\n";
+    let text = "module interface variadic_iface;\nfingerprint \"\";\n\nstruct Point {\n  value: int;\n}\n\ntype V = func(int, Point...) -> int;\n\nfunc collect(prefix: int, values: Point...) -> int;\n";
     let parsed = pi_parse_interface(text, "<variadic-interface>");
     assert(!ipr_has_errors(parsed), "variadic interface should parse");
     let mi = parsed.interface as ModuleInterface*;
@@ -706,7 +765,7 @@ func test_interface_variadic_cross_module_kind_with_peers() {
 
     with (let peers: VectorBase*? = ptr_vec_create(1) => vec_free(peers as VectorBase*)) {
         ptr_vec_push(peers as VectorBase*, dep_mi as void*);
-        let text = "module interface variadic_cross;\nfingerprint \"\";\n\nrequire iface_dep::RemoteColor == \"\";\n\nfunc collect(values: iface_dep::RemoteColor...) -> void == \"\";\n";
+        let text = "module interface variadic_cross;\nfingerprint \"\";\n\nrequire iface_dep::RemoteColor == \"\";\n\nfunc collect(values: iface_dep::RemoteColor...) -> void;\n";
         let parsed = pi_parse_interface_with_peers(text, "<variadic-cross>", peers as VectorBase*);
         assert(!ipr_has_errors(parsed), "cross-module variadic interface should parse");
         let mi = parsed.interface as ModuleInterface*;
@@ -732,45 +791,45 @@ func test_interface_variadic_cross_module_kind_with_peers() {
  */
 func dependency_provider_interface_text() -> string {
     return "module interface iface_dependency_provider;\n" +
-        "fingerprint \"opaque:PROVIDER-v1\";\n" +
+        "fingerprint \"\";\n" +
         "\n" +
         "struct RemotePoint {\n" +
         "  value: int;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "struct LayoutOne {\n" +
         "  value: int;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "struct LayoutTwo {\n" +
         "  value: int;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "enum RemoteColor {\n" +
         "  Red;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "enum InferredColor {\n" +
         "  Blue;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "enum ImplColor {\n" +
         "  Green;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "enum OrdColor {\n" +
         "  OrdBlue;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
         "enum IsColor {\n" +
         "  IsGreen;\n" +
-        "} == \"\";\n" +
+        "}\n" +
         "\n" +
-        "type RemoteAlias = RemotePoint == \"\";\n" +
+        "type RemoteAlias = RemotePoint;\n" +
         "\n" +
-        "func remote_value() -> int == \"\";\n" +
+        "func remote_value() -> int;\n" +
         "\n" +
-        "const public_seed: int = 40 == \"\";\n";
+        "const public_seed: int = 40;\n";
 }
 
 /**
@@ -804,6 +863,12 @@ func test_emit_interface_semantic_dependencies() {
     let parsed = pi_parse_interface(dependency_provider_interface_text(), "<iface_dependency_provider.l1m>");
     assert(!ipr_has_errors(parsed), "synthetic dependency provider should parse");
     assert(parsed.interface != null, "synthetic dependency provider should produce metadata");
+    let fingerprint_diags = diag_create();
+    assert(ifp_assign(parsed.interface as ModuleInterface*, fingerprint_diags,
+        "<iface_dependency_provider.l1m>"), "synthetic dependency provider should fingerprint");
+    assert(!diag_has_errors(fingerprint_diags), "synthetic provider fingerprinting should not diagnose");
+    let provider_fingerprint = (parsed.interface as ModuleInterface*).fingerprint;
+    diag_free(fingerprint_diags);
 
     let interfaces = ptr_vec_create(1);
     ptr_vec_push(interfaces, parsed.interface as void*);
@@ -822,46 +887,46 @@ func test_emit_interface_semantic_dependencies() {
         let text = text_opt as string;
 
         assert(contains_s(text,
-            "require iface_dependency_provider::RemoteAlias == \"opaque:PROVIDER-v1\";"),
+            "require iface_dependency_provider::RemoteAlias == \"" + provider_fingerprint + "\";"),
             "public TypeRef walk must preserve the imported alias identity");
         assert(contains_s(text,
-            "require iface_dependency_provider::RemoteColor == \"opaque:PROVIDER-v1\";"),
+            "require iface_dependency_provider::RemoteColor == \"" + provider_fingerprint + "\";"),
             "public nominal type must become a require dependency");
         assert(contains_s(text,
-            "require iface_dependency_provider::public_seed == \"opaque:PROVIDER-v1\";"),
+            "require iface_dependency_provider::public_seed == \"" + provider_fingerprint + "\";"),
             "folded exported const initializer must still be walked");
         assert(!contains_s(text, "require iface_dependency_provider::RemotePoint"),
             "imported aliases must not be replaced by their resolved nominal target in dependencies");
         assert(contains_s(text,
-            "const alias_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red == \"\";"),
+            "const alias_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red;"),
             "alias-qualified const literals must emit canonical provider identity");
         assert(contains_s(text,
-            "const selective_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red == \"\";"),
+            "const selective_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red;"),
             "selectively imported const literals must emit canonical provider identity");
         assert(contains_s(text,
-            "require iface_dependency_provider::InferredColor == \"opaque:PROVIDER-v1\";"),
+            "require iface_dependency_provider::InferredColor == \"" + provider_fingerprint + "\";"),
             "inferred exported bindings must add their resolved provider type to require");
         assert(contains_s(text,
-            "let inferred_color: iface_dependency_provider::InferredColor == \"\";"),
+            "let inferred_color: iface_dependency_provider::InferredColor;"),
             "inferred exported bindings must preserve resolved-type dependency projection");
 
         assert(contains_s(text,
-            "link iface_dependency_provider::ImplColor == \"opaque:PROVIDER-v1\";"),
+            "link iface_dependency_provider::ImplColor == \"" + provider_fingerprint + "\";"),
             "implementation enum variant must normalize to its owning enum");
         assert(contains_s(text,
-            "link iface_dependency_provider::remote_value == \"opaque:PROVIDER-v1\";"),
+            "link iface_dependency_provider::remote_value == \"" + provider_fingerprint + "\";"),
             "implementation-only function use must become a link dependency");
         assert(contains_s(text,
-            "link iface_dependency_provider::LayoutOne == \"opaque:PROVIDER-v1\";"),
+            "link iface_dependency_provider::LayoutOne == \"" + provider_fingerprint + "\";"),
             "unqualified sizeof type lookup must become a link dependency");
         assert(contains_s(text,
-            "link iface_dependency_provider::LayoutTwo == \"opaque:PROVIDER-v1\";"),
+            "link iface_dependency_provider::LayoutTwo == \"" + provider_fingerprint + "\";"),
             "alias-qualified sizeof type lookup must become a canonical link dependency");
         assert(contains_s(text,
-            "link iface_dependency_provider::OrdColor == \"opaque:PROVIDER-v1\";"),
+            "link iface_dependency_provider::OrdColor == \"" + provider_fingerprint + "\";"),
             "alias-qualified ord value lookup must link the canonical owning enum");
         assert(contains_s(text,
-            "link iface_dependency_provider::IsColor == \"opaque:PROVIDER-v1\";"),
+            "link iface_dependency_provider::IsColor == \"" + provider_fingerprint + "\";"),
             "alias-qualified is variant lookup must link the canonical owning enum");
         assert(!contains_s(text, "link iface_dependency_provider::Green"),
             "enum variants must not survive as variant-level dependencies");
@@ -915,7 +980,7 @@ func test_emit_interface_semantic_dependencies() {
         assert(open_text_opt != null, "open-import dependency consumer should project an interface");
         let open_text = open_text_opt as string;
         assert(contains_s(open_text,
-            "const open_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red == \"\";"),
+            "const open_color: iface_dependency_provider::RemoteColor = iface_dependency_provider::Red;"),
             "open-import const literals must emit canonical provider identity");
         analysis_result_free(open_result);
     }
@@ -948,12 +1013,12 @@ func test_interface_require_subtracts_link() {
 }
 
 /**
- * Tests that the new per-symbol `require` and `link` dependency-line forms
- * (including canonical-looking lowercase algorithm-tagged hash strings) parse,
+ * Tests that the per-symbol `require` and `link` dependency-line forms
+ * (including canonical-looking lowercase algorithm-tagged fingerprints) parse,
  * sort/deduplicate, and round-trip through emit -> parse -> emit byte-for-byte.
  */
 func test_interface_dep_lines_round_trip() {
-    let text = "module interface m;\nfingerprint \"sip13:f03142b8c9a7e6f1\";\n\nrequire myapp.rectangle::Rectangle == \"sip13:62649b8c7d5e4f3a\";\nrequire std.integer::Value == \"\";\n\nlink std.io::printl_s == \"sip13:91744a73b8c9d0e5\";\nlink std.real::sqrt_d == \"\";\n\nfunc ping() -> void == \"sip13:0a3862d838283ddd\";\n";
+    let text = "module interface m;\nfingerprint \"sip13:f03142b8c9a7e6f1\";\n\nrequire myapp.rectangle::Rectangle == \"sip13:62649b8c7d5e4f3a\";\nrequire std.integer::Value == \"\";\n\nlink std.io::printl_s == \"sip13:91744a73b8c9d0e5\";\nlink std.real::sqrt_d == \"\";\n\nfunc ping() -> void;\n";
 
     let parsed = pi_parse_interface(text, "<dep-lines>");
     assert(!ipr_has_errors(parsed), "dep-line interface should parse");
@@ -965,14 +1030,13 @@ func test_interface_dep_lines_round_trip() {
     let req0 = ptr_vec_get(mi.require_entries, 0) as InterfaceDepEntry*;
     assert(req0.provider_module == "myapp.rectangle", "first require provider module mismatch");
     assert(req0.symbol_name == "Rectangle", "first require symbol mismatch");
-    assert(req0.hash == "sip13:62649b8c7d5e4f3a", "first require hash mismatch");
+    assert(req0.provider_fingerprint == "sip13:62649b8c7d5e4f3a", "first require fingerprint mismatch");
 
     let link0 = ptr_vec_get(mi.link_entries, 0) as InterfaceDepEntry*;
     assert(link0.provider_module == "std.io", "first link provider module mismatch");
     assert(link0.symbol_name == "printl_s", "first link symbol mismatch");
 
-    let func_entry = ptr_vec_get(mi.func_entries, 0) as InterfaceFuncEntry*;
-    assert(func_entry.hash == "sip13:0a3862d838283ddd", "func per-symbol hash must round-trip");
+    assert(vec_size(mi.func_entries) == 1, "suffix-free function declaration must parse");
 
     let re_emitted = ie_emit(mi);
     assert(re_emitted == text, "dep-line interface must round-trip byte-for-byte");
@@ -983,23 +1047,39 @@ func test_interface_dep_lines_round_trip() {
  * Tests constrained parsing preserves a deliberately non-canonical uppercase
  * fingerprint token without treating that parser-only behavior as validation.
  */
-func test_interface_noncanonical_hash_token_round_trip() {
-    let text = "module interface opaque_hash;\nfingerprint \"sip13:ABCDEF0123456789\";\n";
-    let parsed = pi_parse_interface(text, "<noncanonical-hash-token>");
-    assert(!ipr_has_errors(parsed), "opaque hash token should parse before fingerprint verification exists");
+func test_interface_noncanonical_fingerprint_token_round_trip() {
+    let text = "module interface opaque_fingerprint;\nfingerprint \"sip13:ABCDEF0123456789\";\n";
+    let parsed = pi_parse_interface(text, "<noncanonical-fingerprint-token>");
+    assert(!ipr_has_errors(parsed), "constrained parser should preserve an opaque fingerprint token");
     let mi = parsed.interface as ModuleInterface*;
     assert(mi.fingerprint == "sip13:ABCDEF0123456789", "parser must preserve opaque fingerprint spelling");
     assert(ie_emit(mi) == text, "opaque fingerprint spelling must round-trip byte-for-byte");
     ipr_free(parsed);
 }
 
+/** Test obsolete declaration fingerprint suffixes use normal declaration diagnostics. */
+func test_interface_obsolete_declaration_suffixes_rejected() {
+    let header = "module interface m;\nfingerprint \"\";\n";
+    assert_decl_suffix_rejected(header + "struct S { } == \"legacy\";\n", "PAR-0572", "<struct-suffix>");
+    assert_decl_suffix_rejected(header + "opaque struct S == \"legacy\";\n", "PAR-0572", "<opaque-struct-suffix>");
+    assert_decl_suffix_rejected(header + "enum E { A; } == \"legacy\";\n", "PAR-0572", "<enum-suffix>");
+    assert_decl_suffix_rejected(header + "opaque enum E == \"legacy\";\n", "PAR-0572", "<opaque-enum-suffix>");
+    assert_decl_suffix_rejected(header + "type A = int == \"legacy\";\n", "PAR-0572", "<alias-suffix>");
+    assert_decl_suffix_rejected(header + "func f() -> void == \"legacy\";\n", "PAR-0568", "<func-suffix>");
+    assert_decl_suffix_rejected(header + "const c: int = 1 == \"legacy\";\n", "PAR-0571", "<const-suffix>");
+    assert_decl_suffix_rejected(header + "let value: int == \"legacy\";\n", "PAR-0569", "<let-suffix>");
+}
+
 /**
- * Tests targeted diagnostics for the new per-decl hash suffix.
+ * Tests targeted diagnostics for provider-fingerprint dependency suffixes.
  */
-func test_interface_decl_hash_suffix_diagnostics() {
-    assert_parse_rejected("module interface m;\nfingerprint \"\";\nfunc ping() -> void;\n", "PAR-0574", "<missing-decl-eqeq>");
-    assert_parse_rejected("module interface m;\nfingerprint \"\";\nfunc ping() -> void == ;\n", "PAR-0575", "<missing-decl-hash>");
-    assert_parse_rejected("module interface m;\nfingerprint \"\";\nstruct S { } == \"\"\n", "PAR-0576", "<missing-struct-hash-semi>");
+func test_interface_dependency_fingerprint_diagnostics() {
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nrequire p::item;\n",
+        "PAR-0574", "<missing-dependency-eqeq>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nrequire p::item == ;\n",
+        "PAR-0575", "<missing-dependency-fingerprint>");
+    assert_parse_rejected("module interface m;\nfingerprint \"\";\nrequire p::item == \"\"\n",
+        "PAR-0576", "<missing-dependency-semi>");
 }
 
 /**
@@ -1007,6 +1087,8 @@ func test_interface_decl_hash_suffix_diagnostics() {
  */
 func main() {
     test_emit_interface_deterministic();
+    test_emit_interface_private_changes_preserve_fingerprint();
+    test_emit_interface_unicode_spelling_equivalence();
     test_interface_round_trip();
     test_interface_header_rejection();
     test_interface_dotted_module_header();
@@ -1043,7 +1125,8 @@ func main() {
     test_emit_interface_semantic_dependencies();
     test_interface_require_subtracts_link();
     test_interface_dep_lines_round_trip();
-    test_interface_noncanonical_hash_token_round_trip();
-    test_interface_decl_hash_suffix_diagnostics();
+    test_interface_noncanonical_fingerprint_token_round_trip();
+    test_interface_obsolete_declaration_suffixes_rejected();
+    test_interface_dependency_fingerprint_diagnostics();
     printl_s("interface_test: all tests passed");
 }

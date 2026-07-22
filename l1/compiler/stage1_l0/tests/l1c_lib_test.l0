@@ -13,7 +13,15 @@ import std.io;
 import std.string;
 import std.vector;
 
+import analysis;
+import ast;
 import l1c_lib;
+import sem_context;
+import signatures;
+import source_paths;
+import types;
+import util.diag;
+import util.log;
 
 /**
  * Returns the root directory for test fixtures.
@@ -300,12 +308,47 @@ func test_emit_interface_output_file() {
 
     let text = read_file(out_path);
     assert(text != null, "interface output file should exist");
-    assert(contains_s(text as string, "module interface iface_demo;\nfingerprint \"\";\n"), "interface header missing");
-    assert(contains_s(text as string, "struct Point {\n  x: int;\n  y: int;\n} == \"\";"), "exported struct missing");
-    assert(contains_s(text as string, "func area(s: Size) -> int == \"\";"), "exported function missing");
+    assert(contains_s(text as string, "module interface iface_demo;\nfingerprint \"sip13:"),
+        "canonical interface fingerprint missing");
+    assert(contains_s(text as string, "struct Point {\n  x: int;\n  y: int;\n}"), "exported struct missing");
+    assert(contains_s(text as string, "func area(s: Size) -> int;"), "exported function missing");
+    assert(!contains_s(text as string, " == \""), "declaration hash suffixes must not be emitted");
     assert(!contains_s(text as string, "helper"), "private helper must not be emitted");
 
     rt_delete_file(out_path);
+}
+
+/** Specific canonicalization diagnostics suppress the generic interface-projection fallback. */
+func test_emit_interface_specific_failure_suppresses_generic_fallback() {
+    let sp = sp_create();
+    sp_add_project_root(sp, interface_fixture_root());
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let fallback_diags = diag_create() => diag_free(fallback_diags)) {
+        let result = analysis_analyze_entry(sp, "iface_demo", cfg);
+        assert(!analysis_has_errors(result), "iface_demo should analyze before metadata corruption");
+        let area_ty = sig_lookup_func_type(
+            analysis_signature_tables(result) as SignatureTables*, "iface_demo", "area"
+        );
+        assert(area_ty != null, "iface_demo area signature should exist");
+        ptr_vec_push((area_ty as Type*).params as VectorBase*, type_builtin_int() as void*);
+
+        let emitted = analysis_emit_interface(result, "iface_demo");
+        assert(emitted == null, "inconsistent public signature metadata should block interface emission");
+        assert(analysis_has_errors(result), "canonicalization failure should remain on analysis diagnostics");
+        let saw_specific = false;
+        for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+            if (analysis_diag_get(result, i).code == "SIG-0283") {
+                saw_specific = true;
+            }
+        }
+        assert(saw_specific, "canonicalization failure should report SIG-0283");
+
+        l1c_add_interface_projection_fallback(result, fallback_diags, "iface_demo");
+        assert(diag_count(fallback_diags) == 0,
+            "specific interface diagnostics must suppress generic L1C-2030 fallback");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
 }
 
 /**
@@ -1378,6 +1421,7 @@ func main() {
     test_gen_ok_output_file();
     test_emit_interface_stdout();
     test_emit_interface_output_file();
+    test_emit_interface_specific_failure_suppresses_generic_fallback();
     test_gen_trace_defines();
     test_parse_error_exit_code();
     test_default_build_mode_succeeds();

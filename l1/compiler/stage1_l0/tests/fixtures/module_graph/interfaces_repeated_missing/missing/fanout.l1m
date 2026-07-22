@@ -1,8 +1,8 @@
 module interface missing.fanout;
-fingerprint "fanout";
+fingerprint "sip13:9cc21818611980cc";
 
-require missing.provider::First == "missing-first";
-require missing.provider::Second == "missing-second";
-link missing.provider::helper == "missing-helper";
+require missing.provider::First == "sip13:50adaaa854debbc6";
+require missing.provider::Second == "sip13:50adaaa854debbc6";
+link missing.provider::helper == "sip13:50adaaa854debbc6";
 
-func anchor() -> int == "";
+func anchor() -> int;

@@ -1,0 +1,18 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module iface_fingerprint_private_b;
+
+export stable;
+
+import iface_dep;
+
+func stable(value: int) -> int {
+    return value * 2;
+}
+
+func another_private(value: int) -> int {
+    return value + 100;
+}

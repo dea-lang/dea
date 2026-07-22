@@ -8,6 +8,7 @@ module lexer_test;
 import std.io;
 import std.string;
 import std.assert;
+import std.text;
 
 import lexer;
 import tokens;
@@ -104,6 +105,37 @@ func expect_single_real(source: string, expected_sig: string, expected_exp_text:
         _ => {
             printl_ss("actual token:", token_to_string(tok));
             assert(false, "Expected real literal token");
+        }
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Lex one string literal and compare both its source spelling and decoded bytes.
+ *
+ * @param source Complete quoted source literal.
+ * @param expected_text Expected literal body as written in the source.
+ * @param expected_value Expected decoded byte string.
+ */
+func expect_single_string(source: string, expected_text: string, expected_value: string) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected string lexing to succeed");
+    assert(!ls_has_errors(ls), "Expected no string-literal diagnostics");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 2, "Expected one string token plus EOF");
+    let tok = tv_get(tv, 0);
+    match (tok.token_type) {
+        TT_STRING(text, value) => {
+            assert(text == expected_text, "Unexpected string source spelling");
+            assert(value == expected_value, "Unexpected decoded string bytes");
+        }
+        _ => {
+            printl_ss("actual token:", token_to_string(tok));
+            assert(false, "Expected string literal token");
         }
     }
 
@@ -352,9 +384,43 @@ func test_real_literals_err() {
 func test_literal_recovery_errors() {
     expect_lex_error("\"unterminated", "LEX-0010");
     expect_lex_error("\"\\xGG\"", "LEX-0050");
+    expect_lex_error("\"\\xD800\"", "LEX-0054");
+    expect_lex_error("\"\\x110000\"", "LEX-0054");
+    expect_lex_error("\"\\uD800\"", "LEX-0054");
+    expect_lex_error("\"\\U00110000\"", "LEX-0054");
     expect_lex_error("\"\\q\"", "LEX-0059");
     expect_lex_error("'a", "LEX-0021");
     expect_lex_error("'\\u0100'", "LEX-0030");
+}
+
+/**
+ * Tests Unicode scalar escapes decode to UTF-8 while octal escapes remain bytes.
+ */
+func test_string_escape_decoding() {
+    with (let e_acute_buf = cb_create() => cb_free(e_acute_buf),
+          let emoji_buf = cb_create() => cb_free(emoji_buf),
+          let octal_buf = cb_create() => cb_free(octal_buf)) {
+        cb_append(e_acute_buf, 195 as byte);
+        cb_append(e_acute_buf, 169 as byte);
+        let e_acute = cb_to_string(e_acute_buf);
+
+        cb_append(emoji_buf, 240 as byte);
+        cb_append(emoji_buf, 159 as byte);
+        cb_append(emoji_buf, 152 as byte);
+        cb_append(emoji_buf, 128 as byte);
+        let emoji = cb_to_string(emoji_buf);
+
+        cb_append(octal_buf, 233 as byte);
+        let octal_byte = cb_to_string(octal_buf);
+
+        expect_single_string("\"é\"", "é", e_acute);
+        expect_single_string("\"\\xE9\"", "\\xE9", e_acute);
+        expect_single_string("\"\\u00E9\"", "\\u00E9", e_acute);
+        expect_single_string("\"\\U000000E9\"", "\\U000000E9", e_acute);
+        expect_single_string("\"\\x1F600\"", "\\x1F600", emoji);
+        expect_single_string("\"\\U0001F600\"", "\\U0001F600", emoji);
+        expect_single_string("\"\\351\"", "\\351", octal_byte);
+    }
 }
 
 /**
@@ -425,6 +491,7 @@ func main() {
     test_real_literals_ok();
     test_real_literals_err();
     test_literal_recovery_errors();
+    test_string_escape_decoding();
     test_recoverable_lexer_errors_can_queue_multiple_wrappers();
     test_const_keyword_tokenization();
     test_real_literal_boundaries();

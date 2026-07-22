@@ -20,6 +20,8 @@ import dea_prelude;
 import driver;
 import expr_types;
 import interface_emitter;
+import interface_fingerprint;
+import interface_literal;
 import locals;
 import mi_utils;
 import module_interface;
@@ -29,7 +31,6 @@ import parser;
 import sem_context;
 import signatures;
 import source_paths;
-import string_escape;
 import symbols;
 import type_resolve;
 import types;
@@ -268,6 +269,21 @@ func mi_expr_is_const_cast(arena: ExprArena*, expr_id: ExprId) -> bool {
 }
 
 /**
+ * Format one semantically checked bigint for an interface literal.
+ *
+ * @param text Canonical bigint digits with optional leading `-`.
+ * @param base Numeric base carried by the bigint payload.
+ * @return Canonical decimal spelling.
+ */
+func mi_format_checked_bigint(text: string, base: int) -> string {
+    let canonical = bigint_to_canonical_decimal(text, base);
+    if (canonical == null) {
+        return mi_ice_string("[ICE-1400] interface projection received an out-of-domain bigint literal");
+    }
+    return canonical as string;
+}
+
+/**
  * Format an evaluated scalar constant as a canonical interface literal.
  *
  * @param value Evaluated constant value.
@@ -275,15 +291,12 @@ func mi_expr_is_const_cast(arena: ExprArena*, expr_id: ExprId) -> bool {
  */
 func mi_format_const_value(value: ConstValue*) -> string {
     match (value.kind) {
-        CV_INT => { return int_to_string(value.int_value); }
-        CV_OTHER_INT => { return int_to_string(value.int_value); }
-        CV_BIGINT => { return bigint_to_string(value.text_value, value.base_value); }
-        CV_BYTE => { return int_to_string(value.int_value); }
-        CV_BOOL => {
-            if (value.bool_value) return "true";
-            return "false";
-        }
-        CV_STRING => { return "\"" + se_encode_c_string_bytes(value.text_value) + "\""; }
+        CV_INT => { return il_format_int(value.int_value); }
+        CV_OTHER_INT => { return il_format_int(value.int_value); }
+        CV_BIGINT => { return mi_format_checked_bigint(value.text_value, value.base_value); }
+        CV_BYTE => { return il_format_byte(value.int_value); }
+        CV_BOOL => { return il_format_bool(value.bool_value); }
+        CV_STRING => { return il_format_string(value.text_value); }
         CV_FLOAT => { return value.text_value; }
         CV_DOUBLE => { return value.text_value; }
         CV_NULL => { return "null"; }
@@ -303,10 +316,10 @@ func mi_format_literal_in(nr: NameResolution*, env: ModuleEnv*, arena: ExprArena
     let node = expr_arena_get(arena, expr_id);
     match (node.kind) {
         EX_INT => {
-            return int_to_string(node.int_value);
+            return il_format_int(node.int_value);
         }
         EX_BIGINT => {
-            return bigint_to_string(node.text_value, node.base_value);
+            return mi_format_checked_bigint(node.text_value, node.base_value);
         }
         EX_FLOAT => {
             return node.text_value;
@@ -315,16 +328,13 @@ func mi_format_literal_in(nr: NameResolution*, env: ModuleEnv*, arena: ExprArena
             return node.text_value;
         }
         EX_BYTE => {
-            return node.text_value;
+            return il_format_byte(node.int_value);
         }
         EX_STRING => {
-            return "\"" + se_encode_c_string_bytes(node.text_value) + "\"";
+            return il_format_string(node.text_value);
         }
         EX_BOOL => {
-            if (node.bool_value) {
-                return "true";
-            }
-            return "false";
+            return il_format_bool(node.bool_value);
         }
         EX_NULL => {
             return "null";
@@ -409,9 +419,9 @@ func mi_has_dep(entries: VectorBase*, provider_module: string, symbol_name: stri
 }
 
 /**
- * Add one canonical dependency entry with its provider-wide fingerprint.
+ * Add one hash-free dependency entry for later provider-wide population.
  *
- * @param result Analysis result providing selected provider metadata.
+ * @param result Analysis result retained by the shared collection signature.
  * @param this_module Module being projected.
  * @param provider_module Canonical provider module name.
  * @param symbol_name Canonical provider symbol name.
@@ -423,8 +433,7 @@ func mi_add_dep(result: AnalysisResult*, this_module: string, provider_module: s
         mi_has_dep(out, provider_module, symbol_name)) {
         return;
     }
-    let fingerprint = driver_provider_fingerprint(result.driver_state, provider_module);
-    ptr_vec_push(out, new InterfaceDepEntry(provider_module, symbol_name, fingerprint) as void*);
+    ptr_vec_push(out, new InterfaceDepEntry(provider_module, symbol_name, "") as void*);
 }
 
 /**
@@ -637,13 +646,14 @@ func mi_collect_param_names(sym: Symbol*) -> StringVector* {
 }
 
 /**
- * Project the exported surface of an analyzed module into a ModuleInterface.
+ * Project the exported surface of an analyzed module without assigning or
+ * recursively populating fingerprints.
  *
  * @param result Analysis result to project from.
  * @param module_name Module whose exports to project.
  * @return Projected interface, or `null` on guard failure.
  */
-func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface*? {
+func mi_project_surface(result: AnalysisResult*, module_name: string) -> ModuleInterface*? {
     if (result.names == null || result.signatures == null) {
         return null;
     }
@@ -692,7 +702,7 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     let alias_decl = sym.decl_ptr as TypeAliasDecl*;
                     mi_collect_public_type_ref(result, nr, env, alias_decl.target, module_name,
                         require_entries);
-                    let entry = new InterfaceAliasEntry(key, alias_ty, "");
+                    let entry = new InterfaceAliasEntry(key, alias_ty);
                     ptr_vec_push(alias_entries, entry as void*);
                 }
                 SYM_STRUCT => {
@@ -748,7 +758,7 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                     mi_collect_public_type_ref(result, nr, env, func_decl.return_type, module_name,
                         require_entries);
                     let param_names = mi_collect_param_names(sym);
-                    let entry = new InterfaceFuncEntry(key, param_names, func_ty, sym.is_extern, "");
+                    let entry = new InterfaceFuncEntry(key, param_names, func_ty, sym.is_extern);
                     ptr_vec_push(func_entries, entry as void*);
                 }
                 SYM_LET => {
@@ -783,7 +793,7 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
                             literal = mi_format_literal(result.driver_state, nr, env, module_name, decl.value);
                         }
                     }
-                    let entry = new InterfaceLetEntry(key, let_ty, is_const, literal, "");
+                    let entry = new InterfaceLetEntry(key, let_ty, is_const, literal);
                     ptr_vec_push(let_entries, entry as void*);
                 }
             }
@@ -800,4 +810,135 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
     }
 
     return new ModuleInterface(module_name, "", require_entries, link_entries, struct_infos, enum_infos, alias_entries, func_entries, let_entries);
+}
+
+/**
+ * Find one provider fingerprint in a parallel-vector cache.
+ *
+ * @param provider_names Cached provider module names.
+ * @param fingerprints Cached tagged fingerprints, parallel to `provider_names`.
+ * @param provider_module Provider module to find.
+ * @return Cached fingerprint, or `null` when absent.
+ */
+func mi_cached_provider_fingerprint(provider_names: StringVector*, fingerprints: StringVector*,
+                                    provider_module: string) -> string? {
+    for (let i = 0; i < sv_size(provider_names); i = i + 1) {
+        if (sv_get(provider_names, i) == provider_module) {
+            return sv_get(fingerprints, i);
+        }
+    }
+    return null;
+}
+
+/**
+ * Return a selected provider's verified or source-projected fingerprint.
+ *
+ * Source providers are projected without recursively filling their own
+ * dependency manifests because dependencies are excluded from the canonical
+ * fingerprint input.
+ *
+ * @param result Analysis result providing graph and semantic metadata.
+ * @param provider_module Canonical provider module name.
+ * @return Tagged provider fingerprint, or `""` after a diagnosed failure.
+ */
+func mi_compute_provider_fingerprint(result: AnalysisResult*, provider_module: string) -> string {
+    let selected = driver_provider_fingerprint(result.driver_state, provider_module);
+    if (selected != "") {
+        return selected;
+    }
+
+    let projected = mi_project_surface(result, provider_module);
+    if (projected == null) {
+        diag_error(result.diags, "SignatureResolver", "SIG-0283",
+            "cannot project provider interface surface for module '" + provider_module + "'",
+            "<interface:" + provider_module + ">", 0, 0, 0, 0);
+        return "";
+    }
+    let provider = projected as ModuleInterface*;
+    if (!ifp_assign(provider, result.diags, "<interface:" + provider_module + ">")) {
+        mi_free(provider);
+        return "";
+    }
+    let fingerprint = slice_s(provider.fingerprint, 0, len_s(provider.fingerprint));
+    mi_free(provider);
+    return fingerprint;
+}
+
+/**
+ * Return and cache one provider fingerprint for dependency population.
+ *
+ * @param result Analysis result providing provider metadata.
+ * @param provider_names Cached provider names.
+ * @param fingerprints Cached provider fingerprints.
+ * @param provider_module Provider module to resolve.
+ * @return Tagged provider fingerprint, or `""` after a diagnosed failure.
+ */
+func mi_provider_fingerprint_cached(result: AnalysisResult*, provider_names: StringVector*,
+                                    fingerprints: StringVector*, provider_module: string) -> string {
+    let cached = mi_cached_provider_fingerprint(provider_names, fingerprints, provider_module);
+    if (cached != null) {
+        return cached as string;
+    }
+    let fingerprint = mi_compute_provider_fingerprint(result, provider_module);
+    sv_push(provider_names, provider_module);
+    sv_push(fingerprints, fingerprint);
+    return fingerprint;
+}
+
+/**
+ * Populate one dependency tier with provider-wide fingerprints.
+ *
+ * @param result Analysis result providing provider metadata.
+ * @param entries Dependency entries to update.
+ * @param provider_names Shared provider-name cache.
+ * @param fingerprints Shared fingerprint cache.
+ * @return `true` when every provider fingerprint was available.
+ */
+func mi_populate_dependency_fingerprints(result: AnalysisResult*, entries: VectorBase*,
+                                         provider_names: StringVector*, fingerprints: StringVector*) -> bool {
+    let ok = true;
+    for (let i = 0; i < vec_size(entries); i = i + 1) {
+        let entry = ptr_vec_get(entries, i) as InterfaceDepEntry*;
+        let fingerprint = mi_provider_fingerprint_cached(
+            result, provider_names, fingerprints, entry.provider_module);
+        if (fingerprint == "") {
+            ok = false;
+        } else {
+            entry.provider_fingerprint = fingerprint;
+        }
+    }
+    return ok;
+}
+
+/**
+ * Project a complete operational interface with canonical fingerprints.
+ *
+ * @param result Analysis result to project from.
+ * @param module_name Module whose exports to project.
+ * @return Projected interface, or `null` after a diagnosed guard failure.
+ */
+func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface*? {
+    let projected = mi_project_surface(result, module_name);
+    if (projected == null) {
+        return null;
+    }
+    let mi = projected as ModuleInterface*;
+    let filename = "<interface:" + module_name + ">";
+    if (!ifp_assign(mi, result.diags, filename)) {
+        mi_free(mi);
+        return null;
+    }
+
+    with (let provider_names = sv_create(4) => sv_free(provider_names),
+          let fingerprints = sv_create(4) => sv_free(fingerprints)) {
+        let require_ok = mi_populate_dependency_fingerprints(
+            result, mi.require_entries, provider_names, fingerprints);
+        let link_ok = mi_populate_dependency_fingerprints(
+            result, mi.link_entries, provider_names, fingerprints);
+        if (!require_ok || !link_ok || !ifp_validate_dependencies(mi, result.diags, filename)) {
+            mi_free(mi);
+            return null;
+        }
+    }
+    return mi;
 }

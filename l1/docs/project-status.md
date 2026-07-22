@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-20
+Version: 2026-07-21
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -53,20 +53,25 @@ components where needed, nominal types use `S` / `E`, and compiler-generated mod
 consts in the current backend.
 
 The bootstrap compiler can emit deterministic textual `.l1m` module interface artifacts through the internal
-`--emit-interface` mode and round-trip them through a constrained interface parser. Resolution-aware internal entry
-points now discover imported interfaces from ordered roots, select the first matching `.l1m`, recursively close over
-`require` and `link` dependencies, and replay activated `require` providers without loading their source. Focused tests
-can supply registry-backed interfaces through the same graph contract. After signature replay, semantic type trees
-materialize nominal kinds and transparent aliases across interface- and source-backed providers while graph and
-projection interfaces retain their parsed spelling. Each resolved interface surface is validated against its own
-semantic `require` closure, which follows interface `require` edges and source direct imports but excludes `link` edges.
-References outside that closure report `RES-0040`.
+`--emit-interface` mode and round-trip them through a constrained interface parser. Emission computes a canonical
+SipHash-1-3 fingerprint over the effective exported surface, writes the mandatory
+`sip13:<16 lowercase hexadecimal digits>` value, and fills every dependency entry with its provider module's
+whole-module fingerprint.
+
+Resolution-aware internal entry points discover imported interfaces from ordered roots, select the first matching
+`.l1m`, recursively close over `require` and `link` dependencies, and replay activated `require` providers without
+loading their source. Filesystem and selected registry interfaces are rejected before graph registration or semantic
+replay when a fingerprint is malformed, unsupported, inconsistent across one provider, or different from the recomputed
+public-surface value. After signature replay, semantic type trees materialize nominal kinds and transparent aliases
+across interface- and source-backed providers while graph and projection interfaces retain their parsed spelling. Each
+resolved interface surface is validated against its own semantic `require` closure, which follows interface `require`
+edges and source direct imports but excludes `link` edges. References outside that closure report `RES-0040`.
 
 The deterministic module graph records one source, interface, registry, or virtual origin per canonical module. It
 provides sorted node enumeration, canonical sibling `.c`, `.o`, and `.l1m` path associations, dependency-tier edges, and
 direct source imports in exact declaration order. Interface projection classifies resolved cross-module public surface
-references as `require` and remaining implementation references as `link`; whole-module fingerprint values remain opaque
-and unchecked pending the fingerprint plan.
+references as `require` and remaining implementation references as `link`. Object metadata embedding and link-time
+comparison of those verified expectations remain future work.
 
 Ordinary CLI imports remain source-based today, and `.l1m` files are not yet normal compile/build/run inputs.
 

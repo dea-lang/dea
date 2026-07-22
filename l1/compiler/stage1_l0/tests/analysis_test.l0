@@ -12,8 +12,13 @@ import std.assert;
 import std.vector;
 
 import analysis;
+import ast;
 import driver;
+import interface_fingerprint;
+import mi_utils;
+import module_interface;
 import module_graph;
+import parser.interface;
 import sem_context;
 import source_paths;
 import util.log;
@@ -108,6 +113,54 @@ func test_analysis_resolution_entrypoint() {
     sp_free(sp);
 }
 
+/** Source-backed projection assigns canonical provider values without hashing dependencies. */
+func test_analysis_emits_verified_source_provider_fingerprints() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "shadow_warn_main", cfg);
+        assert(!analysis_has_errors(result), "source consumer should analyze before interface emission");
+        let emitted = analysis_emit_interface(result, "shadow_warn_main");
+        assert(emitted != null, "source consumer should emit an interface");
+        assert(!contains_s(emitted as string, "} == \"") &&
+            !contains_s(emitted as string, "-> int == \""),
+            "emitted declarations must not contain hash suffixes");
+
+        let parsed = pi_parse_interface(emitted as string, "<shadow_warn_main.l1m>");
+        assert(!ipr_has_errors(parsed) && parsed.interface != null, "emitted interface should parse");
+        let mi = parsed.interface as ModuleInterface*;
+        assert(ifp_verify(mi, parsed.diags, "<shadow_warn_main.l1m>"), "emitted interface should verify");
+        assert(vec_size(mi.require_entries) > 0, "public imported uses should produce require entries");
+
+        let uno_surface = mi_project_surface(result, "shadow_warn_uno");
+        let due_surface = mi_project_surface(result, "shadow_warn_due");
+        assert(uno_surface != null && due_surface != null,
+            "source dependency providers should project independently");
+        assert(ifp_assign(uno_surface as ModuleInterface*, result.diags, "<provider:shadow_warn_uno>") &&
+            ifp_assign(due_surface as ModuleInterface*, result.diags, "<provider:shadow_warn_due>"),
+            "source dependency fingerprints should compute independently");
+        for (let i = 0; i < vec_size(mi.require_entries); i = i + 1) {
+            let dep = ptr_vec_get(mi.require_entries, i) as InterfaceDepEntry*;
+            assert(dep.provider_module == "shadow_warn_uno" &&
+                dep.provider_fingerprint == (uno_surface as ModuleInterface*).fingerprint,
+                "public imported type should carry its source provider fingerprint");
+        }
+        for (let k = 0; k < vec_size(mi.link_entries); k = k + 1) {
+            let dep2 = ptr_vec_get(mi.link_entries, k) as InterfaceDepEntry*;
+            assert((dep2.provider_module == "shadow_warn_uno" &&
+                    dep2.provider_fingerprint == (uno_surface as ModuleInterface*).fingerprint) ||
+                (dep2.provider_module == "shadow_warn_due" &&
+                    dep2.provider_fingerprint == (due_surface as ModuleInterface*).fingerprint),
+                "implementation dependency should carry its source provider fingerprint");
+        }
+        mi_free(due_surface as ModuleInterface*);
+        mi_free(uno_surface as ModuleInterface*);
+
+        ipr_free(parsed);
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
 /**
  * Tests filesystem interfaces normalize qualified enum types against
  * source-fallback providers before semantic interface replay.
@@ -141,6 +194,17 @@ func test_analysis_interface_enum_from_source_fallback() {
             "facade should remain interface-backed");
         assert(ord(provider.origin.kind) == ord(MOK_SOURCE),
             "enum provider should use source fallback");
+        let projected_provider = mi_project_surface(result, "mixed.source_enum");
+        assert(projected_provider != null, "source-backed enum provider should project");
+        assert(ifp_assign(projected_provider as ModuleInterface*, result.diags,
+            "<provider:mixed.source_enum>"), "source-backed enum provider fingerprint should compute");
+        assert((projected_provider as ModuleInterface*).fingerprint == "sip13:684b6416ef05b6a4",
+            "source-backed enum provider fixture fingerprint should remain canonical");
+        assert(mg_node_dependency_count(facade) == 1 &&
+            mg_node_dependency_get(facade, 0).expected_fingerprint ==
+                (projected_provider as ModuleInterface*).fingerprint,
+            "filesystem facade should retain the source provider's canonical surface fingerprint");
+        mi_free(projected_provider as ModuleInterface*);
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -277,6 +341,7 @@ func test_analysis_imported_opaque_layout_errors() {
 func main() {
     test_analysis_ok_main();
     test_analysis_resolution_entrypoint();
+    test_analysis_emits_verified_source_provider_fingerprints();
     test_analysis_interface_enum_from_source_fallback();
     test_analysis_semantic_failure();
     test_analysis_alias_imports();

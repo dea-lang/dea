@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-07-20
+Version: 2026-07-22
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -48,7 +48,7 @@ locals.l0 -> FunctionEnv per function
   v
 expr_types.l0 -> typed AnalysisResult + semantic diagnostics
   |
-  +-- `--emit-interface` --> interface_emitter.l0 + module_interface.l0 --> textual `.l1m`
+  +-- `--emit-interface` --> interface projection + canonical fingerprint --> textual `.l1m`
   |
   +-- `--gen` / `--build` / `--run` --> backend.l0 + c_emitter.l0 --> single C99 translation unit
                                           |
@@ -65,6 +65,12 @@ The driver closes over both interface dependency tiers. `require` providers are 
 `link` providers remain graph obligations without entering the consumer's semantic environment. Source nodes retain
 their direct imports in declaration order, separately from sorted graph enumeration and interface manifests. The
 ordinary CLI pipeline above is still source-based.
+
+Every selected filesystem or registry interface is checked before it enters that graph. The driver parses the wire
+model, confirms the declared module identity, validates the module and dependency fingerprint envelopes, recomputes the
+whole-module SipHash-1-3 fingerprint, and rejects a mismatch before registration, normalization, activation, or semantic
+replay. Source projection computes its own fingerprint from the exported surface, then fills each dependency entry with
+the corresponding provider module fingerprint; dependency records do not feed back into the consumer's own digest.
 
 Current CLI entry point: `compiler/stage1_l0/src/l1c.l0`.
 
@@ -93,6 +99,9 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Converts UTF-8 source text to token streams.
 - Tracks source locations for diagnostics; columns count Unicode code points.
 - Recognizes keywords, literals, punctuation, and operators.
+- Keeps string source-body spelling separate from the decoded token value. Scalar `\x`, `\u`, and `\U` escapes
+  contribute UTF-8 bytes, octal escapes remain byte-oriented, and invalid Unicode scalar values are rejected by the
+  lexer. Semantic and interface consumers use the decoded value rather than reinterpreting source spelling.
 - Wraps recoverable lexer diagnostics in `TT_LEXER_ERROR` tokens with optional logical recovery payloads.
   Invalid-character runs (`LEX-0040`) have no recovery payload and are skipped logically; malformed literals and numeric
   diagnostics recover as literal tokens where possible.
@@ -131,12 +140,21 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Validates return-path and cleanup-path requirements.
 - Produces semantic diagnostics without crashing the compiler.
 
-### 2.7 Interface Projection (`interface_emitter.l0`, `module_interface.l0`, `mi_utils.l0`)
+### 2.7 Interface Projection (`interface_emitter.l0`, `interface_fingerprint.l0`, `interface_literal.l0`, `interface_order.l0`, `module_interface.l0`, `mi_utils.l0`)
 
 - Projects exported declarations from a completed analysis result.
+- Canonicalizes the exported surface and assigns its tagged whole-module fingerprint.
+- Reuses `util/numbers.l0` for canonical integer text: the shared builtin range table bounds the implemented `long` /
+  `ulong` domain before decimal normalization or bounded non-decimal multiply-add conversion.
+- Collects one vector of borrowed declaration references and stable-sorts it by kind and name with an iterative
+  bottom-up merge sort. Text emission and fingerprinting consume that same `O(N log N)` ordering, while freeing the
+  wrappers never changes declaration ownership.
+- Validates and measures recursive type payloads once into a checked preorder size plan, then streams the second pass
+  directly using cached child sizes. Size overflow reports `SIG-0283`; no arbitrary type-depth limit is introduced.
 - Classifies resolved cross-module symbol uses into public-surface `require` and implementation-tier `link` records.
+- Populates each dependency entry with its provider module's tagged fingerprint.
 - Emits deterministic textual `.l1m` artifacts through the internal `--emit-interface` mode.
-- Parses the constrained interface grammar for round-trip validation and graph-backed internal replay.
+- Parses the constrained interface grammar and verifies operational inputs before graph-backed internal replay.
 
 ### 2.8 Backend (`backend.l0`, `c_emitter.l0`, `string_escape.l0`)
 
@@ -182,22 +200,23 @@ Important analysis tables include:
 
 ## 4. Invariants
 
-1. The current L1 compiler is bootstrap-only and implemented in Dea/L0.
-2. Import closure construction is explicit and checked before later semantic passes; each canonical module has one
-   source, interface, registry, or virtual origin in the module graph.
-3. Source locations are propagated for diagnostics.
-4. Diagnostic columns follow a logical-source contract: every non-newline Unicode code point, including ASCII horizontal
-   tabs, advances the stored column by exactly one; UTF-8 continuation bytes do not advance it. Snippet rendering
-   normalizes displayed source lines to the same model (each tab is printed as a single space) so the caret underline
-   and the displayed line always agree, independent of terminal tab-stop behavior. Unicode display-width handling is out
-   of scope for this contract.
-5. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
-6. Generated output is currently one C99 translation unit.
-7. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
-   preserve declaration order and duplicates.
-8. `.l1m` artifacts are available to internal resolution-aware APIs but are not normal compile/build/run inputs yet.
-9. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in the
-   other L1 reference documents.
+01. The current L1 compiler is bootstrap-only and implemented in Dea/L0.
+02. Import closure construction is explicit and checked before later semantic passes; each canonical module has one
+    source, interface, registry, or virtual origin in the module graph.
+03. Source locations are propagated for diagnostics.
+04. Diagnostic columns follow a logical-source contract: every non-newline Unicode code point, including ASCII
+    horizontal tabs, advances the stored column by exactly one; UTF-8 continuation bytes do not advance it. Snippet
+    rendering normalizes displayed source lines to the same model (each tab is printed as a single space) so the caret
+    underline and the displayed line always agree, independent of terminal tab-stop behavior. Unicode display-width
+    handling is out of scope for this contract.
+05. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
+06. Generated output is currently one C99 translation unit.
+07. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
+    preserve declaration order and duplicates.
+08. An interface is registered or cached only after its declared identity and whole-module fingerprint are verified.
+09. `.l1m` artifacts are available to internal resolution-aware APIs but are not normal compile/build/run inputs yet.
+10. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in
+    the other L1 reference documents.
 
 ## 5. File/Module Layout
 
@@ -216,6 +235,9 @@ Main current compiler modules under `compiler/stage1_l0/src/`:
 - `driver.l0`
 - `expr_types.l0`
 - `interface_emitter.l0`
+- `interface_fingerprint.l0`
+- `interface_literal.l0`
+- `interface_order.l0`
 - `l1c.l0`
 - `l1c_lib.l0`
 - `lexer.l0`

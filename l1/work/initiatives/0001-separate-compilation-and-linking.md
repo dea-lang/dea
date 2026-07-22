@@ -1,10 +1,9 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-07-20
+- Version: 2026-07-22
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`
   - `l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`
   - `l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`
   - `l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`
@@ -12,6 +11,7 @@
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md`
@@ -81,8 +81,9 @@ Relevant facts that constrain the plan at the time of writing:
   `M...I...` names. Everything inside a legacy `extern func` declaration is intentionally **not name-mangled**; this is
   the only FFI primitive in the language today.
 - Deterministic textual `.l1m` emission, constrained parsing, canonical artifact association, interface-first discovery,
-  and transitive graph-backed replay are implemented through internal APIs. Ordinary build/run imports remain
-  source-based, fingerprints remain empty/unchecked, and there is no provider-object consistency check yet.
+  transitive graph-backed replay, canonical whole-module fingerprinting, and pre-registration verification are
+  implemented through internal APIs. Ordinary build/run imports remain source-based, and provider-object consistency
+  checking does not exist yet.
 - The shared driver CLI reserves `-c` / `--compile` and ordered `-I` / `--interface-path` syntax, but compile dispatch
   remains explicitly NYI and does not invoke the internal resolver or produce artifacts. Runtime discovery uses `-Ri` /
   `-Rl`; host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link`,
@@ -194,10 +195,8 @@ and a single embedding strategy:
 - **Algorithm:** SipHash-1-3 from the shared runtime ([`l1/compiler/shared/runtime/internal/dea_siphash.h`][siphash]).
   The runtime already exposes `siphash13(...)` with a 64-bit tag and is also the L0 oracle, so Stage 2 inherits the same
   symbol when it is built on top of the shared runtime.
-- **Keying discipline:** a fixed, compile-time-constant 16-byte fingerprint key, distinct from the runtime's randomized
-  hash-flooding key. The constant is part of the LBI ABI and is stable across stages. The exact key bytes are an
-  implementation detail of the spawned fingerprint plan and are recorded in [`l1/docs/specs/compiler/abi.md`][abi] once
-  chosen.
+- **Keying discipline:** the fixed 16-byte ASCII key `DeaL1-fp-v1-key!`, distinct from the runtime's randomized
+  hash-flooding key. The constant is part of the LBI ABI and is stable across stages.
 - **Digest size and encoding:** 64-bit digest. Textual `.l1m` values use the mandatory canonical spelling
   `sip13:<16 lowercase hexadecimal digits>`; an omitted tag does not select an implicit algorithm. SipHash-1-3 is the
   only supported version 1 algorithm. Object metadata version 1 embeds only the 8 raw digest bytes because its format
@@ -216,9 +215,9 @@ The threat model is build-time staleness and corruption, not adversaries; crypto
 not required and would only add bootstrap-vendoring cost. Custom object sections were rejected because they require
 per-format emitter and reader paths plus quirky compiler attributes that `tcc` does not fully support.
 
-Sub-choices that remain implementation details are split between [interface fingerprints][interface-fingerprints] and
-[object metadata][object-metadata]: the exact 16-byte key constant and public-surface canonicalization belong to the
-former; record layout, symbol naming, and bounded object-reader limits belong to the latter.
+The completed [interface fingerprint plan][interface-fingerprints] and [ADR-0019][fingerprint-adr] fix the key and
+public-surface canonicalization. Record layout, symbol naming, and bounded object-reader limits remain in
+[object metadata][object-metadata].
 
 ## Phase 1 - Runtime as a static library
 
@@ -266,10 +265,10 @@ the split:
 The implemented interface artifact, direct replay, and CLI-reservation work form the closed foundation. The remaining
 work is split by dependency, not by the former whole-plan labels:
 
-1. **Artifact layout and module graph:** define canonical `.l1m`/object association, explicit source/interface
+1. **Artifact layout and module graph (complete):** canonical `.l1m`/object association, explicit source/interface
    precedence, transitive interface closure, ordered direct-import edges, and semantic `require` / `link` population.
-2. **Interface fingerprints:** define the canonical whole-module hash input and verify emitted and consumed `.l1m`
-   fingerprints. This can proceed independently of step 1 after the closed foundation.
+2. **Interface fingerprints (complete):** canonical whole-module hash production and verification for emitted and
+   consumed `.l1m` interfaces.
 3. **Per-module backend and lifecycle ABI:** emit only the target module's definitions, imported declarations only,
    always-present external `I4init` / `I4fini`, and `I5entry` for every valid source `main`.
 4. **Object metadata and readers:** emit the graph, fingerprint, and entry records against the finalized lifecycle
@@ -487,7 +486,7 @@ Recorded near-term tranche checkpoints:
 - [x] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
 - [x] Reserve and validate `-c` / `--compile` plus ordered `-I` / `--interface-path`; compile dispatch remains NYI.
 - [x] Define artifact layout, transitive interface discovery, and the deterministic module graph.
-- [ ] Implement canonical whole-module fingerprints and `.l1m` verification.
+- [x] Implement canonical whole-module fingerprints and `.l1m` verification.
 - [ ] Emit one module per CU with external `I4init`, `I4fini`, and conditional `I5entry`.
 - [ ] Emit and inspect provider/consumer object metadata.
 - [ ] Make compile-only artifact production operational.
@@ -569,10 +568,11 @@ the chosen answer and points at the owning section.
    [object metadata][object-metadata].
 3. **Diagnostic family split:** keep the existing phase-based families (`PAR-*`, `RES-*`, `SIG-*`, `TYP-*`, `DRV-*`,
    `L1C-*`). New `MOD-*` or `LNK-*` families are introduced only if a concrete phase plan demonstrates the existing
-   split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. The fingerprint plan uses the
-   provisionally free `SIG-0280` to `SIG-0299` block because `SIG-0240` to `SIG-0259` is already reserved by the active
-   anonymous embedded-struct plan. Object metadata retains `L1C-2050` to `L1C-2069`; every successor records its own
-   non-overlapping provisional range and re-check requirement. Anchored in §2e and §Diagnostic-code registration.
+   split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. Fingerprint validation uses `SIG-0280`
+   through `SIG-0284`; the rest of the `SIG-0280` to `SIG-0299` block remains available because `SIG-0240` to `SIG-0259`
+   is reserved by the active anonymous embedded-struct plan. Object metadata retains `L1C-2050` to `L1C-2069`; every
+   successor records its own non-overlapping provisional range and re-check requirement. Anchored in §2e and
+   §Diagnostic-code registration.
 4. **External-library manifest format:** deferred indefinitely unless and until Dea decides to adopt package management.
    Phase 3 ships with CLI flags only (`-l`, `-L`, `--rpath`, `--link-arg`, plus `-I` for interface search). No
    per-module `[link]` sidecar, no `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit this if FFI
@@ -609,7 +609,8 @@ implementation tranche proves that one decision area needs additional design wor
 - Artifact association, interface discovery, and module-graph construction completed under
   [artifact graph][artifact-graph].
 - Stage 1 module-interface resolution hardening completed under [module-interface-hardening].
-- Canonical whole-module hashing and `.l1m` verification under [interface fingerprints][interface-fingerprints].
+- Canonical whole-module hashing and `.l1m` verification completed under
+  [interface fingerprints][interface-fingerprints].
 - Per-module definitions plus `I4init`, `I4fini`, and `I5entry` under [lifecycle entrypoints][lifecycle-entrypoints].
 - Provider/consumer metadata and bounded object readers under [object metadata][object-metadata].
 - Transactional single-module artifact production under [compile only][compile-only].
@@ -639,8 +640,9 @@ implementation tranche proves that one decision area needs additional design wor
 [compile-only]: ../plans/features/2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [export-imports]: ../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
+[fingerprint-adr]: ../../docs/decisions/0019-whole-module-interface-fingerprints.md
 [interface-emission]: ../plans/features/closed/2026-04-24-module-interface-emission-noref.md
-[interface-fingerprints]: ../plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[interface-fingerprints]: ../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [library-linking]: ../plans/features/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md

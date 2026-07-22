@@ -32,7 +32,7 @@
 - Related:
   - [`l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md`][foundation]
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
-  - [`l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
+  - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
   - [`l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
@@ -153,7 +153,7 @@ interface-only dependency fixtures.
 11. Concrete new diagnostics are registered in the shared catalog before closure.
 
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [foundation]: closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

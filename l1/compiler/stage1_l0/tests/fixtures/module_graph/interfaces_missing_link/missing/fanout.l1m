@@ -1,7 +1,7 @@
 module interface missing.fanout;
-fingerprint "fanout-missing-link";
+fingerprint "sip13:9cc21818611980cc";
 
-require missing.required::Thing == "required-thing";
-link missing.linked::helper == "missing-link-helper";
+require missing.required::Thing == "sip13:8abfe6a8eaf1bb84";
+link missing.linked::helper == "sip13:e5d98f527b631531";
 
-func anchor() -> int == "";
+func anchor() -> int;

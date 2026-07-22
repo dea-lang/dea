@@ -1,4 +1,4 @@
 module interface graph.not_provider;
 fingerprint "bad-header";
 
-func value() -> int == "";
+func value() -> int;

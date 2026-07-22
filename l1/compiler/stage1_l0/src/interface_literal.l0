@@ -1,0 +1,400 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module interface_literal;
+
+import std.string;
+import std.text;
+import std.vector;
+
+import util.numbers;
+
+import lexer;
+import parser.shared;
+import string_escape;
+import tokens;
+
+/** Cursor over one tokenized interface literal. */
+struct InterfaceLiteralCursor {
+    tokens: TokenVector;
+    index: int;
+}
+
+/**
+ * Format one canonical integer literal.
+ *
+ * @param value Integer value to format.
+ * @return Canonical decimal spelling.
+ */
+func il_format_int(value: int) -> string {
+    return int_to_string(value);
+}
+
+/**
+ * Format one canonical byte literal as its unsigned decimal value.
+ *
+ * @param value Byte value promoted to `int`.
+ * @return Canonical unsigned decimal spelling.
+ */
+func il_format_byte(value: int) -> string {
+    return int_to_string(value);
+}
+
+/**
+ * Format one canonical boolean literal.
+ *
+ * @param value Boolean value to format.
+ * @return `true` or `false`.
+ */
+func il_format_bool(value: bool) -> string {
+    if (value) {
+        return "true";
+    }
+    return "false";
+}
+
+/**
+ * Format decoded bytes as one canonical interface string literal.
+ *
+ * @param value Decoded string bytes.
+ * @return Quoted canonical string-literal spelling.
+ */
+func il_format_string(value: string) -> string {
+    return "\"" + se_encode_c_string_bytes(value) + "\"";
+}
+
+/**
+ * Return the cursor's current token.
+ *
+ * @param self Literal cursor to inspect.
+ * @return Current token without advancing the cursor.
+ */
+func il_cursor_peek(self: InterfaceLiteralCursor*) -> Token {
+    return tv_get(self.tokens, self.index);
+}
+
+/**
+ * Return whether the cursor is positioned at one token kind.
+ *
+ * @param self Literal cursor to inspect.
+ * @param kind Token kind to compare.
+ * @return `true` when the current token has `kind`.
+ */
+func il_cursor_check(self: InterfaceLiteralCursor*, kind: TokenType) -> bool {
+    let tok = il_cursor_peek(self);
+    return ord(tok.token_type) == ord(kind);
+}
+
+/**
+ * Consume one token when its kind matches.
+ *
+ * @param self Literal cursor to advance.
+ * @param kind Token kind to match.
+ * @return `true` when a matching token was consumed.
+ */
+func il_cursor_match(self: InterfaceLiteralCursor*, kind: TokenType) -> bool {
+    if (!il_cursor_check(self, kind)) {
+        return false;
+    }
+    self.index = self.index + 1;
+    return true;
+}
+
+/**
+ * Consume and return one identifier.
+ *
+ * @param self Literal cursor to advance.
+ * @return Identifier text, or `null` when the current token is not an identifier.
+ */
+func il_cursor_ident(self: InterfaceLiteralCursor*) -> string? {
+    let tok = il_cursor_peek(self);
+    if (!tok_is_ident(tok)) {
+        return null;
+    }
+    self.index = self.index + 1;
+    return token_ident_text(tok);
+}
+
+/**
+ * Return whether tokenization retained any lexer-error wrapper.
+ *
+ * @param tv Token vector to inspect.
+ * @return `true` when at least one token wraps a lexer error.
+ */
+func il_tokens_have_error(tv: TokenVector) -> bool {
+    for (let i = 0; i < tv_len(tv); i = i + 1) {
+        let tok = tv_get(tv, i);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => { return true; }
+            _ => {}
+        }
+    }
+    return false;
+}
+
+/**
+ * Format a numeric token after an explicitly split leading minus.
+ *
+ * @param tok Unsigned numeric token following the minus token.
+ * @return Canonical negative spelling, or `null` for an invalid or out-of-domain token.
+ */
+func il_format_split_negative(tok: Token) -> string? {
+    match (tok.token_type) {
+        TT_INT(text, value) => {
+            if (value < 0) return null;
+            if (value == 0) return "0";
+            return il_format_int(0 - value);
+        }
+        TT_BIGINT(text2, base) => {
+            if (bigint_is_negative(text2)) return null;
+            return bigint_to_canonical_decimal("-" + text2, base);
+        }
+        TT_REALNUM(sig, exp_text, is_float) => {
+            let magnitude2 = realnum_to_string(sig, exp_text, is_float);
+            if (starts_with_s(magnitude2, "-")) return null;
+            return "-" + magnitude2;
+        }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Parse a canonical constructor call after its callee name.
+ *
+ * @param self Literal cursor positioned at the opening parenthesis.
+ * @param callee Canonical constructor name.
+ * @param owner_module Module owning the interface literal.
+ * @return Canonical call spelling, or `null` for invalid syntax or values.
+ */
+func il_parse_call(self: InterfaceLiteralCursor*, callee: string, owner_module: string) -> string? {
+    if (!il_cursor_match(self, TT_LPAREN)) {
+        return null;
+    }
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, callee);
+        sb_append(sb, "(");
+        let first = true;
+        while (!il_cursor_check(self, TT_RPAREN) && !il_cursor_check(self, TT_EOF)) {
+            if (!first) {
+                if (!il_cursor_match(self, TT_COMMA) || il_cursor_check(self, TT_RPAREN)) {
+                    return null;
+                }
+                sb_append(sb, ", ");
+            }
+            first = false;
+            let arg = il_parse_literal(self, owner_module);
+            if (arg == null) {
+                return null;
+            }
+            sb_append(sb, arg as string);
+        }
+        if (!il_cursor_match(self, TT_RPAREN)) {
+            return null;
+        }
+        sb_append(sb, ")");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Parse a canonical array literal.
+ *
+ * @param self Literal cursor positioned at the opening bracket.
+ * @param owner_module Module owning the interface literal.
+ * @return Canonical array spelling, or `null` for invalid syntax or values.
+ */
+func il_parse_array(self: InterfaceLiteralCursor*, owner_module: string) -> string? {
+    if (!il_cursor_match(self, TT_LBRACKET)) {
+        return null;
+    }
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "[");
+        let first = true;
+        while (!il_cursor_check(self, TT_RBRACKET) && !il_cursor_check(self, TT_EOF)) {
+            if (!first) {
+                if (!il_cursor_match(self, TT_COMMA) || il_cursor_check(self, TT_RBRACKET)) {
+                    return null;
+                }
+                sb_append(sb, ", ");
+            }
+            first = false;
+            let item = il_parse_literal(self, owner_module);
+            if (item == null) {
+                return null;
+            }
+            sb_append(sb, item as string);
+        }
+        if (!il_cursor_match(self, TT_RBRACKET)) {
+            return null;
+        }
+        sb_append(sb, "]");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Parse a canonical identifier, provider reference, or constructor call.
+ *
+ * @param self Literal cursor positioned at the first identifier.
+ * @param owner_module Module owning the interface literal.
+ * @return Canonical named-literal spelling, or `null` for invalid syntax.
+ */
+func il_parse_named(self: InterfaceLiteralCursor*, owner_module: string) -> string? {
+    let first_opt = il_cursor_ident(self);
+    if (first_opt == null) {
+        return null;
+    }
+    let name = first_opt as string;
+    let saw_dot = false;
+    while (il_cursor_match(self, TT_DOT)) {
+        saw_dot = true;
+        let part = il_cursor_ident(self);
+        if (part == null) {
+            return null;
+        }
+        let part_text = part as string;
+        name = name + "." + part_text;
+    }
+
+    if (il_cursor_match(self, TT_DOUBLE_COLON)) {
+        let member = il_cursor_ident(self);
+        if (member == null) {
+            return null;
+        }
+        let member_text = member as string;
+        let qualified = name + "::" + member_text;
+        if (name == owner_module) {
+            qualified = member_text;
+        }
+        if (il_cursor_check(self, TT_LPAREN)) {
+            return il_parse_call(self, qualified, owner_module);
+        }
+        return qualified;
+    }
+
+    if (saw_dot) {
+        return null;
+    }
+    if (il_cursor_check(self, TT_LPAREN)) {
+        return il_parse_call(self, name, owner_module);
+    }
+    return name;
+}
+
+/**
+ * Parse and canonicalize one literal from the cursor.
+ *
+ * @param self Literal cursor to consume.
+ * @param owner_module Module owning the interface literal.
+ * @return Canonical literal spelling, or `null` for invalid syntax or values.
+ */
+func il_parse_literal(self: InterfaceLiteralCursor*, owner_module: string) -> string? {
+    let tok = il_cursor_peek(self);
+
+    if (il_cursor_match(self, TT_MINUS)) {
+        let value_tok = il_cursor_peek(self);
+        let value = il_format_split_negative(value_tok);
+        if (value == null) {
+            return null;
+        }
+        self.index = self.index + 1;
+        return value;
+    }
+
+    match (tok.token_type) {
+        TT_INT(text, value2) => {
+            self.index = self.index + 1;
+            return il_format_int(value2);
+        }
+        TT_BIGINT(text2, base) => {
+            self.index = self.index + 1;
+            return bigint_to_canonical_decimal(text2, base);
+        }
+        TT_REALNUM(sig, exp_text, is_float) => {
+            self.index = self.index + 1;
+            return realnum_to_string(sig, exp_text, is_float);
+        }
+        TT_BYTE(text3, value3) => {
+            self.index = self.index + 1;
+            return il_format_byte(value3 as int);
+        }
+        TT_STRING(text4, value4) => {
+            self.index = self.index + 1;
+            return il_format_string(value4);
+        }
+        TT_TRUE => {
+            self.index = self.index + 1;
+            return il_format_bool(true);
+        }
+        TT_FALSE => {
+            self.index = self.index + 1;
+            return il_format_bool(false);
+        }
+        TT_NULL => {
+            self.index = self.index + 1;
+            return "null";
+        }
+        TT_LBRACKET => { return il_parse_array(self, owner_module); }
+        TT_IDENT(text5) => { return il_parse_named(self, owner_module); }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Normalize one stored interface literal to the producer's canonical folded
+ * spelling.
+ *
+ * @param text Stored literal spelling to normalize.
+ * @param owner_module Module owning the interface literal.
+ * @return Canonical spelling, or `null` when the literal is invalid.
+ */
+func il_canonicalize_literal(text: string, owner_module: string) -> string? {
+    with (let ls = ls_create(text, "<interface-literal>") => ls_free(ls)) {
+        let tokens_opt = tokenize(ls);
+        if (tokens_opt == null) {
+            return null;
+        }
+        with (let tv = tokens_opt as TokenVector => tv_free(tv)) {
+            if (il_tokens_have_error(tv)) {
+                return null;
+            }
+            let cursor = new InterfaceLiteralCursor(tv, 0);
+            let result = il_parse_literal(cursor, owner_module);
+            let complete = result != null && cursor.index == tv_len(tv) - 1 &&
+                il_cursor_check(cursor, TT_EOF);
+            drop cursor;
+            if (!complete) {
+                return null;
+            }
+            return result;
+        }
+    }
+}
+
+/**
+ * Compare two borrowed plain literal strings.
+ *
+ * @param left First literal string.
+ * @param right Second literal string.
+ * @return `true` when the strings are byte-for-byte equal.
+ */
+func il_plain_equals(left: string, right: string) -> bool {
+    return left == right;
+}
+
+/**
+ * Compare one stored literal with its canonical folded spelling.
+ *
+ * @param text Stored literal spelling to validate.
+ * @param owner_module Module owning the interface literal.
+ * @return `true` when `text` is valid and already canonical.
+ */
+func il_literal_is_canonical(text: string, owner_module: string) -> bool {
+    let canonical = il_canonicalize_literal(text, owner_module);
+    if (canonical == null) {
+        return false;
+    }
+    return il_plain_equals(canonical as string, text);
+}

@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-06-20
+Version: 2026-07-21
 
 Status: Finalized
 
@@ -170,7 +170,58 @@ Linkage is driven by the module's export manifest:
 Declarations marked `extern` or within an `extern "C"` block bypass LBI mangling entirely and use their declared C
 spelling. `cstr` boundary rules are deferred to the C FFI ADR.
 
+## Module Interface Fingerprints
+
+The version 1 LBI compatibility fingerprint is a whole-module SipHash-1-3 digest over the canonical effective exported
+surface. Textual `.l1m` values use exactly:
+
+```text
+sip13:<16 lowercase hexadecimal digits>
+```
+
+The public, fixed SipHash key is the 16-byte ASCII string `DeaL1-fp-v1-key!`, with bytes:
+
+```text
+44 65 61 4c 31 2d 66 70 2d 76 31 2d 6b 65 79 21
+```
+
+The key and `sip13` algorithm identifier are part of the LBI version 1 contract. They are unrelated to the runtime's
+randomized process hash key. The unsigned 64-bit SipHash result is formatted with all 16 lowercase hexadecimal digits,
+including leading zeroes.
+
+For an interoperability known answer, hashing the five ASCII bytes `input` with this key produces the raw digest
+`0c3810c9b2f8823a`.
+
+Canonical input starts with the UTF-8 domain line `l1-interface-fingerprint-v1\n`. Each following exported-declaration
+record is framed as its ASCII decimal UTF-8 byte length, a colon, the record bytes, and LF. Record atoms and recursive
+type payloads use the same length framing. Counts have no leading zeroes, flags are `0` or `1`, declaration groups and
+names are sorted, and layout/signature members retain semantic source order.
+
+The digest covers exported structs, enums, aliases, functions, const values, and top-level let types. It excludes module
+identity, filesystem location, the fingerprint itself, dependency manifests, private implementation, tool metadata, and
+object metadata. The exact record and type shapes are normative in
+[l1/docs/specs/compiler/module-interface-format.md][module-interface-format].
+
+Every `require` and `link` record stores the provider module's tagged whole-module fingerprint, repeated for each used
+provider symbol. These dependency values do not participate in the consumer's own digest.
+
+The Stage 1 compiler reaches the 64-bit SipHash implementation through the compiler-private C bridge:
+
+```c
+void l1c_interface_fingerprint_sip13_hex(
+    const uint8_t *data, int32_t len, uint8_t out_hex[16]);
+```
+
+The bridge writes exactly 16 lowercase digest bytes to caller-owned storage, with no NUL terminator or allocation. It is
+available in each L1 runtime variant for bootstrap/compiler parity but adds no L1 source-language or standard-library
+API.
+
+Object metadata will later store the raw 8-byte digest under its own format version. Provider-object embedding, readers,
+and link-time comparison are not part of the currently implemented interface-verification contract.
+
 ## Portability
 
 The LBI uses only ISO C99 identifier characters `[A-Za-z0-9_]`. Generated C is expected to compile under
 `cc -std=c99 -pedantic-errors`.
+
+[module-interface-format]: module-interface-format.md

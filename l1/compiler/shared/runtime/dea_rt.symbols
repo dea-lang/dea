@@ -75,6 +75,7 @@ _rt_usub
 _rt_validate_derived_ptr
 _unwrap_opt
 _unwrap_ptr
+l1c_interface_fingerprint_sip13_hex
 rt_abort
 rt_alloc
 rt_array_element

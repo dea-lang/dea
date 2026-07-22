@@ -33,7 +33,7 @@
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
-  - [`l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
+  - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
   - [`l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
@@ -204,7 +204,7 @@ repeats the path with `extern "C"`.
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
-[fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md

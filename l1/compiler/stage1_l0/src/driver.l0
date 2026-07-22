@@ -22,6 +22,7 @@ import dea_prelude;
 import module_graph;
 import source_paths;
 import lexer;
+import interface_fingerprint;
 import mi_utils;
 import module_interface;
 import parser;
@@ -688,14 +689,16 @@ func dr_resolve_interface_dependencies(ctx: DriverResolutionContext*, node: Modu
     let ok = true;
     for (let req_i = 0; req_i < vec_size(raw.require_entries); req_i = req_i + 1) {
         let dep = ptr_vec_get(raw.require_entries, req_i) as InterfaceDepEntry*;
-        mg_node_add_dependency(node, MDK_REQUIRE, dep.provider_module, dep.symbol_name, dep.hash);
+        mg_node_add_dependency(node, MDK_REQUIRE, dep.provider_module, dep.symbol_name,
+            dep.provider_fingerprint);
         if (!dr_resolve_module(ctx, stack, dep.provider_module)) {
             ok = false;
         }
     }
     for (let link_i = 0; link_i < vec_size(raw.link_entries); link_i = link_i + 1) {
         let dep2 = ptr_vec_get(raw.link_entries, link_i) as InterfaceDepEntry*;
-        mg_node_add_dependency(node, MDK_LINK, dep2.provider_module, dep2.symbol_name, dep2.hash);
+        mg_node_add_dependency(node, MDK_LINK, dep2.provider_module, dep2.symbol_name,
+            dep2.provider_fingerprint);
         if (!dr_resolve_module(ctx, stack, dep2.provider_module)) {
             ok = false;
         }
@@ -763,13 +766,20 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
         if (module_name != state.entry_module) {
             let candidate = spm_get(ctx.candidates, module_name);
             if (candidate != null) {
+                let raw = miu_clone_interface(candidate as ModuleInterface*);
+                let interface_name = "<interface:" + module_name + ">";
+                if (!ifp_verify(raw, state.diags, interface_name)) {
+                    mi_free(raw);
+                    return dr_fail_without_node(state, module_name);
+                }
+
                 let node = mg_node_from_registry(module_name);
                 node.state = MNS_RESOLVING;
                 if (!dr_add_graph_node(state, node)) {
+                    mi_free(raw);
                     return false;
                 }
 
-                let raw = miu_clone_interface(candidate as ModuleInterface*);
                 dr_register_graph_interface(state, raw);
                 log_debug(ctx.cfg, "Using supplied interface for module '" + module_name + "'");
                 return dr_resolve_interface_dependencies(ctx, node, raw, next_stack);
@@ -778,36 +788,23 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
             let interface_path_opt = sp_resolve_interface(ctx.interface_roots, module_name);
             if (interface_path_opt != null) {
                 let interface_path = interface_path_opt as string;
-                let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
-                if (artifacts == null) {
-                    return dr_fail_without_node(state, module_name);
-                }
-                let node2 = mg_node_from_interface(module_name, interface_path, artifacts as ModuleArtifactPaths*);
-                node2.state = MNS_RESOLVING;
-                if (!dr_add_graph_node(state, node2)) {
-                    return false;
-                }
-
                 if (!std.fs::is_file(interface_path)) {
                     dr_emit_error(state.diags, "DRV-0075",
                         "selected module interface is not a readable regular file: " + interface_path,
                         interface_path);
-                    node2.state = MNS_FAILED;
-                    return false;
+                    return dr_fail_without_node(state, module_name);
                 }
                 let interface_text_opt = read_file(interface_path);
                 if (interface_text_opt == null) {
                     dr_emit_error(state.diags, "DRV-0075",
                         "cannot read selected module interface: " + interface_path, interface_path);
-                    node2.state = MNS_FAILED;
-                    return false;
+                    return dr_fail_without_node(state, module_name);
                 }
                 let interface_raw = interface_text_opt as string;
                 if (!us_is_valid_utf8(interface_raw)) {
                     dr_emit_error(state.diags, "DRV-0076",
                         "selected module interface is not valid UTF-8", interface_path);
-                    node2.state = MNS_FAILED;
-                    return false;
+                    return dr_fail_without_node(state, module_name);
                 }
                 let interface_text = us_strip_utf8_bom(interface_raw);
                 sv_push(state.source_names, interface_path);
@@ -817,8 +814,7 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                 dr_copy_interface_diags(state.diags, parsed);
                 if (ipr_has_errors(parsed) || parsed.interface == null) {
                     ipr_free(parsed);
-                    node2.state = MNS_FAILED;
-                    return false;
+                    return dr_fail_without_node(state, module_name);
                 }
 
                 let raw2 = parsed.interface as ModuleInterface*;
@@ -829,7 +825,24 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                     dr_emit_error(state.diags, "DRV-0020",
                         msg + "' but was loaded as '" + module_name + "'", interface_path);
                     mi_free(raw2);
-                    node2.state = MNS_FAILED;
+                    return dr_fail_without_node(state, module_name);
+                }
+
+                if (!ifp_verify(raw2, state.diags, interface_path)) {
+                    mi_free(raw2);
+                    return dr_fail_without_node(state, module_name);
+                }
+
+                let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
+                if (artifacts == null) {
+                    mi_free(raw2);
+                    return dr_fail_without_node(state, module_name);
+                }
+                let node2 = mg_node_from_interface(module_name, interface_path,
+                    artifacts as ModuleArtifactPaths*);
+                node2.state = MNS_RESOLVING;
+                if (!dr_add_graph_node(state, node2)) {
+                    mi_free(raw2);
                     return false;
                 }
 

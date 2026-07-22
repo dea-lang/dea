@@ -20,3 +20,4 @@
 | [0016](0016-compile-time-constant-value-contexts.md)             | Compile-Time Constant Value Contexts             | Accepted |
 | [0017](0017-l1-variadic-functions.md)                            | L1 Variadic Functions                            | Accepted |
 | [0018](0018-canonical-artifact-association-and-module-graph.md)  | Canonical Artifact Association and Module Graph  | Accepted |
+| [0019](0019-whole-module-interface-fingerprints.md)              | Whole-Module Interface Fingerprints              | Accepted |

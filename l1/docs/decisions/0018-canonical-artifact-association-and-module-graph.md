@@ -1,7 +1,7 @@
 # ADR-0018: Canonical Artifact Association and Module Graph
 
 - Decision date: 2026-07-19
-- Last edited: 2026-07-19
+- Last edited: 2026-07-21
 - Status: Accepted
 
 ## Context
@@ -59,13 +59,13 @@ side-effect-only imports or source order.
   source-based single-CU operations.
 - Interface cycles and source cycles share one canonical module-chain policy; cached nodes are not cycles, and failed
   nodes are not committed as resolved.
-- Whole-module fingerprint computation and verification remain owned by the fingerprint tranche. The graph carries
-  dependency fingerprint strings opaquely.
+- Whole-module fingerprints are validated and recomputed before an interface enters the graph. The graph carries
+  verified dependency strings, while provider-object comparison remains later link-set work.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
-- [l1/work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
+- [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 - [l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
@@ -81,7 +81,7 @@ side-effect-only imports or source order.
 [build-run]: ../../work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: ../../work/plans/features/2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
-[fingerprints]: ../../work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [graph-plan]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [module-format]: ../specs/compiler/module-interface-format.md
 [object-metadata]: ../../work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md

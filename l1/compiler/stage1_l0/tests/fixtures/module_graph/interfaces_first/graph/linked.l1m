@@ -1,4 +1,4 @@
 module interface graph.linked;
-fingerprint "linked-fingerprint";
+fingerprint "sip13:e5d98f527b631531";
 
-func helper() -> int == "";
+func helper() -> int;

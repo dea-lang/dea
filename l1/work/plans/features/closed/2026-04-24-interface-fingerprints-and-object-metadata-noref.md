@@ -67,8 +67,8 @@ object-metadata behavior is claimed as implemented by this closure.
 2. The hash algorithm is SipHash-1-3 from the shared runtime (`l1/compiler/shared/runtime/internal/dea_siphash.h`,
    `siphash13(...)`), keyed with a fixed compile-time-constant 16-byte fingerprint key distinct from the runtime's
    randomized hash-flooding key. 64-bit digest. This decision is closed at the initiative level (Initiative 0001 §0.6).
-3. The `.l1m` file carries the module fingerprint text directly as `fingerprint "<hash>";`, encoded as 16 lowercase hex
-   digits.
+3. The `.l1m` file carries the module fingerprint text directly as `fingerprint "sip13:<digest>";`, where the digest is
+   encoded as 16 lowercase hexadecimal digits.
 4. Consumers re-hash parsed interface declarations and reject mismatches immediately.
 5. Provider objects embed their own exported fingerprint so the driver can verify importers against the actual object it
    is about to link.
@@ -107,7 +107,7 @@ Settle the exact canonical hash input and the fixed 16-byte fingerprint key cons
   `const` literal encoding, exported top-level `let` type encoding) and make the canonicalization boundary explicit so
   Stage 2 parity can validate the same surface without copying incidental Stage 1 data structures.
 - Choose the fixed fingerprint key constant and record it in
-  [`l1/docs/specs/compiler/abi.md`](../../../docs/specs/compiler/abi.md) once stable.
+  [`l1/docs/specs/compiler/abi.md`](../../../../docs/specs/compiler/abi.md) once stable.
 - Choose the on-disk record layout for the object-embedded metadata (small magic + version prefix + flat little-endian
   fields is the expected default).
 
@@ -159,6 +159,6 @@ incomplete graph.
 5. Tests prove that transparent-to-opaque and opaque-to-transparent export changes produce different fingerprints.
 6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
 
-[fingerprints]: ../2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
 [object-metadata]: ../2026-07-17-object-metadata-emission-and-readers-noref.md

@@ -102,6 +102,13 @@ def main() -> int:
         f"expected={expected}\n"
         f"actual={check_basic_actual}\n"
     )
+
+    unchecked_actual = runtime_symbols("libdea_rt_unchecked.a")
+    assert unchecked_actual == expected, (
+        "unchecked runtime symbol manifest mismatch:\n"
+        f"expected={expected}\n"
+        f"actual={unchecked_actual}\n"
+    )
     return 0
 
 

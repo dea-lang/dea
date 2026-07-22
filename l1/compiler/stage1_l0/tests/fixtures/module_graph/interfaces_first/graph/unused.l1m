@@ -1,4 +1,4 @@
 module interface graph.unused;
-fingerprint "unused-fingerprint";
+fingerprint "sip13:4158c38107dcbe89";
 
-func side_effect_anchor() -> void == "";
+func side_effect_anchor() -> void;

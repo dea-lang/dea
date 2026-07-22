@@ -1,0 +1,1065 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module interface_fingerprint;
+
+import std.hashset;
+import std.integer;
+import std.string;
+import std.text;
+import std.vector;
+import sys.rt;
+
+import util.diag;
+import util.numbers;
+
+import ast;
+import interface_order;
+import interface_literal;
+import module_interface;
+import types;
+
+/**
+ * Fill a caller-owned 16-byte buffer with the lowercase SipHash-1-3 digest
+ * for the fixed L1 interface-fingerprint key.
+ *
+ * @param data Canonical bytes to hash.
+ * @param len Canonical byte count.
+ * @param out_hex Caller-owned 16-byte lowercase hexadecimal output buffer.
+ */
+extern func l1c_interface_fingerprint_sip13_hex(data: byte*, len: int, out_hex: byte*) -> void;
+
+/** Canonical serialization domain. */
+let IFP_DOMAIN: string = "l1-interface-fingerprint-v1\n";
+
+/**
+ * Emit one interface-fingerprint diagnostic.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Registered diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Interface filename.
+ */
+func ifp_error(diags: DiagCollector*, code: string, message: string, filename: string) {
+    diag_error(diags, "InterfaceFingerprint", code, message, filename, 0, 0, 0, 0);
+}
+
+/**
+ * Emit an inconsistent-model diagnostic and return `null`.
+ *
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @param message Inconsistent-model description.
+ * @return Always `null`.
+ */
+func ifp_invalid(diags: DiagCollector*, filename: string, message: string) -> string? {
+    ifp_error(diags, "SIG-0283", message, filename);
+    return null;
+}
+
+/**
+ * Emit an inconsistent-model diagnostic and return a nullable size.
+ *
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @param message Inconsistent-model description.
+ * @return Always `null`.
+ */
+func ifp_invalid_size(diags: DiagCollector*, filename: string, message: string) -> int? {
+    ifp_error(diags, "SIG-0283", message, filename);
+    return null;
+}
+
+/**
+ * Frame one canonical atom by its UTF-8 byte length.
+ *
+ * @param value Atom payload.
+ * @return Length-framed atom.
+ */
+func ifp_frame(value: string) -> string {
+    return int_to_string(len_s(value)) + ":" + value;
+}
+
+/**
+ * Append a canonical frame prefix without materializing a temporary string.
+ *
+ * @param sb Record builder.
+ * @param payload_size Framed payload byte count.
+ */
+func ifp_append_atom_prefix(sb: StringBuffer*, payload_size: int) {
+    sb_append(sb, int_to_string(payload_size));
+    sb_append(sb, ":");
+}
+
+/**
+ * Append one framed atom to a record builder.
+ *
+ * @param sb Record builder.
+ * @param value Atom payload.
+ */
+func ifp_append_atom(sb: StringBuffer*, value: string) {
+    ifp_append_atom_prefix(sb, len_s(value));
+    sb_append(sb, value);
+}
+
+/**
+ * Return `0` or `1` for one canonical boolean atom.
+ *
+ * @param value Boolean value.
+ * @return Canonical boolean payload.
+ */
+func ifp_bool(value: bool) -> string {
+    if (value) {
+        return "1";
+    }
+    return "0";
+}
+
+/** One measured node in a preorder type-encoding plan. */
+struct IfpTypePlanNode {
+    ty: void*;          // borrowed Type*
+    payload_size: int;
+}
+
+/** Cursor over one measured preorder type-encoding plan. */
+struct IfpTypeEmitCursor {
+    nodes: VectorBase*;
+    index: int;
+}
+
+/**
+ * Add two non-negative canonical byte counts with overflow checking.
+ *
+ * @param left Accumulated byte count.
+ * @param right Additional byte count.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Sum, or `null` after `SIG-0283` on overflow.
+ */
+func ifp_checked_size_add(left: int, right: int, diags: DiagCollector*, filename: string) -> int? {
+    let result = checked_add_int(left, right);
+    if (result == null) {
+        ifp_error(diags, "SIG-0283", "canonical interface type exceeds supported size", filename);
+        return null;
+    }
+    return result;
+}
+
+/**
+ * Measure a frame around a payload of known size.
+ *
+ * @param payload_size Payload byte count.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Framed byte count, or `null` after `SIG-0283` on overflow.
+ */
+func ifp_framed_size(payload_size: int, diags: DiagCollector*, filename: string) -> int? {
+    if (payload_size < 0) {
+        ifp_error(diags, "SIG-0283", "negative canonical interface type size", filename);
+        return null;
+    }
+    let prefix_size = ifp_checked_size_add(len_s(int_to_string(payload_size)), 1, diags, filename);
+    if (prefix_size == null) {
+        return null;
+    }
+    return ifp_checked_size_add(prefix_size as int, payload_size, diags, filename);
+}
+
+/**
+ * Add one string atom's framed size to an accumulated payload size.
+ *
+ * @param total Accumulated payload byte count.
+ * @param value String atom payload.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Updated byte count, or `null` after `SIG-0283` on overflow.
+ */
+func ifp_add_string_atom_size(total: int, value: string, diags: DiagCollector*,
+                              filename: string) -> int? {
+    let atom_size = ifp_framed_size(len_s(value), diags, filename);
+    if (atom_size == null) {
+        return null;
+    }
+    return ifp_checked_size_add(total, atom_size as int, diags, filename);
+}
+
+/**
+ * Add one measured nested-type atom to an accumulated payload size.
+ *
+ * @param total Accumulated payload byte count.
+ * @param child_size Nested type payload byte count.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Updated byte count, or `null` after `SIG-0283` on overflow.
+ */
+func ifp_add_nested_atom_size(total: int, child_size: int, diags: DiagCollector*,
+                              filename: string) -> int? {
+    let atom_size = ifp_framed_size(child_size, diags, filename);
+    if (atom_size == null) {
+        return null;
+    }
+    return ifp_checked_size_add(total, atom_size as int, diags, filename);
+}
+
+/**
+ * Store a completed payload size on one plan node.
+ *
+ * @param nodes Preorder plan nodes.
+ * @param node_index Node to complete.
+ * @param payload_size Measured node payload size.
+ * @return The stored payload size.
+ */
+func ifp_finish_type_node(nodes: VectorBase*, node_index: int, payload_size: int) -> int {
+    (vec_get(nodes, node_index) as IfpTypePlanNode*).payload_size = payload_size;
+    return payload_size;
+}
+
+/**
+ * Validate and measure one type into a preorder encoding plan.
+ *
+ * Struct and enum references intentionally share the `nominal` tag. This
+ * makes the wire identity independent of semantic kind normalization while
+ * declaration records still distinguish structs from enums.
+ *
+ * @param nodes Destination preorder plan.
+ * @param ty Type to validate and measure.
+ * @param owner_module Interface owner module.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Payload byte count, or `null` after a diagnostic.
+ */
+func ifp_measure_type(nodes: VectorBase*, ty: Type*, owner_module: string, diags: DiagCollector*,
+                      filename: string) -> int? {
+    let node_index = vec_size(nodes);
+    let new_node = vec_push(nodes) as IfpTypePlanNode*;
+    new_node.ty = ty as void*;
+    new_node.payload_size = -1;
+    let kind = ord(ty.kind);
+
+    if (kind == ord(TY_NULL)) {
+        return ifp_invalid_size(diags, filename, "null is not a canonical interface type");
+    }
+
+    if (kind == ord(TY_BUILTIN)) {
+        if (ty.name == "" || !type_is_builtin_name(ty.name) || ty.module_name != "" || ty.inner != null ||
+            ty.array_len != 0 || ty.params != null || ty.result != null || ty.is_unsafe || ty.is_variadic) {
+            return ifp_invalid_size(diags, filename, "inconsistent builtin type in module interface");
+        }
+        let total = ifp_add_string_atom_size(0, "builtin", diags, filename);
+        if (total == null) return null;
+        total = ifp_add_string_atom_size(total as int, ty.name, diags, filename);
+        if (total == null) return null;
+        return ifp_finish_type_node(nodes, node_index, total as int);
+    }
+
+    if (kind == ord(TY_STRUCT) || kind == ord(TY_ENUM)) {
+        if (ty.name == "" || ty.inner != null || ty.params != null || ty.result != null ||
+            ty.array_len != 0 || ty.is_unsafe || ty.is_variadic) {
+            return ifp_invalid_size(diags, filename, "inconsistent nominal type in module interface");
+        }
+        let module_name = ty.module_name;
+        if (module_name == owner_module) {
+            module_name = "";
+        }
+        let total2 = ifp_add_string_atom_size(0, "nominal", diags, filename);
+        if (total2 == null) return null;
+        total2 = ifp_add_string_atom_size(total2 as int, module_name, diags, filename);
+        if (total2 == null) return null;
+        total2 = ifp_add_string_atom_size(total2 as int, ty.name, diags, filename);
+        if (total2 == null) return null;
+        return ifp_finish_type_node(nodes, node_index, total2 as int);
+    }
+
+    if (kind == ord(TY_POINTER) || kind == ord(TY_NULLABLE) || kind == ord(TY_SLICE)) {
+        if (ty.inner == null || ty.name != "" || ty.module_name != "" || ty.params != null ||
+            ty.result != null || ty.array_len != 0 || ty.is_unsafe || ty.is_variadic) {
+            return ifp_invalid_size(diags, filename, "inconsistent wrapped type in module interface");
+        }
+        let inner = ifp_measure_type(nodes, ty.inner as Type*, owner_module, diags, filename);
+        if (inner == null) {
+            return null;
+        }
+        let tag = "pointer";
+        if (kind == ord(TY_NULLABLE)) {
+            tag = "nullable";
+        } else if (kind == ord(TY_SLICE)) {
+            tag = "slice";
+        }
+        let total3 = ifp_add_string_atom_size(0, tag, diags, filename);
+        if (total3 == null) return null;
+        total3 = ifp_add_nested_atom_size(total3 as int, inner as int, diags, filename);
+        if (total3 == null) return null;
+        return ifp_finish_type_node(nodes, node_index, total3 as int);
+    }
+
+    if (kind == ord(TY_ARRAY)) {
+        if (ty.inner == null || ty.array_len <= 0 || ty.name != "" || ty.module_name != "" ||
+            ty.params != null || ty.result != null || ty.is_unsafe || ty.is_variadic) {
+            return ifp_invalid_size(diags, filename, "inconsistent array type in module interface");
+        }
+        let inner2 = ifp_measure_type(nodes, ty.inner as Type*, owner_module, diags, filename);
+        if (inner2 == null) {
+            return null;
+        }
+        let total4 = ifp_add_string_atom_size(0, "array", diags, filename);
+        if (total4 == null) return null;
+        total4 = ifp_add_string_atom_size(total4 as int, int_to_string(ty.array_len), diags, filename);
+        if (total4 == null) return null;
+        total4 = ifp_add_nested_atom_size(total4 as int, inner2 as int, diags, filename);
+        if (total4 == null) return null;
+        return ifp_finish_type_node(nodes, node_index, total4 as int);
+    }
+
+    if (kind == ord(TY_FUNC)) {
+        if (ty.params == null || ty.result == null || ty.inner != null || ty.name != "" ||
+            ty.module_name != "" || ty.array_len != 0) {
+            return ifp_invalid_size(diags, filename, "inconsistent function type in module interface");
+        }
+        let params = ty.params as VectorBase*;
+        if (ty.is_variadic && (vec_size(params) == 0 ||
+            ord((ptr_vec_get(params, vec_size(params) - 1) as Type*).kind) != ord(TY_SLICE))) {
+            return ifp_invalid_size(diags, filename,
+                "variadic interface function type must end in a slice parameter");
+        }
+
+        let total5 = ifp_add_string_atom_size(0, "function", diags, filename);
+        if (total5 == null) return null;
+        total5 = ifp_add_string_atom_size(total5 as int, ifp_bool(ty.is_unsafe), diags, filename);
+        if (total5 == null) return null;
+        total5 = ifp_add_string_atom_size(total5 as int, ifp_bool(ty.is_variadic), diags, filename);
+        if (total5 == null) return null;
+        total5 = ifp_add_string_atom_size(total5 as int, int_to_string(vec_size(params)), diags, filename);
+        if (total5 == null) return null;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            let param_size = ifp_measure_type(nodes, ptr_vec_get(params, i) as Type*, owner_module,
+                diags, filename);
+            if (param_size == null) {
+                return null;
+            }
+            total5 = ifp_add_nested_atom_size(total5 as int, param_size as int, diags, filename);
+            if (total5 == null) return null;
+        }
+        let result_size = ifp_measure_type(nodes, ty.result as Type*, owner_module, diags, filename);
+        if (result_size == null) {
+            return null;
+        }
+        total5 = ifp_add_nested_atom_size(total5 as int, result_size as int, diags, filename);
+        if (total5 == null) return null;
+        return ifp_finish_type_node(nodes, node_index, total5 as int);
+    }
+
+    ifp_error(diags, "SIG-0283", "unknown type kind in module interface", filename);
+    return null;
+}
+
+/**
+ * Free an optional measured type plan.
+ *
+ * @param nodes Optional preorder plan.
+ */
+func ifp_free_type_plan(nodes: VectorBase*?) {
+    if (nodes != null) {
+        vec_free(nodes as VectorBase*);
+    }
+}
+
+/**
+ * Build a validated preorder type-encoding plan.
+ *
+ * @param ty Type to validate and plan.
+ * @param owner_module Interface owner module.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Owned plan, or `null` after a diagnostic.
+ */
+func ifp_plan_type(ty: Type*, owner_module: string, diags: DiagCollector*,
+                   filename: string) -> VectorBase*? {
+    let nodes = vec_create(sizeof(IfpTypePlanNode), 8);
+    if (ifp_measure_type(nodes, ty, owner_module, diags, filename) == null) {
+        vec_free(nodes);
+        return null;
+    }
+    return nodes;
+}
+
+/**
+ * Append one nested planned type as a framed atom.
+ *
+ * @param sb Destination record builder.
+ * @param cursor Preorder type-plan cursor positioned at the child.
+ * @param owner_module Interface owner module.
+ */
+func ifp_emit_nested_type_atom(sb: StringBuffer*, cursor: IfpTypeEmitCursor*, owner_module: string) {
+    let child = vec_get(cursor.nodes, cursor.index) as IfpTypePlanNode*;
+    ifp_append_atom_prefix(sb, child.payload_size);
+    ifp_emit_planned_type(sb, cursor, owner_module);
+}
+
+/**
+ * Stream one planned type payload into a record builder.
+ *
+ * @param sb Destination record builder.
+ * @param cursor Preorder plan cursor positioned at the type to emit.
+ * @param owner_module Interface owner module.
+ */
+func ifp_emit_planned_type(sb: StringBuffer*, cursor: IfpTypeEmitCursor*, owner_module: string) {
+    let node = vec_get(cursor.nodes, cursor.index) as IfpTypePlanNode*;
+    cursor.index = cursor.index + 1;
+    let ty = node.ty as Type*;
+    let kind = ord(ty.kind);
+
+    if (kind == ord(TY_BUILTIN)) {
+        ifp_append_atom(sb, "builtin");
+        ifp_append_atom(sb, ty.name);
+        return;
+    }
+    if (kind == ord(TY_STRUCT) || kind == ord(TY_ENUM)) {
+        let module_name = ty.module_name;
+        if (module_name == owner_module) {
+            module_name = "";
+        }
+        ifp_append_atom(sb, "nominal");
+        ifp_append_atom(sb, module_name);
+        ifp_append_atom(sb, ty.name);
+        return;
+    }
+    if (kind == ord(TY_POINTER) || kind == ord(TY_NULLABLE) || kind == ord(TY_SLICE)) {
+        let tag = "pointer";
+        if (kind == ord(TY_NULLABLE)) {
+            tag = "nullable";
+        } else if (kind == ord(TY_SLICE)) {
+            tag = "slice";
+        }
+        ifp_append_atom(sb, tag);
+        ifp_emit_nested_type_atom(sb, cursor, owner_module);
+        return;
+    }
+    if (kind == ord(TY_ARRAY)) {
+        ifp_append_atom(sb, "array");
+        ifp_append_atom(sb, int_to_string(ty.array_len));
+        ifp_emit_nested_type_atom(sb, cursor, owner_module);
+        return;
+    }
+
+    ifp_append_atom(sb, "function");
+    ifp_append_atom(sb, ifp_bool(ty.is_unsafe));
+    ifp_append_atom(sb, ifp_bool(ty.is_variadic));
+    let params = ty.params as VectorBase*;
+    ifp_append_atom(sb, int_to_string(vec_size(params)));
+    for (let i = 0; i < vec_size(params); i = i + 1) {
+        ifp_emit_nested_type_atom(sb, cursor, owner_module);
+    }
+    ifp_emit_nested_type_atom(sb, cursor, owner_module);
+}
+
+/**
+ * Append one validated type payload as a framed atom.
+ *
+ * @param sb Destination record builder.
+ * @param ty Type to validate and encode.
+ * @param owner_module Interface owner module.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` on success; `false` after a diagnostic.
+ */
+func ifp_append_type_atom(sb: StringBuffer*, ty: Type*, owner_module: string,
+                          diags: DiagCollector*, filename: string) -> bool {
+    with (let nodes: VectorBase*? = ifp_plan_type(ty, owner_module, diags, filename) =>
+          ifp_free_type_plan(nodes)) {
+        if (nodes == null) {
+            return false;
+        }
+        let plan = nodes as VectorBase*;
+        let root = vec_get(plan, 0) as IfpTypePlanNode*;
+        ifp_append_atom_prefix(sb, root.payload_size);
+        let cursor = new IfpTypeEmitCursor(plan, 0);
+        ifp_emit_planned_type(sb, cursor, owner_module);
+        let complete = cursor.index == vec_size(plan);
+        drop cursor;
+        return complete;
+    }
+}
+
+/**
+ * Add one declaration name to the canonical model's shared namespace.
+ *
+ * @param seen Names already claimed by declarations or enum variants.
+ * @param name Candidate declaration name.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` when the non-empty name was newly inserted.
+ */
+func ifp_add_name(seen: StringSet*, name: string, diags: DiagCollector*, filename: string) -> bool {
+    if (name == "") {
+        ifp_error(diags, "SIG-0283", "empty declaration name in module interface", filename);
+        return false;
+    }
+    if (ss_has(seen, name)) {
+        ifp_error(diags, "SIG-0283", "duplicate declaration name '" + name + "' in module interface", filename);
+        return false;
+    }
+    ss_add(seen, name);
+    return true;
+}
+
+/**
+ * Validate names and vector relationships that span canonical records.
+ *
+ * @param mi Module interface to validate.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` when cross-record metadata is consistent.
+ */
+func ifp_validate_surface(mi: ModuleInterface*, diags: DiagCollector*, filename: string) -> bool {
+    if (mi.module_name == "") {
+        ifp_error(diags, "SIG-0283", "module interface has an empty module name", filename);
+        return false;
+    }
+
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let i = 0; i < vec_size(mi.struct_infos); i = i + 1) {
+            let info = ptr_vec_get(mi.struct_infos, i) as StructInfo*;
+            if (!ifp_add_name(seen, info.name, diags, filename)) {
+                return false;
+            }
+            if (info.module_name != mi.module_name || ord(info.struct_type.kind) != ord(TY_STRUCT) ||
+                info.struct_type.name != info.name ||
+                (info.struct_type.module_name != "" && info.struct_type.module_name != mi.module_name) ||
+                info.struct_type.inner != null || info.struct_type.array_len != 0 ||
+                info.struct_type.params != null || info.struct_type.result != null ||
+                info.struct_type.is_unsafe || info.struct_type.is_variadic) {
+                ifp_error(diags, "SIG-0283", "inconsistent struct metadata for '" + info.name + "'", filename);
+                return false;
+            }
+        }
+        for (let i2 = 0; i2 < vec_size(mi.enum_infos); i2 = i2 + 1) {
+            let info2 = ptr_vec_get(mi.enum_infos, i2) as EnumInfo*;
+            if (!ifp_add_name(seen, info2.name, diags, filename)) {
+                return false;
+            }
+            if (info2.module_name != mi.module_name || ord(info2.enum_type.kind) != ord(TY_ENUM) ||
+                info2.enum_type.name != info2.name ||
+                (info2.enum_type.module_name != "" && info2.enum_type.module_name != mi.module_name) ||
+                info2.enum_type.inner != null || info2.enum_type.array_len != 0 ||
+                info2.enum_type.params != null || info2.enum_type.result != null ||
+                info2.enum_type.is_unsafe || info2.enum_type.is_variadic) {
+                ifp_error(diags, "SIG-0283", "inconsistent enum metadata for '" + info2.name + "'", filename);
+                return false;
+            }
+            if (!info2.is_opaque) {
+                for (let v = 0; v < vec_size(info2.variants); v = v + 1) {
+                    let variant = ptr_vec_get(info2.variants, v) as EnumVariantInfo*;
+                    if (!ifp_add_name(seen, variant.name, diags, filename)) {
+                        return false;
+                    }
+                    if (vec_size(variant.field_types) != sv_size(variant.field_names)) {
+                        ifp_error(diags, "SIG-0283", "inconsistent payload metadata for variant '" +
+                            variant.name + "'", filename);
+                        return false;
+                    }
+                }
+            }
+        }
+        for (let a = 0; a < vec_size(mi.alias_entries); a = a + 1) {
+            if (!ifp_add_name(seen, (ptr_vec_get(mi.alias_entries, a) as InterfaceAliasEntry*).name,
+                diags, filename)) {
+                return false;
+            }
+        }
+        for (let f = 0; f < vec_size(mi.func_entries); f = f + 1) {
+            if (!ifp_add_name(seen, (ptr_vec_get(mi.func_entries, f) as InterfaceFuncEntry*).name,
+                diags, filename)) {
+                return false;
+            }
+        }
+        for (let l = 0; l < vec_size(mi.let_entries); l = l + 1) {
+            if (!ifp_add_name(seen, (ptr_vec_get(mi.let_entries, l) as InterfaceLetEntry*).name,
+                diags, filename)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * Build one canonical struct record payload.
+ *
+ * @param mi Owning module interface.
+ * @param info Struct metadata to serialize.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Canonical record payload, or `null` after a diagnostic.
+ */
+func ifp_struct_record(mi: ModuleInterface*, info: StructInfo*, diags: DiagCollector*, filename: string) -> string? {
+    with (let sb = sb_create() => sb_free(sb)) {
+        let tag = "struct";
+        if (info.is_opaque) {
+            tag = "opaque-struct";
+        }
+        ifp_append_atom(sb, tag);
+        ifp_append_atom(sb, info.name);
+        if (!info.is_opaque) {
+            ifp_append_atom(sb, int_to_string(vec_size(info.fields)));
+            for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+                let field = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+                if (field.name == "") {
+                    return ifp_invalid(diags, filename, "empty field name in struct '" + info.name + "'");
+                }
+                ifp_append_atom(sb, field.name);
+                if (!ifp_append_type_atom(sb, field.field_type, mi.module_name, diags, filename)) {
+                    return null;
+                }
+            }
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Build one canonical enum record payload.
+ *
+ * @param mi Owning module interface.
+ * @param info Enum metadata to serialize.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Canonical record payload, or `null` after a diagnostic.
+ */
+func ifp_enum_record(mi: ModuleInterface*, info: EnumInfo*, diags: DiagCollector*, filename: string) -> string? {
+    with (let sb = sb_create() => sb_free(sb)) {
+        let tag = "enum";
+        if (info.is_opaque) {
+            tag = "opaque-enum";
+        }
+        ifp_append_atom(sb, tag);
+        ifp_append_atom(sb, info.name);
+        if (!info.is_opaque) {
+            ifp_append_atom(sb, int_to_string(vec_size(info.variants)));
+            for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+                let variant = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+                ifp_append_atom(sb, variant.name);
+                ifp_append_atom(sb, int_to_string(vec_size(variant.field_types)));
+                for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+                    let field_name = sv_get(variant.field_names, j);
+                    if (field_name == "") {
+                        return ifp_invalid(diags, filename, "empty payload field name in variant '" +
+                            variant.name + "'");
+                    }
+                    ifp_append_atom(sb, field_name);
+                    if (!ifp_append_type_atom(sb, ptr_vec_get(variant.field_types, j) as Type*,
+                        mi.module_name, diags, filename)) {
+                        return null;
+                    }
+                }
+            }
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Build one canonical alias record payload.
+ *
+ * @param mi Owning module interface.
+ * @param entry Alias entry to serialize.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Canonical record payload, or `null` after a diagnostic.
+ */
+func ifp_alias_record(mi: ModuleInterface*, entry: InterfaceAliasEntry*, diags: DiagCollector*,
+                      filename: string) -> string? {
+    with (let sb = sb_create() => sb_free(sb)) {
+        ifp_append_atom(sb, "alias");
+        ifp_append_atom(sb, entry.name);
+        if (!ifp_append_type_atom(sb, entry.ty, mi.module_name, diags, filename)) {
+            return null;
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Build one canonical function record payload.
+ *
+ * @param mi Owning module interface.
+ * @param entry Function entry to serialize.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Canonical record payload, or `null` after a diagnostic.
+ */
+func ifp_func_record(mi: ModuleInterface*, entry: InterfaceFuncEntry*, diags: DiagCollector*,
+                     filename: string) -> string? {
+    if (ord(entry.ty.kind) != ord(TY_FUNC) || entry.ty.params == null || entry.ty.result == null ||
+        entry.ty.inner != null || entry.ty.name != "" || entry.ty.module_name != "" ||
+        entry.ty.array_len != 0 ||
+        sv_size(entry.param_names) != vec_size(entry.ty.params as VectorBase*) ||
+        (entry.is_extern && entry.ty.is_variadic)) {
+        return ifp_invalid(diags, filename, "inconsistent function metadata for '" + entry.name + "'");
+    }
+    let params = entry.ty.params as VectorBase*;
+    if (entry.ty.is_variadic && (vec_size(params) == 0 ||
+        ord((ptr_vec_get(params, vec_size(params) - 1) as Type*).kind) != ord(TY_SLICE))) {
+        return ifp_invalid(diags, filename, "variadic interface function must end in a slice parameter");
+    }
+    with (let sb = sb_create() => sb_free(sb)) {
+        ifp_append_atom(sb, "func");
+        ifp_append_atom(sb, entry.name);
+        ifp_append_atom(sb, ifp_bool(entry.is_extern));
+        ifp_append_atom(sb, ifp_bool(entry.ty.is_unsafe));
+        ifp_append_atom(sb, ifp_bool(entry.ty.is_variadic));
+        ifp_append_atom(sb, int_to_string(vec_size(params)));
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            let param_name = sv_get(entry.param_names, i);
+            if (param_name == "") {
+                return ifp_invalid(diags, filename, "empty parameter name in function '" + entry.name + "'");
+            }
+            ifp_append_atom(sb, param_name);
+            if (!ifp_append_type_atom(sb, ptr_vec_get(params, i) as Type*, mi.module_name,
+                diags, filename)) {
+                return null;
+            }
+        }
+        if (!ifp_append_type_atom(sb, entry.ty.result as Type*, mi.module_name, diags, filename)) {
+            return null;
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Build one canonical const or let record payload.
+ *
+ * @param mi Owning module interface.
+ * @param entry Value entry to serialize.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Canonical record payload, or `null` after a diagnostic.
+ */
+func ifp_let_record(mi: ModuleInterface*, entry: InterfaceLetEntry*, diags: DiagCollector*,
+                    filename: string) -> string? {
+    if ((entry.is_const && entry.literal == "") || (!entry.is_const && entry.literal != "")) {
+        return ifp_invalid(diags, filename, "inconsistent value metadata for '" + entry.name + "'");
+    }
+    if (entry.is_const && !il_literal_is_canonical(entry.literal, mi.module_name)) {
+        return ifp_invalid(diags, filename, "non-canonical folded literal for '" + entry.name + "'");
+    }
+    with (let sb = sb_create() => sb_free(sb)) {
+        if (entry.is_const) {
+            ifp_append_atom(sb, "const");
+        } else {
+            ifp_append_atom(sb, "let");
+        }
+        ifp_append_atom(sb, entry.name);
+        if (!ifp_append_type_atom(sb, entry.ty, mi.module_name, diags, filename)) {
+            return null;
+        }
+        if (entry.is_const) {
+            ifp_append_atom(sb, entry.literal);
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Append one framed record and its required LF terminator.
+ *
+ * @param sb Canonical-surface builder.
+ * @param record Record payload.
+ */
+func ifp_append_record(sb: StringBuffer*, record: string) {
+    ifp_append_atom(sb, record);
+    sb_append(sb, "\n");
+}
+
+/**
+ * Build a canonical record for one borrowed ordered declaration.
+ *
+ * @param mi Owning module interface.
+ * @param ref Ordered borrowed declaration reference.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Canonical record payload, or `null` after a diagnostic.
+ */
+func ifp_record_for_ref(mi: ModuleInterface*, ref: InterfaceDeclRef*, diags: DiagCollector*,
+                        filename: string) -> string? {
+    match (ref.kind) {
+        IDK_STRUCT => { return ifp_struct_record(mi, ref.value as StructInfo*, diags, filename); }
+        IDK_ENUM => { return ifp_enum_record(mi, ref.value as EnumInfo*, diags, filename); }
+        IDK_ALIAS => { return ifp_alias_record(mi, ref.value as InterfaceAliasEntry*, diags, filename); }
+        IDK_FUNC => { return ifp_func_record(mi, ref.value as InterfaceFuncEntry*, diags, filename); }
+        IDK_CONST => { return ifp_let_record(mi, ref.value as InterfaceLetEntry*, diags, filename); }
+        IDK_LET => { return ifp_let_record(mi, ref.value as InterfaceLetEntry*, diags, filename); }
+    }
+}
+
+/**
+ * Serialize the exported surface into canonical UTF-8 bytes.
+ *
+ * Module identity, fingerprint fields, dependencies, and all non-surface data
+ * are deliberately excluded.
+ *
+ * @param mi Module interface to serialize.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Canonical bytes, or `null` after a diagnostic.
+ */
+func ifp_canonicalize(mi: ModuleInterface*, diags: DiagCollector*, filename: string) -> string? {
+    if (!ifp_validate_surface(mi, diags, filename)) {
+        return null;
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, IFP_DOMAIN);
+
+        with (let declarations = io_collect_declarations(mi) => io_free_declarations(declarations)) {
+            for (let i = 0; i < vec_size(declarations); i = i + 1) {
+                let ref = ptr_vec_get(declarations, i) as InterfaceDeclRef*;
+                let record = ifp_record_for_ref(mi, ref, diags, filename);
+                if (record == null) return null;
+                ifp_append_record(sb, record as string);
+            }
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Hash canonical bytes and format the tagged lowercase digest.
+ *
+ * @param canonical Canonical interface bytes.
+ * @return Tagged lowercase SipHash-1-3 digest.
+ */
+func ifp_hash_canonical_bytes(canonical: string) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = 0; i < 16; i = i + 1) {
+            cb_append(out, '0');
+        }
+        l1c_interface_fingerprint_sip13_hex(
+            rt_string_bytes_ptr(canonical), len_s(canonical),
+            vec_get(out.chars, 0) as byte*
+        );
+        return "sip13:" + cb_to_string(out);
+    }
+}
+
+/**
+ * Compute the canonical tagged fingerprint for one module interface.
+ *
+ * @param mi Module interface to fingerprint.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return Tagged fingerprint, or `null` after a diagnostic.
+ */
+func ifp_compute(mi: ModuleInterface*, diags: DiagCollector*, filename: string) -> string? {
+    let canonical = ifp_canonicalize(mi, diags, filename);
+    if (canonical == null) {
+        return null;
+    }
+    return ifp_hash_canonical_bytes(canonical as string);
+}
+
+/**
+ * Store a borrowed computed value on its owning interface.
+ *
+ * @param mi Module interface to update.
+ * @param computed Computed tagged fingerprint.
+ * @return Always `true` after assignment.
+ */
+func ifp_assign_computed(mi: ModuleInterface*, computed: string) -> bool {
+    mi.fingerprint = computed;
+    return true;
+}
+
+/**
+ * Assign a freshly computed fingerprint to the interface.
+ *
+ * @param mi Module interface to update.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` on success; `false` after a diagnostic.
+ */
+func ifp_assign(mi: ModuleInterface*, diags: DiagCollector*, filename: string) -> bool {
+    let computed = ifp_compute(mi, diags, filename);
+    if (computed == null) {
+        return false;
+    }
+    return ifp_assign_computed(mi, computed as string);
+}
+
+/**
+ * Return whether a byte is legal in a lowercase algorithm identifier.
+ *
+ * @param c Candidate byte.
+ * @param first Whether `c` is the first identifier byte.
+ * @return `true` when the byte is legal at the requested position.
+ */
+func ifp_algorithm_char(c: byte, first: bool) -> bool {
+    if (c >= 'a' && c <= 'z') return true;
+    return !first && c >= '0' && c <= '9';
+}
+
+/**
+ * Return whether a byte is one lowercase hexadecimal digit.
+ *
+ * @param c Candidate byte.
+ * @return `true` for `0` through `9` or `a` through `f`.
+ */
+func ifp_lower_hex(c: byte) -> bool {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+/**
+ * Validate one canonical tagged fingerprint value.
+ *
+ * @param value Tagged fingerprint text.
+ * @param context Human-readable diagnostic context.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` when the value is canonical and supported.
+ */
+func ifp_validate_value(value: string, context: string, diags: DiagCollector*, filename: string) -> bool {
+    let colon = find_s(value, ":");
+    if (colon <= 0 || colon != find_last_s(value, ":") || colon == len_s(value) - 1) {
+        ifp_error(diags, "SIG-0280", "malformed " + context + " '" + value + "'", filename);
+        return false;
+    }
+    let algorithm = slice_s(value, 0, colon);
+    for (let i = 0; i < len_s(algorithm); i = i + 1) {
+        if (!ifp_algorithm_char(char_at_s(algorithm, i), i == 0)) {
+            ifp_error(diags, "SIG-0280", "malformed " + context + " '" + value + "'", filename);
+            return false;
+        }
+    }
+    if (algorithm != "sip13") {
+        ifp_error(diags, "SIG-0281", "unsupported interface fingerprint algorithm '" + algorithm + "'", filename);
+        return false;
+    }
+    let payload = slice_s(value, colon + 1, len_s(value));
+    if (len_s(payload) != 16) {
+        ifp_error(diags, "SIG-0280", "malformed " + context + " '" + value + "'", filename);
+        return false;
+    }
+    for (let j = 0; j < len_s(payload); j = j + 1) {
+        if (!ifp_lower_hex(char_at_s(payload, j))) {
+            ifp_error(diags, "SIG-0280", "malformed " + context + " '" + value + "'", filename);
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Return a previously seen fingerprint for one provider, or `null`.
+ *
+ * @param mi Module interface whose dependency tiers should be searched.
+ * @param before_tier Current tier index.
+ * @param before_index Current entry index within its tier.
+ * @param provider_module Provider module to find.
+ * @return Borrowed prior fingerprint, or `null` when none precedes the entry.
+ */
+func ifp_previous_provider_value(mi: ModuleInterface*, before_tier: int, before_index: int,
+                                 provider_module: string) -> string? {
+    if (before_tier >= 0) {
+        let req_limit = vec_size(mi.require_entries);
+        if (before_tier == 0) {
+            req_limit = before_index;
+        }
+        for (let i = 0; i < req_limit; i = i + 1) {
+            let entry = ptr_vec_get(mi.require_entries, i) as InterfaceDepEntry*;
+            if (entry.provider_module == provider_module) return entry.provider_fingerprint;
+        }
+    }
+    if (before_tier == 1) {
+        for (let j = 0; j < before_index; j = j + 1) {
+            let entry2 = ptr_vec_get(mi.link_entries, j) as InterfaceDepEntry*;
+            if (entry2.provider_module == provider_module) return entry2.provider_fingerprint;
+        }
+    }
+    return null;
+}
+
+/**
+ * Compare one borrowed previous provider value with the current entry.
+ *
+ * @param previous Previously observed provider fingerprint.
+ * @param current Current provider fingerprint.
+ * @return `true` when both values match.
+ */
+func ifp_provider_value_matches(previous: string, current: string) -> bool {
+    return previous == current;
+}
+
+/**
+ * Validate dependency tags and per-provider consistency across both tiers.
+ *
+ * @param mi Module interface whose dependencies should be validated.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` when every dependency fingerprint is valid and consistent.
+ */
+func ifp_validate_dependencies(mi: ModuleInterface*, diags: DiagCollector*, filename: string) -> bool {
+    for (let tier = 0; tier < 2; tier = tier + 1) {
+        let entries = mi.require_entries;
+        if (tier == 1) {
+            entries = mi.link_entries;
+        }
+        for (let i = 0; i < vec_size(entries); i = i + 1) {
+            let entry = ptr_vec_get(entries, i) as InterfaceDepEntry*;
+            let context = "provider fingerprint for '" + entry.provider_module + "::" + entry.symbol_name + "'";
+            if (!ifp_validate_value(entry.provider_fingerprint, context, diags, filename)) {
+                return false;
+            }
+            let previous = ifp_previous_provider_value(mi, tier, i, entry.provider_module);
+            if (previous != null &&
+                !ifp_provider_value_matches(previous as string, entry.provider_fingerprint)) {
+                ifp_error(diags, "SIG-0284", "conflicting fingerprints for provider module '" +
+                    entry.provider_module + "'", filename);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * Compare one borrowed computed value and emit the mismatch diagnostic.
+ *
+ * @param mi Module interface carrying the declared fingerprint.
+ * @param computed Recomputed fingerprint.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` when declared and computed values match.
+ */
+func ifp_verify_computed(mi: ModuleInterface*, computed: string, diags: DiagCollector*,
+                         filename: string) -> bool {
+    if (computed != mi.fingerprint) {
+        ifp_error(diags, "SIG-0282", "module interface fingerprint mismatch: declared '" +
+            mi.fingerprint + "', computed '" + computed + "'", filename);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Validate and recompute a parsed or programmatic module interface.
+ *
+ * @param mi Module interface to verify.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` when tags, dependencies, model, and fingerprint all verify.
+ */
+func ifp_verify(mi: ModuleInterface*, diags: DiagCollector*, filename: string) -> bool {
+    if (!ifp_validate_value(mi.fingerprint, "module interface fingerprint", diags, filename)) {
+        return false;
+    }
+    if (!ifp_validate_dependencies(mi, diags, filename)) {
+        return false;
+    }
+    let computed = ifp_compute(mi, diags, filename);
+    if (computed == null) {
+        return false;
+    }
+    return ifp_verify_computed(mi, computed as string, diags, filename);
+}

@@ -645,6 +645,7 @@ void *_rt_alloc_obj_impl(dea_int bytes, const char *_loc_file, int _loc_line);
 void *_rt_alloc_obj(dea_int bytes);
 uint32_t _rt_fmix32(uint32_t x);
 uint32_t _rt_fold_u64_to_u32_fmix(uint64_t h);
+void l1c_interface_fingerprint_sip13_hex(const uint8_t *data, int32_t len, uint8_t out_hex[16]);
 dea_int _rt_hash_bool(dea_bool value, const uint8_t flags);
 dea_int _rt_hash_byte(dea_byte value, const uint8_t flags);
 dea_int _rt_hash_int(dea_int value, const uint8_t flags);

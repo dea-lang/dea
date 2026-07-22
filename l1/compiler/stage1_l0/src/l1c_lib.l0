@@ -347,6 +347,22 @@ func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
 }
 
 /**
+ * Add the generic interface-projection fallback only when analysis supplied
+ * no specific diagnostic.
+ *
+ * @param result Analysis result that attempted interface projection.
+ * @param fallback_diags Collector receiving the generic fallback diagnostic.
+ * @param module_name Module whose interface projection failed.
+ */
+func l1c_add_interface_projection_fallback(result: AnalysisResult*, fallback_diags: DiagCollector*,
+                                            module_name: string) {
+    if (!analysis_has_errors(result)) {
+        diag_error(fallback_diags, "l1c", "L1C-2030",
+            "failed to project interface for module '" + module_name + "'", "", 0, 0, 0, 0);
+    }
+}
+
+/**
  * Execute Stage 1 `--emit-interface` mode.
  *
  * @param opts Parsed CLI options.
@@ -374,9 +390,13 @@ func l1c_cmd_emit_interface(opts: CliOptions*, cfg: LogConfig*) -> int {
 
         let iface_text = analysis_emit_interface(result, entry_module);
         if (iface_text == null) {
-            diag_error(diags, "l1c", "L1C-2030", "failed to project interface for module '" + entry_module + "'",
-                "", 0, 0, 0, 0);
-            dp_print_collector(diags);
+            if (analysis_has_errors(result)) {
+                dp_print_collector_with_sources(
+                    result.diags, analysis_source_names(result), analysis_source_texts(result));
+            } else {
+                l1c_add_interface_projection_fallback(result, diags, entry_module);
+                dp_print_collector(diags);
+            }
             analysis_result_free(result);
             return 1;
         }

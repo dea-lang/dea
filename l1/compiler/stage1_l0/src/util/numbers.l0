@@ -169,15 +169,15 @@ func bigint_compare_digits(left: string, right: string) -> int {
 }
 
 /**
- * Return the inclusive magnitude limit digits for a builtin integer type and base.
+ * Return the inclusive magnitude limit digits for a builtin integer name and base.
  *
- * @param dst         Destination builtin integer type.
+ * @param dst_name    Destination builtin integer name.
  * @param base        Numeric base (2, 8, 10, or 16).
  * @param is_negative Whether the literal is negative, selecting the signed lower bound.
  * @return The limit digit string, or `null` when the type/sign cannot hold a bigint magnitude.
  */
-func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
-    if (type_is_builtin(dst, "tiny")) {
+func bigint_limit_text_for_name(dst_name: string, base: int, is_negative: bool) -> string? {
+    if (dst_name == "tiny") {
         case (base) {
              2 => { if (is_negative) return "10000000"; return "1111111"; }
              8 => { if (is_negative) return "200"; return "177"; }
@@ -186,7 +186,7 @@ func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
         }
         return null;
     }
-    if (type_is_builtin(dst, "byte")) {
+    if (dst_name == "byte") {
         if (is_negative) return null;
         case (base) {
              2 => { return "11111111"; }
@@ -196,7 +196,7 @@ func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
         }
         return null;
     }
-    if (type_is_builtin(dst, "short")) {
+    if (dst_name == "short") {
         case (base) {
              2 => { if (is_negative) return "1000000000000000"; return "111111111111111"; }
              8 => { if (is_negative) return "100000"; return "77777"; }
@@ -205,7 +205,7 @@ func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
         }
         return null;
     }
-    if (type_is_builtin(dst, "ushort")) {
+    if (dst_name == "ushort") {
         if (is_negative) return null;
         case (base) {
              2 => { return "1111111111111111"; }
@@ -215,7 +215,7 @@ func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
         }
         return null;
     }
-    if (type_is_builtin(dst, "int")) {
+    if (dst_name == "int") {
         case (base) {
              2 => { if (is_negative) return "10000000000000000000000000000000"; return "1111111111111111111111111111111"; }
              8 => { if (is_negative) return "20000000000"; return "17777777777"; }
@@ -224,7 +224,7 @@ func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
         }
         return null;
     }
-    if (type_is_builtin(dst, "uint")) {
+    if (dst_name == "uint") {
         if (is_negative) return null;
         case (base) {
              2 => { return "11111111111111111111111111111111"; }
@@ -234,7 +234,7 @@ func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
         }
         return null;
     }
-    if (type_is_builtin(dst, "long")) {
+    if (dst_name == "long") {
         if (is_negative) {
             case (base) {
                  2 => { return "1000000000000000000000000000000000000000000000000000000000000000"; }
@@ -252,7 +252,7 @@ func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
         }
         return null;
     }
-    if (type_is_builtin(dst, "ulong")) {
+    if (dst_name == "ulong") {
         if (is_negative) return null;
         case (base) {
              2 => { return "1111111111111111111111111111111111111111111111111111111111111111"; }
@@ -263,6 +263,21 @@ func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
         return null;
     }
     return null;
+}
+
+/**
+ * Return the inclusive magnitude limit digits for a builtin integer type and base.
+ *
+ * @param dst         Destination builtin integer type.
+ * @param base        Numeric base (2, 8, 10, or 16).
+ * @param is_negative Whether the literal is negative, selecting the signed lower bound.
+ * @return The limit digit string, or `null` when the type/sign cannot hold a bigint magnitude.
+ */
+func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
+    if (ord(dst.kind) != ord(TY_BUILTIN)) {
+        return null;
+    }
+    return bigint_limit_text_for_name(dst.name, base, is_negative);
 }
 
 /**
@@ -279,4 +294,123 @@ func bigint_fits_builtin(dst: Type*, text: string, base: int) -> bool {
         return false;
     }
     return bigint_compare_digits(bigint_significant_digits(text), limit as string) <= 0;
+}
+
+/**
+ * Validate a canonical bigint payload against its declared base.
+ *
+ * @param text Canonical bigint digits with an optional leading `-`.
+ * @param base Numeric base (2, 8, 10, or 16).
+ * @return `true` when `text` has at least one lowercase digit valid for `base`.
+ */
+func bigint_digits_valid_for_base(text: string, base: int) -> bool {
+    if (base != 2 && base != 8 && base != 10 && base != 16) {
+        return false;
+    }
+    let start = 0;
+    if (bigint_is_negative(text)) {
+        start = 1;
+    }
+    if (start >= len_s(text)) {
+        return false;
+    }
+    for (let i = start; i < len_s(text); i = i + 1) {
+        let digit = -1;
+        let c = char_at_s(text, i);
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            digit = 10 + c - 'a';
+        }
+        if (digit < 0 || digit >= base) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Check whether a bigint literal fits at least one implemented L1 integer domain.
+ *
+ * Negative values are bounded by `long`; non-negative values are bounded by
+ * `ulong`. Both checks reuse the builtin range table used by contextual type
+ * checking.
+ *
+ * @param text Canonical bigint digits with optional leading `-`.
+ * @param base Numeric base (2, 8, 10, or 16).
+ * @return `true` when the value is in the implemented 64-bit integer domain.
+ */
+func bigint_fits_implemented_domain(text: string, base: int) -> bool {
+    if (!bigint_digits_valid_for_base(text, base)) {
+        return false;
+    }
+    let negative = bigint_is_negative(text);
+    let dst_name = "ulong";
+    if (negative) {
+        dst_name = "long";
+    }
+    let limit = bigint_limit_text_for_name(dst_name, base, negative);
+    if (limit == null) {
+        return false;
+    }
+    return bigint_compare_digits(bigint_significant_digits(text), limit as string) <= 0;
+}
+
+/**
+ * Convert one implemented-domain bigint payload to canonical decimal spelling.
+ *
+ * Decimal input is normalized directly. Non-decimal multiply-add conversion
+ * runs only after the implemented-domain check has bounded significant input
+ * to at most 64 bits.
+ *
+ * @param text Canonical bigint digits with optional leading `-`.
+ * @param base Numeric base (2, 8, 10, or 16).
+ * @return Canonical decimal spelling, or `null` for invalid or out-of-domain input.
+ */
+func bigint_to_canonical_decimal(text: string, base: int) -> string? {
+    if (!bigint_fits_implemented_domain(text, base)) {
+        return null;
+    }
+
+    let negative = bigint_is_negative(text);
+    let digits = bigint_significant_digits(text);
+    if (base == 10) {
+        if (negative && digits != "0") {
+            return "-" + digits;
+        }
+        return digits;
+    }
+
+    let decimal = "0";
+    for (let i = 0; i < len_s(digits); i = i + 1) {
+        let digit = -1;
+        let c = char_at_s(digits, i);
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            digit = 10 + c - 'a';
+        }
+        if (digit < 0 || digit >= base) {
+            return null;
+        }
+        with (let reversed = cb_create() => cb_free(reversed)) {
+            let carry = digit;
+            for (let j = len_s(decimal) - 1; j >= 0; j = j - 1) {
+                let value = (char_at_s(decimal, j) - '0') * base + carry;
+                cb_append(reversed, ('0' + (value % 10)) as byte);
+                carry = value / 10;
+            }
+            while (carry > 0) {
+                cb_append(reversed, ('0' + (carry % 10)) as byte);
+                carry = carry / 10;
+            }
+            cb_reverse(reversed);
+            decimal = cb_to_string(reversed);
+        }
+    }
+
+    if (negative && decimal != "0") {
+        return "-" + decimal;
+    }
+    return decimal;
 }

@@ -16,11 +16,14 @@ import sys
 from dataclasses import dataclass
 from typing import Iterable
 
-SCRIPTS_ROOT = Path(__file__).resolve().parents[4] / "scripts"
-if str(SCRIPTS_ROOT) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_ROOT))
+MONOREPO_SCRIPTS_ROOT = Path(__file__).resolve().parents[4] / "scripts"
+L1_SCRIPTS_ROOT = Path(__file__).resolve().parents[3] / "scripts"
+for scripts_root in (MONOREPO_SCRIPTS_ROOT, L1_SCRIPTS_ROOT):
+    if str(scripts_root) not in sys.path:
+        sys.path.insert(0, str(scripts_root))
 
 from dea_tooling.bootstrap import resolve_bootstrap_compiler, wrapper_command
+from build_stage1_l1c import stage1_support_build_env
 
 
 DEFAULT_MAX_JOBS = 12
@@ -155,7 +158,7 @@ def build_repo_test_env(build_dir_text: str, build_dir: Path) -> dict[str, str]:
     env.pop("L1_RUNTIME_INCLUDE", None)
     env.pop("L1_RUNTIME_LIB", None)
     env["PATH"] = prepend_path(env.get("PATH", ""), [REPO_VENV_BIN, build_dir / "bin"])
-    return env
+    return stage1_support_build_env(env)
 
 
 def require_repo_stage1_test_env(entrypoint_name: str) -> tuple[Path, str, Path, dict[str, str]]:

@@ -1,6 +1,6 @@
 module interface mixed.facade;
-fingerprint "mixed-facade";
+fingerprint "sip13:91ea83604e3f5ee8";
 
-require mixed.source_enum::Color == "source-enum";
+require mixed.source_enum::Color == "sip13:684b6416ef05b6a4";
 
-func make_color() -> mixed.source_enum::Color == "";
+func make_color() -> mixed.source_enum::Color;

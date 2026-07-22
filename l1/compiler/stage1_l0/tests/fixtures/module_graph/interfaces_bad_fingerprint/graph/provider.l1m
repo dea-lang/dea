@@ -1,0 +1,4 @@
+module interface graph.provider;
+fingerprint "sip13:0000000000000000";
+
+func value() -> int;

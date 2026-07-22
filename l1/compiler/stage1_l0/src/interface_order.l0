@@ -1,0 +1,193 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module interface_order;
+
+import std.vector;
+import sys.rt;
+
+import ast;
+import module_interface;
+import types;
+
+/** Canonical declaration-group order shared by interface consumers. */
+enum InterfaceDeclKind {
+    IDK_STRUCT;
+    IDK_ENUM;
+    IDK_ALIAS;
+    IDK_FUNC;
+    IDK_CONST;
+    IDK_LET;
+}
+
+/**
+ * Borrowed reference to one declaration owned by a `ModuleInterface`.
+ *
+ * `value` is deliberately untyped so collecting and freeing an ordering does
+ * not alter declaration ownership.
+ */
+struct InterfaceDeclRef {
+    kind: InterfaceDeclKind;
+    name: string;
+    value: void*;
+}
+
+/**
+ * Append one borrowed declaration reference.
+ *
+ * @param refs Destination pointer vector.
+ * @param kind Canonical declaration kind.
+ * @param name Declaration name used within its group.
+ * @param value Borrowed declaration pointer.
+ */
+func io_push_ref(refs: VectorBase*, kind: InterfaceDeclKind, name: string, value: void*) {
+    ptr_vec_push(refs, new InterfaceDeclRef(kind, name, value) as void*);
+}
+
+/**
+ * Return whether the left reference sorts no later than the right reference.
+ *
+ * The non-strict comparison keeps equal keys in source order, which makes the
+ * merge stable even for invalid models that contain duplicate declarations.
+ *
+ * @param left Left declaration reference.
+ * @param right Right declaration reference.
+ * @return `true` when `left` belongs before or at `right`.
+ */
+func io_ref_before_or_equal(left: InterfaceDeclRef*, right: InterfaceDeclRef*) -> bool {
+    let left_kind = ord(left.kind);
+    let right_kind = ord(right.kind);
+    if (left_kind != right_kind) {
+        return left_kind < right_kind;
+    }
+    return rt_string_compare(left.name, right.name) <= 0;
+}
+
+/**
+ * Store one borrowed reference in an existing pointer-vector slot.
+ *
+ * @param refs Pointer vector to update.
+ * @param index Slot index.
+ * @param ref Borrowed reference to store.
+ */
+func io_set_ref(refs: VectorBase*, index: int, ref: InterfaceDeclRef*) {
+    let slot = vec_get(refs, index) as void**;
+    *slot = ref as void*;
+}
+
+/**
+ * Stable-sort declaration references by canonical kind and name.
+ *
+ * Uses an iterative bottom-up merge sort so both worst-case work and stack
+ * usage are bounded independently of declaration count.
+ *
+ * @param refs Owned vector of owned reference wrappers to sort in place.
+ */
+func io_sort_refs(refs: VectorBase*) {
+    let count = vec_size(refs);
+    if (count <= 1) {
+        return;
+    }
+
+    with (let scratch = ptr_vec_create(count) => vec_free(scratch)) {
+        for (let fill = 0; fill < count; fill = fill + 1) {
+            vec_grow(scratch);
+        }
+
+        let width = 1;
+        while (width < count) {
+            let start = 0;
+            while (start < count) {
+                let middle = start + width;
+                if (middle > count) {
+                    middle = count;
+                }
+                let end = middle + width;
+                if (end > count) {
+                    end = count;
+                }
+
+                let left = start;
+                let right = middle;
+                let out = start;
+                while (out < end) {
+                    if (left < middle && (right >= end || io_ref_before_or_equal(
+                        ptr_vec_get(refs, left) as InterfaceDeclRef*,
+                        ptr_vec_get(refs, right) as InterfaceDeclRef*))) {
+                        io_set_ref(scratch, out, ptr_vec_get(refs, left) as InterfaceDeclRef*);
+                        left = left + 1;
+                    } else {
+                        io_set_ref(scratch, out, ptr_vec_get(refs, right) as InterfaceDeclRef*);
+                        right = right + 1;
+                    }
+                    out = out + 1;
+                }
+                start = end;
+            }
+
+            for (let copy_i = 0; copy_i < count; copy_i = copy_i + 1) {
+                io_set_ref(refs, copy_i, ptr_vec_get(scratch, copy_i) as InterfaceDeclRef*);
+            }
+
+            if (width > count / 2) {
+                width = count;
+            } else {
+                width = width * 2;
+            }
+        }
+    }
+}
+
+/**
+ * Collect the exported declarations in canonical order.
+ *
+ * The returned wrappers own only their copied names. Every `value` continues
+ * to be borrowed from `mi` and is valid only while `mi` remains alive.
+ *
+ * @param mi Module interface whose declarations should be ordered.
+ * @return Owned vector of owned `InterfaceDeclRef*` wrappers.
+ */
+func io_collect_declarations(mi: ModuleInterface*) -> VectorBase* {
+    let refs = ptr_vec_create(16);
+    for (let i = 0; i < vec_size(mi.struct_infos); i = i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, i) as StructInfo*;
+        io_push_ref(refs, IDK_STRUCT, info.name, info as void*);
+    }
+    for (let i2 = 0; i2 < vec_size(mi.enum_infos); i2 = i2 + 1) {
+        let info2 = ptr_vec_get(mi.enum_infos, i2) as EnumInfo*;
+        io_push_ref(refs, IDK_ENUM, info2.name, info2 as void*);
+    }
+    for (let i3 = 0; i3 < vec_size(mi.alias_entries); i3 = i3 + 1) {
+        let entry = ptr_vec_get(mi.alias_entries, i3) as InterfaceAliasEntry*;
+        io_push_ref(refs, IDK_ALIAS, entry.name, entry as void*);
+    }
+    for (let i4 = 0; i4 < vec_size(mi.func_entries); i4 = i4 + 1) {
+        let entry2 = ptr_vec_get(mi.func_entries, i4) as InterfaceFuncEntry*;
+        io_push_ref(refs, IDK_FUNC, entry2.name, entry2 as void*);
+    }
+    for (let i5 = 0; i5 < vec_size(mi.let_entries); i5 = i5 + 1) {
+        let entry3 = ptr_vec_get(mi.let_entries, i5) as InterfaceLetEntry*;
+        let kind = IDK_LET;
+        if (entry3.is_const) {
+            kind = IDK_CONST;
+        }
+        io_push_ref(refs, kind, entry3.name, entry3 as void*);
+    }
+    io_sort_refs(refs);
+    return refs;
+}
+
+/**
+ * Free an ordered declaration vector without touching borrowed declarations.
+ *
+ * @param refs Ordered vector returned by `io_collect_declarations`.
+ */
+func io_free_declarations(refs: VectorBase*) {
+    for (let i = 0; i < vec_size(refs); i = i + 1) {
+        let ref = ptr_vec_get(refs, i) as InterfaceDeclRef*;
+        drop ref;
+    }
+    vec_free(refs);
+}

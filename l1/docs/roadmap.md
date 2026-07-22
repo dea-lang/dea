@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-20
+Version: 2026-07-21
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -15,8 +15,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - `compiler/stage2_l1/` is a placeholder for a future self-hosted L1 compiler.
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
 - The current backend emits one C99 translation unit per program.
-- Internal resolution-aware APIs expose canonical artifact associations and a deterministic source/interface module
-  graph; compile-only, standalone linking, and multi-CU build/run remain non-operational.
+- Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
+  and verified whole-module `.l1m` fingerprints; compile-only, standalone linking, and multi-CU build/run remain
+  non-operational.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 - Exact generated-C golden-file parity and L1 triple-bootstrap are not part of the current Stage 1 contract.
@@ -121,6 +122,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   module-to-artifact association, interface-first discovery with caller-selected source fallback, recursive `.l1m`
   closure, deterministic graph enumeration, ordered direct-import edges, and populated `require` / `link` manifests. It
   left compile-only, standalone linking, and multi-CU build/run non-operational.
+- Feature [2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints] replaced
+  per-declaration placeholders with canonical SipHash-1-3 whole-module fingerprints, populated provider expectations,
+  and verified filesystem and registry interfaces before graph registration or replay.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -161,8 +165,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   1 runtime fixtures.
 - Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
   first-position anonymous embedded struct member with promoted field access.
-- Feature [2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints] adds
-  whole-module `.l1m` fingerprint production and consumer verification.
 - Feature [2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref][lifecycle-entrypoints] emits one module per C
   translation unit with external `I4init`, `I4fini`, and conditional `I5entry` lifecycle symbols.
 - Feature [2026-07-17-object-metadata-emission-and-readers-noref][object-metadata] emits Dea object records and adds
@@ -287,7 +289,7 @@ update to be promoted to an initiative or plan:
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
 [interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
-[interface-fingerprints]: ../work/plans/features/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md

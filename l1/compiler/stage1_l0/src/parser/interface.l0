@@ -151,26 +151,8 @@ func pi_expect_string(self: ParserState*, code: string, msg: string) -> Token? {
 }
 
 /**
- * Parse the per-declaration hash suffix: `== "<hash>";`.
- *
- * Common to every exported declaration form in the new `.l1m` format.
- * The hash string is opaque: `""` means no compatibility check is performed,
- * and algorithm-tagged forms like `"sip13:<hex>"` are accepted but not
- * validated by this parser.
- *
- * @param self Parser state.
- * @param semi_code Diagnostic code emitted when the trailing `;` is missing.
- * @return Hash string (possibly empty), or `null` on parse failure.
- */
-func pi_parse_decl_hash_suffix(self: ParserState*, semi_code: string) -> string? {
-    ps_expect(self, ord(TT_EQEQ), "PAR-0574", "Expected '==' after declaration in interface file")?;
-    let hash_tok = pi_expect_string(self, "PAR-0575", "Expected hash string literal after '==' in interface declaration")?;
-    ps_expect(self, ord(TT_SEMI), semi_code, "Expected ';' after declaration in interface file")?;
-    return token_string_text(hash_tok) as string;
-}
-
-/**
- * Parse one `require` or `link` dependency line: `<keyword> <module>::<symbol> == "<hash>";`.
+ * Parse one `require` or `link` dependency line:
+ * `<keyword> <module>::<symbol> == "<provider-fingerprint>";`.
  *
  * @param self Parser state.
  * @return Constructed dependency entry, or `null` on parse failure.
@@ -187,9 +169,13 @@ func pi_parse_dep_line(self: ParserState*) -> InterfaceDepEntry*? {
     let sym_tok = ps_expect_ident(self, "PAR-0572", "Expected provider symbol name in dependency line")?;
     let symbol_name = token_ident_text(sym_tok) as string;
 
-    let hash = pi_parse_decl_hash_suffix(self, "PAR-0576")?;
+    ps_expect(self, ord(TT_EQEQ), "PAR-0574", "Expected '==' after dependency symbol in interface file")?;
+    let fingerprint_tok = pi_expect_string(self, "PAR-0575",
+        "Expected provider fingerprint string literal after '==' in interface dependency")?;
+    ps_expect(self, ord(TT_SEMI), "PAR-0576", "Expected ';' after dependency fingerprint in interface file")?;
 
-    return new InterfaceDepEntry(module_name, symbol_name, hash);
+    return new InterfaceDepEntry(module_name, symbol_name,
+        token_string_text(fingerprint_tok) as string);
 }
 
 /**
@@ -659,17 +645,15 @@ func pi_parse_struct_decl(self: ParserState*, mi: ModuleInterface*, seen: String
             ptr_vec_push(fields as VectorBase*, new StructFieldInfo(field_name, field_type as Type*) as void*);
         }
 
-        ps_expect(self, ord(TT_RBRACE), "PAR-0572", "Expected '}' after struct body");
-
-        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0576");
-        if (hash_opt == null) {
+        if (ps_expect(self, ord(TT_RBRACE), "PAR-0572", "Expected '}' after struct body") == null) {
             return pi_sync_to_semi_or_rbrace(self);
         }
 
         let struct_type = type_new_struct(mi.module_name, name);
         let key = mi.module_name + "::" + name;
         let span = Span(0, 0, 0, 0);
-        let info = new StructInfo(key, mi.module_name, name, "", span, struct_type, fields as VectorBase*, hash_opt as string, false);
+        let info = new StructInfo(key, mi.module_name, name, "", span, struct_type,
+            fields as VectorBase*, false);
         ptr_vec_push(mi.struct_infos, info as void*);
         fields = null;
         return true;
@@ -679,7 +663,7 @@ func pi_parse_struct_decl(self: ParserState*, mi: ModuleInterface*, seen: String
 /**
  * Parse an opaque struct declaration.
  *
- * Expects: `opaque struct Name == "...";`
+ * Expects: `opaque struct Name;`
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
@@ -701,15 +685,14 @@ func pi_parse_opaque_struct_decl(self: ParserState*, mi: ModuleInterface*, seen:
     }
     let name = token_ident_text(name_tok as Token) as string;
 
-    let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0576");
-    if (hash_opt == null) {
+    if (ps_expect(self, ord(TT_SEMI), "PAR-0572", "Expected ';' after opaque struct declaration") == null) {
         return pi_sync_to_semi_or_rbrace(self);
     }
 
     let struct_type = type_new_struct(mi.module_name, name);
     let key = mi.module_name + "::" + name;
     let span = Span(0, 0, 0, 0);
-    let info = new StructInfo(key, mi.module_name, name, "", span, struct_type, ptr_vec_create(0), hash_opt as string, true);
+    let info = new StructInfo(key, mi.module_name, name, "", span, struct_type, ptr_vec_create(0), true);
     ptr_vec_push(mi.struct_infos, info as void*);
     return true;
 }
@@ -790,17 +773,15 @@ func pi_parse_enum_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSe
             }
         }
 
-        ps_expect(self, ord(TT_RBRACE), "PAR-0572", "Expected '}' after enum body");
-
-        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0576");
-        if (hash_opt == null) {
+        if (ps_expect(self, ord(TT_RBRACE), "PAR-0572", "Expected '}' after enum body") == null) {
             return pi_sync_to_semi_or_rbrace(self);
         }
 
         let enum_type = type_new_enum(mi.module_name, name);
         let key = mi.module_name + "::" + name;
         let span = Span(0, 0, 0, 0);
-        let info = new EnumInfo(key, mi.module_name, name, "", span, enum_type, variants as VectorBase*, hash_opt as string, false);
+        let info = new EnumInfo(key, mi.module_name, name, "", span, enum_type,
+            variants as VectorBase*, false);
         ptr_vec_push(mi.enum_infos, info as void*);
         variants = null;
         return true;
@@ -810,7 +791,7 @@ func pi_parse_enum_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSe
 /**
  * Parse an opaque enum declaration.
  *
- * Expects: `opaque enum Name == "...";`
+ * Expects: `opaque enum Name;`
  *
  * @param self Parser state.
  * @param mi ModuleInterface being built.
@@ -832,15 +813,14 @@ func pi_parse_opaque_enum_decl(self: ParserState*, mi: ModuleInterface*, seen: S
     }
     let name = token_ident_text(name_tok as Token) as string;
 
-    let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0576");
-    if (hash_opt == null) {
+    if (ps_expect(self, ord(TT_SEMI), "PAR-0572", "Expected ';' after opaque enum declaration") == null) {
         return pi_sync_to_semi_or_rbrace(self);
     }
 
     let enum_type = type_new_enum(mi.module_name, name);
     let key = mi.module_name + "::" + name;
     let span = Span(0, 0, 0, 0);
-    let info = new EnumInfo(key, mi.module_name, name, "", span, enum_type, ptr_vec_create(0), hash_opt as string, true);
+    let info = new EnumInfo(key, mi.module_name, name, "", span, enum_type, ptr_vec_create(0), true);
     ptr_vec_push(mi.enum_infos, info as void*);
     return true;
 }
@@ -876,12 +856,11 @@ func pi_parse_alias_decl(self: ParserState*, mi: ModuleInterface*, seen: StringS
             return pi_sync_to_semi_or_rbrace(self);
         }
 
-        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0572");
-        if (hash_opt == null) {
+        if (ps_expect(self, ord(TT_SEMI), "PAR-0572", "Expected ';' after type alias declaration") == null) {
             return pi_sync_to_semi_or_rbrace(self);
         }
 
-        let entry = new InterfaceAliasEntry(name, alias_type as Type*, hash_opt as string);
+        let entry = new InterfaceAliasEntry(name, alias_type as Type*);
         ptr_vec_push(mi.alias_entries, entry as void*);
         alias_type = null;
         return true;
@@ -972,15 +951,13 @@ func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSe
             return pi_sync_to_semi_or_rbrace(self);
         }
 
-        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0568");
-        if (hash_opt == null) {
+        if (ps_expect(self, ord(TT_SEMI), "PAR-0568", "Expected ';' after interface function declaration") == null) {
             return pi_sync_to_semi_or_rbrace(self);
         }
 
         let func_type = type_new_func(param_types as VectorBase*, ret_type as Type*, is_unsafe);
         func_type.is_variadic = is_variadic;
-        let entry = new InterfaceFuncEntry(name, param_names as StringVector*, func_type, is_extern,
-            hash_opt as string);
+        let entry = new InterfaceFuncEntry(name, param_names as StringVector*, func_type, is_extern);
         ptr_vec_push(mi.func_entries, entry as void*);
         param_names = null;
         param_types = null;
@@ -1030,12 +1007,11 @@ func pi_parse_const_decl(self: ParserState*, mi: ModuleInterface*, seen: StringS
             return pi_sync_to_semi_or_rbrace(self);
         }
 
-        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0571");
-        if (hash_opt == null) {
+        if (ps_expect(self, ord(TT_SEMI), "PAR-0571", "Expected ';' after interface const declaration") == null) {
             return pi_sync_to_semi_or_rbrace(self);
         }
 
-        let entry = new InterfaceLetEntry(name, const_type as Type*, true, literal as string, hash_opt as string);
+        let entry = new InterfaceLetEntry(name, const_type as Type*, true, literal as string);
         ptr_vec_push(mi.let_entries, entry as void*);
         const_type = null;
         return true;
@@ -1073,12 +1049,11 @@ func pi_parse_let_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet
             return pi_sync_to_semi_or_rbrace(self);
         }
 
-        let hash_opt = pi_parse_decl_hash_suffix(self, "PAR-0569");
-        if (hash_opt == null) {
+        if (ps_expect(self, ord(TT_SEMI), "PAR-0569", "Expected ';' after interface let declaration") == null) {
             return pi_sync_to_semi_or_rbrace(self);
         }
 
-        let entry = new InterfaceLetEntry(name, let_type as Type*, false, "", hash_opt as string);
+        let entry = new InterfaceLetEntry(name, let_type as Type*, false, "");
         ptr_vec_push(mi.let_entries, entry as void*);
         let_type = null;
         return true;

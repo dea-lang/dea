@@ -1,0 +1,763 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module interface_fingerprint_test;
+
+import std.assert;
+import std.io;
+import std.string;
+import std.text;
+import std.vector;
+import sys.rt;
+
+import ast;
+import interface_emitter;
+import interface_fingerprint;
+import interface_literal;
+import interface_order;
+import mi_utils;
+import module_interface;
+import parser.interface;
+import types;
+import util.diag;
+
+/** Parse a valid test interface. */
+func ifpt_parse(text: string, filename: string) -> InterfaceParseResult* {
+    let parsed = pi_parse_interface(text, filename);
+    assert(!ipr_has_errors(parsed), "expected interface parse success for " + filename);
+    assert(parsed.interface != null, "expected interface metadata for " + filename);
+    return parsed;
+}
+
+/** Assert the first diagnostic has the requested code. */
+func ifpt_assert_first_code(diags: DiagCollector*, code: string, context: string) {
+    assert(diag_has_errors(diags), "expected diagnostic for " + context);
+    assert(diag_count(diags) > 0, "expected diagnostic item for " + context);
+    assert(diag_get(diags, 0).code == code, "unexpected diagnostic code for " + context);
+}
+
+/** Compare a borrowed optional string without creating an unwrap alias. */
+func ifpt_optional_equals(value: string?, expected: string) -> bool {
+    if (value == null) {
+        return false;
+    }
+    return ifpt_plain_equals(value as string, expected);
+}
+
+/** Compare two borrowed plain strings. */
+func ifpt_plain_equals(left: string, right: string) -> bool {
+    return left == right;
+}
+
+/** Compare two borrowed optional strings. */
+func ifpt_optionals_equal(left: string?, right: string?) -> bool {
+    if (left == null || right == null) {
+        return false;
+    }
+    return ifpt_optional_equals(right, left as string);
+}
+
+/** Search a borrowed optional string. */
+func ifpt_optional_contains(value: string?, needle: string) -> bool {
+    if (value == null) {
+        return false;
+    }
+    return ifpt_plain_contains(value as string, needle);
+}
+
+/** Search a borrowed plain string. */
+func ifpt_plain_contains(value: string, needle: string) -> bool {
+    return contains_s(value, needle);
+}
+
+/** Assert two interface surfaces have distinct canonical bytes. */
+func ifpt_assert_surface_diff(left_text: string, right_text: string, context: string) {
+    let left = ifpt_parse(left_text, "<surface-left>");
+    let right = ifpt_parse(right_text, "<surface-right>");
+    let left_diags = diag_create();
+    let right_diags = diag_create();
+    let left_bytes = ifp_canonicalize(left.interface as ModuleInterface*, left_diags, "<surface-left>");
+    let right_bytes = ifp_canonicalize(right.interface as ModuleInterface*, right_diags, "<surface-right>");
+    assert(left_bytes != null && right_bytes != null, "surface mutation fixtures should canonicalize: " + context);
+    assert(!ifpt_optionals_equal(left_bytes, right_bytes), "surface mutation must alter canonical bytes: " + context);
+    diag_free(left_diags);
+    diag_free(right_diags);
+    ipr_free(left);
+    ipr_free(right);
+}
+
+/** Assert one programmatically inconsistent model reports SIG-0283. */
+func ifpt_assert_invalid_model(mi: ModuleInterface*, context: string) {
+    let diags = diag_create();
+    assert(ifp_canonicalize(mi, diags, "<invalid-model>") == null,
+        "inconsistent model should not canonicalize: " + context);
+    ifpt_assert_first_code(diags, "SIG-0283", context);
+    diag_free(diags);
+}
+
+/** Assert stale array metadata is rejected on one non-array type. */
+func ifpt_assert_stale_array_len(mi: ModuleInterface*, ty: Type*, context: string) {
+    ty.array_len = 7;
+    ifpt_assert_invalid_model(mi, context);
+    ty.array_len = 0;
+}
+
+/** Test exact framing and a pinned whole-surface digest. */
+func test_interface_fingerprint_exact_canonical_bytes() {
+    let source = "module interface sample;\n" +
+        "fingerprint \"\";\n" +
+        "struct Pair {\n" +
+        "  left: int;\n" +
+        "  right: dep.mod::Thing?;\n" +
+        "}\n" +
+        "func choose(flag: bool, value: Pair*) -> dep.mod::Thing;\n" +
+        "const answer: int = 42;\n" +
+        "let label: string;\n";
+    let expected = "l1-interface-fingerprint-v1\n" +
+        "88:6:struct4:Pair1:24:left14:7:builtin3:int5:right38:8:nullable25:7:nominal7:dep.mod5:Thing\n" +
+        "117:4:func6:choose1:01:01:01:24:flag15:7:builtin4:bool5:value29:7:pointer17:7:nominal0:4:Pair25:7:nominal7:dep.mod5:Thing\n" +
+        "36:5:const6:answer14:7:builtin3:int2:42\n" +
+        "32:3:let5:label17:7:builtin6:string\n";
+
+    let parsed = ifpt_parse(source, "<exact-canonical>");
+    let diags = diag_create();
+    let canonical = ifp_canonicalize(parsed.interface as ModuleInterface*, diags, "<exact-canonical>");
+    assert(canonical != null, "exact interface should canonicalize");
+    assert(!diag_has_errors(diags), "exact interface should not diagnose");
+    assert(ifpt_optional_equals(canonical, expected), "canonical byte framing mismatch");
+    let computed = ifp_compute(parsed.interface as ModuleInterface*, diags, "<exact-canonical>");
+    assert(computed != null, "exact interface should fingerprint");
+    assert(ifpt_optional_equals(computed, "sip13:3691c40b99cbdd03"), "pinned whole-surface digest mismatch");
+    assert(ifp_assign(parsed.interface as ModuleInterface*, diags, "<exact-canonical>"),
+        "fingerprint assignment should succeed");
+    assert(ifp_verify(parsed.interface as ModuleInterface*, diags, "<exact-canonical>"),
+        "assigned interface should verify");
+    diag_free(diags);
+    ipr_free(parsed);
+}
+
+/** Test digest formatting preserves a leading zero. */
+func test_interface_fingerprint_leading_zero_digest() {
+    assert(ifp_hash_canonical_bytes("input") == "sip13:0c3810c9b2f8823a",
+        "digest formatting must preserve all sixteen lowercase hex digits");
+}
+
+/** Test declaration sorting and excluded metadata. */
+func test_interface_fingerprint_order_and_exclusions() {
+    let first_text = "module interface first;\n" +
+        "fingerprint \"opaque:first\";\n" +
+        "require dep::item == \"opaque:dependency\";\n" +
+        "func zed() -> int;\n" +
+        "func alpha() -> int;\n";
+    let second_text = "module interface second;\n" +
+        "fingerprint \"anything:second\";\n" +
+        "func alpha() -> int;\n" +
+        "func zed() -> int;\n";
+    let first = ifpt_parse(first_text, "<order-first>");
+    let second = ifpt_parse(second_text, "<order-second>");
+    let first_diags = diag_create();
+    let second_diags = diag_create();
+    let a = ifp_canonicalize(first.interface as ModuleInterface*, first_diags, "<order-first>");
+    let b = ifp_canonicalize(second.interface as ModuleInterface*, second_diags, "<order-second>");
+    assert(a != null && b != null, "order fixtures should canonicalize");
+    assert(ifpt_optionals_equal(a, b),
+        "module identity, fingerprint, dependencies, and declaration order must be excluded");
+    diag_free(first_diags);
+    diag_free(second_diags);
+    ipr_free(first);
+    ipr_free(second);
+}
+
+/** Test shared ordering is stable, borrowed, grouped, and scalable. */
+func test_interface_fingerprint_shared_declaration_order() {
+    let parsed = ifpt_parse(
+        "module interface ordered;\nfingerprint \"\";\n" +
+        "struct Zebra { value: int; }\nstruct AlphaStruct { value: int; }\n" +
+        "enum Yak { Item; }\nenum BetaEnum { ItemB; }\n" +
+        "type Xray = int;\ntype GammaAlias = int;\n" +
+        "func whiskey() -> int;\nfunc delta_func() -> int;\n" +
+        "const victor: int = 1;\nconst echo_const: int = 2;\n" +
+        "let uniform: int;\nlet foxtrot_let: int;\n",
+        "<shared-order>"
+    );
+    let mi = parsed.interface as ModuleInterface*;
+    with (let refs = io_collect_declarations(mi) => io_free_declarations(refs)) {
+        assert(vec_size(refs) == 12, "shared order should contain every declaration exactly once");
+        let expected = sv_create(12);
+        sv_push(expected, "AlphaStruct");
+        sv_push(expected, "Zebra");
+        sv_push(expected, "BetaEnum");
+        sv_push(expected, "Yak");
+        sv_push(expected, "GammaAlias");
+        sv_push(expected, "Xray");
+        sv_push(expected, "delta_func");
+        sv_push(expected, "whiskey");
+        sv_push(expected, "echo_const");
+        sv_push(expected, "victor");
+        sv_push(expected, "foxtrot_let");
+        sv_push(expected, "uniform");
+        for (let i = 0; i < vec_size(refs); i = i + 1) {
+            assert((ptr_vec_get(refs, i) as InterfaceDeclRef*).name == sv_get(expected, i),
+                "shared declaration order mismatch");
+        }
+        let borrowed_struct = (ptr_vec_get(refs, 0) as InterfaceDeclRef*).value as StructInfo*;
+        borrowed_struct.is_opaque = true;
+        assert((ptr_vec_get(mi.struct_infos, 1) as StructInfo*).is_opaque,
+            "ordered refs must preserve borrowed declaration identity");
+        borrowed_struct.is_opaque = false;
+        sv_free(expected);
+    }
+
+    let stable = ptr_vec_create(2);
+    let first_marker = type_builtin_int();
+    let second_marker = type_builtin_bool();
+    io_push_ref(stable, IDK_ALIAS, "same", first_marker as void*);
+    io_push_ref(stable, IDK_ALIAS, "same", second_marker as void*);
+    io_sort_refs(stable);
+    assert(((ptr_vec_get(stable, 0) as InterfaceDeclRef*).value as Type*).name == "int" &&
+        ((ptr_vec_get(stable, 1) as InterfaceDeclRef*).value as Type*).name == "bool",
+        "equal declaration keys must retain source order");
+    io_free_declarations(stable);
+    type_free(first_marker);
+    type_free(second_marker);
+
+    for (let i2 = 255; i2 >= 0; i2 = i2 - 1) {
+        ptr_vec_push(mi.alias_entries,
+            new InterfaceAliasEntry("bulk_" + int_to_string(i2), type_builtin_int()) as void*);
+    }
+    with (let large = io_collect_declarations(mi) => io_free_declarations(large)) {
+        assert(vec_size(large) == 268, "large shared order should retain every declaration");
+        for (let i3 = 1; i3 < vec_size(large); i3 = i3 + 1) {
+            let previous = ptr_vec_get(large, i3 - 1) as InterfaceDeclRef*;
+            let current = ptr_vec_get(large, i3) as InterfaceDeclRef*;
+            assert(ord(previous.kind) < ord(current.kind) ||
+                (ord(previous.kind) == ord(current.kind) &&
+                 rt_string_compare(previous.name, current.name) <= 0),
+                "large shared order must be nondecreasing by kind and name");
+        }
+    }
+    let diags = diag_create();
+    let large_canonical = ifp_canonicalize(mi, diags, "<shared-order-large>");
+    assert(large_canonical != null,
+        "large reverse-ordered surface should canonicalize");
+    let large_emitted = ie_emit(mi);
+    assert(contains_s(large_emitted, "type bulk_0 = int;"),
+        "large reverse-ordered surface should emit through shared refs");
+    assert(!diag_has_errors(diags), "large reverse-ordered surface should not diagnose");
+    diag_free(diags);
+    ipr_free(parsed);
+}
+
+/** Test deep mixed wrapper types stream with measured framing. */
+func test_interface_fingerprint_deep_type_streaming() {
+    let parsed = ifpt_parse("module interface deep;\nfingerprint \"\";\n", "<deep-type>");
+    let mi = parsed.interface as ModuleInterface*;
+    let ty = type_builtin_int();
+    let expected_payload = ifp_frame("builtin") + ifp_frame("int");
+    for (let i = 0; i < 768; i = i + 1) {
+        if (i % 4 == 0) {
+            ty = type_new_pointer(ty);
+            expected_payload = ifp_frame("pointer") + ifp_frame(expected_payload);
+        } else if (i % 4 == 1) {
+            ty = type_new_nullable(ty);
+            expected_payload = ifp_frame("nullable") + ifp_frame(expected_payload);
+        } else if (i % 4 == 2) {
+            ty = type_new_slice(ty);
+            expected_payload = ifp_frame("slice") + ifp_frame(expected_payload);
+        } else {
+            ty = type_new_array(ty, 2);
+            expected_payload = ifp_frame("array") + ifp_frame("2") + ifp_frame(expected_payload);
+        }
+    }
+    ptr_vec_push(mi.alias_entries, new InterfaceAliasEntry("Deep", ty) as void*);
+    let expected_record = ifp_frame("alias") + ifp_frame("Deep") + ifp_frame(expected_payload);
+    let expected = IFP_DOMAIN + ifp_frame(expected_record) + "\n";
+    let diags = diag_create();
+    let canonical = ifp_canonicalize(mi, diags, "<deep-type>");
+    assert(canonical != null, "deep mixed type should canonicalize");
+    assert(ifpt_optional_equals(canonical, expected),
+        "deep mixed type must preserve exact measured canonical bytes");
+    let computed = ifp_compute(mi, diags, "<deep-type>");
+    assert(ifpt_optional_equals(computed, "sip13:63bccbd5e89c6e28"),
+        "deep mixed type must preserve its pinned digest");
+    assert(!diag_has_errors(diags), "deep mixed type should not diagnose");
+    diag_free(diags);
+    ipr_free(parsed);
+}
+
+/** Test measured type-size overflow reports the compatibility diagnostic. */
+func test_interface_fingerprint_type_size_overflow() {
+    let diags = diag_create();
+    assert(ifp_checked_size_add(2147483647, 1, diags, "<type-size-overflow>") == null,
+        "type-size overflow must not wrap");
+    ifpt_assert_first_code(diags, "SIG-0283", "type-size overflow");
+    diag_free(diags);
+}
+
+/** Test nominal kind normalization does not change type wire identity. */
+func test_interface_fingerprint_nominal_kind_independence() {
+    let parsed = ifpt_parse(
+        "module interface nominal;\nfingerprint \"\";\nlet value: dep::Thing;\n",
+        "<nominal-kind>"
+    );
+    let diags = diag_create();
+    let before = ifp_canonicalize(parsed.interface as ModuleInterface*, diags, "<nominal-kind>");
+    let entry = ptr_vec_get((parsed.interface as ModuleInterface*).let_entries, 0) as InterfaceLetEntry*;
+    entry.ty.kind = TY_ENUM;
+    let after = ifp_canonicalize(parsed.interface as ModuleInterface*, diags, "<nominal-kind>");
+    assert(ifpt_optionals_equal(before, after),
+        "struct/enum semantic normalization must not alter nominal type bytes");
+    diag_free(diags);
+    ipr_free(parsed);
+}
+
+/** Test public-surface changes alter the canonical stream. */
+func test_interface_fingerprint_surface_mutations() {
+    let header = "module interface mutation;\nfingerprint \"\";\n";
+    ifpt_assert_surface_diff(header + "struct S { a: int; }\n",
+        header + "struct T { a: int; }\n", "struct name");
+    ifpt_assert_surface_diff(header, header + "struct S { a: int; }\n", "struct addition");
+    ifpt_assert_surface_diff(header + "struct S { a: int; b: bool; }\n",
+        header + "struct S { b: bool; a: int; }\n", "struct field order");
+    ifpt_assert_surface_diff(header + "struct S { a: int; }\n",
+        header + "struct S { other: int; }\n", "struct field name");
+    ifpt_assert_surface_diff(header + "struct S { a: int; }\n",
+        header + "struct S { a: bool; }\n", "struct field type");
+
+    ifpt_assert_surface_diff(header + "enum E { A; }\n",
+        header + "enum F { A; }\n", "enum name");
+    ifpt_assert_surface_diff(header, header + "enum E { A; }\n", "enum addition");
+    ifpt_assert_surface_diff(header + "enum E { A; B; }\n",
+        header + "enum E { B; A; }\n", "enum variant order");
+    ifpt_assert_surface_diff(header + "enum E { A; }\n",
+        header + "enum E { Other; }\n", "enum variant name");
+    ifpt_assert_surface_diff(header + "enum E { A(x: int, y: bool); }\n",
+        header + "enum E { A(y: bool, x: int); }\n", "enum payload order");
+    ifpt_assert_surface_diff(header + "enum E { A(x: int); }\n",
+        header + "enum E { A(other: int); }\n", "enum payload name");
+    ifpt_assert_surface_diff(header + "enum E { A(x: int); }\n",
+        header + "enum E { A(x: bool); }\n", "enum payload type");
+
+    ifpt_assert_surface_diff(header + "type A = int;\n", header + "type B = int;\n", "alias name");
+    ifpt_assert_surface_diff(header + "type A = int;\n", header + "type A = bool;\n", "alias target");
+    ifpt_assert_surface_diff(header + "func f(x: int) -> bool;\n",
+        header + "func g(x: int) -> bool;\n", "function name");
+    ifpt_assert_surface_diff(header + "func f(x: int) -> bool;\n",
+        header + "extern func f(x: int) -> bool;\n", "extern flag");
+    ifpt_assert_surface_diff(header + "func f(x: int) -> bool;\n",
+        header + "unsafe func f(x: int) -> bool;\n", "unsafe flag");
+    ifpt_assert_surface_diff(header + "func f(x: int) -> bool;\n",
+        header + "func f(x: int...) -> bool;\n", "variadic flag and shape");
+    ifpt_assert_surface_diff(header + "func f(x: int) -> bool;\n",
+        header + "func f(other: int) -> bool;\n", "parameter name");
+    ifpt_assert_surface_diff(header + "func f(x: int) -> bool;\n",
+        header + "func f(x: byte) -> bool;\n", "parameter type");
+    ifpt_assert_surface_diff(header + "func f(x: int, y: bool) -> bool;\n",
+        header + "func f(y: bool, x: int) -> bool;\n", "parameter order");
+    ifpt_assert_surface_diff(header + "func f(x: int) -> bool;\n",
+        header + "func f(x: int) -> byte;\n", "result type");
+
+    ifpt_assert_surface_diff(header + "const value: int = 1;\n",
+        header + "const other: int = 1;\n", "const name");
+    ifpt_assert_surface_diff(header + "const value: int = 1;\n",
+        header + "const value: byte = 1;\n", "const type");
+    ifpt_assert_surface_diff(header + "const value: int = 1;\n",
+        header + "const value: int = 2;\n", "const literal");
+    ifpt_assert_surface_diff(header + "let value: int;\n",
+        header + "let other: int;\n", "let name");
+    ifpt_assert_surface_diff(header + "let value: int;\n",
+        header + "let value: bool;\n", "let type");
+}
+
+/** Test every nested type tag and its identity-bearing fields. */
+func test_interface_fingerprint_nested_type_mutations() {
+    let header = "module interface nested;\nfingerprint \"\";\n";
+    ifpt_assert_surface_diff(header + "type A = dep::Thing;\n",
+        header + "type A = other::Thing;\n", "nominal module");
+    ifpt_assert_surface_diff(header + "type A = dep::Thing;\n",
+        header + "type A = dep::Other;\n", "nominal name");
+    ifpt_assert_surface_diff(header + "type A = int*;\n",
+        header + "type A = int?;\n", "pointer versus nullable tag");
+    ifpt_assert_surface_diff(header + "type A = int?;\n",
+        header + "type A = int[];\n", "nullable versus slice tag");
+    ifpt_assert_surface_diff(header + "type A = int[2];\n",
+        header + "type A = int[3];\n", "array length");
+    ifpt_assert_surface_diff(header + "type A = func(int) -> bool;\n",
+        header + "type A = unsafe func(int) -> bool;\n", "function type unsafe flag");
+    ifpt_assert_surface_diff(header + "type A = func(int) -> bool;\n",
+        header + "type A = func(int...) -> bool;\n", "function type variadic flag");
+    ifpt_assert_surface_diff(header + "type A = func(int) -> bool;\n",
+        header + "type A = func(int) -> byte;\n", "function type result");
+}
+
+/** Test opaque declarations exclude their hidden layout and variants. */
+func test_interface_fingerprint_opacity() {
+    let parsed = ifpt_parse(
+        "module interface opacity;\nfingerprint \"\";\n" +
+        "struct S { hidden: int; }\n" +
+        "enum E { Hidden(value: int); }\n",
+        "<opacity>"
+    );
+    let mi = parsed.interface as ModuleInterface*;
+    let struct_info = ptr_vec_get(mi.struct_infos, 0) as StructInfo*;
+    let enum_info = ptr_vec_get(mi.enum_infos, 0) as EnumInfo*;
+    let diags = diag_create();
+    let transparent = ifp_canonicalize(mi, diags, "<opacity>");
+    struct_info.is_opaque = true;
+    enum_info.is_opaque = true;
+    let opaque = ifp_canonicalize(mi, diags, "<opacity>");
+    assert(transparent != null && opaque != null && !ifpt_optionals_equal(transparent, opaque),
+        "opacity markers must alter canonical identity");
+
+    (ptr_vec_get(struct_info.fields, 0) as StructFieldInfo*).name = "";
+    let hidden_variant = ptr_vec_get(enum_info.variants, 0) as EnumVariantInfo*;
+    hidden_variant.name = "S";
+    sv_push(hidden_variant.field_names, "inconsistent-hidden-count");
+    let changed_hidden = ifp_canonicalize(mi, diags, "<opacity>");
+    assert(ifpt_optionals_equal(opaque, changed_hidden),
+        "opaque layout and variant changes must be excluded from canonical identity");
+    assert(!diag_has_errors(diags), "valid opaque metadata should not diagnose");
+    diag_free(diags);
+    ipr_free(parsed);
+}
+
+/** Test UTF-8 byte lengths and delimiter-safe framing. */
+func test_interface_fingerprint_utf8_and_delimiters() {
+    assert(ifp_frame("é") == "2:é", "framing length must count UTF-8 bytes rather than characters");
+
+    let first = ifpt_parse(
+        "module interface delimiters;\nfingerprint \"\";\nconst marker: string = \"a:b\";\n",
+        "<delimiter-a>"
+    );
+    let second = ifpt_parse(
+        "module interface delimiters;\nfingerprint \"\";\nconst marker: string = \"ab:\";\n",
+        "<delimiter-b>"
+    );
+    let d1 = diag_create();
+    let d2 = diag_create();
+    let a = ifp_canonicalize(first.interface as ModuleInterface*, d1, "<delimiter-a>");
+    let b = ifp_canonicalize(second.interface as ModuleInterface*, d2, "<delimiter-b>");
+    assert(b != null && !ifpt_optionals_equal(a, b),
+        "embedded delimiters must remain unambiguous under length framing");
+    diag_free(d1);
+    diag_free(d2);
+    ipr_free(first);
+    ipr_free(second);
+
+    let boundary_header = "module interface boundary;\nfingerprint \"\";\n";
+    ifpt_assert_surface_diff(boundary_header + "let value: a::bc;\n",
+        boundary_header + "let value: ab::c;\n",
+        "framing must distinguish equal naive nominal concatenations");
+}
+
+/** Test canonical folded-literal normalization and model guards. */
+func test_interface_fingerprint_literal_canonicalization() {
+    assert(ifpt_optional_equals(il_canonicalize_literal("0x2a", "literals"), "42"),
+        "hex integer literals should normalize to decimal");
+    assert(ifpt_optional_equals(il_canonicalize_literal("00042", "literals"), "42"),
+        "leading-zero integer literals should normalize to decimal");
+    assert(ifpt_optional_equals(il_canonicalize_literal("0xffffffff", "literals"), "4294967295"),
+        "hex bigint literals should normalize to decimal");
+    assert(ifpt_optional_equals(il_canonicalize_literal("00000000004294967295", "literals"), "4294967295"),
+        "leading-zero decimal bigint literals should normalize to decimal");
+    assert(ifpt_optional_equals(il_canonicalize_literal("'A'", "literals"), "65"),
+        "byte literals should normalize to unsigned decimal");
+    assert(ifpt_optional_equals(il_canonicalize_literal("\"\\x41\"", "literals"), "\"A\""),
+        "equivalent string escapes should normalize to decoded bytes");
+    assert(ifpt_optional_equals(il_canonicalize_literal("\"é\"", "literals"), "\"\\303\\251\""),
+        "non-ASCII string bytes should use the pinned octal spelling");
+    assert(il_literal_is_canonical("\"\\303\\251\"", "literals"),
+        "canonical non-ASCII string spelling should be a normalization fixed point");
+    assert(il_canonicalize_literal("\"\\xFFFFFFFFFFFFFFFF\"", "literals") == null,
+        "oversized hexadecimal string escapes should fail canonicalization safely");
+    let nested = il_canonicalize_literal(
+        "literals::Wrap([0x2a, '\\x41', \"\\x41\"])", "literals");
+    assert(ifpt_optional_equals(nested, "Wrap([42, 65, \"A\"])"),
+        "nested literals and same-module constructors should normalize recursively");
+
+    let noncanonical = ifpt_parse(
+        "module interface literals;\nfingerprint \"\";\nconst value: int = 0x2a;\n",
+        "<noncanonical-literal>"
+    );
+    let noncanonical_mi = noncanonical.interface as ModuleInterface*;
+    let entry = ptr_vec_get(noncanonical_mi.let_entries, 0) as InterfaceLetEntry*;
+    assert(entry.literal == "0x2a", "low-level parsing should preserve the literal token spelling");
+    assert(contains_s(ie_emit(noncanonical_mi), "const value: int = 0x2a;"),
+        "low-level emission should preserve the parsed literal spelling");
+    ifpt_assert_invalid_model(noncanonical_mi, "non-canonical folded literal");
+    ipr_free(noncanonical);
+
+    let canonical = ifpt_parse(
+        "module interface literals;\nfingerprint \"\";\n" +
+        "const number: int = 42;\nconst octet: byte = 65;\nconst text: string = \"A\";\n",
+        "<canonical-literals>"
+    );
+    let canonical_diags = diag_create();
+    let canonical_bytes = ifp_canonicalize(canonical.interface as ModuleInterface*, canonical_diags,
+        "<canonical-literals>");
+    assert(canonical_bytes != null, "producer-canonical literal spellings should fingerprint");
+    assert(!diag_has_errors(canonical_diags), "canonical literal spellings should not diagnose");
+    diag_free(canonical_diags);
+    ipr_free(canonical);
+
+    let canonical_utf8 = ifpt_parse(
+        "module interface literals;\nfingerprint \"\";\nconst text: string = \"\\303\\251\";\n",
+        "<canonical-utf8-literal>"
+    );
+    let utf8_diags = diag_create();
+    assert(ifp_assign(canonical_utf8.interface as ModuleInterface*, utf8_diags,
+        "<canonical-utf8-literal>"), "canonical non-ASCII producer spelling should fingerprint");
+    assert(!diag_has_errors(utf8_diags), "canonical non-ASCII producer spelling should not diagnose");
+    diag_free(utf8_diags);
+    ipr_free(canonical_utf8);
+}
+
+/** Test canonical tag validation and diagnostic classification. */
+func test_interface_fingerprint_tag_validation() {
+    let valid = diag_create();
+    assert(ifp_validate_value("sip13:0123456789abcdef", "test fingerprint", valid, "<tag>"),
+        "canonical sip13 tag should validate");
+    assert(!diag_has_errors(valid), "canonical tag should not diagnose");
+    diag_free(valid);
+
+    let malformed_values = sv_create(8);
+    sv_push(malformed_values, "");
+    sv_push(malformed_values, "untagged");
+    sv_push(malformed_values, "Sip13:0123456789abcdef");
+    sv_push(malformed_values, "sip13:ABCDEF0123456789");
+    sv_push(malformed_values, "sip13:0123456789abcde");
+    sv_push(malformed_values, "sip13:0123456789abcdef0");
+    sv_push(malformed_values, "sip13:0123456789abcdeg");
+    sv_push(malformed_values, "sip13:01234567:9abcdef");
+    for (let i = 0; i < sv_size(malformed_values); i = i + 1) {
+        let diags = diag_create();
+        assert(!ifp_validate_value(sv_get(malformed_values, i), "test fingerprint", diags, "<tag>"),
+            "malformed fingerprint should fail");
+        ifpt_assert_first_code(diags, "SIG-0280", "malformed fingerprint");
+        diag_free(diags);
+    }
+    sv_free(malformed_values);
+
+    let unsupported = diag_create();
+    assert(!ifp_validate_value("other1:0123456789abcdef", "test fingerprint", unsupported, "<tag>"),
+        "unsupported algorithm should fail");
+    ifpt_assert_first_code(unsupported, "SIG-0281", "unsupported algorithm");
+    diag_free(unsupported);
+}
+
+/** Test dependency validation and same-provider consistency. */
+func test_interface_fingerprint_dependency_validation() {
+    let parsed = ifpt_parse(
+        "module interface deps;\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
+        "require provider::One == \"sip13:1111111111111111\";\n" +
+        "link provider::Two == \"sip13:2222222222222222\";\n",
+        "<dependency-consistency>"
+    );
+    let diags = diag_create();
+    assert(!ifp_validate_dependencies(parsed.interface as ModuleInterface*, diags,
+        "<dependency-consistency>"), "conflicting provider fingerprints should fail");
+    ifpt_assert_first_code(diags, "SIG-0284", "dependency consistency");
+    diag_free(diags);
+    ipr_free(parsed);
+}
+
+/** Test mismatches and inconsistent canonical models diagnose distinctly. */
+func test_interface_fingerprint_verification_failures() {
+    let mismatch = ifpt_parse(
+        "module interface mismatch;\nfingerprint \"sip13:0000000000000000\";\nfunc ping() -> void;\n",
+        "<mismatch>"
+    );
+    let mismatch_diags = diag_create();
+    assert(!ifp_verify(mismatch.interface as ModuleInterface*, mismatch_diags, "<mismatch>"),
+        "wrong declared fingerprint should fail verification");
+    ifpt_assert_first_code(mismatch_diags, "SIG-0282", "fingerprint mismatch");
+    diag_free(mismatch_diags);
+    ipr_free(mismatch);
+
+    let inconsistent = ifpt_parse(
+        "module interface inconsistent;\nfingerprint \"\";\nlet items: int[2];\n",
+        "<inconsistent>"
+    );
+    let entry = ptr_vec_get((inconsistent.interface as ModuleInterface*).let_entries, 0) as InterfaceLetEntry*;
+    entry.ty.array_len = 0;
+    ifpt_assert_invalid_model(inconsistent.interface as ModuleInterface*, "array length");
+    ipr_free(inconsistent);
+}
+
+/** Test canonicalization rejects impossible type and vector metadata. */
+func test_interface_fingerprint_model_guards() {
+    let null_type = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nlet value: int;\n", "<guard-null>"
+    );
+    (ptr_vec_get((null_type.interface as ModuleInterface*).let_entries, 0) as InterfaceLetEntry*).ty.kind = TY_NULL;
+    ifpt_assert_invalid_model(null_type.interface as ModuleInterface*, "TY_NULL");
+    ipr_free(null_type);
+
+    let stale_builtin = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nlet value: int;\n", "<guard-builtin-array-len>"
+    );
+    let stale_builtin_ty = (ptr_vec_get((stale_builtin.interface as ModuleInterface*).let_entries, 0)
+        as InterfaceLetEntry*).ty;
+    ifpt_assert_stale_array_len(stale_builtin.interface as ModuleInterface*, stale_builtin_ty,
+        "builtin stale array length");
+    ipr_free(stale_builtin);
+
+    let stale_nominal = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nlet value: dep::Thing;\n", "<guard-nominal-array-len>"
+    );
+    let stale_nominal_ty = (ptr_vec_get((stale_nominal.interface as ModuleInterface*).let_entries, 0)
+        as InterfaceLetEntry*).ty;
+    ifpt_assert_stale_array_len(stale_nominal.interface as ModuleInterface*, stale_nominal_ty,
+        "nominal stale array length");
+    ipr_free(stale_nominal);
+
+    let stale_wrappers = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\n" +
+        "let pointer: int*;\nlet nullable: int?;\nlet slice: int[];\n",
+        "<guard-wrapper-array-len>"
+    );
+    for (let wrapper_index = 0; wrapper_index < 3; wrapper_index = wrapper_index + 1) {
+        let wrapper_ty = (ptr_vec_get((stale_wrappers.interface as ModuleInterface*).let_entries,
+            wrapper_index) as InterfaceLetEntry*).ty;
+        ifpt_assert_stale_array_len(stale_wrappers.interface as ModuleInterface*, wrapper_ty,
+            "wrapper stale array length");
+    }
+    ipr_free(stale_wrappers);
+
+    let stale_function = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\ntype Callback = func(int) -> bool;\n",
+        "<guard-function-array-len>"
+    );
+    let stale_function_ty = (ptr_vec_get((stale_function.interface as ModuleInterface*).alias_entries, 0)
+        as InterfaceAliasEntry*).ty;
+    ifpt_assert_stale_array_len(stale_function.interface as ModuleInterface*, stale_function_ty,
+        "function stale array length");
+    ipr_free(stale_function);
+
+    let enum_counts = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nenum E { A(value: int); }\n", "<guard-enum-count>"
+    );
+    let enum_info = ptr_vec_get((enum_counts.interface as ModuleInterface*).enum_infos, 0) as EnumInfo*;
+    let variant = ptr_vec_get(enum_info.variants, 0) as EnumVariantInfo*;
+    sv_push(variant.field_names, "extra");
+    ifpt_assert_invalid_model(enum_counts.interface as ModuleInterface*, "enum payload vector count");
+    ipr_free(enum_counts);
+
+    let stale_declaration_types = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nstruct S { value: int; }\nenum E { A; }\n",
+        "<guard-declaration-type-metadata>"
+    );
+    let stale_struct_info = ptr_vec_get(
+        (stale_declaration_types.interface as ModuleInterface*).struct_infos, 0) as StructInfo*;
+    stale_struct_info.struct_type.array_len = 1;
+    ifpt_assert_invalid_model(stale_declaration_types.interface as ModuleInterface*,
+        "struct declaration type metadata");
+    stale_struct_info.struct_type.array_len = 0;
+    let stale_enum_info = ptr_vec_get(
+        (stale_declaration_types.interface as ModuleInterface*).enum_infos, 0) as EnumInfo*;
+    stale_enum_info.enum_type.is_unsafe = true;
+    ifpt_assert_invalid_model(stale_declaration_types.interface as ModuleInterface*,
+        "enum declaration type metadata");
+    stale_enum_info.enum_type.is_unsafe = false;
+    ipr_free(stale_declaration_types);
+
+    let param_counts = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nfunc f(value: int) -> void;\n", "<guard-param-count>"
+    );
+    let count_func = ptr_vec_get((param_counts.interface as ModuleInterface*).func_entries, 0) as InterfaceFuncEntry*;
+    sv_push(count_func.param_names, "extra");
+    ifpt_assert_invalid_model(param_counts.interface as ModuleInterface*, "function parameter vector count");
+    ipr_free(param_counts);
+
+    let null_function_result = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nfunc f(value: int) -> void;\n", "<guard-null-result>"
+    );
+    let null_result_func = ptr_vec_get(
+        (null_function_result.interface as ModuleInterface*).func_entries, 0) as InterfaceFuncEntry*;
+    type_free(null_result_func.ty.result as Type*);
+    null_result_func.ty.result = null;
+    ifpt_assert_invalid_model(null_function_result.interface as ModuleInterface*, "null function result");
+    ipr_free(null_function_result);
+
+    let stale_function_record = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nfunc f(value: int) -> void;\n",
+        "<guard-function-record-metadata>"
+    );
+    let stale_record_func = ptr_vec_get(
+        (stale_function_record.interface as ModuleInterface*).func_entries, 0) as InterfaceFuncEntry*;
+    stale_record_func.ty.array_len = 1;
+    ifpt_assert_invalid_model(stale_function_record.interface as ModuleInterface*,
+        "function record type metadata");
+    stale_record_func.ty.array_len = 0;
+    ipr_free(stale_function_record);
+
+    let empty_variadic = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nfunc f() -> void;\n", "<guard-empty-variadic>"
+    );
+    (ptr_vec_get((empty_variadic.interface as ModuleInterface*).func_entries, 0) as InterfaceFuncEntry*).ty.is_variadic = true;
+    ifpt_assert_invalid_model(empty_variadic.interface as ModuleInterface*, "empty variadic function");
+    ipr_free(empty_variadic);
+
+    let bad_variadic = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nfunc f(value: int) -> void;\n", "<guard-bad-variadic>"
+    );
+    (ptr_vec_get((bad_variadic.interface as ModuleInterface*).func_entries, 0) as InterfaceFuncEntry*).ty.is_variadic = true;
+    ifpt_assert_invalid_model(bad_variadic.interface as ModuleInterface*, "non-slice variadic tail");
+    ipr_free(bad_variadic);
+
+    let extern_variadic = ifpt_parse(
+        "module interface guard;\nfingerprint \"\";\nfunc f(value: int...) -> void;\n", "<guard-extern-variadic>"
+    );
+    (ptr_vec_get((extern_variadic.interface as ModuleInterface*).func_entries, 0) as InterfaceFuncEntry*).is_extern = true;
+    ifpt_assert_invalid_model(extern_variadic.interface as ModuleInterface*, "extern variadic function");
+    ipr_free(extern_variadic);
+}
+
+/** Test cloning and suffix-free emission retain canonical identity. */
+func test_interface_fingerprint_clone_reemit() {
+    let parsed = ifpt_parse(
+        "module interface cloneable;\nfingerprint \"\";\nopaque struct Handle;\nfunc make() -> Handle*;\n",
+        "<clone>"
+    );
+    let original_diags = diag_create();
+    assert(ifp_assign(parsed.interface as ModuleInterface*, original_diags, "<clone>"),
+        "original interface should fingerprint");
+    let clone = miu_clone_interface(parsed.interface as ModuleInterface*);
+    let emitted = ie_emit(clone);
+    let reparsed = ifpt_parse(emitted, "<clone-reparsed>");
+    let reparsed_diags = diag_create();
+    assert(ifp_verify(reparsed.interface as ModuleInterface*, reparsed_diags, "<clone-reparsed>"),
+        "clone/re-emitted interface should verify");
+    assert((reparsed.interface as ModuleInterface*).fingerprint ==
+        (parsed.interface as ModuleInterface*).fingerprint, "clone/re-emission must preserve fingerprint");
+    diag_free(original_diags);
+    diag_free(reparsed_diags);
+    mi_free(clone);
+    ipr_free(reparsed);
+    ipr_free(parsed);
+}
+
+/** Run interface fingerprint unit tests. */
+func main() {
+    test_interface_fingerprint_exact_canonical_bytes();
+    test_interface_fingerprint_leading_zero_digest();
+    test_interface_fingerprint_order_and_exclusions();
+    test_interface_fingerprint_shared_declaration_order();
+    test_interface_fingerprint_deep_type_streaming();
+    test_interface_fingerprint_type_size_overflow();
+    test_interface_fingerprint_nominal_kind_independence();
+    test_interface_fingerprint_surface_mutations();
+    test_interface_fingerprint_nested_type_mutations();
+    test_interface_fingerprint_opacity();
+    test_interface_fingerprint_utf8_and_delimiters();
+    test_interface_fingerprint_literal_canonicalization();
+    test_interface_fingerprint_tag_validation();
+    test_interface_fingerprint_dependency_validation();
+    test_interface_fingerprint_verification_failures();
+    test_interface_fingerprint_model_guards();
+    test_interface_fingerprint_clone_reemit();
+    printl_s("interface_fingerprint_test: all tests passed");
+}

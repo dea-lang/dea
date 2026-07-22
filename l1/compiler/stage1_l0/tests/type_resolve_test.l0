@@ -75,6 +75,44 @@ func push_suffix(suffixes: VectorBase*, kind: TypeSuffixKind) {
 }
 
 /**
+ * Compare a borrowed optional string without creating an unwrap alias.
+ *
+ * @param actual Optional string to compare.
+ * @param expected Expected plain string.
+ * @return `true` when `actual` is present and equal to `expected`.
+ */
+func optional_string_equals(actual: string?, expected: string) -> bool {
+    if (actual == null) {
+        return false;
+    }
+    return plain_string_equals(actual as string, expected);
+}
+
+/**
+ * Compare two borrowed plain strings.
+ *
+ * @param actual Actual plain string.
+ * @param expected Expected plain string.
+ * @return `true` when the strings are byte-for-byte equal.
+ */
+func plain_string_equals(actual: string, expected: string) -> bool {
+    return actual == expected;
+}
+
+/**
+ * Assert one bigint payload's canonical decimal spelling.
+ *
+ * @param text Canonical bigint digits with optional leading `-`.
+ * @param base Numeric base of `text`.
+ * @param expected Expected canonical decimal spelling.
+ */
+func assert_bigint_decimal(text: string, base: int, expected: string) {
+    let actual = bigint_to_canonical_decimal(text, base);
+    assert(actual != null, "expected bigint conversion to succeed");
+    assert(optional_string_equals(actual, expected), "unexpected canonical bigint decimal spelling");
+}
+
+/**
  * Tests test_tr_symbol_lookup.
  */
 func test_tr_symbol_lookup() {
@@ -394,6 +432,91 @@ func test_tr_const_eval_split_interface_literals() {
 }
 
 /**
+ * Tests canonical bigint conversion at every implemented-domain boundary.
+ */
+func test_bigint_canonical_decimal_boundaries() {
+    assert_bigint_decimal("-8000000000000000", 16, "-9223372036854775808");
+    assert_bigint_decimal("ffffffffffffffff", 16, "18446744073709551615");
+    assert_bigint_decimal("-1000000000000000000000", 8, "-9223372036854775808");
+    assert_bigint_decimal("1777777777777777777777", 8, "18446744073709551615");
+    assert_bigint_decimal("-9223372036854775808", 10, "-9223372036854775808");
+    assert_bigint_decimal("18446744073709551615", 10, "18446744073709551615");
+    assert_bigint_decimal("-1" + repeat_s("0", 63), 2, "-9223372036854775808");
+    assert_bigint_decimal(repeat_s("1", 64), 2, "18446744073709551615");
+
+    assert(bigint_to_canonical_decimal("-8000000000000001", 16) == null,
+        "hex value below long minimum should be rejected");
+    assert(bigint_to_canonical_decimal("10000000000000000", 16) == null,
+        "hex value above ulong maximum should be rejected");
+    assert(bigint_to_canonical_decimal("-1000000000000000000001", 8) == null,
+        "octal value below long minimum should be rejected");
+    assert(bigint_to_canonical_decimal("2000000000000000000000", 8) == null,
+        "octal value above ulong maximum should be rejected");
+    assert(bigint_to_canonical_decimal("-9223372036854775809", 10) == null,
+        "decimal value below long minimum should be rejected");
+    assert(bigint_to_canonical_decimal("18446744073709551616", 10) == null,
+        "decimal value above ulong maximum should be rejected");
+    assert(bigint_to_canonical_decimal("-1" + repeat_s("0", 62) + "1", 2) == null,
+        "binary value below long minimum should be rejected");
+    assert(bigint_to_canonical_decimal("1" + repeat_s("0", 64), 2) == null,
+        "binary value above ulong maximum should be rejected");
+    assert(bigint_to_canonical_decimal("2", 2) == null,
+        "digit outside the declared base should be rejected");
+    assert(bigint_to_canonical_decimal("f", 8) == null,
+        "hexadecimal digit in octal input should be rejected");
+    assert(bigint_to_canonical_decimal("a", 10) == null,
+        "non-decimal digit in decimal input should be rejected");
+    assert(bigint_to_canonical_decimal("", 10) == null,
+        "empty bigint input should be rejected");
+    assert(bigint_to_canonical_decimal("-", 10) == null,
+        "sign-only bigint input should be rejected");
+    assert(bigint_to_canonical_decimal("10", 3) == null,
+        "unsupported bigint base should be rejected");
+
+    assert_bigint_decimal("000000000000000000000000ff", 16, "255");
+    assert_bigint_decimal("-000000", 10, "0");
+    assert(bigint_to_canonical_decimal(repeat_s("9", 10000), 10) == null,
+        "very large decimal input should be rejected before conversion");
+    assert(bigint_to_canonical_decimal(repeat_s("f", 10000), 16) == null,
+        "very large hexadecimal input should be rejected before conversion");
+}
+
+/**
+ * Tests interface const replay consumes decoded lexer string bytes.
+ */
+func test_tr_const_eval_interface_string_bytes() {
+    with (let expected_buf = cb_create() => cb_free(expected_buf),
+          let octal_buf = cb_create() => cb_free(octal_buf)) {
+        cb_append(expected_buf, 195 as byte);
+        cb_append(expected_buf, 169 as byte);
+        let expected = cb_to_string(expected_buf);
+
+        cb_append(octal_buf, 233 as byte);
+        let octal_byte = cb_to_string(octal_buf);
+
+        let unicode_value = tr_const_eval_interface_literal_raw("\"\\u00E9\"");
+        assert(unicode_value != null, "Unicode interface string should evaluate");
+        assert(ord((unicode_value as ConstValue*).kind) == ord(CV_STRING),
+            "Unicode interface string kind mismatch");
+        assert((unicode_value as ConstValue*).text_value == expected,
+            "Unicode interface string should contain UTF-8 bytes");
+        tr_const_value_free(unicode_value as ConstValue*);
+
+        let canonical_value = tr_const_eval_interface_literal_raw("\"\\303\\251\"");
+        assert(canonical_value != null, "canonical octal interface string should evaluate");
+        assert((canonical_value as ConstValue*).text_value == expected,
+            "canonical octal interface string should preserve its two bytes");
+        tr_const_value_free(canonical_value as ConstValue*);
+
+        let raw_octal = tr_const_eval_interface_literal_raw("\"\\351\"");
+        assert(raw_octal != null, "raw octal interface string should evaluate");
+        assert((raw_octal as ConstValue*).text_value == octal_byte,
+            "octal string escape should remain one raw byte");
+        tr_const_value_free(raw_octal as ConstValue*);
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -403,5 +526,7 @@ func main() {
     test_tr_resolve_slice_suffix();
     test_tr_module_qualified_variant_lookup_survives_shadow_warning();
     test_tr_const_eval_split_interface_literals();
+    test_bigint_canonical_decimal_boundaries();
+    test_tr_const_eval_interface_string_bytes();
     printl_s("type_resolve_test: all tests passed");
 }

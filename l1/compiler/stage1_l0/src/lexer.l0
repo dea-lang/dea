@@ -5,6 +5,7 @@
 
 module lexer;
 
+import std.assert;
 import std.io;
 import std.string;
 import std.unit;
@@ -119,6 +120,47 @@ func hex_char_to_int(c: byte) -> int {
         return 10 + (c - 'A');
     }
     return -1; // Should not reach here if input is valid hex digit
+}
+
+/**
+ * Check whether an integer is a Unicode scalar value.
+ *
+ * @param value Integer value to inspect.
+ * @return `true` when `value` is at most `U+10FFFF` and is not a surrogate.
+ */
+func ls_is_unicode_scalar(value: int) -> bool {
+    return value >= 0 && value <= 1114111 && !(value >= 55296 && value <= 57343);
+}
+
+/**
+ * Append one Unicode scalar value as UTF-8 bytes.
+ *
+ * The caller must establish `ls_is_unicode_scalar(value)` before calling.
+ *
+ * @param cb Destination byte buffer.
+ * @param value Unicode scalar value to encode.
+ */
+func ls_append_utf8(cb: CharBuffer*, value: int) {
+    assert(ls_is_unicode_scalar(value), "UTF-8 encoder requires a Unicode scalar value");
+    if (value <= 127) {
+        cb_append(cb, value as byte);
+        return;
+    }
+    if (value <= 2047) {
+        cb_append(cb, (192 + value / 64) as byte);
+        cb_append(cb, (128 + value % 64) as byte);
+        return;
+    }
+    if (value <= 65535) {
+        cb_append(cb, (224 + value / 4096) as byte);
+        cb_append(cb, (128 + (value / 64) % 64) as byte);
+        cb_append(cb, (128 + value % 64) as byte);
+        return;
+    }
+    cb_append(cb, (240 + value / 262144) as byte);
+    cb_append(cb, (128 + (value / 4096) % 64) as byte);
+    cb_append(cb, (128 + (value / 64) % 64) as byte);
+    cb_append(cb, (128 + value % 64) as byte);
 }
 
 /**
@@ -734,11 +776,15 @@ func ls_read_string_literal(self: LexerState*, start_index: int, start_line: int
                 '\\' => {
                     let esc = ls_read_valid_char_escape(self, false)?;
                     cb_append_s(cb, esc.escape_str);
-                    if (esc.char_value <= 127) {
-                        cb_append(vb, esc.char_value as byte);
+                    let escape_kind: byte = '\0';
+                    if (len_s(esc.escape_str) > 1) {
+                        escape_kind = char_at_s(esc.escape_str, 1);
+                    }
+                    if (escape_kind == 'x' || escape_kind == 'u' || escape_kind == 'U') {
+                        ls_append_utf8(vb, esc.char_value);
                     } else {
-                        // FIXME handle Unicode code points > 127 directly in the future
-                        cb_append_s(vb, esc.escape_str);
+                        // Simple escapes are ASCII; octal escapes deliberately remain raw bytes.
+                        cb_append(vb, esc.char_value as byte);
                     }
                     continue;
                 }
@@ -802,6 +848,12 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
                                            self.line, self.column, self.line, self.column);
                 return EscapedChar(cb_to_string(cb), 0);
             }
+            if (!ls_is_unicode_scalar(char_value)) {
+                ls_defer_recoverable_error(self, "LEX-0054",
+                                           "invalid Unicode scalar value (must be <= 0x10FFFF and not a surrogate)",
+                                           self.line, self.column, self.line, self.column);
+                return EscapedChar(cb_to_string(cb), 0);
+            }
             if (single_byte && char_value > 255) {
                 ls_defer_recoverable_error(self, "LEX-0031",
                                            "character literal hexadecimal escape out of range (0-255): '\\x" + int_to_string_base(char_value, 16) + "'",
@@ -837,8 +889,9 @@ func ls_read_valid_char_escape(self: LexerState*, single_byte: bool) -> EscapedC
                 }
                 return EscapedChar(cb_to_string(cb), 0);
             }
-            if (char_value > 1114111) { // 0x10FFFF
-                ls_defer_recoverable_error(self, "LEX-0054", "Unicode code point out of range (must be <= 0x10FFFF)",
+            if (!ls_is_unicode_scalar(char_value)) {
+                ls_defer_recoverable_error(self, "LEX-0054",
+                                           "invalid Unicode scalar value (must be <= 0x10FFFF and not a surrogate)",
                                            self.line, self.column, self.line, self.column);
                 return EscapedChar(cb_to_string(cb), 0);
             }

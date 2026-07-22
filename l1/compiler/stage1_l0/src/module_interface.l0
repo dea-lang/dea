@@ -16,15 +16,13 @@ import types;
  * `link` (implementation-tier) group; the two are kept as separate vectors on
  * `ModuleInterface` to preserve the dependency tier.
  *
- * `hash` carries the provider module's opaque whole-interface fingerprint
- * expectation, repeated for each used symbol, or the empty string when the
- * selected provider has no fingerprint yet. Parsing and projection preserve
- * this value without validating its spelling or contents.
+ * `provider_fingerprint` carries the provider module's canonical whole-module
+ * fingerprint, repeated for each used symbol.
  */
 struct InterfaceDepEntry {
     provider_module: string;
     symbol_name: string;
-    hash: string;
+    provider_fingerprint: string;
 }
 
 /**
@@ -35,7 +33,6 @@ struct InterfaceFuncEntry {
     param_names: StringVector*;    // parallel to ty.params
     ty: Type*;                     // TY_FUNC, owned
     is_extern: bool;
-    hash: string;                  // per-symbol hash, "" for now
 }
 
 /**
@@ -46,7 +43,6 @@ struct InterfaceLetEntry {
     ty: Type*;                     // owned
     is_const: bool;
     literal: string;               // canonical literal text; empty for non-const let
-    hash: string;                  // per-symbol hash, "" for now
 }
 
 /**
@@ -55,7 +51,6 @@ struct InterfaceLetEntry {
 struct InterfaceAliasEntry {
     name: string;
     ty: Type*;                     // aliased type, owned clone
-    hash: string;                  // per-symbol hash, "" for now
 }
 
 /**

@@ -245,7 +245,6 @@ func test_analysis_has_arc_data_for_struct_and_nullable_pointer() {
         span_here(1, 1),
         type_new_struct("demo.main", "Thing"),
         struct_fields,
-        "",
         false
     );
 

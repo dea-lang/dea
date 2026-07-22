@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-07-16
+Version: 2026-07-22
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -485,10 +485,15 @@ such as `uint`, `long`, and `ulong`, plus the implemented floating-point forms `
 
 Current decision:
 
-- integer literals outside Dea's 32-bit `int` range are represented inside the compiler as opaque bigint payloads
-  carrying sign, significant digits, and base (`2`, `8`, `10`, or `16`)
+- integer literals outside Dea's 32-bit `int` range are represented as arbitrary-width `TT_BIGINT(text, base)` payloads;
+  `text` is sign-inclusive, prefix-stripped, and lowercase, while `base` is `2`, `8`, `10`, or `16`
 - the compiler does not perform compile-time arithmetic on bigint payloads; it only performs textual range checks where
   a contextual integer target is known
+- contextual checks and canonical-interface conversion reuse the same textual builtin range table; canonical decimal
+  conversion rejects values outside the implemented `long` / `ulong` domain before decimal normalization or bounded
+  non-decimal multiply-add
+- `bigint_to_string` remains a spelling-oriented helper for diagnostics and generated C: it restores the stored base
+  prefix rather than producing canonical decimal text
 - 32-bit `int` compile-time constants can fold checked arithmetic, non-negative bitwise/shift operations, short-circuit
   boolean operators, scalar equality/comparison, and selected scalar casts
 - overflow, invalid shifts, divide/modulo by zero, and unsupported bitwise operands are non-evaluable rather than
@@ -532,6 +537,9 @@ their runtime representation (static versus heap, deduplicated or not) is not ob
 
 Current policy:
 
+- the lexer retains string source-body spelling separately from the decoded byte value used by semantic consumers
+- raw Unicode text and equivalent `\x`, `\u`, or `\U` scalar escapes produce equal UTF-8 byte values; octal escapes
+  preserve one raw byte, and surrogates or values above `U+10FFFF` are rejected
 - equality (`==`, `!=`) on `string` compares by content bytes, backed by the runtime helper `rt_string_equals`
 - equality is consistent across `==`, `case` arms over `string`, and `std.string::eq_s`
 - ordered comparisons (`<`, `<=`, `>`, `>=`) on `string` use byte-wise lexicographic ordering through

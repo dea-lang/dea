@@ -3,7 +3,7 @@
 ## Canonicalize and verify whole-module interface fingerprints
 
 - Date: 2026-07-17
-- Status: Draft
+- Status: Completed
 - Title: Canonicalize and verify whole-module interface fingerprints
 - Kind: Feature
 - Severity: High
@@ -16,9 +16,19 @@
   - `l1/compiler/stage1_l0/src/parser/interface.l0`
   - `l1/compiler/stage1_l0/src/interface_emitter.l0`
   - `l1/compiler/stage1_l0/src/interface_fingerprint.l0`
+  - `l1/compiler/stage1_l0/src/interface_literal.l0`
+  - `l1/compiler/stage1_l0/src/interface_order.l0`
+  - `l1/compiler/stage1_l0/src/lexer.l0`
+  - `l1/compiler/stage1_l0/src/type_resolve.l0`
+  - `l1/compiler/stage1_l0/src/util/numbers.l0`
   - `l1/compiler/stage1_l0/src/analysis.l0`
   - `l1/compiler/stage1_l0/src/driver.l0`
+  - `l1/compiler/stage1_l0/support/interface_fingerprint.c`
+  - `l1/compiler/stage1_l0/scripts/test_runner_common.py`
+  - `l1/scripts/build_stage1_l1c.py`
   - `l1/compiler/shared/runtime/internal/dea_siphash.h`
+  - `l1/compiler/shared/runtime/internal/dea_interface_fingerprint.h`
+  - `l1/compiler/shared/runtime/include/dea_rt.h`
   - `l1/compiler/shared/runtime/src/dea_rt_hash.c`
   - `l1/compiler/shared/runtime/dea_rt.symbols`
   - `l1/compiler/shared/runtime/dea_rt_traced.symbols`
@@ -29,42 +39,101 @@
   - `l1/compiler/stage1_l0/tests/interface_fingerprint_test.l0`
   - `l1/compiler/stage1_l0/tests/interface_test.l0`
   - `l1/compiler/stage1_l0/tests/interface_replay_test.l0`
+  - `l1/compiler/stage1_l0/tests/lexer_test.l0`
+  - `l1/compiler/stage1_l0/tests/type_resolve_test.l0`
   - `l1/compiler/stage1_l0/tests/analysis_test.l0`
   - `l1/compiler/stage1_l0/tests/driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/module_graph_test.l0`
+  - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
   - `l1/compiler/stage1_l0/tests/compiler_runtime_build_env_test.py`
+  - `l1/compiler/stage1_l0/tests/interface_fingerprint_runtime_test.py`
+  - `l1/compiler/stage1_l0/tests/runtime_symbol_manifest_test.py`
 - Related:
   - [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md][foundation]
   - [l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md][superseded]
   - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]
   - [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+  - [work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md][structured-c-source]
   - [l1/docs/specs/compiler/abi.md][abi]
   - [l1/docs/specs/compiler/module-interface-format.md][module-format]
   - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]
-- Repro:
-  `make -C l1 test-stage1 TESTS="interface_fingerprint_test interface_test interface_replay_test analysis_test driver_test compiler_runtime_build_env_test.py"`
+- Repro: `make -C l1 clean test-all`
 
 ## Summary
 
-The current `.l1m` model has one module fingerprint placeholder plus a second, conflicting per-symbol hash scheme on
-every declaration and dependency entry. It accepts and preserves empty or non-canonical hash strings without validating
-their spelling, does not hash producer output, and replays a parsed interface without proving that its declared
+The previous `.l1m` model had one module fingerprint placeholder plus a second, conflicting per-symbol hash scheme on
+every declaration and dependency entry. It accepted and preserved empty or non-canonical hash strings without validating
+their spelling, did not hash producer output, and replayed a parsed interface without proving that its declared
 fingerprint matches its public surface.
 
-This plan replaces that ambiguity with one whole-module compatibility value. Producers hash the canonical effective
-public surface with SipHash-1-3, write `sip13:` followed by exactly 16 lowercase hexadecimal digits, and consumers
-recompute the same digest before semantic replay. Dependency records keep their current
+The completed tranche replaces that ambiguity with one whole-module compatibility value. Producers hash the canonical
+effective public surface with SipHash-1-3, write `sip13:` followed by exactly 16 lowercase hexadecimal digits, and
+consumers recompute the same digest before semantic replay. Dependency records keep their current
 `require module::symbol == "...";` and `link module::symbol == "...";` grammar, but each value is the provider module's
 tagged whole-module fingerprint. Declaration suffix hashes are removed. Object embedding and link-time comparison remain
 in the later [object-metadata plan][object-metadata].
+
+## Completion Notes
+
+1. The interface model and grammar now carry one module fingerprint, repeat provider-module fingerprints only on
+   `require` / `link` records, and contain no declaration hash suffixes or fields.
+2. `interface_fingerprint.l0` defines byte-length framing, canonical declaration/type records, strict tagged-value
+   validation, fixed-key SipHash-1-3 computation, assignment, and verification. `interface_literal.l0` keeps producer
+   literal folding and fingerprint validation on one recursive canonical spelling.
+3. An allocation-free L1-owned C bridge exposes the raw 16-digit result to the Stage 1 compiler and is present in the
+   normal, traced, check-basic, and unchecked runtime variants.
+4. Source projection computes its own fingerprint before dependency population. Source-backed provider surfaces are
+   projected and hashed independently; verified interface-backed providers retain their declared value.
+5. Filesystem and selected programmatic interfaces are validated and recomputed before graph registration, caching,
+   normalization, activation, or semantic replay. Selected authoritative interfaces do not fall back to source after a
+   fingerprint failure.
+6. `SIG-0280` through `SIG-0284` cover malformed values, unsupported algorithms, public-surface mismatches,
+   canonicalization guards, and conflicting values for one provider.
+7. The LBI and `.l1m` specifications, architecture/status docs, roadmap, initiative, and related ADRs now describe the
+   implemented contract; ADR-0019 records the lasting whole-module fingerprint decision.
+8. Object metadata embedding, provider-object readers, and link-time comparison remain assigned to successor plans.
+9. Whitespace-safe compiler-support source plumbing remains deferred with all targets Pending in the shared
+   [structured-C-source plan][structured-c-source].
+
+## Implementation Constraints and Techniques
+
+1. `TT_STRING` keeps exact source-body spelling separately from its decoded value. Scalar `\x`, `\u`, and `\U` escapes
+   become UTF-8, octal escapes remain raw bytes, and interface literal paths consume the lexer value instead of
+   maintaining a second escape decoder.
+2. The lexer continues to transport arbitrary-width `TT_BIGINT(text, base)` payloads so contextual diagnostics remain
+   unchanged. Interface canonicalization reuses `util.numbers` and its builtin limit table, rejects values outside
+   `long` / `ulong` first, normalizes decimal input linearly, and runs multiply-add conversion for bases 2, 8, and 16
+   only after the input is bounded to 64 significant bits. `bigint_to_string` remains the spelling reconstructor for
+   diagnostics and generated C; the producer-only `mi_format_checked_bigint` wrapper treats unexpected canonicalization
+   failure after semantic typing as the existing interface-construction ICE.
+3. Recursive type framing validates and measures each node once into a preorder plan with checked size arithmetic. A
+   second pass streams directly into the record buffer from cached child sizes, avoiding complete temporary strings for
+   every subtree without adding a type-depth limit.
+4. `interface_order.l0` collects borrowed declaration references in struct, enum, alias, function, const, and let order,
+   then stable-sorts kind/name keys with an iterative bottom-up merge sort. Both text emission and fingerprinting use
+   the same `O(N log N)` vector. The merge chooses the left run on equal keys, preserving collection order and borrowed
+   identity; cleanup frees only wrappers, never the declarations they reference.
+5. Invalid Unicode scalar values reuse `LEX-0054`; invalid models and checked framing overflow reuse `SIG-0283`. No new
+   diagnostic family, public CLI, runtime ABI, or source-language bigint domain was introduced.
+
+## Final Validation
+
+- Focused fingerprint, interface, replay, analysis, driver, graph, compiler-library, build-environment, runtime-symbol,
+  runtime known-answer, lexer, and type-resolution validation passed. The final six canonicalization suites passed in
+  both normal and leak-free trace modes.
+- Regression coverage pins raw/escaped Unicode equivalence and octal-byte behavior, bigint boundaries and oversized
+  rejection, deep mixed-type frames, and reverse/large stable borrowed declaration ordering.
+- Full trace-sensitive L1 validation with `make -C l1 test-all` passed on 2026-07-22: 56 normal tests, environment
+  stackability, 4 examples, and 39 trace tests all passed.
 
 ## Dependencies and ordering
 
 1. The completed interface-emission and [direct-replay foundation][foundation] provide canonical interface projection,
    parsing, and semantic replay.
-2. This plan may land before or after the [module-graph plan][module-graph]. Its producer and consumer checks operate on
-   one `ModuleInterface`; dependency records can use synthetic fixtures until graph population is available.
-3. Once both plans are complete, graph projection copies each parsed provider's verified whole-module fingerprint into
-   every `require` or `link` entry naming that provider.
+2. The completed [module-graph plan][module-graph] supplies graph population, interface-first discovery, and source
+   fallback before this tranche integrates producer and consumer checks.
+3. Graph projection copies each provider's verified or freshly computed whole-module fingerprint into every `require` or
+   `link` entry naming that provider.
 4. The [object-metadata plan][object-metadata] is blocked on both plans because it serializes verified module-level
    provider and consumer expectations, not the obsolete per-symbol hashes.
 
@@ -89,9 +158,9 @@ in the later [object-metadata plan][object-metadata].
    malformed `sip13` payload receives a malformed-fingerprint diagnostic. The tag is mandatory: an untagged digest does
    not implicitly select SipHash-1-3.
 6. Stage 1 uses a narrow compiler-support wrapper around `siphash13(...)` because the bootstrap language has no public
-   unsigned 64-bit scalar. The wrapper accepts canonical bytes and the fixed key and returns the raw 16-digit digest; a
-   compiler-side formatter attaches the `sip13:` tag. The bridge is compiler-internal, adds no language or stdlib API,
-   and must be covered by the normal and traced runtime symbol checks.
+   unsigned 64-bit scalar. The wrapper accepts canonical bytes, applies the fixed key internally, and writes the raw
+   16-digit digest into caller-owned storage; a compiler-side formatter attaches the `sip13:` tag. The bridge is
+   compiler-internal, adds no language or stdlib API, and is covered by all runtime variants and the symbol checks.
 
 ### Canonical fingerprint input
 
@@ -99,15 +168,15 @@ The fingerprint input is a versioned canonical serialization named `l1-interface
 ASCII domain line and then serializes only the effective exported declaration surface in the same deterministic group
 and name order as `.l1m` emission:
 
-1. transparent structs, including declaration name and field names, field order, and canonical field types;
-2. opaque structs, including the explicit opacity marker and declaration name only;
-3. transparent enums, including declaration name, variant names and order, payload labels, and canonical payload types;
-4. opaque enums, including the explicit opacity marker and declaration name only;
-5. type aliases, including name and canonical target type;
-6. functions, including name, parameter names and order, canonical parameter and result types, and `extern`, `unsafe`,
+1. structs sorted by name, with transparent records including field names/order/types and opaque records including only
+   the explicit opacity marker and name;
+2. enums sorted by name, with transparent records including variant names/order and payload labels/types and opaque
+   records including only the explicit opacity marker and name;
+3. type aliases, including name and canonical target type;
+4. functions, including name, parameter names and order, canonical parameter and result types, and `extern`, `unsafe`,
    and variadic state;
-7. exported consts, including name, canonical type, and canonical folded literal; and
-8. exported top-level lets, including name and canonical type.
+5. exported consts, including name, canonical type, and canonical folded literal; and
+6. exported top-level lets, including name and canonical type.
 
 Each record is length-delimited before its UTF-8 payload so punctuation or string contents cannot create ambiguous
 concatenations. The canonicalizer is a dedicated data-to-bytes operation; it must not hash rendered prose, platform line
@@ -214,22 +283,20 @@ link-time checking as implemented; those remain in [object metadata][object-meta
 
 ## Diagnostics
 
-1. This plan needs a fresh signature/compatibility slice for malformed fingerprint spelling, unsupported algorithm
-   identifiers, declared-versus-computed mismatch, and internal canonicalization guards that surface as user
-   diagnostics.
-2. Provisionally reserve `SIG-0280` to `SIG-0299` for whole-module interface fingerprint validation.
-3. The former `SIG-0240` to `SIG-0259` proposal cannot be reused: that range is also reserved by the active anonymous
-   embedded-struct plan. This plan intentionally moves to `SIG-0280` to `SIG-0299` to avoid the known collision.
-4. Parser shape errors continue to use existing `PAR-*` codes. Object-reader and intrinsic metadata-record failures
+1. `SIG-0280` reports malformed module or provider fingerprints.
+2. `SIG-0281` reports a well-formed but unsupported algorithm identifier.
+3. `SIG-0282` reports a declared-versus-computed public-surface mismatch.
+4. `SIG-0283` reports an internally inconsistent public model that cannot be canonicalized.
+5. `SIG-0284` reports conflicting dependency values for one provider module.
+6. `SIG-0285` to `SIG-0299` remain unassigned. The former `SIG-0240` to `SIG-0259` proposal cannot be reused because
+   that range is reserved by the active anonymous embedded-struct plan.
+7. Parser shape errors continue to use existing `PAR-*` codes. Object-reader and intrinsic metadata-record failures
    belong to the later metadata plan's `L1C-2050` to `L1C-2069` range; link-set graph and provider-consistency failures
    belong to the link-set plan's `L1C-2090` to `L1C-2109` range.
-5. The new range is provisional despite the current audit. Re-check the live [diagnostic catalog][diagnostic-catalog]
-   immediately before implementation and select another unused block of 20 if any `SIG-0280` to `SIG-0299` code has been
-   assigned in the meantime.
 
 ## Non-goals
 
-1. Interface-path search, transitive graph construction, or `require` / `link` population.
+1. Changing interface-path precedence, transitive graph topology, or `require` / `link` tier classification.
 2. Object metadata record layout, object-format readers, or link-time provider verification.
 3. Per-symbol compatibility hashes or a fallback for legacy placeholder interfaces.
 4. Implementing algorithms other than SipHash-1-3 or accepting an omitted tag as an implicit algorithm selection.
@@ -262,14 +329,15 @@ link-time checking as implemented; those remain in [object metadata][object-meta
     bytes.
 12. Canonical fixtures use lowercase tagged values; one explicitly low-level parser fixture retains a non-canonical
     token and proves parsing alone preserves it without bypassing operational verification.
-13. Focused normal and trace tests pass, followed by `make -C l1 test` once implementation is complete.
+13. Focused normal and trace tests pass, followed by `make -C l1 clean test-all` once implementation is complete.
 14. Concrete diagnostics are registered in the shared catalog in the implementation change.
 
-[abi]: ../../../docs/specs/compiler/abi.md
-[diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[foundation]: closed/2026-04-24-separate-compilation-driver-surface-noref.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[module-format]: ../../../docs/specs/compiler/module-interface-format.md
-[module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
-[superseded]: closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
+[abi]: ../../../../docs/specs/compiler/abi.md
+[diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[foundation]: 2026-04-24-separate-compilation-driver-surface-noref.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[module-format]: ../../../../docs/specs/compiler/module-interface-format.md
+[module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[object-metadata]: ../2026-07-17-object-metadata-emission-and-readers-noref.md
+[structured-c-source]: ../../../../../work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md
+[superseded]: 2026-04-24-interface-fingerprints-and-object-metadata-noref.md

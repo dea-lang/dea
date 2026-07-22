@@ -236,8 +236,8 @@ func test_interface_first_transitive_graph_contract() {
         );
         assert(!driver_has_errors(result), "interface-first graph should resolve");
         assert(driver_unit_count(result) == 1, "interface providers must not load source");
-        assert(driver_provider_fingerprint(result, "graph.provider") == "first-root",
-            "first matching interface root must win");
+        assert(driver_provider_fingerprint(result, "graph.provider") == "sip13:db0a81b8f7df0516",
+            "selected provider should expose its verified whole-module fingerprint");
 
         let graph = driver_graph(result);
         assert(mg_node_count(graph) == 6, "expected entry, dea, and four interface graph nodes");
@@ -275,9 +275,11 @@ func test_interface_first_transitive_graph_contract() {
         let require_dep = mg_node_dependency_get(provider, 0);
         let link_dep = mg_node_dependency_get(provider, 1);
         assert(ord(require_dep.kind) == ord(MDK_REQUIRE), "first edge must retain require tier");
-        assert(require_dep.expected_fingerprint == "require-expectation", "require expectation must be opaque");
+        assert(require_dep.expected_fingerprint == "sip13:8abfe6a8eaf1bb84",
+            "require expectation should retain the provider fingerprint");
         assert(ord(link_dep.kind) == ord(MDK_LINK), "second edge must retain link tier");
-        assert(link_dep.expected_fingerprint == "link-expectation", "link expectation must be opaque");
+        assert(link_dep.expected_fingerprint == "sip13:e5d98f527b631531",
+            "link expectation should retain the provider fingerprint");
 
         assert(driver_interface_count(result) == 3,
             "direct providers plus transitive require providers should activate exactly once");
@@ -339,6 +341,11 @@ func test_repeated_missing_provider_is_resolved_once() {
         assert(ord(strict_fanout.state) == ord(MNS_FAILED), "fanout node should retain failed state");
         assert(mg_node_dependency_count(strict_fanout) == 3,
             "resolution caching must retain all require and link edges");
+        for (let edge_i = 0; edge_i < mg_node_dependency_count(strict_fanout); edge_i = edge_i + 1) {
+            assert(mg_node_dependency_get(strict_fanout, edge_i).expected_fingerprint ==
+                "sip13:50adaaa854debbc6",
+                "absent-provider edges should retain one canonical synthetic provider fingerprint");
+        }
         assert(mg_find_node(driver_graph(strict), "missing.provider") == null,
             "an absent provider must not create a public graph node");
         driver_state_free(strict);
@@ -395,6 +402,11 @@ func test_missing_link_only_provider_retains_resolved_require() {
             "first retained manifest edge must be require");
         assert(ord(mg_node_dependency_get(consumer, 1).kind) == ord(MDK_LINK),
             "second retained manifest edge must be link");
+        assert(mg_node_dependency_get(consumer, 0).expected_fingerprint ==
+            "sip13:8abfe6a8eaf1bb84", "require edge should retain the real provider fingerprint");
+        assert(mg_node_dependency_get(consumer, 1).expected_fingerprint ==
+            "sip13:e5d98f527b631531",
+            "absent link edge should retain the canonical synthetic helper-provider fingerprint");
 
         let required = mg_find_node(graph, "missing.required") as ModuleGraphNode*;
         assert(ord(required.state) == ord(MNS_RESOLVED),
@@ -470,8 +482,32 @@ func test_selected_malformed_interface_is_authoritative() {
         assert(driver_diag_code_count(result, "PAR-0561") == 1, "selected interface must be parsed only once");
         assert(!has_driver_diag_code(result, "DRV-0030"), "a repeated failed-node lookup is not a cycle");
         assert(driver_find_unit(result, "graph.provider") == null, "malformed selection must not fall back to source");
-        let node = mg_find_node(driver_graph(result), "graph.provider") as ModuleGraphNode*;
-        assert(ord(node.state) == ord(MNS_FAILED), "selected malformed interface node must remain failed");
+        assert(mg_find_node(driver_graph(result), "graph.provider") == null,
+            "unverified interface data must not enter the module graph");
+        driver_state_free(result);
+    }
+    sv_free(roots);
+    sp_free(sp);
+}
+
+/** A selected suffix-free interface with a stale digest fails before graph registration or source fallback. */
+func test_selected_stale_interface_fingerprint_is_authoritative() {
+    let sp = make_paths();
+    let roots = sv_create(1);
+    sv_push(roots, join(interface_fixture_root(), "interfaces_bad_fingerprint"));
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = driver_analyze_entry_with_resolution(
+            sp, "provider_entry", roots, MRP_ALLOW_SOURCE_FALLBACK, null, cfg
+        );
+        assert(driver_has_errors(result), "stale selected interface fingerprint should fail");
+        assert(has_driver_diag_code(result, "SIG-0282"),
+            "stale selected interface fingerprint should report SIG-0282");
+        assert(driver_find_unit(result, "graph.provider") == null,
+            "stale authoritative interface must not fall back to source");
+        assert(mg_find_node(driver_graph(result), "graph.provider") == null,
+            "stale interface must not enter the module graph");
+        assert(driver_find_graph_interface(result, "graph.provider") == null,
+            "stale interface must not enter the raw interface registry");
         driver_state_free(result);
     }
     sv_free(roots);
@@ -508,6 +544,8 @@ func test_selected_interface_header_mismatch_is_authoritative() {
         );
         assert(driver_has_errors(result), "mismatched selected interface should fail");
         assert(has_driver_diag_code(result, "DRV-0020"), "expected DRV-0020 for interface identity mismatch");
+        assert(!has_driver_diag_code(result, "SIG-0280"),
+            "declared module identity must be checked before fingerprint spelling");
         assert(driver_find_unit(result, "graph.provider") == null, "mismatch must not fall back to source");
         driver_state_free(result);
     }
@@ -603,6 +641,7 @@ func main() {
     test_source_fallback_preserves_root_precedence();
     test_invalid_interface_root_reports_drv_0073();
     test_selected_malformed_interface_is_authoritative();
+    test_selected_stale_interface_fingerprint_is_authoritative();
     test_conflicting_graph_identity_reports_drv_0077();
     test_selected_interface_header_mismatch_is_authoritative();
     test_selected_nonregular_interface_reports_drv_0075();

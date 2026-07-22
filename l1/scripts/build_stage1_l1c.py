@@ -44,6 +44,9 @@ L0_RT_CHECK_BASIC_DEFINE = "L0_RT_CHECK_BASIC"
 L0_RT_UNCHECKED_DEFINE = "L0_RT_UNCHECKED"
 RT_QUARANTINE_MAX_BYTES_DEFINE = "_RT_QUARANTINE_MAX_BYTES"
 RT_QUARANTINE_MAX_COUNT_DEFINE = "_RT_QUARANTINE_MAX_COUNT"
+STAGE1_SUPPORT_SOURCE = (
+    REPO_ROOT / "compiler" / "stage1_l0" / "support" / "interface_fingerprint.c"
+).resolve()
 
 
 @dataclass(frozen=True)
@@ -121,6 +124,17 @@ def _append_cflag(cflags: str, flag: str) -> str:
     return f"{cflags} {flag}".strip()
 
 
+def stage1_support_build_env(source_env: Mapping[str, str]) -> dict[str, str]:
+    """Return an env that links the L1-owned Stage 1 support translation unit."""
+
+    build_env = dict(source_env)
+    cflags = build_env.get("L0_CFLAGS", "")
+    support_source = str(STAGE1_SUPPORT_SOURCE)
+    if support_source not in cflags.split():
+        build_env["L0_CFLAGS"] = _append_cflag(cflags, support_source)
+    return build_env
+
+
 def _has_c_define(cflags: str, name: str) -> bool:
     """Return whether raw C flags contain an exact preprocessor definition."""
 
@@ -176,7 +190,7 @@ def compiler_runtime_build_env(source_env: Mapping[str, str]) -> dict[str, str]:
 
     if cflags != build_env.get("L0_CFLAGS", ""):
         build_env["L0_CFLAGS"] = cflags
-    return build_env
+    return stage1_support_build_env(build_env)
 
 
 def write_stage1_wrapper(layout: L1BuildLayout) -> Path:

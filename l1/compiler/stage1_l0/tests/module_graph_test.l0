@@ -206,14 +206,14 @@ func test_graph_sorted_enumeration_and_exact_edges() {
         assert(mg_node_direct_import_get(alpha, 1) == "pkg.beta", "second direct import order mismatch");
         assert(mg_node_direct_import_get(alpha, 2) == "pkg.zeta", "third direct import order mismatch");
 
-        mg_node_add_dependency(alpha, MDK_REQUIRE, "pkg.beta", "Widget", "sha256:provider");
-        mg_node_add_dependency(alpha, MDK_LINK, "pkg.zeta", "helper", "sha256:provider-z");
+        mg_node_add_dependency(alpha, MDK_REQUIRE, "pkg.beta", "Widget", "sip13:1111111111111111");
+        mg_node_add_dependency(alpha, MDK_LINK, "pkg.zeta", "helper", "sip13:2222222222222222");
         assert(mg_node_dependency_count(alpha) == 2, "dependency count mismatch");
         let require_dep = mg_node_dependency_get(alpha, 0);
         assert(ord(require_dep.kind) == ord(MDK_REQUIRE), "require dependency tier mismatch");
         assert(require_dep.provider_module == "pkg.beta", "require provider mismatch");
         assert(require_dep.symbol_name == "Widget", "require symbol mismatch");
-        assert(require_dep.expected_fingerprint == "sha256:provider", "provider fingerprint mismatch");
+        assert(require_dep.expected_fingerprint == "sip13:1111111111111111", "provider fingerprint mismatch");
         assert(ord(mg_node_dependency_get(alpha, 1).kind) == ord(MDK_LINK), "link dependency tier mismatch");
 
         assert(ord(mg_node_state(alpha)) == ord(MNS_UNRESOLVED), "new node must start unresolved");
