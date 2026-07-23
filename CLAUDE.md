@@ -150,6 +150,18 @@ Treat local implementation, remote writes, and publication as separate authoriza
   behavior instead.
 - No `Co-Authored-By` lines.
 
+### Level naming in summaries
+
+- Determine level scope from the primary intent of the change, not solely from the locations of the touched files.
+- When a commit's primary work applies to exactly one language level, include that level (`L0`, `L1`, or a future level)
+  naturally within the summary sentence.
+- Prefer `Implement L1 per-module backend lifecycle output.` Do not use the level as a scope-label prefix or suffix,
+  such as `L1: Implement per-module backend lifecycle output.` or `[L1] Implement per-module backend lifecycle output.`
+- Omit level names when the work is cross-level, applies to all levels, or is level-neutral, including shared
+  documentation and vendored dependency updates.
+- Treat primarily single-level work as level-scoped when it also updates supporting shared files, such as the shared
+  diagnostic-code catalog.
+
 ### Summary verb selection
 
 - The commit summary must describe the repository change introduced by the commit, not the lifecycle state of the work

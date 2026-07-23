@@ -228,7 +228,7 @@ Use a temporary message file and `git commit -F <file>` for multiline commits.
 Format:
 
 ```text
-Implement wide integer math follow-up.
+Implement L1 wide integer math follow-up.
 
 - Extend `std.math` with `uint`, `long`, and `ulong` helper families.
 - Tighten nullable integer cast and contextual literal lowering.
@@ -238,7 +238,7 @@ Implement wide integer math follow-up.
 Rules:
 
 - Summary is sentence case and ends with a period.
-- A scope prefix such as `L0:` or `L1:` may be used when it improves readability, but it is not required.
+- Follow the "Level naming in summaries" rules in root `CLAUDE.md`.
 - Leave exactly one blank line between summary and bullets.
 - Body bullets start with `- `, are factual, sentence case, and end with a period.
 - Keep each bullet on one physical line.
@@ -267,7 +267,7 @@ Summary verb selection:
 ```bash
 tmp_msg=$(mktemp)
 cat > "$tmp_msg" <<'EOF'
-Implement wide integer math follow-up.
+Implement L1 wide integer math follow-up.
 
 - Extend `std.math` with `uint`, `long`, and `ulong` helper families.
 - Tighten nullable integer cast and contextual literal lowering.
