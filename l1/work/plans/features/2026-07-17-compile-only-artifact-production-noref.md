@@ -34,7 +34,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
-  - [`l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
+  - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
@@ -159,4 +159,4 @@ interface-only dependency fixtures.
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md

@@ -18,6 +18,13 @@ Current code generation is implemented only in `compiler/stage1_l0/src/` and is 
 - C emission in `c_emitter.l0`
 - string literal escaping/encoding helpers in `string_escape.l0`
 
+The separate-compilation object boundary adds:
+
+- format-independent metadata encoding and decoding in `object_metadata.l0`
+- format-neutral inspection and classification in `object_reader.l0`
+- bounded ELF, Mach-O, and PE/COFF adapters in `object_reader_elf.l0`, `object_reader_macho.l0`, and
+  `object_reader_pecoff.l0`
+
 Input is a fully typed analysis result. The backend exposes two supported output boundaries:
 
 - `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit used by the current `--gen`,
@@ -44,6 +51,14 @@ Input is a fully typed analysis result. The backend exposes two supported output
 - maps semantic types to runtime/C representations
 - performs C identifier hygiene and name mangling
 - emits helper calls for checked arithmetic, allocation, retain/release, casts, and unwraps
+
+### Object metadata and readers
+
+- encode and decode the fixed version 1 metadata records
+- inspect relocatable object section, symbol, and string tables without external tools
+- normalize only the documented object-ABI C symbol aliases before exact symbol matching
+- expose defined-symbol lookup and the valid, absent, or malformed Dea metadata classification
+- reject unsupported or corrupt containers as object-read errors outside that classification
 
 ## Generated Unit Layout
 
@@ -75,8 +90,9 @@ the user translation unit.
 1. the file header, runtime includes, forward declarations, and required type declarations;
 2. external declarations for provider-owned source and interface values and functions consumed by the target;
 3. storage and non-extern function definitions owned by the target module, with export-driven linkage;
-4. one external `I4init` definition and one external `I4fini` definition; and
-5. an external `I5entry` bridge only when the target defines a resolved, zero-parameter, non-extern source `main`.
+4. external `I8metadata` and `I7imports` byte arrays;
+5. one external `I4init` definition and one external `I4fini` definition; and
+6. an external `I5entry` bridge only when the target defines a resolved, zero-parameter, non-extern source `main`.
 
 Imported non-extern L1 values and functions are declared under their provider-owned LBI names but are never defined by
 the consumer translation unit. Imported C `extern` functions retain their declared C spelling. Exported target
@@ -85,6 +101,11 @@ external regardless of the source export manifest.
 
 Module output contains no process-level C `main`, legacy global init chain, or calls to dependency lifecycle functions.
 The later standalone-link tranche owns the executable wrapper and cross-module ordering.
+
+The identity record contains the target's canonical module name, whole-module interface fingerprint, and `HAS_ENTRY`
+flag. The import record contains every unique direct object-backed (non-virtual) provider in first source-import order
+with its expected fingerprint, including side-effect-only imports. `I4init` performs one volatile byte read from each
+array before its ordinary module-local work, retaining both records through linker dead-strip.
 
 ## Type Lowering
 
@@ -102,13 +123,13 @@ Current L1 Binary Interface (LBI) naming policy is:
   section length-prefixes each module-path segment and the `N` terminal length-prefixes the value name. Functions append
   their function type component, so `std.integer::abs` with type `func(int) -> int` mangles as
   `__deaM3std7integerN3absF1ii`; plain `let` and `const` bindings omit the type component.
-- Struct and enum type symbols use `S` and `E` terminals, for example `demo.main::Point` → `__deaM4demo4mainS5Point` and
-  `demo.main::Color` → `__deaM4demo4mainE5Color`.
+- Struct and enum type symbols use `S` and `E` terminals, for example `demo.main::Point` -> `__deaM4demo4mainS5Point`
+  and `demo.main::Color` -> `__deaM4demo4mainE5Color`.
 - Compiler-generated module symbols use the same `M` module section plus an `I` infrastructure section. Every module
-  output defines external `I4init` and `I4fini` functions, and a module with a resolved, zero-parameter, non-extern
-  source `main` also defines external `I5entry`; for example, `std.integer` init is `__deaM3std7integerI4init`. This
-  avoids collisions between dotted and underscored module names while keeping compiler infrastructure distinct from
-  source-level values and nominal types.
+  output defines external `I4init` and `I4fini` functions plus external `I8metadata` and `I7imports` arrays. A module
+  with a resolved, zero-parameter, non-extern source `main` also defines external `I5entry`; for example, `std.integer`
+  init is `__deaM3std7integerI4init`. This avoids collisions between dotted and underscored module names while keeping
+  compiler infrastructure distinct from source-level values and nominal types.
 - The encoding uses only ISO C99 identifier characters; no GCC `$`-in-identifier extension is required. See
   `l1/docs/specs/compiler/abi.md` for the normative spec.
 - Exported symbols keep global linkage in generated C and the resulting object file.
@@ -120,8 +141,10 @@ Current L1 Binary Interface (LBI) naming policy is:
 - `_rt_*` for private runtime helpers.
 - `_dea_*` / `_DEA_*` for other private runtime names.
 
-The emitter uses these rules to ensure C identifier hygiene and stable link-time identity. Any name starting with
-`__dea` is guaranteed to be a mangled L1 source or compiler-generated lifecycle symbol.
+The emitter uses these rules to ensure C identifier hygiene and stable link-time identity. The entire `__dea` prefix is
+reserved: generated C uses it only for mangled L1 source or compiler-generated infrastructure symbols, and object
+inspection treats every external definition whose normalized name starts with `__dea` as Dea evidence even when its
+suffix is malformed.
 
 Generated output now includes the public runtime header `dea_rt.h`. The internal helper `dea_siphash.h` lives only in
 the compiled runtime implementation and is not part of the generated-C surface or the public L1 ABI.
@@ -245,9 +268,10 @@ When the entry module defines `main`, backend emits a host C `main(int argc, cha
 ### Per-module lifecycle and entry bridge
 
 Every module translation unit defines an external `void I4init(void)` and `void I4fini(void)`. `I4init` performs only
-that module's deferred top-level initialization in established within-module order. `I4fini` performs only that module's
-ARC-managed top-level cleanup. Either body is empty when the module has no corresponding work, and neither function
-calls another module's lifecycle entry point.
+the two metadata-retention reads followed by that module's deferred top-level initialization in established
+within-module order. `I4fini` performs only that module's ARC-managed top-level cleanup. Apart from the retention reads,
+either body has no work when the module has no corresponding initialization or cleanup, and neither function calls
+another module's lifecycle entry point.
 
 A module with a resolved, zero-parameter, non-extern source `main` definition also emits external `int I5entry(void)`,
 even when source `main` is non-exported and therefore `static`. The bridge calls the source definition inside the same
@@ -267,6 +291,14 @@ result form before returning `0`. It does not initialize runtime arguments or ca
 2. The only implemented backend is the bootstrap backend in `stage1_l0`.
 3. The runtime and ABI surface assume a C99-compatible host toolchain.
 4. Optimization is delegated to the host C compiler; backend priority is correctness and explicit lowering.
+5. Object inspection accepts supported relocatable ELF, Mach-O, and standard little-endian COFF objects only. COFF
+   machine support is I386 (`0x014c`), ARM (`0x01c0`), ARMNT (`0x01c4`), AMD64 (`0x8664`), ARM64EC (`0xa641`), and ARM64
+   (`0xaa64`); PE images, bigobj/import objects, and other machines including ARM64X (`0xa64e`) are rejected.
+6. Symbol normalization is exact: ELF recognizes only canonical spellings plus Darwin TinyCC `___dea...` and `_main`
+   aliases, Mach-O removes one leading underscore, COFF I386 removes one leading underscore, and COFF ARM64EC removes
+   one leading `#` only from symbols whose COFF type marks a function.
+7. Object inspection does not parse archives, shared libraries, relocations, debug information, or executable code, and
+   it never invokes `nm`, `objdump`, or another host inspection tool.
 
 ## Testing Coverage
 
@@ -277,6 +309,8 @@ Current backend validation is centered on the copied bootstrap test suite under 
 - `driver_test.l0`
 - `build_driver_test.l0`
 - `l1c_lib_test.l0`
+- `object_metadata_test.l0`
+- `object_reader_test.l0`
 
 Ownership and trace-oriented validation also uses:
 

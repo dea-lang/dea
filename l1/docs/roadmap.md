@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-22
+Version: 2026-07-23
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -17,7 +17,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Ordinary `--gen`, `--build`, and `--run` still emit one legacy whole-program C99 translation unit.
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
   verified whole-module `.l1m` fingerprints, and target-aware per-module C generation with external `I4init` / `I4fini`
-  plus conditional `I5entry`; compile-only, standalone linking, and multi-CU build/run remain non-operational.
+  plus conditional `I5entry`. Per-module output also embeds portable identity and ordered-import records, and bounded
+  readers inspect ELF, Mach-O, and PE/COFF relocatables. Compile-only, standalone linking, and multi-CU build/run remain
+  non-operational.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 - Exact generated-C golden-file parity and L1 triple-bootstrap are not part of the current Stage 1 contract.
@@ -128,6 +130,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref][lifecycle-entrypoints] added target-aware
   per-module C generation with external `I4init` / `I4fini`, conditional `I5entry`, imported declarations, and no
   process-wrapper or dependency-lifecycle emission.
+- Feature [2026-07-17-object-metadata-emission-and-readers-noref][object-metadata] added portable module identity and
+  ordered-import records plus bounded ELF, Mach-O, and PE/COFF relocatable readers with valid, absent, and malformed Dea
+  metadata classification, exact Darwin TinyCC ELF and ARM64EC aliases, aligned Mach-O command and symbol validation,
+  byte-bounded iterative LBI parsing, and standard ARMNT/ARM64EC COFF support.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -168,8 +174,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   1 runtime fixtures.
 - Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
   first-position anonymous embedded struct member with promoted field access.
-- Feature [2026-07-17-object-metadata-emission-and-readers-noref][object-metadata] emits Dea object records and adds
-  bounded ELF, Mach-O, and PE/COFF readers with valid, absent, and malformed metadata classification.
 - Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] makes `-c` transactionally publish one
   module's generated C, object, and `.l1m` artifact set.
 - Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] adds verified Dea-object linking, explicit foreign C
@@ -301,7 +305,7 @@ update to be promoted to an initiative or plan:
 [named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md
 [nullable-equality]: ../work/plans/features/closed/2026-04-19-nullable-identity-equality-noref.md
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
-[object-metadata]: ../work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: ../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md

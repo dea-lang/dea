@@ -161,4 +161,4 @@ incomplete graph.
 
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
-[object-metadata]: ../2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

@@ -1,15 +1,15 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-07-22
+- Version: 2026-07-23
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`
   - `l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`
   - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md`
@@ -83,8 +83,9 @@ Relevant facts that constrain the plan at the time of writing:
   declaration is intentionally **not name-mangled**; this is the only FFI primitive in the language today.
 - Deterministic textual `.l1m` emission, constrained parsing, canonical artifact association, interface-first discovery,
   transitive graph-backed replay, canonical whole-module fingerprinting, and pre-registration verification are
-  implemented through internal APIs. Ordinary build/run imports remain source-based, and provider-object consistency
-  checking does not exist yet.
+  implemented through internal APIs. Per-module C output embeds provider identity, fingerprint, entry, and ordered
+  direct-import records, and bounded readers inspect ELF, Mach-O, and PE/COFF relocatables. Ordinary build/run imports
+  remain source-based, and link-set provider-object consistency enforcement does not exist yet.
 - The shared driver CLI reserves `-c` / `--compile` and ordered `-I` / `--interface-path` syntax, but compile dispatch
   remains explicitly NYI and does not invoke the internal resolver or produce artifacts. Runtime discovery uses `-Ri` /
   `-Rl`; host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link`,
@@ -218,8 +219,8 @@ not required and would only add bootstrap-vendoring cost. Custom object sections
 per-format emitter and reader paths plus quirky compiler attributes that `tcc` does not fully support.
 
 The completed [interface fingerprint plan][interface-fingerprints] and [ADR-0019][fingerprint-adr] fix the key and
-public-surface canonicalization. Record layout, symbol naming, and bounded object-reader limits remain in
-[object metadata][object-metadata].
+public-surface canonicalization. The completed [object metadata plan][object-metadata] and [ADR-0021][metadata-adr] fix
+the record layout, symbol naming, classification contract, and bounded object-reader limits.
 
 ## Phase 1 - Runtime as a static library
 
@@ -273,8 +274,8 @@ work is split by dependency, not by the former whole-plan labels:
    consumed `.l1m` interfaces.
 3. **Per-module backend and lifecycle ABI (complete):** target-only definitions, imported declarations, always-present
    external `I4init` / `I4fini`, and `I5entry` for every resolved, zero-parameter, non-extern source `main`.
-4. **Object metadata and readers:** emit the graph, fingerprint, and entry records against the finalized lifecycle
-   anchor and add bounded ELF, Mach-O, and PE/COFF readers with valid/absent/malformed results.
+4. **Object metadata and readers (complete):** emitted graph, fingerprint, and entry records against the finalized
+   lifecycle anchor and added bounded ELF, Mach-O, and PE/COFF readers with valid/absent/malformed results.
 5. **Compile-only artifacts:** make `-c` operational only after the final metadata-bearing artifact shape exists, and
    publish the generated C, object, and `.l1m` as one transaction-like set.
 6. **Standalone link set:** validate Dea and explicit foreign objects, resolve the entry module, generate the executable
@@ -472,8 +473,8 @@ implemented interface/CLI foundation
 ```
 
 - Initiative 0002 is complete and supplies the runtime-archive model consumed by the link plans.
-- Artifact-graph and fingerprint work may proceed independently after the closed foundation. Object metadata is the join
-  point because it needs the graph, final fingerprint contract, and lifecycle anchor.
+- Artifact-graph, fingerprint, lifecycle, and object-metadata work are complete. Compile-only artifact production is the
+  next tranche and consumes their final module-object shape.
 - Compile-only artifacts do not become operational until they contain final lifecycle and metadata records.
 - Standalone link owns object classification and wrapper construction; build/run then reuse that API rather than
   creating a second link path.
@@ -494,7 +495,7 @@ Recorded near-term tranche checkpoints:
 - [x] Define artifact layout, transitive interface discovery, and the deterministic module graph.
 - [x] Implement canonical whole-module fingerprints and `.l1m` verification.
 - [x] Emit one module per CU with external `I4init`, `I4fini`, and conditional `I5entry`.
-- [ ] Emit and inspect provider/consumer object metadata.
+- [x] Emit and inspect provider/consumer object metadata.
 - [ ] Make compile-only artifact production operational.
 - [ ] Implement standalone Dea/foreign-object linking and entry selection.
 - [ ] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
@@ -619,7 +620,8 @@ implementation tranche proves that one decision area needs additional design wor
   [interface fingerprints][interface-fingerprints].
 - Per-module definitions plus `I4init`, `I4fini`, and `I5entry` completed under
   [lifecycle entrypoints][lifecycle-entrypoints] and recorded by [ADR-0020][lifecycle-adr].
-- Provider/consumer metadata and bounded object readers under [object metadata][object-metadata].
+- Provider/consumer metadata and bounded object readers completed under [object metadata][object-metadata] and recorded
+  by [ADR-0021][metadata-adr].
 - Transactional single-module artifact production under [compile only][compile-only].
 - Standalone Dea/foreign-object linking, entry selection, and wrapper construction under [link set][link-set].
 - `--build` / `--run` graph fan-out through shared compile/link APIs under [build/run fan-out][build-run].
@@ -655,10 +657,11 @@ implementation tranche proves that one decision area needs additional design wor
 [lifecycle-entrypoints]: ../plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [linking]: ../../docs/user/linking.md
+[metadata-adr]: ../../docs/decisions/0021-portable-object-metadata-and-inspection.md
 [module-interface]: ../../docs/specs/compiler/module-interface-format.md
 [module-interface-hardening]: ../plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
 [module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
-[object-metadata]: ../plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: ../plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [roadmap]: ../../docs/roadmap.md
 [runtime-library]: closed/0002-runtime-static-library.md

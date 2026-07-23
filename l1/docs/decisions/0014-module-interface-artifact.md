@@ -1,7 +1,7 @@
 # ADR-0014: Module Interface Artifact
 
 - Decision date: 2026-06-13
-- Last edited: 2026-07-21
+- Last edited: 2026-07-23
 - Status: Accepted
 
 ## Context
@@ -58,7 +58,7 @@ dependency values and recompute the module fingerprint before graph registration
 - [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md][driver-plan]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints-plan]
-- [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][metadata-plan]
+- [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][metadata-plan]
 
 ## Related Initiatives
 
@@ -78,5 +78,5 @@ dependency values and recompute the module fingerprint before graph registration
 [graph-plan]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [initiative]: ../../work/initiatives/0001-separate-compilation-and-linking.md
 [interface-plan]: ../../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
-[metadata-plan]: ../../work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
+[metadata-plan]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [visibility-spec]: ../specs/compiler/module-visibility-and-imports.md

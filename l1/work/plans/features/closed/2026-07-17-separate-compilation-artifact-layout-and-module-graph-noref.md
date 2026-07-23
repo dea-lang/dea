@@ -36,7 +36,7 @@
   - [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md][foundation]
   - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
   - [l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
-  - [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+  - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
   - [l1/docs/specs/compiler/module-interface-format.md][module-format]
   - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]
 - Repro:
@@ -257,4 +257,4 @@ CLI help explicit that `-c` remains reserved until the [compile-only plan][compi
 [foundation]: 2026-04-24-separate-compilation-driver-surface-noref.md
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [module-format]: ../../../../docs/specs/compiler/module-interface-format.md
-[object-metadata]: ../2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

@@ -2,8 +2,8 @@
 
 ## Emit and read portable Dea object metadata
 
-- Date: 2026-07-17
-- Status: Draft
+- Date: 2026-07-23
+- Status: Completed
 - Title: Emit and read portable Dea object metadata
 - Kind: Feature
 - Severity: High
@@ -18,15 +18,16 @@
   - `l1/compiler/stage1_l0/src/object_reader_elf.l0`
   - `l1/compiler/stage1_l0/src/object_reader_macho.l0`
   - `l1/compiler/stage1_l0/src/object_reader_pecoff.l0`
+  - `l1/compiler/stage1_l0/src/object_reader_types.l0`
   - `l1/docs/specs/compiler/abi.md`
   - `l1/docs/reference/c-backend-design.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Test modules:
   - `l1/compiler/stage1_l0/tests/backend_test.l0`
+  - `l1/compiler/stage1_l0/tests/c_emitter_test.l0`
   - `l1/compiler/stage1_l0/tests/object_metadata_test.l0`
   - `l1/compiler/stage1_l0/tests/object_reader_test.l0`
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
-  - `l1/compiler/stage1_l0/tests/fixtures/object_metadata`
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
@@ -35,26 +36,47 @@
   - [`l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][superseded-metadata]
   - [`l1/docs/specs/compiler/module-interface-format.md`][interface-format]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
-- Repro: `make -C l1 test-stage1 TESTS="backend_test object_metadata_test object_reader_test build_driver_test"`
+- Repro:
+  `make -C l1 test-stage1 TESTS="backend_test c_emitter_test object_metadata_test object_reader_test build_driver_test"`
 
 ## Summary
 
-Embed enough self-describing metadata in every separately compiled Dea object to validate a standalone link without
-reopening `.l1m` files. Add bounded, in-repository readers for ELF, Mach-O, and PE/COFF relocatable objects and expose a
-strict three-way Dea metadata classification:
+Embedded enough self-describing metadata in every separately compiled Dea object to validate a standalone link without
+reopening `.l1m` files. Added bounded, in-repository readers for ELF, Mach-O, and PE/COFF relocatable objects and
+exposed a strict three-way Dea metadata classification:
 
 1. `ValidDeaMetadata`
 2. `NoDeaMetadata`
 3. `MalformedDeaMetadata`
 
 The classification is the safety boundary used later by `--foreign-object`. Absence of Dea metadata is accepted only for
-an explicitly foreign relocatable object. Any recognizable Dea ABI symbol with absent, incomplete, unsupported, or
-inconsistent metadata is malformed and cannot be reclassified as foreign.
+an explicitly foreign relocatable object. Any external definition under the normalized, reserved `__dea` prefix with
+absent, incomplete, unsupported, or inconsistent metadata is malformed and cannot be reclassified as foreign, even when
+its suffix is not valid LBI.
+
+## Completion Notes
+
+1. `object_metadata.l0` provides the version 1 identity/import record encoders and bounded decoders, including strict
+   canonical-name, fingerprint, flag, kind, version, count, length, and trailing-byte validation.
+2. Per-module C output defines external `I8metadata` and `I7imports` arrays and anchors both records with volatile byte
+   reads in `I4init`.
+3. The emitted identity record carries the producer module name, verified whole-interface fingerprint, and entry flag.
+   The imports record carries unique direct object-backed (non-virtual) providers in first source-import order,
+   including side-effect-only imports.
+4. `object_reader.l0` exposes the format-neutral object information and metadata classification API. Bounded ELF,
+   Mach-O, and PE/COFF adapters inspect relocatable section, symbol, and string data without invoking external tools.
+5. Classification distinguishes valid Dea metadata, metadata-free foreign-compatible objects, and malformed Dea objects.
+   File access, unsupported-container, and corrupt-container failures remain separate read errors.
+6. Focused encoder, decoder, reader, malformed-fixture, and native object smoke coverage locks the portable record and
+   classification behavior. No concrete `L1C-2050` through `L1C-2069` diagnostic was required or registered.
+7. The ABI, backend, architecture, project-status, roadmap, and initiative documents now record the implemented object
+   boundary, and ADR-0021 preserves its lasting format and classification decisions.
 
 ## Dependencies and Ownership
 
 1. The [module graph plan][module-graph] supplies canonical module identity and the ordered direct provider edges,
-   including imports retained only for side effects.
+   including imports retained only for side effects. Metadata emission omits virtual compiler-provided modules because
+   they do not contribute provider objects.
 2. The [fingerprint plan][fingerprints] supplies the producer whole-module fingerprint and the expected fingerprint for
    every direct provider edge. This plan does not compute hashes.
 3. The completed [lifecycle plan][lifecycle] supplies always-present external `I4init` and `I4fini` symbols plus
@@ -64,7 +86,7 @@ inconsistent metadata is malformed and cannot be reclassified as foreign.
 5. The [link-set plan][link-set] consumes the classification, enforces positional-versus-foreign input rules, verifies
    the complete module graph, rejects foreign C `main`, and reports link-mode diagnostics.
 
-## Current State
+## Pre-implementation State
 
 1. Generated object files have no self-describing module identity, interface fingerprint, ordered dependency list, or
    entry-candidate flag.
@@ -107,10 +129,11 @@ Metadata format version 1 is fixed to SipHash-1-3. Its eight-byte fields encode 
 another fingerprint algorithm requires a new metadata format version rather than interpreting the same version 1 bytes
 under a different default.
 
-The import array contains every unique direct provider module exactly once, in first source-import order. It includes a
-side-effect-only import even when no imported symbol appears in the consumer's public or private expressions. Duplicate
-provider records, non-canonical names, unknown flag bits, trailing payload bytes, and any count or length inconsistent
-with the containing array are malformed. There are no per-symbol compatibility hashes in object metadata.
+The import array contains every unique direct object-backed (non-virtual) provider module exactly once, in first
+source-import order. It includes a side-effect-only object-backed import even when no imported symbol appears in the
+consumer's public or private expressions. Duplicate provider records, non-canonical names, unknown flag bits, trailing
+payload bytes, and any count or length inconsistent with the containing array are malformed. There are no per-symbol
+compatibility hashes in object metadata.
 
 Array symbol names, record kinds, flag bits, byte order, and version 1 layout are LBI ABI. The implementation records
 them in the [ABI specification][abi]; it must not silently change this layout while adding a reader for another host
@@ -146,8 +169,8 @@ Classification rules are:
 1. `ValidDeaMetadata` requires exactly one matching identity/imports pair, supported version and flags, canonical and
    mutually consistent symbol/payload module identity, valid ordered imports, matching lifecycle symbols, and entry-flag
    agreement.
-2. `NoDeaMetadata` requires a valid supported relocatable object with neither metadata symbol nor any recognizable
-   externally defined Dea LBI symbol using the reserved `__dea` prefix.
+2. `NoDeaMetadata` requires a valid supported relocatable object with neither metadata symbol nor any externally defined
+   symbol under the normalized, reserved `__dea` prefix. The suffix need not be valid LBI to serve as Dea evidence.
 3. `MalformedDeaMetadata` results when any Dea metadata or LBI marker is present but the complete version 1 contract is
    not valid. Examples include one missing companion array, duplicate records, unsupported versions, truncated data,
    invalid names, old Dea objects with LBI definitions but no metadata, or lifecycle/entry inconsistencies.
@@ -163,20 +186,27 @@ lifecycle participation, or entry eligibility.
 Implement object readers in L1 rather than invoking external inspection commands:
 
 1. The ELF reader handles relocatable ELF32 and ELF64 section tables, symbol tables, and associated string tables for
-   supported byte orders.
-2. The Mach-O reader handles 32-bit and 64-bit relocatable objects, load commands, sections, `LC_SYMTAB`, and its string
-   table for supported byte orders.
-3. The PE/COFF reader handles standard COFF relocatable objects and PE/COFF section, symbol, auxiliary-symbol, and
-   string table encodings needed to locate the arrays. Unsupported object variants fail explicitly.
-4. Each reader normalizes only the C symbol decoration defined by its object ABI, such as a platform-added leading
-   underscore, before matching canonical LBI names. It does not use fuzzy suffix matching.
-5. Symbol locations are resolved through their containing section and checked against file and section bounds. Symbol
+   supported byte orders. It preserves canonical names and recognizes only the exact Darwin TinyCC aliases `___dea...`
+   to `__dea...` and `_main` to `main`.
+2. The Mach-O reader handles 32-bit and 64-bit relocatable objects, sections, `LC_SYMTAB`, and its string table for
+   supported byte orders. It requires 4-byte alignment for 32-bit load commands and 8-byte alignment for 64-bit load
+   commands, removes exactly one leading underscore, excludes prebound undefined (`N_PBUD`) symbols from the
+   defined-symbol set, and preserves nonzero common `N_UNDF` definitions.
+3. The PE/COFF reader handles standard little-endian COFF relocatable objects for I386 (`0x014c`), ARM (`0x01c0`), ARMNT
+   (`0x01c4`), AMD64 (`0x8664`), ARM64EC (`0xa641`), and ARM64 (`0xaa64`). It removes exactly one I386 leading
+   underscore or one leading `#` from an ARM64EC function symbol; ARM64EC data names remain unchanged, and PE images,
+   bigobj/import objects, and other machines including ARM64X (`0xa64e`) fail explicitly.
+4. Format-neutral LBI validation parses nested type suffixes with a symbol-length-bounded iterative worklist. It has no
+   arbitrary nesting-depth cap, and hostile arities, truncation, and misplaced variadic markers fail within the
+   available symbol bytes.
+5. No reader uses fuzzy suffix matching or general leading-character stripping.
+6. Symbol locations are resolved through their containing section and checked against file and section bounds. Symbol
    size, when present, is an additional bound; the wire payload length supplies the exact record length where the object
    format omits symbol sizes.
-6. All offset, count, alignment, and length arithmetic is overflow-checked before slicing or allocating. Counts must fit
+7. All offset, count, alignment, and length arithmetic is overflow-checked before slicing or allocating. Counts must fit
    the remaining bounded table or payload before storage is allocated. Overlapping, out-of-range, or unterminated string
    table references are errors.
-7. Readers inspect section/symbol/string data only. They do not apply relocations, load executable code, infer link
+8. Readers inspect section/symbol/string data only. They do not apply relocations, load executable code, infer link
    architecture compatibility, parse archives or shared libraries, or run host tools.
 
 Archives and shared libraries remain library/linker-argument inputs rather than foreign relocatable objects. Unsupported
@@ -234,8 +264,9 @@ hand the typed inspection result to the later link-set plan without changing cur
 
 01. Golden tests prove byte-identical version 1 encoding and decoding for module identity, entry presence, the raw
     SipHash-1-3 digest extracted from a canonical `sip13:` fingerprint, no imports, and multiple ordered imports.
-02. Reordering direct source imports changes metadata order without sorting it; side-effect-only imports remain present;
-    duplicate provider edges are coalesced at first occurrence before encoding.
+02. Reordering direct source imports changes metadata order without sorting it; side-effect-only object-backed imports
+    remain present, virtual providers remain absent, and duplicate provider edges are coalesced at first occurrence
+    before encoding.
 03. Generated per-module C contains both external arrays and volatile references to both from external `I4init`.
 04. A native compiled module object classifies as `ValidDeaMetadata` and reports the expected identity, fingerprint,
     ordered edges, lifecycle pair, and entry flag.
@@ -243,20 +274,32 @@ hand the typed inspection result to the later link-set plan without changing cur
     arrays, duplicate metadata, unsupported versions, entry-flag mismatches, and truncated or overflowing tables.
 06. An ordinary C relocatable object with no Dea ABI symbols classifies as `NoDeaMetadata`; its process-level `main`
     definition, when present, is reported separately.
-07. An old-style object with a recognizable Dea LBI definition but no version 1 metadata and every object with malformed
-    metadata classify as `MalformedDeaMetadata`, never as foreign-compatible absence.
+07. An old-style object with any external definition under the normalized `__dea` prefix but no version 1 metadata and
+    every object with malformed metadata classify as `MalformedDeaMetadata`, never as foreign-compatible absence.
 08. Fuzz-style bounded decoder tests over truncated fixture prefixes and corrupted length/count fields produce typed
     errors without crashes, out-of-bounds reads, or count-driven oversized allocations.
-09. Tests prove inspection performs no external command execution and that unsupported containers receive explicit
+09. Valid LBI types nested beyond the former recursion cap classify successfully, while truncated deep types, impossible
+    function arities, and misplaced variadic markers fail within the symbol-length work bound.
+10. Tests prove inspection performs no external command execution and that unsupported containers receive explicit
     object-read errors.
-10. Any concrete `L1C` diagnostics assigned by the implementation are registered in the shared catalog before closure.
+11. Any concrete `L1C` diagnostics assigned by the implementation are registered in the shared catalog before closure.
 
-[abi]: ../../../docs/specs/compiler/abi.md
-[diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[interface-format]: ../../../docs/specs/compiler/module-interface-format.md
-[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
-[module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[superseded-metadata]: closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
+## Validation
+
+```bash
+env L1_CC=tcc L1_BOOTSTRAP_L0C=../l0/build/dea/bin/l0c-stage2 make -C l1 test-stage1 TESTS=object_reader_test
+env L1_CC=tcc L1_RUNTIME_CC=clang L1_BOOTSTRAP_L0C=../l0/build/dea/bin/l0c-stage2 make -C l1 clean test-all
+```
+
+The focused native-object reader suite passed with Darwin TinyCC. The clean full gate passed all 58 normal Stage 1
+suites, environment stackability, all four L1 examples, and all 41 default ARC/memory trace suites.
+
+[abi]: ../../../../docs/specs/compiler/abi.md
+[diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[interface-format]: ../../../../docs/specs/compiler/module-interface-format.md
+[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
+[module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[superseded-metadata]: 2026-04-24-interface-fingerprints-and-object-metadata-noref.md

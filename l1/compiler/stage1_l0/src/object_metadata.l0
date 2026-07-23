@@ -1,0 +1,642 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module object_metadata;
+
+import std.hashset;
+import std.integer;
+import std.string;
+import std.text;
+import std.vector;
+
+import source_paths;
+
+/** Version 1 object-metadata common-header size. */
+let OM_HEADER_SIZE: int = 16;
+
+/** Version 1 object-metadata format version. */
+let OM_FORMAT_VERSION: int = 1;
+
+/** Identity record kind. */
+let OM_RECORD_IDENTITY: int = 1;
+
+/** Ordered-import record kind. */
+let OM_RECORD_IMPORTS: int = 2;
+
+/** Version 1 identity flag indicating an `I5entry` definition. */
+let OM_FLAG_HAS_ENTRY: int = 1;
+
+/** Fixed eight-byte common-header magic. */
+let OM_MAGIC: string = "DEAL1OBJ";
+
+/**
+ * Decoded identity metadata.
+ */
+struct ObjectMetadataIdentity {
+    module_name: string;
+    fingerprint: string;
+    has_entry: bool;
+}
+
+/**
+ * Decoded ordered-import metadata.
+ *
+ * The two vectors are parallel and preserve direct-import source order.
+ */
+struct ObjectMetadataImports {
+    module_names: StringVector*;
+    fingerprints: StringVector*;
+}
+
+/**
+ * Result of decoding an identity record.
+ */
+struct ObjectMetadataIdentityResult {
+    value: ObjectMetadataIdentity*?;
+    error: string;
+}
+
+/**
+ * Result of decoding an ordered-import record.
+ */
+struct ObjectMetadataImportsResult {
+    value: ObjectMetadataImports*?;
+    error: string;
+}
+
+/**
+ * Parsed identity/imports metadata symbol name.
+ */
+struct ObjectMetadataSymbolName {
+    module_name: string;
+    record_kind: int;
+}
+
+/**
+ * Free decoded ordered imports.
+ *
+ * @param self Ordered imports to free.
+ */
+func om_imports_free(self: ObjectMetadataImports*) {
+    sv_free(self.module_names);
+    sv_free(self.fingerprints);
+    drop self;
+}
+
+/**
+ * Free an identity decode result.
+ *
+ * @param self Decode result to free.
+ */
+func om_identity_result_free(self: ObjectMetadataIdentityResult*) {
+    if (self.value != null) {
+        let value = self.value as ObjectMetadataIdentity*;
+        drop value;
+    }
+    drop self;
+}
+
+/**
+ * Free an imports decode result.
+ *
+ * @param self Decode result to free.
+ */
+func om_imports_result_free(self: ObjectMetadataImportsResult*) {
+    if (self.value != null) {
+        om_imports_free(self.value as ObjectMetadataImports*);
+    }
+    drop self;
+}
+
+/**
+ * Convert one lowercase hexadecimal digit to its value.
+ *
+ * @param c Candidate hexadecimal byte.
+ * @return Value from 0 through 15, or -1 when invalid.
+ */
+func om_hex_value(c: byte) -> int {
+    if (c >= '0' && c <= '9') {
+        return (c - '0') as int;
+    }
+    if (c >= 'a' && c <= 'f') {
+        return (c - 'a' + 10) as int;
+    }
+    return -1;
+}
+
+/**
+ * Return one lowercase hexadecimal digit.
+ *
+ * @param value Value from 0 through 15.
+ * @return Lowercase hexadecimal byte.
+ */
+func om_hex_digit(value: int) -> byte {
+    if (value < 10) {
+        return ('0' + value) as byte;
+    }
+    return ('a' + value - 10) as byte;
+}
+
+/**
+ * Validate one version 1 tagged interface fingerprint.
+ *
+ * @param fingerprint Tagged fingerprint text.
+ * @return `true` for canonical `sip13:` plus 16 lowercase hex digits.
+ */
+func om_fingerprint_is_valid(fingerprint: string) -> bool {
+    if (len_s(fingerprint) != 22 || !starts_with_s(fingerprint, "sip13:")) {
+        return false;
+    }
+    for (let i = 6; i < len_s(fingerprint); i = i + 1) {
+        if (om_hex_value(char_at_s(fingerprint, i)) < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Append a little-endian unsigned 16-bit value.
+ *
+ * @param out Destination byte builder.
+ * @param value Non-negative value no greater than 65535.
+ */
+func om_append_u16_le(out: CharBuffer*, value: int) {
+    cb_append(out, (value % 256) as byte);
+    cb_append(out, ((value / 256) % 256) as byte);
+}
+
+/**
+ * Append a little-endian non-negative 32-bit value representable as `int`.
+ *
+ * @param out Destination byte builder.
+ * @param value Non-negative value.
+ */
+func om_append_u32_le(out: CharBuffer*, value: int) {
+    let remaining = value;
+    for (let i = 0; i < 4; i = i + 1) {
+        cb_append(out, (remaining % 256) as byte);
+        remaining = remaining / 256;
+    }
+}
+
+/**
+ * Read a bounded little-endian unsigned 16-bit value.
+ *
+ * @param bytes Source bytes.
+ * @param offset Byte offset.
+ * @return Decoded value, or `null` when truncated.
+ */
+func om_read_u16_le(bytes: string, offset: int) -> int? {
+    if (offset < 0 || offset > len_s(bytes) - 2) {
+        return null;
+    }
+    return (char_at_s(bytes, offset) as int) +
+        (char_at_s(bytes, offset + 1) as int) * 256;
+}
+
+/**
+ * Read a bounded little-endian unsigned 32-bit value that fits in `int`.
+ *
+ * @param bytes Source bytes.
+ * @param offset Byte offset.
+ * @return Decoded value, or `null` when truncated or above `INT_MAX`.
+ */
+func om_read_u32_le(bytes: string, offset: int) -> int? {
+    if (offset < 0 || offset > len_s(bytes) - 4) {
+        return null;
+    }
+    let high = char_at_s(bytes, offset + 3) as int;
+    if (high >= 128) {
+        return null;
+    }
+    return (char_at_s(bytes, offset) as int) +
+        (char_at_s(bytes, offset + 1) as int) * 256 +
+        (char_at_s(bytes, offset + 2) as int) * 65536 +
+        high * 16777216;
+}
+
+/**
+ * Append the fixed common header.
+ *
+ * @param out Destination byte builder.
+ * @param record_kind Version 1 record kind.
+ * @param payload_length Payload byte count.
+ */
+func om_append_header(out: CharBuffer*, record_kind: int, payload_length: int) {
+    cb_append_s(out, OM_MAGIC);
+    om_append_u16_le(out, OM_FORMAT_VERSION);
+    om_append_u16_le(out, record_kind);
+    om_append_u32_le(out, payload_length);
+}
+
+/**
+ * Append a raw fingerprint digest in little-endian byte order.
+ *
+ * @param out Destination byte builder.
+ * @param fingerprint Canonical tagged fingerprint.
+ */
+func om_append_fingerprint(out: CharBuffer*, fingerprint: string) {
+    for (let byte_i = 7; byte_i >= 0; byte_i = byte_i - 1) {
+        let text_i = 6 + byte_i * 2;
+        let high = om_hex_value(char_at_s(fingerprint, text_i));
+        let low = om_hex_value(char_at_s(fingerprint, text_i + 1));
+        cb_append(out, (high * 16 + low) as byte);
+    }
+}
+
+/**
+ * Decode a raw little-endian digest to canonical tagged text.
+ *
+ * @param bytes Source record bytes.
+ * @param offset Digest byte offset.
+ * @return Canonical `sip13:` fingerprint, or `null` when truncated.
+ */
+func om_decode_fingerprint(bytes: string, offset: int) -> string? {
+    if (offset < 0 || offset > len_s(bytes) - 8) {
+        return null;
+    }
+    with (let out = cb_create() => cb_free(out)) {
+        cb_append_s(out, "sip13:");
+        for (let byte_i = 7; byte_i >= 0; byte_i = byte_i - 1) {
+            let value = char_at_s(bytes, offset + byte_i) as int;
+            cb_append(out, om_hex_digit(value / 16));
+            cb_append(out, om_hex_digit(value % 16));
+        }
+        return cb_to_string(out);
+    }
+}
+
+/**
+ * Encode one version 1 identity record.
+ *
+ * @param module_name Canonical dotted module name.
+ * @param fingerprint Canonical tagged whole-module fingerprint.
+ * @param has_entry Whether the module defines `I5entry`.
+ * @return Encoded record, or `null` for invalid input or size overflow.
+ */
+func om_encode_identity(module_name: string, fingerprint: string, has_entry: bool) -> string? {
+    if (!sp_is_valid_module_name(module_name) || !om_fingerprint_is_valid(fingerprint)) {
+        return null;
+    }
+    let payload_length = checked_add_int(16, len_s(module_name));
+    if (payload_length == null ||
+        (payload_length as int) > int_max() - OM_HEADER_SIZE) {
+        return null;
+    }
+    let total_length = OM_HEADER_SIZE + (payload_length as int);
+    with (let out = cb_create() => cb_free(out)) {
+        cb_reserve(out, total_length);
+        om_append_header(out, OM_RECORD_IDENTITY, payload_length as int);
+        if (has_entry) {
+            om_append_u32_le(out, OM_FLAG_HAS_ENTRY);
+        } else {
+            om_append_u32_le(out, 0);
+        }
+        om_append_u32_le(out, len_s(module_name));
+        om_append_fingerprint(out, fingerprint);
+        cb_append_s(out, module_name);
+        return cb_to_string(out);
+    }
+}
+
+/**
+ * Measure a version 1 ordered-import payload.
+ *
+ * @param module_names Canonical provider names.
+ * @param fingerprints Parallel canonical provider fingerprints.
+ * @return Payload byte count, or `null` for invalid input or overflow.
+ */
+func om_measure_imports(module_names: StringVector*, fingerprints: StringVector*) -> int? {
+    if (sv_size(module_names) != sv_size(fingerprints)) {
+        return null;
+    }
+    let allocation_units = checked_mul_int(
+        sv_size(module_names), 4 * sizeof(string));
+    let seen_capacity = checked_mul_int(sv_size(module_names), 2);
+    if (allocation_units == null || seen_capacity == null) {
+        return null;
+    }
+    let total = 4;
+    with (let seen = ss_create_with_capacity(seen_capacity as int) => ss_free(seen)) {
+        for (let i = 0; i < sv_size(module_names); i = i + 1) {
+            let module_name = sv_get(module_names, i);
+            if (!sp_is_valid_module_name(module_name) || !ss_add(seen, module_name) ||
+                !om_fingerprint_is_valid(sv_get(fingerprints, i))) {
+                return null;
+            }
+            let record_size = checked_add_int(12, len_s(module_name));
+            if (record_size == null) {
+                return null;
+            }
+            let next = checked_add_int(total, record_size as int);
+            if (next == null) {
+                return null;
+            }
+            total = next as int;
+        }
+    }
+    return total;
+}
+
+/**
+ * Encode one version 1 ordered-import record.
+ *
+ * @param module_names Unique canonical providers in first-import order.
+ * @param fingerprints Parallel canonical expected fingerprints.
+ * @return Encoded record, or `null` for invalid input or size overflow.
+ */
+func om_encode_imports(module_names: StringVector*, fingerprints: StringVector*) -> string? {
+    let payload_length = om_measure_imports(module_names, fingerprints);
+    if (payload_length == null ||
+        (payload_length as int) > int_max() - OM_HEADER_SIZE) {
+        return null;
+    }
+    let total_length = OM_HEADER_SIZE + (payload_length as int);
+    with (let out = cb_create() => cb_free(out)) {
+        cb_reserve(out, total_length);
+        om_append_header(out, OM_RECORD_IMPORTS, payload_length as int);
+        om_append_u32_le(out, sv_size(module_names));
+        for (let i = 0; i < sv_size(module_names); i = i + 1) {
+            let module_name = sv_get(module_names, i);
+            om_append_u32_le(out, len_s(module_name));
+            om_append_fingerprint(out, sv_get(fingerprints, i));
+            cb_append_s(out, module_name);
+        }
+        return cb_to_string(out);
+    }
+}
+
+/**
+ * Validate a common header and return its payload length.
+ *
+ * @param bytes Exact record bytes.
+ * @param expected_kind Required record kind.
+ * @return Payload length, or `null` when malformed.
+ */
+func om_validate_header(bytes: string, expected_kind: int) -> int? {
+    if (len_s(bytes) < OM_HEADER_SIZE || slice_s(bytes, 0, 8) != OM_MAGIC) {
+        return null;
+    }
+    let version = om_read_u16_le(bytes, 8);
+    let record_kind = om_read_u16_le(bytes, 10);
+    let payload_length = om_read_u32_le(bytes, 12);
+    if (version == null || version as int != OM_FORMAT_VERSION ||
+        record_kind == null || record_kind as int != expected_kind ||
+        payload_length == null || payload_length as int != len_s(bytes) - OM_HEADER_SIZE) {
+        return null;
+    }
+    return payload_length;
+}
+
+/**
+ * Decode one exact version 1 identity record.
+ *
+ * @param bytes Exact record bytes.
+ * @return Decoded value or a typed malformed-record result.
+ */
+func om_decode_identity(bytes: string) -> ObjectMetadataIdentityResult* {
+    let payload_length = om_validate_header(bytes, OM_RECORD_IDENTITY);
+    if (payload_length == null) {
+        return new ObjectMetadataIdentityResult(null, "invalid identity metadata header");
+    }
+    if (payload_length as int < 16) {
+        return new ObjectMetadataIdentityResult(null, "truncated identity metadata payload");
+    }
+    let flags = om_read_u32_le(bytes, 16);
+    let module_length = om_read_u32_le(bytes, 20);
+    if (flags == null || module_length == null) {
+        return new ObjectMetadataIdentityResult(null, "invalid identity metadata fields");
+    }
+    if ((flags as int) != 0 && (flags as int) != OM_FLAG_HAS_ENTRY) {
+        return new ObjectMetadataIdentityResult(null, "identity metadata has unknown flags");
+    }
+    if ((module_length as int) != (payload_length as int) - 16) {
+        return new ObjectMetadataIdentityResult(null, "identity metadata module length is inconsistent");
+    }
+    let module_name = slice_s(bytes, 32, len_s(bytes));
+    if (!sp_is_valid_module_name(module_name)) {
+        return new ObjectMetadataIdentityResult(null, "identity metadata module name is not canonical");
+    }
+    let fingerprint = om_decode_fingerprint(bytes, 24);
+    if (fingerprint == null) {
+        return new ObjectMetadataIdentityResult(
+            null, "truncated identity metadata fingerprint");
+    }
+    return new ObjectMetadataIdentityResult(
+        new ObjectMetadataIdentity(
+            module_name, fingerprint as string,
+            (flags as int) == OM_FLAG_HAS_ENTRY),
+        ""
+    );
+}
+
+/**
+ * Decode one exact version 1 ordered-import record.
+ *
+ * @param bytes Exact record bytes.
+ * @return Decoded value or a typed malformed-record result.
+ */
+func om_decode_imports(bytes: string) -> ObjectMetadataImportsResult* {
+    let payload_length = om_validate_header(bytes, OM_RECORD_IMPORTS);
+    if (payload_length == null) {
+        return new ObjectMetadataImportsResult(null, "invalid imports metadata header");
+    }
+    if (payload_length as int < 4) {
+        return new ObjectMetadataImportsResult(null, "truncated imports metadata payload");
+    }
+    let count = om_read_u32_le(bytes, 16);
+    if (count == null) {
+        return new ObjectMetadataImportsResult(null, "invalid imports metadata count");
+    }
+    let remaining_after_count = (payload_length as int) - 4;
+    if ((count as int) > remaining_after_count / 12) {
+        return new ObjectMetadataImportsResult(null, "imports metadata count exceeds its payload");
+    }
+    /*
+     * String vectors allocate `count * sizeof(string)`.  The duplicate set
+     * can grow to the next power of two above twice `count`, which is always
+     * below four times `count`.  Reject counts that could overflow either
+     * allocation before constructing them.
+     */
+    let allocation_units = checked_mul_int(
+        count as int, 4 * sizeof(string));
+    if (allocation_units == null) {
+        return new ObjectMetadataImportsResult(
+            null, "imports metadata count exceeds allocation bounds");
+    }
+    let seen_capacity = checked_mul_int(count as int, 2);
+    if (seen_capacity == null) {
+        return new ObjectMetadataImportsResult(
+            null, "imports metadata count exceeds allocation bounds");
+    }
+
+    let names = sv_create(count as int);
+    let fingerprints = sv_create(count as int);
+    let cursor = 20;
+    with (let seen = ss_create_with_capacity(seen_capacity as int) => ss_free(seen)) {
+        for (let i = 0; i < count as int; i = i + 1) {
+            let module_length = om_read_u32_le(bytes, cursor);
+            if (module_length == null) {
+                sv_free(names);
+                sv_free(fingerprints);
+                return new ObjectMetadataImportsResult(null, "truncated imports metadata record");
+            }
+            cursor = cursor + 4;
+            if (cursor > len_s(bytes) - 8) {
+                sv_free(names);
+                sv_free(fingerprints);
+                return new ObjectMetadataImportsResult(null, "truncated imports metadata fingerprint");
+            }
+            let fingerprint = om_decode_fingerprint(bytes, cursor);
+            if (fingerprint == null) {
+                sv_free(names);
+                sv_free(fingerprints);
+                return new ObjectMetadataImportsResult(
+                    null, "truncated imports metadata fingerprint");
+            }
+            cursor = cursor + 8;
+            if ((module_length as int) > len_s(bytes) - cursor) {
+                sv_free(names);
+                sv_free(fingerprints);
+                return new ObjectMetadataImportsResult(null, "truncated imports metadata module name");
+            }
+            let module_name = slice_s(bytes, cursor, cursor + module_length as int);
+            cursor = cursor + module_length as int;
+            if (!sp_is_valid_module_name(module_name)) {
+                sv_free(names);
+                sv_free(fingerprints);
+                return new ObjectMetadataImportsResult(null, "imports metadata module name is not canonical");
+            }
+            if (!ss_add(seen, module_name)) {
+                sv_free(names);
+                sv_free(fingerprints);
+                return new ObjectMetadataImportsResult(null, "imports metadata contains a duplicate provider");
+            }
+            sv_push(names, module_name);
+            sv_push(fingerprints, fingerprint as string);
+        }
+    }
+    if (cursor != len_s(bytes)) {
+        sv_free(names);
+        sv_free(fingerprints);
+        return new ObjectMetadataImportsResult(null, "imports metadata has trailing payload bytes");
+    }
+    return new ObjectMetadataImportsResult(new ObjectMetadataImports(names, fingerprints), "");
+}
+
+/**
+ * Mangle one compiler-generated infrastructure symbol.
+ *
+ * @param module_name Canonical dotted module name.
+ * @param terminal Infrastructure terminal text.
+ * @return Canonical LBI symbol.
+ */
+func om_mangle_infrastructure_symbol(module_name: string, terminal: string) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        cb_append_s(out, "__deaM");
+        let segment_start = 0;
+        for (let i = 0; i <= len_s(module_name); i = i + 1) {
+            if (i == len_s(module_name) || char_at_s(module_name, i) == '.') {
+                let segment_length = i - segment_start;
+                cb_append_int(out, segment_length);
+                cb_append_slice(out, module_name, segment_start, segment_length);
+                segment_start = i + 1;
+            }
+        }
+        cb_append_s(out, "I");
+        cb_append_int(out, len_s(terminal));
+        cb_append_s(out, terminal);
+        return cb_to_string(out);
+    }
+}
+
+/** Return the canonical `I8metadata` symbol for a module. */
+func om_identity_symbol_name(module_name: string) -> string {
+    return om_mangle_infrastructure_symbol(module_name, "metadata");
+}
+
+/** Return the canonical `I7imports` symbol for a module. */
+func om_imports_symbol_name(module_name: string) -> string {
+    return om_mangle_infrastructure_symbol(module_name, "imports");
+}
+
+/** Return the canonical `I4init` symbol for a module. */
+func om_init_symbol_name(module_name: string) -> string {
+    return om_mangle_infrastructure_symbol(module_name, "init");
+}
+
+/** Return the canonical `I4fini` symbol for a module. */
+func om_fini_symbol_name(module_name: string) -> string {
+    return om_mangle_infrastructure_symbol(module_name, "fini");
+}
+
+/** Return the canonical `I5entry` symbol for a module. */
+func om_entry_symbol_name(module_name: string) -> string {
+    return om_mangle_infrastructure_symbol(module_name, "entry");
+}
+
+/**
+ * Parse one exact version 1 metadata array symbol name.
+ *
+ * @param symbol Normalized external symbol name.
+ * @return Parsed module and record kind, or `null` for any non-canonical name.
+ */
+func om_parse_metadata_symbol_name(symbol: string) -> ObjectMetadataSymbolName*? {
+    if (!starts_with_s(symbol, "__deaM")) {
+        return null;
+    }
+    let cursor = 6;
+    let segment_count = 0;
+    with (let module_buf = cb_create() => cb_free(module_buf)) {
+        while (cursor < len_s(symbol) && char_at_s(symbol, cursor) >= '0' &&
+               char_at_s(symbol, cursor) <= '9') {
+            let length_start = cursor;
+            let segment_length = 0;
+            while (cursor < len_s(symbol) && char_at_s(symbol, cursor) >= '0' &&
+                   char_at_s(symbol, cursor) <= '9') {
+                let digit = (char_at_s(symbol, cursor) - '0') as int;
+                if (segment_length > (int_max() - digit) / 10) {
+                    return null;
+                }
+                segment_length = segment_length * 10 + digit;
+                cursor = cursor + 1;
+            }
+            if (cursor - length_start > 1 && char_at_s(symbol, length_start) == '0') {
+                return null;
+            }
+            if (segment_length <= 0 || segment_length > len_s(symbol) - cursor) {
+                return null;
+            }
+            let segment = slice_s(symbol, cursor, cursor + segment_length);
+            if (!sp_is_valid_ident_component(segment)) {
+                return null;
+            }
+            if (segment_count > 0) {
+                cb_append(module_buf, '.');
+            }
+            cb_append_s(module_buf, segment);
+            segment_count = segment_count + 1;
+            cursor = cursor + segment_length;
+        }
+        if (segment_count == 0) {
+            return null;
+        }
+        let suffix = slice_s(symbol, cursor, len_s(symbol));
+        let record_kind = 0;
+        if (suffix == "I8metadata") {
+            record_kind = OM_RECORD_IDENTITY;
+        } else if (suffix == "I7imports") {
+            record_kind = OM_RECORD_IMPORTS;
+        } else {
+            return null;
+        }
+        let module_name = cb_to_string(module_buf);
+        if (!sp_is_valid_module_name(module_name)) {
+            return null;
+        }
+        return new ObjectMetadataSymbolName(module_name, record_kind);
+    }
+}

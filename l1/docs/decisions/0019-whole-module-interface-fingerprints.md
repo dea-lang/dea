@@ -1,7 +1,7 @@
 # ADR-0019: Whole-Module Interface Fingerprints
 
 - Decision date: 2026-07-21
-- Last edited: 2026-07-22
+- Last edited: 2026-07-23
 - Status: Accepted
 
 ## Context
@@ -74,7 +74,7 @@ failure.
 
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]
-- [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+- [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 
 ## Current Docs
 
@@ -89,4 +89,4 @@ failure.
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [module-format]: ../specs/compiler/module-interface-format.md
 [module-graph]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[object-metadata]: ../../work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md

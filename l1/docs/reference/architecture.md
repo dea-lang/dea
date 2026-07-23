@@ -58,6 +58,22 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
                                    build_driver.l0 --> host C compiler / executable launch
 ```
 
+The implemented object-inspection path is independent of CLI dispatch:
+
+```text
+Relocatable object
+  |
+  v
+object_reader.l0
+  |
+  +--> object_reader_elf.l0
+  +--> object_reader_macho.l0
+  +--> object_reader_pecoff.l0
+  |
+  v
+Container format + defined symbols + Dea metadata classification
+```
+
 Internal analysis entry points can build a deterministic `ModuleGraph` from an entry source, ordered interface roots, a
 resolution policy, and an optional artifact root. The entry stays source-backed. Imported modules prefer the first
 matching `.l1m`; `MRP_REQUIRE_INTERFACE` rejects a missing interface, while `MRP_ALLOW_SOURCE_FALLBACK` retains the
@@ -70,9 +86,14 @@ ordinary CLI pipeline above is still source-based.
 
 The internal module-generation branch selects one canonical source-backed target from the completed analysis result. It
 emits target definitions, external declarations for provider-owned source and interface values and functions consumed by
-that target, always-present external `I4init` and `I4fini`, and conditional external `I5entry`. It emits no process
-`main`, global init chain, or dependency lifecycle calls. Compile-only and multi-CU build/run dispatch remain future
-tranches.
+that target, external `I8metadata` and `I7imports` records, always-present external `I4init` and `I4fini`, and
+conditional external `I5entry`. It emits no process `main`, global init chain, or dependency lifecycle calls.
+Compile-only and multi-CU build/run dispatch remain future tranches.
+
+The format-neutral object reader classifies a supported relocatable object as valid Dea metadata, no Dea metadata, or
+malformed Dea metadata. File access failures and unsupported or corrupt containers are separate object-read errors. The
+reader also exposes exact defined-symbol lookup for the later link-set tranche. It does not invoke host inspection tools
+or reinterpret a malformed Dea object as foreign-compatible absence.
 
 Every selected filesystem or registry interface is checked before it enters that graph. The driver parses the wire
 model, confirms the declared module identity, validates the module and dependency fingerprint envelopes, recomputes the
@@ -176,7 +197,17 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
   process-wrapper or cross-module orchestration.
 - Delegates backend-specific behavior to [c-backend-design.md](c-backend-design.md).
 
-### 2.9 Driver and CLI (`driver.l0`, `l1c_lib.l0`, `cli_args.l0`, `build_driver.l0`)
+### 2.9 Object Metadata and Readers (`object_metadata.l0`, `object_reader*.l0`)
+
+- Encodes and decodes the fixed version 1 identity and ordered-import records.
+- Converts verified `sip13:` interface fingerprints to and from their raw little-endian 64-bit representation.
+- Reads bounded section, symbol, and string tables from supported ELF, Mach-O, and standard COFF relocatable objects.
+- Applies only exact format-specific aliases: Darwin TinyCC ELF `___dea...` / `_main`, one Mach-O or COFF I386 leading
+  underscore, and one leading `#` on COFF ARM64EC function symbols.
+- Resolves metadata arrays through their defining sections with checked offset, count, and length arithmetic.
+- Validates metadata/lifecycle/entry consistency and exposes exact defined-symbol lookup.
+
+### 2.10 Driver and CLI (`driver.l0`, `l1c_lib.l0`, `cli_args.l0`, `build_driver.l0`)
 
 - Coordinates the pass pipeline.
 - Builds and exposes the deterministic module graph, canonical artifact associations, and active cloned interfaces.
@@ -197,6 +228,8 @@ Primary aggregates in the current implementation include:
 - module and symbol environments from `name_resolver.l0`
 - typed semantic state from `analysis.l0`
 - projected module interfaces carrying populated `require` and `link` dependency tiers
+- encoded module identity and ordered-import records from `object_metadata.l0`
+- format-neutral object information and metadata classifications from `object_reader.l0`
 - checked scalar constant values evaluated through `type_resolve.l0`
 
 Important analysis tables include:
@@ -231,7 +264,11 @@ Important analysis tables include:
     preserve declaration order and duplicates.
 08. An interface is registered or cached only after its declared identity and whole-module fingerprint are verified.
 09. `.l1m` artifacts are available to internal resolution-aware APIs but are not normal compile/build/run inputs yet.
-10. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in
+10. The entire normalized `__dea` prefix is reserved; a supported relocatable object with any external definition under
+    that prefix cannot be classified as metadata-free, even when the suffix is not valid LBI.
+11. Object readers check all container and record bounds before slicing or allocating and never invoke host inspection
+    commands.
+12. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in
     the other L1 reference documents.
 
 ## 5. File/Module Layout
@@ -262,6 +299,11 @@ Main current compiler modules under `compiler/stage1_l0/src/`:
 - `module_graph.l0`
 - `module_interface.l0`
 - `name_resolver.l0`
+- `object_metadata.l0`
+- `object_reader.l0`
+- `object_reader_elf.l0`
+- `object_reader_macho.l0`
+- `object_reader_pecoff.l0`
 - `parser.l0`
 - `parser/decl.l0`, `parser/expr.l0`, `parser/interface.l0`, `parser/shared.l0`, and `parser/stmt.l0`
 - `scope_context.l0`

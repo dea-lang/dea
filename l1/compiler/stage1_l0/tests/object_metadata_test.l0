@@ -1,0 +1,369 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module object_metadata_test;
+
+import std.assert;
+import std.io;
+import std.string;
+import std.text;
+import std.vector;
+
+import object_metadata;
+
+/**
+ * Render bytes as contiguous lowercase hexadecimal text.
+ *
+ * @param bytes Binary string to render.
+ * @return Two lowercase hexadecimal digits per byte.
+ */
+func omt_hex(bytes: string) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = 0; i < len_s(bytes); i = i + 1) {
+            let value = char_at_s(bytes, i) as int;
+            cb_append(out, om_hex_digit(value / 16));
+            cb_append(out, om_hex_digit(value % 16));
+        }
+        return cb_to_string(out);
+    }
+}
+
+/**
+ * Return a copy with one byte replaced.
+ *
+ * @param bytes Source bytes.
+ * @param index Byte index to replace.
+ * @param value Replacement value.
+ * @return Mutated copy.
+ */
+func omt_replace_byte(bytes: string, index: int, value: int) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        cb_append_s(out, bytes);
+        let slot = vec_get(out.chars, index) as byte*;
+        *slot = value as byte;
+        return cb_to_string(out);
+    }
+}
+
+/** Return a copy with one little-endian 32-bit field replaced. */
+func omt_replace_u32_le(bytes: string, index: int, value: int) -> string {
+    let result = bytes;
+    let remaining = value;
+    for (let i = 0; i < 4; i = i + 1) {
+        result = omt_replace_byte(result, index + i, remaining % 256);
+        remaining = remaining / 256;
+    }
+    return result;
+}
+
+/**
+ * Pin version 1 identity byte encoding and round-trip decoding.
+ */
+func test_identity_golden_and_round_trip() {
+    let no_entry = om_encode_identity("demo.main", "sip13:0123456789abcdef", false);
+    assert(no_entry != null, "valid identity should encode");
+    assert(
+        omt_hex(no_entry as string) ==
+            "4445414c314f424a0100010019000000" +
+            "0000000009000000efcdab8967452301" +
+            "64656d6f2e6d61696e",
+        "no-entry identity golden bytes mismatch"
+    );
+
+    let entry = om_encode_identity("demo.main", "sip13:0123456789abcdef", true);
+    assert(entry != null, "entry identity should encode");
+    assert(
+        omt_hex(entry as string) ==
+            "4445414c314f424a0100010019000000" +
+            "0100000009000000efcdab8967452301" +
+            "64656d6f2e6d61696e",
+        "entry identity golden bytes mismatch"
+    );
+
+    with (let decoded = om_decode_identity(entry as string) => om_identity_result_free(decoded)) {
+        assert(decoded.value != null, "golden identity should decode");
+        let value = decoded.value as ObjectMetadataIdentity*;
+        assert(value.module_name == "demo.main", "identity module mismatch");
+        assert(value.fingerprint == "sip13:0123456789abcdef", "identity fingerprint mismatch");
+        assert(value.has_entry, "identity entry flag mismatch");
+    }
+}
+
+/**
+ * Pin empty and ordered multi-provider import byte encodings.
+ */
+func test_imports_golden_and_round_trip() {
+    with (let empty_names = sv_create(1) => sv_free(empty_names),
+          let empty_fingerprints = sv_create(1) => sv_free(empty_fingerprints)) {
+        let empty = om_encode_imports(empty_names, empty_fingerprints);
+        assert(empty != null, "empty imports should encode");
+        assert(
+            omt_hex(empty as string) == "4445414c314f424a010002000400000000000000",
+            "empty imports golden bytes mismatch"
+        );
+        with (let decoded_empty = om_decode_imports(empty as string) =>
+                  om_imports_result_free(decoded_empty)) {
+            assert(decoded_empty.value != null, "empty imports should decode");
+            assert(sv_size((decoded_empty.value as ObjectMetadataImports*).module_names) == 0,
+                "decoded empty import count mismatch");
+        }
+    }
+
+    with (let names = sv_create(2) => sv_free(names),
+          let fingerprints = sv_create(2) => sv_free(fingerprints)) {
+        sv_push(names, "alpha");
+        sv_push(fingerprints, "sip13:1111111111111111");
+        sv_push(names, "pkg.beta");
+        sv_push(fingerprints, "sip13:fedcba9876543210");
+
+        let encoded = om_encode_imports(names, fingerprints);
+        assert(encoded != null, "ordered imports should encode");
+        assert(
+            omt_hex(encoded as string) ==
+                "4445414c314f424a0100020029000000" +
+                "02000000050000001111111111111111" +
+                "616c706861080000001032547698badcfe" +
+                "706b672e62657461",
+            "ordered imports golden bytes mismatch"
+        );
+
+        with (let decoded = om_decode_imports(encoded as string) => om_imports_result_free(decoded)) {
+            assert(decoded.value != null, "ordered imports should decode");
+            let value = decoded.value as ObjectMetadataImports*;
+            assert(sv_size(value.module_names) == 2, "decoded import count mismatch");
+            assert(sv_get(value.module_names, 0) == "alpha", "first decoded provider mismatch");
+            assert(sv_get(value.fingerprints, 0) == "sip13:1111111111111111",
+                "first decoded fingerprint mismatch");
+            assert(sv_get(value.module_names, 1) == "pkg.beta", "second decoded provider mismatch");
+            assert(sv_get(value.fingerprints, 1) == "sip13:fedcba9876543210",
+                "second decoded fingerprint mismatch");
+        }
+    }
+}
+
+/**
+ * Reject non-canonical encoder inputs and duplicate provider records.
+ */
+func test_encoder_validation() {
+    assert(om_encode_identity("bad..name", "sip13:0123456789abcdef", false) == null,
+        "invalid module name should not encode");
+    assert(om_encode_identity("good.name", "sip13:ABCDEF0123456789", false) == null,
+        "uppercase fingerprint should not encode");
+    assert(om_encode_identity("good.name", "sha256:0123456789abcdef", false) == null,
+        "unsupported fingerprint algorithm should not encode");
+
+    with (let mismatched_names = sv_create(1) => sv_free(mismatched_names),
+          let mismatched_fingerprints = sv_create(1) => sv_free(mismatched_fingerprints)) {
+        sv_push(mismatched_names, "only.name");
+        assert(om_encode_imports(mismatched_names, mismatched_fingerprints) == null,
+            "mismatched import vectors should not encode");
+    }
+
+    with (let names = sv_create(2) => sv_free(names),
+          let fingerprints = sv_create(2) => sv_free(fingerprints)) {
+        sv_push(names, "same.provider");
+        sv_push(fingerprints, "sip13:1111111111111111");
+        sv_push(names, "same.provider");
+        sv_push(fingerprints, "sip13:1111111111111111");
+        assert(om_encode_imports(names, fingerprints) == null,
+            "duplicate provider records should not encode");
+    }
+}
+
+/**
+ * Reject every truncated prefix without an out-of-bounds read.
+ */
+func test_truncated_prefixes_are_rejected() {
+    let identity = om_encode_identity("demo.main", "sip13:0123456789abcdef", true) as string;
+    for (let i = 0; i < len_s(identity); i = i + 1) {
+        with (let decoded = om_decode_identity(slice_s(identity, 0, i)) =>
+                  om_identity_result_free(decoded)) {
+            assert(decoded.value == null, "truncated identity prefix should fail");
+        }
+        if (i >= OM_HEADER_SIZE) {
+            let internally_truncated = omt_replace_u32_le(
+                slice_s(identity, 0, i), 12, i - OM_HEADER_SIZE);
+            with (let decoded_inner = om_decode_identity(internally_truncated) =>
+                      om_identity_result_free(decoded_inner)) {
+                assert(decoded_inner.value == null,
+                    "length-consistent truncated identity should fail");
+            }
+        }
+    }
+
+    with (let names = sv_create(2) => sv_free(names),
+          let fingerprints = sv_create(2) => sv_free(fingerprints)) {
+        sv_push(names, "alpha");
+        sv_push(fingerprints, "sip13:1111111111111111");
+        sv_push(names, "pkg.beta");
+        sv_push(fingerprints, "sip13:2222222222222222");
+        let imports = om_encode_imports(names, fingerprints) as string;
+        for (let i = 0; i < len_s(imports); i = i + 1) {
+            with (let decoded2 = om_decode_imports(slice_s(imports, 0, i)) =>
+                      om_imports_result_free(decoded2)) {
+                assert(decoded2.value == null, "truncated imports prefix should fail");
+            }
+            if (i >= OM_HEADER_SIZE) {
+                let internally_truncated2 = omt_replace_u32_le(
+                    slice_s(imports, 0, i), 12, i - OM_HEADER_SIZE);
+                with (let decoded_inner2 = om_decode_imports(internally_truncated2) =>
+                          om_imports_result_free(decoded_inner2)) {
+                    assert(decoded_inner2.value == null,
+                        "length-consistent truncated imports should fail");
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Reject unsupported fields, hostile counts, duplicate decoded providers, and trailing bytes.
+ */
+func test_decoder_rejects_malformed_records() {
+    let identity = om_encode_identity("demo.main", "sip13:0123456789abcdef", false) as string;
+
+    assert(om_decode_fingerprint(identity, -1) == null,
+        "negative fingerprint offset should fail");
+    assert(om_decode_fingerprint(identity, len_s(identity) - 7) == null,
+        "truncated fingerprint helper input should fail");
+    assert((om_decode_fingerprint(identity, 24) as string) ==
+               "sip13:0123456789abcdef",
+        "bounded fingerprint helper should decode");
+
+    with (let bad_version = om_decode_identity(omt_replace_byte(identity, 8, 2)) =>
+              om_identity_result_free(bad_version)) {
+        assert(bad_version.value == null, "unsupported metadata version should fail");
+    }
+    with (let bad_kind = om_decode_identity(omt_replace_byte(identity, 10, 2)) =>
+              om_identity_result_free(bad_kind)) {
+        assert(bad_kind.value == null, "wrong record kind should fail");
+    }
+    with (let bad_flags = om_decode_identity(omt_replace_byte(identity, 16, 2)) =>
+              om_identity_result_free(bad_flags)) {
+        assert(bad_flags.value == null, "unknown identity flags should fail");
+    }
+    with (let bad_name = om_decode_identity(omt_replace_byte(identity, 32, '.')) =>
+              om_identity_result_free(bad_name)) {
+        assert(bad_name.value == null, "non-canonical identity name should fail");
+    }
+    with (let bad_length = om_decode_identity(
+              omt_replace_u32_le(identity, 20, len_s(identity))) =>
+              om_identity_result_free(bad_length)) {
+        assert(bad_length.value == null,
+            "inconsistent identity module length should fail");
+    }
+    with (let trailing = om_decode_identity(identity + byte_to_s(0 as byte)) =>
+              om_identity_result_free(trailing)) {
+        assert(trailing.value == null, "identity trailing bytes should fail");
+    }
+
+    with (let names = sv_create(2) => sv_free(names),
+          let fingerprints = sv_create(2) => sv_free(fingerprints)) {
+        sv_push(names, "alpha");
+        sv_push(fingerprints, "sip13:1111111111111111");
+        sv_push(names, "bravo");
+        sv_push(fingerprints, "sip13:2222222222222222");
+        let imports = om_encode_imports(names, fingerprints) as string;
+
+        let hostile_count = omt_replace_byte(imports, 16, 127);
+        with (let decoded_count = om_decode_imports(hostile_count) =>
+                  om_imports_result_free(decoded_count)) {
+            assert(decoded_count.value == null, "hostile import count should fail before allocation");
+        }
+
+        let hostile_name_length = omt_replace_u32_le(
+            imports, 20, len_s(imports));
+        with (let decoded_name_length = om_decode_imports(hostile_name_length) =>
+                  om_imports_result_free(decoded_name_length)) {
+            assert(decoded_name_length.value == null,
+                "oversized import module length should fail");
+        }
+
+        /* Both five-byte names start at byte 32 and byte 49. */
+        let duplicate = imports;
+        for (let i = 0; i < 5; i = i + 1) {
+            duplicate = omt_replace_byte(duplicate, 49 + i, char_at_s("alpha", i) as int);
+        }
+        with (let decoded_duplicate = om_decode_imports(duplicate) =>
+                  om_imports_result_free(decoded_duplicate)) {
+            assert(decoded_duplicate.value == null, "duplicate decoded provider should fail");
+        }
+
+        let imports_with_trailing = imports + byte_to_s(0 as byte);
+        with (let decoded_trailing = om_decode_imports(imports_with_trailing) =>
+                  om_imports_result_free(decoded_trailing)) {
+            assert(decoded_trailing.value == null, "imports trailing bytes should fail");
+        }
+
+        let consistent_trailing = omt_replace_byte(
+            imports_with_trailing, 12, (char_at_s(imports, 12) as int) + 1);
+        with (let decoded_consistent_trailing = om_decode_imports(consistent_trailing) =>
+                  om_imports_result_free(decoded_consistent_trailing)) {
+            assert(decoded_consistent_trailing.value == null,
+                "payload-internal trailing bytes should fail");
+        }
+
+        let bad_import_name = omt_replace_byte(imports, 32, '.');
+        with (let decoded_bad_name = om_decode_imports(bad_import_name) =>
+                  om_imports_result_free(decoded_bad_name)) {
+            assert(decoded_bad_name.value == null,
+                "non-canonical import module should fail");
+        }
+    }
+}
+
+/**
+ * Pin canonical metadata and lifecycle LBI symbol spellings and parsing.
+ */
+func test_metadata_symbol_names() {
+    assert(om_identity_symbol_name("demo.main") == "__deaM4demo4mainI8metadata",
+        "identity symbol mismatch");
+    assert(om_imports_symbol_name("demo.main") == "__deaM4demo4mainI7imports",
+        "imports symbol mismatch");
+    assert(om_init_symbol_name("demo.main") == "__deaM4demo4mainI4init",
+        "init symbol mismatch");
+    assert(om_fini_symbol_name("demo.main") == "__deaM4demo4mainI4fini",
+        "fini symbol mismatch");
+    assert(om_entry_symbol_name("demo.main") == "__deaM4demo4mainI5entry",
+        "entry symbol mismatch");
+
+    let parsed_identity = om_parse_metadata_symbol_name("__deaM4demo4mainI8metadata");
+    assert(parsed_identity != null, "canonical identity symbol should parse");
+    assert((parsed_identity as ObjectMetadataSymbolName*).module_name == "demo.main",
+        "parsed identity module mismatch");
+    assert((parsed_identity as ObjectMetadataSymbolName*).record_kind == OM_RECORD_IDENTITY,
+        "parsed identity kind mismatch");
+    let parsed_identity_value = parsed_identity as ObjectMetadataSymbolName*;
+    drop parsed_identity_value;
+
+    let parsed_imports = om_parse_metadata_symbol_name("__deaM4demo4mainI7imports");
+    assert(parsed_imports != null, "canonical imports symbol should parse");
+    assert((parsed_imports as ObjectMetadataSymbolName*).record_kind == OM_RECORD_IMPORTS,
+        "parsed imports kind mismatch");
+    let parsed_imports_value = parsed_imports as ObjectMetadataSymbolName*;
+    drop parsed_imports_value;
+
+    assert(om_parse_metadata_symbol_name("__deaM04demo4mainI8metadata") == null,
+        "leading-zero module length should fail");
+    assert(om_parse_metadata_symbol_name("__deaM4demo4mainI8metadata_extra") == null,
+        "metadata suffix matching must be exact");
+    let parsed_single = om_parse_metadata_symbol_name("__deaM4demoI8metadata");
+    assert(parsed_single != null, "single-segment metadata symbol should parse");
+    let parsed_single_value = parsed_single as ObjectMetadataSymbolName*;
+    drop parsed_single_value;
+}
+
+/**
+ * Main entry point.
+ */
+func main() {
+    test_identity_golden_and_round_trip();
+    test_imports_golden_and_round_trip();
+    test_encoder_validation();
+    test_truncated_prefixes_are_rejected();
+    test_decoder_rejects_malformed_records();
+    test_metadata_symbol_names();
+    printl_s("object_metadata_test: all tests passed");
+}

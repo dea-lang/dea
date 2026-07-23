@@ -1,7 +1,7 @@
 # ADR-0020: Per-Module Backend and Lifecycle ABI
 
 - Decision date: 2026-07-22
-- Last edited: 2026-07-22
+- Last edited: 2026-07-23
 - Status: Accepted
 
 ## Context
@@ -75,7 +75,7 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
 - [l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md][lifecycle]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]
 - [l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md][superseded-init]
-- [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+- [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 - [l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 
 ## Current Docs
@@ -91,6 +91,6 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
 [lifecycle]: ../../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../../work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[object-metadata]: ../../work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [project-status]: ../project-status.md
 [superseded-init]: ../../work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md

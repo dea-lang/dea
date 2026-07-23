@@ -17,6 +17,7 @@ import codegen_options;
 import driver;
 import module_interface;
 import name_resolver;
+import object_metadata;
 import sem_context;
 import signatures;
 import string_escape;
@@ -739,7 +740,7 @@ func cem_mangle_module_lifecycle_name(module_name: string, lifecycle_name: strin
  * @return Reserved LBI identifier.
  */
 func cem_mangle_module_init_name(module_name: string) -> string {
-    return cem_mangle_module_lifecycle_name(module_name, "init");
+    return om_init_symbol_name(module_name);
 }
 
 /**
@@ -749,7 +750,7 @@ func cem_mangle_module_init_name(module_name: string) -> string {
  * @return Reserved LBI identifier.
  */
 func cem_mangle_module_fini_name(module_name: string) -> string {
-    return cem_mangle_module_lifecycle_name(module_name, "fini");
+    return om_fini_symbol_name(module_name);
 }
 
 /**
@@ -759,7 +760,27 @@ func cem_mangle_module_fini_name(module_name: string) -> string {
  * @return Reserved LBI identifier.
  */
 func cem_mangle_module_entry_name(module_name: string) -> string {
-    return cem_mangle_module_lifecycle_name(module_name, "entry");
+    return om_entry_symbol_name(module_name);
+}
+
+/**
+ * Mangle one module identity-record array name.
+ *
+ * @param module_name Defining module name.
+ * @return Reserved `I8metadata` LBI identifier.
+ */
+func cem_mangle_module_metadata_name(module_name: string) -> string {
+    return om_identity_symbol_name(module_name);
+}
+
+/**
+ * Mangle one module ordered-import-record array name.
+ *
+ * @param module_name Defining module name.
+ * @return Reserved `I7imports` LBI identifier.
+ */
+func cem_mangle_module_imports_name(module_name: string) -> string {
+    return om_imports_symbol_name(module_name);
 }
 
 /**
@@ -1769,6 +1790,78 @@ func cem_emit_external_void_function_header(self: CEmitter*, c_name: string) {
     ccb_emit(self.out, "void " + c_name + "(void" + ")");
     ccb_emit(self.out, "{");
     ccb_indent(self.out);
+}
+
+/**
+ * Emit one externally linked byte array with bounded-width initializer rows.
+ *
+ * @param self Emitter to update.
+ * @param c_name Exact external C symbol name.
+ * @param bytes Exact non-empty record bytes.
+ */
+func cem_emit_external_byte_array(self: CEmitter*, c_name: string, bytes: string) {
+    if (len_s(bytes) <= 0) {
+        cem_ice("[ICE-1372] external metadata byte array must not be empty");
+    }
+
+    ccb_emit(self.out, "const uint8_t " + c_name + "[" + int_to_string(len_s(bytes)) + "] = {");
+    ccb_indent(self.out);
+    let offset = 0;
+    while (offset < len_s(bytes)) {
+        let row_end = len_s(bytes);
+        if (len_s(bytes) - offset > 16) {
+            row_end = offset + 16;
+        }
+        with (let row = cb_create() => cb_free(row)) {
+            for (let i = offset; i < row_end; i = i + 1) {
+                cb_append_int(row, char_at_s(bytes, i) as int);
+                if (i + 1 < len_s(bytes)) {
+                    cb_append_s(row, ",");
+                }
+                if (i + 1 < row_end) {
+                    cb_append_s(row, " ");
+                }
+            }
+            ccb_emit(self.out, cb_to_string(row));
+        }
+        offset = row_end;
+    }
+    ccb_dedent(self.out);
+    ccb_emit(self.out, "};");
+    ccb_emit(self.out, "");
+}
+
+/**
+ * Emit both externally visible object-metadata records for one module.
+ *
+ * @param self Emitter to update.
+ * @param module_name Defining module name.
+ * @param identity_bytes Encoded versioned identity record.
+ * @param imports_bytes Encoded versioned ordered-import record.
+ */
+func cem_emit_module_object_metadata(
+    self: CEmitter*,
+    module_name: string,
+    identity_bytes: string,
+    imports_bytes: string
+) {
+    cem_emit_section_comment(self, "Module object metadata");
+    cem_emit_module_comment(self, module_name);
+    cem_emit_external_byte_array(self, cem_mangle_module_metadata_name(module_name), identity_bytes);
+    cem_emit_external_byte_array(self, cem_mangle_module_imports_name(module_name), imports_bytes);
+}
+
+/**
+ * Anchor both object-metadata arrays through volatile reads from `I4init`.
+ *
+ * @param self Emitter to update.
+ * @param module_name Defining module name.
+ */
+func cem_emit_module_metadata_anchors(self: CEmitter*, module_name: string) {
+    ccb_emit(self.out, "(void)((volatile const uint8_t *)" +
+        cem_mangle_module_metadata_name(module_name) + ")[0];");
+    ccb_emit(self.out, "(void)((volatile const uint8_t *)" +
+        cem_mangle_module_imports_name(module_name) + ")[0];");
 }
 
 /**

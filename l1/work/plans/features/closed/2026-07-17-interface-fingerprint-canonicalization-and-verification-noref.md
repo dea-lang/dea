@@ -52,7 +52,7 @@
   - [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md][foundation]
   - [l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md][superseded]
   - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]
-  - [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+  - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
   - [work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md][structured-c-source]
   - [l1/docs/specs/compiler/abi.md][abi]
   - [l1/docs/specs/compiler/module-interface-format.md][module-format]
@@ -338,6 +338,6 @@ link-time checking as implemented; those remain in [object metadata][object-meta
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [module-format]: ../../../../docs/specs/compiler/module-interface-format.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[object-metadata]: ../2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
 [structured-c-source]: ../../../../../work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md
 [superseded]: 2026-04-24-interface-fingerprints-and-object-metadata-noref.md

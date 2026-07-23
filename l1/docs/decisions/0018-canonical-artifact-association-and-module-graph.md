@@ -1,7 +1,7 @@
 # ADR-0018: Canonical Artifact Association and Module Graph
 
 - Decision date: 2026-07-19
-- Last edited: 2026-07-21
+- Last edited: 2026-07-23
 - Status: Accepted
 
 ## Context
@@ -67,7 +67,7 @@ side-effect-only imports or source order.
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
-- [l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+- [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 - [l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
 ## Current Docs
@@ -84,5 +84,5 @@ side-effect-only imports or source order.
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [graph-plan]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [module-format]: ../specs/compiler/module-interface-format.md
-[object-metadata]: ../../work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md
+[object-metadata]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [project-status]: ../project-status.md

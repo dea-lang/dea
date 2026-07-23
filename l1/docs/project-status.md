@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-22
+Version: 2026-07-23
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -71,15 +71,25 @@ edges and source direct imports but excludes `link` edges. References outside th
 The deterministic module graph records one source, interface, registry, or virtual origin per canonical module. It
 provides sorted node enumeration, canonical sibling `.c`, `.o`, and `.l1m` path associations, dependency-tier edges, and
 direct source imports in exact declaration order. Interface projection classifies resolved cross-module public surface
-references as `require` and remaining implementation references as `link`. Object metadata embedding and link-time
-comparison of those verified expectations remain future work.
+references as `require` and remaining implementation references as `link`.
 
 The backend now exposes an internal `backend_generate_module(...)` entry point that emits definitions for one selected
 source-backed module. It emits external declarations for provider-owned source and interface values and functions
-consumed by that target, always-present external `I4init` and `I4fini`, and conditional external `I5entry` for a
-resolved, zero-parameter, non-extern source `main`. Module output contains no process `main`, global init chain, or
-dependency lifecycle calls. The legacy `backend_generate(...)` path remains the ordinary generation, build, and run
-path.
+consumed by that target, external `I8metadata` and `I7imports` byte arrays, always-present external `I4init` and
+`I4fini`, and conditional external `I5entry` for a resolved, zero-parameter, non-extern source `main`. The arrays record
+the module's verified whole-interface fingerprint, entry presence, and unique direct object-backed (non-virtual)
+providers in first source-import order. Volatile reads from `I4init` retain both records through linker dead-strip.
+Module output contains no process `main`, global init chain, or dependency lifecycle calls. The legacy
+`backend_generate(...)` path remains the ordinary generation, build, and run path.
+
+The compiler includes bounded readers for ELF, Mach-O, and standard COFF relocatable objects. Exact normalization covers
+Darwin TinyCC ELF aliases, Mach-O and COFF I386 leading underscores, and the leading `#` on ARM64EC function symbols;
+supported COFF machines are I386, ARM, ARMNT, AMD64, ARM64EC, and ARM64. The format-neutral inspection API reports
+container information, exact defined symbols, process-level C `main` presence, and one of valid Dea metadata, no Dea
+metadata, or malformed Dea metadata. Every external definition under the normalized, reserved `__dea` prefix without a
+complete consistent metadata pair is malformed rather than foreign-compatible, even when its suffix is not valid LBI.
+File access failures and unsupported or corrupt containers remain separate object-read errors. Standalone link-set
+validation and host linking remain future work.
 
 Ordinary CLI imports remain source-based today, and `.l1m` files are not yet normal compile/build/run inputs.
 
