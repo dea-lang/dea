@@ -95,17 +95,19 @@ See [l1/README.md](l1/README.md) for the current L1 workflow.
 
 ## Repository Layout
 
-| Directory  | Description                                         |
-| ---------- | --------------------------------------------------- |
-| `l0/`      | Dea/L0 language, compiler, runtime, docs, and tests |
-| `l1/`      | Dea/L1 bootstrap scaffold and compiler seed         |
-| `scripts/` | Shared monorepo automation and helper modules       |
-| `docs/`    | Dea-wide and monorepo-wide stable documentation     |
-| `work/`    | Dea-wide and monorepo-wide plans and proposals      |
-| `tools/`   | Vendored third-party dependencies                   |
+| Directory  | Description                                          |
+| ---------- | ---------------------------------------------------- |
+| `l0/`      | Dea/L0 language, compiler, runtime, docs, and tests  |
+| `l1/`      | Dea/L1 bootstrap scaffold and compiler seed          |
+| `editors/` | Shared editor grammars, modes, indexes, and fixtures |
+| `scripts/` | Shared monorepo automation and helper modules        |
+| `docs/`    | Dea-wide and monorepo-wide stable documentation      |
+| `work/`    | Dea-wide and monorepo-wide plans and proposals       |
+| `tools/`   | Vendored third-party dependencies                    |
 
 Monorepo structure, the root maintenance `Makefile`, the shared `uv` workspace, and the release-tag policy are
-documented in [MONOREPO.md](MONOREPO.md). The Dea-wide status snapshot lives at
+documented in [MONOREPO.md](MONOREPO.md). Shared syntax highlighting, the in-repository Tree-sitter grammar, and
+navigation-index setup live in [editors/README.md](editors/README.md). The Dea-wide status snapshot lives at
 [docs/project-status.md](docs/project-status.md).
 
 ## Contributing

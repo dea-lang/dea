@@ -10,6 +10,7 @@ This is a monorepo for the Dea language family. Each language level is a self-co
 | ---------- | ----------------------------------------------------- |
 | `l0/`      | L0 language, compiler, stdlib, docs, and tests        |
 | `l1/`      | L1 bootstrap scaffold, compiler seed, and local tests |
+| `editors/` | Shared editor grammars, modes, tags, docs, and tests  |
 | `scripts/` | Shared monorepo automation and helper modules         |
 | `tools/`   | Vendored third-party dependencies                     |
 | `docs/`    | Dea-wide and monorepo-wide stable docs                |

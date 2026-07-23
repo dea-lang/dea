@@ -1,0 +1,52 @@
+==================
+Incomplete declarations recover
+:error
+==================
+
+module incomplete;
+
+struct Open {
+    value: int;
+
+func unfinished(value: int) -> int {
+    let message = "unterminated
+    match (value) {
+        Ready(item) =>
+
+---
+
+==================
+Unterminated block comment recovers
+:error
+==================
+
+module broken_comment;
+
+/* unfinished documentation
+
+---
+
+==================
+Partial case body recovers
+:error
+==================
+
+module partial_case;
+
+func inspect(value: int) -> int {
+    case (value) {
+        1 => { return
+
+---
+
+==================
+Partial with header recovers
+:error
+==================
+
+module partial_with;
+
+func work() {
+    with (let resource = new Handle(
+
+---

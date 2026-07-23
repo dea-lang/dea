@@ -32,15 +32,17 @@ from the root `pyproject.toml`.
 | ---------- | ------------------------------------------------------------- |
 | `l0/`      | Dea/L0 language, compiler, runtime, docs, examples, and tests |
 | `l1/`      | Dea/L1 bootstrap scaffold and compiler seed                   |
+| `editors/` | Shared editor grammars, fallback modes, tags, and tests       |
 | `scripts/` | Monorepo-owned automation and shared helper modules           |
 | `docs/`    | Dea-wide and monorepo-wide stable documentation               |
 | `work/`    | Dea-wide and monorepo-wide plans and proposals                |
 | `tools/`   | Vendored third-party dependencies                             |
 
 Root-level stable documentation under [`docs/`](docs/) is reserved for Dea-wide and monorepo-wide reference/spec
-material. Root-level lifecycle artifacts such as shared plans live under [`work/`](work/). Existing user-facing L0
-documentation remains under [`l0/`](l0/). Root-owned automation helpers live under [`scripts/`](scripts/), while
-vendored third-party assets remain under [`tools/`](tools/).
+material. Root-level lifecycle artifacts such as shared plans live under [`work/`](work/). Shared editor integrations,
+the self-contained Tree-sitter grammar package, and their focused validation live under [`editors/`](editors/). Existing
+user-facing L0 documentation remains under [`l0/`](l0/). Root-owned automation helpers live under
+[`scripts/`](scripts/), while vendored third-party assets remain under [`tools/`](tools/).
 
 ## Release Tags
 

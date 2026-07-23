@@ -16,6 +16,7 @@ TARGET_SUFFIXES = {".c", ".h", ".l0", ".l1", ".py", ".sh"}
 MAX_SCAN_LINES = 80
 EXCLUDED_PREFIXES = (
     "tools/",
+    "editors/tree-sitter-dea/src/",
     "l0/compiler/stage2_l0/tests/fixtures/backend_golden/",
     "l1/compiler/stage1_l0/tests/fixtures/backend_golden/",
 )

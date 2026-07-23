@@ -1,0 +1,23 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module l1_incomplete;
+
+export opaque { Pending
+import value from
+
+unsafe func unfinished(callback: func(int...) -> int
+
+func partial() {
+    let real = 12.5e+
+    let text = "unterminated string
+    match (value) {
+        Ok(item) =>
+    case (value) {
+        answer =>
+    with (let resource =
+}
+
+/** unterminated documentation comment

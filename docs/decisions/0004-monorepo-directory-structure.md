@@ -1,7 +1,7 @@
 # ADR-0004: Monorepo Directory Structure
 
 - Decision date: 2026-03-27
-- Last edited: 2026-05-20
+- Last edited: 2026-07-23
 - Status: Accepted
 
 ## Context
@@ -19,6 +19,7 @@ human-facing guide. L1 was then scaffolded on 2026-04-02 as the first new level 
 The Dea monorepo uses the following directory layout:
 
 - `l0/`, `l1/`, ...: per-level subtrees, each self-contained with its own compiler, stdlib, docs, and work artifacts.
+- `editors/`: shared cross-level editor grammars, fallback modes, navigation indexes, and focused validation.
 - `scripts/`: shared monorepo automation and helper modules used across levels.
 - `tools/`: vendored third-party dependencies.
 - `docs/`: Dea-wide and monorepo-wide stable documentation only.
@@ -43,6 +44,7 @@ directories. This rule is covered in detail in [ADR-0006](0006-docs-work-taxonom
 
 - New language levels add a top-level subtree directory following the same layout as `l0/` and `l1/`.
 - Cross-level shared work belongs in root `work/`; level-specific work stays in `lN/work/`.
+- Editor integrations may preserve level-specific language identities while sharing implementation under `editors/`.
 
 ## Related Plans
 
@@ -50,6 +52,8 @@ directories. This rule is covered in detail in [ADR-0006](0006-docs-work-taxonom
   monorepo layout design and migration (introduced `l0/` subtree, root `Makefile`, `MONOREPO.md`)
 - [work/plans/tools/closed/2026-05-06-shared-uv-workspace-monorepo-noref.md](../../work/plans/tools/closed/2026-05-06-shared-uv-workspace-monorepo-noref.md):
   uv workspace unification (one shared venv and lockfile)
+- [work/plans/features/closed/2026-06-30-shared-editor-support-noref.md](../../work/plans/features/closed/2026-06-30-shared-editor-support-noref.md):
+  shared editor support and the in-repository Tree-sitter grammar package
 
 ## Current Docs
 

@@ -1,0 +1,269 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Dea/L0",
+  "scopeName": "source.dea.l0",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#qualified-identifiers"
+    },
+    {
+      "include": "#literals"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#function-calls"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    },
+    {
+      "include": "#type-names"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.documentation.dea",
+          "begin": "/\\*\\*",
+          "end": "\\*/",
+          "patterns": [
+            {
+              "name": "keyword.other.documentation.dea",
+              "match": "@[A-Za-z_][A-Za-z0-9_]*"
+            }
+          ]
+        },
+        {
+          "name": "comment.block.dea",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "comment.line.double-slash.dea",
+          "begin": "//",
+          "end": "$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.dea",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.dea"
+            }
+          },
+          "end": "\"|(?=$)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.dea"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.dea",
+              "match": "\\\\(?:[\"'\\\\ntr]|[0-7]{1,3}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|x[0-9A-Fa-f]+)"
+            },
+            {
+              "name": "constant.character.escape.dea",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "constant.character.dea",
+          "begin": "'",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.character.begin.dea"
+            }
+          },
+          "end": "'|(?=$)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.character.end.dea"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.dea",
+              "match": "\\\\(?:[\"'\\\\ntr]|[0-7]{1,3}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|x[0-9A-Fa-f]+)"
+            },
+            {
+              "name": "constant.character.escape.dea",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(module)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.module.dea"
+            },
+            "2": {
+              "name": "entity.name.namespace.dea"
+            }
+          }
+        },
+        {
+          "match": "\\b(import)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.dea"
+            },
+            "2": {
+              "name": "entity.name.namespace.imported.dea"
+            }
+          }
+        },
+        {
+          "match": "\\b(func)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.function.dea"
+            },
+            "2": {
+              "name": "entity.name.function.dea"
+            }
+          }
+        },
+        {
+          "match": "\\b(struct|enum|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.type.dea"
+            },
+            "2": {
+              "name": "entity.name.type.dea"
+            }
+          }
+        }
+      ]
+    },
+    "qualified-identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.qualified.dea",
+          "match": "\\b(?:[A-Za-z_][A-Za-z0-9_]*\\.)*[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*\\b"
+        }
+      ]
+    },
+    "literals": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.dea",
+          "match": "\\b(?:true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.dea",
+          "match": "\\bnull\\b"
+        },
+        {
+          "name": "constant.language.wildcard.dea",
+          "match": "(?<![A-Za-z0-9_])_(?![A-Za-z0-9_])"
+        },
+        {
+          "name": "constant.numeric.integer.decimal.dea",
+          "match": "(?<![A-Za-z0-9_])[0-9]+(?![A-Za-z0-9_])"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.dea",
+          "match": "\\b(?:void|bool|string|byte|tiny|short|int|long|ushort|uint|ulong|float|double)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.dea",
+          "match": "\\b(?:module|import|func|struct|enum|type|extern)\\b"
+        },
+        {
+          "name": "storage.modifier.dea",
+          "match": "\\b(?:let|const)\\b"
+        },
+        {
+          "name": "keyword.control.dea",
+          "match": "\\b(?:return|match|case|if|else|while|for|break|continue|with|cleanup)\\b"
+        },
+        {
+          "name": "keyword.operator.word.dea",
+          "match": "\\b(?:as|new|drop)\\b"
+        },
+        {
+          "name": "keyword.other.reserved.dea",
+          "match": "\\bin\\b"
+        }
+      ]
+    },
+    "function-calls": {
+      "patterns": [
+        {
+          "name": "entity.name.function.call.dea",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.dea",
+          "match": "->|=>"
+        },
+        {
+          "name": "keyword.operator.dea",
+          "match": "==|!=|<=|>=|&&|\\|\\||<<|>>|[=<>+\\-*/%&|^~!?]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.namespace.dea",
+          "match": "::"
+        },
+        {
+          "name": "punctuation.dea",
+          "match": "[{}()\\[\\];,.:]"
+        }
+      ]
+    },
+    "type-names": {
+      "patterns": [
+        {
+          "name": "support.type.user.dea",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

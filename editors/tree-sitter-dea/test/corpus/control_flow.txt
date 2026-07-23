@@ -1,0 +1,240 @@
+==================
+Control flow and cleanup
+==================
+
+module flow;
+
+enum Result {
+    Value(value: int);
+    Empty;
+}
+
+func inspect(result: Result?, limit: int) -> int {
+    let answer = 0;
+    let i = 0;
+
+    while (i < limit) {
+        if (i == 3) break;
+        i = i + 1;
+    }
+
+    for (let j = 0; j < limit; j = j + 1) {
+        if (j == 2) continue;
+        answer = answer + j;
+    }
+
+    match (result as Result) {
+        Value(value) => { answer = value; }
+        Empty => { answer = 0; }
+    }
+
+    case (answer) {
+        -1 => { answer = 0; }
+        1 => answer = 2;
+        _ => { answer = limit; }
+    }
+
+    with (let active: Result? = result) {
+        answer = answer + 1;
+    } cleanup {
+        if (active == null) answer = 0;
+    }
+
+    return answer;
+}
+
+---
+
+(source_file
+  (module_declaration
+    name: (module_path
+      segment: (identifier)))
+  (enum_declaration
+    name: (identifier)
+    body: (enum_body
+      (enum_variant_declaration
+        name: (identifier)
+        fields: (variant_field_list
+          (variant_field
+            name: (identifier)
+            type: (type
+              base: (builtin_type)))))
+      (enum_variant_declaration
+        name: (identifier))))
+  (function_declaration
+    name: (identifier)
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (type
+          base: (qualified_identifier
+            name: (identifier))
+          suffix: (type_suffix
+            (nullable_type_suffix))))
+      (parameter
+        name: (identifier)
+        type: (type
+          base: (builtin_type))))
+    return_type: (type
+      base: (builtin_type))
+    body: (block
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          value: (integer_literal)))
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          value: (integer_literal)))
+      (while_statement
+        condition: (binary_expression
+          left: (qualified_identifier
+            name: (identifier))
+          right: (qualified_identifier
+            name: (identifier)))
+        body: (block
+          (if_statement
+            condition: (binary_expression
+              left: (qualified_identifier
+                name: (identifier))
+              right: (integer_literal))
+            consequence: (simple_statement
+              (break_statement)))
+          (simple_statement
+            (assignment_statement
+              left: (qualified_identifier
+                name: (identifier))
+              right: (binary_expression
+                left: (qualified_identifier
+                  name: (identifier))
+                right: (integer_literal))))))
+      (for_statement
+        initializer: (let_statement
+          name: (identifier)
+          value: (integer_literal))
+        condition: (binary_expression
+          left: (qualified_identifier
+            name: (identifier))
+          right: (qualified_identifier
+            name: (identifier)))
+        update: (assignment_statement
+          left: (qualified_identifier
+            name: (identifier))
+          right: (binary_expression
+            left: (qualified_identifier
+              name: (identifier))
+            right: (integer_literal)))
+        body: (block
+          (if_statement
+            condition: (binary_expression
+              left: (qualified_identifier
+                name: (identifier))
+              right: (integer_literal))
+            consequence: (simple_statement
+              (continue_statement)))
+          (simple_statement
+            (assignment_statement
+              left: (qualified_identifier
+                name: (identifier))
+              right: (binary_expression
+                left: (qualified_identifier
+                  name: (identifier))
+                right: (qualified_identifier
+                  name: (identifier)))))))
+      (match_statement
+        value: (cast_expression
+          value: (qualified_identifier
+            name: (identifier))
+          type: (type
+            base: (qualified_identifier
+              name: (identifier))))
+        (match_arm
+          pattern: (pattern
+            (variant_pattern
+              variant: (qualified_identifier
+                name: (identifier))
+              bindings: (pattern_binding_list
+                name: (identifier))))
+          body: (block
+            (simple_statement
+              (assignment_statement
+                left: (qualified_identifier
+                  name: (identifier))
+                right: (qualified_identifier
+                  name: (identifier))))))
+        (match_arm
+          pattern: (pattern
+            (variant_pattern
+              variant: (qualified_identifier
+                name: (identifier))))
+          body: (block
+            (simple_statement
+              (assignment_statement
+                left: (qualified_identifier
+                  name: (identifier))
+                right: (integer_literal))))))
+      (case_statement
+        value: (qualified_identifier
+          name: (identifier))
+        (case_arm
+          value: (case_arm_value
+            (signed_integer_literal
+              (integer_literal)))
+          body: (block
+            (simple_statement
+              (assignment_statement
+                left: (qualified_identifier
+                  name: (identifier))
+                right: (integer_literal)))))
+        (case_arm
+          value: (case_arm_value
+            (signed_integer_literal
+              (integer_literal)))
+          body: (simple_statement
+            (assignment_statement
+              left: (qualified_identifier
+                name: (identifier))
+              right: (integer_literal))))
+        (case_default_arm
+          body: (block
+            (simple_statement
+              (assignment_statement
+                left: (qualified_identifier
+                  name: (identifier))
+                right: (qualified_identifier
+                  name: (identifier)))))))
+      (with_statement
+        (with_item
+          initialize: (let_statement
+            name: (identifier)
+            type: (type
+              base: (qualified_identifier
+                name: (identifier))
+              suffix: (type_suffix
+                (nullable_type_suffix)))
+            value: (qualified_identifier
+              name: (identifier))))
+        body: (block
+          (simple_statement
+            (assignment_statement
+              left: (qualified_identifier
+                name: (identifier))
+              right: (binary_expression
+                left: (qualified_identifier
+                  name: (identifier))
+                right: (integer_literal)))))
+        cleanup: (block
+          (if_statement
+            condition: (binary_expression
+              left: (qualified_identifier
+                name: (identifier))
+              right: (null_literal))
+            consequence: (simple_statement
+              (assignment_statement
+                left: (qualified_identifier
+                  name: (identifier))
+                right: (integer_literal))))))
+      (simple_statement
+        (return_statement
+          value: (qualified_identifier
+            name: (identifier)))))))

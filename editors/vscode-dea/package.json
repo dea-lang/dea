@@ -1,0 +1,72 @@
+{
+  "name": "dea-language-support",
+  "displayName": "Dea Language Support",
+  "description": "Syntax highlighting and editing configuration for Dea/L0 and Dea/L1.",
+  "version": "0.1.0",
+  "publisher": "dea-lang",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/googlielmo/dea-lang",
+    "directory": "editors/vscode-dea"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "dea",
+    "dea-l0",
+    "dea-l1",
+    "textmate"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "package": "vsce package --no-dependencies"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "dea-l0",
+        "aliases": [
+          "Dea/L0",
+          "Dea L0"
+        ],
+        "extensions": [
+          ".l0"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "dea-l1",
+        "aliases": [
+          "Dea/L1",
+          "Dea L1"
+        ],
+        "extensions": [
+          ".l1"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dea-l0",
+        "scopeName": "source.dea.l0",
+        "path": "./syntaxes/dea-l0.tmLanguage.json"
+      },
+      {
+        "language": "dea-l1",
+        "scopeName": "source.dea.l1",
+        "path": "./syntaxes/dea-l1.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@vscode/vsce": "3.9.2",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2"
+  }
+}

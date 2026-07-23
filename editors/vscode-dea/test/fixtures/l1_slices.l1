@@ -1,0 +1,24 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module l1_slices;
+
+import std.io;
+
+// Minimized from l1/examples/slices.l1.
+func sum(values: int[]) -> int {
+    let total = 0;
+    for (let index = 0; index < len(values); index = index + 1) {
+        total = total + values[index];
+    }
+    return total;
+}
+
+func main() -> int {
+    let scores: int[5] = [4, 8, 15, 16, 23];
+    let middle = slice(scores, 1, 3);
+    printl_si("middle sum", sum(middle));
+    return 0;
+}

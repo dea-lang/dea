@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-07-14
+Version: 2026-07-23
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -25,6 +25,8 @@ The monorepo currently contains:
 
 - `l0/` as the implemented language, compiler, runtime, docs, examples, and release subtree.
 - `l1/` as the in-progress next-level subtree.
+- `editors/` for shared Dea/L0 and Dea/L1 syntax highlighting, fallback modes, navigation indexes, the in-repository
+  Tree-sitter grammar, fixtures, and focused validation.
 - `scripts/` for monorepo-owned automation and shared helper modules.
 - `docs/` for Dea-wide and monorepo-wide stable documentation.
 - `work/` for Dea-wide and monorepo-wide plans/proposals.
@@ -101,6 +103,8 @@ The monorepo now has a small but real shared top-level layer:
 
 - root `work/plans/` for Dea-wide planning,
 - root `docs/` for Dea-wide status and reference documents,
+- root `editors/` for distinct L0/L1 editor identities backed by shared TextMate, Vim, Emacs, Universal Ctags, and the
+  in-repository `editors/tree-sitter-dea/` L1-superset grammar package,
 - root `CLAUDE.md` for monorepo-wide workflow policy,
 - root `Makefile` for shared `help`, `venv`, normal `test`, full trace-inclusive `test-all`, `clean`, and `clean-all`,
 - root `scripts/dea_tooling/` for shared launcher/bootstrap helpers.

@@ -1,0 +1,14 @@
+/.cache/
+/.config/
+/.npm-cache/
+/build/
+/node_modules/
+/prebuilds/
+
+*.dll
+*.dylib
+*.o
+*.so
+*.wasm
+/libtree-sitter-dea.a
+/tree-sitter-dea.pc

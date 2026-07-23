@@ -1,0 +1,199 @@
+==================
+L1 expressions and types
+==================
+
+module expressions;
+
+type Callback = (unsafe func(int*, string...) -> int)?;
+type Matrix = int[2][3];
+type Window = int?*[];
+
+func evaluate(callback: Callback, matrix: Matrix, values: int[]) -> int {
+    let built = int[3]([1, 2, 3]);
+    let row: int[] = slice(matrix[0], 0, 2);
+    let newline: byte = '\n';
+    let bell: byte = '\a';
+    let value = callback?(matrix[0][0], "items", values...);
+    let bits = ((value << 2) & 0xFF) | (~value ^ 0b10);
+    let pointer = new int[4];
+    drop pointer;
+    return bits as int?;
+}
+
+---
+
+(source_file
+  (module_declaration
+    name: (module_path
+      segment: (identifier)))
+  (type_alias_declaration
+    name: (identifier)
+    type: (type
+      base: (parenthesized_function_type
+        (function_type
+          parameters: (function_type_parameter_list
+            (function_type_parameter
+              type: (type
+                base: (builtin_type)
+                suffix: (type_suffix
+                  (pointer_type_suffix))))
+            (function_type_parameter
+              type: (type
+                base: (builtin_type))))
+          return_type: (type
+            base: (builtin_type))))
+      suffix: (type_suffix
+        (nullable_type_suffix))))
+  (type_alias_declaration
+    name: (identifier)
+    type: (type
+      base: (builtin_type)
+      suffix: (type_suffix
+        (array_type_suffix
+          length: (signed_integer_literal
+            (integer_literal))))
+      suffix: (type_suffix
+        (array_type_suffix
+          length: (signed_integer_literal
+            (integer_literal))))))
+  (type_alias_declaration
+    name: (identifier)
+    type: (type
+      base: (builtin_type)
+      suffix: (type_suffix
+        (nullable_type_suffix))
+      suffix: (type_suffix
+        (pointer_type_suffix))
+      suffix: (type_suffix
+        (slice_type_suffix))))
+  (function_declaration
+    name: (identifier)
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (type
+          base: (qualified_identifier
+            name: (identifier))))
+      (parameter
+        name: (identifier)
+        type: (type
+          base: (qualified_identifier
+            name: (identifier))))
+      (parameter
+        name: (identifier)
+        type: (type
+          base: (builtin_type)
+          suffix: (type_suffix
+            (slice_type_suffix)))))
+    return_type: (type
+      base: (builtin_type))
+    body: (block
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          value: (call_expression
+            function: (index_expression
+              value: (builtin_type)
+              index: (integer_literal))
+            arguments: (argument_list
+              (argument
+                (array_literal
+                  (integer_literal)
+                  (integer_literal)
+                  (integer_literal)))))))
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          type: (type
+            base: (builtin_type)
+            suffix: (type_suffix
+              (slice_type_suffix)))
+          value: (call_expression
+            function: (qualified_identifier
+              name: (identifier))
+            arguments: (argument_list
+              (argument
+                (index_expression
+                  value: (qualified_identifier
+                    name: (identifier))
+                  index: (integer_literal)))
+              (argument
+                (integer_literal))
+              (argument
+                (integer_literal))))))
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          type: (type
+            base: (builtin_type))
+          value: (byte_literal
+            (escape_sequence))))
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          type: (type
+            base: (builtin_type))
+          value: (byte_literal
+            (escape_sequence))))
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          value: (call_expression
+            function: (try_expression
+              value: (qualified_identifier
+                name: (identifier)))
+            arguments: (argument_list
+              (argument
+                (index_expression
+                  value: (index_expression
+                    value: (qualified_identifier
+                      name: (identifier))
+                    index: (integer_literal))
+                  index: (integer_literal)))
+              (argument
+                (string_literal
+                  (string_content)))
+              (argument
+                (spread_argument
+                  value: (qualified_identifier
+                    name: (identifier))))))))
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          value: (binary_expression
+            left: (parenthesized_expression
+              (binary_expression
+                left: (parenthesized_expression
+                  (binary_expression
+                    left: (qualified_identifier
+                      name: (identifier))
+                    right: (integer_literal)))
+                right: (integer_literal)))
+            right: (parenthesized_expression
+              (binary_expression
+                left: (unary_expression
+                  argument: (qualified_identifier
+                    name: (identifier)))
+                right: (integer_literal))))))
+      (simple_statement
+        (let_statement
+          name: (identifier)
+          value: (new_expression
+            type: (type
+              base: (builtin_type)
+              suffix: (type_suffix
+                (array_type_suffix
+                  length: (signed_integer_literal
+                    (integer_literal))))))))
+      (simple_statement
+        (drop_statement
+          value: (identifier)))
+      (simple_statement
+        (return_statement
+          value: (cast_expression
+            value: (qualified_identifier
+              name: (identifier))
+            type: (type
+              base: (builtin_type)
+              suffix: (type_suffix
+                (nullable_type_suffix)))))))))

@@ -1,0 +1,54 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module l0_surface;
+
+import std.io;
+
+type RawPointer = void*;
+
+struct Cursor {
+    position: int;
+}
+
+enum ParseResult {
+    Value(number: int);
+    Failed;
+}
+
+extern func monotonic_tick() -> int;
+
+/**
+ * Exercise module-qualified names, nullable suffixes, matching, and cleanup.
+ *
+ * @param cursor Cursor to advance.
+ * @return A parsed result or `null`.
+ */
+func parse(cursor: Cursor*) -> ParseResult? {
+    cursor.position = cursor.position + 1;
+    std.io::printl_s("parsing…");
+    return Value(cursor.position);
+}
+
+func inspect(cursor: Cursor*) -> int {
+    let answer = 0;
+    with (let parsed: ParseResult? = parse(cursor)) {
+        if (parsed == null) return -1;
+        match (parsed as ParseResult) {
+            Value(number) => { answer = number; }
+            Failed => { answer = 0; }
+        }
+    } cleanup {
+        // The nullable header value is safe to inspect during cleanup.
+        if (parsed == null) answer = 0;
+    }
+    return answer;
+}
+
+func main() -> int {
+    with (let cursor = new Cursor(0) => drop cursor) {
+        return inspect(cursor);
+    }
+}

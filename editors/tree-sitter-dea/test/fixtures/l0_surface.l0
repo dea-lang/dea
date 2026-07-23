@@ -1,0 +1,40 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module l0_surface;
+
+import std.io;
+
+type RawPointer = void*;
+
+struct Cursor {
+    position: int;
+}
+
+enum ParseResult {
+    Value(number: int);
+    Failed;
+}
+
+extern func monotonic_tick() -> int;
+
+func parse(cursor: Cursor*) -> ParseResult? {
+    cursor.position = cursor.position + 1;
+    std.io::printl_s("parsing");
+    return Value(cursor.position);
+}
+
+func inspect(cursor: Cursor*) -> int {
+    let answer = 0;
+    with (let parsed: ParseResult? = parse(cursor)) {
+        match (parsed as ParseResult) {
+            Value(number) => { answer = number; }
+            Failed => { answer = 0; }
+        }
+    } cleanup {
+        if (parsed == null) answer = 0;
+    }
+    return answer;
+}

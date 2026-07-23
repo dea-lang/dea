@@ -3,7 +3,7 @@
 ## Shared editor support baseline
 
 - Date: 2026-06-30
-- Status: Draft
+- Status: Completed
 - Title: Shared editor support baseline for Dea/L0 and Dea/L1
 - Kind: Feature
 - Scope: Shared
@@ -13,28 +13,28 @@
   - VS Code TextMate package
   - Vim and Emacs fallback modes
   - Universal Ctags optlib
-  - Companion `tree-sitter-dea` grammar repository
+  - In-repository `editors/tree-sitter-dea/` grammar package
   - Editor support samples and packaging docs
 - Origin: Shared Dea language surface across L0 and L1, with L1 used as the richer parser superset for structural editor
   support.
 - Porting rule: Editor integrations may share one package and parser implementation, but L0 and L1 must remain distinct
   language IDs, filetypes, scopes, and file-extension mappings wherever the host editor supports that distinction.
 - Target status:
-  - VS Code TextMate package: Pending
-  - Vim and Emacs fallback modes: Pending
-  - Universal Ctags optlib: Pending
-  - Companion `tree-sitter-dea` grammar repository: Pending
-  - Editor support samples and packaging docs: Pending
+  - VS Code TextMate package: Implemented
+  - Vim and Emacs fallback modes: Implemented
+  - Universal Ctags optlib: Implemented
+  - In-repository `editors/tree-sitter-dea/` grammar package: Implemented
+  - Editor support samples and packaging docs: Implemented
 - Subsystem: Editor tooling / syntax highlighting / structural parsing / navigation indexes
 - Modules:
   - `editors/`
+  - `editors/tree-sitter-dea/`
   - `l0/docs/reference/grammar.md`
   - `l1/docs/reference/grammar.md`
-  - companion `tree-sitter-dea` repository
 - Test modules:
   - `editors/vscode-dea/test/fixtures/`
   - `editors/tests/`
-  - companion `tree-sitter-dea/test/corpus/`
+  - `editors/tree-sitter-dea/test/corpus/`
 - Related:
   - `l0/docs/reference/grammar.md`
   - `l1/docs/reference/grammar.md`
@@ -83,12 +83,15 @@ worse than a focused conservative grammar.
 3. **Tree-sitter parses the L1 superset.** The Tree-sitter grammar name is `dea`; it should accept the richer L1
    syntactic superset and stay error-tolerant while users type. L0/L1 extension and filetype mappings remain separate,
    and editor queries may avoid highlighting L1-only forms too aggressively in L0 contexts.
-4. **Compiler remains authoritative.** Editor grammars are not semantic validators. They should highlight and structure
+4. **Tree-sitter stays in the monorepo.** Its self-contained package root is `editors/tree-sitter-dea/`. The
+   conventional package name matches `editors/vscode-dea/`, remains recognizable to Tree-sitter consumers, and permits a
+   later mirror or extraction without reorganizing the package. A separate repository is not required for this baseline.
+5. **Compiler remains authoritative.** Editor grammars are not semantic validators. They should highlight and structure
    incomplete code without trying to encode type checking or level-specific semantic rejection.
-5. **Ctags is navigation-only.** The optlib should index modules, functions, structs, enums, type aliases, and top-level
+6. **Ctags is navigation-only.** The optlib should index modules, functions, structs, enums, type aliases, and top-level
    constants. Local bindings, enum payload binders, fields, imports, and overload-like semantic contexts are left to
    Tree-sitter queries or future compiler-backed services.
-6. **No compiler diagnostics.** This plan does not add, reserve, or reassign diagnostic codes.
+7. **No compiler diagnostics.** This plan does not add, reserve, or reassign diagnostic codes.
 
 ## Public Interfaces
 
@@ -155,13 +158,15 @@ Add fixture samples copied or minimized from real Dea sources:
 Use these fixtures for TextMate tokenization checks, Vim/Emacs smoke checks, Ctags assertions, and package-manifest
 validation.
 
-### Phase 3: Companion Tree-sitter grammar
+### Phase 3: In-repository Tree-sitter grammar
 
-Prepare a separate public `tree-sitter-dea` repository instead of burying the parser in this monorepo. The initial
-repository should contain:
+Add a self-contained Tree-sitter package at `editors/tree-sitter-dea/`. Keeping the conventional package layout under
+`editors/` makes the grammar directly versioned with the language sources while preserving the option to publish a thin
+mirror later. The package should contain:
 
 - `grammar.js`;
 - `tree-sitter.json`;
+- generated parser sources, package manifests, and standard bindings;
 - `queries/highlights.scm`;
 - `queries/indents.scm`;
 - `queries/locals.scm`;
@@ -184,11 +189,15 @@ Document local installation and smoke-test flows for:
 - installing Vim files through a runtime path;
 - loading `dea-mode.el` in Emacs;
 - invoking Universal Ctags with `editors/ctags/dea.ctags`;
-- wiring the companion Tree-sitter parser into Neovim, Helix, Zed, and Emacs tree-sitter modes once the external parser
-  repository is published.
+- building and loading `editors/tree-sitter-dea/` locally in Neovim, Helix, Zed, and Emacs tree-sitter modes;
+- pinning the monorepo plus the grammar subpath in hosts that support subdirectory grammars.
 
-Track GitHub Linguist as a later upstreaming step after the TextMate grammar is public under an MIT/Apache-compatible
-license and enough representative public `.l0` / `.l1` usage exists. A Linguist PR is not part of this plan.
+If a host's public distribution mechanism requires a repository-root grammar, publish a thin mirror or extract
+`editors/tree-sitter-dea/` in later packaging work. That publication is not required to complete this baseline.
+
+Track GitHub Linguist as a later upstreaming step after the TextMate grammar is publicly available under an
+MIT/Apache-compatible license and enough representative public `.l0` / `.l1` usage exists. A Linguist PR is not part of
+this plan.
 
 ## Verification Criteria
 
@@ -214,6 +223,44 @@ license and enough representative public `.l0` / `.l1` usage exists. A Linguist 
 2. Changing the Dea language grammar, lexer, parser, analyzer, compiler diagnostics, or CLI contract.
 3. Replacing compiler validation with editor grammar validation.
 4. Indexing local bindings or semantic references through Ctags.
-5. GitHub Linguist upstreaming before public grammar publication and sufficient in-the-wild Dea usage.
+5. GitHub Linguist upstreaming before the editor grammars are publicly available and sufficient in-the-wild Dea usage.
 6. Packaging for every editor marketplace in the first implementation; local installable artifacts and documentation are
    sufficient for this baseline.
+
+## Implementation Status
+
+As of 2026-07-23, all targets are implemented under `editors/`:
+
+- the declarative VS Code package exposes the required L0/L1 IDs and scopes, has no activation code or semantic
+  providers, and is validated with the actual VS Code TextMate and Oniguruma libraries;
+- Vim and Emacs provide distinct extension-aware fallback highlighting, with headless smoke coverage;
+- the Universal Ctags optlib indexes the deliberately limited top-level symbol set and supports normal tags and ETAGS
+  output;
+- representative and malformed fixtures drive the shared validation;
+- `editors/tree-sitter-dea/` contains the L1-superset grammar, generated parser, standard bindings, four planned
+  queries, eight corpus cases including incomplete-source recovery, and dual MIT/Apache-2.0 licensing; and
+- the editor Makefile and focused GitHub Actions workflow install, test, and package-check both Node-based editor
+  packages together.
+
+## Completion Notes
+
+Completed on 2026-07-23.
+
+- Kept L0 and L1 host identities distinct while sharing conservative common syntax definitions and one structural
+  parser.
+- Imported the complete Tree-sitter package into the monorepo and adapted package metadata for the
+  `editors/tree-sitter-dea/` subdirectory.
+- Documented local and pinned-subpath consumption for Neovim, Helix, and Emacs, plus Zed's repository-root grammar
+  limitation and the later thin-mirror option.
+- Added focused editor CI without adding activation code, compiler integration, semantic services, or publication
+  workflows.
+
+## Verification Results
+
+- `STRICT_EDITOR_TOOLS=1 make -C editors test`: Pass for TextMate, Tree-sitter corpus/query/highlight checks, Vim,
+  Emacs, and Universal Ctags.
+- `make -C editors package`: Pass for VSIX creation and the Tree-sitter npm package dry run.
+- Broad Tree-sitter sweep: Pass for all 138 production/example sources under the selected L0 and L1 source roots.
+- Compiler fixture checks: Pass for `l0_hello`, `l0_surface`, `l1_slices`, and `l1_surface`.
+- Tree-sitter Node binding load and C static/shared library builds: Pass.
+- `actionlint .github/workflows/editors-ci.yml` and `git diff --check`: Pass.

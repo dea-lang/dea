@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: Editor support CI
+
+on:
+  push:
+    paths:
+      - .github/workflows/editors-ci.yml
+      - editors/**
+  pull_request:
+    paths:
+      - .github/workflows/editors-ci.yml
+      - editors/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            editors/tree-sitter-dea/package-lock.json
+            editors/vscode-dea/package-lock.json
+
+      - name: Install editor smoke-test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y emacs-nox universal-ctags vim-nox
+
+      - name: Install editor test dependencies
+        run: make -C editors install-node-deps
+
+      - name: Validate editor integrations
+        env:
+          STRICT_EDITOR_TOOLS: "1"
+        run: make -C editors test
+
+      - name: Check editor packages
+        run: |
+          npm --prefix editors/vscode-dea run package -- --out /tmp/dea-language-support.vsix
+          make -C editors package-tree-sitter

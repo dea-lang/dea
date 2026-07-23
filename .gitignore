@@ -15,6 +15,7 @@ __pycache__/
 .Python
 l0/build/
 build/
+editors/vscode-dea/*.vsix
 develop-eggs/
 l0/dist/
 dist/
@@ -32,6 +33,9 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Node.js
+node_modules/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -385,6 +389,7 @@ Temporary Items
 # Fortran module files
 *.mod
 *.smod
+!editors/tree-sitter-dea/go.mod
 
 # Compiled Static libraries
 *.lai

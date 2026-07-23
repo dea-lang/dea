@@ -1,0 +1,114 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Dea/L1",
+  "scopeName": "source.dea.l1",
+  "patterns": [
+    {
+      "include": "#l1-declarations"
+    },
+    {
+      "include": "#l1-literals"
+    },
+    {
+      "include": "#l1-keywords"
+    },
+    {
+      "include": "#l1-labels"
+    },
+    {
+      "include": "#l1-operators"
+    },
+    {
+      "include": "source.dea.l0"
+    }
+  ],
+  "repository": {
+    "l1-declarations": {
+      "patterns": [
+        {
+          "match": "\\b(import)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s*,\\s*[A-Za-z_][A-Za-z0-9_]*)*)\\s+(from)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.dea"
+            },
+            "2": {
+              "name": "variable.other.imported.dea"
+            },
+            "3": {
+              "name": "keyword.control.import.from.dea"
+            },
+            "4": {
+              "name": "entity.name.namespace.imported.dea"
+            }
+          }
+        },
+        {
+          "match": "\\b(const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.constant.dea"
+            },
+            "2": {
+              "name": "entity.name.constant.dea"
+            }
+          }
+        },
+        {
+          "match": "^(\\s*)(let)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "2": {
+              "name": "storage.modifier.dea"
+            },
+            "3": {
+              "name": "entity.name.variable.global.dea"
+            }
+          }
+        }
+      ]
+    },
+    "l1-literals": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.dea",
+          "match": "(?<![A-Za-z0-9_])(?:[0-9]+\\.[0-9]+(?:[eE][+\\-]?[0-9]+)?[fF]?|[0-9]+[eE][+\\-]?[0-9]+[fF]?)(?![A-Za-z0-9_])"
+        },
+        {
+          "name": "constant.numeric.integer.binary.dea",
+          "match": "(?<![A-Za-z0-9_])0[bB][01]+(?![A-Za-z0-9_])"
+        },
+        {
+          "name": "constant.numeric.integer.octal.dea",
+          "match": "(?<![A-Za-z0-9_])0[oO][0-7]+(?![A-Za-z0-9_])"
+        },
+        {
+          "name": "constant.numeric.integer.hexadecimal.dea",
+          "match": "(?<![A-Za-z0-9_])0[xX][0-9A-Fa-f]+(?![A-Za-z0-9_])"
+        }
+      ]
+    },
+    "l1-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.dea",
+          "match": "\\b(?:export|from|unsafe|opaque)\\b"
+        }
+      ]
+    },
+    "l1-labels": {
+      "patterns": [
+        {
+          "name": "variable.other.label.dea",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*:(?!:))"
+        }
+      ]
+    },
+    "l1-operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.variadic.dea",
+          "match": "\\.\\.\\."
+        }
+      ]
+    }
+  }
+}

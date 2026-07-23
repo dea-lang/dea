@@ -1,0 +1,57 @@
+{
+  "name": "tree-sitter-dea",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for the Dea L0 and L1 languages",
+  "type": "module",
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "files": [
+    "grammar.js",
+    "tree-sitter.json",
+    "binding.gyp",
+    "LICENSE-*",
+    "bindings/node/*",
+    "queries/*",
+    "src/*.c",
+    "src/*.cc",
+    "src/*.json",
+    "src/tree_sitter/*.h"
+  ],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "node test/run.mjs",
+    "test:queries": "node test/query-smoke.mjs"
+  },
+  "keywords": [
+    "dea",
+    "incremental",
+    "parser",
+    "tree-sitter"
+  ],
+  "author": {
+    "name": "Guglielmo Nigri",
+    "email": "googlielmo@gmail.com",
+    "url": "https://github.com/googlielmo"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/googlielmo/dea-lang.git",
+    "directory": "editors/tree-sitter-dea"
+  },
+  "license": "MIT OR Apache-2.0",
+  "dependencies": {
+    "node-addon-api": "^8.5.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "0.26.11"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.25.0"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  }
+}

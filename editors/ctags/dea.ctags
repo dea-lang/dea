@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+--langdef=Dea
+--map-Dea=+.l0
+--map-Dea=+.l1
+
+--kinddef-Dea=m,module,modules
+--kinddef-Dea=f,function,functions
+--kinddef-Dea=s,struct,structs
+--kinddef-Dea=e,enum,enums
+--kinddef-Dea=t,type,type aliases
+--kinddef-Dea=c,constant,top-level constants
+
+--regex-Dea=/^module[ \t]+([A-Za-z_][A-Za-z0-9_.]*)[ \t]*;/\1/m/
+--regex-Dea=/^func[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\(/\1/f/
+--regex-Dea=/^extern[ \t]+func[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\(/\1/f/
+--regex-Dea=/^unsafe[ \t]+func[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\(/\1/f/
+--regex-Dea=/^unsafe[ \t]+extern[ \t]+func[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\(/\1/f/
+--regex-Dea=/^struct[ \t]+([A-Za-z_][A-Za-z0-9_]*)/\1/s/
+--regex-Dea=/^enum[ \t]+([A-Za-z_][A-Za-z0-9_]*)/\1/e/
+--regex-Dea=/^type[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=/\1/t/
+--regex-Dea=/^const[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*:/\1/c/
