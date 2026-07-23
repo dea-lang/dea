@@ -1,0 +1,4 @@
+interface:
+  display_name: "Squash Recent Commits"
+  short_description: "Squash recent commits into a cohesive change"
+  default_prompt: "Use $squash-recent-commits to squash the last two commits into one cohesive commit while preserving durable documentation."
