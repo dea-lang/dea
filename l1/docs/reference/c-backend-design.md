@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-07-11
+Version: 2026-07-23
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -18,8 +18,12 @@ Current code generation is implemented only in `compiler/stage1_l0/src/` and is 
 - C emission in `c_emitter.l0`
 - string literal escaping/encoding helpers in `string_escape.l0`
 
-Input is a fully typed analysis result. Output is one C99 translation unit that is then compiled by the selected host C
-compiler for `--build` and `--run`.
+Input is a fully typed analysis result. The backend exposes two supported output boundaries:
+
+- `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit used by the current `--gen`,
+  `--build`, and `--run` flows.
+- `backend_generate_module(result, target_module, opts, cfg)` emits one source-backed module translation unit for
+  separate-compilation consumers. This internal API is not yet connected to compile-only, build, or run dispatch.
 
 `compiler/stage2_l1/` does not currently provide a second backend implementation.
 
@@ -28,6 +32,7 @@ compiler for `--build` and `--run`.
 ### Backend orchestration (`backend.l0`)
 
 - validates generation preconditions
+- selects either the legacy whole-program boundary or one canonical source-backed target module
 - orders type emission using dependency-aware traversal
 - lowers statements and expressions into emitter operations
 - manages ownership-sensitive cleanup scheduling
@@ -42,7 +47,9 @@ compiler for `--build` and `--run`.
 
 ## Generated Unit Layout
 
-The generated C file is organized in this order:
+### Legacy whole-program output
+
+The legacy generated C file is organized in this order:
 
 1. file header and includes
 2. forward declarations
@@ -54,13 +61,30 @@ The generated C file is organized in this order:
 8. non-extern function definitions
 9. C `main` wrapper when the entry module defines `main`
 
-Current backend target is a single C translation unit. Top-level `const` and constant `let` initializers lower directly
-into C storage initializers; non-constant top-level `let` initializers lower as zero/default-initialized storage plus
-hidden per-module init assignments.
+Top-level `const` and constant `let` initializers lower directly into C storage initializers; non-constant top-level
+`let` initializers lower as zero/default-initialized storage plus hidden per-module init assignments.
 
 For `--build` / `--run`, that generated unit now compiles against `dea_rt.h` and links `libdea_rt.a`,
 `libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or `libdea_rt_unchecked.a` instead of inlining the runtime bodies into
 the user translation unit.
+
+### Per-module output
+
+`backend_generate_module` emits definitions for exactly the selected source-backed module. Its generated C contains:
+
+1. the file header, runtime includes, forward declarations, and required type declarations;
+2. external declarations for provider-owned source and interface values and functions consumed by the target;
+3. storage and non-extern function definitions owned by the target module, with export-driven linkage;
+4. one external `I4init` definition and one external `I4fini` definition; and
+5. an external `I5entry` bridge only when the target defines a resolved, zero-parameter, non-extern source `main`.
+
+Imported non-extern L1 values and functions are declared under their provider-owned LBI names but are never defined by
+the consumer translation unit. Imported C `extern` functions retain their declared C spelling. Exported target
+definitions keep external linkage; non-exported target definitions use `static`. Compiler-generated `I` symbols remain
+external regardless of the source export manifest.
+
+Module output contains no process-level C `main`, legacy global init chain, or calls to dependency lifecycle functions.
+The later standalone-link tranche owns the executable wrapper and cross-module ordering.
 
 ## Type Lowering
 
@@ -80,9 +104,11 @@ Current L1 Binary Interface (LBI) naming policy is:
   `__deaM3std7integerN3absF1ii`; plain `let` and `const` bindings omit the type component.
 - Struct and enum type symbols use `S` and `E` terminals, for example `demo.main::Point` → `__deaM4demo4mainS5Point` and
   `demo.main::Color` → `__deaM4demo4mainE5Color`.
-- Compiler-generated module lifecycle helpers use the same `M` module section plus an `I` lifecycle section, for example
-  module `std.integer` lifecycle `init` → `__deaM3std7integerI4init`. This avoids collisions between dotted and
-  underscored module names while keeping lifecycle helpers distinct from source-level value and nominal type symbols.
+- Compiler-generated module symbols use the same `M` module section plus an `I` infrastructure section. Every module
+  output defines external `I4init` and `I4fini` functions, and a module with a resolved, zero-parameter, non-extern
+  source `main` also defines external `I5entry`; for example, `std.integer` init is `__deaM3std7integerI4init`. This
+  avoids collisions between dotted and underscored module names while keeping compiler infrastructure distinct from
+  source-level values and nominal types.
 - The encoding uses only ISO C99 identifier characters; no GCC `$`-in-identifier extension is required. See
   `l1/docs/specs/compiler/abi.md` for the normative spec.
 - Exported symbols keep global linkage in generated C and the resulting object file.
@@ -137,6 +163,8 @@ build mode preserve the L1 floating-point contract.
   parameters; semantic and LBI identity still distinguish the two function types
 - pointer-shaped nullable values use `NULL` representation
 - non-pointer nullable values lower to wrapper structs carrying `has_value` plus the wrapped value
+- suffix order therefore affects layout visibility across modules: `T*?` remains a pointer-shaped nullable and needs
+  only `T`'s declaration, while `T?*` points to a wrapper whose definition embeds `T` and needs `T`'s full layout
 - non-null values used in matching nullable contexts lower to present wrappers; for example, returning `0 as ulong` from
   a `ulong?` function stores the converted `ulong` payload in `dea_opt_ulong`
 - explicit integer casts to nullable integer targets lower as a checked cast to the inner C type followed by wrapper
@@ -191,6 +219,8 @@ Key rules:
 - fixed-size array indexing emits a bounds check that calls `_rt_panic_oob(index, length)` before accessing `.data`
 - slice descriptors are non-owning and do not retain or clean up elements; fixed-array rvalues materialized as slice
   backing storage are registered for normal scope cleanup when their element type transitively contains ARC-managed data
+- in per-module output, `I4fini` cleans only ARC-managed top-level `let` values owned by that module; it never cleans
+  imported storage or calls another module's finalizer
 - ordinary variadic arguments are initialized into a synthetic owning fixed-array wrapper and cleaned up with the
   surrounding scope; spread forwarding emits only the contextually converted slice descriptor
 - `len(slice)` reads `.len`, `len(array)` is the compile-time length, and `len(string)` calls `rt_strlen`; slice
@@ -202,13 +232,27 @@ See [ownership.md](ownership.md) for the language-facing ownership rules that th
 
 ## Entry Point Behavior
 
+### Legacy process wrapper
+
 When the entry module defines `main`, backend emits a host C `main(int argc, char **argv)` wrapper that:
 
 - initializes runtime argument state
 - calls the hidden global module-init chain when any imported module needs deferred top-level initialization
 - calls the mangled L1 entry function
-- returns `int`/`bool` results as host `int`
+- returns `int` directly and maps `bool` `true` to host status `0` and `false` to `1`
 - discards other return values and exits with `0`
+
+### Per-module lifecycle and entry bridge
+
+Every module translation unit defines an external `void I4init(void)` and `void I4fini(void)`. `I4init` performs only
+that module's deferred top-level initialization in established within-module order. `I4fini` performs only that module's
+ARC-managed top-level cleanup. Either body is empty when the module has no corresponding work, and neither function
+calls another module's lifecycle entry point.
+
+A module with a resolved, zero-parameter, non-extern source `main` definition also emits external `int I5entry(void)`,
+even when source `main` is non-exported and therefore `static`. The bridge calls the source definition inside the same
+translation unit, returns an `int` result directly, maps `bool` `true` to `0` and `false` to `1`, and calls every other
+result form before returning `0`. It does not initialize runtime arguments or call `I4init` or `I4fini`.
 
 ## Debuggability
 
@@ -218,7 +262,8 @@ When the entry module defines `main`, backend emits a host C `main(int argc, cha
 
 ## Current Constraints
 
-1. Backend output is one `.c` file.
+1. Ordinary `--gen`, `--build`, and `--run` output remains one legacy whole-program `.c` file; the internal module
+   generator emits one selected module without changing those flows.
 2. The only implemented backend is the bootstrap backend in `stage1_l0`.
 3. The runtime and ABI surface assume a C99-compatible host toolchain.
 4. Optimization is delegated to the host C compiler; backend priority is correctness and explicit lowering.

@@ -34,7 +34,7 @@
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
-  - [`l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
+  - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
@@ -58,7 +58,7 @@ module, fingerprint, lifecycle, dependency, or entry semantics.
 
 1. The [module graph][module-graph] establishes ordered dependency semantics, and [fingerprints] establish provider
    compatibility values.
-2. The [lifecycle plan][lifecycle] supplies external `I4init`, `I4fini`, and conditional `I5entry` symbols.
+2. The completed [lifecycle plan][lifecycle] supplies external `I4init`, `I4fini`, and conditional `I5entry` symbols.
 3. [Object metadata][object-metadata] supplies bounded readers and the `ValidDeaMetadata`, `NoDeaMetadata`, and
    `MalformedDeaMetadata` results.
 4. [Compile-only production][compile-only] produces the final verified Dea objects consumed here.
@@ -186,8 +186,8 @@ repeats the path with `extern "C"`.
 ## Verification Criteria
 
 01. A complete Dea object graph with one entry links and runs without any `.l1m` input.
-02. Zero and multiple entry candidates fail deterministically; valid explicit selection chooses one of several module
-    `main` definitions and invokes only its `I5entry`.
+02. Zero and multiple entry candidates fail deterministically; valid explicit selection chooses one of several entry
+    candidates and invokes only its `I5entry`.
 03. Missing providers, duplicate module identities, cycles, and consumer/provider fingerprint mismatches fail before the
     host linker.
 04. A metadata-free positional object fails with `--foreign-object` guidance.
@@ -206,6 +206,6 @@ repeats the path with `extern "C"`.
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

@@ -35,7 +35,7 @@
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
-  - [`l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
+  - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
@@ -130,9 +130,9 @@ modes.
 
 1. Supply every source-built and interface-backed Dea object to the common link API together with the source target's
    canonical module name as the explicit entry selection.
-2. The target must define a valid source `main` and therefore carry `HAS_ENTRY` plus `I5entry`. Another module's
-   `I5entry` never substitutes for a target without one.
-3. Multiple valid `I5entry` modules are allowed because the target selects exactly one. Only the target bridge is
+2. The target must define a resolved, zero-parameter, non-extern source `main` and therefore carry `HAS_ENTRY` plus
+   `I5entry`. Another module's `I5entry` never substitutes for a target without an eligible bridge.
+3. Multiple entry-eligible modules are allowed because the target selects exactly one. Only the target bridge is
    invoked; all Dea modules still receive dependency-ordered initialization and reverse-order finalization.
 4. Forward foreign objects through the common classification path. They may satisfy ordinary unmangled external symbols
    but never become graph providers, entry candidates, or lifecycle participants.
@@ -205,9 +205,9 @@ architecture, C-backend, and separate-compilation references.
     module identities and whole-module fingerprints.
 03. Missing sibling objects, mismatched interfaces and objects, malformed metadata, cycles, and missing providers fail
     before the host linker and clean invocation-owned artifacts.
-04. Two or more modules may define `main`; build/run select the requested source target, invoke only its `I5entry`, and
-    do not issue the standalone link mode's ambiguous-entry diagnostic.
-05. A target without `main` fails even when another linked module supplies `I5entry`.
+04. Two or more modules may define an entry-eligible `main`; build/run select the requested source target, invoke only
+    its `I5entry`, and do not issue the standalone link mode's ambiguous-entry diagnostic.
+05. A target without an entry-eligible bridge fails even when another linked module supplies `I5entry`.
 06. Init calls are dependency-first, fini calls are their exact reverse, and side-effect-only imports remain ordered.
 07. A tiny metadata-free C provider satisfies today's unmangled `extern func` through repeatable `--foreign-object` in
     both `--build` and `--run`; it receives no entry or lifecycle calls.
@@ -227,7 +227,7 @@ architecture, C-backend, and separate-compilation references.
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

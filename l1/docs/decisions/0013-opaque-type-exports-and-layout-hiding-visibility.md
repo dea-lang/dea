@@ -1,7 +1,7 @@
 # ADR-0013: Opaque Type Exports and Layout-Hiding Visibility
 
 - Decision date: 2026-06-13
-- Last edited: 2026-07-11
+- Last edited: 2026-07-23
 - Status: Accepted
 
 ## Context
@@ -78,8 +78,10 @@ not the consumer.
 
 To export a struct `S` transparently, its by-value layout closure must be transparent: follow every by-value field edge
 (embedded structs, array elements, by-value enum payloads) and require each reached type to be transparent. The walk
-stops at pointers: a pointer field places its pointee at the frontier (must be >= opaque) but is not descended into,
-because the importer never needs the pointee's layout.
+stops at pointers whose pointee has a forward-declarable ABI spelling: such a pointer field places its pointee at the
+frontier (must be >= opaque) but is not descended into. A synthesized by-value wrapper is not such a frontier. For
+example, `U*?` is a nullable pointer and may name opaque `U`, whereas the pointee of `U?*` embeds `U` by value and
+therefore requires `U` to be transparent.
 
 The check is enforced one level deep at each export; full transitivity follows by induction, since a transparent export
 is itself only legal when its by-value closure is transparent and its pointee frontier is >= opaque. An unexported

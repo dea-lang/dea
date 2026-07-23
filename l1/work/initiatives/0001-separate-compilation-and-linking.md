@@ -4,13 +4,13 @@
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`
   - `l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`
   - `l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`
   - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md`
@@ -70,16 +70,17 @@ This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
 
 Relevant facts that constrain the plan at the time of writing:
 
-- The L1 compiler emits **one generated C99 compilation unit per program**. The whole import closure is concatenated
-  into a single `.c` and compiled in one `cc` invocation.
+- Ordinary build/run still emits **one generated C99 compilation unit per program** through the legacy backend. The
+  internal module backend can emit exactly one selected source-backed module, but compile-only and multi-CU
+  orchestration are not operational yet.
 - The L1 backend reference ([`l1/docs/reference/c-backend-design.md`][backend-design]) is the current source of truth
   for L1 generated C behavior.
 - Modules support explicit export manifests plus alias and selective import forms. Exported top-level declarations keep
   external C linkage; non-exported top-level functions and storage use `static` where the current single-CU backend can
   do so without changing semantics.
-- Generated L1-defined source symbols use LBI `M...S...` names, and compiler-generated module lifecycle symbols use LBI
-  `M...I...` names. Everything inside a legacy `extern func` declaration is intentionally **not name-mangled**; this is
-  the only FFI primitive in the language today.
+- Generated L1-defined value and function symbols use LBI `M...N...` names, nominal structs and enums use `M...S...` and
+  `M...E...`, and compiler-generated module infrastructure uses `M...I...`. Everything inside a legacy `extern func`
+  declaration is intentionally **not name-mangled**; this is the only FFI primitive in the language today.
 - Deterministic textual `.l1m` emission, constrained parsing, canonical artifact association, interface-first discovery,
   transitive graph-backed replay, canonical whole-module fingerprinting, and pre-registration verification are
   implemented through internal APIs. Ordinary build/run imports remain source-based, and provider-object consistency
@@ -116,8 +117,9 @@ can still inline and dead-strip internal helpers.
 With separate compilation the mangled name is the link-time identity. L1 adopts the tagged-section, length-prefixed LBI
 scheme specified in [`l1/docs/specs/compiler/abi.md`][abi]:
 
-- Source symbols use `__deaM<seg_len><seg>...S<sym_len><sym>`.
-- Compiler-generated module lifecycle symbols use `__deaM<seg_len><seg>...I<life_len><life>`.
+- Source values and functions use `__deaM<seg_len><seg>...N<sym_len><sym>[type-component]`; structs and enums use the
+  corresponding `S` and `E` terminals.
+- Compiler-generated module infrastructure symbols use `__deaM<seg_len><seg>...I<name_len><name>`.
 - **Canonical source form:** the input to mangling is the module's dotted path (for example `std.integer`), not its
   filesystem path. The compiler does not see `/` or platform path separators at the mangling stage.
 - **Module path encoding:** each dotted module segment becomes one length-prefixed component in the `M` section. No
@@ -126,10 +128,10 @@ scheme specified in [`l1/docs/specs/compiler/abi.md`][abi]:
   length and the following component is unambiguous.
 - **Stability:** this normalization is part of the LBI ABI and is stable across stages. Stage 2 must produce
   byte-identical mangled names for the same source surface.
-- Example: `std.integer::abs` becomes `__deaM3std7integerS3abs`.
-- Example: module lifecycle `std.integer::init` becomes `__deaM3std7integerI4init`.
-- The scheme is chosen now so later overloading, generics, and additional module lifecycle entries can extend it without
-  breaking existing object names.
+- Example: `std.integer::abs` with type `func(int) -> int` becomes `__deaM3std7integerN3absF1ii`.
+- Example: module infrastructure `std.integer::init` becomes `__deaM3std7integerI4init`.
+- The scheme is chosen now so later overloading, generics, and additional module infrastructure entries can extend it
+  without breaking existing object names.
 - Declarations inside an `extern "C"` block bypass mangling and are emitted with their declared C spelling.
 
 Phase 0.2 is completed by
@@ -269,8 +271,8 @@ work is split by dependency, not by the former whole-plan labels:
    precedence, transitive interface closure, ordered direct-import edges, and semantic `require` / `link` population.
 2. **Interface fingerprints (complete):** canonical whole-module hash production and verification for emitted and
    consumed `.l1m` interfaces.
-3. **Per-module backend and lifecycle ABI:** emit only the target module's definitions, imported declarations only,
-   always-present external `I4init` / `I4fini`, and `I5entry` for every valid source `main`.
+3. **Per-module backend and lifecycle ABI (complete):** target-only definitions, imported declarations, always-present
+   external `I4init` / `I4fini`, and `I5entry` for every resolved, zero-parameter, non-extern source `main`.
 4. **Object metadata and readers:** emit the graph, fingerprint, and entry records against the finalized lifecycle
    anchor and add bounded ELF, Mach-O, and PE/COFF readers with valid/absent/malformed results.
 5. **Compile-only artifacts:** make `-c` operational only after the final metadata-bearing artifact shape exists, and
@@ -303,11 +305,12 @@ the provider's link identity.
 
 ### 2b. Backend changes
 
-`be_emit_function_definitions` walks every unit in the closure today. After the split it walks only the current module;
-everything imported is **declared** but not defined. Per-module C output contains:
+The legacy generator continues to walk every source unit in the closure. The internal module generator instead walks
+only the selected source-backed module; imported values are **declared** but not defined. Per-module C output contains:
 
 - forward declarations for every type reachable from the module's signatures (own + imported);
-- `extern` declarations for imported functions and top-level lets, using their provider-owned mangled names;
+- external declarations for imported functions and top-level lets; non-extern L1 symbols use their provider-owned
+  mangled names, while C `extern` functions retain their declared C spelling;
 - full definitions for the module's own types, lets, and functions, with exported symbols kept global and non-exported
   symbols emitted as `static`.
 
@@ -317,8 +320,11 @@ types instead replay as name-visible, layout-hidden declarations: consumers may 
 cannot emit by-value operations that require layout.
 
 Every compiled Dea module exposes external, no-op-capable `I4init` and `I4fini` lifecycle functions. A module defining a
-valid source `main` also exposes `I5entry`, which can call a non-exported source function inside the owning CU and
-normalize `int`, `bool`, or other accepted return forms to a C `int` status.
+resolved, zero-parameter, non-extern source `main` also exposes `I5entry`, which can call a non-exported source function
+inside the owning CU and normalize `int`, `bool`, or other return forms to a C `int` status.
+
+The completed lifecycle contract is recorded by [ADR-0020][lifecycle-adr]. Ordinary build/run remains on the legacy
+whole-program generator until graph fan-out lands.
 
 A new wrapper pseudo-module produces the process-level `main(int argc, char **argv)` shim when an executable is
 requested. The driver validates the metadata-bearing Dea graph, selects one `I5entry`, emits dependency-first `I4init`
@@ -487,7 +493,7 @@ Recorded near-term tranche checkpoints:
 - [x] Reserve and validate `-c` / `--compile` plus ordered `-I` / `--interface-path`; compile dispatch remains NYI.
 - [x] Define artifact layout, transitive interface discovery, and the deterministic module graph.
 - [x] Implement canonical whole-module fingerprints and `.l1m` verification.
-- [ ] Emit one module per CU with external `I4init`, `I4fini`, and conditional `I5entry`.
+- [x] Emit one module per CU with external `I4init`, `I4fini`, and conditional `I5entry`.
 - [ ] Emit and inspect provider/consumer object metadata.
 - [ ] Make compile-only artifact production operational.
 - [ ] Implement standalone Dea/foreign-object linking and entry selection.
@@ -611,7 +617,8 @@ implementation tranche proves that one decision area needs additional design wor
 - Stage 1 module-interface resolution hardening completed under [module-interface-hardening].
 - Canonical whole-module hashing and `.l1m` verification completed under
   [interface fingerprints][interface-fingerprints].
-- Per-module definitions plus `I4init`, `I4fini`, and `I5entry` under [lifecycle entrypoints][lifecycle-entrypoints].
+- Per-module definitions plus `I4init`, `I4fini`, and `I5entry` completed under
+  [lifecycle entrypoints][lifecycle-entrypoints] and recorded by [ADR-0020][lifecycle-adr].
 - Provider/consumer metadata and bounded object readers under [object metadata][object-metadata].
 - Transactional single-module artifact production under [compile only][compile-only].
 - Standalone Dea/foreign-object linking, entry selection, and wrapper construction under [link set][link-set].
@@ -644,7 +651,8 @@ implementation tranche proves that one decision area needs additional design wor
 [interface-emission]: ../plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [library-linking]: ../plans/features/2026-04-24-external-library-linking-cli-noref.md
-[lifecycle-entrypoints]: ../plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[lifecycle-adr]: ../../docs/decisions/0020-per-module-backend-and-lifecycle-abi.md
+[lifecycle-entrypoints]: ../plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [linking]: ../../docs/user/linking.md
 [module-interface]: ../../docs/specs/compiler/module-interface-format.md

@@ -171,6 +171,38 @@ func etc_diag_warn(self: ExpressionTypeChecker*, code: string, message: string, 
 }
 
 /**
+ * Check one expression-phase type for imported opaque layout use.
+ *
+ * Loop liveness convergence rechecks expressions under diagnostic-suppression
+ * modes, and loop conditions may also be inferred twice normally. Suppressed
+ * passes retain the type for flow analysis; ordinary rechecks retain the prior
+ * failure result without duplicating its source diagnostic.
+ *
+ * @param self Expression checker state.
+ * @param ty Type position to validate.
+ * @param filename Source filename to report.
+ * @param span Source span to report.
+ * @return `true` when checking may continue with the type.
+ */
+func etc_check_imported_opaque_layout_type(self: ExpressionTypeChecker*, ty: Type*, filename: string,
+                                           span: Span) -> bool {
+    if (self.suppress_diagnostics || self.liveness_diagnostics_only) {
+        return true;
+    }
+    for (let i = 0; i < diag_count(self.result.diags); i = i + 1) {
+        let existing = diag_get(self.result.diags, i);
+        if (existing.code == "RES-0038" && existing.filename == filename &&
+            existing.line == span.start_line && existing.column == span.start_column &&
+            existing.line_end == span.end_line && existing.column_end == span.end_column) {
+            return false;
+        }
+    }
+    return sig_check_imported_opaque_layout_type(
+        self.result.names as NameResolution*, self.current_module, ty, true,
+        self.result.diags, filename, span);
+}
+
+/**
  * Format the full display form for one nested symbol path expression.
  *
  * @param expr Variable-reference expression carrying module and qualifier segments.
@@ -1409,6 +1441,8 @@ func etc_infer_sizeof_intrinsic(self: ExpressionTypeChecker*, expr_id: ExprId, e
             if (target_ty == null) {
                 return type_builtin_int();
             }
+            etc_check_imported_opaque_layout_type(
+                self, target_ty as Type*, (self.current_unit as DriverUnit*).path, expr.span);
             if (etc_is_void(target_ty as Type*)) {
                 etc_diag_error(self, "TYP-0240", "cannot take sizeof(void)",
                     (self.current_unit as DriverUnit*).path, expr.span);
@@ -1421,6 +1455,8 @@ func etc_infer_sizeof_intrinsic(self: ExpressionTypeChecker*, expr_id: ExprId, e
 
     let type_expr_ty = etc_try_resolve_sizeof_type_expr(self, arg_id);
     if (type_expr_ty != null) {
+        etc_check_imported_opaque_layout_type(
+            self, type_expr_ty as Type*, (self.current_unit as DriverUnit*).path, expr.span);
         if (etc_is_void(type_expr_ty as Type*)) {
             etc_diag_error(self, "TYP-0240", "cannot take sizeof(void)",
                 (self.current_unit as DriverUnit*).path, expr.span);
@@ -1434,6 +1470,8 @@ func etc_infer_sizeof_intrinsic(self: ExpressionTypeChecker*, expr_id: ExprId, e
     if (arg_ty2 == null) {
         return type_builtin_int();
     }
+    etc_check_imported_opaque_layout_type(
+        self, arg_ty2 as Type*, (self.current_unit as DriverUnit*).path, expr.span);
     if (etc_is_void(arg_ty2 as Type*)) {
         etc_diag_error(self, "TYP-0240", "cannot take sizeof(void)",
             (self.current_unit as DriverUnit*).path, expr.span);
@@ -2317,11 +2355,13 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
                         stmt.type_ref as TypeRef*, self.result.diags, seen);
                     if (ann_ty != null) {
+                        let layout_visible = etc_check_imported_opaque_layout_type(
+                            self, ann_ty as Type*, unit.path, (stmt.type_ref as TypeRef*).span);
                         if (type_is_builtin(ann_ty as Type*, "void")) {
                             etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", unit.path, stmt.span);
                         } else {
-                            if (etc_check_initializer_expr(self, ann_ty as Type*, stmt.expr_a, stmt.name, unit.path,
-                                stmt.span)) {
+                            if (layout_visible && etc_check_initializer_expr(
+                                self, ann_ty as Type*, stmt.expr_a, stmt.name, unit.path, stmt.span)) {
                                 declare_local = true;
                             }
                         }
@@ -5117,7 +5157,16 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
     }
 
     if (ty != null) {
-        etc_set_expr_type(self, expr_id, ty as Type*);
+        // Expression results may not require an imported opaque layout.
+        // Pointer-frontier recursion preserves legal opaque handle flow.
+        let layout_visible = etc_check_imported_opaque_layout_type(
+            self, ty as Type*, unit.path, expr.span);
+        if (layout_visible) {
+            etc_set_expr_type(self, expr_id, ty as Type*);
+        } else {
+            type_free(ty as Type*);
+            ty = null;
+        }
     }
     return ty;
 }

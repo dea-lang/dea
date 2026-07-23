@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-07-21
+Version: 2026-07-22
 
 Status: Finalized
 
@@ -13,16 +13,16 @@ alphabet `[A-Za-z0-9_]`.
 ## Format
 
 ```ebnf
-lbi-name        = "__dea" module-section terminal
-module-section  = "M" (length identifier)+
-terminal        = value | struct-type | enum-type | lifecycle
-value           = "N" length identifier [ type-component ]
-struct-type     = "S" length identifier
-enum-type       = "E" length identifier
-lifecycle       = "I" length identifier
-length          = digit+
-identifier      = <length bytes from a Dea identifier>
-type-component  = <as defined in §Type Components>
+lbi-name       = "__dea" module-section terminal
+module-section = "M" (length identifier)+
+terminal       = value | struct-type | enum-type | infrastructure
+value          = "N" length identifier [ type-component ]
+struct-type    = "S" length identifier
+enum-type      = "E" length identifier
+infrastructure = "I" length identifier
+length         = digit+
+identifier     = <length bytes from a Dea identifier>
+type-component = <as defined in §Type Components>
 ```
 
 - `__dea` is the fixed prefix on every LBI-mangled name.
@@ -30,7 +30,7 @@ type-component  = <as defined in §Type Components>
 - `N` marks a value entity (a function or a `let`/`const` binding).
 - `S` marks a struct type.
 - `E` marks an enum type.
-- `I` marks a compiler-generated module-lifecycle component.
+- `I` marks a compiler-generated module-infrastructure symbol.
 - `length` is one or more decimal digits giving the byte length of the immediately following identifier.
 
 ### Values and Functions
@@ -57,6 +57,31 @@ produces a link error if a value is called as a function or vice-versa across mo
 | `unsafe func(int*) -> void` exported       | `__deaM<...>N<name>XF1Piv`    |
 | `main::sum` (`func(int, int...) -> int`)   | `__deaM4mainN3sumF2iVii`      |
 | module lifecycle `demo.main::init`         | `__deaM4demo4mainI4init`      |
+| module lifecycle `demo.main::fini`         | `__deaM4demo4mainI4fini`      |
+| module entry bridge `demo.main::entry`     | `__deaM4demo4mainI5entry`     |
+
+### Compiler-Generated Module Symbols
+
+Each independently emitted Dea module reserves these identifiers under the `I` terminal:
+
+| Identifier | C signature                       | Presence                                                                      | Responsibility                                                                                            |
+| ---------- | --------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `init`     | `void __deaM<module>I4init(void)` | Every module translation unit                                                 | Initialize deferred top-level `let` values owned by the module, in their established within-module order. |
+| `fini`     | `void __deaM<module>I4fini(void)` | Every module translation unit                                                 | Clean ARC-managed top-level `let` values owned by the module.                                             |
+| `entry`    | `int __deaM<module>I5entry(void)` | A module with a resolved, zero-parameter, non-extern source `main` definition | Call the owning module's source `main` and normalize its result to a C process status.                    |
+
+In per-module output, these symbols are compiler infrastructure rather than source exports and always have external
+linkage, independent of the module export manifest. `I4init` and `I4fini` remain present as callable empty functions
+when the module has no owned initialization or cleanup work. They are one-shot operations: a generated executable
+wrapper is responsible for calling each initializer exactly once in dependency order and each finalizer exactly once in
+reverse order.
+
+`I5entry` is emitted even when the source `main` has internal linkage. It returns an L1 `int` result directly, maps an
+L1 `bool` result to `0` for `true` and `1` for `false`, and calls every other resolved result form before returning `0`.
+It does not initialize runtime arguments, call module lifecycle functions, or perform dependency orchestration.
+
+A module lifecycle function acts only on storage owned by its translation unit. It never calls an imported module's
+lifecycle function or cleans imported storage.
 
 ## Type Components
 
@@ -164,6 +189,8 @@ Linkage is driven by the module's export manifest:
 - **Exported symbols** have external linkage (no `static` in C).
 - **Non-exported symbols** have internal linkage (`static` in C).
 - **Constants** follow the same rules, using `const` and optionally `static`.
+- **Per-module compiler-generated `I4init`, `I4fini`, and `I5entry` symbols** have external linkage independent of the
+  export manifest. Legacy whole-program-only helpers retain their existing internal linkage.
 
 ## C FFI and Externs
 

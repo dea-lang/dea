@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-21
+Version: 2026-07-22
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -14,10 +14,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today.
 - `compiler/stage2_l1/` is a placeholder for a future self-hosted L1 compiler.
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
-- The current backend emits one C99 translation unit per program.
+- Ordinary `--gen`, `--build`, and `--run` still emit one legacy whole-program C99 translation unit.
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
-  and verified whole-module `.l1m` fingerprints; compile-only, standalone linking, and multi-CU build/run remain
-  non-operational.
+  verified whole-module `.l1m` fingerprints, and target-aware per-module C generation with external `I4init` / `I4fini`
+  plus conditional `I5entry`; compile-only, standalone linking, and multi-CU build/run remain non-operational.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 - Exact generated-C golden-file parity and L1 triple-bootstrap are not part of the current Stage 1 contract.
@@ -125,6 +125,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints] replaced
   per-declaration placeholders with canonical SipHash-1-3 whole-module fingerprints, populated provider expectations,
   and verified filesystem and registry interfaces before graph registration or replay.
+- Feature [2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref][lifecycle-entrypoints] added target-aware
+  per-module C generation with external `I4init` / `I4fini`, conditional `I5entry`, imported declarations, and no
+  process-wrapper or dependency-lifecycle emission.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -165,8 +168,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   1 runtime fixtures.
 - Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
   first-position anonymous embedded struct member with promoted field access.
-- Feature [2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref][lifecycle-entrypoints] emits one module per C
-  translation unit with external `I4init`, `I4fini`, and conditional `I5entry` lifecycle symbols.
 - Feature [2026-07-17-object-metadata-emission-and-readers-noref][object-metadata] emits Dea object records and adds
   bounded ELF, Mach-O, and PE/COFF readers with valid, absent, and malformed metadata classification.
 - Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] makes `-c` transactionally publish one
@@ -293,7 +294,7 @@ update to be promoted to an initiative or plan:
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md
-[lifecycle-entrypoints]: ../work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph-invariant-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md
 [module-interface-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md

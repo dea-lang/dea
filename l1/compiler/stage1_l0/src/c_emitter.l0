@@ -41,6 +41,8 @@ struct CCodeBuilder {
  */
 struct CEmitter {
     analysis: AnalysisResult*?;
+    module_target: string?;
+    module_type_keys: StringSet*?; // borrowed required `module::type` keys
     current_module: string?;
     out: CCodeBuilder*;
     tmp_counter: int;
@@ -261,7 +263,7 @@ func ccb_to_string(self: CCodeBuilder*) -> string {
  * @return New emitter.
  */
 func cem_create() -> CEmitter* {
-    return new CEmitter(null, null, ccb_create(), 0, "", spm_create(), ss_create(), spm_create(), ss_create(),
+    return new CEmitter(null, null, null, null, ccb_create(), 0, "", spm_create(), ss_create(), spm_create(), ss_create(),
         spm_create(), ss_create(), spm_create(), ss_create(), false, false);
 }
 
@@ -342,6 +344,26 @@ func cem_set_analysis(self: CEmitter*, analysis: AnalysisResult*) {
 }
 
 /**
+ * Restrict analysis-wide wrapper collection to one module output boundary.
+ *
+ * @param self Emitter to update.
+ * @param module_name Canonical target module name.
+ */
+func cem_set_module_target(self: CEmitter*, module_name: string) {
+    self.module_target = module_name;
+}
+
+/**
+ * Attach the nominal type surface required by module output.
+ *
+ * @param self Emitter to update.
+ * @param type_keys Borrowed `module::type` keys owned by the backend.
+ */
+func cem_set_module_type_keys(self: CEmitter*, type_keys: StringSet*) {
+    self.module_type_keys = type_keys;
+}
+
+/**
  * Return the borrowed analysis result.
  *
  * @param self Emitter to inspect.
@@ -352,6 +374,65 @@ func cem_analysis(self: CEmitter*) -> AnalysisResult* {
         cem_ice("[ICE-9300] C emitter requires attached analysis");
     }
     return self.analysis as AnalysisResult*;
+}
+
+/**
+ * Return whether module output needs one value-signature table entry.
+ *
+ * Whole-program output keeps the analysis-wide scan. Module output keeps the
+ * target's own entries, virtual-prelude entries, and provider symbols that
+ * name resolution recorded as consumed by the target.
+ *
+ * @param self Emitter to inspect.
+ * @param key Signature key in `module::symbol` form.
+ * @return `true` when wrapper collection should inspect the entry.
+ */
+func cem_module_target_includes_value_key(self: CEmitter*, key: string) -> bool {
+    if (self.module_target == null) {
+        return true;
+    }
+    let target = self.module_target as string;
+    if (starts_with_s(key, target + "::") || starts_with_s(key, "dea::")) {
+        return true;
+    }
+    let analysis = cem_analysis(self);
+    if (analysis.names == null) {
+        return false;
+    }
+    let names = analysis.names as NameResolution*;
+    for (let i = 0; i < nr_resolved_symbol_count(names); i = i + 1) {
+        let resolved = nr_resolved_symbol_get(names, i);
+        if (resolved.consumer_module == target &&
+            key == resolved.provider_module + "::" + resolved.symbol_name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return whether one analysis key belongs to the selected module.
+ *
+ * @param self Emitter to inspect.
+ * @param key Analysis key beginning with `module::`.
+ * @return `true` for whole-program output or the selected module.
+ */
+func cem_module_target_includes_analysis_key(self: CEmitter*, key: string) -> bool {
+    return self.module_target == null || starts_with_s(key, (self.module_target as string) + "::");
+}
+
+/**
+ * Return whether one nominal type belongs to module output's required surface.
+ *
+ * @param self Emitter to inspect.
+ * @param module_name Defining module name.
+ * @param type_name Nominal type name.
+ * @return `true` for whole-program output or a selected module-output type.
+ */
+func cem_module_target_includes_type(self: CEmitter*, module_name: string, type_name: string) -> bool {
+    return self.module_target == null ||
+        (self.module_type_keys != null &&
+         ss_has(self.module_type_keys as StringSet*, module_name + "::" + type_name));
 }
 
 /**
@@ -645,20 +726,40 @@ func cem_mangle_let_name(module_name: string, let_name: string) -> string {
  *
  * @param module_name Defining module name.
  * @param lifecycle_name Lifecycle component name.
- * @return Hidden LBI identifier.
+ * @return Reserved LBI identifier.
  */
 func cem_mangle_module_lifecycle_name(module_name: string, lifecycle_name: string) -> string {
     return cem_mangle_lbi_section(module_name, "I", lifecycle_name);
 }
 
 /**
- * Mangle one hidden module-initializer function name.
+ * Mangle one module-initializer function name.
  *
  * @param module_name Defining module name.
- * @return Hidden LBI identifier.
+ * @return Reserved LBI identifier.
  */
 func cem_mangle_module_init_name(module_name: string) -> string {
     return cem_mangle_module_lifecycle_name(module_name, "init");
+}
+
+/**
+ * Mangle one module-finalizer function name.
+ *
+ * @param module_name Defining module name.
+ * @return Reserved LBI identifier.
+ */
+func cem_mangle_module_fini_name(module_name: string) -> string {
+    return cem_mangle_module_lifecycle_name(module_name, "fini");
+}
+
+/**
+ * Mangle one module-entry bridge name.
+ *
+ * @param module_name Defining module name.
+ * @return Reserved LBI identifier.
+ */
+func cem_mangle_module_entry_name(module_name: string) -> string {
+    return cem_mangle_module_lifecycle_name(module_name, "entry");
 }
 
 /**
@@ -1264,9 +1365,15 @@ func cem_emit_forward_decls(self: CEmitter*) {
             let decl = ptr_vec_get(root.decls, j) as TopLevelDecl*;
             if (ord(decl.kind) == ord(TD_STRUCT)) {
                 let sd = decl.data as StructDecl*;
+                if (!cem_module_target_includes_type(self, root.name, sd.name)) {
+                    continue;
+                }
                 ccb_emit(self.out, "struct " + cem_mangle_struct_name(root.name, sd.name) + ";");
             } else if (ord(decl.kind) == ord(TD_ENUM)) {
                 let ed = decl.data as EnumDecl*;
+                if (!cem_module_target_includes_type(self, root.name, ed.name)) {
+                    continue;
+                }
                 ccb_emit(self.out, "struct " + cem_mangle_enum_name(root.name, ed.name) + ";");
             }
         }
@@ -1276,10 +1383,16 @@ func cem_emit_forward_decls(self: CEmitter*) {
         let mi = driver_interface_get(state, iface_i);
         for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
             let info = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+            if (!cem_module_target_includes_type(self, info.module_name, info.name)) {
+                continue;
+            }
             ccb_emit(self.out, "struct " + cem_mangle_struct_name(info.module_name, info.name) + ";");
         }
         for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
             let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+            if (!cem_module_target_includes_type(self, info2.module_name, info2.name)) {
+                continue;
+            }
             ccb_emit(self.out, "struct " + cem_mangle_enum_name(info2.module_name, info2.name) + ";");
         }
     }
@@ -1441,33 +1554,46 @@ func cem_emit_zero_initialized_let_declaration(self: CEmitter*, module_name: str
 }
 
 /**
- * Emit final cleanup for ARC-managed top-level lets before process exit.
+ * Emit final cleanup for ARC-managed top-level lets owned by one module.
  *
  * @param self Emitter to update.
+ * @param module_name Owning source module.
  */
-func cem_emit_top_level_let_cleanup(self: CEmitter*) {
+func cem_emit_module_top_level_let_cleanup(self: CEmitter*, module_name: string) {
     let analysis = cem_analysis(self);
     if (analysis.signatures == null) {
         return;
     }
-    let state = analysis.driver_state;
-    for (let i = 0; i < vec_size(state.units); i = i + 1) {
-        let unit = ptr_vec_get(state.units, i) as DriverUnit*;
-        if (unit.parse_result.root_module == null) {
+    let unit = driver_find_unit(analysis.driver_state, module_name);
+    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
+        return;
+    }
+    let root = (unit as DriverUnit*).parse_result.root_module as Module*;
+    for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+        let decl = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+        if (ord(decl.kind) != ord(TD_LET)) {
             continue;
         }
-        let root = unit.parse_result.root_module as Module*;
-        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
-            let decl = ptr_vec_get(root.decls, j) as TopLevelDecl*;
-            if (ord(decl.kind) != ord(TD_LET)) {
-                continue;
-            }
-            let let_decl = decl.data as LetDecl*;
-            let let_type = sig_lookup_let_type(analysis.signatures as SignatureTables*, root.name, let_decl.name);
-            if (let_type == null || !analysis_has_arc_data(analysis, let_type as Type*)) {
-                continue;
-            }
-            cem_emit_value_cleanup(self, cem_mangle_let_name(root.name, let_decl.name), let_type as Type*);
+        let let_decl = decl.data as LetDecl*;
+        let let_type = sig_lookup_let_type(analysis.signatures as SignatureTables*, root.name, let_decl.name);
+        if (let_type == null || !analysis_has_arc_data(analysis, let_type as Type*)) {
+            continue;
+        }
+        cem_emit_value_cleanup(self, cem_mangle_let_name(root.name, let_decl.name), let_type as Type*);
+    }
+}
+
+/**
+ * Emit final cleanup for every ARC-managed top-level let before process exit.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_top_level_let_cleanup(self: CEmitter*) {
+    let state = cem_analysis(self).driver_state;
+    for (let i = 0; i < vec_size(state.units); i = i + 1) {
+        let unit = ptr_vec_get(state.units, i) as DriverUnit*;
+        if (unit.parse_result.root_module != null) {
+            cem_emit_module_top_level_let_cleanup(self, (unit.parse_result.root_module as Module*).name);
         }
     }
 }
@@ -1568,16 +1694,35 @@ func cem_emit_interface_function_declaration(self: CEmitter*, module_name: strin
  *
  * @param self Emitter to update.
  * @param module_name Provider module name.
- * @param entry Interface let/const entry.
+ * @param binding_name Provider-owned binding name.
+ * @param binding_type Resolved binding type.
+ * @param is_const Whether the binding is a `const`.
  */
-func cem_emit_interface_let_declaration(self: CEmitter*, module_name: string, entry: InterfaceLetEntry*) {
-    let c_type = cem_emit_type(entry.ty);
-    let c_name = cem_mangle_let_name(module_name, entry.name);
-    if (entry.is_const) {
+func cem_emit_external_let_declaration(
+    self: CEmitter*,
+    module_name: string,
+    binding_name: string,
+    binding_type: Type*,
+    is_const: bool
+) {
+    let c_type = cem_emit_type(binding_type);
+    let c_name = cem_mangle_let_name(module_name, binding_name);
+    if (is_const) {
         ccb_emit(self.out, "extern const " + c_type + " " + c_name + ";");
     } else {
         ccb_emit(self.out, "extern " + c_type + " " + c_name + ";");
     }
+}
+
+/**
+ * Emit an external binding declaration from interface metadata.
+ *
+ * @param self Emitter to update.
+ * @param module_name Provider module name.
+ * @param entry Interface let/const entry.
+ */
+func cem_emit_interface_let_declaration(self: CEmitter*, module_name: string, entry: InterfaceLetEntry*) {
+    cem_emit_external_let_declaration(self, module_name, entry.name, entry.ty, entry.is_const);
 }
 
 /**
@@ -1615,6 +1760,18 @@ func cem_emit_hidden_void_function_header(self: CEmitter*, c_name: string) {
 }
 
 /**
+ * Emit an externally linked `void name(void)` function header.
+ *
+ * @param self Emitter to update.
+ * @param c_name External function name.
+ */
+func cem_emit_external_void_function_header(self: CEmitter*, c_name: string) {
+    ccb_emit(self.out, "void " + c_name + "(void" + ")");
+    ccb_emit(self.out, "{");
+    ccb_indent(self.out);
+}
+
+/**
  * Emit a function definition footer.
  *
  * @param self Emitter to update.
@@ -1647,10 +1804,10 @@ func cem_emit_main_wrapper(self: CEmitter*, entry_module: string, func_type: Typ
         ccb_emit(self.out, global_init_name + "(" + ");");
     }
 
-    if (c_return_type == "dea_int") {
+    if (type_is_builtin(func_type.result as Type*, "int")) {
         ccb_emit(self.out, "int dea_exit_code = (int) " + mangled_name + "();");
-    } else if (c_return_type == "bool") {
-        ccb_emit(self.out, "bool result = " + mangled_name + "(" + ");");
+    } else if (type_is_builtin(func_type.result as Type*, "bool")) {
+        ccb_emit(self.out, c_return_type + " result = " + mangled_name + "(" + ");");
         ccb_emit(self.out, "int dea_exit_code = result ? 0 : 1;");
     } else {
         ccb_emit(self.out, mangled_name + "(" + ");");
@@ -1658,6 +1815,39 @@ func cem_emit_main_wrapper(self: CEmitter*, entry_module: string, func_type: Typ
     }
 
     cem_emit_top_level_let_cleanup(self);
+    ccb_emit(self.out, "return dea_exit_code;");
+    ccb_dedent(self.out);
+    ccb_emit(self.out, "}");
+    ccb_emit(self.out, "");
+}
+
+/**
+ * Emit the compiler-generated entry bridge for one source module.
+ *
+ * The bridge normalizes every accepted source `main` result to C `int` but
+ * deliberately performs no process argument or module lifecycle work.
+ *
+ * @param self Emitter to update.
+ * @param module_name Defining source module.
+ * @param func_type Resolved source `main` type.
+ */
+func cem_emit_module_entry_bridge(self: CEmitter*, module_name: string, func_type: Type*) {
+    let mangled_entry = cem_mangle_module_entry_name(module_name);
+    let mangled_main = cem_mangle_function_name(module_name, "main", func_type);
+    let result_type = func_type.result as Type*;
+
+    ccb_emit(self.out, "int " + mangled_entry + "(void" + ")");
+    ccb_emit(self.out, "{");
+    ccb_indent(self.out);
+    if (type_is_builtin(result_type, "int")) {
+        ccb_emit(self.out, "int dea_exit_code = (int) " + mangled_main + "(" + ");");
+    } else if (type_is_builtin(result_type, "bool")) {
+        ccb_emit(self.out, cem_emit_type(result_type) + " result = " + mangled_main + "(" + ");");
+        ccb_emit(self.out, "int dea_exit_code = result ? 0 : 1;");
+    } else {
+        ccb_emit(self.out, mangled_main + "(" + ");");
+        ccb_emit(self.out, "int dea_exit_code = 0;");
+    }
     ccb_emit(self.out, "return dea_exit_code;");
     ccb_dedent(self.out);
     ccb_emit(self.out, "}");
@@ -2005,6 +2195,9 @@ func cem_collect_wrappers_from_ast_type_refs(self: CEmitter*) {
             continue;
         }
         let module_name = (unit as DriverUnit*).module_name;
+        if (self.module_target != null && module_name != (self.module_target as string)) {
+            continue;
+        }
         let root = (unit as DriverUnit*).parse_result.root_module as Module*;
         for (let decl_i = 0; decl_i < vec_size(root.decls); decl_i = decl_i + 1) {
             let top = ptr_vec_get(root.decls, decl_i) as TopLevelDecl*;
@@ -2171,6 +2364,9 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
 
     for (let i = 0; i < spm_capacity(tables.func_types); i = i + 1) {
         if (spm_slot_occupied(tables.func_types, i)) {
+            if (!cem_module_target_includes_value_key(self, spm_slot_key(tables.func_types, i))) {
+                continue;
+            }
             let func_type = spm_slot_value(tables.func_types, i) as Type*;
             cem_collect_array_wrappers_from_type(self, func_type);
             cem_collect_opt_wrappers_from_type(self, func_type);
@@ -2184,6 +2380,9 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
 
     for (let let_i = 0; let_i < spm_capacity(tables.let_types); let_i = let_i + 1) {
         if (spm_slot_occupied(tables.let_types, let_i)) {
+            if (!cem_module_target_includes_value_key(self, spm_slot_key(tables.let_types, let_i))) {
+                continue;
+            }
             let let_type = spm_slot_value(tables.let_types, let_i) as Type*;
             cem_collect_array_wrappers_from_type(self, let_type);
             cem_collect_opt_wrappers_from_type(self, let_type);
@@ -2196,6 +2395,10 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
             continue;
         }
         let info = spm_slot_value(tables.struct_infos, struct_info_i) as StructInfo*;
+        if (!cem_module_target_includes_type(self, info.module_name, info.name) ||
+            (self.module_target != null && info.module_name != (self.module_target as string) && info.is_opaque)) {
+            continue;
+        }
         for (let j = 0; j < vec_size(info.fields); j = j + 1) {
             let field_info = ptr_vec_get(info.fields, j) as StructFieldInfo*;
             cem_collect_array_wrappers_from_type(self, field_info.field_type);
@@ -2209,6 +2412,11 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
             continue;
         }
         let enum_info = spm_slot_value(tables.enum_infos, enum_info_i) as EnumInfo*;
+        if (!cem_module_target_includes_type(self, enum_info.module_name, enum_info.name) ||
+            (self.module_target != null && enum_info.module_name != (self.module_target as string) &&
+             enum_info.is_opaque)) {
+            continue;
+        }
         for (let j = 0; j < vec_size(enum_info.variants); j = j + 1) {
             let variant_info = ptr_vec_get(enum_info.variants, j) as EnumVariantInfo*;
             for (let k = 0; k < vec_size(variant_info.field_types); k = k + 1) {
@@ -2222,10 +2430,26 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
 
     for (let expr_type_i = 0; expr_type_i < spm_capacity(analysis.expr_types); expr_type_i = expr_type_i + 1) {
         if (spm_slot_occupied(analysis.expr_types, expr_type_i)) {
+            if (!cem_module_target_includes_analysis_key(self, spm_slot_key(analysis.expr_types, expr_type_i))) {
+                continue;
+            }
             let expr_ty = spm_slot_value(analysis.expr_types, expr_type_i) as Type*;
             cem_collect_array_wrappers_from_type(self, expr_ty);
             cem_collect_opt_wrappers_from_type(self, expr_ty);
             cem_collect_func_ptrs_from_type(self, expr_ty);
+        }
+    }
+
+    for (let intrinsic_i = 0; intrinsic_i < spm_capacity(analysis.intrinsic_targets); intrinsic_i = intrinsic_i + 1) {
+        if (spm_slot_occupied(analysis.intrinsic_targets, intrinsic_i)) {
+            if (!cem_module_target_includes_analysis_key(
+                self, spm_slot_key(analysis.intrinsic_targets, intrinsic_i))) {
+                continue;
+            }
+            let intrinsic_ty = spm_slot_value(analysis.intrinsic_targets, intrinsic_i) as Type*;
+            cem_collect_array_wrappers_from_type(self, intrinsic_ty);
+            cem_collect_opt_wrappers_from_type(self, intrinsic_ty);
+            cem_collect_func_ptrs_from_type(self, intrinsic_ty);
         }
     }
 }

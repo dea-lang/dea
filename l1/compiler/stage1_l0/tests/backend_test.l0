@@ -7,6 +7,7 @@ module backend_test;
 
 import std.assert;
 import std.hashmap;
+import std.hashset;
 import std.io;
 import std.string;
 import std.text;
@@ -19,8 +20,11 @@ import codegen_options;
 import driver;
 import expr_types;
 import locals;
+import mi_utils;
+import module_interface;
 import name_resolver;
 import parser;
+import parser.interface;
 import scope_context;
 import sem_context;
 import signatures;
@@ -86,6 +90,68 @@ func bt_analyze_sources(entry_module: string, filenames: StringVector*, sources:
     result.locals_result = locals_resolve(state, result.diags);
     expr_types_check(result);
     return result;
+}
+
+/**
+ * Build a semantic result from in-memory sources plus one interface-only provider.
+ *
+ * @param entry_module Entry-module name.
+ * @param filenames Source filenames aligned with `sources`.
+ * @param sources Module source texts aligned with `filenames`.
+ * @param interface_text Provider `.l1m` text.
+ * @return Fully analyzed result retaining the active interface.
+ */
+func bt_analyze_sources_with_interface(
+    entry_module: string,
+    filenames: StringVector*,
+    sources: StringVector*,
+    interface_text: string
+) -> AnalysisResult* {
+    let state = dr_state_create(entry_module, null);
+    for (let i = 0; i < sv_size(sources); i = i + 1) {
+        bt_push_source_unit(state, sv_get(sources, i), sv_get(filenames, i));
+    }
+
+    let parsed = pi_parse_interface(interface_text, "<backend-interface.l1m>");
+    assert(!ipr_has_errors(parsed) && parsed.interface != null, "interface fixture should parse");
+    let mi = parsed.interface as ModuleInterface*;
+    parsed.interface = null;
+    dr_register_interface(state, mi);
+    ipr_free(parsed);
+
+    let result = new AnalysisResult(state, diag_create(), null, null, null, spm_create(), sim_create(), spm_create());
+    result.names = nr_resolve(state, result.diags);
+    result.signatures = sig_resolve(state, result.names as NameResolution*, result.diags);
+    result.locals_result = locals_resolve(state, result.diags);
+    expr_types_check(result);
+    return result;
+}
+
+/**
+ * Return whether analysis reported one diagnostic code.
+ *
+ * @param result Analysis result to inspect.
+ * @param code Diagnostic code to find.
+ * @return `true` when the code is present.
+ */
+func bt_has_diag_code(result: AnalysisResult*, code: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        if (analysis_diag_get(result, i).code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Count diagnostics carrying one code. */
+func bt_diag_code_count(result: AnalysisResult*, code: string) -> int {
+    let count = 0;
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        if (analysis_diag_get(result, i).code == code) {
+            count = count + 1;
+        }
+    }
+    return count;
 }
 
 /**
@@ -406,6 +472,574 @@ func test_backend_generate_nonconstant_top_level_lets() {
         assert(contains_s(generated,
             "_rt_init_args(argc, argv);\n    _dea_init_modules();\n    int dea_exit_code = (int) __deaM4demo4mainN4mainF0i();\n    return dea_exit_code;"),
             "main wrapper should call global init chain");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests module output owns definitions and lifecycle work for exactly one source module.
+ */
+func test_backend_generate_module_isolates_definitions_and_lifecycle() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let dep_lines = sv_create(12) => sv_free(dep_lines),
+          let main_lines = sv_create(12) => sv_free(main_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/dep.l1");
+        sv_push(dep_lines, "module demo.dep;");
+        sv_push(dep_lines, "export BASE, get_base;");
+        sv_push(dep_lines, "let BASE: int = seed();");
+        sv_push(dep_lines, "let dep_text: string = \"dep\";");
+        sv_push(dep_lines, "func seed() -> int { return 20; }");
+        sv_push(dep_lines, "func get_base() -> int { return BASE; }");
+        sv_push(sources, bt_source(dep_lines));
+
+        sv_push(filenames, "demo/main.l1");
+        sv_push(main_lines, "module demo.main;");
+        sv_push(main_lines, "export ANSWER, FROM_BASE;");
+        sv_push(main_lines, "import demo.dep;");
+        sv_push(main_lines, "let ANSWER: int = demo.dep::get_base();");
+        sv_push(main_lines, "let FROM_BASE: int = demo.dep::BASE;");
+        sv_push(main_lines, "let main_text: string = \"main\";");
+        sv_push(main_lines, "func main() -> int { return ANSWER + FROM_BASE; }");
+        sv_push(sources, bt_source(main_lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for per-module backend fixture");
+
+        let main_generated = backend_generate_module(result, "demo.main", opts, cfg);
+        assert(contains_s(main_generated, "\nextern dea_int __deaM4demo3depN4BASE;\n"),
+            "module output should declare a consumed imported binding");
+        assert(!contains_s(main_generated, "static extern dea_int __deaM4demo3depN4BASE;"),
+            "consumed imported binding declaration must have external linkage");
+        assert(contains_s(main_generated, "\ndea_int __deaM4demo3depN8get_baseF0i(void);\n"),
+            "module output should declare a consumed imported function");
+        assert(!contains_s(main_generated, "static dea_int __deaM4demo3depN8get_baseF0i(void);"),
+            "consumed imported function declaration must have external linkage");
+        assert(!contains_s(main_generated, "dea_int __deaM4demo3depN4BASE = "),
+            "module output must not define an imported binding");
+        assert(!contains_s(main_generated, "dea_int __deaM4demo3depN8get_baseF0i(void)\n{"),
+            "module output must not define an imported function");
+        assert(!contains_s(main_generated, "__deaM4demo3depN4seed"),
+            "module output must not declare or define an unconsumed private import");
+        assert(!contains_s(main_generated, "__deaM4demo3depN8dep_text"),
+            "module output must not emit private imported storage");
+        assert(contains_s(main_generated, "\ndea_int __deaM4demo4mainN6ANSWER = 0;\n"),
+            "module output should define its exported deferred binding externally");
+        assert(!contains_s(main_generated, "static dea_int __deaM4demo4mainN6ANSWER = 0;"),
+            "exported target binding must not become static");
+        assert(contains_s(main_generated, "\ndea_int __deaM4demo4mainN9FROM_BASE = 0;\n"),
+            "module output should define every owned deferred binding");
+        assert(!contains_s(main_generated, "static dea_int __deaM4demo4mainN9FROM_BASE = 0;"),
+            "every exported target binding must retain external linkage");
+        assert(contains_s(main_generated, "static dea_string __deaM4demo4mainN9main_text"),
+            "module output should keep a non-exported target binding static");
+        assert(contains_s(main_generated, "static dea_int __deaM4demo4mainN4mainF0i(void)"),
+            "non-exported source main should remain static");
+        assert(contains_s(main_generated, "\nvoid __deaM4demo4mainI4init(void)\n{"),
+            "module init must have external linkage");
+        assert(contains_s(main_generated, "\nvoid __deaM4demo4mainI4fini(void)\n{"),
+            "module fini must have external linkage");
+        assert(!contains_s(main_generated, "static void __deaM4demo4mainI4init(void)"),
+            "module init must not follow source export linkage");
+        assert(!contains_s(main_generated, "static void __deaM4demo4mainI4fini(void)"),
+            "module fini must not follow source export linkage");
+        assert(bt_count_substring(main_generated, "__deaM4demo4mainI4init(void)") == 1,
+            "module output should define exactly one init function");
+        assert(bt_count_substring(main_generated, "__deaM4demo4mainI4fini(void)") == 1,
+            "module output should define exactly one fini function");
+        assert(contains_s(main_generated,
+            "__deaM4demo4mainN6ANSWER = __deaM4demo3depN8get_baseF0i();"),
+            "module init should initialize its owned call-backed binding");
+        assert(contains_s(main_generated, "__deaM4demo4mainN9FROM_BASE = __deaM4demo3depN4BASE;"),
+            "module init should initialize its owned imported-value binding");
+        assert(contains_s(main_generated, "rt_string_release(__deaM4demo4mainN9main_text);"),
+            "module fini should clean its owned ARC binding");
+        assert(!contains_s(main_generated, "rt_string_release(__deaM4demo3depN8dep_text);"),
+            "module fini must not clean imported ARC storage");
+        assert(contains_s(main_generated, "\nint __deaM4demo4mainI5entry(void)\n{"),
+            "private source main should have an external entry bridge");
+        assert(!contains_s(main_generated, "static int __deaM4demo4mainI5entry(void)"),
+            "entry bridge must not follow source main linkage");
+        assert(contains_s(main_generated,
+            "int dea_exit_code = (int) __deaM4demo4mainN4mainF0i();\n    return dea_exit_code;"),
+            "int entry bridge normalization mismatch");
+        assert(!contains_s(main_generated, "__deaM4demo3depI4init"),
+            "module output must not mention an imported module init");
+        assert(!contains_s(main_generated, "__deaM4demo3depI4fini"),
+            "module output must not mention an imported module fini");
+        assert(!contains_s(main_generated, "_dea_init_modules"),
+            "module output must not contain the legacy global init chain");
+        assert(!contains_s(main_generated, "_rt_init_args("),
+            "module entry bridge must not initialize process arguments");
+        assert(!contains_s(main_generated, "int main(int argc"),
+            "module output must not contain a process-level C main");
+
+        let dep_generated = backend_generate_module(result, "demo.dep", opts, cfg);
+        assert(contains_s(dep_generated, "\ndea_int __deaM4demo3depN4BASE = 0;\n"),
+            "provider output should define its exported binding");
+        assert(!contains_s(dep_generated, "static dea_int __deaM4demo3depN4BASE = 0;"),
+            "provider exported binding must have external linkage");
+        assert(contains_s(dep_generated, "static dea_string __deaM4demo3depN8dep_text"),
+            "provider output should define its private binding as static");
+        assert(contains_s(dep_generated, "static dea_int __deaM4demo3depN4seedF0i(void)"),
+            "provider output should define its private function as static");
+        assert(contains_s(dep_generated, "\ndea_int __deaM4demo3depN8get_baseF0i(void)\n{"),
+            "provider output should define its exported function externally");
+        assert(!contains_s(dep_generated, "static dea_int __deaM4demo3depN8get_baseF0i(void)\n{"),
+            "provider exported function must not become static");
+        assert(!contains_s(dep_generated, "__deaM4demo4mainN6ANSWER"),
+            "provider output must not emit a dependent module binding");
+        assert(!contains_s(dep_generated, "__deaM4demo4mainN4main"),
+            "provider output must not emit a dependent module function");
+        assert(contains_s(dep_generated, "\nvoid __deaM4demo3depI4init(void)\n{"),
+            "provider init must have external linkage");
+        assert(contains_s(dep_generated, "\nvoid __deaM4demo3depI4fini(void)\n{"),
+            "provider fini must have external linkage");
+        assert(bt_count_substring(dep_generated, "__deaM4demo3depI4init(void)") == 1,
+            "provider output should define exactly one init function");
+        assert(bt_count_substring(dep_generated, "__deaM4demo3depI4fini(void)") == 1,
+            "provider output should define exactly one fini function");
+        assert(contains_s(dep_generated,
+            "__deaM4demo3depN4BASE = __deaM4demo3depN4seedF0i();"),
+            "provider init should initialize only provider-owned storage");
+        assert(contains_s(dep_generated, "rt_string_release(__deaM4demo3depN8dep_text);"),
+            "provider fini should clean provider-owned ARC storage");
+        assert(!contains_s(dep_generated, "rt_string_release(__deaM4demo4mainN9main_text);"),
+            "provider fini must not clean dependent ARC storage");
+        assert(!contains_s(dep_generated, "__deaM4demo3depI5entry"),
+            "module without source main must not emit an entry bridge");
+        assert(!contains_s(dep_generated, "_dea_init_modules"),
+            "provider output must not contain the legacy global init chain");
+        assert(!contains_s(dep_generated, "int main(int argc"),
+            "provider output must not contain a process-level C main");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests every module defines callable no-op lifecycle functions and extern-only main is not an entry candidate.
+ */
+func test_backend_generate_module_noop_lifecycle_without_entry() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(4) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/empty.l1");
+        sv_push(lines, "module demo.empty;");
+        sv_push(lines, "extern func main() -> int;");
+        sv_push(lines, "func helper() -> int { return 1; }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.empty", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for no-op lifecycle fixture");
+
+        let generated = backend_generate_module(result, "demo.empty", opts, cfg);
+        assert(contains_s(generated, "dea_int (main)(void);"),
+            "extern-only main declaration should remain in module output");
+        assert(contains_s(generated, "\nvoid __deaM4demo5emptyI4init(void)\n{\n}\n"),
+            "module without deferred work should emit an empty external init");
+        assert(!contains_s(generated, "static void __deaM4demo5emptyI4init(void)"),
+            "empty module init must not become static");
+        assert(contains_s(generated, "\nvoid __deaM4demo5emptyI4fini(void)\n{\n}\n"),
+            "module without ARC storage should emit an empty external fini");
+        assert(!contains_s(generated, "static void __deaM4demo5emptyI4fini(void)"),
+            "empty module fini must not become static");
+        assert(bt_count_substring(generated, "__deaM4demo5emptyI4init(void)") == 1,
+            "no-op module output should define exactly one init function");
+        assert(bt_count_substring(generated, "__deaM4demo5emptyI4fini(void)") == 1,
+            "no-op module output should define exactly one fini function");
+        assert(!contains_s(generated, "__deaM4demo5emptyI5entry"),
+            "extern-only main must not make the module an entry candidate");
+        assert(!contains_s(generated, "_rt_init_args("),
+            "no-op module output must not initialize process arguments");
+        assert(!contains_s(generated, "_dea_init_modules"),
+            "no-op module output must not contain the legacy global init chain");
+        assert(!contains_s(generated, "int main(int argc"),
+            "no-op module output must not contain a process-level C main");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests module output preserves opaque imported layout hiding.
+ */
+func test_backend_generate_module_hides_imported_opaque_layouts() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let dep_lines = sv_create(22) => sv_free(dep_lines),
+          let main_lines = sv_create(8) => sv_free(main_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/opaque_dep.l1");
+        sv_push(dep_lines, "module demo.opaque_dep;");
+        sv_push(dep_lines, "export opaque { Handle }, Inner, Public, make_handle, make_public;");
+        sv_push(dep_lines, "struct Handle {");
+        sv_push(dep_lines, "    value: int;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "struct Inner {");
+        sv_push(dep_lines, "    value: int;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "struct Public {");
+        sv_push(dep_lines, "    inner: Inner;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "struct Private {");
+        sv_push(dep_lines, "    handle: Handle;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "let hidden: Handle? = null;");
+        sv_push(dep_lines, "func make_handle(value: int) -> Handle* {");
+        sv_push(dep_lines, "    return new Handle(value);");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "func make_public(value: int) -> Public {");
+        sv_push(dep_lines, "    return Public(inner: Inner(value: value));");
+        sv_push(dep_lines, "}");
+        sv_push(sources, bt_source(dep_lines));
+
+        sv_push(filenames, "demo/opaque_main.l1");
+        sv_push(main_lines, "module demo.opaque_main;");
+        sv_push(main_lines, "import demo.opaque_dep;");
+        sv_push(main_lines, "func main() -> int {");
+        sv_push(main_lines, "    let maybe: Public? = null;");
+        sv_push(main_lines, "    demo.opaque_dep::make_handle(1);");
+        sv_push(main_lines, "    demo.opaque_dep::make_public(2);");
+        sv_push(main_lines, "    return 0;");
+        sv_push(main_lines, "}");
+        sv_push(sources, bt_source(main_lines));
+
+        let result = bt_analyze_sources("demo.opaque_main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for opaque module-output fixture");
+
+        let consumer = backend_generate_module(result, "demo.opaque_main", opts, cfg);
+        assert(contains_s(consumer, "struct __deaM4demo10opaque_depS6Handle;"),
+            "consumer output should retain an opaque imported forward declaration");
+        assert(!contains_s(consumer, "#define DEA_DEFINED___deaM4demo10opaque_depS6Handle"),
+            "consumer output must not reproduce an opaque imported layout");
+        assert(!contains_s(consumer, "dea_opt_s___deaM4demo10opaque_depS6Handle"),
+            "consumer output must not collect wrappers from unconsumed opaque provider storage");
+        assert(!contains_s(consumer, "__deaM4demo10opaque_depS7Private"),
+            "consumer output must not expose an unrelated private provider layout");
+        assert(contains_s(consumer, "struct __deaM4demo10opaque_depS5Inner {"),
+            "consumer output should reproduce a required nested transparent layout");
+        assert(contains_s(consumer, "struct __deaM4demo10opaque_depS6Public {"),
+            "consumer output should reproduce a required transparent layout");
+        assert(contains_s(consumer, "struct __deaM4demo10opaque_depS5Inner inner;"),
+            "consumer transparent layout should retain its nested value field");
+        assert(contains_s(consumer,
+            "typedef struct { dea_bool has_value; struct __deaM4demo10opaque_depS6Public value; } dea_opt_s___deaM4demo10opaque_depS6Public;"),
+            "consumer output should emit wrappers required by a selected transparent type");
+        assert(contains_s(consumer,
+            "struct __deaM4demo10opaque_depS6Handle* __deaM4demo10opaque_depN11make_handleF1iPM4demo10opaque_depS6Handle(dea_int value);"),
+            "consumer output should declare the consumed opaque-pointer function");
+
+        let provider = backend_generate_module(result, "demo.opaque_dep", opts, cfg);
+        assert(contains_s(provider, "#define DEA_DEFINED___deaM4demo10opaque_depS6Handle"),
+            "provider output should define its own opaque-exported layout");
+        assert(contains_s(provider, "dea_int value;"),
+            "provider output should contain its owned opaque layout fields");
+        assert(contains_s(provider, "struct __deaM4demo10opaque_depS7Private {"),
+            "provider output should retain its owned private layout");
+        assert(contains_s(provider,
+            "typedef struct { dea_bool has_value; struct __deaM4demo10opaque_depS6Handle value; } dea_opt_s___deaM4demo10opaque_depS6Handle;"),
+            "provider output should retain wrappers required by its owned storage");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests intrinsic-only imported aliases retain their generated wrapper dependencies. */
+func test_backend_generate_module_collects_imported_alias_intrinsic_wrappers() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let dep_lines = sv_create(4) => sv_free(dep_lines),
+          let main_lines = sv_create(3) => sv_free(main_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/alias_dep.l1");
+        sv_push(dep_lines, "module demo.alias_dep;");
+        sv_push(dep_lines, "export Public, Maybe;");
+        sv_push(dep_lines, "struct Public { value: int; }");
+        sv_push(dep_lines, "type Maybe = Public?;");
+        sv_push(sources, bt_source(dep_lines));
+
+        sv_push(filenames, "demo/alias_main.l1");
+        sv_push(main_lines, "module demo.alias_main;");
+        sv_push(main_lines, "import demo.alias_dep;");
+        sv_push(main_lines, "func main() -> int { return sizeof(Maybe); }");
+        sv_push(sources, bt_source(main_lines));
+
+        let result = bt_analyze_sources("demo.alias_main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for imported alias intrinsic fixture");
+
+        let generated = backend_generate_module(result, "demo.alias_main", opts, cfg);
+        assert(contains_s(generated,
+            "typedef struct { dea_bool has_value; struct __deaM4demo9alias_depS6Public value; } dea_opt_s___deaM4demo9alias_depS6Public;"),
+            "intrinsic-only imported alias should retain its optional wrapper typedef");
+        assert(contains_s(generated, "sizeof(dea_opt_s___deaM4demo9alias_depS6Public)"),
+            "sizeof should use the imported alias wrapper spelling");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests imported opaque layouts remain illegal in aggregate and signature positions. */
+func test_backend_module_analysis_rejects_imported_opaque_signature_use() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let provider_lines = sv_create(5) => sv_free(provider_lines),
+          let consumer_lines = sv_create(11) => sv_free(consumer_lines)) {
+        sv_push(filenames, "visibility/provider.l1");
+        sv_push(provider_lines, "module visibility.provider;");
+        sv_push(provider_lines, "export opaque { Handle };");
+        sv_push(provider_lines, "struct Handle {");
+        sv_push(provider_lines, "    value: int;");
+        sv_push(provider_lines, "}");
+        sv_push(sources, bt_source(provider_lines));
+
+        sv_push(filenames, "visibility/consumer.l1");
+        sv_push(consumer_lines, "module visibility.consumer;");
+        sv_push(consumer_lines,
+            "export main, exported_nullable_pointer_ok, exported_wrapper_pointer_bad;");
+        sv_push(consumer_lines, "import visibility.provider;");
+        sv_push(consumer_lines, "struct Hidden { handle: Handle; }");
+        sv_push(consumer_lines, "func helper(value: Handle) -> void {}");
+        sv_push(consumer_lines, "func pointer_ok(value: Handle*) -> void {}");
+        sv_push(consumer_lines, "func nullable_pointer_ok(value: Handle*?) -> void {}");
+        sv_push(consumer_lines, "func exported_nullable_pointer_ok(value: Handle*?) -> void {}");
+        sv_push(consumer_lines, "func wrapper_pointer_bad(value: Handle?*) -> void {}");
+        sv_push(consumer_lines, "func exported_wrapper_pointer_bad(value: Handle?*) -> void {}");
+        sv_push(consumer_lines, "func main() -> int { return 0; }");
+        sv_push(sources, bt_source(consumer_lines));
+
+        let result = bt_analyze_sources("visibility.consumer", filenames, sources);
+        let provider_env = nr_env_find(result.names as NameResolution*, "visibility.provider");
+        assert(provider_env != null && ss_has((provider_env as ModuleEnv*).opaque_exports, "Handle"),
+            "provider Handle should retain opaque export metadata");
+        let hidden = sig_lookup_struct_info(result.signatures as SignatureTables*, "visibility.consumer", "Hidden");
+        assert(hidden != null && vec_size((hidden as StructInfo*).fields) == 1,
+            "private consumer struct signature should resolve");
+        let hidden_field = ptr_vec_get((hidden as StructInfo*).fields, 0) as StructFieldInfo*;
+        assert(hidden_field.field_type.module_name == "visibility.provider" && hidden_field.field_type.name == "Handle",
+            "private consumer field should retain provider-owned nominal identity");
+        assert(analysis_has_errors(result), "opaque by-value layout uses should fail semantic analysis");
+        assert(bt_has_diag_code(result, "RES-0038"), "opaque layout use should retain RES-0038");
+        assert(bt_diag_code_count(result, "RES-0038") == 4,
+            "private layout, by-value signature, and private/exported wrapper pointers should be rejected");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests imported opaque layouts remain illegal in function-body positions. */
+func test_backend_module_analysis_rejects_imported_opaque_body_use() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let provider_lines = sv_create(6) => sv_free(provider_lines),
+          let consumer_lines = sv_create(12) => sv_free(consumer_lines)) {
+        sv_push(filenames, "visibility/provider.l1");
+        sv_push(provider_lines, "module visibility.provider;");
+        sv_push(provider_lines, "export opaque { Handle }, make;");
+        sv_push(provider_lines, "struct Handle {");
+        sv_push(provider_lines, "    value: int;");
+        sv_push(provider_lines, "}");
+        sv_push(provider_lines, "func make() -> Handle* { return new Handle(7); }");
+        sv_push(sources, bt_source(provider_lines));
+
+        sv_push(filenames, "visibility/body.l1");
+        sv_push(consumer_lines, "module visibility.body;");
+        sv_push(consumer_lines, "export main;");
+        sv_push(consumer_lines, "import visibility.provider;");
+        sv_push(consumer_lines, "func pointer_ok(value: Handle*) -> void {}");
+        sv_push(consumer_lines, "unsafe func index_bad(value: Handle*) { value[0]; }");
+        sv_push(consumer_lines, "func loop_bad(cond: bool) { let owned = new int(0); while cond { " +
+            "*visibility.provider::make(); drop owned; } }");
+        sv_push(consumer_lines, "func main() -> int {");
+        sv_push(consumer_lines, "    let local: Handle? = null;");
+        sv_push(consumer_lines, "    *visibility.provider::make();");
+        sv_push(consumer_lines, "    let inferred = *visibility.provider::make();");
+        sv_push(consumer_lines, "    return sizeof(Handle);");
+        sv_push(consumer_lines, "}");
+        sv_push(sources, bt_source(consumer_lines));
+
+        let result = bt_analyze_sources("visibility.body", filenames, sources);
+        assert(analysis_has_errors(result), "opaque by-value body uses should fail semantic analysis");
+        assert(bt_diag_code_count(result, "RES-0038") == 6,
+            "loop body, index, dereference, annotation, and sizeof should each be rejected once");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests repeated loop-condition inference does not duplicate opaque-layout diagnostics. */
+func test_backend_module_analysis_deduplicates_opaque_loop_condition() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let provider_lines = sv_create(6) => sv_free(provider_lines),
+          let consumer_lines = sv_create(7) => sv_free(consumer_lines)) {
+        sv_push(filenames, "visibility/provider.l1");
+        sv_push(provider_lines, "module visibility.provider;");
+        sv_push(provider_lines, "export opaque { Handle }, make;");
+        sv_push(provider_lines, "struct Handle {");
+        sv_push(provider_lines, "    value: int;");
+        sv_push(provider_lines, "}");
+        sv_push(provider_lines, "func make() -> Handle* { return new Handle(7); }");
+        sv_push(sources, bt_source(provider_lines));
+
+        sv_push(filenames, "visibility/loop.l1");
+        sv_push(consumer_lines, "module visibility.loop;");
+        sv_push(consumer_lines, "export main;");
+        sv_push(consumer_lines, "import visibility.provider;");
+        sv_push(consumer_lines, "func main() -> int {");
+        sv_push(consumer_lines, "    while (*visibility.provider::make()) { return 1; }");
+        sv_push(consumer_lines, "    return 0;");
+        sv_push(consumer_lines, "}");
+        sv_push(sources, bt_source(consumer_lines));
+
+        let result = bt_analyze_sources("visibility.loop", filenames, sources);
+        assert(analysis_has_errors(result), "opaque-valued loop condition should fail semantic analysis");
+        assert(bt_diag_code_count(result, "RES-0038") == 1,
+            "repeated loop-condition inference should report one opaque-layout error");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests module output declares only consumed interface-backed values.
+ */
+func test_backend_generate_module_declares_consumed_interface_values() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(5) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "import iface.dep;");
+        sv_push(lines, "let answer: int = iface.dep::fetch() + iface.dep::BASE + iface.dep::CURRENT;");
+        sv_push(lines, "func main() -> int { return answer; }");
+        sv_push(sources, bt_source(lines));
+
+        let interface_text = "module interface iface.dep;\n" +
+            "fingerprint \"sip13:0000000000000000\";\n" +
+            "func fetch() -> int;\n" +
+            "func spare() -> int;\n" +
+            "const BASE: int = 7;\n" +
+            "const UNUSED: int = 9;\n" +
+            "let CURRENT: int;\n" +
+            "let spare_value: int;\n";
+        let result = bt_analyze_sources_with_interface("demo.main", filenames, sources, interface_text);
+        assert(!analysis_has_errors(result), "analysis should succeed with an interface-only provider");
+        assert(driver_unit_count(result.driver_state) == 1, "provider must remain interface-only");
+        assert(driver_interface_count(result.driver_state) == 1, "provider interface should remain active");
+
+        let generated = backend_generate_module(result, "demo.main", opts, cfg);
+        assert(contains_s(generated, "\ndea_int __deaM5iface3depN5fetchF0i(void);\n"),
+            "consumed interface function declaration missing");
+        assert(!contains_s(generated, "static dea_int __deaM5iface3depN5fetchF0i(void);"),
+            "consumed interface function declaration must have external linkage");
+        assert(contains_s(generated, "\nextern const dea_int __deaM5iface3depN4BASE;\n"),
+            "consumed interface const declaration missing");
+        assert(!contains_s(generated, "__deaM5iface3depN4BASE ="),
+            "consumed interface const must remain declaration-only");
+        assert(contains_s(generated, "\nextern dea_int __deaM5iface3depN7CURRENT;\n"),
+            "consumed interface let declaration missing");
+        assert(!contains_s(generated, "__deaM5iface3depN7CURRENT ="),
+            "consumed interface let must remain declaration-only");
+        assert(!contains_s(generated, "__deaM5iface3depN5spareF0i"),
+            "unconsumed interface function must be absent");
+        assert(!contains_s(generated, "__deaM5iface3depN6UNUSED"),
+            "unconsumed interface const must be absent");
+        assert(!contains_s(generated, "__deaM5iface3depN11spare_value"),
+            "unconsumed interface let must be absent");
+        assert(!contains_s(generated, "__deaM5iface3depN5fetchF0i(void)\n{"),
+            "interface function must not be defined by the consumer");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests module entry bridges normalize int, bool, and other accepted result types without lifecycle orchestration.
+ */
+func test_backend_generate_module_entry_result_normalization() {
+    with (let filenames = sv_create(4) => sv_free(filenames),
+          let sources = sv_create(4) => sv_free(sources),
+          let int_lines = sv_create(3) => sv_free(int_lines),
+          let bool_lines = sv_create(3) => sv_free(bool_lines),
+          let byte_lines = sv_create(3) => sv_free(byte_lines),
+          let param_lines = sv_create(3) => sv_free(param_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "entry/i.l1");
+        sv_push(int_lines, "module entry.i;");
+        sv_push(int_lines, "func main() -> int { return 7; }");
+        sv_push(sources, bt_source(int_lines));
+
+        sv_push(filenames, "entry/b.l1");
+        sv_push(bool_lines, "module entry.b;");
+        sv_push(bool_lines, "func main() -> bool { return true; }");
+        sv_push(sources, bt_source(bool_lines));
+
+        sv_push(filenames, "entry/h.l1");
+        sv_push(byte_lines, "module entry.h;");
+        sv_push(byte_lines, "func main() -> byte { return 1 as byte; }");
+        sv_push(sources, bt_source(byte_lines));
+
+        sv_push(filenames, "entry/p.l1");
+        sv_push(param_lines, "module entry.p;");
+        sv_push(param_lines, "func main(value: int) -> int { return value; }");
+        sv_push(sources, bt_source(param_lines));
+
+        let result = bt_analyze_sources("entry.i", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for module entry result fixtures");
+
+        let int_generated = backend_generate_module(result, "entry.i", opts, cfg);
+        assert(contains_s(int_generated,
+            "int __deaM5entry1iI5entry(void)\n{\n    int dea_exit_code = (int) __deaM5entry1iN4mainF0i();\n    return dea_exit_code;\n}\n"),
+            "int module entry bridge normalization mismatch");
+        assert(!contains_s(int_generated, "_rt_init_args("),
+            "int entry bridge must not initialize process arguments");
+        assert(!contains_s(int_generated, "I4init();") && !contains_s(int_generated, "I4fini();"),
+            "int entry bridge must not orchestrate module lifecycle");
+        assert(!contains_s(int_generated, "_dea_init_modules") && !contains_s(int_generated, "int main(int argc"),
+            "int module output must not emit a process wrapper");
+
+        let bool_generated = backend_generate_module(result, "entry.b", opts, cfg);
+        assert(contains_s(bool_generated,
+            "int __deaM5entry1bI5entry(void)\n{\n    dea_bool result = __deaM5entry1bN4mainF0z();\n    int dea_exit_code = result ? 0 : 1;\n    return dea_exit_code;\n}\n"),
+            "bool module entry bridge normalization mismatch");
+        assert(!contains_s(bool_generated, "_rt_init_args("),
+            "bool entry bridge must not initialize process arguments");
+        assert(!contains_s(bool_generated, "I4init();") && !contains_s(bool_generated, "I4fini();"),
+            "bool entry bridge must not orchestrate module lifecycle");
+        assert(!contains_s(bool_generated, "_dea_init_modules") && !contains_s(bool_generated, "int main(int argc"),
+            "bool module output must not emit a process wrapper");
+
+        let byte_generated = backend_generate_module(result, "entry.h", opts, cfg);
+        assert(contains_s(byte_generated,
+            "int __deaM5entry1hI5entry(void)\n{\n    __deaM5entry1hN4mainF0h();\n    int dea_exit_code = 0;\n    return dea_exit_code;\n}\n"),
+            "other-result module entry bridge normalization mismatch");
+        assert(!contains_s(byte_generated, "_rt_init_args("),
+            "other-result entry bridge must not initialize process arguments");
+        assert(!contains_s(byte_generated, "I4init();") && !contains_s(byte_generated, "I4fini();"),
+            "other-result entry bridge must not orchestrate module lifecycle");
+        assert(!contains_s(byte_generated, "_dea_init_modules") && !contains_s(byte_generated, "int main(int argc"),
+            "other-result module output must not emit a process wrapper");
+
+        let param_generated = backend_generate_module(result, "entry.p", opts, cfg);
+        assert(!contains_s(param_generated, "__deaM5entry1pI5entry"),
+            "parameterized source main must not receive a zero-argument entry bridge");
 
         analysis_result_free(result);
     }
@@ -1879,6 +2513,16 @@ func main() {
     test_analysis_has_arc_data_for_struct_and_nullable_pointer();
     test_backend_generate_types_and_top_level_lets();
     test_backend_generate_top_level_consts();
+    test_backend_generate_nonconstant_top_level_lets();
+    test_backend_generate_module_isolates_definitions_and_lifecycle();
+    test_backend_generate_module_noop_lifecycle_without_entry();
+    test_backend_generate_module_hides_imported_opaque_layouts();
+    test_backend_generate_module_collects_imported_alias_intrinsic_wrappers();
+    test_backend_module_analysis_rejects_imported_opaque_signature_use();
+    test_backend_module_analysis_rejects_imported_opaque_body_use();
+    test_backend_module_analysis_deduplicates_opaque_loop_condition();
+    test_backend_generate_module_declares_consumed_interface_values();
+    test_backend_generate_module_entry_result_normalization();
     test_backend_generate_basic_control_flow();
     test_backend_generate_loop_exit_case_lowering();
     test_backend_generate_case_if_else_lowering();

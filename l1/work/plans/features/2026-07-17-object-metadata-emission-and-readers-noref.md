@@ -30,7 +30,7 @@
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
-  - [`l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
+  - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][superseded-metadata]
   - [`l1/docs/specs/compiler/module-interface-format.md`][interface-format]
@@ -57,8 +57,8 @@ inconsistent metadata is malformed and cannot be reclassified as foreign.
    including imports retained only for side effects.
 2. The [fingerprint plan][fingerprints] supplies the producer whole-module fingerprint and the expected fingerprint for
    every direct provider edge. This plan does not compute hashes.
-3. The [lifecycle plan][lifecycle] supplies always-present external `I4init` and `I4fini` symbols plus optional
-   `I5entry`. This plan anchors metadata through `I4init` and records whether `I5entry` is present.
+3. The completed [lifecycle plan][lifecycle] supplies always-present external `I4init` and `I4fini` symbols plus
+   optional `I5entry`. This plan anchors metadata through `I4init` and records whether `I5entry` is present.
 4. This plan owns the wire format, metadata emission, object-container readers, and classification API. It does not
    invoke the host linker or decide whether a CLI argument is a Dea or foreign object.
 5. The [link-set plan][link-set] consumes the classification, enforces positional-versus-foreign input rules, verifies
@@ -256,7 +256,7 @@ hand the typed inspection result to the later link-set plan without changing cur
 [fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [interface-format]: ../../../docs/specs/compiler/module-interface-format.md
-[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [superseded-metadata]: closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md

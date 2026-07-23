@@ -1109,10 +1109,12 @@ func sig_check_export_surface_type(tables: SignatureTables*, nr: NameResolution*
         }
         TY_NULLABLE => {
             let inner = ty.inner as Type*;
+            // Preserve the immediate pointer niche. Other payloads recurse in
+            // layout-requiring mode; function types validate their signatures.
             if (ord(inner.kind) == ord(TY_POINTER)) {
                 return sig_check_export_surface_type(tables, nr, inner, false, diags, filename, span);
             }
-            return sig_check_export_surface_type(tables, nr, inner, require_transparent, diags, filename, span);
+            return sig_check_export_surface_type(tables, nr, inner, true, diags, filename, span);
         }
         TY_ARRAY => {
             return sig_check_export_surface_type(tables, nr, ty.inner as Type*, true, diags, filename, span);
@@ -1132,6 +1134,194 @@ func sig_check_export_surface_type(tables: SignatureTables*, nr: NameResolution*
                 ok = false;
             }
             return ok;
+        }
+    }
+}
+
+/**
+ * Reject imported opaque nominal types in positions that require layout.
+ *
+ * Unlike export-surface validation, this check permits private types owned by
+ * the consumer module. It exists so internal source declarations and local
+ * annotations cannot require another module's hidden representation.
+ *
+ * @param nr Name-resolution data containing provider opacity sets.
+ * @param consumer_module Module owning the checked type position.
+ * @param ty Type tree to inspect.
+ * @param require_transparent Whether the current position requires layout.
+ * @param diags Diagnostic collector.
+ * @param filename Source filename to report.
+ * @param span Source span to report.
+ * @return `true` if no imported opaque layout is required.
+ */
+func sig_check_imported_opaque_layout_type(
+    nr: NameResolution*,
+    consumer_module: string,
+    ty: Type*,
+    require_transparent: bool,
+    diags: DiagCollector*,
+    filename: string,
+    span: Span
+) -> bool {
+    match (ty.kind) {
+        TY_BUILTIN => { return true; }
+        TY_NULL => { return true; }
+        TY_STRUCT => {
+            if (require_transparent && ty.module_name != consumer_module) {
+                let provider = nr_env_find(nr, ty.module_name);
+                if (provider != null && ss_has((provider as ModuleEnv*).opaque_exports, ty.name)) {
+                    sig_diag_error(
+                        diags,
+                        "RES-0038",
+                        "opaque type '" + sig_nominal_display(ty) +
+                            "' is used where transparent layout is required",
+                        filename,
+                        span
+                    );
+                    return false;
+                }
+            }
+            return true;
+        }
+        TY_ENUM => {
+            if (require_transparent && ty.module_name != consumer_module) {
+                let provider2 = nr_env_find(nr, ty.module_name);
+                if (provider2 != null && ss_has((provider2 as ModuleEnv*).opaque_exports, ty.name)) {
+                    sig_diag_error(
+                        diags,
+                        "RES-0038",
+                        "opaque type '" + sig_nominal_display(ty) +
+                            "' is used where transparent layout is required",
+                        filename,
+                        span
+                    );
+                    return false;
+                }
+            }
+            return true;
+        }
+        TY_POINTER => {
+            return sig_check_imported_opaque_layout_type(
+                nr, consumer_module, ty.inner as Type*, false, diags, filename, span);
+        }
+        TY_NULLABLE => {
+            let inner = ty.inner as Type*;
+            // Preserve the immediate pointer niche. Other payloads recurse in
+            // layout-requiring mode; function types validate their signatures.
+            if (ord(inner.kind) == ord(TY_POINTER)) {
+                return sig_check_imported_opaque_layout_type(
+                    nr, consumer_module, inner, false, diags, filename, span);
+            }
+            return sig_check_imported_opaque_layout_type(
+                nr, consumer_module, inner, true, diags, filename, span);
+        }
+        TY_ARRAY => {
+            return sig_check_imported_opaque_layout_type(
+                nr, consumer_module, ty.inner as Type*, true, diags, filename, span);
+        }
+        TY_SLICE => {
+            return sig_check_imported_opaque_layout_type(
+                nr, consumer_module, ty.inner as Type*, true, diags, filename, span);
+        }
+        TY_FUNC => {
+            let ok = true;
+            let params = ty.params as VectorBase*;
+            for (let i = 0; i < vec_size(params); i = i + 1) {
+                if (!sig_check_imported_opaque_layout_type(
+                    nr, consumer_module, ptr_vec_get(params, i) as Type*, true, diags, filename, span)) {
+                    ok = false;
+                }
+            }
+            if (!sig_check_imported_opaque_layout_type(
+                nr, consumer_module, ty.result as Type*, true, diags, filename, span)) {
+                ok = false;
+            }
+            return ok;
+        }
+    }
+}
+
+/**
+ * Check private top-level declarations for imported opaque by-value uses.
+ *
+ * Exported declarations are already covered by export-surface validation.
+ *
+ * @param tables Finalized signature tables.
+ * @param nr Name-resolution data containing source environments.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_internal_opaque_layouts(tables: SignatureTables*, nr: NameResolution*, diags: DiagCollector*) {
+    for (let env_i = 0; env_i < nr_env_count(nr); env_i = env_i + 1) {
+        let env = nr_env_get(nr, env_i);
+        with (let keys = nr_module_env_local_keys(env) => sv_free(keys)) {
+            for (let key_i = 0; key_i < sv_size(keys); key_i = key_i + 1) {
+                let name = sv_get(keys, key_i);
+                let sym_opt = nr_module_env_local(env, name);
+                if (sym_opt == null) {
+                    continue;
+                }
+                let sym = sym_opt as Symbol*;
+                let is_exported = spm_get(env.exports, name) != null;
+                match (sym.kind) {
+                    SYM_STRUCT => {
+                        let info_opt = sig_lookup_struct_info(tables, env.module_name, name);
+                        if (info_opt != null && (!is_exported || (info_opt as StructInfo*).is_opaque)) {
+                            let info = info_opt as StructInfo*;
+                            for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+                                sig_check_imported_opaque_layout_type(
+                                    nr,
+                                    env.module_name,
+                                    (ptr_vec_get(info.fields, field_i) as StructFieldInfo*).field_type,
+                                    true,
+                                    diags,
+                                    info.filename,
+                                    info.span
+                                );
+                            }
+                        }
+                    }
+                    SYM_ENUM => {
+                        let info_opt2 = sig_lookup_enum_info(tables, env.module_name, name);
+                        if (info_opt2 != null && (!is_exported || (info_opt2 as EnumInfo*).is_opaque)) {
+                            let info2 = info_opt2 as EnumInfo*;
+                            for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+                                let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+                                for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                                    sig_check_imported_opaque_layout_type(
+                                        nr,
+                                        env.module_name,
+                                        ptr_vec_get(variant.field_types, field_i2) as Type*,
+                                        true,
+                                        diags,
+                                        info2.filename,
+                                        info2.span
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    SYM_FUNC => {
+                        let ty_opt = sig_lookup_func_type(tables, env.module_name, name);
+                        if (!is_exported && ty_opt != null) {
+                            sig_check_imported_opaque_layout_type(
+                                nr, env.module_name, ty_opt as Type*, true, diags,
+                                env.module_ptr.filename, sym.span);
+                        }
+                    }
+                    SYM_LET => {
+                        let ty_opt2 = sig_lookup_let_type(tables, env.module_name, name);
+                        if (!is_exported && ty_opt2 != null) {
+                            sig_check_imported_opaque_layout_type(
+                                nr, env.module_name, ty_opt2 as Type*, true, diags,
+                                env.module_ptr.filename, sym.span);
+                        }
+                    }
+                    SYM_TYPE_ALIAS => {
+                    }
+                    SYM_ENUM_VARIANT => {
+                    }
+                }
+            }
         }
     }
 }
@@ -1549,6 +1739,7 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
     sig_check_materialized_interface_shapes(nr, driver_state, diags);
     sig_detect_value_type_cycles(tables, diags);
     sig_check_pending_extern_shadows(tables, nr, diags);
+    sig_check_internal_opaque_layouts(tables, nr, diags);
     sig_check_exported_surfaces(tables, nr, diags);
     sig_pending_shapes_free(pending_shapes);
     return tables;

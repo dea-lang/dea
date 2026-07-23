@@ -1,6 +1,6 @@
 # Dea/L1 Module Visibility and Imports
 
-Version: 2026-07-13
+Version: 2026-07-23
 
 Status: Finalized
 
@@ -128,12 +128,17 @@ exported aggregate):
 - An unexported `U` in either position is an error, reported at the exporting item's definition in the defining module
   (the module that created the leak, not the consumer).
 
+Ordered suffix constructors preserve that layout distinction. `U*?` is a nullable pointer represented with the null
+niche, so an opaque `U` is sufficient. `U?*` is instead a pointer to a non-pointer nullable wrapper; that wrapper embeds
+`U` by value, so `U` must be transparent even though the wrapper itself is behind a pointer.
+
 ### Aggregate transitivity
 
 To export a struct `S` transparently, its by-value layout closure must be transparent: follow every by-value field edge
 (embedded structs, array elements, by-value enum payloads) and require each reached type to be transparent. The walk
-stops at pointers: a pointer field places its pointee at the frontier (the pointee's name must be exported, opaque or
-transparent) but is not descended into, because the importer never needs the pointee's layout.
+stops at pointers whose pointee has a forward-declarable ABI spelling: such a pointer field places its pointee at the
+frontier (the pointee's name must be exported, opaque or transparent) but is not descended into. A synthesized by-value
+wrapper such as the pointee of `U?*` is not such a frontier because defining the wrapper requires `U`'s layout.
 
 The check is enforced one level deep at each export; full transitivity follows by induction, since a transparent export
 is itself legal only when its by-value closure is transparent and its pointee frontier names are exported.
@@ -293,10 +298,11 @@ The export set also controls generated C linkage:
 
 - exported functions and top-level storage keep external linkage;
 - non-exported top-level functions and storage use internal linkage where the backend can represent that with `static`;
-- imported declarations reference provider-owned LBI names.
+- imported non-extern L1 declarations reference provider-owned LBI names; C `extern` declarations retain their declared
+  C spelling.
 
 For example, `import std.integer as m;` followed by `m::abs(-1)` still calls the LBI symbol for `std.integer::abs`, such
-as `__deaM3std7integerS3abs`. The local alias `m` is not encoded into generated C symbol names.
+as `__deaM3std7integerN3absF1ii`. The local alias `m` is not encoded into generated C symbol names.
 
 Struct and enum type definitions have no C storage class. A type's visibility state determines its presence and form in
 the public interface: unexported types are absent, opaque types appear as name-only forward declarations, and

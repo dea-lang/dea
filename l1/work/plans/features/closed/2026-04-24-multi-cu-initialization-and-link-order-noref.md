@@ -116,5 +116,5 @@ modules and not just the old single-CU build shape.
 3. Driver/backend tests cover modules with and without deferred initialization and imported-state dependencies.
 
 [build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
-[lifecycle]: ../2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md

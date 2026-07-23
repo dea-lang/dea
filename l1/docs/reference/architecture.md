@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-07-22
+Version: 2026-07-23
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -50,7 +50,9 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
   |
   +-- `--emit-interface` --> interface projection + canonical fingerprint --> textual `.l1m`
   |
-  +-- `--gen` / `--build` / `--run` --> backend.l0 + c_emitter.l0 --> single C99 translation unit
+  +-- internal module API --> backend_generate_module --> one selected module C99 translation unit
+  |
+  +-- `--gen` / `--build` / `--run` --> backend_generate --> legacy whole-program C99 translation unit
                                           |
                                           v
                                    build_driver.l0 --> host C compiler / executable launch
@@ -65,6 +67,12 @@ The driver closes over both interface dependency tiers. `require` providers are 
 `link` providers remain graph obligations without entering the consumer's semantic environment. Source nodes retain
 their direct imports in declaration order, separately from sorted graph enumeration and interface manifests. The
 ordinary CLI pipeline above is still source-based.
+
+The internal module-generation branch selects one canonical source-backed target from the completed analysis result. It
+emits target definitions, external declarations for provider-owned source and interface values and functions consumed by
+that target, always-present external `I4init` and `I4fini`, and conditional external `I5entry`. It emits no process
+`main`, global init chain, or dependency lifecycle calls. Compile-only and multi-CU build/run dispatch remain future
+tranches.
 
 Every selected filesystem or registry interface is checked before it enters that graph. The driver parses the wire
 model, confirms the declared module identity, validates the module and dependency fingerprint envelopes, recomputes the
@@ -138,6 +146,8 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 
 - Checks expression and statement typing.
 - Validates return-path and cleanup-path requirements.
+- Enforces imported opaque layout visibility at the common expression-result boundary, preserving pointer-only handles
+  while suppressing or deduplicating diagnostics during loop fixed-point and repeated ordinary inference.
 - Produces semantic diagnostics without crashing the compiler.
 
 ### 2.7 Interface Projection (`interface_emitter.l0`, `interface_fingerprint.l0`, `interface_literal.l0`, `interface_order.l0`, `module_interface.l0`, `mi_utils.l0`)
@@ -158,7 +168,12 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 
 ### 2.8 Backend (`backend.l0`, `c_emitter.l0`, `string_escape.l0`)
 
-- Consumes typed analysis results and emits one C99 translation unit.
+- Consumes typed analysis results through the legacy `backend_generate` whole-program API or the target-aware
+  `backend_generate_module` API.
+- Keeps module definitions scoped to the selected source-backed target while declaring imported source and interface
+  values and functions under provider-owned names.
+- Emits external per-module `I4init` / `I4fini` lifecycle functions and an optional external `I5entry` bridge without
+  process-wrapper or cross-module orchestration.
 - Delegates backend-specific behavior to [c-backend-design.md](c-backend-design.md).
 
 ### 2.9 Driver and CLI (`driver.l0`, `l1c_lib.l0`, `cli_args.l0`, `build_driver.l0`)
@@ -210,7 +225,8 @@ Important analysis tables include:
     underline and the displayed line always agree, independent of terminal tab-stop behavior. Unicode display-width
     handling is out of scope for this contract.
 05. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
-06. Generated output is currently one C99 translation unit.
+06. Ordinary CLI generation remains one legacy whole-program C99 translation unit; the internal module API emits one
+    selected source-backed module translation unit.
 07. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
     preserve declaration order and duplicates.
 08. An interface is registered or cached only after its declared identity and whole-module fingerprint are verified.

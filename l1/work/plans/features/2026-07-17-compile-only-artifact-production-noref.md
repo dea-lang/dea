@@ -33,7 +33,7 @@
   - [`l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md`][foundation]
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
-  - [`l1/work/plans/features/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
+  - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
@@ -56,8 +56,8 @@ must not leave a fresh interface paired with a missing or stale object.
 1. The [module graph][module-graph] owns canonical paths, `MRP_REQUIRE_INTERFACE` discovery, and transitive dependency
    state.
 2. [Interface fingerprints][fingerprints] must make emitted `.l1m` files self-verifying.
-3. The [lifecycle plan][lifecycle] must define final one-module C output, and [object metadata][object-metadata] must
-   make the resulting object a complete Dea link input.
+3. The completed [lifecycle plan][lifecycle] defines final one-module C output, and [object metadata][object-metadata]
+   must make the resulting object a complete Dea link input.
 4. This plan owns compile-mode CLI activation, output resolution, the host `cc -c` step, and all-or-nothing publication.
 5. The [link-set plan][link-set] consumes the published object but does not reopen the `.l1m` during standalone linking.
 
@@ -156,7 +156,7 @@ interface-only dependency fixtures.
 [fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [foundation]: closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

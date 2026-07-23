@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-21
+Version: 2026-07-22
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -49,8 +49,9 @@ non-owning view over fixed-array or slice storage.
 
 Generated C uses the unified recursive LBI grammar: value symbols use `__deaM...N...` terminals with function type
 components where needed, nominal types use `S` / `E`, and compiler-generated module lifecycle helpers use
-`__deaM...I...` names. Module export manifests drive external vs. internal linkage for top-level functions, lets, and
-consts in the current backend.
+`__deaM...I...` names. Module export manifests drive external vs. internal linkage for source-level top-level functions,
+lets, and consts. In per-module output, compiler-generated `I4init`, `I4fini`, and `I5entry` infrastructure retains
+external linkage independently of source exports.
 
 The bootstrap compiler can emit deterministic textual `.l1m` module interface artifacts through the internal
 `--emit-interface` mode and round-trip them through a constrained interface parser. Emission computes a canonical
@@ -72,6 +73,13 @@ provides sorted node enumeration, canonical sibling `.c`, `.o`, and `.l1m` path 
 direct source imports in exact declaration order. Interface projection classifies resolved cross-module public surface
 references as `require` and remaining implementation references as `link`. Object metadata embedding and link-time
 comparison of those verified expectations remain future work.
+
+The backend now exposes an internal `backend_generate_module(...)` entry point that emits definitions for one selected
+source-backed module. It emits external declarations for provider-owned source and interface values and functions
+consumed by that target, always-present external `I4init` and `I4fini`, and conditional external `I5entry` for a
+resolved, zero-parameter, non-extern source `main`. Module output contains no process `main`, global init chain, or
+dependency lifecycle calls. The legacy `backend_generate(...)` path remains the ordinary generation, build, and run
+path.
 
 Ordinary CLI imports remain source-based today, and `.l1m` files are not yet normal compile/build/run inputs.
 
@@ -214,7 +222,8 @@ bootstrap path:
 These remain true today:
 
 1. There is no implemented `stage2_l1` compiler yet.
-2. Backend output is one C translation unit.
+2. Ordinary CLI backend output is one legacy whole-program C translation unit; the internal module generator emits one
+   selected module but is not yet connected to compile-only or multi-CU orchestration.
 3. Compile-only artifact production, standalone linking, and multi-CU build/run orchestration are not operational.
 4. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.

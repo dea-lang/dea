@@ -36,6 +36,9 @@ struct Backend {
     opts: CodegenOptions*;
     cfg: LogConfig*;
     emitter: CEmitter*;
+    output_kind: CodegenOutputKind;
+    target_module: string?;
+    required_type_keys: StringSet*?;
     current_module: string?;
     current_unit: DriverUnit*?;
     current_env: ModuleEnv*?;
@@ -90,7 +93,36 @@ func be_ice_string(message: string) -> string {
 }
 
 /**
- * Create a backend state for one code-generation pass.
+ * Create a backend state for one supported output boundary.
+ *
+ * @param result Borrowed semantic analysis result.
+ * @param opts Borrowed codegen options.
+ * @param cfg Borrowed log configuration.
+ * @param output_kind Output boundary to generate.
+ * @param target_module Canonical module name for module output, otherwise `null`.
+ * @return New backend state.
+ */
+func be_create_for_output(
+    result: AnalysisResult*,
+    opts: CodegenOptions*,
+    cfg: LogConfig*,
+    output_kind: CodegenOutputKind,
+    target_module: string?
+) -> Backend* {
+    if ((ord(output_kind) == ord(CGK_MODULE)) != (target_module != null)) {
+        be_ice("[ICE-9304] module output kind and target must be selected together");
+    }
+    let emitter = cem_create();
+    cem_set_analysis(emitter, result);
+    if (target_module != null) {
+        cem_set_module_target(emitter, target_module as string);
+    }
+    return new Backend(result, opts, cfg, emitter, output_kind, target_module, null, null, null, null, null, null,
+        ptr_vec_create(8), null, null, 0, 0, false);
+}
+
+/**
+ * Create a backend state for legacy whole-program generation.
  *
  * @param result Borrowed semantic analysis result.
  * @param opts Borrowed codegen options.
@@ -98,10 +130,25 @@ func be_ice_string(message: string) -> string {
  * @return New backend state.
  */
 func be_create(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogConfig*) -> Backend* {
-    let emitter = cem_create();
-    cem_set_analysis(emitter, result);
-    return new Backend(result, opts, cfg, emitter, null, null, null, null, null, ptr_vec_create(8), null, null, 0, 0,
-        false);
+    return be_create_for_output(result, opts, cfg, CGK_WHOLE_PROGRAM, null);
+}
+
+/**
+ * Create a backend state for one source-backed module.
+ *
+ * @param result Borrowed semantic analysis result.
+ * @param target_module Canonical target module name.
+ * @param opts Borrowed codegen options.
+ * @param cfg Borrowed log configuration.
+ * @return New backend state.
+ */
+func be_create_module(
+    result: AnalysisResult*,
+    target_module: string,
+    opts: CodegenOptions*,
+    cfg: LogConfig*
+) -> Backend* {
+    return be_create_for_output(result, opts, cfg, CGK_MODULE, target_module);
 }
 
 /**
@@ -126,6 +173,9 @@ func be_free(self: Backend*) {
         drop cur2;
     }
     vec_free(self.scope_stack);
+    if (self.required_type_keys != null) {
+        ss_free(self.required_type_keys as StringSet*);
+    }
     cem_free(self.emitter);
     drop self;
 }
@@ -242,6 +292,100 @@ func be_current_stmt_arena(self: Backend*) -> StmtArena* {
  */
 func be_find_unit(self: Backend*, module_name: string) -> DriverUnit*? {
     return driver_find_unit(self.result.driver_state, module_name);
+}
+
+/**
+ * Return whether this pass emits one module rather than a whole program.
+ *
+ * @param self Backend state to inspect.
+ * @return `true` for module output.
+ */
+func be_is_module_output(self: Backend*) -> bool {
+    return ord(self.output_kind) == ord(CGK_MODULE);
+}
+
+/**
+ * Return the selected source-backed target module.
+ *
+ * @param self Backend state to inspect.
+ * @return Borrowed parsed target module.
+ */
+func be_target_root(self: Backend*) -> Module* {
+    if (!be_is_module_output(self) || self.target_module == null) {
+        be_ice("[ICE-9305] module target requested outside module output");
+    }
+    let target_name = self.target_module as string;
+    let unit = be_find_unit(self, target_name);
+    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
+        be_ice("[ICE-9306] module output target is not source-backed: " + target_name);
+    }
+    return (unit as DriverUnit*).parse_result.root_module as Module*;
+}
+
+/**
+ * Return whether definitions for one source module belong in this output.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Source module name.
+ * @return `true` for every module in legacy output or only the selected module in module output.
+ */
+func be_emits_module_definitions(self: Backend*, module_name: string) -> bool {
+    if (!be_is_module_output(self)) {
+        return true;
+    }
+    return self.target_module != null && (self.target_module as string) == module_name;
+}
+
+/**
+ * Return whether module output consumes one provider-owned value symbol.
+ *
+ * @param self Backend state to inspect.
+ * @param provider_module Provider module name.
+ * @param symbol_name Provider-owned symbol name.
+ * @return `true` when name resolution recorded the cross-module use.
+ */
+func be_target_consumes_symbol(self: Backend*, provider_module: string, symbol_name: string) -> bool {
+    if (!be_is_module_output(self) || self.target_module == null || self.result.names == null) {
+        return false;
+    }
+    let names = self.result.names as NameResolution*;
+    for (let i = 0; i < nr_resolved_symbol_count(names); i = i + 1) {
+        let resolved = nr_resolved_symbol_get(names, i);
+        if (resolved.consumer_module == (self.target_module as string) &&
+            resolved.provider_module == provider_module && resolved.symbol_name == symbol_name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return whether one signature-table entry belongs to module output.
+ *
+ * @param self Backend state to inspect.
+ * @param key Signature key in `module::symbol` form.
+ * @return `true` for target-owned, prelude, or consumed provider entries.
+ */
+func be_target_includes_value_key(self: Backend*, key: string) -> bool {
+    if (!be_is_module_output(self) || self.target_module == null) {
+        return true;
+    }
+    let target = self.target_module as string;
+    if (starts_with_s(key, target + "::") || starts_with_s(key, "dea::")) {
+        return true;
+    }
+    if (self.result.names == null) {
+        return false;
+    }
+    let names = self.result.names as NameResolution*;
+    for (let i = 0; i < nr_resolved_symbol_count(names); i = i + 1) {
+        let resolved = nr_resolved_symbol_get(names, i);
+        if (resolved.consumer_module == target &&
+            key == resolved.provider_module + "::" + resolved.symbol_name) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -1679,6 +1823,250 @@ func type_free_opt(ty: Type*?) {
 }
 
 /**
+ * Collect visible nominal types referenced by one semantic type.
+ *
+ * Non-target private source types are deliberately excluded: they are not
+ * part of the consumer's ABI surface and must not leak into module output.
+ *
+ * @param self Backend state to inspect.
+ * @param ty Semantic type to traverse.
+ * @param out Required nominal-type keys to update.
+ */
+func be_collect_referenced_type_keys(self: Backend*, ty: Type*, out: StringSet*) {
+    if (ord(ty.kind) == ord(TY_STRUCT) || ord(ty.kind) == ord(TY_ENUM)) {
+        if (self.target_module == null || ty.module_name == (self.target_module as string) ||
+            be_is_symbol_exported(self, ty.module_name, ty.name)) {
+            ss_add(out, be_type_key(ty.module_name, ty.name));
+        }
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE) ||
+        ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_SLICE)) {
+        be_collect_referenced_type_keys(self, ty.inner as Type*, out);
+        return;
+    }
+    if (ord(ty.kind) != ord(TY_FUNC)) {
+        return;
+    }
+    let params = ty.params as VectorBase*;
+    for (let i = 0; i < vec_size(params); i = i + 1) {
+        be_collect_referenced_type_keys(self, ptr_vec_get(params, i) as Type*, out);
+    }
+    be_collect_referenced_type_keys(self, ty.result as Type*, out);
+}
+
+/**
+ * Resolve one target-owned parsed type reference into required nominal keys.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Module owning the parsed reference.
+ * @param tref Parsed type reference, or `null`.
+ * @param out Required nominal-type keys to update.
+ */
+func be_collect_type_ref_keys(self: Backend*, module_name: string, tref: TypeRef*?, out: StringSet*) {
+    if (tref == null || self.result.signatures == null || self.result.names == null) {
+        return;
+    }
+    let env = nr_env_find(self.result.names as NameResolution*, module_name);
+    if (env == null) {
+        return;
+    }
+    with (let seen = ss_create() => ss_free(seen),
+          let ty: Type*? = tr_resolve_type_ref(
+              self.result.signatures as SignatureTables*,
+              self.result.names as NameResolution*,
+              self.result.driver_state,
+              env as ModuleEnv*,
+              tref as TypeRef*,
+              self.result.diags,
+              seen
+          ) => type_free_opt(ty)) {
+        if (ty != null) {
+            be_collect_referenced_type_keys(self, ty as Type*, out);
+        }
+    }
+}
+
+/**
+ * Collect nominal references from target-owned parsed annotations.
+ *
+ * @param self Backend state to inspect.
+ * @param root Selected source module.
+ * @param out Required nominal-type keys to update.
+ */
+func be_collect_target_ast_type_keys(self: Backend*, root: Module*, out: StringSet*) {
+    for (let decl_i = 0; decl_i < vec_size(root.decls); decl_i = decl_i + 1) {
+        let top = ptr_vec_get(root.decls, decl_i) as TopLevelDecl*;
+        match (top.kind) {
+            TD_FUNC => {
+                let fd = top.data as FuncDecl*;
+                for (let p = 0; p < vec_size(fd.params); p = p + 1) {
+                    be_collect_type_ref_keys(self, root.name, (ptr_vec_get(fd.params, p) as Param*).type_ref, out);
+                }
+                be_collect_type_ref_keys(self, root.name, fd.return_type, out);
+            }
+            TD_STRUCT => {
+                let sd = top.data as StructDecl*;
+                for (let f = 0; f < vec_size(sd.fields); f = f + 1) {
+                    be_collect_type_ref_keys(self, root.name,
+                        (ptr_vec_get(sd.fields, f) as FieldDecl*).type_ref, out);
+                }
+            }
+            TD_ENUM => {
+                let ed = top.data as EnumDecl*;
+                for (let v = 0; v < vec_size(ed.variants); v = v + 1) {
+                    let variant = ptr_vec_get(ed.variants, v) as EnumVariant*;
+                    for (let ef = 0; ef < vec_size(variant.fields); ef = ef + 1) {
+                        be_collect_type_ref_keys(self, root.name,
+                            (ptr_vec_get(variant.fields, ef) as FieldDecl*).type_ref, out);
+                    }
+                }
+            }
+            TD_TYPE_ALIAS => {
+                be_collect_type_ref_keys(self, root.name, (top.data as TypeAliasDecl*).target, out);
+            }
+            TD_LET => {
+                be_collect_type_ref_keys(self, root.name, (top.data as LetDecl*).type_ref, out);
+            }
+        }
+    }
+
+    let unit = be_find_unit(self, root.name);
+    if (unit == null) {
+        return;
+    }
+    let stmts = (unit as DriverUnit*).parse_result.stmt_arena.nodes;
+    for (let stmt_i = 0; stmt_i < vec_size(stmts); stmt_i = stmt_i + 1) {
+        be_collect_type_ref_keys(self, root.name, (ptr_vec_get(stmts, stmt_i) as StmtNode*).type_ref, out);
+    }
+    let exprs = (unit as DriverUnit*).parse_result.expr_arena.nodes;
+    for (let expr_i = 0; expr_i < vec_size(exprs); expr_i = expr_i + 1) {
+        be_collect_type_ref_keys(self, root.name, (ptr_vec_get(exprs, expr_i) as ExprNode*).type_ref, out);
+    }
+}
+
+/**
+ * Compute the nominal type surface required by one module translation unit.
+ *
+ * The set includes all target-owned nominal definitions, visible nominal
+ * references from target code and consumed value signatures, and the
+ * transitive field/payload closure of selected transparent layouts.
+ *
+ * @param self Backend state to inspect.
+ * @param root Selected source module.
+ * @return New owned set of required `module::type` keys.
+ */
+func be_collect_required_type_keys(self: Backend*, root: Module*) -> StringSet* {
+    let required = ss_create();
+    if (self.result.signatures == null) {
+        return required;
+    }
+    let tables = self.result.signatures as SignatureTables*;
+
+    for (let struct_i = 0; struct_i < spm_capacity(tables.struct_infos); struct_i = struct_i + 1) {
+        if (spm_slot_occupied(tables.struct_infos, struct_i)) {
+            let info = spm_slot_value(tables.struct_infos, struct_i) as StructInfo*;
+            if (info.module_name == root.name) {
+                ss_add(required, info.key);
+            }
+        }
+    }
+    for (let enum_i = 0; enum_i < spm_capacity(tables.enum_infos); enum_i = enum_i + 1) {
+        if (spm_slot_occupied(tables.enum_infos, enum_i)) {
+            let info2 = spm_slot_value(tables.enum_infos, enum_i) as EnumInfo*;
+            if (info2.module_name == root.name) {
+                ss_add(required, info2.key);
+            }
+        }
+    }
+
+    for (let func_i = 0; func_i < spm_capacity(tables.func_types); func_i = func_i + 1) {
+        if (spm_slot_occupied(tables.func_types, func_i) &&
+            be_target_includes_value_key(self, spm_slot_key(tables.func_types, func_i))) {
+            be_collect_referenced_type_keys(self, spm_slot_value(tables.func_types, func_i) as Type*, required);
+        }
+    }
+    for (let let_i = 0; let_i < spm_capacity(tables.let_types); let_i = let_i + 1) {
+        if (spm_slot_occupied(tables.let_types, let_i) &&
+            be_target_includes_value_key(self, spm_slot_key(tables.let_types, let_i))) {
+            be_collect_referenced_type_keys(self, spm_slot_value(tables.let_types, let_i) as Type*, required);
+        }
+    }
+    for (let expr_i = 0; expr_i < spm_capacity(self.result.expr_types); expr_i = expr_i + 1) {
+        if (spm_slot_occupied(self.result.expr_types, expr_i) &&
+            starts_with_s(spm_slot_key(self.result.expr_types, expr_i), root.name + "::")) {
+            be_collect_referenced_type_keys(self, spm_slot_value(self.result.expr_types, expr_i) as Type*, required);
+        }
+    }
+    for (let intrinsic_i = 0; intrinsic_i < spm_capacity(self.result.intrinsic_targets); intrinsic_i = intrinsic_i + 1) {
+        if (spm_slot_occupied(self.result.intrinsic_targets, intrinsic_i) &&
+            starts_with_s(spm_slot_key(self.result.intrinsic_targets, intrinsic_i), root.name + "::")) {
+            be_collect_referenced_type_keys(
+                self,
+                spm_slot_value(self.result.intrinsic_targets, intrinsic_i) as Type*,
+                required
+            );
+        }
+    }
+    be_collect_target_ast_type_keys(self, root, required);
+
+    let previous_size = -1;
+    while (previous_size != ss_size(required)) {
+        previous_size = ss_size(required);
+        for (let struct_i2 = 0; struct_i2 < spm_capacity(tables.struct_infos); struct_i2 = struct_i2 + 1) {
+            if (!spm_slot_occupied(tables.struct_infos, struct_i2)) {
+                continue;
+            }
+            let info3 = spm_slot_value(tables.struct_infos, struct_i2) as StructInfo*;
+            if (!ss_has(required, info3.key) || (info3.module_name != root.name && info3.is_opaque)) {
+                continue;
+            }
+            for (let field_i = 0; field_i < vec_size(info3.fields); field_i = field_i + 1) {
+                be_collect_referenced_type_keys(
+                    self,
+                    (ptr_vec_get(info3.fields, field_i) as StructFieldInfo*).field_type,
+                    required
+                );
+            }
+        }
+        for (let enum_i2 = 0; enum_i2 < spm_capacity(tables.enum_infos); enum_i2 = enum_i2 + 1) {
+            if (!spm_slot_occupied(tables.enum_infos, enum_i2)) {
+                continue;
+            }
+            let info4 = spm_slot_value(tables.enum_infos, enum_i2) as EnumInfo*;
+            if (!ss_has(required, info4.key) || (info4.module_name != root.name && info4.is_opaque)) {
+                continue;
+            }
+            for (let variant_i = 0; variant_i < vec_size(info4.variants); variant_i = variant_i + 1) {
+                let variant = ptr_vec_get(info4.variants, variant_i) as EnumVariantInfo*;
+                for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                    be_collect_referenced_type_keys(
+                        self,
+                        ptr_vec_get(variant.field_types, field_i2) as Type*,
+                        required
+                    );
+                }
+            }
+        }
+    }
+    return required;
+}
+
+/**
+ * Return whether one nominal type belongs to the selected module surface.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Defining module name.
+ * @param type_name Nominal type name.
+ * @return `true` for whole-program output or a required module-output type.
+ */
+func be_requires_type(self: Backend*, module_name: string, type_name: string) -> bool {
+    return !be_is_module_output(self) ||
+        (self.required_type_keys != null &&
+         ss_has(self.required_type_keys as StringSet*, be_type_key(module_name, type_name)));
+}
+
+/**
  * Add value-type dependencies for one field type.
  *
  * @param ty Type to inspect.
@@ -1768,6 +2156,22 @@ func be_dependency_sets_free(sets: VectorBase*?) {
 }
 
 /**
+ * Return whether an ordered type-key vector contains one key.
+ *
+ * @param keys Type-key vector to inspect.
+ * @param key Type key to find.
+ * @return `true` when `key` is present.
+ */
+func be_type_keys_contains(keys: StringVector*, key: string) -> bool {
+    for (let i = 0; i < sv_size(keys); i = i + 1) {
+        if (sv_get(keys, i) == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Collect all user-defined types in stable source order.
  *
  * @param self Backend state to inspect.
@@ -1788,6 +2192,13 @@ func be_collect_type_keys(self: Backend*) -> StringVector* {
                 let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
                 if (ord(top.kind) == ord(TD_STRUCT)) {
                     let decl = top.data as StructDecl*;
+                    let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, root.name, decl.name);
+                    if (!be_requires_type(self, root.name, decl.name) ||
+                        (be_is_module_output(self) && !be_emits_module_definitions(self, root.name) &&
+                         (!be_is_symbol_exported(self, root.name, decl.name) ||
+                          (info != null && (info as StructInfo*).is_opaque)))) {
+                        continue;
+                    }
                     be_push_type_key(out, seen, be_type_key(root.name, decl.name));
                 }
             }
@@ -1797,7 +2208,7 @@ func be_collect_type_keys(self: Backend*) -> StringVector* {
             let mi = driver_interface_get(self.result.driver_state, iface_struct_i);
             for (let j2 = 0; j2 < vec_size(mi.struct_infos); j2 = j2 + 1) {
                 let info = ptr_vec_get(mi.struct_infos, j2) as StructInfo*;
-                if (!info.is_opaque) {
+                if (be_requires_type(self, info.module_name, info.name) && !info.is_opaque) {
                     be_push_type_key(out, seen, be_type_key(info.module_name, info.name));
                 }
             }
@@ -1814,6 +2225,13 @@ func be_collect_type_keys(self: Backend*) -> StringVector* {
                 let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
                 if (ord(top.kind) == ord(TD_ENUM)) {
                     let decl2 = top.data as EnumDecl*;
+                    let info3 = sig_lookup_enum_info(self.result.signatures as SignatureTables*, root.name, decl2.name);
+                    if (!be_requires_type(self, root.name, decl2.name) ||
+                        (be_is_module_output(self) && !be_emits_module_definitions(self, root.name) &&
+                         (!be_is_symbol_exported(self, root.name, decl2.name) ||
+                          (info3 != null && (info3 as EnumInfo*).is_opaque)))) {
+                        continue;
+                    }
                     be_push_type_key(out, seen, be_type_key(root.name, decl2.name));
                 }
             }
@@ -1823,7 +2241,7 @@ func be_collect_type_keys(self: Backend*) -> StringVector* {
             let mi2 = driver_interface_get(self.result.driver_state, iface_enum_i);
             for (let j3 = 0; j3 < vec_size(mi2.enum_infos); j3 = j3 + 1) {
                 let info2 = ptr_vec_get(mi2.enum_infos, j3) as EnumInfo*;
-                if (!info2.is_opaque) {
+                if (be_requires_type(self, info2.module_name, info2.name) && !info2.is_opaque) {
                     be_push_type_key(out, seen, be_type_key(info2.module_name, info2.name));
                 }
             }
@@ -1859,7 +2277,7 @@ func be_emit_type_definitions(self: Backend*) {
 
             let in_degree = 0;
             for (let j = 0; j < ss_capacity(deps); j = j + 1) {
-                if (ss_slot_occupied(deps, j)) {
+                if (ss_slot_occupied(deps, j) && be_type_keys_contains(keys, ss_slot_key(deps, j))) {
                     in_degree = in_degree + 1;
                 }
             }
@@ -2224,7 +2642,9 @@ func be_emit_let_declarations(self: Backend*) {
         let root = unit.parse_result.root_module as Module*;
         for (let j = 0; j < vec_size(root.decls); j = j + 1) {
             let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
-            if (ord(top.kind) == ord(TD_LET)) {
+            if (ord(top.kind) == ord(TD_LET) &&
+                (be_emits_module_definitions(self, root.name) ||
+                 be_target_consumes_symbol(self, root.name, (top.data as LetDecl*).name))) {
                 any_bindings = true;
                 break;
             }
@@ -2232,8 +2652,14 @@ func be_emit_let_declarations(self: Backend*) {
     }
     for (let iface_i = 0; iface_i < driver_interface_count(self.result.driver_state); iface_i = iface_i + 1) {
         let mi = driver_interface_get(self.result.driver_state, iface_i);
-        if (vec_size(mi.let_entries) > 0) {
-            any_bindings = true;
+        for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+            let entry = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
+            if (!be_is_module_output(self) || be_target_consumes_symbol(self, mi.module_name, entry.name)) {
+                any_bindings = true;
+                break;
+            }
+        }
+        if (any_bindings) {
             break;
         }
     }
@@ -2249,9 +2675,12 @@ func be_emit_let_declarations(self: Backend*) {
         }
 
         let root = unit.parse_result.root_module as Module*;
-        self.current_module = root.name;
-        self.current_unit = unit;
-        self.current_env = be_find_env(self, root.name);
+        let emit_definitions = be_emits_module_definitions(self, root.name);
+        if (emit_definitions) {
+            self.current_module = root.name;
+            self.current_unit = unit;
+            self.current_env = be_find_env(self, root.name);
+        }
 
         let module_has_bindings = false;
         for (let j = 0; j < vec_size(root.decls); j = j + 1) {
@@ -2259,15 +2688,23 @@ func be_emit_let_declarations(self: Backend*) {
             if (ord(top.kind) != ord(TD_LET)) {
                 continue;
             }
+
+            let decl = top.data as LetDecl*;
+            if (!emit_definitions && !be_target_consumes_symbol(self, root.name, decl.name)) {
+                continue;
+            }
             if (!module_has_bindings) {
                 cem_emit_module_comment(self.emitter, root.name);
                 module_has_bindings = true;
             }
 
-            let decl = top.data as LetDecl*;
             let let_type = sig_lookup_let_type(self.result.signatures as SignatureTables*, root.name, decl.name);
             if (let_type == null) {
                 be_ice("[ICE-1151] missing Let type for " + root.name + "." + decl.name);
+            }
+            if (!emit_definitions) {
+                cem_emit_external_let_declaration(self.emitter, root.name, decl.name, let_type as Type*, decl.is_const);
+                continue;
             }
             let c_init = be_try_emit_let_initializer(self, decl.value, let_type as Type*);
             if (c_init != null) {
@@ -2285,13 +2722,17 @@ func be_emit_let_declarations(self: Backend*) {
 
     for (let iface_i2 = 0; iface_i2 < driver_interface_count(self.result.driver_state); iface_i2 = iface_i2 + 1) {
         let mi2 = driver_interface_get(self.result.driver_state, iface_i2);
-        if (vec_size(mi2.let_entries) == 0) {
-            continue;
-        }
-        cem_emit_module_comment(self.emitter, mi2.module_name);
+        let module_has_bindings2 = false;
         for (let let_i = 0; let_i < vec_size(mi2.let_entries); let_i = let_i + 1) {
-            cem_emit_interface_let_declaration(self.emitter, mi2.module_name,
-                ptr_vec_get(mi2.let_entries, let_i) as InterfaceLetEntry*);
+            let entry2 = ptr_vec_get(mi2.let_entries, let_i) as InterfaceLetEntry*;
+            if (be_is_module_output(self) && !be_target_consumes_symbol(self, mi2.module_name, entry2.name)) {
+                continue;
+            }
+            if (!module_has_bindings2) {
+                cem_emit_module_comment(self.emitter, mi2.module_name);
+                module_has_bindings2 = true;
+            }
+            cem_emit_interface_let_declaration(self.emitter, mi2.module_name, entry2);
         }
     }
 }
@@ -2504,6 +2945,55 @@ func be_emit_top_level_init_functions(self: Backend*) -> bool {
 }
 
 /**
+ * Emit one module's always-present external lifecycle pair.
+ *
+ * `I4init` performs only this module's deferred binding initialization and
+ * `I4fini` performs only this module's ARC-managed top-level cleanup.
+ *
+ * @param self Backend state to update.
+ * @param root Selected source module.
+ */
+func be_emit_module_lifecycle_functions(self: Backend*, root: Module*) {
+    if (self.result.signatures == null) {
+        return;
+    }
+
+    self.current_module = root.name;
+    self.current_unit = be_find_unit(self, root.name);
+    self.current_env = be_find_env(self, root.name);
+    if (self.current_unit == null) {
+        be_ice("[ICE-1362] missing unit for module lifecycle emission: " + root.name);
+    }
+
+    cem_emit_section_comment(self.emitter, "Module lifecycle functions");
+    cem_emit_module_comment(self.emitter, root.name);
+    cem_emit_external_void_function_header(self.emitter, cem_mangle_module_init_name(root.name));
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) != ord(TD_LET)) {
+            continue;
+        }
+        let decl = top.data as LetDecl*;
+        if (decl.is_const) {
+            continue;
+        }
+        let let_type = sig_lookup_let_type(self.result.signatures as SignatureTables*, root.name, decl.name);
+        if (let_type == null) {
+            be_ice("[ICE-1151] missing Let type for " + root.name + "." + decl.name);
+        }
+        let c_init = be_try_emit_let_initializer(self, decl.value, let_type as Type*);
+        if (c_init == null) {
+            be_emit_deferred_top_level_let_assignment(self, root.name, decl, let_type as Type*);
+        }
+    }
+    cem_emit_function_definition_footer(self.emitter);
+
+    cem_emit_external_void_function_header(self.emitter, cem_mangle_module_fini_name(root.name));
+    cem_emit_module_top_level_let_cleanup(self.emitter, root.name);
+    cem_emit_function_definition_footer(self.emitter);
+}
+
+/**
  * Emit all function declarations.
  *
  * @param self Backend state to update.
@@ -2521,31 +3011,47 @@ func be_emit_function_declarations(self: Backend*) {
         }
 
         let root = unit.parse_result.root_module as Module*;
-        cem_emit_module_comment(self.emitter, root.name);
+        let emit_definitions = be_emits_module_definitions(self, root.name);
+        let module_has_functions = false;
+        if (!be_is_module_output(self)) {
+            cem_emit_module_comment(self.emitter, root.name);
+            module_has_functions = true;
+        }
         for (let j = 0; j < vec_size(root.decls); j = j + 1) {
             let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
             if (ord(top.kind) != ord(TD_FUNC)) {
                 continue;
             }
             let decl = top.data as FuncDecl*;
+            if (!emit_definitions && !be_target_consumes_symbol(self, root.name, decl.name)) {
+                continue;
+            }
+            if (!module_has_functions) {
+                cem_emit_module_comment(self.emitter, root.name);
+                module_has_functions = true;
+            }
             let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, root.name, decl.name);
             if (func_type == null) {
                 be_ice("[ICE-1150] missing FuncType for " + root.name + "." + decl.name);
             }
             cem_emit_function_declaration(self.emitter, root.name, decl, func_type as Type*,
-                be_is_symbol_exported(self, root.name, decl.name));
+                !emit_definitions || be_is_symbol_exported(self, root.name, decl.name));
         }
     }
 
     for (let iface_i = 0; iface_i < driver_interface_count(self.result.driver_state); iface_i = iface_i + 1) {
         let mi = driver_interface_get(self.result.driver_state, iface_i);
-        if (vec_size(mi.func_entries) == 0) {
-            continue;
-        }
-        cem_emit_module_comment(self.emitter, mi.module_name);
+        let module_has_functions2 = false;
         for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
-            cem_emit_interface_function_declaration(self.emitter, mi.module_name,
-                ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*);
+            let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+            if (be_is_module_output(self) && !be_target_consumes_symbol(self, mi.module_name, entry.name)) {
+                continue;
+            }
+            if (!module_has_functions2) {
+                cem_emit_module_comment(self.emitter, mi.module_name);
+                module_has_functions2 = true;
+            }
+            cem_emit_interface_function_declaration(self.emitter, mi.module_name, entry);
         }
     }
 }
@@ -3521,6 +4027,9 @@ func be_prepare_variadic_pack_wrappers(self: Backend*) {
             continue;
         }
         let root = unit.parse_result.root_module as Module*;
+        if (!be_emits_module_definitions(self, root.name)) {
+            continue;
+        }
         self.current_module = root.name;
         self.current_unit = unit;
         self.current_env = be_find_env(self, root.name);
@@ -5203,6 +5712,9 @@ func be_emit_function_definitions(self: Backend*) {
         }
 
         let root = unit.parse_result.root_module as Module*;
+        if (!be_emits_module_definitions(self, root.name)) {
+            continue;
+        }
         self.current_module = root.name;
         self.current_unit = unit;
         self.current_env = be_find_env(self, root.name);
@@ -5252,6 +5764,40 @@ func be_emit_function_definitions(self: Backend*) {
 }
 
 /**
+ * Emit `I5entry` when the selected module owns a resolved zero-parameter
+ * source `main` definition.
+ *
+ * @param self Backend state to update.
+ * @param root Selected source module.
+ */
+func be_emit_module_entry_bridge_if_needed(self: Backend*, root: Module*) {
+    if (self.result.signatures == null) {
+        return;
+    }
+
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) != ord(TD_FUNC)) {
+            continue;
+        }
+        let decl = top.data as FuncDecl*;
+        if (decl.name != "main" || decl.is_extern) {
+            continue;
+        }
+        let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, root.name, decl.name);
+        if (func_type == null) {
+            be_ice("[ICE-1150] missing FuncType for " + root.name + "." + decl.name);
+        }
+        if (vec_size((func_type as Type*).params as VectorBase*) != 0) {
+            return;
+        }
+        cem_emit_section_comment(self.emitter, "Module entry bridge");
+        cem_emit_module_entry_bridge(self.emitter, root.name, func_type as Type*);
+        return;
+    }
+}
+
+/**
  * Emit the C `main()` wrapper when the entry module defines `main`.
  *
  * @param self Backend state to update.
@@ -5272,7 +5818,53 @@ func be_emit_main_wrapper_if_needed(self: Backend*, has_global_init: bool) {
 }
 
 /**
- * Generate complete C source from a typed analysis result.
+ * Run the shared C-generation pipeline for one selected output boundary.
+ *
+ * @param self Backend state to update.
+ * @return Complete generated C translation unit.
+ */
+func be_generate_output(self: Backend*) -> string {
+    let target_root: Module*? = null;
+    if (be_is_module_output(self)) {
+        target_root = be_target_root(self);
+        self.required_type_keys = be_collect_required_type_keys(self, target_root as Module*);
+        cem_set_module_type_keys(self.emitter, self.required_type_keys as StringSet*);
+    }
+
+    log_stage(self.cfg, "Generating C code", "");
+    log_debug(self.cfg, "Preparing optional wrapper types");
+    cem_prepare_optional_wrappers(self.emitter);
+    be_prepare_variadic_pack_wrappers(self);
+    log_debug(self.cfg, "Emitting header and forward declarations");
+    cem_emit_header(self.emitter, self.opts);
+    cem_emit_forward_decls(self.emitter);
+    cem_emit_section_comment(self.emitter, "Optional wrapper types (builtins / early)");
+    cem_emit_optional_wrappers(self.emitter, true);
+    be_emit_type_definitions(self);
+    cem_emit_section_comment(self.emitter, "Array wrapper types");
+    cem_emit_array_wrappers(self.emitter);
+    cem_emit_section_comment(self.emitter, "Slice descriptor types");
+    cem_emit_slice_wrappers(self.emitter);
+    cem_emit_section_comment(self.emitter, "Optional wrapper types (late)");
+    cem_emit_optional_wrappers(self.emitter, false);
+    cem_emit_section_comment(self.emitter, "Function pointer typedefs");
+    cem_emit_func_ptr_typedefs(self.emitter);
+    be_emit_let_declarations(self);
+    be_emit_function_declarations(self);
+    if (target_root != null) {
+        be_emit_module_lifecycle_functions(self, target_root as Module*);
+        be_emit_function_definitions(self);
+        be_emit_module_entry_bridge_if_needed(self, target_root as Module*);
+    } else {
+        let has_global_init = be_emit_top_level_init_functions(self);
+        be_emit_function_definitions(self);
+        be_emit_main_wrapper_if_needed(self, has_global_init);
+    }
+    return cem_get_output(self.emitter);
+}
+
+/**
+ * Generate legacy whole-program C source from a typed analysis result.
  *
  * @param result Typed analysis result to lower.
  * @param opts Codegen options to honor.
@@ -5285,29 +5877,30 @@ func backend_generate(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogCo
     }
 
     with (let self = be_create(result, opts, cfg) => be_free(self)) {
-        log_stage(cfg, "Generating C code", "");
-        log_debug(cfg, "Preparing optional wrapper types");
-        cem_prepare_optional_wrappers(self.emitter);
-        be_prepare_variadic_pack_wrappers(self);
-        log_debug(cfg, "Emitting header and forward declarations");
-        cem_emit_header(self.emitter, opts);
-        cem_emit_forward_decls(self.emitter);
-        cem_emit_section_comment(self.emitter, "Optional wrapper types (builtins / early)");
-        cem_emit_optional_wrappers(self.emitter, true);
-        be_emit_type_definitions(self);
-        cem_emit_section_comment(self.emitter, "Array wrapper types");
-        cem_emit_array_wrappers(self.emitter);
-        cem_emit_section_comment(self.emitter, "Slice descriptor types");
-        cem_emit_slice_wrappers(self.emitter);
-        cem_emit_section_comment(self.emitter, "Optional wrapper types (late)");
-        cem_emit_optional_wrappers(self.emitter, false);
-        cem_emit_section_comment(self.emitter, "Function pointer typedefs");
-        cem_emit_func_ptr_typedefs(self.emitter);
-        be_emit_let_declarations(self);
-        be_emit_function_declarations(self);
-        let has_global_init = be_emit_top_level_init_functions(self);
-        be_emit_function_definitions(self);
-        be_emit_main_wrapper_if_needed(self, has_global_init);
-        return cem_get_output(self.emitter);
+        return be_generate_output(self);
+    }
+}
+
+/**
+ * Generate C source defining exactly one source-backed module.
+ *
+ * @param result Typed analysis result to lower.
+ * @param target_module Canonical source module whose definitions to emit.
+ * @param opts Codegen options to honor.
+ * @param cfg Logging configuration to use.
+ * @return Complete generated module translation unit.
+ */
+func backend_generate_module(
+    result: AnalysisResult*,
+    target_module: string,
+    opts: CodegenOptions*,
+    cfg: LogConfig*
+) -> string {
+    if (analysis_has_errors(result)) {
+        be_ice("[ICE-9303] backend_generate_module requires analysis without errors");
+    }
+
+    with (let self = be_create_module(result, target_module, opts, cfg) => be_free(self)) {
+        return be_generate_output(self);
     }
 }

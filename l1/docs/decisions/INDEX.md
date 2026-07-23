@@ -21,3 +21,4 @@
 | [0017](0017-l1-variadic-functions.md)                            | L1 Variadic Functions                            | Accepted |
 | [0018](0018-canonical-artifact-association-and-module-graph.md)  | Canonical Artifact Association and Module Graph  | Accepted |
 | [0019](0019-whole-module-interface-fingerprints.md)              | Whole-Module Interface Fingerprints              | Accepted |
+| [0020](0020-per-module-backend-and-lifecycle-abi.md)             | Per-Module Backend and Lifecycle ABI             | Accepted |
