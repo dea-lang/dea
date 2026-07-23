@@ -12,7 +12,6 @@ on:
   push:
     branches:
       - main
-      - dea-dev
     paths:
       - ".github/workflows/check_copyright_headers.py"
       - ".github/workflows/copyright-headers.yml"

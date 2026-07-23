@@ -29,7 +29,6 @@ on:
   push:
     branches:
       - main
-      - dea-dev
     paths:
       - ".github/workflows/**"
       - "README.md"

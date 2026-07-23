@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+      - ci-probe
     paths:
       - .github/workflows/ci.yml
       - .github/workflows/l0-ci.yml
