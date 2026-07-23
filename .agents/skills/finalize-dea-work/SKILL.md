@@ -46,6 +46,8 @@ authorized follow-up.
 2. Finish lifecycle artifacts before committing:
 
 - active plans that are complete move to `work/plans/<kind>/closed/` or `lN/work/plans/<kind>/closed/`
+- whenever a plan moves to `closed/`, refresh its metadata block's `Date:` value to the current date, even when moving
+  the file to `closed/` would otherwise be the only change
 - update `Status: Completed`, completion notes, and final repro/validation commands
 - future follow-up work stays as a draft plan in the correct kind, for example `tools` for test-runner/tooling work
 - if completion depends on a push, tag, release, deployment, cross-repository write, or other gated external result,
