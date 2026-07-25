@@ -2,13 +2,17 @@
 
 ## Add anonymous embedded struct members via `_ : StructType`
 
-- Date: 2026-04-22
-- Status: Draft
+- Date: 2026-07-25
+- Status: Closed (withdrawn)
+- Closed: 2026-07-25
 - Title: Add anonymous embedded struct members via `_ : StructType`
 - Kind: Feature
 - Severity: Medium
 - Stage: L1
 - Subsystem: Struct declarations / signature analysis / field resolution / backend / ABI / docs
+- Closed reason: The plan selected implementation defaults before construction, promoted access, ownership, interfaces,
+  ABI behavior, and practical compiler value were sufficiently understood. The design has been reopened as a proposal.
+- Superseded by: `l1/work/proposals/anonymous-embedded-struct-members.md`
 - Modules:
   - `l1/compiler/stage1_l0/src/ast.l0`
   - `l1/compiler/stage1_l0/src/parser.l0`
@@ -28,22 +32,33 @@
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
+  - `l1/work/proposals/anonymous-embedded-struct-members.md`
 - Repro: None
 
-## Summary
+## Closure
 
-The roadmap currently leaves `_` struct-member semantics undecided. This plan fixes the meaning as an anonymous embedded
-struct in the first member position:
+This plan was withdrawn without implementation. None of its candidate rules for construction, promoted lookup, physical
+layout, ABI, or field-name collisions are accepted L1 behavior, and this document must not be used as an implementation
+specification.
+
+The replacement proposal records the motivating `_ : StructType` syntax without committing to it and makes the missing
+design decisions explicit. The former provisional `SIG-0240` to `SIG-0259` reservation is released. The former
+`TYP-0780` to `TYP-0799` suggestion is already occupied by unsafe/plain function-type diagnostics and was not a viable
+reservation.
+
+## Historical Summary
+
+This plan proposed fixing `_` struct-member semantics as an anonymous embedded struct in the first member position:
 
 ```l1
 struct Shape { cx: double; cy: double };
 struct Square { _: Shape; size: double };
 ```
 
-`Shape` is embedded anonymously inside `Square`. Promoted field access is then allowed (`q.cx` means `q._.cx`), while
-ordinary outer members continue to work directly (`q.size`).
+Under the historical design, `Shape` was embedded anonymously inside `Square`. Promoted field access would have allowed
+`q.cx` to mean `q._.cx`, while ordinary outer members continued to work directly as `q.size`.
 
-## Current State
+## Historical Current State
 
 1. Struct declarations currently model only ordinary named fields.
 2. Field access resolves against fields declared directly on the struct type; there is no promoted-field lookup path.
@@ -51,7 +66,9 @@ ordinary outer members continue to work directly (`q.size`).
 4. The roadmap lists `_` struct-member semantics as open backlog work because construction, field access, layout, and
    ABI effects are not yet fixed.
 
-## Defaults Chosen
+## Historical Candidate Defaults
+
+These defaults were proposed by the withdrawn plan and are not accepted language behavior.
 
 1. `_ : T` embeds `T` anonymously when `T` resolves to a concrete struct layout. A type alias that resolves to a struct
    is acceptable; non-struct, pointer, enum, and opaque extern forms are not.
@@ -65,14 +82,14 @@ ordinary outer members continue to work directly (`q.size`).
    is purely a language-level lookup/lowering rule.
 7. Any outer field whose name would collide with a promoted embedded field is rejected to avoid ambiguous field access.
 
-## Goal
+## Historical Goal
 
 1. Parse and represent anonymous embedded struct members.
 2. Enforce the "struct-only, first-position-only, single `_` only" rule.
 3. Support promoted field access and flattened positional construction.
 4. Preserve a simple nested C layout and make the ABI implications explicit in docs.
 
-## Implementation Phases
+## Historical Implementation Outline
 
 ### Phase 1: Declaration and signature rules
 
@@ -101,16 +118,17 @@ source order chosen by the language contract.
 2. Update `l1/docs/roadmap.md` to replace the open-ended backlog wording with a cross-reference to this plan.
 3. Add parser, signature/type-resolution, field-access, backend, and end-to-end constructor coverage.
 
-## Diagnostics
+## Historical Diagnostics
 
-1. This feature is likely to need dedicated declaration/signature diagnostics for invalid `_` placement, duplicate `_`
+1. The historical design expected dedicated declaration/signature diagnostics for invalid `_` placement, duplicate `_`
    members, non-struct embedded types, and promoted-name collisions.
-2. Provisionally reserve `SIG-0240` to `SIG-0259` for embedded-struct declaration/signature diagnostics and `TYP-0780`
-   to `TYP-0799` for promoted-field lookup and constructor-typing diagnostics.
-3. Re-check these provisional reservations against the live catalog at implementation time before assigning final
-   numbers; if any of the suggested slots were used in the meantime, choose a different free block then.
+2. Its provisional `SIG-0240` to `SIG-0259` reservation is released and no longer belongs to embedded members.
+3. Its provisional `TYP-0780` to `TYP-0799` suggestion is unavailable because that range now contains unsafe/plain
+   function-type diagnostics.
+4. Any future implementation plan must re-check the live catalog and reserve new ranges only after the proposal's
+   semantics have been accepted.
 
-## Non-Goals
+## Historical Non-Goals
 
 1. More than one anonymous embedded struct per outer struct.
 2. Allowing `_` anywhere other than the first member position.
@@ -118,7 +136,7 @@ source order chosen by the language contract.
 4. ABI-level field flattening in generated C.
 5. Named-constructor interaction; that belongs to the named-arguments plan.
 
-## Verification Criteria
+## Historical Verification Criteria
 
 1. Invalid uses of `_` are rejected under the declared placement/type rules.
 2. Valid promoted field access resolves as if `outer.field` meant `outer._.field`.

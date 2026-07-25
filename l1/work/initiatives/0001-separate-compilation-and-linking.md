@@ -1,6 +1,6 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-07-23
+- Version: 2026-07-25
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -576,10 +576,11 @@ the chosen answer and points at the owning section.
 3. **Diagnostic family split:** keep the existing phase-based families (`PAR-*`, `RES-*`, `SIG-*`, `TYP-*`, `DRV-*`,
    `L1C-*`). New `MOD-*` or `LNK-*` families are introduced only if a concrete phase plan demonstrates the existing
    split materially worsens user diagnostics or Stage 1 / Stage 2 parity policy. Fingerprint validation uses `SIG-0280`
-   through `SIG-0284`; the rest of the `SIG-0280` to `SIG-0299` block remains available because `SIG-0240` to `SIG-0259`
-   is reserved by the active anonymous embedded-struct plan. Object metadata retains `L1C-2050` to `L1C-2069`; every
-   successor records its own non-overlapping provisional range and re-check requirement. Anchored in §2e and
-   §Diagnostic-code registration.
+   through `SIG-0284`; `SIG-0285` to `SIG-0299` remain available. The former `SIG-0240` to `SIG-0259` anonymous
+   embedded-member reservation was released when its feature plan was withdrawn; existing fingerprint assignments are
+   unchanged, and any future embedded-member plan must re-check the live catalog. Object metadata retains `L1C-2050` to
+   `L1C-2069`; every successor records its own non-overlapping provisional range and re-check requirement. Anchored in
+   §2e and §Diagnostic-code registration.
 4. **External-library manifest format:** deferred indefinitely unless and until Dea decides to adopt package management.
    Phase 3 ships with CLI flags only (`-l`, `-L`, `--rpath`, `--link-arg`, plus `-I` for interface search). No
    per-module `[link]` sidecar, no `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit this if FFI

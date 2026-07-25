@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-23
+Version: 2026-07-25
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -172,8 +172,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members] defines `_ : StructType` as a single
-  first-position anonymous embedded struct member with promoted field access.
 - Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] makes `-c` transactionally publish one
   module's generated C, object, and `.l1m` artifact set.
 - Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] adds verified Dea-object linking, explicit foreign C
@@ -221,9 +219,10 @@ surface.
   [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices]. Dynamic buffers, shared buffers, address-of
   (`&`), and broader pointer arithmetic remain backlog items. Current `std.array` / `std.vector` storage remains the
   library-level dynamic/container layer rather than a replacement for `T[N]` or `T[]`.
-- `_` struct-member semantics are tracked by Feature
-  [2026-04-22-anonymous-embedded-struct-members-noref][embedded-members], which fixes `_ : StructType` as a single
-  first-position anonymous embedded struct member and defines its construction, field-access, layout, and ABI rules.
+- Anonymous embedded struct members remain unresolved design work tracked by Proposal
+  [anonymous-embedded-struct-members][embedded-members]. `_ : StructType` is a candidate syntax, but construction,
+  access, type conversion, ownership, layout, ABI, and interface semantics are not accepted. This proposal does not
+  block the initial L1 Stage 2 fixed point.
 - Named arguments for function calls and struct/enum constructor calls are implemented by Feature
   [2026-04-22-named-arguments-noref][named-arguments]. Literal struct/enum syntax using `{}` and named fields remains
   future work; constructor-call syntax exists today.
@@ -287,7 +286,7 @@ update to be promoted to an initiative or plan:
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
 [cstr-proposal]: ../work/proposals/cstr-and-c-string-guards.md
 [design-decisions]: reference/design-decisions.md
-[embedded-members]: ../work/plans/features/2026-04-22-anonymous-embedded-struct-members-noref.md
+[embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [ffi-cstr]: ../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
