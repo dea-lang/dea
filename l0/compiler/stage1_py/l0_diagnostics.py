@@ -165,6 +165,8 @@ DIAGNOSTIC_CODE_FAMILIES = {
         "L0C-0050",
         "L0C-0060",
         "L0C-0070",
+        "L0C-9511",
+        "L0C-9512",
     ],
     "RES": [
         "RES-0010",

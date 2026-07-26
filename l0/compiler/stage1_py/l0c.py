@@ -4,6 +4,7 @@
 import argparse
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -443,6 +444,122 @@ def _output_flags(flag_family: str, exe_path: Path) -> list[str]:
     return ["-o", str(exe_path)]
 
 
+class _TemporarySourceWriteError(OSError):
+    """Report a generated-C write failure that also retained its path."""
+
+    def __init__(self, retained_path: Path):
+        """Initialize the failure.
+
+        Args:
+            retained_path: Temporary generated-C path that could not be removed.
+        """
+        super().__init__(f"temporary source retained at '{retained_path}'")
+        self.retained_path = retained_path
+
+
+def _validated_temporary_directory() -> Path:
+    """Resolve and validate the host temporary directory.
+
+    POSIX temporary sources are safe to pass to an external compiler only when
+    every component in the resolved directory hierarchy is owned by root or
+    the effective user. Group- or other-writable components must also carry
+    the sticky bit. Windows relies on the platform temporary directory ACL.
+
+    Returns:
+        The resolved temporary directory.
+
+    Raises:
+        OSError: If the directory cannot be resolved or its POSIX hierarchy is
+            not trusted.
+    """
+    temp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    if _is_windows_host():
+        return temp_dir
+
+    effective_uid = os.geteuid()
+    for component in (temp_dir, *temp_dir.parents):
+        component_stat = component.stat()
+        if not stat.S_ISDIR(component_stat.st_mode):
+            raise OSError(f"temporary hierarchy component is not a directory: {component}")
+        if component_stat.st_uid not in {0, effective_uid}:
+            raise OSError(
+                f"temporary hierarchy component has an unsafe owner: {component}"
+            )
+        writable_by_others = component_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+        if writable_by_others and not component_stat.st_mode & stat.S_ISVTX:
+            raise OSError(
+                "temporary hierarchy component is writable without sticky bit: "
+                f"{component}"
+            )
+
+    return temp_dir
+
+
+def _emit_temporary_source_cleanup_failure(c_path: Path) -> None:
+    """Report a compiler-temporary source retained after failed cleanup.
+
+    Args:
+        c_path: Retained temporary generated-C path.
+    """
+    _emit_diagnostic(
+        f"error: [L0C-9512] cannot remove compiler temporary source; retained at '{c_path}'"
+    )
+
+
+def _remove_temporary_c_source(c_path: Path) -> bool:
+    """Remove a generated-C temporary and report retained recovery state.
+
+    Args:
+        c_path: Temporary generated-C path to remove.
+
+    Returns:
+        True when the path is absent after cleanup, otherwise False.
+    """
+    try:
+        c_path.unlink(missing_ok=True)
+    except OSError:
+        _emit_temporary_source_cleanup_failure(c_path)
+        return False
+    return True
+
+
+def _write_temporary_c_source(c_code: str) -> Path:
+    """Atomically create and write one anonymous generated-C source.
+
+    The returned descriptor reserves the path before any generated content is
+    written. Writing through that descriptor avoids reopening an attacker-
+    substituted path between selection and creation.
+
+    Args:
+        c_code: Generated C source text.
+
+    Returns:
+        The temporary source path, closed and ready for the host compiler.
+
+    Raises:
+        OSError: If the path cannot be created or written.
+    """
+    temp_dir = _validated_temporary_directory()
+    descriptor, raw_path = tempfile.mkstemp(suffix=".c", dir=str(temp_dir))
+    c_path = Path(raw_path)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            descriptor = -1
+            stream.write(c_code)
+    except BaseException:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        try:
+            c_path.unlink(missing_ok=True)
+        except OSError:
+            raise _TemporarySourceWriteError(c_path)
+        raise
+    return c_path
+
+
 def _check_entry_main_for_build(result: AnalysisResult, entry_name: str) -> bool:
     """Check that the entry module defines a valid 'main' function for build/run.
 
@@ -553,6 +670,115 @@ def _get_optimize_flag(flag_family: str, extra_opts: List[str]) -> Optional[str]
         return None
 
 
+def _compile_generated_c(
+    args: argparse.Namespace,
+    context: CompilationContext,
+    c_path: Path,
+    exe_path: Path,
+) -> int:
+    """Invoke the selected host compiler for one generated-C source.
+
+    Args:
+        args: Parsed build arguments.
+        context: Active compiler context.
+        c_path: Closed generated-C source path.
+        exe_path: Requested executable output path.
+
+    Returns:
+        Zero when the host compiler succeeds, otherwise one.
+    """
+    compiler = args.c_compiler or _find_cc()
+    if compiler is None:
+        _emit_diagnostic(
+            "error: [L0C-0009] no C compiler found: use '--c-compiler' to specify one or set the L0_CC environment variable"
+        )
+        return 1
+
+    log_info(context, f"Using C compiler: {compiler}")
+
+    flag_family = _compiler_flag_family(compiler)
+    log_info(context, f"Detected compiler flag family: {flag_family}")
+
+    # Extra C compiler flags/options from environment + CLI (CLI appended last).
+    env_opts = _split_c_options(os.getenv("L0_CFLAGS"))
+    cli_opts = _split_c_options(args.c_options)
+    if env_opts:
+        log_info(context, f"C compiler options from $L0_CFLAGS: {env_opts}")
+    if cli_opts:
+        log_info(context, f"C compiler options from --c-options: {cli_opts}")
+    extra_opts = env_opts + cli_opts
+    if extra_opts:
+        log_info(context, f"Extra C compiler options: {extra_opts}")
+
+    # Preprocessor/compiler options must precede the source path for tcc;
+    # output and library flags can follow it.
+    cmd = [compiler]
+    cmd.extend(extra_opts)
+
+    if flag_family == "tcc":
+        cmd.extend(["-std=c99", "-Wall", "-pedantic"])
+    elif flag_family == "gcc":
+        cmd.extend(
+            [
+                "-std=c99",
+                "-Wall",
+                "-Wextra",
+                "-Wno-unused",
+                "-Wno-unused-parameter",
+                "-pedantic-errors",
+            ]
+        )
+    elif flag_family == "msvc":
+        cmd.extend(["/std:c11", "/W4"])
+    else:
+        log_warning(
+            context,
+            f"Unsupported compiler '{compiler}' (flag family '{flag_family}'): not adding standard flags",
+        )
+
+    optimize_flag = _get_optimize_flag(flag_family, extra_opts)
+    if optimize_flag:
+        log_info(context, f"Adding optimization flag: {optimize_flag}")
+        cmd.append(optimize_flag)
+
+    if args.runtime_include:
+        cmd.extend(_runtime_include_flags(flag_family, args.runtime_include))
+    elif os.getenv("L0_RUNTIME_INCLUDE"):
+        cmd.extend(
+            _runtime_include_flags(flag_family, os.getenv("L0_RUNTIME_INCLUDE"))
+        )
+
+    cmd.append(str(c_path))
+    cmd.extend(_output_flags(flag_family, exe_path))
+
+    runtime_lib_path = args.runtime_lib or os.getenv("L0_RUNTIME_LIB")
+    if runtime_lib_path and not _validate_runtime_library_path(runtime_lib_path):
+        return 1
+
+    if args.runtime_lib:
+        cmd.extend(_runtime_library_flags(flag_family, args.runtime_lib))
+    elif os.getenv("L0_RUNTIME_LIB"):
+        cmd.extend(_runtime_library_flags(flag_family, os.getenv("L0_RUNTIME_LIB")))
+
+    log_info(context, "Compiling:")
+    log_info(context, f"{' '.join(cmd)}")
+
+    compile_result = subprocess.run(cmd, capture_output=True, text=True)
+    if compile_result.returncode != 0:
+        _emit_diagnostic("error: [L0C-0010] C compilation failed:")
+        if compile_result.stderr:
+            log_error(context, compile_result.stderr)
+        if compile_result.stdout:
+            log_error(context, compile_result.stdout)
+        return 1
+
+    if compile_result.stderr:
+        log_error(context, compile_result.stderr)
+
+    log_info(context, f"Built executable: {exe_path}")
+    return 0
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Build an executable from an L0 module.
 
@@ -577,127 +803,46 @@ def cmd_build(args: argparse.Namespace) -> int:
     if not _check_entry_main_for_build(result, args.entry):
         return 1
 
-    # Generate C code
     backend = Backend(result)
     try:
         c_code = backend.generate()
-    except InternalCompilerError as e:
-        _emit_diagnostic(e.format())
+    except InternalCompilerError as error:
+        _emit_diagnostic(error.format())
         return 1
 
-    # Determine output executable path
-    if args.output:
-        exe_path = Path(args.output)
-    else:
-        exe_path = Path(_default_executable_name())
+    exe_path = Path(args.output) if args.output else Path(_default_executable_name())
 
-    # Write C code to temporary or specified file
     if args.keep_c:
         c_output_override = getattr(args, "c_output_path", None)
-        if c_output_override:
-            c_path = Path(c_output_override)
-        else:
-            c_path = exe_path.with_suffix(".c")
-    else:
-        # noinspection PyDeprecation
-        c_path = Path(tempfile.mktemp(suffix=".c"))
+        c_path = (
+            Path(c_output_override)
+            if c_output_override
+            else exe_path.with_suffix(".c")
+        )
+        c_path.write_text(c_code, encoding="utf-8")
+        log_info(context, f"Generated C code: {c_path}")
+        return _compile_generated_c(args, context, c_path, exe_path)
 
     try:
-        c_path.write_text(c_code)
+        c_path = _write_temporary_c_source(c_code)
+    except _TemporarySourceWriteError as error:
+        _emit_diagnostic("error: [L0C-9511] cannot write compiler temporary source")
+        _emit_temporary_source_cleanup_failure(error.retained_path)
+        return 1
+    except OSError:
+        _emit_diagnostic("error: [L0C-9511] cannot write compiler temporary source")
+        return 1
+
+    try:
         log_info(context, f"Generated C code: {c_path}")
+        build_rc = _compile_generated_c(args, context, c_path, exe_path)
+    except BaseException:
+        _remove_temporary_c_source(c_path)
+        raise
 
-        # Determine C compiler
-        compiler = args.c_compiler or _find_cc()
-        if compiler is None:
-            _emit_diagnostic(
-                "error: [L0C-0009] no C compiler found: use '--c-compiler' to specify one or set the L0_CC environment variable"
-            )
-            return 1
-
-        log_info(context, f"Using C compiler: {compiler}")
-
-        flag_family = _compiler_flag_family(compiler)
-        log_info(context, f"Detected compiler flag family: {flag_family}")
-
-        # Extra C compiler flags/options from environment + CLI (CLI appended last).
-        env_opts = _split_c_options(os.getenv("L0_CFLAGS"))
-        cli_opts = _split_c_options(args.c_options)
-        if env_opts:
-            log_info(context, f"C compiler options from $L0_CFLAGS: {env_opts}")
-        if cli_opts:
-            log_info(context, f"C compiler options from --c-options: {cli_opts}")
-        extra_opts = env_opts + cli_opts
-        if extra_opts:
-            log_info(context, f"Extra C compiler options: {extra_opts}")
-
-        # Build compiler command. Preprocessor/compiler options must precede the
-        # source path for tcc; output and library flags can follow it.
-        cmd = [compiler]
-        cmd.extend(extra_opts)
-
-        # Add standard flags
-        if flag_family == "tcc":
-            cmd.extend(["-std=c99", "-Wall", "-pedantic"])
-        elif flag_family == "gcc":
-            cmd.extend(["-std=c99", "-Wall", "-Wextra", "-Wno-unused", "-Wno-unused-parameter", "-pedantic-errors"])
-        elif flag_family == "msvc":
-            cmd.extend(["/std:c11", "/W4"])
-        else:
-            log_warning(context,
-                        f"Unsupported compiler '{compiler}' (flag family '{flag_family}'): not adding standard flags")
-
-        # Optimization flags for non-debug builds
-        optimize_flag = _get_optimize_flag(flag_family, extra_opts)
-
-        if optimize_flag:
-            log_info(context, f"Adding optimization flag: {optimize_flag}")
-            cmd.append(optimize_flag)
-
-        # Add runtime include path
-        if args.runtime_include:
-            cmd.extend(_runtime_include_flags(flag_family, args.runtime_include))
-        elif os.getenv("L0_RUNTIME_INCLUDE"):
-            cmd.extend(_runtime_include_flags(flag_family, os.getenv("L0_RUNTIME_INCLUDE")))
-
-        cmd.append(str(c_path))
-        cmd.extend(_output_flags(flag_family, exe_path))
-
-        # Add runtime library search path
-        runtime_lib_path = args.runtime_lib or os.getenv("L0_RUNTIME_LIB")
-        if runtime_lib_path:
-            if not _validate_runtime_library_path(runtime_lib_path):
-                return 1
-
-        if args.runtime_lib:
-            cmd.extend(_runtime_library_flags(flag_family, args.runtime_lib))
-        elif os.getenv("L0_RUNTIME_LIB"):
-            cmd.extend(_runtime_library_flags(flag_family, os.getenv("L0_RUNTIME_LIB")))
-
-        log_info(context, f"Compiling:")
-        log_info(context, f"{' '.join(cmd)}")
-
-        # Run C compiler
-        compile_result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if compile_result.returncode != 0:
-            _emit_diagnostic("error: [L0C-0010] C compilation failed:")
-            if compile_result.stderr:
-                log_error(context, compile_result.stderr)
-            if compile_result.stdout:
-                log_error(context, compile_result.stdout)
-            return 1
-
-        if compile_result.stderr:
-            log_error(context, compile_result.stderr)
-
-        log_info(context, f"Built executable: {exe_path}")
-
-        return 0
-
-    finally:
-        # Clean up temporary C file if not keeping it
-        if not args.keep_c and c_path.exists():
-            c_path.unlink()
+    if not _remove_temporary_c_source(c_path):
+        return 1
+    return build_rc
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -710,10 +855,25 @@ def cmd_run(args: argparse.Namespace) -> int:
         Exit code from the executed program or the build process.
     """
     context = build_compilation_context(args)
-    # Create temporary executable
+    try:
+        temp_dir = _validated_temporary_directory()
+    except OSError:
+        _emit_diagnostic("error: [L0C-9511] cannot write compiler temporary source")
+        return 1
+
+    # Create temporary executable.
     temp_exe_suffix = ".exe" if _is_windows_host() else ""
-    with tempfile.NamedTemporaryFile(mode='w', suffix=temp_exe_suffix, delete=False) as f:
-        temp_exe = f.name
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=temp_exe_suffix,
+            delete=False,
+            dir=str(temp_dir),
+        ) as stream:
+            temp_exe = stream.name
+    except OSError:
+        _emit_diagnostic("error: [L0C-9511] cannot write compiler temporary source")
+        return 1
 
     try:
         # Build to temporary executable

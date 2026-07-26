@@ -1,6 +1,6 @@
 # L0 Stage 1 Compiler Contract
 
-Version: 2026-07-11
+Version: 2026-07-26
 
 This document is the compact Stage 1 contract and navigation index.
 
@@ -46,6 +46,21 @@ Stage 1-specific notes:
 - Debug-dump options `--all-modules` / `-a` and `--include-eof` apply to `tok`, `ast`, `sym`, and `type` modes as
   defined in the shared contract.
 - `--keep-c` with `--run` writes `./a.c` by default, or `<output>.c` when `-o` is also given.
+
+#### 2.1.1 Compiler temporary safety
+
+- On POSIX, Stage 1 resolves the selected temporary directory before creating anonymous generated C or an anonymous
+  `--run` executable. Every directory from the resolved temporary parent through the filesystem root must be owned by
+  the effective user or root; a group- or other-writable component must have the sticky bit. Failure reports `L0C-9511`
+  and the host compiler is not invoked.
+- Windows retains the supported-host assumption that the selected temporary directory is protected by trusted ACLs.
+- Anonymous generated C is created with `tempfile.mkstemp()` in the explicitly validated directory, written as UTF-8
+  through the returned descriptor, and closed before host compilation.
+- Temporary-source setup or write failure reports `L0C-9511`. Source-removal failure reports `L0C-9512`, includes the
+  retained path, and makes the build fail even when host compilation succeeded. If setup or writing fails and cleanup
+  also fails, both diagnostics are emitted.
+- A caller-visible build executable already produced before source-cleanup failure is retained. Caller-selected
+  `--keep-c` paths and the existing temporary run-executable cleanup lifecycle are otherwise unchanged.
 
 ### 2.2 Source/module contract
 

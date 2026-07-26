@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-22
+Version: 2026-07-26
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -303,6 +303,7 @@ diagnostic.
 | `L0C-2032` | `L1C-2032` | All     | Recognized canonical driver option is reserved but its capability is not implemented yet               |
 | `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                    |
 | `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                            |
+| `L0C-9512` |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                            |
 
 ## Name Resolution and Import Analysis
 

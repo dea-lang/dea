@@ -2,11 +2,15 @@
 #  Copyright (c) 2026 gwz
 
 import argparse
+import os
 import re
+import stat
 import textwrap
+from pathlib import Path
 from types import SimpleNamespace
 
 import l0c
+import pytest
 from l0_driver import SourceEncodingError
 from l0c import cmd_ast, cmd_build, cmd_check, cmd_codegen, cmd_run, cmd_tok
 
@@ -424,6 +428,644 @@ def test_build_uses_msvc_flag_forms_for_output_and_runtime_paths(tmp_path, monke
     assert "/link" in captured["cmd"]
     assert any(arg.startswith("/LIBPATH:") for arg in captured["cmd"])
     assert "l0runtime.lib" not in captured["cmd"]
+
+
+def test_build_writes_anonymous_c_through_reserved_descriptor_and_cleans_it(
+    tmp_path, monkeypatch
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    trusted_temp = tmp_path / "compiler-temp"
+    trusted_temp.mkdir(mode=0o700)
+    selected_temp = trusted_temp
+    if os.name != "nt":
+        selected_temp = tmp_path / "compiler-temp-alias"
+        selected_temp.symlink_to(trusted_temp, target_is_directory=True)
+
+    captured = {}
+    real_mkstemp = l0c.tempfile.mkstemp
+    real_fdopen = l0c.os.fdopen
+
+    def _tracked_mkstemp(*args, **kwargs):
+        captured["mkstemp_dir"] = kwargs.get("dir")
+        descriptor, raw_path = real_mkstemp(*args, **kwargs)
+        captured["descriptor"] = descriptor
+        captured["c_path"] = Path(raw_path)
+        if os.name != "nt":
+            captured["mode"] = stat.S_IMODE(os.fstat(descriptor).st_mode)
+        return descriptor, raw_path
+
+    def _tracked_fdopen(descriptor, *args, **kwargs):
+        captured["fdopen_descriptor"] = descriptor
+        captured["encoding"] = kwargs.get("encoding")
+        return real_fdopen(descriptor, *args, **kwargs)
+
+    def _fake_run(cmd, *args, **kwargs):
+        c_path = Path(next(arg for arg in cmd if arg.endswith(".c")))
+        captured["compiler_c_path"] = c_path
+        captured["c_source"] = c_path.read_text(encoding="utf-8")
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr(
+        "l0c.tempfile.gettempdir", lambda: str(selected_temp)
+    )
+    monkeypatch.setattr("l0c.tempfile.mkstemp", _tracked_mkstemp)
+    monkeypatch.setattr("l0c.os.fdopen", _tracked_fdopen)
+    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 0
+    assert captured["mkstemp_dir"] == str(trusted_temp.resolve())
+    assert captured["fdopen_descriptor"] == captured["descriptor"]
+    assert captured["encoding"] == "utf-8"
+    assert captured["compiler_c_path"] == captured["c_path"]
+    assert "int main" in captured["c_source"]
+    if os.name != "nt":
+        assert captured["mode"] == 0o600
+    assert not captured["c_path"].exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode trust rules only")
+def test_build_accepts_sticky_writable_temporary_directory(tmp_path, monkeypatch):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    sticky_temp = tmp_path / "sticky-temp"
+    sticky_temp.mkdir()
+    sticky_temp.chmod(0o1777)
+    captured = {}
+
+    def _fake_run(cmd, *args, **kwargs):
+        captured["c_path"] = Path(next(arg for arg in cmd if arg.endswith(".c")))
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(sticky_temp))
+    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 0
+    assert captured["c_path"].parent == sticky_temp.resolve()
+    assert not captured["c_path"].exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode trust rules only")
+def test_build_rejects_nonsticky_writable_temporary_directory(
+    tmp_path, monkeypatch, capsys
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    unsafe_temp = tmp_path / "unsafe-temp"
+    unsafe_temp.mkdir()
+    unsafe_temp.chmod(0o777)
+    compiler_invoked = False
+
+    def _unexpected_run(*args, **kwargs):
+        nonlocal compiler_invoked
+        compiler_invoked = True
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(unsafe_temp))
+    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 1
+    assert not compiler_invoked
+    assert (
+        capsys.readouterr().err
+        == "error: [L0C-9511] cannot write compiler temporary source\n"
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode trust rules only")
+def test_build_rejects_nonsticky_writable_temporary_ancestor(
+    tmp_path, monkeypatch, capsys
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    unsafe_ancestor = tmp_path / "unsafe-ancestor"
+    unsafe_ancestor.mkdir()
+    unsafe_ancestor.chmod(0o777)
+    nested_temp = unsafe_ancestor / "nested-temp"
+    nested_temp.mkdir(mode=0o700)
+    compiler_invoked = False
+
+    def _unexpected_run(*args, **kwargs):
+        nonlocal compiler_invoked
+        compiler_invoked = True
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(nested_temp))
+    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 1
+    assert not compiler_invoked
+    assert (
+        capsys.readouterr().err
+        == "error: [L0C-9511] cannot write compiler temporary source\n"
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership trust rules only")
+def test_build_rejects_temporary_directory_owned_by_untrusted_uid(
+    tmp_path, monkeypatch, capsys
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    compiler_temp = tmp_path / "compiler-temp"
+    compiler_temp.mkdir(mode=0o700)
+    resolved_temp = compiler_temp.resolve()
+    real_path_stat = Path.stat
+    untrusted_uid = 1 if os.geteuid() != 1 else 2
+    compiler_invoked = False
+
+    def _stat_with_untrusted_temp_owner(path, *args, **kwargs):
+        result = real_path_stat(path, *args, **kwargs)
+        if path == resolved_temp:
+            return SimpleNamespace(
+                st_mode=result.st_mode,
+                st_uid=untrusted_uid,
+            )
+        return result
+
+    def _unexpected_run(*args, **kwargs):
+        nonlocal compiler_invoked
+        compiler_invoked = True
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(compiler_temp))
+    monkeypatch.setattr(Path, "stat", _stat_with_untrusted_temp_owner)
+    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 1
+    assert not compiler_invoked
+    assert (
+        capsys.readouterr().err
+        == "error: [L0C-9511] cannot write compiler temporary source\n"
+    )
+
+
+def test_build_cleans_anonymous_c_after_compiler_failure(tmp_path, monkeypatch):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    captured = {}
+    real_mkstemp = l0c.tempfile.mkstemp
+
+    def _tracked_mkstemp(*args, **kwargs):
+        kwargs["dir"] = tmp_path
+        descriptor, raw_path = real_mkstemp(*args, **kwargs)
+        captured["c_path"] = Path(raw_path)
+        return descriptor, raw_path
+
+    monkeypatch.setattr("l0c.tempfile.mkstemp", _tracked_mkstemp)
+    monkeypatch.setattr(
+        "l0c.subprocess.run",
+        lambda *args, **kwargs: _RunResult(returncode=1, stderr="compiler failure"),
+    )
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 1
+    assert not captured["c_path"].exists()
+
+
+def test_build_cleanup_failure_after_compiler_success_retains_executable(
+    tmp_path, monkeypatch, capsys
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    compiler_temp = tmp_path / "compiler-temp"
+    compiler_temp.mkdir(mode=0o700)
+    exe_path = tmp_path / "a.out"
+    captured = {}
+    real_unlink = Path.unlink
+
+    def _fake_run(cmd, *args, **kwargs):
+        captured["c_path"] = Path(next(arg for arg in cmd if arg.endswith(".c")))
+        exe_path.write_text("executable", encoding="utf-8")
+        return _RunResult(returncode=0)
+
+    def _cleanup_failure(path, *args, **kwargs):
+        if path.suffix == ".c" and path.parent == compiler_temp:
+            raise OSError("cannot remove generated C")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(compiler_temp))
+    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr(Path, "unlink", _cleanup_failure)
+
+    rc = cmd_build(_build_args(tmp_path, "main", output=str(exe_path)))
+
+    assert rc == 1
+    assert exe_path.read_text(encoding="utf-8") == "executable"
+    assert captured["c_path"].exists()
+    assert capsys.readouterr().err == (
+        "error: [L0C-9512] cannot remove compiler temporary source; "
+        f"retained at '{captured['c_path']}'\n"
+    )
+    os.unlink(captured["c_path"])
+
+
+def test_build_cleanup_failure_after_compiler_failure_reports_retained_path(
+    tmp_path, monkeypatch, capsys
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    compiler_temp = tmp_path / "compiler-temp"
+    compiler_temp.mkdir(mode=0o700)
+    captured = {}
+    real_unlink = Path.unlink
+
+    def _fake_run(cmd, *args, **kwargs):
+        captured["c_path"] = Path(next(arg for arg in cmd if arg.endswith(".c")))
+        return _RunResult(returncode=1, stderr="compiler failure")
+
+    def _cleanup_failure(path, *args, **kwargs):
+        if path.suffix == ".c" and path.parent == compiler_temp:
+            raise OSError("cannot remove generated C")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(compiler_temp))
+    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr(Path, "unlink", _cleanup_failure)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 1
+    assert captured["c_path"].exists()
+    stderr = capsys.readouterr().err
+    assert "error: [L0C-0010] C compilation failed:\n" in stderr
+    assert (
+        "error: [L0C-9512] cannot remove compiler temporary source; "
+        f"retained at '{captured['c_path']}'\n"
+    ) in stderr
+    os.unlink(captured["c_path"])
+
+
+def test_build_temporary_source_creation_failure_reports_9511(
+    tmp_path, monkeypatch, capsys
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    compiler_invoked = False
+
+    def _creation_failure(*args, **kwargs):
+        raise OSError("temporary directory unavailable")
+
+    def _unexpected_run(*args, **kwargs):
+        nonlocal compiler_invoked
+        compiler_invoked = True
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr("l0c.tempfile.mkstemp", _creation_failure)
+    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 1
+    assert not compiler_invoked
+    assert (
+        capsys.readouterr().err
+        == "error: [L0C-9511] cannot write compiler temporary source\n"
+    )
+
+
+def test_build_write_and_cleanup_failures_report_9511_and_9512(
+    tmp_path, monkeypatch, capsys
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    compiler_temp = tmp_path / "compiler-temp"
+    compiler_temp.mkdir(mode=0o700)
+    captured = {}
+    real_mkstemp = l0c.tempfile.mkstemp
+    real_unlink = Path.unlink
+    compiler_invoked = False
+
+    def _tracked_mkstemp(*args, **kwargs):
+        descriptor, raw_path = real_mkstemp(*args, **kwargs)
+        captured["descriptor"] = descriptor
+        captured["c_path"] = Path(raw_path)
+        return descriptor, raw_path
+
+    def _write_failure(*args, **kwargs):
+        raise OSError("cannot open descriptor stream")
+
+    def _cleanup_failure(path, *args, **kwargs):
+        if path == captured.get("c_path"):
+            raise OSError("cannot remove generated C")
+        return real_unlink(path, *args, **kwargs)
+
+    def _unexpected_run(*args, **kwargs):
+        nonlocal compiler_invoked
+        compiler_invoked = True
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(compiler_temp))
+    monkeypatch.setattr("l0c.tempfile.mkstemp", _tracked_mkstemp)
+    monkeypatch.setattr("l0c.os.fdopen", _write_failure)
+    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+    monkeypatch.setattr(Path, "unlink", _cleanup_failure)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 1
+    assert not compiler_invoked
+    assert captured["c_path"].exists()
+    with pytest.raises(OSError):
+        os.fstat(captured["descriptor"])
+    assert capsys.readouterr().err == (
+        "error: [L0C-9511] cannot write compiler temporary source\n"
+        "error: [L0C-9512] cannot remove compiler temporary source; "
+        f"retained at '{captured['c_path']}'\n"
+    )
+    os.unlink(captured["c_path"])
+
+
+def test_build_temporary_source_write_failure_closes_and_removes_file(
+    tmp_path, monkeypatch, capsys
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    captured = {}
+    real_mkstemp = l0c.tempfile.mkstemp
+
+    def _tracked_mkstemp(*args, **kwargs):
+        kwargs["dir"] = tmp_path
+        descriptor, raw_path = real_mkstemp(*args, **kwargs)
+        captured["descriptor"] = descriptor
+        captured["c_path"] = Path(raw_path)
+        return descriptor, raw_path
+
+    def _write_failure(*args, **kwargs):
+        raise OSError("cannot open descriptor stream")
+
+    monkeypatch.setattr("l0c.tempfile.mkstemp", _tracked_mkstemp)
+    monkeypatch.setattr("l0c.os.fdopen", _write_failure)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 1
+    assert not captured["c_path"].exists()
+    with pytest.raises(OSError):
+        os.fstat(captured["descriptor"])
+    assert (
+        capsys.readouterr().err
+        == "error: [L0C-9511] cannot write compiler temporary source\n"
+    )
+
+
+def test_build_rejects_dangling_symlink_temporary_name_collision(
+    tmp_path, monkeypatch
+):
+    if os.name == "nt":
+        pytest.skip("controlled symlink collision requires POSIX symlink semantics")
+
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    victim = tmp_path / "victim.c"
+    collision_name = "collision"
+    reserved_name = "reserved"
+    collision_path = tmp_path / (
+        f"{l0c.tempfile.gettempprefix()}{collision_name}.c"
+    )
+    collision_path.symlink_to(victim)
+    names = iter((collision_name, reserved_name))
+    captured = {}
+
+    def _fake_run(cmd, *args, **kwargs):
+        c_path = Path(next(arg for arg in cmd if arg.endswith(".c")))
+        captured["c_path"] = c_path
+        captured["c_source"] = c_path.read_text(encoding="utf-8")
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr(l0c.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(l0c.tempfile, "_get_candidate_names", lambda: names)
+    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+
+    rc = cmd_build(_build_args(tmp_path, "main"))
+
+    assert rc == 0
+    assert captured["c_path"].name == (
+        f"{l0c.tempfile.gettempprefix()}{reserved_name}.c"
+    )
+    assert "int main" in captured["c_source"]
+    assert collision_path.is_symlink()
+    assert not victim.exists()
+    assert not captured["c_path"].exists()
+
+
+def test_build_keep_c_preserves_c_path_without_temporary_parent_validation(
+    tmp_path, monkeypatch
+):
+    _write_module(
+        tmp_path,
+        "main",
+        """
+        module main;
+        func main() -> int { return 0; }
+        """,
+    )
+    exe_path = tmp_path / "kept"
+    captured = {}
+
+    def _unexpected_validation():
+        raise AssertionError("--keep-c build must not use compiler temporaries")
+
+    def _fake_run(cmd, *args, **kwargs):
+        captured["c_path"] = Path(next(arg for arg in cmd if arg.endswith(".c")))
+        return _RunResult(returncode=0)
+
+    monkeypatch.setattr(
+        "l0c._validated_temporary_directory", _unexpected_validation
+    )
+    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+
+    rc = cmd_build(
+        _build_args(tmp_path, "main", output=str(exe_path), keep_c=True)
+    )
+
+    assert rc == 0
+    assert captured["c_path"] == exe_path.with_suffix(".c")
+    assert captured["c_path"].exists()
+
+
+def test_run_uses_validated_resolved_directory_for_temporary_executable(
+    tmp_path, monkeypatch
+):
+    trusted_temp = tmp_path / "compiler-temp"
+    trusted_temp.mkdir(mode=0o700)
+    selected_temp = trusted_temp
+    if os.name != "nt":
+        selected_temp = tmp_path / "compiler-temp-alias"
+        selected_temp.symlink_to(trusted_temp, target_is_directory=True)
+
+    captured = {}
+    real_named_temporary_file = l0c.tempfile.NamedTemporaryFile
+
+    def _tracked_named_temporary_file(*args, **kwargs):
+        captured["temp_dir"] = kwargs.get("dir")
+        return real_named_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "l0c.tempfile.gettempdir", lambda: str(selected_temp)
+    )
+    monkeypatch.setattr(
+        "l0c.tempfile.NamedTemporaryFile", _tracked_named_temporary_file
+    )
+    monkeypatch.setattr("l0c.cmd_build", lambda args: 1)
+
+    args = argparse.Namespace(
+        entry="app.main",
+        args=[],
+        c_compiler="cc",
+        c_options=None,
+        runtime_include=None,
+        runtime_lib=None,
+        keep_c=False,
+        verbosity=0,
+        project_root=[str(tmp_path)],
+        sys_root=[],
+        no_line_directives=False,
+        trace_arc=False,
+        trace_memory=False,
+        log=False,
+    )
+
+    rc = cmd_run(args)
+
+    assert rc == 1
+    assert captured["temp_dir"] == str(trusted_temp.resolve())
+
+
+def test_run_with_keep_c_rejects_unsafe_temporary_parent_before_creation(
+    tmp_path, monkeypatch, capsys
+):
+    temporary_executable_created = False
+    build_invoked = False
+
+    def _unsafe_temp():
+        raise OSError("unsafe temporary directory")
+
+    def _unexpected_named_temporary_file(*args, **kwargs):
+        nonlocal temporary_executable_created
+        temporary_executable_created = True
+        raise AssertionError("temporary executable must not be created")
+
+    def _unexpected_build(*args, **kwargs):
+        nonlocal build_invoked
+        build_invoked = True
+        return 0
+
+    monkeypatch.setattr("l0c._validated_temporary_directory", _unsafe_temp)
+    monkeypatch.setattr(
+        "l0c.tempfile.NamedTemporaryFile", _unexpected_named_temporary_file
+    )
+    monkeypatch.setattr("l0c.cmd_build", _unexpected_build)
+
+    args = argparse.Namespace(
+        entry="app.main",
+        args=[],
+        c_compiler="cc",
+        c_options=None,
+        runtime_include=None,
+        runtime_lib=None,
+        keep_c=True,
+        verbosity=0,
+        project_root=[str(tmp_path)],
+        sys_root=[],
+        no_line_directives=False,
+        trace_arc=False,
+        trace_memory=False,
+        log=False,
+    )
+
+    rc = cmd_run(args)
+
+    assert rc == 1
+    assert not temporary_executable_created
+    assert not build_invoked
+    assert (
+        capsys.readouterr().err
+        == "error: [L0C-9511] cannot write compiler temporary source\n"
+    )
 
 
 def test_run_forwards_c_options_to_build(tmp_path, monkeypatch):
