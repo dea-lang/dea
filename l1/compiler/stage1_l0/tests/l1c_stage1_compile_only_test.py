@@ -207,6 +207,10 @@ def require_output_path_error(
         raise CompileOnlyFailure(
             f"{context} leaked generic artifact validation:\n{completed.stderr}"
         )
+    if "[L1C-9511]" in completed.stderr:
+        raise CompileOnlyFailure(
+            f"{context} reached transaction creation:\n{completed.stderr}"
+        )
 
 
 def symlinks_available(root: Path) -> bool:
@@ -555,7 +559,7 @@ def test_trailing_separator_outputs(compiler: Path, root: Path) -> None:
 
 
 def test_directory_alias_parents(compiler: Path, root: Path) -> None:
-    """Trusted directory aliases work directly and below missing descendants.
+    """Trusted directory aliases work directly, in chains, and below gaps.
 
     Args:
         compiler: Stage 1 launcher path.
@@ -584,6 +588,25 @@ def test_directory_alias_parents(compiler: Path, root: Path) -> None:
         )
     require_reusable_set(direct_object, "no_main")
 
+    chained_alias = root / "chained output alias"
+    chained_alias.symlink_to(alias_parent, target_is_directory=True)
+    chained_object = chained_alias / "chained.o"
+    chained = run_compiler(
+        compiler,
+        root,
+        "-c",
+        "-Rp",
+        str(DRIVER_FIXTURES),
+        "-o",
+        str(chained_object),
+        "no_main",
+    )
+    if chained.returncode != 0:
+        raise CompileOnlyFailure(
+            "compile through chained directory aliases failed:\n" + chained.stderr
+        )
+    require_reusable_set(chained_object, "no_main")
+
     nested_object = alias_parent / "missing" / "nested" / "module.o"
     nested = run_compiler(
         compiler,
@@ -605,6 +628,8 @@ def test_directory_alias_parents(compiler: Path, root: Path) -> None:
         raise CompileOnlyFailure(
             "compile below directory alias did not create physical nested parents"
         )
+    if not alias_parent.is_symlink() or not chained_alias.is_symlink():
+        raise CompileOnlyFailure("compile changed a trusted directory alias")
     assert_no_transactions(physical_parent)
 
 
@@ -629,6 +654,13 @@ def test_invalid_symlink_destinations(compiler: Path, root: Path) -> None:
         "no_main",
     )
     require_output_path_error(dangling, "dangling output-parent alias")
+    if (
+        not dangling_parent.is_symlink()
+        or (root / "missing directory").exists()
+    ):
+        raise CompileOnlyFailure(
+            "rejected dangling output-parent alias was changed or materialized"
+        )
 
     parent_file = root / "parent target file"
     parent_file.write_bytes(b"parent")
@@ -645,6 +677,13 @@ def test_invalid_symlink_destinations(compiler: Path, root: Path) -> None:
         "no_main",
     )
     require_output_path_error(non_directory, "non-directory output-parent alias")
+    if (
+        not file_alias.is_symlink()
+        or parent_file.read_bytes() != b"parent"
+    ):
+        raise CompileOnlyFailure(
+            "rejected non-directory output-parent alias was changed"
+        )
 
     for suffix, keep_c in ((".o", False), (".l1m", False), (".c", True)):
         case_root = root / ("final symlink " + suffix[1:])

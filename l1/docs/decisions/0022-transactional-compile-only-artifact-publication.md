@@ -23,21 +23,23 @@ L1 compile-only analysis resolves exactly one source module and requires interfa
 It publishes sibling `.o` and `.l1m` destinations by default. `--keep-c` adds the canonical sibling `.c` destination and
 publishes the exact generated C used to produce the object.
 
-The driver creates missing destination parents with mode `0777` subject to `umask`. Existing parent components are
-trusted directory inputs and are tested with `std.fs::is_dir()`, whose semantics follow directory aliases, so missing
-descendants beneath an alias may be created. Dangling aliases and aliases to non-directories are rejected. Final `.c`,
-`.o`, and `.l1m` destinations and transaction, backup, validation, and cleanup paths retain no-follow classification; an
-existing selected destination must be a regular file and a symlink destination is rejected. Without `--keep-c`, the
-driver never classifies or otherwise touches the canonical `.c` path.
+The driver creates missing destination parents with mode `0777` subject to `umask`. Compiler-private follow
+classification accepts existing trusted directory aliases, so missing descendants beneath an alias may be created. When
+follow classification reports an absent target, no-follow classification distinguishes a genuinely missing lexical path
+from a dangling alias before creation. Dangling aliases and aliases to non-directories are rejected, and a
+directory-creation collision is accepted only after follow reclassification confirms a directory. Final `.c`, `.o`, and
+`.l1m` destinations and transaction, backup, validation, and cleanup paths retain no-follow classification; an existing
+selected destination must be a regular file and a symlink destination is rejected. Without `--keep-c`, the driver never
+classifies or otherwise touches the canonical `.c` path.
 
 After analysis succeeds, the driver exclusively creates one hidden transaction directory beside the destination set.
 POSIX requests mode `0700`; MinGW inherits the trusted parent's ACL. Staged artifacts and backups of existing selected
 destinations remain inside this directory.
 
 A compiler-private raw-byte filesystem ABI in the existing Stage 1 support translation unit provides exclusive directory
-creation, no-follow path classification, same-filesystem movement to an absent destination, and empty directory removal.
-MinGW uses the same native narrow path encoding as the existing Stage 1 runtime filesystem and process operations. This
-ABI is not part of `std.fs`, `sys.rt`, the public runtime, or the Dea language.
+creation, follow and no-follow path classification, same-filesystem movement to an absent destination, and empty
+directory removal. MinGW uses the same native narrow path encoding as the existing Stage 1 runtime filesystem and
+process operations. This ABI is not part of `std.fs`, `sys.rt`, the public runtime, or the Dea language.
 
 Before publication, the driver verifies that all three staged paths are regular files, parses and fingerprints the
 staged interface, and confirms that the staged object metadata names the target module and carries the same fingerprint.
@@ -86,6 +88,7 @@ Global native build/run temporary-workspace hardening is tracked by the active s
 
 ## Related Plans
 
+- [l1/work/plans/bug-fixes/2026-07-26-stage1-cross-platform-ci-regressions-noref.md][cross-platform-ci]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md][stage1-safety]
 - [work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-safety]
@@ -101,6 +104,7 @@ Global native build/run temporary-workspace hardening is tracked by the active s
 [backend]: ../reference/c-backend-design.md
 [cli-contract]: ../../../docs/specs/compiler/cli-contract.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[cross-platform-ci]: ../../work/plans/bug-fixes/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
 [native-safety]: ../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [project-status]: ../project-status.md
 [stage1-safety]: ../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

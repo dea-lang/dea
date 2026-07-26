@@ -2702,22 +2702,28 @@ func test_backend_module_native_metadata_round_trip() {
             "generated module C should be writable");
 
         let family = bd_compiler_flag_family(compiler as string);
-        let command = "";
-        if (family == "msvc") {
-            command =
-                bd_shell_quote(compiler as string) +
-                " /nologo /std:c11 /TC /c " + bd_shell_quote(c_path) +
-                " /I" + bd_shell_quote(include_dir as string) +
-                " " + bd_shell_quote("/Fo:" + object_path);
-        } else {
-            command =
-                bd_shell_quote(compiler as string) +
-                " -std=c99 -I " + bd_shell_quote(include_dir as string) +
-                " -c " + bd_shell_quote(c_path) +
-                " -o " + bd_shell_quote(object_path);
+        with (let command_words = sv_create(8) => sv_free(command_words)) {
+            sv_push(command_words, compiler as string);
+            if (family == "msvc") {
+                sv_push(command_words, "/nologo");
+                sv_push(command_words, "/std:c11");
+                sv_push(command_words, "/TC");
+                sv_push(command_words, "/c");
+                sv_push(command_words, c_path);
+                sv_push(command_words, "/I" + (include_dir as string));
+                sv_push(command_words, "/Fo:" + object_path);
+            } else {
+                sv_push(command_words, "-std=c99");
+                sv_push(command_words, "-I");
+                sv_push(command_words, include_dir as string);
+                sv_push(command_words, "-c");
+                sv_push(command_words, c_path);
+                sv_push(command_words, "-o");
+                sv_push(command_words, object_path);
+            }
+            assert(system(bd_join_shell_words(command_words)) == 0,
+                "generated module C should compile to a relocatable object");
         }
-        assert(system(command) == 0,
-            "generated module C should compile to a relocatable object");
 
         with (let inspected = object_inspect_path(object_path) =>
                   object_inspection_result_free(inspected)) {

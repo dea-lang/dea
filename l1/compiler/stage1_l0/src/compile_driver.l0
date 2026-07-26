@@ -36,6 +36,7 @@ import sem_context;
  * L1 compiler-support translation unit, not in the Dea runtime or stdlib.
  */
 extern func l1c_fs_mkdir(path: byte*, path_len: int, mode: int) -> int;
+extern func l1c_fs_path_kind_follow(path: byte*, path_len: int) -> int;
 extern func l1c_fs_path_kind_nofollow(path: byte*, path_len: int) -> int;
 extern func l1c_fs_rename_absent(
     source: byte*,
@@ -98,6 +99,11 @@ func cd_path_kind(path: string) -> int {
     return l1c_fs_path_kind_nofollow(rt_string_bytes_ptr(path), len_s(path));
 }
 
+/** Call the compiler-internal follow path classifier. */
+func cd_path_kind_follow(path: string) -> int {
+    return l1c_fs_path_kind_follow(rt_string_bytes_ptr(path), len_s(path));
+}
+
 /** Create one directory using the compiler-internal raw-byte ABI. */
 func cd_mkdir(path: string, mode: int) -> int {
     return l1c_fs_mkdir(rt_string_bytes_ptr(path), len_s(path), mode);
@@ -121,21 +127,35 @@ func cd_remove_empty_dir(path: string) -> int {
 /**
  * Create a directory and all missing lexical parents.
  *
- * Existing directory aliases are trusted and followed using `std.fs`
- * semantics.  Missing components are still classified without following
- * symlinks or reparse points before they are created.
+ * Existing directory aliases are trusted and followed through the
+ * compiler-private support ABI. Missing components are also classified
+ * without following aliases so a dangling alias is never mistaken for an
+ * absent path that may be created.
  */
 func cd_ensure_directory(path: string, diags: DiagCollector*) -> bool {
-    if (std.fs::is_dir(path)) {
+    let followed_kind = cd_path_kind_follow(path);
+    if (followed_kind == CD_PATH_DIRECTORY) {
         return true;
     }
-
-    let kind = cd_path_kind(path);
-    if (kind < 0) {
+    if (followed_kind < 0) {
         cd_error(diags, "L1C-2033", "cannot inspect compile output parent: " + path, path);
         return false;
     }
-    if (kind != CD_PATH_ABSENT) {
+    if (followed_kind != CD_PATH_ABSENT) {
+        cd_error(diags, "L1C-2033", "compile output parent is not a directory: " + path, path);
+        return false;
+    }
+
+    let entry_kind = cd_path_kind(path);
+    if (entry_kind < 0) {
+        cd_error(diags, "L1C-2033", "cannot inspect compile output parent: " + path, path);
+        return false;
+    }
+    if (entry_kind == CD_PATH_DIRECTORY) {
+        /* A real directory appeared between the follow and no-follow checks. */
+        return true;
+    }
+    if (entry_kind != CD_PATH_ABSENT) {
         cd_error(diags, "L1C-2033", "compile output parent is not a directory: " + path, path);
         return false;
     }
@@ -154,8 +174,17 @@ func cd_ensure_directory(path: string, diags: DiagCollector*) -> bool {
     if (created == 1) {
         return true;
     }
-    if (created == 0 && std.fs::is_dir(path)) {
-        return true;
+    if (created == 0) {
+        let collision_kind = cd_path_kind_follow(path);
+        if (collision_kind == CD_PATH_DIRECTORY) {
+            return true;
+        }
+        if (collision_kind < 0) {
+            cd_error(diags, "L1C-2033",
+                "cannot inspect compile output parent after create collision: " + path,
+                path);
+            return false;
+        }
     }
     cd_error(diags, "L1C-2033", "cannot create compile output parent: " + path, path);
     return false;

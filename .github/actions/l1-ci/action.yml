@@ -7,7 +7,7 @@ inputs:
     description: Make target to run in l1/
     required: true
   c_compiler:
-    description: C compiler selection
+    description: C compiler selected for L0_CC, L1_CC, and L1_RUNTIME_CC
     required: true
   artifact_name_suffix:
     description: Artifact suffix (usually platform-compiler)
@@ -16,19 +16,73 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Show selected L1 toolchain
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        L0_CC: ${{ inputs.c_compiler }}
+        L1_CC: ${{ inputs.c_compiler }}
+        L1_RUNTIME_CC: ${{ inputs.c_compiler }}
+      run: |
+        missing=0
+        for role in L0_CC L1_CC L1_RUNTIME_CC; do
+          compiler="${!role}"
+          if ! resolved="$(command -v "${compiler}" 2>/dev/null)"; then
+            printf '%s: configured=%s; resolved=<not found>; version=<unavailable>\n' \
+              "${role}" "${compiler}"
+            missing=1
+            continue
+          fi
+          version_line="$("${resolved}" --version 2>&1 | sed -n '1p' || true)"
+          if [ -z "${version_line}" ]; then
+            version_line='<unavailable>'
+          fi
+          printf '%s: configured=%s; resolved=%s; version=%s\n' \
+            "${role}" "${compiler}" "${resolved}" "${version_line}"
+        done
+        exit "${missing}"
+
     - name: Run L1 Make target
       if: runner.os != 'Windows'
       shell: bash
       env:
         L0_CC: ${{ inputs.c_compiler }}
+        L1_CC: ${{ inputs.c_compiler }}
         L1_RUNTIME_CC: ${{ inputs.c_compiler }}
       run: make -C l1 ${{ inputs.make_target }}
+
+    - name: Show selected L1 toolchain (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      env:
+        L0_CC: ${{ inputs.c_compiler }}
+        L1_CC: ${{ inputs.c_compiler }}
+        L1_RUNTIME_CC: ${{ inputs.c_compiler }}
+      run: |
+        missing=0
+        for role in L0_CC L1_CC L1_RUNTIME_CC; do
+          compiler="${!role}"
+          if ! resolved="$(command -v "${compiler}" 2>/dev/null)"; then
+            printf '%s: configured=%s; resolved=<not found>; version=<unavailable>\n' \
+              "${role}" "${compiler}"
+            missing=1
+            continue
+          fi
+          version_line="$("${resolved}" --version 2>&1 | sed -n '1p' || true)"
+          if [ -z "${version_line}" ]; then
+            version_line='<unavailable>'
+          fi
+          printf '%s: configured=%s; resolved=%s; version=%s\n' \
+            "${role}" "${compiler}" "${resolved}" "${version_line}"
+        done
+        exit "${missing}"
 
     - name: Run L1 Make target (Windows)
       if: runner.os == 'Windows'
       shell: msys2 {0}
       env:
         L0_CC: ${{ inputs.c_compiler }}
+        L1_CC: ${{ inputs.c_compiler }}
         L1_RUNTIME_CC: ${{ inputs.c_compiler }}
         PYTHON: python
       run: make -C l1 ${{ inputs.make_target }}

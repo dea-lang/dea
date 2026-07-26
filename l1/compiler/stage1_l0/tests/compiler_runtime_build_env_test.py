@@ -204,6 +204,7 @@ def require_make_help_parity() -> None:
         "Generated L1 program variables:",
         "Runtime archive variables:",
         "Test variables:",
+        "Docker variables:",
     ):
         if heading not in completed.stdout:
             raise AssertionError(f"make help omitted section {heading!r}")
@@ -215,10 +216,64 @@ def require_make_help_parity() -> None:
         "L1_COMPILER_RT_QUARANTINE_MAX_COUNT",
         "L0_CFLAGS",
         "L1_CFLAGS",
+        "DOCKER_CC",
+        "DOCKER_L0_CC",
     ):
         occurrences = completed.stdout.count(variable)
         if occurrences != 1:
             raise AssertionError(f"make help listed {variable} {occurrences} times, expected once")
+
+
+def require_docker_compiler_propagation() -> None:
+    """Require Docker compiler selection to configure every compiler role."""
+
+    def dry_run(*assignments: str) -> str:
+        env = os.environ.copy()
+        env.pop("DOCKER_CC", None)
+        env.pop("DOCKER_L0_CC", None)
+        completed = subprocess.run(
+            ["make", "--dry-run", "docker", "CMD=test-all", *assignments],
+            cwd=L1_ROOT,
+            env=env,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+            timeout=30,
+        )
+        if completed.returncode != 0:
+            raise AssertionError(
+                f"make --dry-run docker {' '.join(assignments)} exited with "
+                f"{completed.returncode}:\n{completed.stdout}"
+            )
+        return completed.stdout
+
+    def require_roles(output: str, compiler: str, case: str) -> None:
+        for role in ("L0_CC", "L1_CC", "L1_RUNTIME_CC"):
+            assignment = f'-e "{role}={compiler}"'
+            occurrences = output.count(assignment)
+            if occurrences != 1:
+                raise AssertionError(
+                    f"{case}: expected one {assignment!r}, got {occurrences}:\n{output}"
+                )
+
+    require_roles(dry_run(), "gcc", "default Docker compiler")
+    require_roles(
+        dry_run("DOCKER_L0_CC=clang"),
+        "clang",
+        "legacy Docker compiler selector",
+    )
+
+    explicit_output = dry_run("DOCKER_CC=gcc-16", "DOCKER_L0_CC=clang")
+    require_roles(explicit_output, "gcc-16", "canonical Docker compiler selector")
+    for role in ("L0_CC", "L1_CC", "L1_RUNTIME_CC"):
+        shadowed_assignment = f'-e "{role}=clang"'
+        if shadowed_assignment in explicit_output:
+            raise AssertionError(
+                "canonical Docker compiler selector did not override the legacy selector:\n"
+                f"{explicit_output}"
+            )
 
 
 def require_make_preserves_environment_cflags() -> None:
@@ -269,6 +324,7 @@ def main() -> int:
     require_build_env_cases()
     require_support_source_composition()
     require_make_help_parity()
+    require_docker_compiler_propagation()
     require_make_preserves_environment_cflags()
     return 0
 

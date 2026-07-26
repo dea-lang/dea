@@ -1170,19 +1170,25 @@ func test_native_compiler_smoke_object() {
         assert(write_file(c_path, cb_to_string(source)) != null,
             "native smoke C source should be writable");
         let family = bd_compiler_flag_family(compiler as string);
-        let command = "";
-        if (family == "msvc") {
-            command =
-                bd_shell_quote(compiler as string) +
-                " /nologo /std:c11 /TC /c " + bd_shell_quote(c_path) +
-                " " + bd_shell_quote("/Fo:" + object_path);
-        } else {
-            command =
-                bd_shell_quote(compiler as string) +
-                " -std=c99 -c " + bd_shell_quote(c_path) +
-                " -o " + bd_shell_quote(object_path);
+        let compile_rc = 1;
+        with (let command_words = sv_create(7) => sv_free(command_words)) {
+            sv_push(command_words, compiler as string);
+            if (family == "msvc") {
+                sv_push(command_words, "/nologo");
+                sv_push(command_words, "/std:c11");
+                sv_push(command_words, "/TC");
+                sv_push(command_words, "/c");
+                sv_push(command_words, c_path);
+                sv_push(command_words, "/Fo:" + object_path);
+            } else {
+                sv_push(command_words, "-std=c99");
+                sv_push(command_words, "-c");
+                sv_push(command_words, c_path);
+                sv_push(command_words, "-o");
+                sv_push(command_words, object_path);
+            }
+            compile_rc = system(bd_join_shell_words(command_words));
         }
-        let compile_rc = system(command);
         assert(compile_rc == 0, "native metadata fixture should compile");
         with (let result = object_inspect_path(object_path) =>
                   object_inspection_result_free(result)) {

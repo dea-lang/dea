@@ -50,12 +50,13 @@ void l1c_interface_fingerprint_sip13_hex(
  * benign non-change (a create/rename collision or an already absent
  * directory), and -1 for invalid input or an operating-system error.
  *
- * No-follow classification returns:
+ * Path classification returns:
  *   -1  invalid input or operating-system error
  *    0  absent
  *    1  regular file
  *    2  directory
- *    3  another filesystem object, including a symbolic link or reparse point
+ *    3  another filesystem object; no-follow mode includes symbolic links and
+ *       reparse points in this category
  */
 enum {
     L1C_FS_ERROR = -1,
@@ -93,15 +94,19 @@ static char *l1c_fs_native_path(const uint8_t *path, int32_t path_len) {
  * mutation address the same paths as read_file, write_file, and system.
  * Directory access control is inherited from the caller-selected parent.
  */
-static int32_t l1c_fs_path_kind_native(const char *path) {
+static int32_t l1c_fs_path_kind_native(const char *path, int follow) {
     BY_HANDLE_FILE_INFORMATION info;
+    DWORD flags = FILE_FLAG_BACKUP_SEMANTICS;
+    if (!follow) {
+        flags |= FILE_FLAG_OPEN_REPARSE_POINT;
+    }
     HANDLE handle = CreateFileA(
         path,
         FILE_READ_ATTRIBUTES,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         NULL,
         OPEN_EXISTING,
-        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+        flags,
         NULL
     );
     if (handle == INVALID_HANDLE_VALUE) {
@@ -129,7 +134,42 @@ static int32_t l1c_fs_path_kind_native(const char *path) {
     return L1C_FS_REGULAR;
 }
 
+#else
+
+static int32_t l1c_fs_path_kind_native(const char *path, int follow) {
+    struct stat info;
+    int status = follow ? stat(path, &info) : lstat(path, &info);
+    if (status == 0) {
+        if (S_ISREG(info.st_mode)) {
+            return L1C_FS_REGULAR;
+        }
+        if (S_ISDIR(info.st_mode)) {
+            return L1C_FS_DIRECTORY;
+        }
+        return L1C_FS_OTHER;
+    }
+    if (errno == ENOENT) {
+        return L1C_FS_ABSENT;
+    }
+    return L1C_FS_ERROR;
+}
+
 #endif
+
+static int32_t l1c_fs_path_kind(
+    const uint8_t *path,
+    int32_t path_len,
+    int follow
+) {
+    char *native = l1c_fs_native_path(path, path_len);
+    int32_t result;
+    if (native == NULL) {
+        return L1C_FS_ERROR;
+    }
+    result = l1c_fs_path_kind_native(native, follow);
+    free(native);
+    return result;
+}
 
 /**
  * Create one directory with collision/error distinction.
@@ -192,36 +232,20 @@ int32_t l1c_fs_path_kind_nofollow(
     const uint8_t *path,
     int32_t path_len
 ) {
-#if defined(_WIN32)
-    char *native = l1c_fs_native_path(path, path_len);
-    int32_t result;
-    if (native == NULL) {
-        return L1C_FS_ERROR;
-    }
-    result = l1c_fs_path_kind_native(native);
-    free(native);
-    return result;
-#else
-    char *native = l1c_fs_native_path(path, path_len);
-    struct stat info;
-    int32_t result = L1C_FS_ERROR;
-    if (native == NULL) {
-        return result;
-    }
-    if (lstat(native, &info) == 0) {
-        if (S_ISREG(info.st_mode)) {
-            result = L1C_FS_REGULAR;
-        } else if (S_ISDIR(info.st_mode)) {
-            result = L1C_FS_DIRECTORY;
-        } else {
-            result = L1C_FS_OTHER;
-        }
-    } else if (errno == ENOENT) {
-        result = L1C_FS_ABSENT;
-    }
-    free(native);
-    return result;
-#endif
+    return l1c_fs_path_kind(path, path_len, 0);
+}
+
+/**
+ * Classify one path after following symbolic links or reparse points.
+ *
+ * @return -1 on error, 0 if absent or dangling, 1 for a regular file, 2 for a
+ *     directory, or 3 for another filesystem object.
+ */
+int32_t l1c_fs_path_kind_follow(
+    const uint8_t *path,
+    int32_t path_len
+) {
+    return l1c_fs_path_kind(path, path_len, 1);
 }
 
 /**
@@ -251,7 +275,7 @@ int32_t l1c_fs_rename_absent(
         free(destination_native);
         return result;
     }
-    if (l1c_fs_path_kind_native(source_native) != L1C_FS_REGULAR) {
+    if (l1c_fs_path_kind_native(source_native, 0) != L1C_FS_REGULAR) {
         free(source_native);
         free(destination_native);
         return result;
@@ -313,7 +337,7 @@ int32_t l1c_fs_remove_empty_dir(
     if (native == NULL) {
         return result;
     }
-    kind = l1c_fs_path_kind_native(native);
+    kind = l1c_fs_path_kind_native(native, 0);
     if (kind == L1C_FS_ABSENT) {
         result = 0;
     } else if (kind == L1C_FS_DIRECTORY) {

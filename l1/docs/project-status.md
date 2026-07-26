@@ -194,13 +194,16 @@ intentionally slow trace cases such as `math_runtime_compile_test`; pass the tes
 latest-stage `--check` coverage for `examples/*.l1`. `make test` combines the implementation tests,
 environment-stackability checks, and example checks without the dedicated broad trace sweep; `make test-all` adds the
 default ARC/memory trace checks. Linux portability is exercised via `make test-docker`, which runs `test-all` inside the
-repo-owned Docker image; run it after runtime, Makefile, or build-driver changes.
+repo-owned Docker image with GCC selected for `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`. Set `DOCKER_CC=clang` to switch all
+three roles together. The legacy `DOCKER_L0_CC` selector remains a compatibility fallback when `DOCKER_CC` is unset. Run
+the Docker lane after runtime, Makefile, or build-driver changes.
 
 Validation is currently centered on:
 
 - automated CI via `.github/workflows/ci.yml`, which routes L1-relevant `push`/`pull_request` changes into the reusable
   `l1-ci.yml` workflow; `workflow_dispatch` remains available for platform selection, manual C compiler selection, and
-  opt-in slow trace coverage
+  opt-in slow trace coverage. Each selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`, and the
+  resolved executable plus version is logged before the Make target runs.
 
 - `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
 

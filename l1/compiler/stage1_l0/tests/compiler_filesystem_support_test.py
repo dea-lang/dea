@@ -106,6 +106,10 @@ int32_t l1c_fs_path_kind_nofollow(
     const uint8_t *path,
     int32_t path_len
 );
+int32_t l1c_fs_path_kind_follow(
+    const uint8_t *path,
+    int32_t path_len
+);
 int32_t l1c_fs_rename_absent(
     const uint8_t *source,
     int32_t source_len,
@@ -124,6 +128,13 @@ static int32_t path_len(const char *path) {
 
 static int32_t path_kind(const char *path) {
     return l1c_fs_path_kind_nofollow(
+        (const uint8_t *)path,
+        path_len(path)
+    );
+}
+
+static int32_t path_kind_follow(const char *path) {
+    return l1c_fs_path_kind_follow(
         (const uint8_t *)path,
         path_len(path)
     );
@@ -211,75 +222,95 @@ int main(int argc, char **argv) {
         ) != 0) return 11;
     if (path_kind(workspace) != 2) return 12;
     if (path_kind(missing) != 0) return 13;
+    if (path_kind_follow(workspace) != 2) return 14;
+    if (path_kind_follow(missing) != 0) return 15;
 
 #if !defined(_WIN32)
     {
         struct stat info;
-        if (stat(workspace, &info) != 0) return 14;
-        if ((info.st_mode & 0777) != 0700) return 15;
+        if (stat(workspace, &info) != 0) return 16;
+        if ((info.st_mode & 0777) != 0700) return 17;
     }
 #endif
 
     if (!write_marker(source, "source")) return 20;
     if (path_kind(source) != 1) return 21;
+    if (path_kind_follow(source) != 1) return 22;
     if (l1c_fs_rename_absent(
             (const uint8_t *)source,
             path_len(source),
             (const uint8_t *)destination,
             path_len(destination)
-        ) != 1) return 22;
-    if (path_kind(source) != 0) return 23;
-    if (path_kind(destination) != 1) return 24;
-    if (!marker_matches(destination, "source")) return 25;
+        ) != 1) return 23;
+    if (path_kind(source) != 0) return 24;
+    if (path_kind(destination) != 1) return 25;
+    if (!marker_matches(destination, "source")) return 26;
 
-    if (!write_marker(source_collision, "collision")) return 26;
+    if (!write_marker(source_collision, "collision")) return 27;
     if (l1c_fs_rename_absent(
             (const uint8_t *)source_collision,
             path_len(source_collision),
             (const uint8_t *)destination,
             path_len(destination)
-        ) != 0) return 27;
-    if (path_kind(source_collision) != 1) return 28;
-    if (path_kind(destination) != 1) return 29;
-    if (!marker_matches(source_collision, "collision")) return 30;
-    if (!marker_matches(destination, "source")) return 31;
+        ) != 0) return 28;
+    if (path_kind(source_collision) != 1) return 29;
+    if (path_kind(destination) != 1) return 30;
+    if (!marker_matches(source_collision, "collision")) return 31;
+    if (!marker_matches(destination, "source")) return 32;
 
     if (l1c_fs_rename_absent(
             (const uint8_t *)workspace,
             path_len(workspace),
             (const uint8_t *)missing,
             path_len(missing)
-        ) != -1) return 32;
+        ) != -1) return 33;
 
     if (l1c_fs_mkdir(
             (const uint8_t *)empty_dir,
             path_len(empty_dir),
             0700
-        ) != 1) return 33;
-    if (l1c_fs_remove_empty_dir(
-            (const uint8_t *)empty_dir,
-            path_len(empty_dir)
         ) != 1) return 34;
     if (l1c_fs_remove_empty_dir(
             (const uint8_t *)empty_dir,
             path_len(empty_dir)
-        ) != 0) return 35;
+        ) != 1) return 35;
+    if (l1c_fs_remove_empty_dir(
+            (const uint8_t *)empty_dir,
+            path_len(empty_dir)
+        ) != 0) return 36;
     if (l1c_fs_remove_empty_dir(
             (const uint8_t *)destination,
             path_len(destination)
-        ) != -1) return 36;
+        ) != -1) return 37;
     if (l1c_fs_remove_empty_dir(
             (const uint8_t *)workspace,
             path_len(workspace)
-        ) != -1) return 37;
+        ) != -1) return 38;
 
-    if (argc >= 3) {
+    if (argc >= 5) {
         if (path_kind(argv[2]) != 3) return 40;
+        if (path_kind_follow(argv[2]) != 2) return 41;
         if (l1c_fs_mkdir(
                 (const uint8_t *)argv[2],
                 path_len(argv[2]),
                 0700
-            ) != 0) return 41;
+            ) != 0) return 42;
+
+        if (path_kind(argv[3]) != 3) return 43;
+        if (path_kind_follow(argv[3]) != 1) return 44;
+
+        if (path_kind(argv[4]) != 3) return 45;
+        if (path_kind_follow(argv[4]) != 0) return 46;
+        if (l1c_fs_mkdir(
+                (const uint8_t *)argv[4],
+                path_len(argv[4]),
+                0700
+            ) != 0) return 47;
+    }
+
+    if (argc >= 6) {
+        if (path_kind(argv[5]) != 3) return 48;
+        if (path_kind_follow(argv[5]) != -1) return 49;
     }
 
     if (l1c_fs_path_kind_nofollow(embedded_nul, 3) != -1) return 50;
@@ -290,6 +321,8 @@ int main(int argc, char **argv) {
             010000
         ) != -1) return 52;
     if (l1c_fs_path_kind_nofollow(NULL, 0) != -1) return 53;
+    if (l1c_fs_path_kind_follow(embedded_nul, 3) != -1) return 54;
+    if (l1c_fs_path_kind_follow(NULL, 0) != -1) return 55;
 
     remove(source_collision);
     remove(destination);
@@ -317,20 +350,54 @@ def main() -> int:
         )
         compile_harness(compiler, harness, executable)
 
-        dangling_link = temp_dir / "dangling-link"
+        directory_target = temp_dir / "directory-target"
+        directory_alias = temp_dir / "directory-alias"
+        file_target = temp_dir / "file-target"
+        file_alias = temp_dir / "file-alias"
+        dangling_alias = temp_dir / "dangling-directory-alias"
+        loop_a = temp_dir / "loop-a"
+        loop_b = temp_dir / "loop-b"
+        directory_target.mkdir()
+        file_target.write_bytes(b"target")
         try:
-            dangling_link.symlink_to(temp_dir / "absent-target")
+            directory_alias.symlink_to(
+                directory_target,
+                target_is_directory=True,
+            )
+            file_alias.symlink_to(file_target)
+            dangling_alias.symlink_to(
+                temp_dir / "absent-directory-target",
+                target_is_directory=True,
+            )
         except OSError:
-            link_argument: list[str] = []
+            for link in (
+                directory_alias,
+                file_alias,
+                dangling_alias,
+            ):
+                link.unlink(missing_ok=True)
+            link_arguments: list[str] = []
         else:
-            link_argument = [str(dangling_link)]
+            link_arguments = [
+                str(directory_alias),
+                str(file_alias),
+                str(dangling_alias),
+            ]
+            try:
+                loop_a.symlink_to(loop_b, target_is_directory=True)
+                loop_b.symlink_to(loop_a, target_is_directory=True)
+            except OSError:
+                loop_a.unlink(missing_ok=True)
+                loop_b.unlink(missing_ok=True)
+            else:
+                link_arguments.append(str(loop_a))
 
         previous_umask: int | None = None
         if os.name != "nt":
             previous_umask = os.umask(0o077)
         try:
             completed = subprocess.run(
-                [str(executable), str(temp_dir), *link_argument],
+                [str(executable), str(temp_dir), *link_arguments],
                 cwd=L1_ROOT,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

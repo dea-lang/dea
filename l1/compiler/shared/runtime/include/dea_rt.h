@@ -179,9 +179,13 @@ typedef struct {
 } dea_string;
 
 /**
- * Static empty string instance.
+ * Typed value macro for an empty static string.
  */
-static dea_string DEA_STRING_EMPTY = { 0, { .s_str = { 0, NULL } } };
+#define DEA_STRING_EMPTY \
+    ((dea_string){ \
+        .kind = DEA_STRING_K_STATIC, \
+        .data = { .s_str = { .len = 0, .bytes = NULL } } \
+    })
 
 /**
  * String literal construction macro.
@@ -255,10 +259,24 @@ typedef struct { dea_bool has_value; dea_string value; } dea_opt_string;
 /** @struct _dea_base_opt Base structure for optional types to access has_value. */
 typedef struct { dea_bool has_value; } _dea_base_opt;
 
-/** Static instance for null optional string. */
-static dea_opt_string DEA_OPT_STRING_NULL = { .has_value = 0, .value = { 0 } };
-/** Static instance for empty optional string. */
-static dea_opt_string DEA_OPT_STRING_EMPTY = { .has_value = 1, .value = { 0 } };
+/** Typed value macro for a null optional string. */
+#define DEA_OPT_STRING_NULL \
+    ((dea_opt_string){ \
+        .has_value = 0, \
+        .value = { \
+            .kind = DEA_STRING_K_STATIC, \
+            .data = { .s_str = { .len = 0, .bytes = NULL } } \
+        } \
+    })
+/** Typed value macro for an empty optional string. */
+#define DEA_OPT_STRING_EMPTY \
+    ((dea_opt_string){ \
+        .has_value = 1, \
+        .value = { \
+            .kind = DEA_STRING_K_STATIC, \
+            .data = { .s_str = { .len = 0, .bytes = NULL } } \
+        } \
+    })
 
 /**
  * @struct __deaM3sys2rtS11RtTimeParts

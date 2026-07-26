@@ -105,12 +105,59 @@ def compile_and_run(
         )
 
 
+def compile_public_header(
+    compiler: str,
+    source_path: Path,
+    output_path: Path,
+) -> None:
+    """Compile an otherwise empty translation unit against the public header."""
+
+    command = [
+        compiler,
+        "-std=c99",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-pedantic",
+        f"-I{build_dir() / 'include'}",
+        "-c",
+        str(source_path),
+        "-o",
+        str(output_path),
+    ]
+    completed = subprocess.run(
+        command,
+        cwd=L1_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"public-header compilation exited with {completed.returncode}:\n"
+            f"{completed.stdout}"
+        )
+
+
 def main() -> int:
     """Compare the direct implementation, Stage 1 shim, and every archive mode."""
 
     compiler = resolve_c_compiler()
     with tempfile.TemporaryDirectory(prefix="l1_interface_fingerprint_runtime_test.") as raw_temp:
         temp_dir = Path(raw_temp)
+
+        public_header_harness = temp_dir / "public_header_harness.c"
+        public_header_harness.write_text(
+            '#include "dea_rt.h"\n',
+            encoding="utf-8",
+        )
+        compile_public_header(
+            compiler,
+            public_header_harness,
+            temp_dir / "public_header_harness.o",
+        )
 
         direct_harness = temp_dir / "direct_harness.c"
         direct_harness.write_text(
@@ -160,9 +207,24 @@ int main(void) {{
     static const uint8_t input[] = {{ 'i', 'n', 'p', 'u', 't' }};
     static const uint8_t expected[] = "{EXPECTED_HEX}";
     uint8_t actual[16];
+    dea_string empty_string = DEA_STRING_EMPTY;
+    dea_opt_string null_string = DEA_OPT_STRING_NULL;
+    dea_opt_string empty_optional_string = DEA_OPT_STRING_EMPTY;
 
     l1c_interface_fingerprint_sip13_hex(input, 5, actual);
-    return memcmp(actual, expected, 16) == 0 ? 0 : 1;
+    if (memcmp(actual, expected, 16) != 0) return 1;
+    if (empty_string.kind != DEA_STRING_K_STATIC) return 2;
+    if (empty_string.data.s_str.len != 0) return 3;
+    if (empty_string.data.s_str.bytes != NULL) return 4;
+    if (null_string.has_value != 0) return 5;
+    if (null_string.value.kind != DEA_STRING_K_STATIC) return 6;
+    if (null_string.value.data.s_str.len != 0) return 7;
+    if (null_string.value.data.s_str.bytes != NULL) return 8;
+    if (empty_optional_string.has_value != 1) return 9;
+    if (empty_optional_string.value.kind != DEA_STRING_K_STATIC) return 10;
+    if (empty_optional_string.value.data.s_str.len != 0) return 11;
+    if (empty_optional_string.value.data.s_str.bytes != NULL) return 12;
+    return 0;
 }}
 ''',
             encoding="utf-8",

@@ -18,6 +18,7 @@ L1_COMPILER_RT_UNCHECKED ?=
 L1_COMPILER_RT_QUARANTINE_MAX_BYTES ?=
 L1_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 DOCKER_IMAGE ?= l1-test
+DOCKER_CC ?= $(if $(strip $(DOCKER_L0_CC)),$(DOCKER_L0_CC),gcc)
 AR ?= ar
 L1_RUNTIME_CC ?= $(if $(strip $(L1_CC)),$(L1_CC),$(or $(shell if command -v clang >/dev/null 2>&1; then printf '%s' clang; elif command -v gcc >/dev/null 2>&1; then printf '%s' gcc; elif command -v cc >/dev/null 2>&1; then printf '%s' cc; fi),$(if $(filter-out undefined default,$(origin CC)),$(CC))))
 L1_TCC_OBJ_CC ?= $(or $(shell if command -v tcc >/dev/null 2>&1; then printf '%s' tcc; fi),$(if $(filter-out undefined default,$(origin TCC)),$(TCC)))
@@ -132,8 +133,10 @@ help:
 		'Docker variables:' \
 		'  DOCKER_IMAGE=l1-test' \
 		'                     Docker image tag used by `make docker`.' \
+		'  DOCKER_CC=gcc' \
+		'                     C compiler passed to all three L1 compiler roles in Docker (`gcc` or `clang`).' \
 		'  DOCKER_L0_CC=<compiler>' \
-		'                     Optional upstream L0 C compiler passed into the Docker run as `L0_CC` (`gcc` or `clang`).' \
+		'                     Legacy compatibility selector used when the canonical Docker compiler selector is unset.' \
 		'' \
 		'Default local bootstrap flow:' \
 		'  1. `make use-dev-stage1`  # auto-prepares ../l0 Stage 2 if needed' \
@@ -323,12 +326,43 @@ _print-test-compiler-env:
 		if [ -n "$${CC:-}" ]; then printf '%s' "$$CC"; return 0; fi; \
 		printf '%s' '<none>'; \
 	}; \
+	configured_cc() { \
+		env_value="$$(printenv "$$1" 2>/dev/null || true)"; \
+		if [ -n "$$env_value" ]; then printf '%s' "$$env_value"; else printf '%s' '<auto>'; fi; \
+	}; \
+	print_cc_role() { \
+		role="$$1"; configured="$$2"; effective="$$3"; purpose="$$4"; \
+		resolved='<unresolved>'; \
+		version='<unavailable>'; \
+		if [ -n "$$effective" ] && [ "$$effective" != '<none>' ]; then \
+			resolved_path="$$(command -v "$$effective" 2>/dev/null || true)"; \
+			if [ -n "$$resolved_path" ]; then \
+				resolved="$$resolved_path"; \
+				if version_output="$$("$$resolved" --version 2>&1)" && [ -n "$$version_output" ]; then \
+					:; \
+				elif version_output="$$("$$resolved" -v 2>&1)" && [ -n "$$version_output" ]; then \
+					:; \
+				else \
+					version_output=''; \
+				fi; \
+				version="$$(printf '%s\n' "$$version_output" | sed -n '1p')"; \
+				if [ -z "$$version" ]; then version='<unavailable>'; fi; \
+			fi; \
+		fi; \
+		if [ -z "$$effective" ]; then effective='<none>'; fi; \
+		printf '  %s: configured=%s; effective=%s; resolved=%s; version=%s\n' \
+			"$$role" "$$configured" "$$effective" "$$resolved" "$$version"; \
+		printf '    %s\n' "$$purpose"; \
+	}; \
 	l0_cc="$$(resolve_cc L0_CC tcc gcc clang cc)"; \
 	l1_cc="$$(resolve_cc L1_CC tcc gcc clang cc)"; \
 	printf '%s\n' 'L1 test compiler environment:'; \
-	printf '  L0_CC=%s  (L0 compiler used by the upstream l0c-stage2 for .l0 test harnesses)\n' "$$l0_cc"; \
-	printf '  L1_CC=%s  (C compiler used by l1c --build/--run for L1 fixture snippets)\n' "$$l1_cc"; \
-	printf '  L1_RUNTIME_CC=%s  (C compiler used for repo-local L1 runtime archives)\n' "$(L1_RUNTIME_CC)"
+	print_cc_role L0_CC "$$(configured_cc L0_CC)" "$$l0_cc" \
+		'L0 compiler used by the upstream l0c-stage2 for .l0 test harnesses'; \
+	print_cc_role L1_CC "$$(configured_cc L1_CC)" "$$l1_cc" \
+		'C compiler used by l1c --build/--run for L1 fixture snippets'; \
+	print_cc_role L1_RUNTIME_CC "$$(configured_cc L1_RUNTIME_CC)" "$(L1_RUNTIME_CC)" \
+		'C compiler used for repo-local L1 runtime archives'
 
 test-stage1: venv build-stage1 _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_tests.py $(TESTS)
@@ -369,7 +403,9 @@ docker:
 	else \
 		$(if $(strip $(L1_TRACE_ARTIFACT_DIR)),mkdir -p "$(L1_TRACE_ARTIFACT_DIR)" &&) \
 		docker build -f Dockerfile -t "$(DOCKER_IMAGE)" .. && docker run --rm \
-			$(if $(strip $(DOCKER_L0_CC)),-e "L0_CC=$(DOCKER_L0_CC)") \
+			-e "L0_CC=$(DOCKER_CC)" \
+			-e "L1_CC=$(DOCKER_CC)" \
+			-e "L1_RUNTIME_CC=$(DOCKER_CC)" \
 			$(if $(strip $(L1_TEST_JOBS)),-e "L1_TEST_JOBS=$(L1_TEST_JOBS)") \
 			$(if $(strip $(L1_TRACE_TEST_JOBS)),-e "L1_TRACE_TEST_JOBS=$(L1_TRACE_TEST_JOBS)") \
 			$(if $(strip $(TESTS)),-e "TESTS=$(TESTS)") \

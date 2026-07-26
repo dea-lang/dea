@@ -4,6 +4,7 @@
 - Status: Active
 - Kind: Initiative
 - Open plans:
+  - `l1/work/plans/bug-fixes/2026-07-26-stage1-cross-platform-ci-regressions-noref.md`
   - `l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
