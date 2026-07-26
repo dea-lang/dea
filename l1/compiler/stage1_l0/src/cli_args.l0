@@ -408,7 +408,7 @@ func cli_print_help() {
     cli_print_line(false, "                        paths)");
     cli_print_line(false, "  --run, -r             Build and run a module");
     cli_print_line(false, "  --build               Build an executable (default mode)");
-    cli_print_line(false, "  -c, --compile         Reserve compile-only mode for Phase 3 artifact production");
+    cli_print_line(false, "  -c, --compile         Compile one module to sibling .o and .l1m artifacts");
     cli_print_line(false, "  --emit-interface      Emit the module interface (.l1m) text for the target module");
     cli_print_line(false, "  --gen, -Gc, --codegen Generate C code");
     cli_print_line(false, "  --check, --analyze    Parse and analyze a module");
@@ -416,23 +416,25 @@ func cli_print_help() {
     cli_print_line(false, "  --ast                 Pretty-print the AST");
     cli_print_line(false, "  --sym, --symbols      Dump module-level symbols");
     cli_print_line(false, "  --type, --types       Dump resolved types");
-    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--emit-interface', '--gen', '--run')");
+    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--compile', '--emit-interface', '--gen', '--run')");
     cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");
-    cli_print_line(false, "                        C compiler to use (default: $L1_CC has highest");
+    cli_print_line(false, "                        C compiler to use (valid in: '--build', '--compile',");
+    cli_print_line(false, "                        '--run'; default: $L1_CC has highest");
     cli_print_line(false, "                        precedence if set; then tcc, gcc, clang, cc from PATH,");
-    cli_print_line(false, "                        or $CC, in that order; valid in: '--build', '--run')");
+    cli_print_line(false, "                        or $CC, in that order)");
     cli_print_line(false, "  --c-options, -Co C_OPTIONS");
-    cli_print_line(false, "                        Extra options to pass to the C compiler (default");
+    cli_print_line(false, "                        Extra options to pass to the C compiler (valid in:");
+    cli_print_line(false, "                        '--build', '--compile', '--run'; default");
     cli_print_line(false, "                        prepends $L1_CFLAGS; options from --c-options are");
-    cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\";");
-    cli_print_line(false, "                        valid in: '--build', '--run')");
+    cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\")");
     cli_print_line(false, "  -I, --interface-path INTERFACE_PATH");
     cli_print_line(false, "                        Add an interface search path (repeatable; valid in:");
-    cli_print_line(false, "                        '--compile'; interface loading lands in Phase 3)");
+    cli_print_line(false, "                        '--compile'; searched in declaration order)");
     cli_print_line(false, "  --runtime-include, -Ri RUNTIME_INCLUDE");
     cli_print_line(false, "                        Path to Dea runtime headers such as `dea_rt.h`");
     cli_print_line(false, "                        (default: $L1_RUNTIME_INCLUDE or");
-    cli_print_line(false, "                        $L1_BUILD_DIR/include; valid in: '--build', '--run')");
+    cli_print_line(false, "                        $L1_BUILD_DIR/include; valid in: '--build',");
+    cli_print_line(false, "                        '--compile', '--run')");
     cli_print_line(false, "  --runtime-lib, -Rl RUNTIME_LIB");
     cli_print_line(false, "                        Path to Dea runtime library search directory");
     cli_print_line(false, "                        (default: $L1_RUNTIME_LIB or");
@@ -443,7 +445,7 @@ func cli_print_help() {
     cli_print_line(false, "  -l LIBRARY            Reserved library link option (not supported yet)");
     cli_print_line(false, "  --no-line-directives, -NLD");
     cli_print_line(false, "                        Disable #line directives in generated C code (valid");
-    cli_print_line(false, "                        in: '--build', '--run', '--gen')");
+    cli_print_line(false, "                        in: '--build', '--compile', '--gen', '--run')");
     cli_print_line(false, "  --trace-arc           Use the traced runtime archive for ARC diagnostics;");
     cli_print_line(false, "                        with '--gen', generated C calls traced runtime");
     cli_print_line(false, "                        entrypoints directly (link libdea_rt_traced.a)");
@@ -456,8 +458,8 @@ func cli_print_help() {
     cli_print_line(false, "  --check-basic         Use the basic checked runtime archive; with '--gen',");
     cli_print_line(false, "                        generated C defines DEA_RT_CHECK_BASIC (link");
     cli_print_line(false, "                        libdea_rt_check_basic.a)");
-    cli_print_line(false, "  --keep-c              Keep generated C file (valid in: '--build', '--run';");
-    cli_print_line(false, "                        use with '--output' to specify C file path");
+    cli_print_line(false, "  --keep-c              Keep generated C file (valid in: '--build', '--compile',");
+    cli_print_line(false, "                        '--run'; compile mode adds the sibling .c artifact)");
     cli_print_line(false, "  --all-modules, -a     Process all modules in the compilation unit (valid in:");
     cli_print_line(false, "                        '--tok', '--ast', '--sym', '--type')");
     cli_print_line(false, "  --include-eof         Include the EOF token in output (valid in: '--tok')");
@@ -543,40 +545,48 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     }
 
     if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) &&
         ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_EMIT_INTERFACE)) {
-        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --emit-interface, --gen, --run");
+        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --compile, --emit-interface, --gen, --run");
     }
 
-    if (opts.keep_c && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2011", "option '--keep-c' is valid only with modes: --build, --run");
+    if (opts.keep_c && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2011", "option '--keep-c' is valid only with modes: --build, --compile, --run");
     }
 
-    if (opts.c_compiler != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2012", "option '--c-compiler' is valid only with modes: --build, --run");
+    if (opts.c_compiler != null && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2012", "option '--c-compiler' is valid only with modes: --build, --compile, --run");
     }
 
-    if (opts.c_options != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2013", "option '--c-options' is valid only with modes: --build, --run");
+    if (opts.c_options != null && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2013", "option '--c-options' is valid only with modes: --build, --compile, --run");
     }
 
-    if (opts.runtime_include != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2014", "option '--runtime-include' is valid only with modes: --build, --run");
+    if (opts.runtime_include != null && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2014", "option '--runtime-include' is valid only with modes: --build, --compile, --run");
     }
 
     if (opts.runtime_lib != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
         cli_emit_error(diags, "L1C-2015", "option '--runtime-lib' is valid only with modes: --build, --run");
     }
 
-    if (opts.no_line_directives && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2016", "option '--no-line-directives' is valid only with modes: --build, --gen, --run");
+    if (opts.no_line_directives && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L1C-2016", "option '--no-line-directives' is valid only with modes: --build, --compile, --gen, --run");
     }
 
-    if (opts.trace_arc && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2017", "option '--trace-arc' is valid only with modes: --build, --gen, --run");
+    if (opts.trace_arc && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L1C-2017", "option '--trace-arc' is valid only with modes: --build, --compile, --gen, --run");
     }
 
-    if (opts.trace_memory && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2018", "option '--trace-memory' is valid only with modes: --build, --gen, --run");
+    if (opts.trace_memory && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L1C-2018", "option '--trace-memory' is valid only with modes: --build, --compile, --gen, --run");
     }
 
     if (ord(mode) == ord(CM_GEN) && (opts.trace_arc || opts.trace_memory)) {
@@ -587,12 +597,14 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         );
     }
 
-    if (opts.unchecked && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2025", "option '--unchecked' is valid only with modes: --build, --gen, --run");
+    if (opts.unchecked && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L1C-2025", "option '--unchecked' is valid only with modes: --build, --compile, --gen, --run");
     }
 
-    if (opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2027", "option '--check-basic' is valid only with modes: --build, --gen, --run");
+    if (opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L1C-2027", "option '--check-basic' is valid only with modes: --build, --compile, --gen, --run");
     }
 
     if (opts.unchecked && (opts.trace_arc || opts.trace_memory)) {

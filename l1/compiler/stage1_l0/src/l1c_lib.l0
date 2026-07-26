@@ -21,6 +21,7 @@ import backend;
 import sem_context;
 import driver;
 import build_driver;
+import compile_driver;
 import build_info;
 import cli_args;
 import codegen_options;
@@ -865,7 +866,7 @@ func run_with_argv(argv: StringVector*) -> int {
                 rc = bd_cmd_build(opts, cfg);
             }
             CM_COMPILE => {
-                rc = l1c_cmd_nyi(opts.mode, cfg);
+                rc = cd_cmd_compile(opts, cfg);
             }
             CM_EMIT_INTERFACE => {
                 rc = l1c_cmd_emit_interface(opts, cfg);

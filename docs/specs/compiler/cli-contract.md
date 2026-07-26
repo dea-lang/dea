@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-07-16
+Version: 2026-07-26
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -24,22 +24,22 @@ Canonical level-specific detail:
 
 ## 2. Shared Modes
 
-| Mode        | Aliases            | Purpose                                      |
-| ----------- | ------------------ | -------------------------------------------- |
-| `--run`     | `-r`               | Build and run one source target              |
-| `--build`   |                    | Build one executable                         |
-| `--compile` | `-c`               | Compile without linking (currently reserved) |
-| `--gen`     | `-Gc`, `--codegen` | Emit generated C                             |
-| `--check`   | `--analyze`        | Parse and analyze                            |
-| `--tok`     | `--tokens`         | Dump lexer tokens                            |
-| `--ast`     |                    | Dump the parsed AST                          |
-| `--sym`     | `--symbols`        | Dump module-level symbols                    |
-| `--type`    | `--types`          | Dump resolved top-level types                |
+| Mode        | Aliases            | Purpose                                               |
+| ----------- | ------------------ | ----------------------------------------------------- |
+| `--run`     | `-r`               | Build and run one source target                       |
+| `--build`   |                    | Build one executable                                  |
+| `--compile` | `-c`               | Compile one module without linking; implemented in L1 |
+| `--gen`     | `-Gc`, `--codegen` | Emit generated C                                      |
+| `--check`   | `--analyze`        | Parse and analyze                                     |
+| `--tok`     | `--tokens`         | Dump lexer tokens                                     |
+| `--ast`     |                    | Dump the parsed AST                                   |
+| `--sym`     | `--symbols`        | Dump module-level symbols                             |
+| `--type`    | `--types`          | Dump resolved top-level types                         |
 
 The dump modes are developer-facing; their text formats are not stable interfaces. All current compilers recognize
-`--compile` / `-c` and report the level-specific `L0C-9510` or `L1C-9510` without analysis or artifact production.
-Compile-only output remains future work. L1 Stage 1 additionally implements `--emit-interface`, which emits the target
-module's textual `.l1m` interface.
+`--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. L1 Stage 1
+implements the endpoint-rollback compile-only artifact set in section 6 and additionally implements `--emit-interface`,
+which emits the target module's textual `.l1m` interface.
 
 ## 3. Shared Options
 
@@ -47,12 +47,14 @@ The current shared option surface is:
 
 - `--help` / `-h`, `--version`, counted `--verbose` / `-v`, and `--log` / `-Vl`
 - repeatable project and system roots through `--project-root` / `-Rp` and `--sys-root` / `-Rs`
-- repeatable compile-mode interface paths through `--interface-path` / `-I`; paths are stored in declaration order but
-  are not consumed until compile-only artifact production lands
-- `--output` / `-o` for artifact-producing modes; L1 also accepts it with `--emit-interface`
-- `--c-compiler` / `-Cc`, `--c-options` / `-Co`, `--runtime-include` / `-Ri`, and `--runtime-lib` / `-Rl` for build/run
-- `--no-line-directives` / `-NLD`, `--trace-arc`, and `--trace-memory` for generated-C modes
-- `--keep-c` for build/run
+- repeatable compile-mode interface paths through `--interface-path` / `-I`; L1 consumes them in declaration order,
+  while L0 retains the syntax for its reserved compile mode
+- `--output` / `-o` for artifact-producing modes; L1 also accepts it with `--compile` and `--emit-interface`
+- `--c-compiler` / `-Cc`, `--c-options` / `-Co`, and `--runtime-include` / `-Ri` for build/run and L1 compile-only;
+  `--runtime-lib` / `-Rl` remains build/run-only
+- `--no-line-directives` / `-NLD`, `--trace-arc`, `--trace-memory`, `--unchecked`, and `--check-basic` for generated-C
+  modes, including L1 compile-only
+- `--keep-c` for build/run and L1 compile-only
 - `--all-modules` / `-a` for token, AST, symbol, and type dumps
 - `--include-eof` for token dumps
 
@@ -94,7 +96,45 @@ supplied through `--c-options`.
 - A plain filename or module name resolves using the active level's source extension (`.l0` or `.l1`).
 - Repeated system or project roots preserve declaration order within their root group.
 
-## 6. Compatibility Rule
+## 6. L1 Compile-Only Artifact Set
+
+The L1 Stage 1 compile-only form is:
+
+```text
+l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [--keep-c]
+```
+
+- `MODULE` resolves to one source implementation. Non-virtual imports must resolve from verified `.l1m` interfaces;
+  compile-only does not fall back to provider source.
+- Without `--output`, the current directory is the artifact root and the canonical dotted module path supplies the stem.
+  With `--output`, the value must be non-empty, must not end in `/` or `\`, and must name an `.o` file; replacing only
+  that final suffix selects its `.c` and `.l1m` companions. Empty values, trailing separators, directories,
+  extensionless values, and other suffixes report `L1C-2033`, not a generic module-identity diagnostic.
+- Existing output-parent components are trusted directory inputs. Directory validation follows aliases using
+  `std.fs::is_dir()` semantics, and missing descendants beneath an existing directory alias are created recursively.
+  Dangling and non-directory aliases are rejected. Final `.c`, `.o`, and `.l1m` destinations plus transaction, backup,
+  validation, and cleanup paths use no-follow classification; an existing artifact symlink is rejected with `L1C-2033`.
+- The compiler always stages one generated-C file, one relocatable object, and one verified textual interface. Ordinary
+  `-c` publishes the reusable `.o` and `.l1m` pair; `--keep-c` also publishes the exact staged `.c`. The mode does not
+  invoke the final host linker or compile imported modules.
+- The staged files and any backups of the selected destinations share an exclusively reserved sibling transaction
+  directory. Existing selected destinations move to recovery names before publication, the object is published before
+  the interface, and a recoverable publication failure restores the previous selected set.
+- Publication guarantees operation endpoints, not an atomic reader-visible snapshot. Successful return leaves the
+  complete new selected set; recoverable failure returns with the exact prior selected set restored; rollback failure
+  retains recovery files. During sequential backup, publication, or rollback, paths may be temporarily absent or may
+  expose different generations. Concurrent readers and same-stem writers require external serialization.
+- Without `--keep-c`, the canonical `.c` companion is not a destination: the compiler does not classify, back up,
+  create, overwrite, remove, or restore that path. Any pre-existing file or non-regular path there remains untouched.
+- Host-compilation failure leaves destinations unchanged. Publication failure reports `L1C-2035` after a successful
+  restore; rollback failure reports `L1C-2036` and retains recovery files for inspection.
+- Raw host-C options that request auxiliary files do not add those files to the artifact set. If such a file prevents
+  empty-directory cleanup, the compiler reports and retains the transaction directory instead of deleting it
+  recursively.
+- `--runtime-lib`, external-library options, and runtime program arguments remain invalid because compile-only neither
+  links nor runs.
+
+## 7. Compatibility Rule
 
 Equivalent behavior keeps the same flag names, aliases, option ordering, exit-code meanings, and diagnostic meanings
 across stages and levels. A level may recognize a shared spelling while reporting that its capability is unavailable,

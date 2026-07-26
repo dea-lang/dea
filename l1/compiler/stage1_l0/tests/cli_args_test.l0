@@ -220,26 +220,64 @@ func test_compile_mode_validation() {
         cli_parse_result_free(parsed3);
     }
 
-    with (let build_only = sv_create(16) => sv_free(build_only)) {
-        sv_push(build_only, "--compile");
-        sv_push(build_only, "--output");
-        sv_push(build_only, "out.o");
-        sv_push(build_only, "--keep-c");
-        sv_push(build_only, "-Cc");
-        sv_push(build_only, "clang");
-        sv_push(build_only, "-Co=-O2");
-        sv_push(build_only, "-Ri");
-        sv_push(build_only, "runtime/include");
-        sv_push(build_only, "-Rl=runtime/lib");
-        sv_push(build_only, "app.main");
-        let parsed4 = cli_parse(build_only);
-        assert(cli_result_has_code(parsed4, "L1C-2010"), "expected compile output scope diagnostic");
-        assert(cli_result_has_code(parsed4, "L1C-2011"), "expected compile keep-c scope diagnostic");
-        assert(cli_result_has_code(parsed4, "L1C-2012"), "expected compile C compiler scope diagnostic");
-        assert(cli_result_has_code(parsed4, "L1C-2013"), "expected compile C options scope diagnostic");
-        assert(cli_result_has_code(parsed4, "L1C-2014"), "expected compile runtime include scope diagnostic");
-        assert(cli_result_has_code(parsed4, "L1C-2015"), "expected compile runtime lib scope diagnostic");
+    with (let compile_options = sv_create(20) => sv_free(compile_options)) {
+        sv_push(compile_options, "--compile");
+        sv_push(compile_options, "--output");
+        sv_push(compile_options, "out.o");
+        sv_push(compile_options, "-Cc");
+        sv_push(compile_options, "clang");
+        sv_push(compile_options, "-Co=-O2");
+        sv_push(compile_options, "-Ri");
+        sv_push(compile_options, "runtime/include");
+        sv_push(compile_options, "--keep-c");
+        sv_push(compile_options, "--no-line-directives");
+        sv_push(compile_options, "--trace-arc");
+        sv_push(compile_options, "--trace-memory");
+        sv_push(compile_options, "app.main");
+        let parsed4 = cli_parse(compile_options);
+        assert(!diag_has_errors(parsed4.diags), "compile mode should accept object-production options");
+        assert(parsed4.options != null, "compile options should remain available after validation");
+        let opts4 = parsed4.options as CliOptions*;
+        assert(opts4.output as string == "out.o", "compile output path mismatch");
+        assert(opts4.c_compiler as string == "clang", "compile C compiler mismatch");
+        assert(opts4.c_options as string == "-O2", "compile C options mismatch");
+        assert(opts4.runtime_include as string == "runtime/include", "compile runtime include mismatch");
+        assert(opts4.keep_c, "compile keep-c option mismatch");
+        assert(opts4.no_line_directives, "compile line-directive option mismatch");
+        assert(opts4.trace_arc && opts4.trace_memory, "compile trace options mismatch");
         cli_parse_result_free(parsed4);
+    }
+
+    with (let unchecked = sv_create(4) => sv_free(unchecked)) {
+        sv_push(unchecked, "--compile");
+        sv_push(unchecked, "--unchecked");
+        sv_push(unchecked, "app.main");
+        let parsed5 = cli_parse(unchecked);
+        assert(!diag_has_errors(parsed5.diags), "compile mode should accept --unchecked");
+        assert((parsed5.options as CliOptions*).unchecked, "compile unchecked option mismatch");
+        cli_parse_result_free(parsed5);
+    }
+
+    with (let check_basic = sv_create(4) => sv_free(check_basic)) {
+        sv_push(check_basic, "--compile");
+        sv_push(check_basic, "--check-basic");
+        sv_push(check_basic, "app.main");
+        let parsed6 = cli_parse(check_basic);
+        assert(!diag_has_errors(parsed6.diags), "compile mode should accept --check-basic");
+        assert((parsed6.options as CliOptions*).check_basic, "compile check-basic option mismatch");
+        cli_parse_result_free(parsed6);
+    }
+
+    with (let link_only = sv_create(8) => sv_free(link_only)) {
+        sv_push(link_only, "--compile");
+        sv_push(link_only, "--keep-c");
+        sv_push(link_only, "-Rl=runtime/lib");
+        sv_push(link_only, "app.main");
+        let parsed7 = cli_parse(link_only);
+        assert(!cli_result_has_code(parsed7, "L1C-2011"),
+            "compile should accept --keep-c");
+        assert(cli_result_has_code(parsed7, "L1C-2015"), "compile should reject --runtime-lib");
+        cli_parse_result_free(parsed7);
     }
 }
 

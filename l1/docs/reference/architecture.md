@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-07-23
+Version: 2026-07-26
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -10,8 +10,8 @@ Today there is one implemented compiler pipeline:
 - `compiler/stage2_l1/` is reserved for the future self-hosted compiler and is not implemented yet.
 - `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/` are the current copied stdlib/runtime source inputs
   consumed by the bootstrap toolchain.
-- `build/dea/include/` and `build/dea/lib/` are the repo-local runtime delivery outputs consumed by Stage 1 `--build` /
-  `--run`.
+- `build/dea/include/` and `build/dea/lib/` are the repo-local runtime delivery outputs consumed by Stage 1.
+  Compile-only needs the headers but does not link the runtime archive.
 
 Related canonical docs:
 
@@ -52,6 +52,12 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
   |
   +-- internal module API --> backend_generate_module --> one selected module C99 translation unit
   |
+  +-- `--compile` --> one source-backed module + interface-backed imports
+  |                         |
+  |                         v
+  |                  `.o` / `.l1m` publication with endpoint rollback
+  |                  (`--keep-c` also publishes `.c`)
+  |
   +-- `--gen` / `--build` / `--run` --> backend_generate --> legacy whole-program C99 translation unit
                                           |
                                           v
@@ -82,13 +88,15 @@ existing source-root precedence when no interface exists. Programmatic interface
 The driver closes over both interface dependency tiers. `require` providers are activated for semantic replay, while
 `link` providers remain graph obligations without entering the consumer's semantic environment. Source nodes retain
 their direct imports in declaration order, separately from sorted graph enumeration and interface manifests. The
-ordinary CLI pipeline above is still source-based.
+ordinary build/run CLI pipeline above is still source-based; compile-only instead requires verified interfaces for
+non-virtual imports.
 
 The internal module-generation branch selects one canonical source-backed target from the completed analysis result. It
 emits target definitions, external declarations for provider-owned source and interface values and functions consumed by
 that target, external `I8metadata` and `I7imports` records, always-present external `I4init` and `I4fini`, and
 conditional external `I5entry`. It emits no process `main`, global init chain, or dependency lifecycle calls.
-Compile-only and multi-CU build/run dispatch remain future tranches.
+Compile-only connects this branch to host object compilation and sequential artifact publication with endpoint rollback.
+Multi-CU build/run dispatch remains a future tranche.
 
 The format-neutral object reader classifies a supported relocatable object as valid Dea metadata, no Dea metadata, or
 malformed Dea metadata. File access failures and unsupported or corrupt containers are separate object-read errors. The
@@ -103,11 +111,27 @@ the corresponding provider module fingerprint; dependency records do not feed ba
 
 Current CLI entry point: `compiler/stage1_l0/src/l1c.l0`.
 
-The CLI parser reserves `-c` / `--compile` and repeatable `-I` / `--interface-path` values for separate compilation, but
-dispatch currently reports `L1C-9510` before analysis or artifact creation. A later compile-only tranche connects that
-surface to the internal resolver and transactional artifact writer. L1 follows the shared exact-token short namespaces
-for roots, host-C controls, runtime paths, generated C, and log presentation; reserved canonical debug/assembly/link
-flags report `L1C-2032` rather than acquiring L1-specific meanings.
+The CLI implements `-c` / `--compile` with repeatable `-I` / `--interface-path` roots. It resolves one source-backed
+target, requires verified interfaces for non-virtual imports, and publishes the sibling `.o` and `.l1m` pair without
+linking. `--keep-c` adds the exact generated `.c` used for host compilation. L1 follows the shared exact-token short
+namespaces for roots, host-C controls, runtime paths, generated C, and log presentation; reserved canonical
+debug/assembly/link flags report `L1C-2032` rather than acquiring L1-specific meanings.
+
+Compile-only follows trusted directory aliases while validating and recursively creating the destination parent.
+Dangling and non-directory aliases are rejected. Final `.c`, `.o`, and `.l1m` destinations and transaction, backup,
+validation, and cleanup paths retain no-follow classification, so artifact symlinks are rejected.
+
+The driver reserves one exclusive transaction directory beside the requested destinations. Generated C, the object, the
+interface, and any backups of selected destinations remain on the same filesystem so publication and rollback use
+sequential renames. Successful return leaves the complete new selected set, and a recoverable publication failure
+returns with the exact prior set restored. During publication or rollback, paths may be absent or from different
+generations; this is not a reader-visible snapshot, and concurrent readers or same-stem writers require external
+serialization.
+
+Without `--keep-c`, destination validation and publication never inspect or modify the canonical `.c` path. A successful
+rollback reports a publication failure; if rollback itself fails, the compiler retains recovery files and reports
+`L1C-2036` instead of discarding them. Cleanup is deliberately non-recursive: an auxiliary file requested through raw
+host-C options is reported and retained with the transaction directory rather than silently removed.
 
 Normal developer workflow:
 
@@ -214,8 +238,9 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Exposes resolution-aware internal entry points with ordered interface roots, caller-selected source fallback, and an
   optional artifact root.
 - Implements CLI mode dispatch and host compiler execution.
-- Reserves compile-only mode and interface-path syntax while keeping the unimplemented path gated before analysis.
-- Produces generated C, built executables, or direct runs depending on CLI mode.
+- Implements compile-only interface resolution, object-only host compilation, and artifact publication with endpoint
+  rollback.
+- Produces generated C, module artifacts, built executables, or direct runs depending on CLI mode.
 
 ## 3. Core Data Flow
 
@@ -258,17 +283,20 @@ Important analysis tables include:
     underline and the displayed line always agree, independent of terminal tab-stop behavior. Unicode display-width
     handling is out of scope for this contract.
 05. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
-06. Ordinary CLI generation remains one legacy whole-program C99 translation unit; the internal module API emits one
-    selected source-backed module translation unit.
+06. Ordinary build/run CLI generation remains one legacy whole-program C99 translation unit; compile-only uses the
+    internal module API to emit one selected source-backed module translation unit.
 07. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
     preserve declaration order and duplicates.
 08. An interface is registered or cached only after its declared identity and whole-module fingerprint are verified.
-09. `.l1m` artifacts are available to internal resolution-aware APIs but are not normal compile/build/run inputs yet.
+09. `.l1m` artifacts are normal compile-only dependency inputs but are not consumed by `--build` or `--run` yet.
 10. The entire normalized `__dea` prefix is reserved; a supported relocatable object with any external definition under
     that prefix cannot be classified as metadata-free, even when the suffix is not valid LBI.
 11. Object readers check all container and record bounds before slicing or allocating and never invoke host inspection
     commands.
-12. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in
+12. Compile-only publishes `.o` and `.l1m` as its reusable artifact set and adds `.c` only with `--keep-c`. Successful
+    return leaves the complete new selected set; recoverable failure leaves or restores the exact prior set; failed
+    rollback retains recovery files. Sequential publication does not provide a reader-visible snapshot.
+13. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in
     the other L1 reference documents.
 
 ## 5. File/Module Layout
@@ -318,11 +346,14 @@ Main current compiler modules under `compiler/stage1_l0/src/`:
 
 Shared support modules live under `compiler/stage1_l0/src/util/`.
 
+The L1-owned Stage 1 support translation unit under `compiler/stage1_l0/support/` supplies the small allocation-free C
+ABIs used for interface fingerprinting and compile-only publication filesystem operations.
+
 ## 6. Host and Toolchain Assumptions
 
 - Source decoding is UTF-8 with optional BOM stripping; the shared language vocabulary remains ASCII-only. See
   [docs/specs/language/source-text-and-language-vocabulary.md](../../../docs/specs/language/source-text-and-language-vocabulary.md).
 - L1 source modules use the `.l1` extension.
 - The bootstrap compiler implementation remains `.l0` source code.
-- `--build` and `--run` require a host C99 toolchain.
+- `--compile`, `--build`, and `--run` require a host C99 toolchain.
 - Local bootstrap builds use `../l0/build/dea/bin/l0c-stage2` by default unless overridden with `L1_BOOTSTRAP_L0C`.

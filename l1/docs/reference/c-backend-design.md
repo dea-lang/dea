@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-07-23
+Version: 2026-07-26
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -30,7 +30,7 @@ Input is a fully typed analysis result. The backend exposes two supported output
 - `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit used by the current `--gen`,
   `--build`, and `--run` flows.
 - `backend_generate_module(result, target_module, opts, cfg)` emits one source-backed module translation unit for
-  separate-compilation consumers. This internal API is not yet connected to compile-only, build, or run dispatch.
+  `--compile` and later separate-compilation consumers. Build and run do not use this boundary yet.
 
 `compiler/stage2_l1/` does not currently provide a second backend implementation.
 
@@ -101,6 +101,13 @@ external regardless of the source export manifest.
 
 Module output contains no process-level C `main`, legacy global init chain, or calls to dependency lifecycle functions.
 The later standalone-link tranche owns the executable wrapper and cross-module ordering.
+
+Compile-only writes this per-module C output, the host-compiled relocatable object, and the corresponding fingerprinted
+interface into one sibling transaction directory. The driver publishes the object before the interface; `--keep-c` also
+selects the exact staged C for publication. Sequential renames provide successful/new and recoverable-failure/prior
+endpoints, not an atomic reader-visible snapshot: paths may be absent or from different generations during publication
+or rollback, concurrent access requires external serialization, and failed rollback retains recovery files. The backend
+does not own staging, rollback, or destination-path policy.
 
 The identity record contains the target's canonical module name, whole-module interface fingerprint, and `HAS_ENTRY`
 flag. The import record contains every unique direct object-backed (non-virtual) provider in first source-import order

@@ -23,3 +23,4 @@
 | [0019](0019-whole-module-interface-fingerprints.md)              | Whole-Module Interface Fingerprints              | Accepted |
 | [0020](0020-per-module-backend-and-lifecycle-abi.md)             | Per-Module Backend and Lifecycle ABI             | Accepted |
 | [0021](0021-portable-object-metadata-and-inspection.md)          | Portable Object Metadata and Inspection          | Accepted |
+| [0022](0022-transactional-compile-only-artifact-publication.md)  | Compile-Only Artifact Endpoint Rollback          | Accepted |

@@ -138,34 +138,54 @@ func test_check_ok() {
 }
 
 /**
- * Tests compile mode remains an explicit NYI command until Phase 3.
+ * Tests compile mode publishes the default pair and optional retained C set.
  */
-func test_compile_mode_is_nyi() {
-    let target = "compiler/stage1_l0/tests/.tmp-compile-only";
-    let c_path = target + ".c";
-    let object_path = target + ".o";
-    let interface_path = target + ".l1m";
+func test_compile_mode_publishes_selected_artifact_sets() {
+    let stem = "compiler/stage1_l0/tests/.tmp-compile-only";
+    let c_path = stem + ".c";
+    let object_path = stem + ".o";
+    let interface_path = stem + ".l1m";
     rt_delete_file(c_path);
     rt_delete_file(object_path);
     rt_delete_file(interface_path);
 
-    with (let argv = sv_create(3) => sv_free(argv)) {
+    with (let argv = sv_create(8) => sv_free(argv)) {
         sv_push(argv, "-c");
-        sv_push(argv, target);
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "-o");
+        sv_push(argv, object_path);
+        sv_push(argv, "no_main");
         let rc = run_with_argv(argv);
-        assert(rc == 1, "-c should report NYI until Phase 3");
+        assert(rc == 0, "-c should publish a dependency-free module");
     }
 
-    with (let argv2 = sv_create(3) => sv_free(argv2)) {
-        sv_push(argv2, "--compile");
-        sv_push(argv2, target);
-        let rc2 = run_with_argv(argv2);
-        assert(rc2 == 1, "--compile should report NYI until Phase 3");
+    assert(!exists(c_path), "plain compile mode must not publish generated C");
+    assert(exists(object_path), "plain compile mode must publish a relocatable object");
+    assert(exists(interface_path), "plain compile mode must publish an interface");
+
+    rt_delete_file(object_path);
+    rt_delete_file(interface_path);
+
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "-c");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "-o");
+        sv_push(argv, object_path);
+        sv_push(argv, "no_main");
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "-c --keep-c should publish a dependency-free module");
     }
 
-    assert(!exists(c_path), "compile NYI path must not emit C");
-    assert(!exists(object_path), "compile NYI path must not emit an object");
-    assert(!exists(interface_path), "compile NYI path must not emit an interface");
+    assert(exists(c_path), "-c --keep-c must publish generated C");
+    assert(exists(object_path), "-c --keep-c must publish a relocatable object");
+    assert(exists(interface_path), "-c --keep-c must publish an interface");
+
+    rt_delete_file(c_path);
+    rt_delete_file(object_path);
+    rt_delete_file(interface_path);
 }
 
 /**
@@ -1412,7 +1432,7 @@ func test_run_trace_fixed_array_nested_return() {
  */
 func main() {
     test_check_ok();
-    test_compile_mode_is_nyi();
+    test_compile_mode_publishes_selected_artifact_sets();
     test_compile_bare_separator_is_cli_error();
     test_check_cycle_fails();
     test_check_semantic_failure();

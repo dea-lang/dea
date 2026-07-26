@@ -35,7 +35,7 @@
 - Related:
   - [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md][foundation]
   - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
-  - [l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
+  - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
   - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
   - [l1/docs/specs/compiler/module-interface-format.md][module-format]
   - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]
@@ -75,10 +75,10 @@ stable APIs to consume. It does not make `-c`, `--link`, `--build`, or `--run` o
    `DRV-0077` cover invalid module/artifact identity, invalid interface roots, missing required interfaces, unreadable
    selected interfaces, invalid interface UTF-8, and conflicting graph identity.
 7. Live docs and ADR-0014 now describe graph-backed replay, and ADR-0018 records the canonical artifact and graph
-   decision. Fingerprint verification subsequently landed in the [completed fingerprint plan][fingerprints]; object
-   metadata, artifact publication, standalone linking, and build/run fan-out remain owned by open successor plans.
-8. `-c` still exits with `L1C-9510`, standalone link mode is absent, and ordinary `--build` / `--run` remain
-   source-based single-CU operations.
+   decision. Fingerprint verification, object metadata, and compile-only publication subsequently landed in their
+   successor plans; standalone linking and build/run fan-out remain open.
+8. At this plan's completion, `-c` still exited with `L1C-9510`. The later compile-only plan made it operational;
+   standalone link mode is absent, and ordinary `--build` / `--run` remain source-based single-CU operations.
 
 ## Dependencies and ordering
 
@@ -97,8 +97,9 @@ stable APIs to consume. It does not make `-c`, `--link`, `--build`, or `--run` o
 
 1. A canonical dotted module name maps to a relative artifact stem by replacing each `.` separator with `/`. Module
    `foo.bar` therefore maps to `foo/bar` beneath a caller-selected artifact root.
-2. The canonical artifact set for that stem is `foo/bar.c`, `foo/bar.o`, and `foo/bar.l1m`. All three files are siblings
-   and identify the same module.
+2. The canonical artifact association for that stem is `foo/bar.c`, `foo/bar.o`, and `foo/bar.l1m`. All three paths are
+   siblings and identify the same module. The reusable set is `.o` plus `.l1m`; the associated `.c` may be absent and is
+   retained by compile-only only under `--keep-c`.
 3. An explicit compile-only `-o` path is the canonical object path. Replacing its final `.o` suffix with `.c` or `.l1m`
    selects the two companion paths. Plan implementation rejects an explicit output that is not a regular `.o` path; it
    does not guess from an extensionless or directory path.
@@ -106,8 +107,8 @@ stable APIs to consume. It does not make `-c`, `--link`, `--build`, or `--run` o
    compile-only and build/run plans own selection of their respective roots and creation of parent directories.
 5. Filesystem source paths, search-root spellings, and local import aliases never enter the artifact identity. The
    module header and graph keys use only the canonical dotted module name.
-6. This plan returns path values and associations only. Atomic publication of the three-file set belongs to the
-   [compile-only plan][compile-only].
+6. This plan returns path values and associations only. Publication with endpoint rollback for the selected output set
+   belongs to the [compile-only plan][compile-only].
 
 ### Source and interface precedence
 
@@ -251,7 +252,7 @@ CLI help explicit that `-c` remains reserved until the [compile-only plan][compi
 12. Focused normal and trace tests pass, followed by `make -C l1 test` for the completed implementation.
 13. Concrete new diagnostic assignments are registered in the shared catalog.
 
-[compile-only]: ../2026-07-17-compile-only-artifact-production-noref.md
+[compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [foundation]: 2026-04-24-separate-compilation-driver-surface-noref.md

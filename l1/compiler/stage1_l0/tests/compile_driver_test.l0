@@ -1,0 +1,492 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module compile_driver_test;
+
+import std.assert;
+import std.fs;
+import std.io;
+import std.vector;
+
+import cli_args;
+import compile_driver;
+import module_graph;
+import util.diag;
+import util.log;
+
+/** Return whether one diagnostic collector contains a requested code. */
+func cdt_has_code(diags: DiagCollector*, code: string) -> bool {
+    for (let i = 0; i < diag_count(diags); i = i + 1) {
+        if (diag_get(diags, i).code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Require one file to contain exact test text. */
+func cdt_assert_file_text(path: string, expected: string, context: string) {
+    let text = read_file(path);
+    assert(text != null, "expected readable file for " + context);
+    assert(text as string == expected, "unexpected file text for " + context);
+}
+
+/** Delete final artifacts left by one test case. */
+func cdt_delete_finals(artifacts: ModuleArtifactPaths*) {
+    delete_file(artifacts.c_path);
+    delete_file(artifacts.object_path);
+    delete_file(artifacts.interface_path);
+}
+
+/** Remove one known transaction directory left by an interrupted test. */
+func cdt_remove_stale_transaction(root: string) {
+    if (cd_path_kind(root) != CD_PATH_DIRECTORY) {
+        return;
+    }
+    let stale = cd_transaction_create(root);
+    cd_cleanup_transaction(stale);
+    cd_transaction_free(stale);
+}
+
+/** Return whether one prior-artifact mask contains a requested bit. */
+func cdt_prior_has(mask: int, bit: int) -> bool {
+    return (mask / bit) % 2 == 1;
+}
+
+/** Count selected prior artifacts represented by one three-bit mask. */
+func cdt_selected_prior_count(mask: int, publish_c: bool) -> int {
+    let count = 0;
+    if (publish_c && cdt_prior_has(mask, 1)) count = count + 1;
+    if (cdt_prior_has(mask, 2)) count = count + 1;
+    if (cdt_prior_has(mask, 4)) count = count + 1;
+    return count;
+}
+
+/** Require one final artifact to match its prior presence state. */
+func cdt_assert_prior(
+    path: string,
+    was_present: bool,
+    expected: string,
+    context: string
+) {
+    if (was_present) {
+        cdt_assert_file_text(path, expected, context);
+    } else {
+        assert(cd_path_kind(path) == CD_PATH_ABSENT,
+            "previously absent artifact should remain absent for " + context);
+    }
+}
+
+/** Prepare selected old final files and all new staged files. */
+func cdt_prepare_publication_case(
+    artifacts: ModuleArtifactPaths*,
+    root: string,
+    prior_mask: int
+) -> CompileTransaction* {
+    cdt_delete_finals(artifacts);
+    cdt_remove_stale_transaction(root);
+    assert(cd_path_kind(root) == CD_PATH_ABSENT, "transaction root should start absent");
+    assert(cd_mkdir(root, 448) == 1, "expected transaction directory creation");
+
+    let txn = cd_transaction_create(root);
+    if (cdt_prior_has(prior_mask, 1)) {
+        assert(write_file(artifacts.c_path, "old-c") != null, "expected old C fixture");
+    }
+    if (cdt_prior_has(prior_mask, 2)) {
+        assert(write_file(artifacts.object_path, "old-o") != null, "expected old object fixture");
+    }
+    if (cdt_prior_has(prior_mask, 4)) {
+        assert(write_file(artifacts.interface_path, "old-l1m") != null,
+            "expected old interface fixture");
+    }
+    assert(write_file(txn.staged_c, "new-c") != null, "expected staged C fixture");
+    assert(write_file(txn.staged_object, "new-o") != null, "expected staged object fixture");
+    assert(write_file(txn.staged_interface, "new-l1m") != null, "expected staged interface fixture");
+    return txn;
+}
+
+/** Verify object-only command construction never adds link inputs. */
+func test_object_compile_command_words() {
+    with (
+        let extra = sv_create(2) => sv_free(extra),
+        let words = sv_create(12) => sv_free(words)
+    ) {
+        sv_push(extra, "-DVALUE=1");
+        cd_push_object_compile_words(
+            words,
+            "custom-cc",
+            "unknown",
+            extra,
+            "-O2",
+            "runtime/include",
+            "module.c",
+            "module.o"
+        );
+
+        assert(sv_size(words) == 9, "unexpected object-only command size");
+        assert(sv_get(words, 0) == "custom-cc", "compiler word mismatch");
+        assert(sv_get(words, 1) == "-DVALUE=1", "extra option order mismatch");
+        assert(sv_get(words, 2) == "-O2", "optimization order mismatch");
+        assert(sv_get(words, 3) == "-I", "runtime include flag mismatch");
+        assert(sv_get(words, 4) == "runtime/include", "runtime include path mismatch");
+        assert(sv_get(words, 5) == "-c", "object-only flag mismatch");
+        assert(sv_get(words, 6) == "module.c", "object input mismatch");
+        assert(sv_get(words, 7) == "-o", "object output flag mismatch");
+        assert(sv_get(words, 8) == "module.o", "object output path mismatch");
+    }
+
+    with (
+        let empty = sv_create(1) => sv_free(empty),
+        let msvc = sv_create(8) => sv_free(msvc)
+    ) {
+        cd_push_object_compile_words(
+            msvc, "cl.exe", "msvc", empty, null, null, "module.c", "module.o");
+        assert(sv_get(msvc, sv_size(msvc) - 3) == "/c", "MSVC object-only flag mismatch");
+        assert(sv_get(msvc, sv_size(msvc) - 2) == "module.c", "MSVC object input mismatch");
+        assert(sv_get(msvc, sv_size(msvc) - 1) == "/Fo:module.o", "MSVC object output mismatch");
+    }
+}
+
+/** Verify explicit and default compile artifact resolution. */
+func test_compile_artifact_resolution() {
+    with (
+        let opts = cli_options_create() => cli_options_free(opts),
+        let diags = diag_create() => diag_free(diags)
+    ) {
+        opts.output = "build/demo.o";
+        let explicit = cd_resolve_artifacts(opts, "pkg.demo", diags);
+        assert(explicit != null, "expected explicit compile artifact paths");
+        let explicit_paths = explicit as ModuleArtifactPaths*;
+        assert(explicit_paths.c_path == "build/demo.c", "explicit C companion mismatch");
+        assert(explicit_paths.object_path == "build/demo.o", "explicit object path mismatch");
+        assert(explicit_paths.interface_path == "build/demo.l1m", "explicit interface companion mismatch");
+        mg_artifacts_free(explicit_paths);
+    }
+
+    with (
+        let opts2 = cli_options_create() => cli_options_free(opts2),
+        let diags2 = diag_create() => diag_free(diags2)
+    ) {
+        opts2.output = "build/demo.exe";
+        assert(cd_resolve_artifacts(opts2, "pkg.demo", diags2) == null,
+            "non-object compile output should fail");
+        assert(cdt_has_code(diags2, "L1C-2033"), "invalid compile output should report L1C-2033");
+    }
+
+    with (
+        let opts3 = cli_options_create() => cli_options_free(opts3),
+        let diags3 = diag_create() => diag_free(diags3)
+    ) {
+        opts3.output = "";
+        assert(cd_resolve_artifacts(opts3, "pkg.demo", diags3) == null,
+            "empty compile output should fail");
+        assert(cdt_has_code(diags3, "L1C-2033"),
+            "empty compile output should report L1C-2033");
+        assert(!cdt_has_code(diags3, "DRV-0072"),
+            "empty compile output should not reach generic artifact validation");
+    }
+
+    with (
+        let opts4 = cli_options_create() => cli_options_free(opts4),
+        let diags4 = diag_create() => diag_free(diags4)
+    ) {
+        opts4.output = "build/demo.o/";
+        assert(cd_resolve_artifacts(opts4, "pkg.demo", diags4) == null,
+            "slash-terminated compile output should fail");
+        assert(cdt_has_code(diags4, "L1C-2033"),
+            "slash-terminated compile output should report L1C-2033");
+        assert(!cdt_has_code(diags4, "DRV-0072"),
+            "slash-terminated compile output should not reach generic artifact validation");
+    }
+
+    with (
+        let opts5 = cli_options_create() => cli_options_free(opts5),
+        let diags5 = diag_create() => diag_free(diags5)
+    ) {
+        opts5.output = "build/demo.o\\";
+        assert(cd_resolve_artifacts(opts5, "pkg.demo", diags5) == null,
+            "backslash-terminated compile output should fail");
+        assert(cdt_has_code(diags5, "L1C-2033"),
+            "backslash-terminated compile output should report L1C-2033");
+        assert(!cdt_has_code(diags5, "DRV-0072"),
+            "backslash-terminated compile output should not reach generic artifact validation");
+    }
+}
+
+/** Verify a missing staged file reports the dedicated validation diagnostic. */
+func test_staged_validation_reports_2034() {
+    let artifacts = new ModuleArtifactPaths(
+        "compiler/stage1_l0/tests/.tmp-compile-driver.c",
+        "compiler/stage1_l0/tests/.tmp-compile-driver.o",
+        "compiler/stage1_l0/tests/.tmp-compile-driver.l1m"
+    );
+    let txn = cd_transaction_create(
+        "compiler/stage1_l0/tests/.tmp-compile-driver-missing-transaction");
+    let diags = diag_create();
+
+    assert(!cd_validate_staged(artifacts, txn, "fixture.module", "", diags),
+        "missing staged C should fail validation");
+    assert(cdt_has_code(diags, "L1C-2034"),
+        "staged validation failure should report L1C-2034");
+
+    diag_free(diags);
+    cd_transaction_free(txn);
+    mg_artifacts_free(artifacts);
+}
+
+/** Verify successful pair and triple publication preserve the selected contract. */
+func test_publication_success_for_pair_and_triple() {
+    let root = "compiler/stage1_l0/tests/.tmp-compile-driver-transaction";
+    let artifacts = new ModuleArtifactPaths(
+        "compiler/stage1_l0/tests/.tmp-compile-driver.c",
+        "compiler/stage1_l0/tests/.tmp-compile-driver.o",
+        "compiler/stage1_l0/tests/.tmp-compile-driver.l1m"
+    );
+    let cfg = log_config_create(LL_SILENT, false);
+
+    let pair_txn = cdt_prepare_publication_case(artifacts, root, 7);
+    let pair_diags = diag_create();
+    assert(cd_publish_artifacts(
+        artifacts, pair_txn, false, -1, -1, pair_diags, cfg),
+        "expected object/interface pair publication");
+    assert(!diag_has_errors(pair_diags), "successful pair publication should not emit diagnostics");
+    cdt_assert_file_text(artifacts.c_path, "old-c", "untouched C companion");
+    cdt_assert_file_text(artifacts.object_path, "new-o", "published object");
+    cdt_assert_file_text(artifacts.interface_path, "new-l1m", "published interface");
+    assert(cd_path_kind(root) == CD_PATH_ABSENT,
+        "successful pair publication should remove transaction root");
+    diag_free(pair_diags);
+    cd_transaction_free(pair_txn);
+
+    let triple_txn = cdt_prepare_publication_case(artifacts, root, 7);
+    let triple_diags = diag_create();
+    assert(cd_publish_artifacts(
+        artifacts, triple_txn, true, -1, -1, triple_diags, cfg),
+        "expected C/object/interface publication");
+    assert(!diag_has_errors(triple_diags),
+        "successful triple publication should not emit diagnostics");
+    cdt_assert_file_text(artifacts.c_path, "new-c", "published C");
+    cdt_assert_file_text(artifacts.object_path, "new-o", "published object");
+    cdt_assert_file_text(artifacts.interface_path, "new-l1m", "published interface");
+    assert(cd_path_kind(root) == CD_PATH_ABSENT,
+        "successful triple publication should remove transaction root");
+
+    drop cfg;
+    diag_free(triple_diags);
+    cd_transaction_free(triple_txn);
+    cdt_delete_finals(artifacts);
+    mg_artifacts_free(artifacts);
+}
+
+/** Verify every pair/triple publication rename failure restores prior artifacts. */
+func test_publication_failures_restore_previous_set() {
+    let root = "compiler/stage1_l0/tests/.tmp-compile-driver-transaction";
+    let artifacts = new ModuleArtifactPaths(
+        "compiler/stage1_l0/tests/.tmp-compile-driver.c",
+        "compiler/stage1_l0/tests/.tmp-compile-driver.o",
+        "compiler/stage1_l0/tests/.tmp-compile-driver.l1m"
+    );
+
+    let cfg = log_config_create(LL_SILENT, false);
+    for (let publish_c_ordinal = 0; publish_c_ordinal < 2;
+        publish_c_ordinal = publish_c_ordinal + 1) {
+        let publish_c = publish_c_ordinal == 1;
+        let published_count = 2;
+        if (publish_c) published_count = 3;
+        for (let prior_mask = 0; prior_mask < 8; prior_mask = prior_mask + 1) {
+            let rename_count =
+                cdt_selected_prior_count(prior_mask, publish_c) + published_count;
+            for (let fail_at = 0; fail_at < rename_count; fail_at = fail_at + 1) {
+                let txn = cdt_prepare_publication_case(artifacts, root, prior_mask);
+                let diags = diag_create();
+                assert(!cd_publish_artifacts(
+                    artifacts, txn, publish_c, fail_at, -1, diags, cfg),
+                    "injected publication rename should fail");
+                assert(cdt_has_code(diags, "L1C-2035"),
+                    "restored publication failure should report L1C-2035");
+                cdt_assert_prior(
+                    artifacts.c_path, cdt_prior_has(prior_mask, 1), "old-c",
+                    "restored or untouched C");
+                cdt_assert_prior(
+                    artifacts.object_path, cdt_prior_has(prior_mask, 2), "old-o",
+                    "restored object");
+                cdt_assert_prior(
+                    artifacts.interface_path, cdt_prior_has(prior_mask, 4), "old-l1m",
+                    "restored interface");
+                assert(cd_path_kind(root) == CD_PATH_ABSENT,
+                    "successful rollback should remove transaction root");
+                diag_free(diags);
+                cd_transaction_free(txn);
+            }
+        }
+    }
+    drop cfg;
+
+    cdt_delete_finals(artifacts);
+    mg_artifacts_free(artifacts);
+}
+
+/** Verify rollback failure retains recovery files and reports its distinct code. */
+func test_rollback_failure_retains_recovery_files() {
+    let root = "compiler/stage1_l0/tests/.tmp-compile-driver-transaction";
+    let artifacts = new ModuleArtifactPaths(
+        "compiler/stage1_l0/tests/.tmp-compile-driver.c",
+        "compiler/stage1_l0/tests/.tmp-compile-driver.o",
+        "compiler/stage1_l0/tests/.tmp-compile-driver.l1m"
+    );
+    let txn = cdt_prepare_publication_case(artifacts, root, 7);
+    let diags = diag_create();
+    let cfg = log_config_create(LL_SILENT, false);
+
+    assert(!cd_publish_artifacts(artifacts, txn, true, 3, 0, diags, cfg),
+        "injected rollback rename should fail publication");
+    assert(cdt_has_code(diags, "L1C-2036"), "rollback failure should report L1C-2036");
+    assert(cd_path_kind(root) == CD_PATH_DIRECTORY, "rollback failure should retain transaction root");
+    assert(cd_path_kind(txn.backup_interface) == CD_PATH_REGULAR,
+        "failed interface restore should retain its recovery file");
+    assert(cd_path_kind(artifacts.interface_path) == CD_PATH_ABSENT,
+        "failed interface restore should leave the destination absent");
+    cdt_assert_file_text(artifacts.c_path, "old-c", "partially recovered C");
+    cdt_assert_file_text(artifacts.object_path, "old-o", "partially recovered object");
+
+    assert(cd_rename_absent(txn.backup_interface, artifacts.interface_path) == 1,
+        "test cleanup should restore the retained interface backup");
+    assert(cd_cleanup_transaction(txn), "test cleanup should remove retained transaction files");
+    cdt_assert_file_text(artifacts.interface_path, "old-l1m", "manually recovered interface");
+
+    drop cfg;
+    diag_free(diags);
+    cd_transaction_free(txn);
+    cdt_delete_finals(artifacts);
+    mg_artifacts_free(artifacts);
+}
+
+/** Verify cleanup failure is checked while retained files remain recoverable. */
+func test_cleanup_failure_is_checked() {
+    let root = "compiler/stage1_l0/tests/.tmp-compile-driver-cleanup-transaction";
+    let artifacts = new ModuleArtifactPaths(
+        "compiler/stage1_l0/tests/.tmp-compile-driver-cleanup.c",
+        "compiler/stage1_l0/tests/.tmp-compile-driver-cleanup.o",
+        "compiler/stage1_l0/tests/.tmp-compile-driver-cleanup.l1m"
+    );
+    let extra = root + "/compiler-sidecar.tmp";
+    delete_file(extra);
+    cdt_remove_stale_transaction(root);
+
+    let txn = cdt_prepare_publication_case(artifacts, root, 7);
+    let diags = diag_create();
+    let cfg = log_config_create(LL_SILENT, false);
+    assert(write_file(extra, "sidecar") != null, "expected untracked compiler sidecar");
+    assert(cd_publish_artifacts(artifacts, txn, true, -1, -1, diags, cfg),
+        "cleanup failure should not invalidate committed final artifacts");
+    assert(!diag_has_errors(diags), "cleanup failure should not invent a public diagnostic");
+    assert(cd_path_kind(root) == CD_PATH_DIRECTORY,
+        "failed cleanup should retain the transaction directory");
+    cdt_assert_file_text(extra, "sidecar", "retained compiler sidecar");
+    cdt_assert_file_text(artifacts.c_path, "new-c", "committed C after cleanup failure");
+    cdt_assert_file_text(
+        artifacts.object_path, "new-o", "committed object after cleanup failure");
+    cdt_assert_file_text(
+        artifacts.interface_path, "new-l1m", "committed interface after cleanup failure");
+
+    assert(delete_file(extra) != null, "test cleanup should delete retained sidecar");
+    assert(cd_cleanup_transaction(txn), "test cleanup should remove transaction root");
+    drop cfg;
+    diag_free(diags);
+    cd_transaction_free(txn);
+    cdt_delete_finals(artifacts);
+    mg_artifacts_free(artifacts);
+}
+
+/**
+ * Verify cleanup retention does not misclassify a successful rollback.
+ */
+func test_rollback_cleanup_failure_keeps_restore_diagnostic() {
+    let root = "compiler/stage1_l0/tests/.tmp-compile-driver-rollback-cleanup-transaction";
+    let artifacts = new ModuleArtifactPaths(
+        "compiler/stage1_l0/tests/.tmp-compile-driver-rollback-cleanup.c",
+        "compiler/stage1_l0/tests/.tmp-compile-driver-rollback-cleanup.o",
+        "compiler/stage1_l0/tests/.tmp-compile-driver-rollback-cleanup.l1m"
+    );
+    let extra = root + "/compiler-sidecar.tmp";
+    delete_file(extra);
+    cdt_remove_stale_transaction(root);
+
+    let txn = cdt_prepare_publication_case(artifacts, root, 7);
+    let diags = diag_create();
+    let cfg = log_config_create(LL_SILENT, false);
+    assert(write_file(extra, "sidecar") != null, "expected rollback cleanup sidecar");
+    assert(!cd_publish_artifacts(artifacts, txn, true, 3, -1, diags, cfg),
+        "injected publication failure should roll back");
+    assert(cdt_has_code(diags, "L1C-2035"),
+        "successful restore should report L1C-2035 despite cleanup retention");
+    assert(!cdt_has_code(diags, "L1C-2036"),
+        "cleanup retention must not be reported as rollback failure");
+    cdt_assert_file_text(artifacts.c_path, "old-c", "restored C after cleanup failure");
+    cdt_assert_file_text(
+        artifacts.object_path, "old-o", "restored object after cleanup failure");
+    cdt_assert_file_text(
+        artifacts.interface_path, "old-l1m", "restored interface after cleanup failure");
+    assert(cd_path_kind(root) == CD_PATH_DIRECTORY,
+        "cleanup failure should retain the transaction root");
+    cdt_assert_file_text(extra, "sidecar", "retained rollback cleanup sidecar");
+
+    assert(delete_file(extra) != null, "test cleanup should delete rollback sidecar");
+    assert(cd_cleanup_transaction(txn), "test cleanup should remove rollback transaction root");
+    drop cfg;
+    diag_free(diags);
+    cd_transaction_free(txn);
+    cdt_delete_finals(artifacts);
+    mg_artifacts_free(artifacts);
+}
+
+/** Verify an existing transaction candidate is skipped and left untouched. */
+func test_transaction_collision_skips_existing_candidate() {
+    let parent_root = "compiler/stage1_l0/tests/.tmp-compile-driver-collision-parent";
+    let candidate0 = parent_root + "/.l1c-compile-4242-11-22-0";
+    let candidate1 = parent_root + "/.l1c-compile-4242-11-22-1";
+    let sentinel = candidate0 + "/sentinel";
+
+    delete_file(sentinel);
+    cdt_remove_stale_transaction(candidate0);
+    cdt_remove_stale_transaction(candidate1);
+    if (cd_path_kind(parent_root) == CD_PATH_DIRECTORY) {
+        assert(cd_remove_empty_dir(parent_root) == 1,
+            "test setup should remove stale collision parent");
+    }
+    assert(cd_mkdir(parent_root, 448) == 1, "expected collision parent directory");
+    assert(cd_mkdir(candidate0, 448) == 1, "expected pre-existing transaction candidate");
+    assert(write_file(sentinel, "untouched") != null, "expected collision sentinel");
+
+    let diags = diag_create();
+    let txn_opt = cd_create_transaction_for_identity(
+        parent_root, 4242, 11, 22, diags);
+    assert(txn_opt != null, "expected a later unique transaction candidate");
+    let txn = txn_opt as CompileTransaction*;
+    assert(txn.root == candidate1, "transaction creation should skip the existing candidate");
+    cdt_assert_file_text(sentinel, "untouched", "pre-existing transaction sentinel");
+    assert(cd_cleanup_transaction(txn), "new transaction candidate should cleanly remove");
+    cd_transaction_free(txn);
+
+    assert(delete_file(sentinel) != null, "test cleanup should delete collision sentinel");
+    cdt_remove_stale_transaction(candidate0);
+    assert(cd_remove_empty_dir(parent_root) == 1,
+        "test cleanup should remove collision parent");
+    diag_free(diags);
+}
+
+/** Run focused compile-driver unit and filesystem transaction coverage. */
+func main() {
+    test_object_compile_command_words();
+    test_compile_artifact_resolution();
+    test_staged_validation_reports_2034();
+    test_publication_success_for_pair_and_triple();
+    test_publication_failures_restore_previous_set();
+    test_rollback_failure_retains_recovery_files();
+    test_cleanup_failure_is_checked();
+    test_rollback_cleanup_failure_keeps_restore_diagnostic();
+    test_transaction_collision_skips_existing_candidate();
+    printl_s("compile_driver_test: all tests passed");
+}

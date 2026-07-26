@@ -279,28 +279,32 @@ diagnostic.
 | `L0C-2001` | `L1C-2001` | All     | Unknown command-line option                                                                            |
 | `L0C-2002` | `L1C-2002` | All     | Multiple conflicting mode flags were provided                                                          |
 | `L0C-2003` | `L1C-2003` | All     | Missing value for an option that requires an argument                                                  |
-| `L0C-2010` | `L1C-2010` | All     | '--output' is valid only with artifact modes: build/gen/run, plus L1 interface emission                |
-| `L0C-2011` | `L1C-2011` | All     | '--keep-c' is valid only with '--build' or '--run'                                                     |
-| `L0C-2012` | `L1C-2012` | All     | '--c-compiler' is valid only with '--build' or '--run'                                                 |
-| `L0C-2013` | `L1C-2013` | All     | '--c-options' is valid only with '--build' or '--run'                                                  |
-| `L0C-2014` | `L1C-2014` | All     | '--runtime-include' is valid only with '--build' or '--run'                                            |
+| `L0C-2010` | `L1C-2010` | All     | '--output' is valid only with artifact modes: build/gen/run, plus L1 compile and interface emission    |
+| `L0C-2011` | `L1C-2011` | All     | '--keep-c' is valid only with '--build' or '--run', plus L1 '--compile'                                |
+| `L0C-2012` | `L1C-2012` | All     | '--c-compiler' is valid only with '--build' or '--run', plus L1 '--compile'                            |
+| `L0C-2013` | `L1C-2013` | All     | '--c-options' is valid only with '--build' or '--run', plus L1 '--compile'                             |
+| `L0C-2014` | `L1C-2014` | All     | '--runtime-include' is valid only with '--build' or '--run', plus L1 '--compile'                       |
 | `L0C-2015` | `L1C-2015` | All     | '--runtime-lib' is valid only with '--build' or '--run'                                                |
-| `L0C-2016` | `L1C-2016` | All     | '--no-line-directives' is valid only with '--build', '--gen', or '--run'                               |
-| `L0C-2017` | `L1C-2017` | All     | '--trace-arc' is valid only with '--build', '--gen', or '--run'                                        |
-| `L0C-2018` | `L1C-2018` | All     | '--trace-memory' is valid only with '--build', '--gen', or '--run'                                     |
+| `L0C-2016` | `L1C-2016` | All     | '--no-line-directives' is valid with generated-C modes, including L1 '--compile'                       |
+| `L0C-2017` | `L1C-2017` | All     | '--trace-arc' is valid with generated-C modes, including L1 '--compile'                                |
+| `L0C-2018` | `L1C-2018` | All     | '--trace-memory' is valid with generated-C modes, including L1 '--compile'                             |
 | `L0C-2019` | `L1C-2019` | All     | '--all-modules' is valid only with '--ast', '--sym', '--tok', or '--type'                              |
 | `L0C-2020` | `L1C-2020` | All     | '--include-eof' is valid only with '--tok'                                                             |
 | `L0C-2021` | `L1C-2021` | All     | Missing required target module or file name                                                            |
 | `L0C-2022` | `L1C-2022` | All     | '--run' accepts exactly one target; use '--' before runtime program arguments                          |
 | `L0C-2023` | `L1C-2023` | All     | Arguments after '--' are valid only with '--run'                                                       |
 | `L0C-2024` | `L1C-2024` | All     | Multiple targets are not supported yet; pass exactly one target                                        |
-| `L0C-2025` | `L1C-2025` | All     | '--unchecked' is valid only with '--build', '--gen', or '--run'                                        |
+| `L0C-2025` | `L1C-2025` | All     | '--unchecked' is valid with generated-C modes, including L1 '--compile'                                |
 | `L0C-2026` | `L1C-2026` | All     | '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'                                |
-| `L0C-2027` | `L1C-2027` | All     | '--check-basic' is valid only with '--build', '--gen', or '--run'                                      |
+| `L0C-2027` | `L1C-2027` | All     | '--check-basic' is valid with generated-C modes, including L1 '--compile'                              |
 | `L0C-2028` | `L1C-2028` | All     | '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'              |
 |            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                 |
-| `L0C-2031` | `L1C-2031` | All     | Interface search paths are valid only with the reserved compile-only mode                              |
+| `L0C-2031` | `L1C-2031` | All     | Interface search paths are valid only with compile-only mode                                           |
 | `L0C-2032` | `L1C-2032` | All     | Recognized canonical driver option is reserved but its capability is not implemented yet               |
+|            | `L1C-2033` | L1 only | Invalid compile-only destination or destination parent                                                 |
+|            | `L1C-2034` | L1 only | Staged compile-only artifact validation failed                                                         |
+|            | `L1C-2035` | L1 only | Compile-only artifact publication failed and the previous artifact set was restored                    |
+|            | `L1C-2036` | L1 only | Compile-only artifact rollback failed and recovery files were retained                                 |
 | `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                    |
 | `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                            |
 | `L0C-9512` |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                            |

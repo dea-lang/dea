@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-07-22
+Version: 2026-07-26
 
 Status: Draft artifact contract
 
@@ -8,9 +8,9 @@ This document specifies the textual `.l1m` module interface artifact for the cur
 It defines the on-disk file shape, canonical declaration and fingerprint inputs, type/literal formatting rules,
 dependency manifests, verification, discovery, and transitive closure.
 
-This document does not make `.l1m` files normal user-facing compile inputs yet. `-c` remains gated without producing
-artifacts, while ordinary `--build` and `--run` flows remain source-based under
-[l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative].
+`.l1m` files are normal verified dependency inputs for L1 `-c` / `--compile`, which produces one source module's sibling
+`.o` and `.l1m` artifacts and optionally retains `.c` with `--keep-c`. Ordinary `--build` and `--run` flows remain
+source-based under [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative].
 
 ## Scope
 
@@ -301,7 +301,7 @@ This tranche does not define or implement:
 
 - object-metadata fingerprint embedding or readers
 - comparison of consumer expectations with provider-object records at link time
-- compile-only object output or transactional artifact publication
+- compile-only output-path publication or endpoint-rollback mechanics
 - provider-object linking, standalone linking, or build/run fan-out
 - package or library distribution layout
 

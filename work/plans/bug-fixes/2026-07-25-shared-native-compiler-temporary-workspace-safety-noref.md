@@ -14,7 +14,7 @@
   - L1 Stage 1 L0 bootstrap compiler
 - Origin: L0 Stage 2 self-hosted compiler
 - Porting rule: Settle the native workspace lifecycle in L0 Stage 2, then port it mechanically to L1 Stage 1 except
-  where L1-specific compiler boundaries require an intentional documented divergence.
+  where L1's implemented compile-only publication path requires an intentional documented divergence.
 - Target status:
   - L0 Stage 2 self-hosted compiler: Pending
   - L1 Stage 1 L0 bootstrap compiler: Pending
@@ -24,6 +24,7 @@
   - `l0/compiler/stage2_l0/support/compiler_filesystem.c` (new)
   - `l0/scripts/build_stage2_l0c.py`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
+  - `l1/compiler/stage1_l0/src/compile_driver.l0`
   - `l1/compiler/stage1_l0/support/interface_fingerprint.c`
 - Test modules:
   - `l0/compiler/stage2_l0/tests/build_driver_test.l0`
@@ -32,13 +33,14 @@
   - `l0/compiler/stage2_l0/tests/compiler_filesystem_support_test.py` (new)
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
-  - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py` (new)
+  - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_workspace_test.py` (new)
 - Related:
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-fix]
   - [`work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
-  - [`l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
+  - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
+  - [`l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`][publication-adr]
 - Repro: reserve or replace a path selected by `bd_temp_stem()` after its `exists()` checks but before the native
   compiler creates generated C, compiler captures, side artifacts, or a run executable
 
@@ -50,10 +52,10 @@ unchecked fallback after collision exhaustion, and cannot contain host-compiler 
 invocation-owned directory.
 
 The completed [L0 Stage 1 fix][stage1-fix] removed the demonstrated Python `mktemp()` defect, validates the resolved
-POSIX temporary-directory trust chain, and makes anonymous-source cleanup failure result-bearing. The separate
-[L1 compile-only plan][compile-only] defines its own output-local publication path and is not blocked by this work, but
-native `--build` and `--run` still use `bd_temp_stem()`. This plan remains open until both native targets validate their
-temporary parent and use an atomically reserved private workspace with bounded, tested cleanup.
+POSIX temporary-directory trust chain, and makes anonymous-source cleanup failure result-bearing. L1 compile-only is
+independently protected by its output-local transaction directory and endpoint rollback, but native `--build` and
+`--run` still use `bd_temp_stem()`. This plan remains open until both native targets validate their temporary parent and
+use an atomically reserved private workspace with bounded, tested cleanup.
 
 ## Dependencies and Ownership
 
@@ -61,8 +63,8 @@ temporary parent and use an atomically reserved private workspace with bounded, 
    translation unit. `l0/scripts/build_stage2_l0c.py` must pass that unit through structured `--c-source`, not inject
    its path into whitespace-split `L0_CFLAGS`.
 2. This plan owns the native L0 Stage 2 and L1 Stage 1 build/run workspace lifecycle.
-3. The separate [L1 compile-only plan][compile-only] owns its same-parent staging, publication, rollback, and recovery
-   design and is explicitly non-blocking for this plan.
+3. The completed [L1 compile-only plan][compile-only] owns its same-parent staging and endpoint-rollback publication
+   path and remains explicitly separate from this plan.
 4. L1 build/run multi-translation-unit fan-out must use the workspace lifecycle settled here rather than define another
    temporary-root policy.
 
@@ -91,8 +93,8 @@ temporary parent and use an atomically reserved private workspace with bounded, 
    idempotent cleanup path.
 8. A workspace that cannot be cleaned completely is retained and reported with enough location information for manual
    inspection; cleanup never follows a substituted symlink or reparse-point directory.
-9. L1 compile-only keeps the separate same-parent staging, publication, rollback, and recovery semantics defined by its
-   feature plan rather than being routed through the global native build/run workspace.
+9. L1 compile-only keeps its existing same-parent staging, sequential publication, endpoint rollback, and recovery
+   semantics rather than being routed through the global native build/run workspace.
 
 ## Implementation Approach
 
@@ -105,8 +107,8 @@ temporary parent and use an atomically reserved private workspace with bounded, 
    through that workspace.
 4. Make cleanup state explicit and idempotent. Remove only known regular children and the empty owned directory; retain
    and report unexpected contents instead of recursively deleting them.
-5. Port the settled lifecycle to L1 Stage 1, reusing its existing compiler-support translation unit where appropriate
-   without adding a public Dea runtime or standard-library API.
+5. Port the settled lifecycle to L1 Stage 1, reusing its existing compiler filesystem support translation unit where
+   appropriate without adding a public Dea runtime or standard-library API.
 6. Update native driver tests with deterministic collision, substitution, partial-setup, compiler-failure,
    launch-failure, cleanup-failure, and no-leftover coverage on POSIX and the supported MinGW environment.
 
@@ -135,7 +137,8 @@ fix.
 
 ## Non-Goals
 
-1. Changing compile-only artifact publication or the boundary defined by its feature plan.
+1. Changing compile-only artifact publication, endpoint rollback, or its trusted-parent and external-serialization
+   boundary.
 2. Defending caller-selected retained-output directories from hostile mutation during an invocation.
 3. Simultaneous writers to the same public artifact stem, locking, crash recovery, `SIGKILL`, power-loss guarantees, or
    `fsync` durability.
@@ -162,6 +165,7 @@ fix.
 10. `make -C l0 test-all`, `make -C l1 test-all`, and root `make test-all` pass before the plan closes.
 
 [build-run]: ../../../l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
-[compile-only]: ../../../l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md
+[compile-only]: ../../../l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[publication-adr]: ../../../l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md
 [stage1-fix]: ../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md
 [structured-input]: 2026-07-21-shared-structured-c-source-input-noref.md

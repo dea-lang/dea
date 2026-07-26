@@ -1,0 +1,844 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module compile_driver;
+
+import sys.rt;
+
+import std.fs;
+import std.path;
+import std.string;
+import std.system;
+import std.text;
+import std.time;
+import std.vector;
+import util.diag;
+import util.log;
+
+import analysis;
+import backend;
+import build_driver;
+import cli_args;
+import codegen_options;
+import diag_print;
+import interface_fingerprint;
+import mi_utils;
+import module_graph;
+import module_interface;
+import object_reader;
+import parser.interface;
+import sem_context;
+
+/*
+ * This ABI is compiler-internal.  Its implementation lives in the existing
+ * L1 compiler-support translation unit, not in the Dea runtime or stdlib.
+ */
+extern func l1c_fs_mkdir(path: byte*, path_len: int, mode: int) -> int;
+extern func l1c_fs_path_kind_nofollow(path: byte*, path_len: int) -> int;
+extern func l1c_fs_rename_absent(
+    source: byte*,
+    source_len: int,
+    destination: byte*,
+    destination_len: int
+) -> int;
+extern func l1c_fs_remove_empty_dir(path: byte*, path_len: int) -> int;
+
+/** No filesystem object exists at the path. */
+let CD_PATH_ABSENT: int = 0;
+/** A regular file exists at the path. */
+let CD_PATH_REGULAR: int = 1;
+/** A directory exists at the path. */
+let CD_PATH_DIRECTORY: int = 2;
+/** A symlink, reparse point, or other unsupported object exists at the path. */
+let CD_PATH_OTHER: int = 3;
+
+/** Paths owned by one compile-only transaction directory. */
+struct CompileTransaction {
+    root: string;
+    staged_c: string;
+    staged_object: string;
+    staged_interface: string;
+    backup_c: string;
+    backup_object: string;
+    backup_interface: string;
+    compiler_stdout: string;
+    compiler_stderr: string;
+}
+
+/** Mutable state for a publication attempt. */
+struct CompilePublicationState {
+    backup_c: bool;
+    backup_object: bool;
+    backup_interface: bool;
+    published_c: bool;
+    published_object: bool;
+    published_interface: bool;
+}
+
+/** Rename fault-injection state used by focused transaction tests. */
+struct CompileRenameState {
+    ordinal: int;
+    fail_at: int;
+}
+
+/** Release one transaction-path bundle. */
+func cd_transaction_free(self: CompileTransaction*) {
+    drop self;
+}
+
+/** Emit one compile-driver error without source coordinates. */
+func cd_error(diags: DiagCollector*, code: string, message: string, path: string) {
+    diag_error(diags, "l1c", code, message, path, 0, 0, 0, 0);
+}
+
+/** Call the compiler-internal no-follow path classifier. */
+func cd_path_kind(path: string) -> int {
+    return l1c_fs_path_kind_nofollow(rt_string_bytes_ptr(path), len_s(path));
+}
+
+/** Create one directory using the compiler-internal raw-byte ABI. */
+func cd_mkdir(path: string, mode: int) -> int {
+    return l1c_fs_mkdir(rt_string_bytes_ptr(path), len_s(path), mode);
+}
+
+/** Rename one path only when the destination is absent. */
+func cd_rename_absent(source: string, destination: string) -> int {
+    return l1c_fs_rename_absent(
+        rt_string_bytes_ptr(source),
+        len_s(source),
+        rt_string_bytes_ptr(destination),
+        len_s(destination)
+    );
+}
+
+/** Remove one empty directory through the compiler-internal ABI. */
+func cd_remove_empty_dir(path: string) -> int {
+    return l1c_fs_remove_empty_dir(rt_string_bytes_ptr(path), len_s(path));
+}
+
+/**
+ * Create a directory and all missing lexical parents.
+ *
+ * Existing directory aliases are trusted and followed using `std.fs`
+ * semantics.  Missing components are still classified without following
+ * symlinks or reparse points before they are created.
+ */
+func cd_ensure_directory(path: string, diags: DiagCollector*) -> bool {
+    if (std.fs::is_dir(path)) {
+        return true;
+    }
+
+    let kind = cd_path_kind(path);
+    if (kind < 0) {
+        cd_error(diags, "L1C-2033", "cannot inspect compile output parent: " + path, path);
+        return false;
+    }
+    if (kind != CD_PATH_ABSENT) {
+        cd_error(diags, "L1C-2033", "compile output parent is not a directory: " + path, path);
+        return false;
+    }
+
+    let ancestor = parent(path);
+    if (ancestor == path) {
+        cd_error(diags, "L1C-2033", "cannot create compile output parent: " + path, path);
+        return false;
+    }
+    if (!cd_ensure_directory(ancestor, diags)) {
+        return false;
+    }
+
+    /* 0777, filtered by the process umask. */
+    let created = cd_mkdir(path, 511);
+    if (created == 1) {
+        return true;
+    }
+    if (created == 0 && std.fs::is_dir(path)) {
+        return true;
+    }
+    cd_error(diags, "L1C-2033", "cannot create compile output parent: " + path, path);
+    return false;
+}
+
+/** Validate one final artifact destination. */
+func cd_validate_destination(path: string, diags: DiagCollector*) -> bool {
+    let kind = cd_path_kind(path);
+    if (kind == CD_PATH_ABSENT || kind == CD_PATH_REGULAR) {
+        return true;
+    }
+    if (kind < 0) {
+        cd_error(diags, "L1C-2033", "cannot inspect compile artifact destination: " + path, path);
+    } else {
+        cd_error(diags, "L1C-2033",
+            "compile artifact destination is not absent or a regular file: " + path, path);
+    }
+    return false;
+}
+
+/** Validate the common parent and selected final destinations. */
+func cd_prepare_destinations(
+    artifacts: ModuleArtifactPaths*,
+    publish_c: bool,
+    diags: DiagCollector*
+) -> bool {
+    let output_parent = parent(artifacts.object_path);
+    if (!cd_ensure_directory(output_parent, diags)) {
+        return false;
+    }
+    let ok = true;
+    if (publish_c && !cd_validate_destination(artifacts.c_path, diags)) {
+        ok = false;
+    }
+    if (!cd_validate_destination(artifacts.object_path, diags)) {
+        ok = false;
+    }
+    if (!cd_validate_destination(artifacts.interface_path, diags)) {
+        ok = false;
+    }
+    return ok;
+}
+
+/** Construct the fixed paths inside a newly created transaction directory. */
+func cd_transaction_create(root: string) -> CompileTransaction* {
+    return new CompileTransaction(
+        root,
+        join(root, "staged.c"),
+        join(root, "staged.o"),
+        join(root, "staged.l1m"),
+        join(root, "previous.c"),
+        join(root, "previous.o"),
+        join(root, "previous.l1m"),
+        join(root, "compiler.stdout"),
+        join(root, "compiler.stderr")
+    );
+}
+
+/**
+ * Create an exclusive hidden transaction directory for one identity tuple.
+ *
+ * Keeping the identity components explicit gives focused tests a deterministic
+ * way to prove that a pre-existing candidate is skipped rather than reused.
+ */
+func cd_create_transaction_for_identity(
+    output_parent: string,
+    pid: int,
+    sec: int,
+    nsec: int,
+    diags: DiagCollector*
+) -> CompileTransaction*? {
+    for (let attempt = 0; attempt < 100; attempt = attempt + 1) {
+        let name = ".l1c-compile-" + int_to_string(pid) + "-" +
+            int_to_string(sec) + "-" + int_to_string(nsec) + "-" +
+            int_to_string(attempt);
+        let root = join(output_parent, name);
+        /* POSIX 0700; MinGW inherits access control from the trusted parent. */
+        let created = cd_mkdir(root, 448);
+        if (created == 1) {
+            return cd_transaction_create(root);
+        }
+        if (created < 0) {
+            cd_error(diags, "L1C-9511",
+                "cannot create compile transaction directory: " + root, root);
+            return null;
+        }
+    }
+
+    cd_error(diags, "L1C-9511",
+        "cannot create a unique compile transaction directory under: " + output_parent,
+        output_parent);
+    return null;
+}
+
+/** Create an exclusive hidden transaction directory beside the final set. */
+func cd_create_transaction(output_parent: string, diags: DiagCollector*) -> CompileTransaction*? {
+    let pid = get_pid();
+    let sec = 0;
+    let nsec = 0;
+    let now_opt = wall_now();
+    if (now_opt != null) {
+        let now = now_opt as WallTime;
+        sec = now.sec;
+        nsec = now.nsec;
+    }
+    return cd_create_transaction_for_identity(output_parent, pid, sec, nsec, diags);
+}
+
+/** Delete a regular transaction file when present. */
+func cd_delete_if_present(path: string) -> bool {
+    let kind = cd_path_kind(path);
+    if (kind == CD_PATH_ABSENT) {
+        return true;
+    }
+    if (kind != CD_PATH_REGULAR) {
+        return false;
+    }
+    return delete_file(path) != null;
+}
+
+/**
+ * Remove all known transaction files and then its empty directory.
+ *
+ * Deliberately avoid recursive deletion: an unexpected compiler side artifact
+ * makes empty-directory removal fail, after which checked cleanup reports and
+ * retains the transaction path for inspection.
+ */
+func cd_cleanup_transaction(txn: CompileTransaction*) -> bool {
+    let ok = cd_delete_if_present(txn.staged_c);
+    if (!cd_delete_if_present(txn.staged_object)) ok = false;
+    if (!cd_delete_if_present(txn.staged_interface)) ok = false;
+    if (!cd_delete_if_present(txn.backup_c)) ok = false;
+    if (!cd_delete_if_present(txn.backup_object)) ok = false;
+    if (!cd_delete_if_present(txn.backup_interface)) ok = false;
+    if (!cd_delete_if_present(txn.compiler_stdout)) ok = false;
+    if (!cd_delete_if_present(txn.compiler_stderr)) ok = false;
+    if (cd_remove_empty_dir(txn.root) != 1) ok = false;
+    return ok;
+}
+
+/**
+ * Clean one transaction and surface retained files through the ordinary log.
+ *
+ * Cleanup after a committed publication cannot invalidate the verified final
+ * artifacts, so this operational failure does not invent a new public
+ * diagnostic or change the compile result.
+ */
+func cd_cleanup_transaction_checked(txn: CompileTransaction*, cfg: LogConfig*) -> bool {
+    if (cd_cleanup_transaction(txn)) {
+        return true;
+    }
+    log_error(cfg, "compile transaction cleanup failed; retained files in " + txn.root);
+    return false;
+}
+
+/** Invoke a rename, optionally failing one exact ordinal for focused tests. */
+func cd_testable_rename(state: CompileRenameState*, source: string, destination: string) -> int {
+    let ordinal = state.ordinal;
+    state.ordinal = state.ordinal + 1;
+    if (ordinal == state.fail_at) {
+        return -1;
+    }
+    return cd_rename_absent(source, destination);
+}
+
+/** Back up one existing final destination. */
+func cd_backup_one(
+    rename_state: CompileRenameState*,
+    final_path: string,
+    backup_path: string,
+    should_backup: bool
+) -> bool {
+    if (!should_backup) {
+        return true;
+    }
+    if (cd_testable_rename(rename_state, final_path, backup_path) != 1) {
+        return false;
+    }
+    return true;
+}
+
+/** Publish one staged artifact into an absent final destination. */
+func cd_publish_one(
+    rename_state: CompileRenameState*,
+    staged_path: string,
+    final_path: string
+) -> bool {
+    if (cd_testable_rename(rename_state, staged_path, final_path) != 1) {
+        return false;
+    }
+    return true;
+}
+
+/** Undo one publication step and restore its backup when present. */
+func cd_rollback_one(
+    rename_state: CompileRenameState*,
+    published: bool,
+    backed_up: bool,
+    final_path: string,
+    backup_path: string
+) -> bool {
+    let ok = true;
+    if (published && !cd_delete_if_present(final_path)) {
+        ok = false;
+    }
+    if (backed_up && cd_testable_rename(rename_state, backup_path, final_path) != 1) {
+        ok = false;
+    }
+    return ok;
+}
+
+/** Roll back in reverse publication order. */
+func cd_rollback_publication(
+    artifacts: ModuleArtifactPaths*,
+    txn: CompileTransaction*,
+    state: CompilePublicationState*,
+    publish_c: bool,
+    fail_rename_at: int
+) -> bool {
+    let rename_state = new CompileRenameState(0, fail_rename_at);
+    let ok = cd_rollback_one(
+        rename_state,
+        state.published_interface,
+        state.backup_interface,
+        artifacts.interface_path,
+        txn.backup_interface
+    );
+    if (!cd_rollback_one(
+        rename_state,
+        state.published_object,
+        state.backup_object,
+        artifacts.object_path,
+        txn.backup_object
+    )) {
+        ok = false;
+    }
+    if (publish_c) {
+        if (!cd_rollback_one(
+            rename_state,
+            state.published_c,
+            state.backup_c,
+            artifacts.c_path,
+            txn.backup_c
+        )) {
+            ok = false;
+        }
+    }
+    drop rename_state;
+    return ok;
+}
+
+/**
+ * Publish a verified staged artifact set.
+ *
+ * The failure ordinals are `-1` in production and are exposed only so the
+ * focused L0 transaction test can deterministically cover every rename and a
+ * rollback failure without a public CLI test hook.
+ */
+func cd_publish_artifacts(
+    artifacts: ModuleArtifactPaths*,
+    txn: CompileTransaction*,
+    publish_c: bool,
+    fail_publish_rename_at: int,
+    fail_rollback_rename_at: int,
+    diags: DiagCollector*,
+    cfg: LogConfig*
+) -> bool {
+    let state = new CompilePublicationState(false, false, false, false, false, false);
+    let rename_state = new CompileRenameState(0, fail_publish_rename_at);
+
+    let existing_c = false;
+    if (publish_c) {
+        existing_c = cd_path_kind(artifacts.c_path) == CD_PATH_REGULAR;
+    }
+    let existing_object = cd_path_kind(artifacts.object_path) == CD_PATH_REGULAR;
+    let existing_interface = cd_path_kind(artifacts.interface_path) == CD_PATH_REGULAR;
+
+    let published = true;
+    if (publish_c) {
+        if (!cd_backup_one(
+            rename_state, artifacts.c_path, txn.backup_c, existing_c)) {
+            published = false;
+        } else {
+            state.backup_c = existing_c;
+        }
+    }
+    if (published && !cd_backup_one(
+        rename_state, artifacts.object_path, txn.backup_object, existing_object)) {
+        published = false;
+    } else if (published) {
+        state.backup_object = existing_object;
+    }
+    if (published && !cd_backup_one(
+        rename_state, artifacts.interface_path, txn.backup_interface, existing_interface)) {
+        published = false;
+    } else if (published) {
+        state.backup_interface = existing_interface;
+    }
+    if (published && publish_c) {
+        if (!cd_publish_one(rename_state, txn.staged_c, artifacts.c_path)) {
+            published = false;
+        } else {
+            state.published_c = true;
+        }
+    }
+    if (published && !cd_publish_one(
+        rename_state, txn.staged_object, artifacts.object_path)) {
+        published = false;
+    } else if (published) {
+        state.published_object = true;
+    }
+    /* The verified interface is deliberately the final visible replacement. */
+    if (published && !cd_publish_one(
+        rename_state, txn.staged_interface, artifacts.interface_path)) {
+        published = false;
+    } else if (published) {
+        state.published_interface = true;
+    }
+    drop rename_state;
+
+    if (!published) {
+        let restored = cd_rollback_publication(
+            artifacts, txn, state, publish_c, fail_rollback_rename_at);
+        drop state;
+        if (restored) {
+            cd_cleanup_transaction_checked(txn, cfg);
+            cd_error(diags, "L1C-2035",
+                "compile artifact publication failed; the previous artifact set was restored",
+                artifacts.object_path);
+        } else {
+            cd_error(diags, "L1C-2036",
+                "compile artifact rollback failed; recovery files were retained in " + txn.root,
+                txn.root);
+        }
+        return false;
+    }
+
+    drop state;
+    /*
+     * Backups are no longer needed after the interface rename commits the set.
+     * Cleanup failures cannot invalidate the verified final artifacts.
+     */
+    cd_cleanup_transaction_checked(txn, cfg);
+    return true;
+}
+
+/** Add compile-only host-compiler words without any link inputs or flags. */
+func cd_push_object_compile_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    extra_opts: StringVector*,
+    optimize: string?,
+    runtime_include: string?,
+    c_path: string,
+    object_path: string
+) {
+    sv_push(words, compiler);
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        sv_push(words, sv_get(extra_opts, i));
+    }
+    bd_push_standard_flags(words, family);
+    if (optimize != null) {
+        sv_push(words, optimize as string);
+    }
+    if (runtime_include != null) {
+        sv_push(words, "-I");
+        sv_push(words, runtime_include as string);
+    }
+
+    if (family == "msvc") {
+        sv_push(words, "/c");
+        sv_push(words, c_path);
+        sv_push(words, "/Fo:" + object_path);
+        return;
+    }
+    sv_push(words, "-c");
+    sv_push(words, c_path);
+    sv_push(words, "-o");
+    sv_push(words, object_path);
+}
+
+/** Report a staged validation failure and return `false`. */
+func cd_staged_invalid(diags: DiagCollector*, path: string, reason: string) -> bool {
+    cd_error(diags, "L1C-2034", "staged compile artifact validation failed: " + reason, path);
+    return false;
+}
+
+/** Verify staged file kinds plus interface/object identity agreement. */
+func cd_validate_staged(
+    artifacts: ModuleArtifactPaths*,
+    txn: CompileTransaction*,
+    entry_module: string,
+    expected_interface_text: string,
+    diags: DiagCollector*
+) -> bool {
+    if (cd_path_kind(txn.staged_c) != CD_PATH_REGULAR) {
+        return cd_staged_invalid(diags, txn.staged_c, "generated C is not a regular file");
+    }
+    if (cd_path_kind(txn.staged_object) != CD_PATH_REGULAR) {
+        return cd_staged_invalid(diags, txn.staged_object, "compiled object is not a regular file");
+    }
+    if (cd_path_kind(txn.staged_interface) != CD_PATH_REGULAR) {
+        return cd_staged_invalid(diags, txn.staged_interface, "interface is not a regular file");
+    }
+
+    let interface_text_opt = read_file(txn.staged_interface);
+    if (interface_text_opt == null || interface_text_opt as string != expected_interface_text) {
+        return cd_staged_invalid(diags, txn.staged_interface,
+            "interface bytes differ from the verified in-memory projection");
+    }
+    let interface_text = interface_text_opt as string;
+    let parsed = pi_parse_interface(interface_text, txn.staged_interface);
+    if (ipr_has_errors(parsed) || parsed.interface == null) {
+        ipr_free(parsed);
+        return cd_staged_invalid(diags, txn.staged_interface,
+            "generated interface cannot be parsed");
+    }
+    let staged_interface = parsed.interface as ModuleInterface*;
+    if (staged_interface.module_name != entry_module ||
+        !ifp_verify(staged_interface, diags, txn.staged_interface)) {
+        ipr_free(parsed);
+        return cd_staged_invalid(diags, txn.staged_interface,
+            "generated interface identity or fingerprint is invalid");
+    }
+
+    let object_result = object_inspect_path(txn.staged_object);
+    if (object_result.error != null || object_result.inspection == null) {
+        object_inspection_result_free(object_result);
+        ipr_free(parsed);
+        return cd_staged_invalid(diags, txn.staged_object,
+            "host compiler did not produce a supported relocatable object");
+    }
+    let inspection = object_result.inspection as ObjectInspection*;
+    if (ord(inspection.metadata.kind) != ord(VALID_DEA_METADATA) ||
+        inspection.metadata.valid == null) {
+        object_inspection_result_free(object_result);
+        ipr_free(parsed);
+        return cd_staged_invalid(diags, txn.staged_object,
+            "object does not contain valid Dea module metadata");
+    }
+    let metadata = inspection.metadata.valid as ValidDeaMetadata*;
+    let agrees = metadata.module_name == entry_module &&
+        metadata.fingerprint == staged_interface.fingerprint;
+    object_inspection_result_free(object_result);
+    ipr_free(parsed);
+    if (!agrees) {
+        return cd_staged_invalid(diags, txn.staged_object,
+            "object metadata disagrees with the generated interface");
+    }
+    return true;
+}
+
+/** Compile and publish one already analyzed source module. */
+func cd_compile_analyzed(
+    opts: CliOptions*,
+    cfg: LogConfig*,
+    result: AnalysisResult*,
+    entry_module: string,
+    artifacts: ModuleArtifactPaths*,
+    diags: DiagCollector*
+) -> int {
+    let interface_text_opt = analysis_emit_interface(result, entry_module);
+    if (interface_text_opt == null) {
+        if (!analysis_has_errors(result)) {
+            cd_error(diags, "L1C-2030",
+                "failed to project interface for module '" + entry_module + "'", "");
+            dp_print_collector(diags);
+        } else {
+            dp_print_collector_with_sources(
+                result.diags, analysis_source_names(result), analysis_source_texts(result));
+        }
+        return 1;
+    }
+    let interface_text = interface_text_opt as string;
+
+    with (
+        let cg_opts = cg_options_create() => cg_options_free(cg_opts),
+        let env_opts = sv_create(4) => sv_free(env_opts),
+        let cli_opts = sv_create(4) => sv_free(cli_opts),
+        let extra_opts = sv_create(4) => sv_free(extra_opts),
+        let command_words = sv_create(16) => sv_free(command_words)
+    ) {
+        bd_append_c_option_words(env_opts, env_get("L1_CFLAGS"));
+        bd_append_c_option_words(cli_opts, opts.c_options);
+        for (let i = 0; i < sv_size(env_opts); i = i + 1) {
+            sv_push(extra_opts, sv_get(env_opts, i));
+        }
+        for (let i2 = 0; i2 < sv_size(cli_opts); i2 = i2 + 1) {
+            sv_push(extra_opts, sv_get(cli_opts, i2));
+        }
+        if (!bd_validate_float_c_options(result, extra_opts, diags)) {
+            dp_print_collector(diags);
+            return 1;
+        }
+
+        cg_opts.emit_line_directives = !opts.no_line_directives;
+        cg_opts.trace_arc = opts.trace_arc;
+        cg_opts.trace_memory = opts.trace_memory;
+        cg_opts.rt_unchecked = opts.unchecked;
+        cg_opts.rt_check_basic = opts.check_basic;
+        let c_code = backend_generate_module(result, entry_module, cg_opts, cfg);
+
+        let compiler_opt = bd_take_c_compiler(opts);
+        if (compiler_opt == null) {
+            cd_error(diags, "L1C-0009",
+                "no C compiler found: use '--c-compiler' to specify one or set the L1_CC environment variable",
+                "");
+            dp_print_collector(diags);
+            return 1;
+        }
+        let compiler = compiler_opt as string;
+        compiler_opt = null;
+        let family = bd_compiler_flag_family(compiler);
+        let optimize = bd_get_optimize_flag(family, extra_opts);
+
+        log_info(cfg, "Using C compiler: " + compiler);
+        log_info(cfg, "Detected compiler flag family: " + family);
+        if (sv_size(env_opts) > 0) {
+            log_info(cfg, "C compiler options from $L1_CFLAGS: " + bd_format_word_list(env_opts));
+        }
+        if (sv_size(cli_opts) > 0) {
+            log_info(cfg, "C compiler options from --c-options: " + bd_format_word_list(cli_opts));
+        }
+        if (sv_size(extra_opts) > 0) {
+            log_info(cfg, "Extra C compiler options: " + bd_format_word_list(extra_opts));
+        }
+        if (family == "unknown") {
+            log_warning(cfg, "Unsupported compiler '" + compiler +
+                "' (flag family '" + family + "'): not adding standard flags");
+        }
+        if (optimize != null) {
+            log_info(cfg, "Adding optimization flag: " + optimize as string);
+        }
+
+        let txn_opt = cd_create_transaction(parent(artifacts.object_path), diags);
+        if (txn_opt == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let txn = txn_opt as CompileTransaction*;
+
+        if (write_file(txn.staged_c, c_code) == null) {
+            cd_error(diags, "L1C-9511", "cannot write output file: " + txn.staged_c, txn.staged_c);
+            dp_print_collector(diags);
+            cd_cleanup_transaction_checked(txn, cfg);
+            cd_transaction_free(txn);
+            return 1;
+        }
+        if (write_file(txn.staged_interface, interface_text) == null) {
+            cd_error(diags, "L1C-9511",
+                "cannot write output file: " + txn.staged_interface, txn.staged_interface);
+            dp_print_collector(diags);
+            cd_cleanup_transaction_checked(txn, cfg);
+            cd_transaction_free(txn);
+            return 1;
+        }
+
+        cd_push_object_compile_words(
+            command_words,
+            compiler,
+            family,
+            extra_opts,
+            optimize,
+            bd_runtime_include_dir(opts),
+            txn.staged_c,
+            txn.staged_object
+        );
+        log_info(cfg, "Compiling module object:");
+        log_info(cfg, bd_join_display_words(command_words));
+        let compile_cmd = bd_join_shell_words(command_words) + " > " +
+            bd_shell_quote(txn.compiler_stdout) + " 2> " +
+            bd_shell_quote(txn.compiler_stderr);
+        let compile_rc = system(compile_cmd);
+        let compile_failed = compile_rc != 0;
+        if (compile_failed) {
+            cd_error(diags, "L1C-0010", "C compilation failed:", "");
+            dp_print_collector(diags);
+        }
+        bd_replay_compile_output(
+            cfg, txn.compiler_stdout, txn.compiler_stderr, compile_failed);
+        cd_delete_if_present(txn.compiler_stdout);
+        cd_delete_if_present(txn.compiler_stderr);
+        if (compile_failed) {
+            cd_cleanup_transaction_checked(txn, cfg);
+            cd_transaction_free(txn);
+            return 1;
+        }
+
+        if (!cd_validate_staged(
+            artifacts, txn, entry_module, interface_text, diags)) {
+            dp_print_collector(diags);
+            cd_cleanup_transaction_checked(txn, cfg);
+            cd_transaction_free(txn);
+            return 1;
+        }
+        if (!cd_publish_artifacts(
+            artifacts, txn, opts.keep_c, -1, -1, diags, cfg)) {
+            dp_print_collector(diags);
+            cd_transaction_free(txn);
+            return 1;
+        }
+
+        if (opts.keep_c) {
+            log_info(cfg, "Generated C: " + artifacts.c_path);
+        }
+        log_info(cfg, "Built object: " + artifacts.object_path);
+        log_info(cfg, "Emitted interface: " + artifacts.interface_path);
+        cd_transaction_free(txn);
+        return 0;
+    }
+}
+
+/** Resolve canonical output companions for one compile-only invocation. */
+func cd_resolve_artifacts(
+    opts: CliOptions*,
+    entry_module: string,
+    diags: DiagCollector*
+) -> ModuleArtifactPaths*? {
+    if (opts.output != null) {
+        let object_path = opts.output as string;
+        if (is_empty_s(object_path) ||
+            is_sep(char_at_s(object_path, len_s(object_path) - 1)) ||
+            !has_extension(object_path, ".o")) {
+            cd_error(diags, "L1C-2033",
+                "compile-only output must name a regular '.o' file: " + object_path,
+                object_path);
+            return null;
+        }
+        return mg_artifacts_from_object(entry_module, object_path, diags);
+    }
+    return mg_artifacts_for_module(".", entry_module, diags);
+}
+
+/** Execute Stage 1 compile-only mode for exactly one source module. */
+func cd_cmd_compile(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let prepared = bd_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as BuildPreparedInput*;
+        let entry_module = prep.entry_module;
+        let artifacts_opt = cd_resolve_artifacts(opts, entry_module, diags);
+        if (artifacts_opt == null) {
+            bd_prepared_input_free(prep);
+            prepared = null;
+            dp_print_collector(diags);
+            return 1;
+        }
+        let artifacts = artifacts_opt as ModuleArtifactPaths*;
+        let result = analysis_analyze_entry_with_resolution(
+            prep.search_paths,
+            entry_module,
+            opts.interface_paths,
+            MRP_REQUIRE_INTERFACE,
+            null,
+            cfg
+        );
+        bd_prepared_input_free(prep);
+        prepared = null;
+
+        if (analysis_diag_count(result) > 0) {
+            dp_print_collector_with_sources(
+                result.diags, analysis_source_names(result), analysis_source_texts(result));
+        }
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            mg_artifacts_free(artifacts);
+            return 1;
+        }
+        if (!cd_prepare_destinations(artifacts, opts.keep_c, diags)) {
+            dp_print_collector(diags);
+            analysis_result_free(result);
+            mg_artifacts_free(artifacts);
+            return 1;
+        }
+
+        let rc = cd_compile_analyzed(
+            opts, cfg, result, entry_module, artifacts, diags);
+        analysis_result_free(result);
+        mg_artifacts_free(artifacts);
+        return rc;
+    }
+}

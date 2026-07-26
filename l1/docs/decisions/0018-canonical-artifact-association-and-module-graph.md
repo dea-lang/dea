@@ -1,7 +1,7 @@
 # ADR-0018: Canonical Artifact Association and Module Graph
 
 - Decision date: 2026-07-19
-- Last edited: 2026-07-23
+- Last edited: 2026-07-24
 - Status: Accepted
 
 ## Context
@@ -23,6 +23,10 @@ L1 uses the canonical dotted module name as the identity of a separate-compilati
 - An explicit compile-only output must be a regular `.o` path; replacing only its final suffix selects the `.c` and
   `.l1m` companions.
 - Source paths, import aliases, and search-root spellings do not participate in artifact identity.
+
+The association exposes every possible companion path without requiring every file to exist. The reusable
+separate-compilation set is `.o` plus `.l1m`; compile-only publishes the associated `.c` only when `--keep-c` is
+selected.
 
 The module graph records one selected origin per canonical module: source, filesystem interface, supplied-interface
 registry, or compiler-synthesized virtual module. Canonical graph enumeration is sorted by module name, while each
@@ -55,8 +59,8 @@ side-effect-only imports or source order.
 
 - The graph and artifact association are available to internal analysis/library entry points, but artifact publication,
   object metadata, lifecycle entry points, standalone linking, and multi-CU orchestration remain separate work.
-- `-c` / `--compile` remains gated by `L1C-9510`; standalone link mode is absent; ordinary `--build` and `--run` remain
-  source-based single-CU operations.
+- This graph decision did not activate `-c` / `--compile`; the later compile-only plan made it operational. Standalone
+  link mode is absent, and ordinary `--build` and `--run` remain source-based single-CU operations.
 - Interface cycles and source cycles share one canonical module-chain policy; cached nodes are not cycles, and failed
   nodes are not committed as resolved.
 - Whole-module fingerprints are validated and recomputed before an interface enters the graph. The graph carries
@@ -66,7 +70,7 @@ side-effect-only imports or source order.
 
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
-- [l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
+- [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 - [l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
@@ -74,12 +78,12 @@ side-effect-only imports or source order.
 
 - [l1/docs/specs/compiler/module-interface-format.md][module-format]: dependency tiers, discovery, and closure rules
 - [l1/docs/reference/architecture.md][architecture]: Stage 1 graph and analysis data flow
-- [l1/docs/project-status.md][project-status]: implemented boundary and non-operational CLI modes
+- [l1/docs/project-status.md][project-status]: implemented Stage 1 graph and compile-only boundary
 - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]: interface discovery diagnostics
 
 [architecture]: ../reference/architecture.md
 [build-run]: ../../work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
-[compile-only]: ../../work/plans/features/2026-07-17-compile-only-artifact-production-noref.md
+[compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [graph-plan]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md

@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-23
+Version: 2026-07-26
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -37,7 +37,7 @@ The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 ### Compiler
 
 `compiler/stage1_l0/` is the only implemented L1 compiler today. It provides the bootstrap frontend, semantic analysis,
-C generation, and host build/run integration for `.l1` inputs.
+C generation, compile-only artifact production, and host build/run integration for `.l1` inputs.
 
 The implementation sources remain `.l0`, while user-facing L1 source inputs, examples, and stdlib modules use `.l1`.
 
@@ -79,8 +79,8 @@ consumed by that target, external `I8metadata` and `I7imports` byte arrays, alwa
 `I4fini`, and conditional external `I5entry` for a resolved, zero-parameter, non-extern source `main`. The arrays record
 the module's verified whole-interface fingerprint, entry presence, and unique direct object-backed (non-virtual)
 providers in first source-import order. Volatile reads from `I4init` retain both records through linker dead-strip.
-Module output contains no process `main`, global init chain, or dependency lifecycle calls. The legacy
-`backend_generate(...)` path remains the ordinary generation, build, and run path.
+Module output contains no process `main`, global init chain, or dependency lifecycle calls. Compile-only consumes this
+module boundary; the legacy `backend_generate(...)` path remains the ordinary generation, build, and run path.
 
 The compiler includes bounded readers for ELF, Mach-O, and standard COFF relocatable objects. Exact normalization covers
 Darwin TinyCC ELF aliases, Mach-O and COFF I386 leading underscores, and the leading `#` on ARM64EC function symbols;
@@ -91,15 +91,22 @@ complete consistent metadata pair is malformed rather than foreign-compatible, e
 File access failures and unsupported or corrupt containers remain separate object-read errors. Standalone link-set
 validation and host linking remain future work.
 
-Ordinary CLI imports remain source-based today, and `.l1m` files are not yet normal compile/build/run inputs.
+Ordinary build/run CLI imports remain source-based today. Compile-only instead requires verified `.l1m` interfaces for
+non-virtual imports and never falls back to provider source.
 
-The CLI reserves `-c` / `--compile` for compile-only mode and accepts repeatable `-I` / `--interface-path` values only
-with that mode. Compile mode currently exits with `L1C-9510` and produces no artifacts; connecting the reserved CLI
-surface to graph resolution and transactional per-module `.c`, `.o`, and `.l1m` publication remains future work. The
-shared semantic aliases are `-Gc` for generated C, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` for host-C controls,
-`-Ri` / `-Rl` for runtime paths, and `-Vl` for rich logging. The conventional `-g`, `-S`, `-L`, and `-l` meanings are
-reserved but not implemented. Standalone linking does not exist, and `--build` / `--run` remain source-based single-CU
-operations.
+The CLI implements `-c` / `--compile` and accepts repeatable `-I` / `--interface-path` values with that mode. One
+invocation publishes the sibling per-module `.o` and `.l1m` pair without invoking the final linker; `--keep-c` also
+publishes the exact staged `.c` used for host compilation. Ordinary `-c` never inspects or modifies the canonical `.c`
+path. Output-parent creation follows trusted directory aliases, while final artifacts and internal publication paths use
+no-follow classification.
+
+The driver stages generated C, the object, and the interface beside the selected destinations. Successful return leaves
+the complete new selected set; recoverable publication failure restores the exact prior set; failed rollback retains
+recovery files. Publication and rollback use sequential renames, so concurrent readers may observe missing paths or
+mixed generations and same-stem access requires external serialization. The shared semantic aliases are `-Gc` for
+generated C, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` for host-C controls, `-Ri` / `-Rl` for runtime paths, and
+`-Vl` for rich logging. The conventional `-g`, `-S`, `-L`, and `-l` meanings are reserved but not implemented.
+Standalone linking does not exist, and `--build` / `--run` remain source-based single-CU operations.
 
 ### Runtime and Standard Library
 
@@ -232,9 +239,9 @@ bootstrap path:
 These remain true today:
 
 1. There is no implemented `stage2_l1` compiler yet.
-2. Ordinary CLI backend output is one legacy whole-program C translation unit; the internal module generator emits one
-   selected module but is not yet connected to compile-only or multi-CU orchestration.
-3. Compile-only artifact production, standalone linking, and multi-CU build/run orchestration are not operational.
+2. Ordinary build/run CLI backend output is one legacy whole-program C translation unit; compile-only uses the internal
+   module generator, but multi-CU build/run orchestration is not operational.
+3. Standalone linking and multi-CU build/run orchestration are not operational.
 4. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
 5. Address-of (`&`) and generics are not part of the current active language surface.

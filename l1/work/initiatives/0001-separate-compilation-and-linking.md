@@ -1,14 +1,15 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-07-25
+- Version: 2026-07-26
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`
+  - `l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`
@@ -70,9 +71,9 @@ This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
 
 Relevant facts that constrain the plan at the time of writing:
 
-- Ordinary build/run still emits **one generated C99 compilation unit per program** through the legacy backend. The
-  internal module backend can emit exactly one selected source-backed module, but compile-only and multi-CU
-  orchestration are not operational yet.
+- Ordinary build/run still emits **one generated C99 compilation unit per program** through the legacy backend.
+  Compile-only uses the internal module backend to emit and publish exactly one selected source-backed module with
+  endpoint rollback; multi-CU orchestration is not operational yet.
 - The L1 backend reference ([`l1/docs/reference/c-backend-design.md`][backend-design]) is the current source of truth
   for L1 generated C behavior.
 - Modules support explicit export manifests plus alias and selective import forms. Exported top-level declarations keep
@@ -86,9 +87,12 @@ Relevant facts that constrain the plan at the time of writing:
   implemented through internal APIs. Per-module C output embeds provider identity, fingerprint, entry, and ordered
   direct-import records, and bounded readers inspect ELF, Mach-O, and PE/COFF relocatables. Ordinary build/run imports
   remain source-based, and link-set provider-object consistency enforcement does not exist yet.
-- The shared driver CLI reserves `-c` / `--compile` and ordered `-I` / `--interface-path` syntax, but compile dispatch
-  remains explicitly NYI and does not invoke the internal resolver or produce artifacts. Runtime discovery uses `-Ri` /
-  `-Rl`; host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link`,
+- The shared driver CLI implements L1 `-c` / `--compile` with ordered `-I` / `--interface-path` roots, interface-only
+  import resolution, object-only host compilation, and endpoint-rollback `.o` / `.l1m` publication. `--keep-c` adds the
+  exact generated `.c`; ordinary compile-only leaves that companion path untouched. Successful return leaves the
+  complete new selected set, recoverable failure restores the exact prior set, and failed rollback retains recovery
+  files. Sequential publication does not provide a reader-visible snapshot. Runtime discovery uses `-Ri` / `-Rl`;
+  host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link`,
   `--entry`, and `--foreign-object` do not exist yet.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today. `compiler/stage2_l1/` is a placeholder for the future
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
@@ -168,15 +172,15 @@ internal structures needed by compiler tests and later import plumbing. It does 
 flows to consume `.l1m` files, and any emission or round-trip surface exposed during this phase is internal or
 testing-oriented rather than the stable separate-compilation UX.
 
-Phase 2.a is the first phase where `.l1m` files become normal driver inputs. That later phase is intentionally split
-into smaller tranches so the interface artifact, interface-backed analysis, CLI surface, compile-only artifact writer,
-and build/run fan-out do not land as one tangled change. In particular:
+Phase 2.a is the phase where `.l1m` files become normal driver inputs. It is intentionally split into smaller tranches
+so the interface artifact, interface-backed analysis, CLI surface, compile-only artifact writer, and build/run fan-out
+do not land as one tangled change. In particular:
 
 1. `.l1m` artifact emission and parser round-trip can land without changing ordinary source-based `--build` or `--run`.
 2. Direct `.l1m` import replay can land as semantic/codegen plumbing before the user-facing driver exposes full separate
    compilation.
-3. `-c` and `-I` may be reserved and validated before artifact production only while help and diagnostics state that
-   compile mode is NYI. They become a usable workflow only when compile-only output is one implementation module plus
+3. `-c` and `-I` were reserved and validated before artifact production while help and diagnostics stated that compile
+   mode was NYI. They became a usable workflow when compile-only output became one implementation module plus
    interface-backed imports, not a renamed whole-closure object.
 4. `--build` and `--run` fan-out belongs to a later orchestration tranche that links the required provider objects.
 
@@ -276,18 +280,24 @@ work is split by dependency, not by the former whole-plan labels:
    external `I4init` / `I4fini`, and `I5entry` for every resolved, zero-parameter, non-extern source `main`.
 4. **Object metadata and readers (complete):** emitted graph, fingerprint, and entry records against the finalized
    lifecycle anchor and added bounded ELF, Mach-O, and PE/COFF readers with valid/absent/malformed results.
-5. **Compile-only artifacts:** make `-c` operational only after the final metadata-bearing artifact shape exists, and
-   publish the generated C, object, and `.l1m` as one transaction-like set.
-6. **Standalone link set:** validate Dea and explicit foreign objects, resolve the entry module, generate the executable
+5. **Compile-only artifacts (complete):** `-c` became operational after the final metadata-bearing artifact shape
+   existed and now publishes `.o + .l1m` with endpoint rollback; `--keep-c` adds the exact generated C.
+6. **Per-module generated C:** migrate `--gen` to the shared one-module backend, lock cross-mode generated-C identity,
+   and stabilize compiler-visible compile-only paths. Retire the legacy whole-closure generator only after build/run
+   fan-out migrates its remaining callers.
+7. **Standalone link set:** validate Dea and explicit foreign objects, resolve the entry module, generate the executable
    wrapper, and invoke the host linker.
-7. **Build/run fan-out:** preserve `--build` and `--run` as convenience commands by reusing the same compile and link
+8. **Build/run fan-out:** preserve `--build` and `--run` as convenience commands by reusing the same compile and link
    APIs over the source/interface graph.
-8. **External libraries:** extend the ordered link-input stream with libraries, rpaths, and raw host-driver arguments.
+9. **External libraries:** extend the ordered link-input stream with libraries, rpaths, and raw host-driver arguments.
 
 The driver ultimately exposes these contracts:
 
-- `-c <module> [-o <canonical-object-path>]` compiles one module without linking and transactionally publishes sibling
-  generated C, object, and `.l1m` artifacts.
+- `-c <module> [-o <canonical-object-path>] [--keep-c]` compiles one module without linking and publishes sibling
+  `.o + .l1m` with endpoint rollback; `--keep-c` adds the exact generated `.c`.
+- `--gen <module> [-I <dir>]... [-o <file>]` will emit exactly one per-module C translation unit. A selected imported
+  interface is authoritative and sufficient without a sibling object; source fallback is allowed only when no interface
+  is selected.
 - `-I <dir>` adds an interface-search root. Explicit interfaces take precedence for imports; compile-only requires an
   interface for every import, while build/run may fall back to source and schedule that module for compilation.
 - `--link <dea-object> [<dea-object> ...] [--foreign-object <c-object>]... [--entry <module>] -o <out>` links an
@@ -298,6 +308,11 @@ The driver ultimately exposes these contracts:
 candidates, an unknown selection, or a selected module without `I5entry` fail before host linking. `--build` and `--run`
 use their source target as the internal entry selection, compute the import closure, fan out per-module compile, then
 call the same link API.
+
+Future build/run consumers that jointly read an authoritative `.l1m` and its sibling `.o` require stable inputs. The
+caller must ensure each pair remains unchanged from interface selection through object verification and submission to
+the common link API, serializing externally against compile-only publication or other same-stem writers. The
+compile-only endpoint-rollback protocol does not supply a reader snapshot.
 
 Name resolution also moves away from the current flat import surface. `import math as m;` introduces qualified access
 through `m::abs(...)`, while `import abs, pi from math;` selectively imports named exports from the provider module. The
@@ -458,24 +473,29 @@ implemented interface/CLI foundation
                                                                            |
                                                                            v
                                                               compile-only artifacts
-                                                                           |
-                                                                           v
-                                                                 standalone link
-                                                                           |
-                                                                           v
-                                                                 build/run fan-out
-                                                                           |
-                                                                           v
-                                                                  external libraries
-                                                                           |
-                                                                           v
-                                                                Initiative 0003 FFI
+                                                                  |                |
+                                                                  |                +--> per-module --gen ----+
+                                                                  v                                         |
+                                                                 standalone link                            |
+                                                                  |                                         |
+                                                                  v                                         |
+                                                                 build/run fan-out -------------------------+
+                                                                  |
+                                                                  v
+                                                     retire whole-closure generator
+                                                                  |
+                                                                  v
+                                                          external libraries
+                                                                  |
+                                                                  v
+                                                        Initiative 0003 FFI
 ```
 
 - Initiative 0002 is complete and supplies the runtime-archive model consumed by the link plans.
-- Artifact-graph, fingerprint, lifecycle, and object-metadata work are complete. Compile-only artifact production is the
-  next tranche and consumes their final module-object shape.
-- Compile-only artifacts do not become operational until they contain final lifecycle and metadata records.
+- Artifact-graph, fingerprint, lifecycle, object-metadata, and compile-only work are complete. Standalone linking is the
+  next tranche and consumes the final module-object shape.
+- Compile-only artifacts are operational with the final lifecycle and metadata records.
+- Per-module `--gen` may migrate after compile-only; legacy generator removal waits for build/run fan-out.
 - Standalone link owns object classification and wrapper construction; build/run then reuse that API rather than
   creating a second link path.
 - External-library options extend the finished ordered input model. Initiative 0003 consumes both external libraries and
@@ -491,12 +511,14 @@ Recorded near-term tranche checkpoints:
 - [x] Opaque export follow-up: source `export opaque { ... }`, exported-surface checks, and explicit `.l1m` opaque
   projection.
 - [x] Phase 2.a.1: direct `.l1m` import replay and codegen plumbing.
-- [x] Reserve and validate `-c` / `--compile` plus ordered `-I` / `--interface-path`; compile dispatch remains NYI.
+- [x] Reserved and validated `-c` / `--compile` plus ordered `-I` / `--interface-path` while compile dispatch remained
+  NYI.
 - [x] Define artifact layout, transitive interface discovery, and the deterministic module graph.
 - [x] Implement canonical whole-module fingerprints and `.l1m` verification.
 - [x] Emit one module per CU with external `I4init`, `I4fini`, and conditional `I5entry`.
 - [x] Emit and inspect provider/consumer object metadata.
-- [ ] Make compile-only artifact production operational.
+- [x] Make compile-only artifact production operational.
+- [ ] Migrate `--gen` to per-module output and lock cross-mode generated-C identity.
 - [ ] Implement standalone Dea/foreign-object linking and entry selection.
 - [ ] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
 - [ ] Add ordered external-library and raw host-driver inputs.
@@ -516,7 +538,9 @@ equivalent surface. That future parity requirement must not be phrased as a curr
 
 Every new artifact (`.l1m`, per-module `.c`, per-module `.o`) must be byte-deterministic so current Stage 1 tests can
 assert stable output and future L1 triple-bootstrap can work at finer granularity. Iteration order over hash-keyed
-tables in the analyzer must be canonicalized at every emission point.
+tables in the analyzer must be canonicalized at every emission point. The
+[per-module generated-C plan][per-module-generated-c] owns stable compiler-visible compile-only paths and the
+supported-toolchain object-identity checks.
 
 ### Documentation
 
@@ -590,6 +614,12 @@ the chosen answer and points at the owning section.
    object enters through repeatable `--foreign-object`; it may satisfy unmangled C symbols but has no Dea graph,
    fingerprint, lifecycle, or entry-point role. Valid or malformed Dea metadata cannot be hidden behind the foreign
    option. Archives and shared libraries remain under the external-library options. Anchored in §0.6 and §2a.
+6. **Generated-C and compile-only artifact contract:** compile-only publishes `.o + .l1m` by default and adds the exact
+   `.c` only with `--keep-c`. Successful return leaves the complete new selected set; recoverable failure restores the
+   exact prior set; failed rollback retains recovery files. Publication is sequential and requires external
+   serialization for concurrent readers or same-stem writers. Per-module `--gen` treats a selected `.l1m` as sufficient
+   without inspecting its sibling object, shares generated-C bytes with retained compile/build/run output, and retires
+   whole-closure generation only after all production callers migrate. Anchored in §2a and §Sequencing and dependencies.
 
 FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery open questions live in
 [Initiative 0002][runtime-library].
@@ -623,7 +653,10 @@ implementation tranche proves that one decision area needs additional design wor
   [lifecycle entrypoints][lifecycle-entrypoints] and recorded by [ADR-0020][lifecycle-adr].
 - Provider/consumer metadata and bounded object readers completed under [object metadata][object-metadata] and recorded
   by [ADR-0021][metadata-adr].
-- Transactional single-module artifact production under [compile only][compile-only].
+- Single-module artifact production with endpoint rollback completed under [compile only][compile-only] and is recorded
+  by [ADR-0022][compile-only-adr].
+- Per-module `--gen`, cross-mode generated-C identity, and legacy-generator retirement under
+  [per-module generated C][per-module-generated-c].
 - Standalone Dea/foreign-object linking, entry selection, and wrapper construction under [link set][link-set].
 - `--build` / `--run` graph fan-out through shared compile/link APIs under [build/run fan-out][build-run].
 - Phase 3: external-library linking CLI under
@@ -647,7 +680,8 @@ implementation tranche proves that one decision area needs additional design wor
 [build-run]: ../plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: 0003-c-ffi.md
 [compile-foundation]: ../plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
-[compile-only]: ../plans/features/2026-07-17-compile-only-artifact-production-noref.md
+[compile-only]: ../plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[compile-only-adr]: ../../docs/decisions/0022-transactional-compile-only-artifact-publication.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [export-imports]: ../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [fingerprint-adr]: ../../docs/decisions/0019-whole-module-interface-fingerprints.md
@@ -664,6 +698,7 @@ implementation tranche proves that one decision area needs additional design wor
 [module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
 [object-metadata]: ../plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
+[per-module-generated-c]: ../plans/features/2026-07-24-per-module-generated-c-mode-noref.md
 [roadmap]: ../../docs/roadmap.md
 [runtime-library]: closed/0002-runtime-static-library.md
 [separate-compilation]: ../../docs/reference/separate-compilation.md

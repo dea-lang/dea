@@ -170,7 +170,8 @@ All current compiler stages now reserve `-c` / `--compile` for compile-only mode
 `L1C-2031`. The coordinated L0 2.0/L1 alias migration uses exact semantic namespaces for Dea-specific controls. The
 canonical `-g`, `-S`, `-L`, and `-l` spellings report paired `L0C-2032` / `L1C-2032` until debug, assembly, and external
 linking support lands. Compile mode deliberately dispatches to `L0C-9510` / `L1C-9510` without analysis or artifact
-creation, so Phase 3 remains responsible for interface discovery and atomic `.c`, `.o`, and `.l1m` output.
+creation, so Phase 3 remains responsible for interface discovery and `.o` plus `.l1m` publication with endpoint
+rollback, with generated C retained only under `--keep-c`.
 
 Implementation review closed the remaining parity gaps in this surface. L0 Stage 1 fallback presentation now skips
 value-option arguments and retains empty-value presence for mode validation. All active drivers reject a bare `--`
@@ -201,7 +202,7 @@ The two completed phases above are the whole implemented scope of this plan. The
 2026-07-17 into dependency-safe successors:
 
 - artifact layout, transitive interface discovery, and module-graph construction under [artifact graph];
-- transactional single-module `.c`, object, and `.l1m` production under [compile-only];
+- single-module object and `.l1m` production with endpoint rollback and optional retained C under [compile-only];
 - standalone object-set linking and executable-wrapper construction under [link-set];
 - `--build` / `--run` multi-CU fan-out under [build-run].
 
@@ -246,5 +247,5 @@ Closing this plan does not claim that `-c`, `--link`, or multi-CU build/run orch
 
 [artifact graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
-[compile-only]: ../2026-07-17-compile-only-artifact-production-noref.md
+[compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md

@@ -37,7 +37,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
-  - [`l1/work/plans/features/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
+  - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
@@ -49,7 +49,8 @@
 Convert `--build` and `--run` from one generated C translation unit into dependency-aware orchestration over multiple
 Dea compilation units. The source target remains the user-facing root and becomes the selected entry module. Imported
 providers may come from authoritative `.l1m` plus sibling `.o` artifacts or from source fallback, according to the
-module graph's build/run policy.
+module graph's build/run policy. Joint interface/object reads require a stable-input precondition: callers must
+serialize externally against compile-only publication and other same-stem writers.
 
 This plan reuses the compile and standalone-link APIs instead of creating a second graph verifier, lifecycle scheduler,
 or wrapper path. It also admits explicit metadata-free relocatable objects through repeatable `--foreign-object`, so
@@ -109,6 +110,10 @@ modes.
    inputs or lifecycle calls unless their owning implementation already requires one.
 6. Ordered side-effect imports remain graph edges even when no declaration is referenced. They affect source build
    order, object verification, initialization, and finalization.
+7. An authoritative interface and its sibling object must remain unchanged from interface selection through object
+   verification and submission to the common link API. Compile-only publication provides endpoint rollback, not an
+   atomic reader-visible snapshot; build/run callers must serialize externally against same-stem publication or
+   mutation.
 
 ## Source Compilation Fan-Out
 
@@ -122,7 +127,8 @@ modes.
 4. Downstream source units analyze against the staged interfaces of already compiled source providers while continuing
    to honor authoritative `-I` providers chosen during graph expansion.
 5. Interface-backed provider objects are caller-owned inputs. Build/run inspect and forward them unchanged and never
-   replace, rename, or delete them.
+   replace, rename, or delete them. The caller-owned interface/object pair remains stable for the complete joint-read
+   interval described above.
 6. Any analysis, emission, object compilation, interface verification, or graph-consistency failure aborts the fan-out,
    removes invocation-owned temporaries, and does not invoke the final host linker.
 
@@ -221,8 +227,10 @@ architecture, C-backend, and separate-compilation references.
     host-driver arguments.
 12. Focused normal and trace tests pass, followed by `make -C l1 test` once implementation is complete.
 13. Concrete diagnostics are registered in the shared catalog before closure.
+14. The build/run contract records the stable-input precondition for every interface/object pair, and tests do not
+    assume compile-only publication supplies a reader-visible snapshot.
 
-[compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
+[compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md

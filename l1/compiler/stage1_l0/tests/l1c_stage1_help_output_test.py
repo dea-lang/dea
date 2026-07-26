@@ -45,7 +45,7 @@ def stage1_compiler() -> Path:
 
 
 def main() -> int:
-    """Assert the migrated aliases and Phase 3 wording in `--help`."""
+    """Assert the canonical aliases and operational compile-only wording in `--help`."""
 
     compiler = stage1_compiler()
     if not compiler.is_file():
@@ -70,14 +70,16 @@ def main() -> int:
         "  -Vl, --log            Enable rich log formatting",
         "  -Rp, --project-root PROJECT_ROOT",
         "  -Rs, --sys-root SYS_ROOT",
-        "  -c, --compile         Reserve compile-only mode for Phase 3 artifact production",
+        "  -c, --compile         Compile one module to sibling .o and .l1m artifacts",
         "  --gen, -Gc, --codegen Generate C code",
         "  --c-compiler, -Cc C_COMPILER",
         "  --c-options, -Co C_OPTIONS",
         "  -I, --interface-path INTERFACE_PATH",
-        "'--compile'; interface loading lands in Phase 3",
+        "'--compile'; searched in declaration order)",
         "  --runtime-include, -Ri RUNTIME_INCLUDE",
         "  --runtime-lib, -Rl RUNTIME_LIB",
+        "  --keep-c              Keep generated C file (valid in: '--build', '--compile',",
+        "'--run'; compile mode adds the sibling .c artifact)",
         "  -g                    Reserved debug-information option (not supported yet)",
         "  -S                    Reserved assembly-output option (not supported yet)",
         "  -L LIBRARY_PATH       Reserved library search path (not supported yet)",

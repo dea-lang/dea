@@ -1,7 +1,7 @@
 # ADR-0020: Per-Module Backend and Lifecycle ABI
 
 - Decision date: 2026-07-22
-- Last edited: 2026-07-23
+- Last edited: 2026-07-24
 - Status: Accepted
 
 ## Context
@@ -63,8 +63,8 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
 ## Consequences
 
 - Ordinary `--gen`, `--build`, and `--run` remain legacy whole-program single-CU operations for now.
-- The internal module generator can produce final lifecycle-bearing C, but `-c` remains non-operational until the
-  compile-only artifact plan publishes generated C, object, and interface artifacts together.
+- The internal module generator produces the lifecycle-bearing staged C used by operational compile-only mode.
+  Compile-only always publishes the object and interface, while `--keep-c` also publishes that exact generated C.
 - Object metadata may anchor its portable records from `I4init` without introducing a conditional symbol.
 - The standalone linker must select at most one `I5entry`, call `I4init` in dependency order, call `I4fini` in reverse
   order, and keep foreign objects outside Dea lifecycle orchestration.
@@ -76,6 +76,7 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]
 - [l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md][superseded-init]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+- [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 
 ## Current Docs
@@ -88,6 +89,7 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
 [abi]: ../specs/compiler/abi.md
 [architecture]: ../reference/architecture.md
 [backend]: ../reference/c-backend-design.md
+[compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [lifecycle]: ../../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../../work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md

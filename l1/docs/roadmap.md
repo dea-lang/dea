@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-25
+Version: 2026-07-26
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -18,7 +18,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
   verified whole-module `.l1m` fingerprints, and target-aware per-module C generation with external `I4init` / `I4fini`
   plus conditional `I5entry`. Per-module output also embeds portable identity and ordered-import records, and bounded
-  readers inspect ELF, Mach-O, and PE/COFF relocatables. Compile-only, standalone linking, and multi-CU build/run remain
+  readers inspect ELF, Mach-O, and PE/COFF relocatables. Compile-only publishes one module's `.o` and `.l1m` artifacts
+  against verified interfaces with endpoint rollback and adds the exact generated `.c` only with `--keep-c`. Its
+  sequential renames are not a concurrent-reader snapshot; standalone linking and multi-CU build/run remain
   non-operational.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
@@ -134,6 +136,11 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   ordered-import records plus bounded ELF, Mach-O, and PE/COFF relocatable readers with valid, absent, and malformed Dea
   metadata classification, exact Darwin TinyCC ELF and ARM64EC aliases, aligned Mach-O command and symbol validation,
   byte-bounded iterative LBI parsing, and standard ARMNT/ARM64EC COFF support.
+- Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] made `-c` resolve one source module against
+  verified interfaces, compile a metadata-bearing object, and publish sibling `.o + .l1m` with endpoint rollback;
+  `--keep-c` adds the exact generated `.c`. Successful return leaves the complete new selected set, recoverable failure
+  restores the prior set, failed rollback retains recovery files, and concurrent readers or same-stem writers require
+  external serialization.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -172,8 +179,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] makes `-c` transactionally publish one
-  module's generated C, object, and `.l1m` artifact set.
+- Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] migrates `--gen` from whole-closure
+  output to one source-backed module, locks cross-mode generated-C identity, and retires the legacy generator after
+  build/run fan-out.
 - Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] adds verified Dea-object linking, explicit foreign C
   objects, entry selection, lifecycle wrapper generation, and host linking.
 - Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] converts `--build` and `--run` to the shared
@@ -280,7 +288,7 @@ update to be promoted to an initiative or plan:
 [cheap-string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md
 [child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-foundation]: ../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
-[compile-only]: ../work/plans/features/2026-07-17-compile-only-artifact-production-noref.md
+[compile-only]: ../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
 [const-scalar-casts]: ../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
@@ -306,6 +314,7 @@ update to be promoted to an initiative or plan:
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
 [object-metadata]: ../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
+[per-module-generated-c]: ../work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
