@@ -38,8 +38,10 @@
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
+  - [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c]
   - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
+  - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
   `make -C l1 test-stage1 TESTS="cli_args_test source_paths_test driver_test analysis_test build_driver_test link_driver_test l1c_lib_test"`
@@ -64,11 +66,16 @@ modes.
    this plan mixes with source-built units.
 3. [Compile-only production][compile-only] establishes the reusable one-module analysis, C emission, object compilation,
    and interface-emission operations. Build/run may target a temporary artifact root instead of publishing the result.
-4. The [link-set plan][link-set] must land first. This plan passes verified Dea objects, foreign objects, and the source
+4. The shared [native temporary-workspace safety plan][native-temp-safety] owns atomic reservation and cleanup of the
+   build/run private workspace. This plan must consume that settled lifecycle rather than define another temporary-root
+   policy.
+5. The [generated-C plan][generated-c] owns byte identity for the shared per-module generator and final removal of the
+   legacy whole-program generator. This plan owns retention of the complete build/run C tree.
+6. The [link-set plan][link-set] must land first. This plan passes verified Dea objects, foreign objects, and the source
    target's canonical module name to its common link API.
-5. This plan owns graph fan-out for `--build` and `--run`, temporary artifact lifetime, source-target entry selection,
+7. This plan owns graph fan-out for `--build` and `--run`, temporary artifact lifetime, source-target entry selection,
    multi-unit `--keep-c`, executable execution, and runtime argument/status forwarding.
-6. [External linking][external-linking] later appends libraries, rpaths, and raw host-driver arguments to the same typed
+8. [External linking][external-linking] later appends libraries, rpaths, and raw host-driver arguments to the same typed
    ordered link-input stream.
 
 ## Build and Run CLI Contract
@@ -119,11 +126,12 @@ modes.
 
 1. Topologically order all source-backed nodes dependency-first, with ordered direct-import edges as the deterministic
    tie-breaker. Compile each canonical module once.
-2. Reuse the internal one-module compile path from [compile-only production][compile-only]. Each source unit emits only
-   its definitions, imported declarations, lifecycle symbols, optional entry bridge, metadata, and fingerprinted
-   interface.
-3. Build/run stage generated `.c`, `.o`, and `.l1m` companions beneath one invocation-unique temporary artifact root.
-   They do not publish over a user's compile-only artifacts.
+2. Reuse the internal one-module compile path from [compile-only production][compile-only] and the exact shared
+   per-module generator governed by the [generated-C plan][generated-c]. Each source unit emits only its definitions,
+   imported declarations, lifecycle symbols, optional entry bridge, metadata, and fingerprinted interface.
+3. Build/run stage generated `.c`, `.o`, and `.l1m` companions beneath the atomically reserved invocation-private
+   workspace supplied by the [native temporary-workspace safety plan][native-temp-safety]. They do not publish over a
+   user's compile-only artifacts.
 4. Downstream source units analyze against the staged interfaces of already compiled source providers while continuing
    to honor authoritative `-I` providers chosen during graph expansion.
 5. Interface-backed provider objects are caller-owned inputs. Build/run inspect and forward them unchanged and never
@@ -158,9 +166,12 @@ changes it to retain the complete generated-C tree:
    module name, with an existing path handled by the same explicit replacement/error policy chosen for build output.
 3. Module C files mirror canonical dotted paths beneath the retained root, and the generated process wrapper is named
    `__dea_wrapper.c` at its root.
-4. Only generated C is retained. Temporary objects, staged interfaces, wrapper objects, and the run executable are still
+4. Every retained module C file is the exact byte sequence passed to the host compiler and is byte-identical to `--gen`
+   and `-c --keep-c` for the same target module, resolved graph, fingerprints, code-generation settings, and compiler
+   version. Retention copies bytes; it does not regenerate or rewrite C.
+5. Only generated C is retained. Temporary objects, staged interfaces, wrapper objects, and the run executable are still
    removed unless another owning option explicitly documents their retention.
-5. CLI and backend references document the directory result and the migration from the legacy single-file behavior.
+6. CLI and backend references document the directory result and the migration from the legacy single-file behavior.
 
 ## Implementation Phases
 
@@ -208,7 +219,8 @@ architecture, C-backend, and separate-compilation references.
 
 01. A source target and multiple source-backed dependencies compile as distinct translation units, link, and run.
 02. Mixed source-backed and authoritative interface/object providers use the documented precedence and verify matching
-    module identities and whole-module fingerprints.
+    module identities and whole-module fingerprints. A provider's `.o + .l1m` pair remains usable when its canonical
+    `.c` is absent.
 03. Missing sibling objects, mismatched interfaces and objects, malformed metadata, cycles, and missing providers fail
     before the host linker and clean invocation-owned artifacts.
 04. Two or more modules may define an entry-eligible `main`; build/run select the requested source target, invoke only
@@ -223,19 +235,23 @@ architecture, C-backend, and separate-compilation references.
     distinguishable.
 10. `--keep-c` retains the documented mirrored C tree plus `__dea_wrapper.c`, while objects, staged interfaces, and run
     executables follow their normal cleanup rules.
-11. Mixed typed inputs preserve their documented deterministic ordering for later extension by libraries and raw
+11. Each retained module C file is byte-identical to the corresponding `--gen` and `-c --keep-c` output for identical
+    graph and code-generation inputs.
+12. Mixed typed inputs preserve their documented deterministic ordering for later extension by libraries and raw
     host-driver arguments.
-12. Focused normal and trace tests pass, followed by `make -C l1 test` once implementation is complete.
-13. Concrete diagnostics are registered in the shared catalog before closure.
-14. The build/run contract records the stable-input precondition for every interface/object pair, and tests do not
+13. Focused normal and trace tests pass, followed by `make -C l1 test` once implementation is complete.
+14. Concrete diagnostics are registered in the shared catalog before closure.
+15. The build/run contract records the stable-input precondition for every interface/object pair, and tests do not
     assume compile-only publication supplies a reader-visible snapshot.
 
 [compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[generated-c]: 2026-07-24-per-module-generated-c-mode-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[native-temp-safety]: ../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md

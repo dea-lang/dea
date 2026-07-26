@@ -87,7 +87,9 @@ After the [build/run fan-out plan][build-run] migrates the last whole-program ca
 | `l1c --gen MODULE -o FILE`    | One per-module C translation unit at exactly `FILE`  |
 | `l1c -c MODULE`               | Canonical sibling `.o` and `.l1m`                    |
 | `l1c -c MODULE --keep-c`      | Canonical sibling `.c`, `.o`, and `.l1m`             |
+| `l1c --build MODULE`          | Build an executable                                  |
 | `l1c --build MODULE --keep-c` | Executable plus the planned retained multi-CU C tree |
+| `l1c --run MODULE`            | Run the program and return its status                |
 | `l1c --run MODULE --keep-c`   | Run the program and retain the planned multi-CU tree |
 
 No complete-C-tree generation mode is introduced.
@@ -247,14 +249,21 @@ implementation; reuse nearby established codes if an unforeseen case needs separ
 09. Compiler-visible paths are stable and do not expose transaction or destination prefixes.
 10. Repeated compile-only invocations to different destinations produce byte-identical objects on stable supported
     toolchains. Tests explicitly classify TinyCC and Windows/PE-COFF object-identity exceptions.
-11. Compile-only still publishes a usable `.o + .l1m` pair by default, optionally publishes C with `--keep-c`, and
-    leaves an unselected canonical `.c` untouched. Tests preserve successful/new and recoverable-failure/prior endpoints
-    without asserting an atomic reader-visible snapshot.
+11. A downstream separate-compilation fixture compiles a provider without `--keep-c`, confirms that only its usable
+    `.o + .l1m` pair exists, compiles a consumer against the provider `.l1m`, and links the consumer and provider
+    objects without recreating or reading the provider `.c`. Build/run fan-out must also consume the same
+    interface/object pair with no canonical C. Existing compile-only tests preserve successful/new and
+    recoverable-failure/prior endpoints without asserting an atomic reader-visible snapshot.
 12. No production caller or test references `backend_generate(...)` after build/run fan-out lands.
 13. Existing build, run, compile, and link behavior remains covered by normal and trace tests.
 14. Help-output coverage locks the final `-I`, `--keep-c`, compile-only, build/run, and generated-C wording.
 
 ## Test Plan
+
+Treat the no-C provider fixture as cross-plan acceptance. First compile the provider with ordinary `-c`, assert that its
+canonical `.c` is absent, and compile a consumer through the published `.l1m`. After standalone linking lands, link and
+run the consumer and provider objects. After build/run fan-out lands, repeat provider selection through its sibling
+interface/object pair. This plan remains open until both paths pass without regenerating provider C.
 
 Run focused normal tests, including Python CLI coverage:
 
