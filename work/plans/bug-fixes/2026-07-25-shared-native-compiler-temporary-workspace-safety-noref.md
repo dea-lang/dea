@@ -39,6 +39,7 @@
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-fix]
   - [`work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
+  - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][standalone-link]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
   - [`l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`][publication-adr]
 - Repro: reserve or replace a path selected by `bd_temp_stem()` after its `exists()` checks but before the native
@@ -67,6 +68,8 @@ use an atomically reserved private workspace with bounded, tested cleanup.
    path and remains explicitly separate from this plan.
 4. L1 build/run multi-translation-unit fan-out must use the workspace lifecycle settled here rather than define another
    temporary-root policy.
+5. Standalone L1 `--link` is not blocked by this plan. Its [link-set plan][standalone-link] owns a bounded transaction
+   beside the mandatory output path and supplies explicit wrapper scratch paths to the common link executor.
 
 ## Current Defect
 
@@ -103,8 +106,8 @@ use an atomically reserved private workspace with bounded, tested cleanup.
    empty-directory cleanup in L0 Stage 2. Pass it from `l0/scripts/build_stage2_l0c.py` through `--c-source`.
 2. Resolve and validate the temporary parent before replacing `bd_temp_stem()` build/run selection with an invocation
    workspace plus fixed child names.
-3. Route compiler captures, generated C, intermediate objects, link wrappers, side artifacts, and run executables
-   through that workspace.
+3. Route compiler captures, generated C, intermediate objects, build/run link wrappers, side artifacts, and run
+   executables through that workspace.
 4. Make cleanup state explicit and idempotent. Remove only known regular children and the empty owned directory; retain
    and report unexpected contents instead of recursively deleting them.
 5. Port the settled lifecycle to L1 Stage 1, reusing its existing compiler filesystem support translation unit where
@@ -174,6 +177,7 @@ fix.
 4. Adding recursive general-purpose deletion, public filesystem APIs, or a process-wide Dea temporary-directory policy.
 5. Routing MSVC-specific side artifacts outside the currently documented MinGW support environment.
 6. Containing processes that run with the same authority as the compiler and can mutate its private workspace.
+7. Replacing or relocating the standalone link mode's output-local transaction.
 
 ## Verification Criteria
 
@@ -182,8 +186,8 @@ fix.
     components are rejected without invoking the host compiler.
 03. A pre-existing workspace candidate is never reused, and deterministic collision injection selects a separately
     reserved directory.
-04. Generated C, captures, objects, interfaces, wrappers, side artifacts, and run executables remain inside the private
-    workspace unless explicitly retained.
+04. Generated C, captures, objects, interfaces, build/run wrappers, side artifacts, and run executables remain inside
+    the private workspace unless explicitly retained.
 05. End-to-end tests use a controlled temporary parent and fake host compiler to cover success, compiler failure, and
     launch failure while proving side-artifact containment.
 06. Success and every ordinary failure path remove known children without following substituted paths, then remove the
@@ -197,4 +201,5 @@ fix.
 [compile-only]: ../../../l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [publication-adr]: ../../../l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md
 [stage1-fix]: ../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md
+[standalone-link]: ../../../l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
 [structured-input]: 2026-07-21-shared-structured-c-source-input-noref.md

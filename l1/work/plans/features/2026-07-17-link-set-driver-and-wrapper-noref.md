@@ -39,6 +39,8 @@
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
   - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
+  - [`work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
+  - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-workspace]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
   `make -C l1 test-stage1 TESTS="cli_args_test object_metadata_test object_reader_test link_driver_test build_driver_test l1c_lib_test"`
@@ -66,6 +68,10 @@ module, fingerprint, lifecycle, dependency, or entry semantics.
    runtime archive selection, and host link invocation.
 6. [Build/run fan-out][build-run] reuses the internal link API; [external linking][external-linking] later extends the
    ordered input stream with libraries, rpaths, and raw host-driver arguments.
+7. This plan owns an atomically reserved output-local transaction for standalone wrapper artifacts. The common link
+   executor accepts caller-supplied scratch paths and never allocates or cleans their owning workspace.
+8. The active [structured-input plan][structured-input] and [shared native-workspace plan][native-workspace] are
+   prerequisites for later build/run fan-out, not for standalone linking. This mode must not call `bd_temp_stem()`.
 
 ## CLI Contract
 
@@ -141,6 +147,34 @@ Every input is inspected before wrapper generation or host linking:
    symbols and unsupported architecture or ABI combinations among otherwise well-formed inputs remain host-link
    failures, with the host tool's output preserved.
 
+## Standalone Link Workspace Contract
+
+01. The parent of mandatory `-o OUTPUT` must already exist and resolve to a directory, matching current build behavior.
+    Existing directory aliases in that caller-selected parent chain are trusted. The final output itself must be absent
+    or a regular file; directories, symlinks, reparse points, and other objects are rejected.
+02. Allocate no scratch state until object classification, graph and entry validation, host-compiler selection, runtime
+    include/archive validation, and output-parent validation succeed.
+03. Exclusively create `.l1c-link-<pid>-<seconds>-<nanoseconds>-<attempt>` beside the output. Try attempts `0` through
+    `99`; report setup failure after exhaustion and never return an unchecked fallback.
+04. The transaction owns fixed `wrapper.c`, `wrapper.o`, `compile.stdout`, `compile.stderr`, `link.stdout`, and
+    `link.stderr` children. Caller-supplied objects and the final executable remain outside it.
+05. POSIX creation requests mode `0700`, subject to a more restrictive process umask. This output-local boundary does
+    not perform the global temporary-root owner and sticky-bit audit.
+06. MinGW uses `CreateDirectoryA` and inherits the trusted output parent's ACL; the POSIX mode argument is ignored.
+    No-follow classification through `FILE_FLAG_OPEN_REPARSE_POINT` rejects symlinks, junctions, devices, and other
+    reparse points. The current Stage 1 native narrow-byte path encoding remains the supported Windows path contract.
+07. MinGW/GCC-family wrapper compilation and PE/COFF linking are required end to end. Existing MSVC `/c`, `/Fo:`, and
+    `/Fe:` construction remains unit-covered but does not establish full MSVC runtime/link support in this tranche.
+08. The common link executor receives explicit scratch paths. Standalone link owns this transaction; later build/run
+    supplies paths beneath its shared invocation workspace and owns that workspace's cleanup.
+09. Cleanup removes only known regular children, without following aliases, then removes the verified empty real
+    directory. It never recursively deletes. Unexpected or substituted contents retain the transaction and report its
+    path.
+10. Cleanup failure is result-bearing. It returns nonzero even after a successful host link, while preserving the
+    caller-visible executable already produced.
+11. The host linker writes directly to `OUTPUT`; executable publication, replacement, and partial-failure behavior are
+    not wrapped in a transaction or rollback protocol.
+
 ## Implementation Phases
 
 ### Phase 1: CLI and typed operands
@@ -156,7 +190,9 @@ and fingerprints, reject cycles, and resolve the entry module.
 ### Phase 3: Wrapper and host link
 
 Compute lifecycle order, emit and compile the wrapper, select the runtime archive, build the host command without shell
-word loss, and invoke the linker. Keep external library options out until their owning plan lands.
+word loss, and invoke the linker through explicit scratch paths. The standalone CLI adapter creates and cleans the
+output-local transaction; the common executor never owns workspace allocation or cleanup. Keep external library options
+out until their owning plan lands.
 
 ### Phase 4: Documentation and FFI-forward smoke coverage
 
@@ -182,6 +218,13 @@ repeats the path with `extern "C"`.
   - ADR: `l1/docs/decisions/`
   - Rationale: The verified link-set boundary, entry validation, foreign-object distinction, and wrapper ownership
     constrain every future linker-facing workflow.
+- Decision: Isolate standalone wrapper artifacts in an atomically reserved output-local transaction supplied explicitly
+  to the common link executor.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Standalone link always has a caller-selected output parent, so it can avoid the unsafe global temporary
+    stem without blocking on the separate cross-level build/run workspace policy.
 - Decision: Make the per-module lifecycle ABI the source of wrapper calls and deterministic initialization ordering.
   - Scope: L1
   - Disposition: Amend ADR
@@ -206,6 +249,8 @@ repeats the path with `extern "C"`.
 4. External `-l`, `-L`, rpath, package manifests, or runtime dynamic loading.
 5. Turning a C `main` into the process entry or defining C++ ABI interoperation.
 6. Compiling source modules or implementing build/run graph fan-out.
+7. Implementing structured `--c-source`, global temporary-root validation, or the shared build/run workspace lifecycle.
+8. Transactional publication or rollback of the final executable.
 
 ## Verification Criteria
 
@@ -223,6 +268,14 @@ repeats the path with `extern "C"`.
 09. The runtime archive is passed by exact path, wrapper temporaries are cleaned, and user inputs remain untouched.
 10. Focused normal and trace tests pass, followed by `make -C l1 test` once implementation is complete.
 11. Concrete diagnostics are registered in the shared catalog before closure.
+12. Transaction allocation retries collisions, rejects an exhausted candidate set without fallback, and never calls
+    `bd_temp_stem()`.
+13. Wrapper write, compiler discovery, wrapper compile, final link, and cleanup failures remove known transaction files
+    or retain and report the bounded transaction without touching caller inputs.
+14. POSIX tests cover mode `0700` and trusted output-parent aliases. MinGW tests cover inherited ACL behavior,
+    reparse-point rejection, spaces and drive-rooted paths, `.o` wrapper production, PE/COFF linking, and
+    `RemoveDirectoryA` cleanup.
+15. MSVC command-word tests preserve `/c`, `/Fo:`, and `/Fe:` construction without claiming an end-to-end support lane.
 
 [build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
@@ -232,4 +285,6 @@ repeats the path with `extern "C"`.
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[native-workspace]: ../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md
+[structured-input]: ../../../../work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md

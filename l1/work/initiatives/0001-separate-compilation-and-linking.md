@@ -474,22 +474,25 @@ implemented interface/CLI foundation
                                                                            |
                                                                            v
                                                               compile-only artifacts
-                                                                  |                |
-                                                                  |                +--> per-module --gen ----+
-                                                                  v                                         |
-                                                                 standalone link                            |
-                                                                  |                                         |
-                                                                  v                                         |
-                                                                 build/run fan-out -------------------------+
                                                                   |
                                                                   v
-                                                     retire whole-closure generator
-                                                                  |
-                                                                  v
-                                                          external libraries
-                                                                  |
-                                                                  v
-                                                        Initiative 0003 FFI
+                                                     +--> standalone link --------------------+
+                                                     |                                       |
+                                                     +--> per-module --gen (pre-fan-out) -----+
+                                                                                              |
+structured --c-source --> shared native workspace --------------------------------------------+
+                                                                                              |
+                                                                                              v
+                                                                                     build/run fan-out
+                                                                                              |
+                                                                                              v
+                                                                           retire whole-closure generator
+                                                                                              |
+                                                                                              v
+                                                                                      external libraries
+                                                                                              |
+                                                                                              v
+                                                                                    Initiative 0003 FFI
 ```
 
 - Initiative 0002 is complete and supplies the runtime-archive model consumed by the link plans.
@@ -499,6 +502,10 @@ implemented interface/CLI foundation
 - Per-module `--gen` may migrate after compile-only; legacy generator removal waits for build/run fan-out.
 - Standalone link owns object classification and wrapper construction; build/run then reuse that API rather than
   creating a second link path.
+- Standalone link owns an atomically reserved transaction beside its mandatory output and supplies explicit scratch
+  paths to the common link executor. It is not blocked by structured `--c-source` or the shared native workspace.
+- Structured `--c-source` enables the L0 Stage 2 support unit required by the shared native workspace. The link API,
+  shared workspace, and pre-fan-out generated-C work converge at build/run fan-out.
 - External-library options extend the finished ordered input model. Initiative 0003 consumes both external libraries and
   the explicit metadata-free `--foreign-object` boundary.
 
@@ -672,6 +679,19 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
   - Rationale: ADR-0022 records the implemented artifact set, staging boundary, validation, publication order, rollback,
     and recovery behavior used by the remaining initiative plans.
+- Decision: Isolate standalone link wrapper artifacts in an atomically reserved output-local transaction supplied
+  explicitly to the common link executor.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The link-set child plan owns a bounded scratch lifecycle that avoids the unsafe native temporary stem
+    without depending on the separate cross-level build/run workspace.
+- Decision: Stage multi-CU build/run artifacts and wrapper scratch paths in the shared native workspace.
+  - Scope: Shared
+  - Disposition: New ADR
+  - ADR: `docs/decisions/`
+  - Rationale: Structured C-source input and the shared workspace plan settle the cross-level reservation, trust, and
+    cleanup policy consumed by build/run fan-out.
 - Decision: Make `--gen` produce one module rather than a whole source closure.
   - Scope: L1
   - Disposition: New ADR

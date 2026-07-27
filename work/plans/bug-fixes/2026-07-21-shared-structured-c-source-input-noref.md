@@ -47,6 +47,10 @@ The correct fix is an additive structured source-input option, not quoting rules
 repeatable `--c-source PATH` contract to both L0 compiler stages and migrates L1 to pass its support unit through that
 contract. It is intentionally deferred and remains unimplemented.
 
+This option is a prerequisite for the L0 Stage 2 support translation unit required by the shared native build/run
+workspace plan. It is not a prerequisite for standalone L1 `--link`: that mode compiles its generated wrapper through
+the L1 compiler's direct host-driver command path and owns an output-local link transaction.
+
 ## Required Contract
 
 1. `--c-source PATH` is repeatable in `--build` and `--run` modes; each occurrence contributes exactly one argv element

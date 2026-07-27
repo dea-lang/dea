@@ -154,6 +154,9 @@ modes.
    deterministic graph positions; user-declared foreign objects keep their relative declaration order.
 6. The wrapper, exact runtime archive, object classification, fingerprint checks, and final host compiler invocation
    remain owned by the [link-set plan][link-set]. Build/run surface its structured failures without rewriting them.
+7. The common link executor accepts explicit wrapper and capture paths and never allocates or cleans a workspace.
+   Build/run derives those paths beneath its atomically reserved invocation-private workspace and retains ownership of
+   whole-workspace cleanup. The standalone link adapter's output-local transaction is not reused here.
 
 ## Multi-Unit Generated C Retention
 
