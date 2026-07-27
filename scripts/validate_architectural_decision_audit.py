@@ -476,6 +476,50 @@ def numbered_adr_paths(root: Path) -> set[str]:
     }
 
 
+def markdown_repository_targets(
+    root: Path, source_path: str, text: str
+) -> set[str]:
+    """Return repository-relative targets of local Markdown links.
+
+    Args:
+        root: Repository root.
+        source_path: Repository-relative Markdown source path.
+        text: Markdown source text.
+
+    Returns:
+        Resolved repository-relative link targets. External URLs, anchors,
+        and targets outside the repository are omitted.
+    """
+
+    raw_targets = re.findall(r"\]\(([^)]+)\)", text)
+    raw_targets.extend(
+        re.findall(r"^\[[^\]]+\]:\s+(\S+)", text, flags=re.MULTILINE)
+    )
+    targets: set[str] = set()
+    source_directory = (root / source_path).parent
+    repository = root.resolve()
+    for raw_target in raw_targets:
+        candidate = raw_target.strip()
+        if candidate.startswith("<") and ">" in candidate:
+            candidate = candidate[1 : candidate.index(">")]
+        else:
+            candidate = candidate.split(maxsplit=1)[0]
+        candidate = candidate.split("#", maxsplit=1)[0]
+        if (
+            not candidate
+            or candidate.startswith("/")
+            or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", candidate)
+        ):
+            continue
+        resolved = (source_directory / candidate).resolve()
+        try:
+            relative = resolved.relative_to(repository)
+        except ValueError:
+            continue
+        targets.add(relative.as_posix())
+    return targets
+
+
 def validate_relative_paths(
     root: Path,
     row_name: str,
@@ -694,6 +738,13 @@ def validate_audit(
             flags=re.MULTILINE,
         )
     )
+    declared_post_baseline_adr_amendments = set(
+        re.findall(
+            r"^- Post-baseline ADR amendment: `([^`]+)`$",
+            manifest_text,
+            flags=re.MULTILINE,
+        )
+    )
     actual_post_baseline_adrs = current_adr_paths - baseline_adr_paths
     undeclared_post_baseline_adrs = sorted(
         actual_post_baseline_adrs - declared_post_baseline_adrs
@@ -706,6 +757,15 @@ def validate_audit(
             "post-baseline ADR declarations disagree with the current tree: "
             f"undeclared={undeclared_post_baseline_adrs}, "
             f"stale_or_baseline={stale_post_baseline_adrs}"
+        )
+    invalid_declared_adr_amendments = sorted(
+        declared_post_baseline_adr_amendments
+        - (baseline_adr_paths & current_adr_paths)
+    )
+    if invalid_declared_adr_amendments:
+        errors.append(
+            "post-baseline ADR amendment declarations do not name current "
+            f"baseline ADRs: {invalid_declared_adr_amendments}"
         )
 
     inventory_paths = [row["path"] for row in inventory]
@@ -1147,6 +1207,31 @@ def validate_audit(
     proposed_new_numbers: dict[str, list[int]] = {
         destination: [] for destination in destination_prefixes
     }
+    baseline_adr_by_slot: dict[tuple[str, int], str] = {}
+    for adr_path_text in baseline_adr_paths:
+        adr_path = Path(adr_path_text)
+        destination = f"{adr_path.parent.as_posix()}/"
+        if destination in destination_prefixes:
+            baseline_adr_by_slot[(destination, int(adr_path.name[:4]))] = (
+                adr_path_text
+            )
+    current_adr_by_slot: dict[tuple[str, int], str] = {}
+    for adr_path_text in current_adr_paths:
+        adr_path = Path(adr_path_text)
+        destination = f"{adr_path.parent.as_posix()}/"
+        if destination not in destination_prefixes:
+            continue
+        slot = (destination, int(adr_path.name[:4]))
+        previous_path = current_adr_by_slot.get(slot)
+        if previous_path is not None:
+            errors.append(
+                f"duplicate current ADR number {destination}"
+                f"{adr_path.name[:4]}: {previous_path!r}, {adr_path_text!r}"
+            )
+        current_adr_by_slot[slot] = adr_path_text
+    implemented_candidate_paths: dict[str, str] = {}
+    implemented_candidate_amendment_paths: set[str] = set()
+    unresolved_candidate_ids: list[str] = []
     candidate_canonical_ids: list[str] = []
     for row in candidates:
         candidate_id = row["candidate_id"] or "<candidate without ID>"
@@ -1186,21 +1271,91 @@ def validate_audit(
             )
         else:
             proposed_number = int(ref_match.group(1))
+            slot = (destination, proposed_number)
+            current_candidate_path = current_adr_by_slot.get(slot)
+            baseline_candidate_path = baseline_adr_by_slot.get(slot)
             if numbering_action == "New ADR":
-                proposed_new_numbers[destination].append(proposed_number)
-                if proposed_number in occupied_adr_numbers[destination]:
+                if baseline_candidate_path is not None:
                     errors.append(
                         f"{candidate_id}: proposed new ADR "
-                        f"{proposed_ref} already exists"
+                        f"{proposed_ref} already existed at the audit baseline"
                     )
-            elif (
-                numbering_action == "Amend existing ADR"
-                and proposed_number not in existing_adr_numbers[destination]
-            ):
+                elif current_candidate_path is None:
+                    proposed_new_numbers[destination].append(
+                        proposed_number
+                    )
+                    unresolved_candidate_ids.append(candidate_id)
+                else:
+                    implemented_candidate_paths[candidate_id] = (
+                        current_candidate_path
+                    )
+                    current_text = (
+                        root / current_candidate_path
+                    ).read_text(encoding="utf-8")
+                    heading_pattern = (
+                        rf"^# ADR-{proposed_number:04d}: \S.*$"
+                    )
+                    if re.search(
+                        heading_pattern,
+                        current_text,
+                        flags=re.MULTILINE,
+                    ) is None:
+                        errors.append(
+                            f"{candidate_id}: implemented ADR does not have "
+                            f"a non-empty ADR-{proposed_number:04d} heading: "
+                            f"{current_candidate_path}"
+                        )
+            elif baseline_candidate_path is None:
                 errors.append(
                     f"{candidate_id}: amendment target "
-                    f"{proposed_ref} does not exist"
+                    f"{proposed_ref} does not exist at the audit baseline"
                 )
+            elif current_candidate_path is None:
+                errors.append(
+                    f"{candidate_id}: amendment target "
+                    f"{proposed_ref} is absent from the current tree"
+                )
+            else:
+                baseline_text = audited_text(baseline_candidate_path)
+                current_text = (
+                    root / current_candidate_path
+                ).read_text(encoding="utf-8")
+                if baseline_text == current_text:
+                    unresolved_candidate_ids.append(candidate_id)
+                else:
+                    implemented_candidate_paths[candidate_id] = (
+                        current_candidate_path
+                    )
+            implemented_path = implemented_candidate_paths.get(
+                candidate_id
+            )
+            if implemented_path is not None:
+                if numbering_action == "Amend existing ADR":
+                    implemented_candidate_amendment_paths.add(
+                        implemented_path
+                    )
+                implemented_text = (root / implemented_path).read_text(
+                    encoding="utf-8"
+                )
+                implemented_targets = markdown_repository_targets(
+                    root, implemented_path, implemented_text
+                )
+                for related_path in (
+                    split_values(row["related_closed_plans"])
+                    + split_values(row["related_closed_initiatives"])
+                    + split_values(row["current_docs"])
+                ):
+                    if related_path == implemented_path:
+                        continue
+                    if (
+                        related_path not in implemented_text
+                        and related_path not in implemented_targets
+                    ):
+                        errors.append(
+                            f"{candidate_id}: implemented ADR "
+                            f"{implemented_path} does not reference "
+                            f"{related_path!r}"
+                        )
         for field_name in (
             "candidate_key",
             "title",
@@ -1303,6 +1458,16 @@ def validate_audit(
             row["current_docs"],
             errors,
             known_paths=baseline_paths,
+        )
+    if (
+        declared_post_baseline_adr_amendments
+        != implemented_candidate_amendment_paths
+    ):
+        errors.append(
+            "post-baseline ADR amendment declarations disagree with "
+            "implemented audit candidates: "
+            f"declared={sorted(declared_post_baseline_adr_amendments)}, "
+            f"implemented={sorted(implemented_candidate_amendment_paths)}"
         )
     for destination, proposed_numbers in proposed_new_numbers.items():
         existing_numbers = occupied_adr_numbers[destination]
@@ -2051,6 +2216,18 @@ def validate_audit(
         "proposed_adr_amendment_count": (
             candidate_numbering_action_counts["Amend existing ADR"]
         ),
+        "implemented_adr_candidate_count": len(
+            implemented_candidate_paths
+        ),
+        "implemented_adr_candidate_paths": dict(
+            sorted(implemented_candidate_paths.items())
+        ),
+        "unresolved_adr_candidate_count": len(
+            unresolved_candidate_ids
+        ),
+        "unresolved_adr_candidate_ids": sorted(
+            unresolved_candidate_ids
+        ),
         "proposed_adr_refs_by_destination": {
             destination: sorted(
                 row["proposed_adr_ref"]
@@ -2068,9 +2245,7 @@ def validate_audit(
     if report_path.is_file():
         report_text = report_path.read_text(encoding="utf-8")
         report_fragments = {
-            "audited commit": (
-                "`9e8e83a6c5ed545069312a91a27ac7a79055a614`"
-            ),
+            "audited commit": f"`{audited_sha}`",
             "relationship total": (
                 f"The complete {len(relationships)}-edge graph"
             ),
@@ -2078,6 +2253,10 @@ def validate_audit(
                 f"The {len(candidates)} candidates below"
             ),
         }
+        if len(implemented_candidate_paths) == len(candidates):
+            report_fragments["candidate resolution"] = (
+                f"all {len(candidates)} candidates were implemented"
+            )
         for label, fragment in report_fragments.items():
             if fragment not in report_text:
                 errors.append(
@@ -2118,6 +2297,17 @@ def validate_audit(
     backlog_path = audit_dir / "missing-adr-candidates.md"
     if backlog_path.is_file():
         backlog_text = backlog_path.read_text(encoding="utf-8")
+        if (
+            len(implemented_candidate_paths) == len(candidates)
+            and (
+                f"All {len(candidates)} candidates were implemented"
+                not in backlog_text
+            )
+        ):
+            errors.append(
+                "missing-ADR Markdown backlog omits current candidate "
+                "resolution status"
+            )
         backlog_table_rows = markdown_table_rows(backlog_text)
         for row in candidates:
             numbering_cells = (

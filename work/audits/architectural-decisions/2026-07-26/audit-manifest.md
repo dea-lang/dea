@@ -37,12 +37,38 @@ ADR coverage was checked from each index and then against every numbered ADR fil
 - Post-baseline closed plan: `l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md`
 - Post-baseline closed plan: `l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`
 - Post-baseline closed plan: `work/plans/tools/closed/2026-07-26-shared-adr-impact-closure-gate-noref.md`
+- Post-baseline closed plan: `work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md`
 - Post-baseline ADR: `docs/decisions/0011-plan-adr-impact-and-closure-gate.md`
+- Post-baseline ADR: `docs/decisions/0012-shared-for-header-control-flow-liveness-and-cleanup-semantics.md`
+- Post-baseline ADR: `docs/decisions/0013-compiler-diagnostic-collection-parser-recovery-and-phase-barriers.md`
+- Post-baseline ADR: `docs/decisions/0014-intentional-cross-level-divergence-and-parity-exceptions.md`
+- Post-baseline ADR: `docs/decisions/0015-shared-integer-standard-library-naming-and-failure-contract.md`
+- Post-baseline ADR: `docs/decisions/0016-top-level-let-inference-and-runtime-initialization-boundaries.md`
+- Post-baseline ADR: `docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md`
+- Post-baseline ADR: `docs/decisions/0018-shared-editor-tooling-level-identities-and-compiler-authority.md`
+- Post-baseline ADR: `docs/decisions/0019-shared-standard-library-naming-and-compatibility-policy.md`
+- Post-baseline ADR: `l0/docs/decisions/0017-release-identity-integrity-and-immutable-publication.md`
+- Post-baseline ADR: `l0/docs/decisions/0018-safe-standard-stream-byte-io.md`
+- Post-baseline ADR: `l0/docs/decisions/0019-stage2-ast-and-parser-ownership.md`
+- Post-baseline ADR: `l0/docs/decisions/0020-stage2-driver-and-host-process-boundary.md`
+- Post-baseline ADR: `l0/docs/decisions/0021-supported-host-and-release-tiers.md`
+- Post-baseline ADR: `l0/docs/decisions/0022-time-model-and-runtime-boundary.md`
+- Post-baseline ADR: `l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md`
+- Post-baseline ADR: `l0/docs/decisions/0024-filesystem-metadata-and-file-read-abi.md`
+- Post-baseline ADR: `l0/docs/decisions/0025-runtime-trace-source-provenance.md`
+- Post-baseline ADR: `l0/docs/decisions/0026-stage2-semantic-result-and-pass-ordering.md`
 - Post-baseline ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
+- Post-baseline ADR: `l1/docs/decisions/0023-case-value-comparability-and-unreachable-arm-policy.md`
+- Post-baseline ADR: `l1/docs/decisions/0024-named-call-syntax-completeness-and-evaluation-order.md`
+- Post-baseline ADR: `l1/docs/decisions/0025-pointer-equality-and-ordering-semantics.md`
+- Post-baseline ADR: `l1/docs/decisions/0026-real-library-runtime-and-host-math-linkage-boundary.md`
+- Post-baseline ADR: `l1/docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md`
+- Post-baseline ADR amendment: `l0/docs/decisions/0014-bootstrap-self-hosting-strategy.md`
 
-The closed plans and ADRs above were created after the audited commit. Post-baseline closed plans and ADRs remain
-excluded from the audited inventories and all baseline totals, but post-baseline ADRs occupy their official directory
-numbers when the missing-ADR backlog proposes the next contiguous sequence.
+The closed plans and new ADRs above were created after the audited commit; the listed amendment was made after the
+baseline. They remain excluded from the audited inventories and all baseline totals. The 2026-07-27 additions and
+amendment implement the 24-candidate backlog as a separate current-tree resolution overlay rather than rewriting
+historical coverage.
 
 ## Excluded from primary totals
 

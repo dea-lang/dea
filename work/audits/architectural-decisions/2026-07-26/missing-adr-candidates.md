@@ -3,6 +3,13 @@
 This backlog is reviewer judgment derived from the canonical decision ledger. It clusters decisions by architectural
 question; it is not one ADR per plan.
 
+## Resolution status
+
+All 24 candidates were implemented on 2026-07-27: 23 new ADRs were added in the reserved sequences and L0 ADR-0014 was
+amended. The candidate descriptions remain below as the dated audit's rationale and source-provenance record. Baseline
+coverage statistics are intentionally unchanged; `audit-statistics.json` records the separate current-tree resolution
+overlay.
+
 ## Priority summary
 
 | Priority | Candidates |
@@ -430,9 +437,9 @@ runtime versus the language standard library?
 
 Chosen decision:
 
-L0 exposes distinct Instant, Timestamp, and Duration values with optional failure and normalized nanoseconds; the
-runtime supplies wall/monotonic snapshots and local offset/DST facts, while language code performs UTC calendar
-conversion and monotonic time never falls back to wall time.
+L0 exposes distinct `WallTime`, `MonotonicTime`, `Duration`, and `DateTime` values with optional failure and normalized
+nanoseconds; the runtime supplies wall/monotonic snapshots and local offset/DST facts, while language code performs UTC
+calendar conversion and monotonic time never falls back to wall time.
 
 Important alternatives:
 
@@ -891,8 +898,9 @@ What owns Stage 2 semantic state, and in what order are module environments, dec
 
 Chosen decision:
 
-One AnalysisResult owns driver state, diagnostics, environments, signatures, and local scopes; name resolution creates
-module environments, collects local declarations, opens imports, and then aggregates diagnostics.
+One AnalysisResult owns driver state, environments, signatures, local scopes, and one authoritative diagnostic
+collector; name resolution creates module environments, collects local declarations, and opens imports while diagnostics
+accumulate throughout analysis.
 
 Important alternatives:
 

@@ -33,6 +33,16 @@ candidates**: 2 P0, 16 P1, 6 P2, and no P3. Their provisional numbering yields *
 amendment** to the existing `L0-ADR-0014`; no accepted ADR is renumbered. The two most urgent gaps are the shared
 `for`-header control-flow/cleanup contract and the L0 release identity/integrity/immutable-publication contract.
 
+## Post-audit resolution
+
+On 2026-07-27, all 24 candidates were implemented in their reserved directory sequences: 23 new ADRs were added and L0
+ADR-0014 was amended. The accepted records are indexed under [Dea-wide ADRs](../../../../docs/decisions/INDEX.md),
+[L0 ADRs](../../../../l0/docs/decisions/INDEX.md), and [L1 ADRs](../../../../l1/docs/decisions/INDEX.md).
+
+This resolution does not rewrite the audit baseline. The event, canonical-decision, historical ADR inventory, and
+coverage totals below continue to describe the audited baseline recorded above; the validator and generated statistics
+carry a separate current-tree candidate-resolution overlay.
+
 ## Deliverables
 
 - [Audit manifest](audit-manifest.md)
@@ -44,7 +54,7 @@ amendment** to the existing `L0-ADR-0014`; no accepted ADR is renumbered. The tw
 - [Machine-readable missing-ADR backlog](missing-adr-candidates.csv)
 - [Human-readable missing-ADR backlog](missing-adr-candidates.md)
 - [Recomputed aggregate statistics](audit-statistics.json)
-- [Audit validator and statistics script](../../../scripts/validate_architectural_decision_audit.py)
+- [Audit validator and statistics script](../../../../scripts/validate_architectural_decision_audit.py)
 
 The CSV files are the authoritative detailed records. This report is a human-readable synthesis of those ledgers.
 
@@ -57,8 +67,8 @@ auditable without being silently included in the current-decision total.
 
 ### Baseline and corpus
 
-The audit uses commit `9e8e83a6c5ed545069312a91a27ac7a79055a614`. On the audit date, local `origin/dev` and remote
-`refs/heads/dev` both resolved to that SHA.
+The audit uses the immutable baseline recorded in the header and manifest. On the audit date, local `origin/dev` and
+remote `refs/heads/dev` both resolved to that baseline.
 
 Every Markdown file under the three required closed-plan patterns was read in full, including outcomes and completion
 notes. Every closed L1 initiative was also read, but initiatives were kept outside the primary plan totals. Active
