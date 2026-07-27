@@ -45,7 +45,8 @@ distribution, and release workflows.
 At a high level, it provides:
 
 - full public CLI parity with Stage 1 across `--check`, `--tok`, `--ast`, `--sym`, `--type`, `--gen`, `--build`, and
-  `--run`, plus the shared reserved `--compile` mode and interface-path grammar,
+  `--run`; L0 recognizes and rejects the reserved `--compile` mode and parses interface paths without searching them or
+  producing artifacts,
 - self-hosted C99 generation, build, and run flows,
 - repo-local, install-prefix, and distribution delivery paths,
 - strict triple-bootstrap validation via `make triple-test`,

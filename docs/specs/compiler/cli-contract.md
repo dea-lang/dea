@@ -24,17 +24,17 @@ Canonical level-specific detail:
 
 ## 2. Shared Modes
 
-| Mode        | Aliases            | Purpose                                               |
-| ----------- | ------------------ | ----------------------------------------------------- |
-| `--run`     | `-r`               | Build and run one source target                       |
-| `--build`   |                    | Build one executable                                  |
-| `--compile` | `-c`               | Compile one module without linking; implemented in L1 |
-| `--gen`     | `-Gc`, `--codegen` | Emit generated C                                      |
-| `--check`   | `--analyze`        | Parse and analyze                                     |
-| `--tok`     | `--tokens`         | Dump lexer tokens                                     |
-| `--ast`     |                    | Dump the parsed AST                                   |
-| `--sym`     | `--symbols`        | Dump module-level symbols                             |
-| `--type`    | `--types`          | Dump resolved top-level types                         |
+| Mode        | Aliases            | Purpose                                                  |
+| ----------- | ------------------ | -------------------------------------------------------- |
+| `--run`     | `-r`               | Build and run one source target                          |
+| `--build`   |                    | Build one executable                                     |
+| `--compile` | `-c`               | Reserved in L0; compile one module without linking in L1 |
+| `--gen`     | `-Gc`, `--codegen` | Emit generated C                                         |
+| `--check`   | `--analyze`        | Parse and analyze                                        |
+| `--tok`     | `--tokens`         | Dump lexer tokens                                        |
+| `--ast`     |                    | Dump the parsed AST                                      |
+| `--sym`     | `--symbols`        | Dump module-level symbols                                |
+| `--type`    | `--types`          | Dump resolved top-level types                            |
 
 The dump modes are developer-facing; their text formats are not stable interfaces. All current compilers recognize
 `--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. L1 Stage 1
