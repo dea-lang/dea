@@ -91,16 +91,56 @@ trace sweeps for full registered-level validation. For targeted level work, ente
   docs where it is normatively recorded. ADR numbers are never reused; superseded ADRs stay in place with updated
   status.
 
+### ADR Impact In Plans And Initiatives
+
+Every active plan and initiative must contain exactly one `## ADR Impact` section. Use one record per atomic
+architectural question; repeat the record when the document addresses independent questions:
+
+```markdown
+## ADR Impact
+
+- Decision: Short architectural question or durable choice.
+  - Scope: Shared
+  - Disposition: New ADR
+  - ADR: `docs/decisions/`
+  - Rationale: Why this disposition and destination are appropriate.
+```
+
+Every record requires `Decision`, `Scope`, `Disposition`, `ADR`, and `Rationale`.
+
+- `Scope` is `Dea-wide`, `Shared`, `Repository/tooling`, `L0`, `L1`, or a future `L<N>`. Use `N/A` only with
+  `ADR not warranted`.
+- `Dea-wide`, `Shared`, and `Repository/tooling` decisions belong in `docs/decisions/`. Level decisions belong in the
+  matching `lN/docs/decisions/` directory. Root shared work may carry a targeted level decision. Level-local work may
+  reference a root scope or its own level, but never a sibling level. The exact ADR path must match the declared scope.
+- `Pending` is allowed only while a document is active. It uses `ADR: None` and records what remains unresolved.
+- `New ADR` points to the destination directory while active and to the exact numbered ADR file when closed.
+- `Amend ADR` and `Covered by ADR` point to an exact existing, indexed ADR file.
+- `ADR not warranted` uses `ADR: None` and a substantive rationale. When a document contains no ADR-worthy decision, use
+  this as its sole ADR Impact record.
+
+Do not close a plan or initiative while any ADR Impact record is `Pending`. In the same change that closes it:
+
+- `New ADR` requires the exact numbered ADR, its index row, and a resolvable ADR link back to the closed document.
+- `Amend ADR` requires the named ADR to be updated and linked to the closed document.
+- `Covered by ADR` requires the named ADR's `Related Plans` section to be updated with a resolvable link to the closed
+  document.
+
+Untouched closed documents created before this policy are grandfathered. Any added, renamed, or modified closed plan or
+initiative must carry a valid final ADR Impact section. Run `python3 scripts/check_adr_impact.py --all-active` while
+planning and `python3 scripts/check_adr_impact.py --staged` before committing; pre-commit and CI enforce the same rules.
+
 ### ADR Maintenance
 
-**When to create a new ADR:** after closing a plan that introduced or confirmed a lasting design decision with
-architectural significance. The ADR number is the next unused number in the relevant `decisions/` directory.
+**When to create a new ADR:** in the same change that closes a plan or initiative that introduced or confirmed a lasting
+design decision with architectural significance. The ADR number is the next unused number in the relevant `decisions/`
+directory.
 
 **Lifecycle steps:**
 
 1. Create `NNNN-slug.md` with metadata bullets (`- Decision date:`, `- Last edited:`, `- Status:`), all required
-   sections (Context, Decision, Rationale, Consequences, Related Plans, Current Docs), and resolve all links before
-   committing.
+   sections (Context, Decision, Rationale, Consequences, Related Plans, Current Docs), a resolvable link to each closed
+   source document, and resolve all links before committing.
 2. Add a row to the corresponding `decisions/INDEX.md`.
 3. If the new ADR supersedes an existing one: update the old ADR's `Status:` to
    `Superseded by [ADR-NNNN](NNNN-slug.md) (YYYY-MM-DD)` and add a `- Supersedes: [ADR-XXXX](XXXX-slug.md)` bullet to

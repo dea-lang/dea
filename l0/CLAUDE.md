@@ -67,9 +67,10 @@ Also see: `../CONTRIBUTING.md`, `../SECURITY.md`.
   `<PREFIX>/bin/l0-env.sh` in POSIX/MSYS2 bash or `call <PREFIX>\bin\l0-env.cmd` in `cmd.exe`. For source-tree usage,
   invoke `./scripts/l0c` or `scripts\l0c.cmd` directly; those wrappers derive `L0_HOME` on their own.
 - **Pre-commit hooks:** Install from the monorepo root with
-  `uv run --group dev pre-commit install -c .pre-commit-config.yaml` after `make venv`. Two hooks run on every commit:
-  `mdformat` (auto-reformats `.md` files; config in `pyproject.toml`) and `copyright-headers` (validates source file
-  copyright notices). If mdformat reformats a file, stage the changes and re-commit.
+  `uv run --group dev pre-commit install -c .pre-commit-config.yaml` after `make venv`. Three hooks run on every commit:
+  `mdformat` (auto-reformats `.md` files; config in `pyproject.toml`), `copyright-headers` (validates source file
+  copyright notices), and `adr-impact` (validates active lifecycle documents and staged closure evidence). If mdformat
+  reformats a file, stage the changes and re-commit.
 
 ## Release And Documentation Publication
 
@@ -293,4 +294,5 @@ rules here unless this file defines a narrower L0-specific requirement.
 7. **Plans Documented:** For non-trivial changes or bug fixes a plan must be documented in `work/plans/` with a clear
    execution path and expected outcomes. Active plans live at the category root (for example `work/plans/features/` or
    `work/plans/tools/`); closed plans are `git mv`-ed into `<category>/closed/` with cross-references updated. See
-   `work/README.md` for naming, placement, and closing workflow rules.
+   `work/README.md` for naming, placement, ADR Impact, and closing workflow rules. Every plan must carry the exact
+   `## ADR Impact` contract from root `CLAUDE.md`; unresolved `Pending` records block closure.

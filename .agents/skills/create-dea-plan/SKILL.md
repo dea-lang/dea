@@ -185,6 +185,7 @@ After the metadata block, follow the structure already used by nearby plans in t
 body usually needs at least:
 
 - `## Summary`
+- `## ADR Impact`
 - current-state and/or root-cause context
 - goal/scope
 - phased implementation or approach sections
@@ -201,6 +202,33 @@ Use the closest local precedent:
 
 Do not write an `Outcome`, `Results`, or completed verification section in a brand-new draft plan unless the user is
 actually documenting already landed work.
+
+## ADR Impact requirement
+
+Every new plan must contain exactly one `## ADR Impact` section. Follow the canonical schema, scopes, dispositions, and
+closure rules in root `CLAUDE.md`. Start with one record per independent architectural question:
+
+```markdown
+## ADR Impact
+
+- Decision: Short architectural question or durable choice.
+  - Scope: L1
+  - Disposition: Pending
+  - ADR: None
+  - Rationale: The decision remains open while the plan is active.
+```
+
+Choose the scope from the architectural decision's ownership, not merely from the files being edited. Use `Pending` only
+for a genuinely unresolved active-plan question. When the direction is already known, select `New ADR`, `Amend ADR`,
+`Covered by ADR`, or `ADR not warranted` immediately:
+
+- An active `New ADR` record points to the correct decision directory.
+- `Amend ADR` and `Covered by ADR` point to an exact existing, indexed ADR.
+- A plan with no ADR-worthy decision has one `ADR not warranted` record with `Scope: N/A`, `ADR: None`, and substantive
+  rationale.
+
+Do not omit the section with the intention of deciding at closure. Run
+`python3 scripts/check_adr_impact.py --all-active` after creating the plan.
 
 ## Remote and publication approval gates
 
@@ -298,7 +326,7 @@ l1/work/initiatives/NNNN-kebab-case-slug.md
 ```
 
 Use the next available zero-padded number, carry the initiative metadata block, and add the roadmap entry under
-`Active initiatives`.
+`Active initiatives`. The initiative also requires exactly one `## ADR Impact` section under the root policy.
 
 ## Writing rules
 
@@ -317,6 +345,8 @@ Use the next available zero-padded number, carry the initiative metadata block, 
 - filename follows `YYYY-MM-DD-<slug>-noref.md`
 - metadata block matches current repo rules
 - shared-plan metadata included when needed
+- exactly one ADR Impact section included with one record per independent architectural question
+- ADR scope, disposition, and destination follow the root policy
 - diagnostic-code reservation guidance included when the work may add new diagnostics
 - explicit subtree link/update steps followed where required, for example the current `l1/docs/roadmap.md` rule
 - no lifecycle plan written under `docs/`

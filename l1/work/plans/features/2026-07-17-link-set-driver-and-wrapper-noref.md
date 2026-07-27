@@ -174,6 +174,30 @@ repeats the path with `extern "C"`.
 3. Re-check `L1C-2090` through `L1C-2109` against the live [diagnostic catalog][diagnostic-catalog] immediately before
    implementation and move the whole provisional block if any code has been assigned.
 
+## ADR Impact
+
+- Decision: Link verified Dea objects and explicitly classified foreign objects through a generated executable wrapper.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The verified link-set boundary, entry validation, foreign-object distinction, and wrapper ownership
+    constrain every future linker-facing workflow.
+- Decision: Make the per-module lifecycle ABI the source of wrapper calls and deterministic initialization ordering.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
+  - Rationale: ADR-0020 defines the lifecycle entrypoints whose composition becomes executable-link behavior.
+- Decision: Use portable object metadata as the authority for Dea-object classification and inspection.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0021-portable-object-metadata-and-inspection.md`
+  - Rationale: ADR-0021 already defines metadata authority and the verified-versus-foreign object boundary.
+- Decision: Expose standalone linking through the shared `--link` compiler mode contract.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0003-shared-cli-contract.md`
+  - Rationale: ADR-0003 owns shared compiler modes, operand validation, and level-specific extensions.
+
 ## Non-Goals
 
 1. Discovering objects from module names or reopening `.l1m` files during link-only mode.

@@ -9,20 +9,36 @@ on:
       - main
       - ci-probe
     paths:
+      - .agents/skills/**
       - .github/workflows/ci.yml
       - .github/workflows/l0-ci.yml
       - .github/workflows/l1-ci.yml
+      - .pre-commit-config.yaml
+      - CLAUDE.md
+      - CONTRIBUTING.md
       - Makefile
+      - docs/decisions/**
+      - scripts/check_adr_impact.py
+      - scripts/tests/test_check_adr_impact.py
       - tools/**
+      - work/**
       - l0/**
       - l1/**
   pull_request:
     paths:
+      - .agents/skills/**
       - .github/workflows/ci.yml
       - .github/workflows/l0-ci.yml
       - .github/workflows/l1-ci.yml
+      - .pre-commit-config.yaml
+      - CLAUDE.md
+      - CONTRIBUTING.md
       - Makefile
+      - docs/decisions/**
+      - scripts/check_adr_impact.py
+      - scripts/tests/test_check_adr_impact.py
       - tools/**
+      - work/**
       - l0/**
       - l1/**
   workflow_dispatch:
@@ -62,6 +78,64 @@ permissions:
   contents: read
 
 jobs:
+  adr-impact:
+    name: ADR impact policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Test ADR impact checker
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_adr_impact.py'
+
+      - name: Check ADR impact policy
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            python3 scripts/check_adr_impact.py --all-active
+            exit
+          fi
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base_sha="$PR_BASE_SHA"
+            head_sha="$PR_HEAD_SHA"
+          else
+            base_sha="$BEFORE_SHA"
+            head_sha="$PUSH_SHA"
+          fi
+
+          if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ] || \
+             ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 || \
+             ! git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
+            echo "::error::ADR impact policy requires valid base and head commits for non-manual runs."
+            exit 2
+          fi
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if ! merge_base_sha="$(git merge-base "$base_sha" "$head_sha")" || \
+               [ -z "$merge_base_sha" ] || \
+               ! git rev-parse --verify "$merge_base_sha^{commit}" >/dev/null 2>&1; then
+              echo "::error::ADR impact policy could not resolve the pull request merge base."
+              exit 2
+            fi
+            base_sha="$merge_base_sha"
+          fi
+
+          python3 scripts/check_adr_impact.py --base "$base_sha" --head "$head_sha"
+
   route-levels:
     runs-on: ubuntu-latest
     outputs:

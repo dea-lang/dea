@@ -202,8 +202,51 @@ Update the shared CLI contract and diagnostic catalog plus the L1 architecture, 
 project-status, roadmap, and initiative documents.
 
 At closure, add the next available L1 ADR recording per-module `--gen`, cross-mode generated-C identity, stable
-compiler-visible paths, the default `.o + .l1m` compile-only pair, optional `--keep-c`, and removal of whole-closure
-backend generation. Update the ADR index and close the plan normally.
+compiler-visible paths and object-determinism exceptions, and retirement of whole-closure generation. Amend ADR-0020's
+transitional legacy-generator statements and link ADR-0022 for the unchanged compile-only publication and rollback
+contract. Update the ADR index and close the plan normally.
+
+## ADR Impact
+
+- Decision: Make L1 `--gen` emit one per-module C translation unit rather than the complete source closure.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: This changes the public meaning of generated-C mode and removes the legacy whole-program output contract.
+- Decision: Resolve `--gen` imports interface-first and treat a selected `.l1m` as authoritative without requiring its
+  sibling `.o`.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md`
+  - Rationale: ADR-0018 owns interface precedence, authoritative-interface failure, and source-fallback policy.
+- Decision: Preserve byte-identical per-module C across `--gen`, `-c --keep-c`, and retained build/run output.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Cross-mode identity prevents mode-specific emitters and makes generated C a stable compiler artifact.
+- Decision: Hide transaction and destination names from host compilation through stable module-relative workspace paths.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Stable compiler-visible paths provide deterministic objects on supported toolchains while permitting
+    explicit platform exceptions.
+- Decision: Publish `.o + .l1m` by default, add `.c` only with `--keep-c`, and preserve endpoint rollback.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
+  - Rationale: ADR-0022 already owns the selected artifact set, rollback boundary, and external-serialization
+    requirement.
+- Decision: Retire the legacy whole-closure generator after build/run migrates to the per-module backend.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
+  - Rationale: ADR-0020 deliberately retained the legacy generator as a transitional path and must record its
+    retirement.
+- Decision: Preserve `--gen` stdout and exact `-o FILE` output without companion artifacts or host compilation.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0003-shared-cli-contract.md`
+  - Rationale: The shared CLI ADR owns generated-C mode, output behavior, and level-extension rules.
 
 ## Diagnostics
 

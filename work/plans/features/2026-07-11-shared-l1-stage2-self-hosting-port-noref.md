@@ -240,6 +240,14 @@ spawn focused follow-up plans in this order where the change remains worthwhile:
 Each follow-up must preserve Stage 1 behavior through parity tests. L1-native implementation divergence does not make
 Stage 2 authoritative for language semantics or diagnostics.
 
+## ADR Impact
+
+- Decision: Treat L1 Stage 1 as the bootstrap entrypoint and behavioral oracle for a mechanical initial Stage 2 port.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0001-two-stage-architecture.md`
+  - Rationale: ADR-0001 already establishes the two-stage bootstrap relationship and Stage 2 parity obligation.
+
 ## Non-Goals
 
 1. Adding or redesigning an L1 language feature to make the first self-host possible.

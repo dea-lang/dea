@@ -1,0 +1,640 @@
+{
+  "adr_coverage_percentage": 74.6268656716418,
+  "adr_coverage_percentage_including_partial": 80.41044776119404,
+  "adr_coverage_percentage_of_all_current_decisions": 67.11409395973155,
+  "adr_covered_current_decisions": 400,
+  "adr_files": 47,
+  "adr_index_entries_verified": 47,
+  "adr_partially_covered_current_decisions": 31,
+  "adr_warranted_current_decisions": 536,
+  "adr_worthy_current_decisions_missing_an_adr": 105,
+  "adrs_supported_by_multiple_closed_plans": 35,
+  "canonical_decision_rows": 618,
+  "canonical_decisions_by_status": {
+    "Deferred": 7,
+    "Historical only": 2,
+    "Retained": 589,
+    "Retracted": 0,
+    "Superseded": 20,
+    "Unclear": 0
+  },
+  "closed_initiatives": 2,
+  "closed_plans": 233,
+  "current_decisions_by_adr_coverage": {
+    "ADR not warranted": 60,
+    "Covered as part of a broader ADR": 114,
+    "Directly covered": 286,
+    "Not covered": 105,
+    "Partially covered": 31,
+    "Unclear": 0
+  },
+  "current_decisions_by_category": {
+    "ABI and linking": 70,
+    "Backend and C emission": 14,
+    "Bootstrap and self-hosting": 14,
+    "CLI and distribution": 64,
+    "Diagnostics and recovery": 24,
+    "Frontend architecture": 36,
+    "Language semantics": 47,
+    "Language syntax": 34,
+    "Ownership and memory safety": 39,
+    "Portability": 14,
+    "Repository and process architecture": 47,
+    "Runtime": 38,
+    "Semantic analysis": 20,
+    "Standard library": 66,
+    "Type system": 69
+  },
+  "current_decisions_by_compiler_stage": {
+    "Cross-stage or language-level": 451,
+    "Repository/tooling": 49,
+    "Stage 1-specific": 63,
+    "Stage 2-specific": 33
+  },
+  "current_decisions_by_scope": {
+    "Dea-wide": 10,
+    "L0": 102,
+    "L0 Stage 1": 7,
+    "L0 Stage 2": 33,
+    "L1": 251,
+    "L1 Stage 1": 56,
+    "L1 Stage 2": 0,
+    "Repository/tooling": 49,
+    "Shared L0/L1": 88
+  },
+  "current_decisions_by_status": {
+    "Deferred": 7,
+    "Historical only": 0,
+    "Retained": 589,
+    "Retracted": 0,
+    "Superseded": 0,
+    "Unclear": 0
+  },
+  "current_deferred_decisions": 7,
+  "current_distinct_decisions": 596,
+  "current_retained_decisions": 589,
+  "decision_count_buckets": {
+    "one": 33,
+    "six_or_more": 41,
+    "two_to_five": 75,
+    "zero": 84
+  },
+  "decision_relationships": 58,
+  "decision_relationships_by_type": {
+    "Broadened by": 22,
+    "Narrowed by": 5,
+    "Retracted by": 0,
+    "Superseded by": 28,
+    "Temporarily introduced then removed by": 0,
+    "Transferred to stable documentation by": 3
+  },
+  "existing_adrs_by_plan_support": {
+    "multiple": 35,
+    "one": 8,
+    "zero": 4
+  },
+  "existing_adrs_by_repository_area": {
+    "L0": 16,
+    "L1": 21,
+    "Root/shared": 10
+  },
+  "filename_date_mismatch_count": 9,
+  "filename_date_mismatch_paths": [
+    "l0/work/plans/bug-fixes/closed/2026-02-15-arc-bug-fixes-noref.md",
+    "l0/work/plans/tools/closed/2026-02-16-trace-log-analyzer.md",
+    "l0/work/plans/tools/closed/2026-03-09-stage2-bootstrap-compiler-artifact-noref.md",
+    "l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md",
+    "l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md",
+    "l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md",
+    "l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md",
+    "l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md",
+    "l1/work/plans/features/closed/2026-04-22-anonymous-embedded-struct-members-noref.md"
+  ],
+  "historical_decision_events": 640,
+  "historical_events_by_category": {
+    "ABI and linking": 71,
+    "Backend and C emission": 16,
+    "Bootstrap and self-hosting": 16,
+    "CLI and distribution": 68,
+    "Diagnostics and recovery": 31,
+    "Frontend architecture": 39,
+    "Language semantics": 48,
+    "Language syntax": 35,
+    "Ownership and memory safety": 41,
+    "Portability": 16,
+    "Repository and process architecture": 52,
+    "Runtime": 41,
+    "Semantic analysis": 20,
+    "Standard library": 71,
+    "Type system": 75
+  },
+  "historical_events_by_compiler_stage": {
+    "Cross-stage or language-level": 470,
+    "Repository/tooling": 54,
+    "Stage 1-specific": 73,
+    "Stage 2-specific": 43
+  },
+  "historical_events_by_confidence": {
+    "High": 636,
+    "Low": 0,
+    "Medium": 4
+  },
+  "historical_events_by_explicitness": {
+    "Embedded": 18,
+    "Explicit": 622,
+    "Inferred": 0
+  },
+  "historical_events_by_month": {
+    "2026-02": 67,
+    "2026-03": 107,
+    "2026-04": 186,
+    "2026-05": 76,
+    "2026-06": 109,
+    "2026-07": 95
+  },
+  "historical_events_by_plan_kind": {
+    "Bug Fix": 74,
+    "Feature": 451,
+    "Refactor": 82,
+    "Tool": 33
+  },
+  "historical_events_by_repository_area": {
+    "L0": 193,
+    "L1": 320,
+    "Root/shared": 127
+  },
+  "historical_events_by_scope": {
+    "Dea-wide": 9,
+    "L0": 105,
+    "L0 Stage 1": 12,
+    "L0 Stage 2": 43,
+    "L1": 261,
+    "L1 Stage 1": 61,
+    "L1 Stage 2": 0,
+    "Repository/tooling": 54,
+    "Shared L0/L1": 95
+  },
+  "historical_events_by_status": {
+    "Deferred": 7,
+    "Historical only": 2,
+    "Retained": 600,
+    "Retracted": 0,
+    "Superseded": 31,
+    "Unclear": 0
+  },
+  "initiative_decision_events": 1,
+  "initiative_events_by_category": {
+    "ABI and linking": 1
+  },
+  "initiative_events_by_scope": {
+    "Shared L0/L1": 1
+  },
+  "initiative_events_by_status": {
+    "Deferred": 0,
+    "Historical only": 0,
+    "Retained": 1,
+    "Retracted": 0,
+    "Superseded": 0,
+    "Unclear": 0
+  },
+  "initiative_only_current_decisions": 1,
+  "low_confidence_event_ids": [],
+  "lower_quartile": 0.0,
+  "maximum_decisions_in_one_plan": 16,
+  "mean_decisions_per_plan": 2.7467811158798283,
+  "median_decisions_per_plan": 1,
+  "multiple_plan_supported_adr_paths": [
+    "docs/decisions/0001-two-stage-architecture.md",
+    "docs/decisions/0002-arc-ownership-model.md",
+    "docs/decisions/0003-shared-cli-contract.md",
+    "docs/decisions/0004-monorepo-directory-structure.md",
+    "docs/decisions/0005-diagnostic-code-catalog.md",
+    "docs/decisions/0006-docs-work-taxonomy.md",
+    "docs/decisions/0007-case-default-arm-wildcard.md",
+    "docs/decisions/0009-logical-lexer-error-recovery-tokens-and-codepoint-columns.md",
+    "docs/decisions/0010-checked-runtime-pointer-access-validation.md",
+    "l0/docs/decisions/0003-integer-model.md",
+    "l0/docs/decisions/0005-extern-func-ffi-boundary.md",
+    "l0/docs/decisions/0006-module-system-and-imports.md",
+    "l0/docs/decisions/0007-nullability-and-casts.md",
+    "l0/docs/decisions/0008-arc-ownership-model.md",
+    "l0/docs/decisions/0010-with-statement-cleanup.md",
+    "l0/docs/decisions/0011-c-emission-strategy.md",
+    "l0/docs/decisions/0014-bootstrap-self-hosting-strategy.md",
+    "l0/docs/decisions/0015-stdlib-module-boundaries.md",
+    "l0/docs/decisions/0016-string-value-operators.md",
+    "l1/docs/decisions/0002-dea-virtual-prelude-module.md",
+    "l1/docs/decisions/0003-c-abi-naming-policy.md",
+    "l1/docs/decisions/0004-wide-integer-types.md",
+    "l1/docs/decisions/0005-floating-point-semantics.md",
+    "l1/docs/decisions/0007-function-pointer-types.md",
+    "l1/docs/decisions/0008-lbi-symbol-mangling.md",
+    "l1/docs/decisions/0009-module-visibility-exports-imports.md",
+    "l1/docs/decisions/0010-unsafe-marker-and-raw-pointer-indexing.md",
+    "l1/docs/decisions/0011-fixed-size-array-policy.md",
+    "l1/docs/decisions/0012-ordered-type-suffix-constructors.md",
+    "l1/docs/decisions/0013-opaque-type-exports-and-layout-hiding-visibility.md",
+    "l1/docs/decisions/0014-module-interface-artifact.md",
+    "l1/docs/decisions/0016-compile-time-constant-value-contexts.md",
+    "l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md",
+    "l1/docs/decisions/0019-whole-module-interface-fingerprints.md",
+    "l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md"
+  ],
+  "plan_grounded_current_decisions": 595,
+  "plans_by_kind": {
+    "Bug Fix": 98,
+    "Feature": 92,
+    "Refactor": 27,
+    "Tool": 16
+  },
+  "plans_by_month": {
+    "2026-02": 23,
+    "2026-03": 61,
+    "2026-04": 75,
+    "2026-05": 15,
+    "2026-06": 33,
+    "2026-07": 26
+  },
+  "plans_by_repository_area": {
+    "L0": 105,
+    "L1": 58,
+    "Root/shared": 70
+  },
+  "plans_contributing_to_each_adr": {
+    "docs/decisions/0001-two-stage-architecture.md": [
+      "l0/work/plans/features/closed/2026-02-14-stage2-parser-specification-noref.md",
+      "l0/work/plans/features/closed/2026-03-09-stage2-backend-c-emitter-milestone.md",
+      "l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md",
+      "l0/work/plans/refactors/closed/2026-03-24-monorepo-language-level-layout-noref.md",
+      "l0/work/plans/tools/closed/2026-03-09-stage2-bootstrap-compiler-artifact-noref.md",
+      "l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md",
+      "work/plans/features/closed/2026-04-03-shared-diagnostic-code-catalog-noref.md"
+    ],
+    "docs/decisions/0002-arc-ownership-model.md": [
+      "l0/work/plans/bug-fixes/closed/2026-02-15-arc-bug-fixes-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-02-25-arc-opt-as-string-unwrap-ownership-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-02-28-stage1-backend-loop-continue-arc-release-uninitialized-noref.md",
+      "l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md",
+      "work/plans/bug-fixes/closed/2026-04-20-shared-casted-place-null-propagation-arc-noref.md",
+      "work/plans/bug-fixes/closed/2026-04-20-shared-top-level-arc-cleanup-and-drop-diagnostic-parity-noref.md",
+      "work/plans/bug-fixes/closed/2026-04-22-shared-unwrapped-string-value-arc-copy-noref.md",
+      "work/plans/bug-fixes/closed/2026-04-30-shared-arc-owned-local-reassignment-semantics-noref.md",
+      "work/plans/bug-fixes/closed/2026-06-22-shared-for-header-and-statement-flow-safety-noref.md"
+    ],
+    "docs/decisions/0003-shared-cli-contract.md": [
+      "l0/work/plans/bug-fixes/closed/2026-03-10-stage2-source-paths-l0-home-fallback-noref.md",
+      "l0/work/plans/features/closed/2026-02-24-stage2-driver-l0c-port-syntax-plumbing-noref.md",
+      "l0/work/plans/features/closed/2026-02-28-stage2-semantic-foundation-milestone-noref.md",
+      "l0/work/plans/features/closed/2026-03-08-l0-cflags-c-compiler-options-noref.md",
+      "l0/work/plans/features/closed/2026-03-12-cli-version-flag-and-identity-text-noref.md",
+      "l0/work/plans/features/closed/2026-03-12-shared-cli-contract-spec.md",
+      "l0/work/plans/features/closed/2026-03-12-stage2-build-info-version-output-noref.md",
+      "l0/work/plans/refactors/closed/2026-02-19-l0c-cli-global-mode-flags.md",
+      "l0/work/plans/refactors/closed/2026-02-24-stage-independent-shared-assets-layout-noref.md",
+      "l0/work/plans/tools/closed/2026-03-13-windows-dev-install-and-prefix-workflow.md",
+      "l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md"
+    ],
+    "docs/decisions/0004-monorepo-directory-structure.md": [
+      "l0/work/plans/refactors/closed/2026-02-24-stage-independent-shared-assets-layout-noref.md",
+      "l0/work/plans/refactors/closed/2026-03-24-monorepo-language-level-layout-noref.md",
+      "l0/work/plans/tools/closed/2026-03-02-doxygen-mcss-docs-system.md",
+      "l0/work/plans/tools/closed/2026-03-23-shell-to-python-tooling-port-noref.md",
+      "work/plans/features/closed/2026-06-30-shared-editor-support-noref.md",
+      "work/plans/tools/closed/2026-05-06-shared-uv-workspace-monorepo-noref.md"
+    ],
+    "docs/decisions/0005-diagnostic-code-catalog.md": [
+      "l0/work/plans/bug-fixes/closed/2026-05-08-stage2-pointer-indexing-parity-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-06-05-duplicate-open-import-diagnostic-parity-noref.md",
+      "l0/work/plans/features/closed/2026-03-09-stage2-backend-c-emitter-milestone.md",
+      "l1/work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md",
+      "work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md",
+      "work/plans/features/closed/2026-04-03-diagnostic-code-catalog-meanings-noref.md",
+      "work/plans/features/closed/2026-04-03-shared-diagnostic-code-catalog-noref.md"
+    ],
+    "docs/decisions/0006-docs-work-taxonomy.md": [
+      "l0/work/plans/tools/closed/2026-03-02-doxygen-mcss-docs-system.md",
+      "work/plans/refactors/closed/2026-04-04-docs-work-taxonomy-reorg-noref.md"
+    ],
+    "docs/decisions/0007-case-default-arm-wildcard.md": [
+      "l0/work/plans/tools/closed/2026-07-13-release-1-1-0-preparation-noref.md",
+      "l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md",
+      "work/plans/features/closed/2026-06-07-case-default-arm-wildcard-phase1-noref.md"
+    ],
+    "docs/decisions/0008-source-text-encoding-and-ascii-language-vocabulary.md": [
+      "l0/work/plans/bug-fixes/closed/2026-06-09-stage1-non-ascii-identifier-rejection-noref.md"
+    ],
+    "docs/decisions/0009-logical-lexer-error-recovery-tokens-and-codepoint-columns.md": [
+      "l0/work/plans/refactors/closed/2026-02-24-stage2-lexer-parser-diag-unification.md",
+      "l1/work/plans/bug-fixes/closed/2026-04-17-l1-diagnostic-tab-caret-alignment-noref.md",
+      "work/plans/bug-fixes/closed/2026-06-09-shared-lex-0040-recovery-noref.md",
+      "work/plans/refactors/closed/2026-06-10-shared-lexer-error-recovery-tokens-and-codepoint-columns-noref.md"
+    ],
+    "docs/decisions/0010-checked-runtime-pointer-access-validation.md": [
+      "l1/work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md",
+      "l1/work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md",
+      "work/plans/bug-fixes/closed/2026-07-03-shared-alloc-tracker-churn-rehash-noref.md",
+      "work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md",
+      "work/plans/features/closed/2026-06-30-shared-runtime-pointer-access-validation-noref.md",
+      "work/plans/features/closed/2026-07-03-shared-lazy-arc-string-registration-noref.md",
+      "work/plans/features/closed/2026-07-04-shared-unchecked-build-surface-noref.md",
+      "work/plans/features/closed/2026-07-05-shared-compiler-runtime-quarantine-default-noref.md",
+      "work/plans/features/closed/2026-07-08-shared-runtime-check-basic-mode-noref.md",
+      "work/plans/features/closed/2026-07-16-shared-compiler-runtime-check-basic-default-noref.md"
+    ],
+    "l0/docs/decisions/0001-foundational-language-contract.md": [],
+    "l0/docs/decisions/0002-pointer-model-no-address-of.md": [
+      "l0/work/plans/bug-fixes/closed/2026-05-08-stage2-pointer-indexing-parity-noref.md"
+    ],
+    "l0/docs/decisions/0003-integer-model.md": [
+      "l0/work/plans/bug-fixes/closed/2026-02-27-stage1-backend-mixed-int-byte-binary-ice-1014-noref.md",
+      "l0/work/plans/features/closed/2026-02-27-stdlib-string-conversions-noref.md",
+      "l0/work/plans/features/closed/2026-02-27-stdlib-time-interface-noref.md"
+    ],
+    "l0/docs/decisions/0004-enum-tagged-union-model.md": [],
+    "l0/docs/decisions/0005-extern-func-ffi-boundary.md": [
+      "l0/work/plans/features/closed/2026-02-27-stdlib-time-interface-noref.md",
+      "work/plans/refactors/closed/2026-05-08-sys-memory-rename-noref.md",
+      "work/plans/refactors/closed/2026-05-09-relax-null-tolerant-runtime-ffi-pointers-noref.md"
+    ],
+    "l0/docs/decisions/0006-module-system-and-imports.md": [
+      "l0/work/plans/bug-fixes/closed/2026-06-05-duplicate-open-import-diagnostic-parity-noref.md",
+      "l0/work/plans/features/closed/2026-02-28-stage2-semantic-foundation-milestone-noref.md"
+    ],
+    "l0/docs/decisions/0007-nullability-and-casts.md": [
+      "l0/work/plans/bug-fixes/closed/2026-02-25-arc-opt-as-string-unwrap-ownership-noref.md",
+      "l0/work/plans/features/closed/2026-03-06-explicit-cast-constant-safety-diagnostics-noref.md",
+      "work/plans/refactors/closed/2026-05-09-relax-null-tolerant-runtime-ffi-pointers-noref.md"
+    ],
+    "l0/docs/decisions/0008-arc-ownership-model.md": [
+      "l0/work/plans/bug-fixes/closed/2026-02-15-arc-bug-fixes-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-02-25-arc-opt-as-string-unwrap-ownership-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-02-28-stage1-backend-loop-continue-arc-release-uninitialized-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-03-11-general-logical-short-circuit-arc-temp-lowering-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-03-11-stage1-backend-condition-arc-temp-control-flow-noref.md",
+      "l0/work/plans/features/closed/2026-03-09-stdlib-runtime-fs-path-raw-io-bootstrap-noref.md",
+      "l0/work/plans/refactors/closed/2026-02-27-remove-drop-workarounds-noref.md",
+      "work/plans/bug-fixes/closed/2026-04-20-shared-casted-place-null-propagation-arc-noref.md",
+      "work/plans/bug-fixes/closed/2026-04-21-shared-arc-borrowed-param-reassignment-noref.md",
+      "work/plans/bug-fixes/closed/2026-04-22-shared-unwrapped-string-value-arc-copy-noref.md",
+      "work/plans/bug-fixes/closed/2026-04-30-shared-arc-owned-local-reassignment-semantics-noref.md"
+    ],
+    "l0/docs/decisions/0009-string-value-semantics.md": [],
+    "l0/docs/decisions/0010-with-statement-cleanup.md": [
+      "l0/work/plans/bug-fixes/closed/2026-02-17-missing-cleanup-when-try-fails-in-with-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-02-27-with-cleanup-drop-false-positive-noref.md",
+      "l0/work/plans/refactors/closed/2026-02-27-remove-drop-workarounds-noref.md",
+      "work/plans/bug-fixes/closed/2026-06-22-shared-for-header-and-statement-flow-safety-noref.md"
+    ],
+    "l0/docs/decisions/0011-c-emission-strategy.md": [
+      "l0/work/plans/bug-fixes/closed/2026-03-13-linux-c99-compatibility-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-03-31-msys2-mingw64-dev-environment-test-failures-noref.md",
+      "l0/work/plans/features/closed/2026-03-09-stage2-backend-c-emitter-milestone.md",
+      "l0/work/plans/refactors/closed/2026-02-28-trace-source-location.md",
+      "l0/work/plans/refactors/closed/2026-03-22-backend-emitter-boundary-cleanup-noref.md"
+    ],
+    "l0/docs/decisions/0012-name-disambiguation.md": [],
+    "l0/docs/decisions/0013-comparison-operator-scope.md": [
+      "l0/work/plans/bug-fixes/closed/2026-02-27-stage1-backend-mixed-int-byte-binary-ice-1014-noref.md"
+    ],
+    "l0/docs/decisions/0014-bootstrap-self-hosting-strategy.md": [
+      "l0/work/plans/bug-fixes/closed/2026-03-13-linux-c99-compatibility-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-03-13-windows-stage2-shell-test-regressions-noref.md",
+      "l0/work/plans/bug-fixes/closed/2026-03-17-darwin-arm64-triple-bootstrap-native-mismatch-noref.md",
+      "l0/work/plans/features/closed/2026-03-09-stage2-backend-c-emitter-milestone.md",
+      "l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md",
+      "l0/work/plans/features/closed/2026-03-12-stage2-build-info-version-output-noref.md",
+      "l0/work/plans/tools/closed/2026-03-09-stage2-bootstrap-compiler-artifact-noref.md"
+    ],
+    "l0/docs/decisions/0015-stdlib-module-boundaries.md": [
+      "l0/work/plans/bug-fixes/closed/2026-02-25-stdio-stale-errno-io-wrappers-noref.md",
+      "l0/work/plans/features/closed/2026-02-27-stdlib-string-conversions-noref.md",
+      "l0/work/plans/features/closed/2026-02-27-stdlib-time-interface-noref.md",
+      "l0/work/plans/features/closed/2026-03-09-stdlib-runtime-fs-path-raw-io-bootstrap-noref.md",
+      "l0/work/plans/refactors/closed/2026-02-24-stage2-util-stdlib-lift.md",
+      "l0/work/plans/refactors/closed/2026-03-13-stdlib-fs-io-boundary-cleanup-noref.md",
+      "work/plans/features/closed/2026-04-14-shared-std-math-int-surface-noref.md",
+      "work/plans/refactors/closed/2026-05-08-sys-memory-rename-noref.md",
+      "work/plans/refactors/closed/2026-05-13-shared-std-math-to-std-integer-rename-noref.md"
+    ],
+    "l0/docs/decisions/0016-string-value-operators.md": [
+      "l1/work/plans/features/closed/2026-04-18-string-equality-operators-noref.md",
+      "l1/work/plans/features/closed/2026-04-18-string-relational-operators-noref.md",
+      "l1/work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md",
+      "work/plans/refactors/closed/2026-04-20-prefer-native-string-operators-noref.md",
+      "work/plans/refactors/closed/2026-04-30-prefer-native-string-concat-operator-noref.md"
+    ],
+    "l1/docs/decisions/0001-bootstrap-adaptation-strategy.md": [
+      "work/plans/refactors/closed/2026-04-02-l1-bootstrap-scaffold-noref.md"
+    ],
+    "l1/docs/decisions/0002-dea-virtual-prelude-module.md": [
+      "l1/work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md",
+      "l1/work/plans/features/closed/2026-04-20-is-intrinsic-noref.md",
+      "l1/work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md"
+    ],
+    "l1/docs/decisions/0003-c-abi-naming-policy.md": [
+      "l1/work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md",
+      "l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md",
+      "work/plans/refactors/closed/2026-05-08-sys-memory-rename-noref.md"
+    ],
+    "l1/docs/decisions/0004-wide-integer-types.md": [
+      "l1/work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md",
+      "l1/work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md",
+      "l1/work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md",
+      "l1/work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md",
+      "l1/work/plans/features/closed/2026-04-14-l1-std-math-wide-integer-followup-noref.md",
+      "l1/work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md",
+      "l1/work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md"
+    ],
+    "l1/docs/decisions/0005-floating-point-semantics.md": [
+      "l1/work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md",
+      "l1/work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md",
+      "l1/work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md",
+      "l1/work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md",
+      "l1/work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md",
+      "l1/work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md"
+    ],
+    "l1/docs/decisions/0006-const-declarations.md": [
+      "l1/work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md"
+    ],
+    "l1/docs/decisions/0007-function-pointer-types.md": [
+      "l1/work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md",
+      "l1/work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md"
+    ],
+    "l1/docs/decisions/0008-lbi-symbol-mangling.md": [
+      "l1/work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md",
+      "l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md",
+      "l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md",
+      "l1/work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md",
+      "l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md",
+      "l1/work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md",
+      "l1/work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md"
+    ],
+    "l1/docs/decisions/0009-module-visibility-exports-imports.md": [
+      "l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md",
+      "l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md",
+      "l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md"
+    ],
+    "l1/docs/decisions/0010-unsafe-marker-and-raw-pointer-indexing.md": [
+      "l1/work/plans/features/closed/2026-05-08-unsafe-function-marker-noref.md",
+      "l1/work/plans/features/closed/2026-05-09-raw-pointer-indexing-semantics-noref.md",
+      "l1/work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md",
+      "work/plans/features/closed/2026-07-05-shared-compiler-runtime-quarantine-default-noref.md"
+    ],
+    "l1/docs/decisions/0011-fixed-size-array-policy.md": [
+      "l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md",
+      "l1/work/plans/features/closed/2026-05-11-ordered-type-suffix-constructors-noref.md",
+      "l1/work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md",
+      "l1/work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md"
+    ],
+    "l1/docs/decisions/0012-ordered-type-suffix-constructors.md": [
+      "l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md",
+      "l1/work/plans/features/closed/2026-05-11-ordered-type-suffix-constructors-noref.md"
+    ],
+    "l1/docs/decisions/0013-opaque-type-exports-and-layout-hiding-visibility.md": [
+      "l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md",
+      "l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md"
+    ],
+    "l1/docs/decisions/0014-module-interface-artifact.md": [
+      "l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md",
+      "l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md",
+      "l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md",
+      "l1/work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md",
+      "l1/work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md",
+      "l1/work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md"
+    ],
+    "l1/docs/decisions/0015-slice-types-and-intrinsics.md": [
+      "l1/work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md"
+    ],
+    "l1/docs/decisions/0016-compile-time-constant-value-contexts.md": [
+      "l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md",
+      "l1/work/plans/features/closed/2026-06-17-stage1-const-value-grammar-contexts-noref.md",
+      "l1/work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md",
+      "l1/work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md"
+    ],
+    "l1/docs/decisions/0017-l1-variadic-functions.md": [
+      "l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md"
+    ],
+    "l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md": [
+      "l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md",
+      "l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md",
+      "l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md"
+    ],
+    "l1/docs/decisions/0019-whole-module-interface-fingerprints.md": [
+      "l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md",
+      "l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md",
+      "l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md"
+    ],
+    "l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md": [
+      "l1/work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md",
+      "l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md",
+      "l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md",
+      "l1/work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md"
+    ],
+    "l1/docs/decisions/0021-portable-object-metadata-and-inspection.md": [
+      "l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md"
+    ]
+  },
+  "primary_adr_coverage_percentage": 74.76635514018692,
+  "primary_adr_covered_current_decisions": 400,
+  "primary_adr_partially_covered_current_decisions": 31,
+  "primary_adr_warranted_current_decisions": 535,
+  "primary_adr_worthy_current_decisions_missing_an_adr": 104,
+  "primary_current_decisions_by_adr_coverage": {
+    "ADR not warranted": 60,
+    "Covered as part of a broader ADR": 114,
+    "Directly covered": 286,
+    "Not covered": 104,
+    "Partially covered": 31,
+    "Unclear": 0
+  },
+  "primary_current_decisions_by_category": {
+    "ABI and linking": 69,
+    "Backend and C emission": 14,
+    "Bootstrap and self-hosting": 14,
+    "CLI and distribution": 64,
+    "Diagnostics and recovery": 24,
+    "Frontend architecture": 36,
+    "Language semantics": 47,
+    "Language syntax": 34,
+    "Ownership and memory safety": 39,
+    "Portability": 14,
+    "Repository and process architecture": 47,
+    "Runtime": 38,
+    "Semantic analysis": 20,
+    "Standard library": 66,
+    "Type system": 69
+  },
+  "primary_current_decisions_by_compiler_stage": {
+    "Cross-stage or language-level": 450,
+    "Repository/tooling": 49,
+    "Stage 1-specific": 63,
+    "Stage 2-specific": 33
+  },
+  "primary_current_decisions_by_scope": {
+    "Dea-wide": 10,
+    "L0": 102,
+    "L0 Stage 1": 7,
+    "L0 Stage 2": 33,
+    "L1": 251,
+    "L1 Stage 1": 56,
+    "L1 Stage 2": 0,
+    "Repository/tooling": 49,
+    "Shared L0/L1": 87
+  },
+  "primary_current_decisions_by_status": {
+    "Deferred": 7,
+    "Historical only": 0,
+    "Retained": 588,
+    "Retracted": 0,
+    "Superseded": 0,
+    "Unclear": 0
+  },
+  "primary_current_distinct_decisions": 595,
+  "proposed_adr_amendment_count": 1,
+  "proposed_adr_candidate_count": 24,
+  "proposed_adr_candidates_by_priority": {
+    "P0": 2,
+    "P1": 16,
+    "P2": 6,
+    "P3": 0
+  },
+  "proposed_adr_mapped_current_decisions": 123,
+  "proposed_adr_mapped_decisions_by_existing_coverage": {
+    "Not covered": 105,
+    "Partially covered": 18
+  },
+  "proposed_adr_refs_by_destination": {
+    "docs/decisions/": [
+      "DEA-ADR-0012",
+      "DEA-ADR-0013",
+      "DEA-ADR-0014",
+      "DEA-ADR-0015",
+      "DEA-ADR-0016",
+      "DEA-ADR-0017",
+      "DEA-ADR-0018",
+      "DEA-ADR-0019"
+    ],
+    "l0/docs/decisions/": [
+      "L0-ADR-0014",
+      "L0-ADR-0017",
+      "L0-ADR-0018",
+      "L0-ADR-0019",
+      "L0-ADR-0020",
+      "L0-ADR-0021",
+      "L0-ADR-0022",
+      "L0-ADR-0023",
+      "L0-ADR-0024",
+      "L0-ADR-0025",
+      "L0-ADR-0026"
+    ],
+    "l1/docs/decisions/": [
+      "L1-ADR-0023",
+      "L1-ADR-0024",
+      "L1-ADR-0025",
+      "L1-ADR-0026",
+      "L1-ADR-0027"
+    ]
+  },
+  "proposed_new_adr_count": 23,
+  "upper_quartile": 4.0
+}

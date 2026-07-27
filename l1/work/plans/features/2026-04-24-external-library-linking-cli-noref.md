@@ -116,6 +116,21 @@ for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 3. Re-check the live catalog at implementation time before assigning final numbers. If any proposed slot has been used
    in the meantime, choose a different free block then.
 
+## ADR Impact
+
+- Decision: Expose external-library inputs through the shared `-l`, `-L`, `--rpath`, and `--link-arg` CLI spellings.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0003-shared-cli-contract.md`
+  - Rationale: The shared CLI ADR owns option naming, repeatability, validation, and level-extension rules.
+- Decision: Treat external libraries, C objects, and raw linker arguments as ordered CLI-only link inputs outside Dea
+  module identity, without package or per-module dependency manifests.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Input ordering and dependency ownership constrain `--link`, `--build`, `--run`, FFI bindings, and any
+    future package-metadata design.
+
 ## Non-Goals
 
 1. Package manifests or dependency resolution.

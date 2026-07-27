@@ -357,6 +357,20 @@ partial `CharBuffer` appends.
 10. Every non-empty `CharBuffer` string append performs one reserve decision and one direct bulk copy without NUL work.
 11. Performance validation shows no reproducible regression greater than 5%.
 
+## ADR Impact
+
+- Decision: Represent immutable strings as ARC-backed spans with flattening, allocation-free O(1) owned views.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The representation changes string ownership, runtime/native boundaries, generated C layout, and the cost
+    model of slicing.
+- Decision: Extend `dea::slice` to accept `string` and return an owned, byte-indexed `string`.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0015-slice-types-and-intrinsics.md`
+  - Rationale: ADR-0015 defines slice typing and indexing semantics and must incorporate the string overload.
+
 ## Non-Goals
 
 1. Public C-interoperability types or syntax.

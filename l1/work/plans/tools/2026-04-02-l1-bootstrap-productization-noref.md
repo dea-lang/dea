@@ -106,6 +106,21 @@ Update the L1-local docs and contributor guidance so they describe:
 - dist archive workflow
 - explicit upstream compiler override behavior via `L1_BOOTSTRAP_L0C`
 
+## ADR Impact
+
+- Decision: Define a minimal install-prefix and distribution-artifact contract for the bootstrap-stage L1 compiler.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The installed layout, archive contents, launcher behavior, and provenance contract become public
+    toolchain interfaces that future release work must preserve.
+- Decision: Choose the L1 bootstrap compiler from repo-local L0 Stage 2 or `L1_BOOTSTRAP_L0C`, never ambient `PATH`.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0001-bootstrap-adaptation-strategy.md`
+  - Rationale: ADR-0001 owns bootstrap adaptation and should record the compiler-selection rule for installed and
+    distribution workflows.
+
 ## Non-Goals
 
 - GitHub Release publishing for L1

@@ -72,6 +72,14 @@ WildcardArm ::= "_" "=>" Stmt
    grammar, retirement of `PAR-0242`/`0243`); bump `Last edited:`. Move this plan into `l0/work/plans/features/closed/`
    and add it to ADR-0007's Related Plans.
 
+## ADR Impact
+
+- Decision: Make `_ =>` the sole L0 `case` default arm and remove the transitional `else` spelling and diagnostics.
+  - Scope: Shared
+  - Disposition: Amend ADR
+  - ADR: `docs/decisions/0007-case-default-arm-wildcard.md`
+  - Rationale: This is the terminal L0 half of the shared wildcard-default migration already governed by ADR-0007.
+
 ## Verification
 
 1. `_ =>` is the only accepted L0 `case` default across Stage 1 and Stage 2; `case (x) { 1 => …; else … }` emits

@@ -23,6 +23,8 @@ Start with live docs only:
   internal docs
 - `docs/decisions/INDEX.md`, `l0/docs/decisions/INDEX.md`, `l1/docs/decisions/INDEX.md`: verify each table row matches
   an ADR file present in the directory; flag any gap or orphan row
+- ADR `Related Plans` sections: verify newly closed source documents have resolvable links and their final ADR Impact
+  dispositions agree with the ADR and scope
 
 Do not sweep `work/plans/**` or archived docs unless the task explicitly asks for lifecycle artifacts.
 
@@ -103,8 +105,12 @@ PY
 - broken links to shipped features or workflows
 - guidance that still points at a superseded workflow
 
-7. Keep docs honest about scope. If L1 is bootstrap-only or a library follow-up is still open, say so plainly.
-8. If you commit, follow the commit rules in `CLAUDE.md` and run pre-commit against the root config. Run from the
+7. When the task explicitly includes plans or initiatives, enforce the `## ADR Impact` lifecycle contract from root
+   `CLAUDE.md`. Run `python3 scripts/check_adr_impact.py --all-active` before staging and
+   `python3 scripts/check_adr_impact.py --staged` after staging. Do not close a document with `Pending` records or
+   missing same-change ADR evidence.
+8. Keep docs honest about scope. If L1 is bootstrap-only or a library follow-up is still open, say so plainly.
+9. If you commit, follow the commit rules in `CLAUDE.md` and run pre-commit against the root config. Run from the
    monorepo root by default:
 
 ```bash
@@ -141,6 +147,7 @@ pending publication action explicitly.
 - stale file set identified
 - content drift fixed
 - version metadata refreshed where needed
+- ADR indexes, source-plan links, and ADR Impact dispositions agree for lifecycle documents in scope
 - no draft-only features documented as shipped
 - commit or handoff note explains which docs changed and which audited surfaces needed no edits
 - no metadata-only `Version:` bumps unless the handoff or commit body explicitly says the file was audited against newer

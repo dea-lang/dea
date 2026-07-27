@@ -53,12 +53,24 @@ authorized follow-up.
 - if completion depends on a push, tag, release, deployment, cross-repository write, or other gated external result,
   keep the plan active; do not close it based on unauthorized external state
 
-2a. Check for ADR-worthy decisions:
+2a. Resolve ADR Impact before closure:
 
-If the plan introduced or confirmed a design decision with lasting architectural significance, check whether a matching
-ADR exists in `docs/decisions/`, `l0/docs/decisions/`, or `l1/docs/decisions/`. If not, flag the gap in the handoff and
-note that a new ADR may be warranted. If a new ADR is needed, create it (with metadata, all required sections, and
-resolved links) and update the corresponding `decisions/INDEX.md` in the same commit.
+Every plan and initiative being closed must contain exactly one valid `## ADR Impact` section following root
+`CLAUDE.md`. This is a hard closure gate, not a handoff warning:
+
+- reject closure while any record is `Pending`
+- resolve `New ADR` by creating the exact numbered ADR, adding its index row, and linking it to the closed document in
+  the same commit
+- resolve `Amend ADR` by changing the exact indexed ADR and linking it to the closed document in the same commit
+- resolve `Covered by ADR` by adding a resolvable link to the closed document in the exact indexed ADR's `Related Plans`
+  section in the same commit
+- accept `ADR not warranted` only with `Scope: N/A`, `ADR: None`, and a substantive rationale
+- ensure each scope maps to the correct root or level decision directory
+
+Untouched legacy closed documents are grandfathered, but an added, renamed, or modified closed document must comply. Run
+`python3 scripts/check_adr_impact.py --all-active` before moving lifecycle documents and
+`python3 scripts/check_adr_impact.py --staged` after staging. Do not commit or close the work until both applicable
+checks pass.
 
 3. Refresh docs affected by shipped behavior:
 
@@ -206,7 +218,13 @@ For history-only rewrites such as squash, reword, or reorder operations:
 git diff --cached --check
 ```
 
-7. Run pre-commit against the root config after staging. The root `pyproject.toml` owns the `dev` dependency group, so
+7. Run the ADR Impact closure gate against the exact staged change:
+
+```bash
+python3 scripts/check_adr_impact.py --staged
+```
+
+8. Run pre-commit against the root config after staging. The root `pyproject.toml` owns the `dev` dependency group, so
    run from the monorepo root by default:
 
 ```bash

@@ -125,6 +125,35 @@ would require handle- or directory-descriptor-relative child operations plus ide
 bounded fix. No-follow classification limits cleanup damage if a known child path is substituted; it is not a
 same-authority security boundary.
 
+## ADR Impact
+
+- Decision: Reserve one private native build/run workspace atomically before deriving any compiler-owned child path.
+  - Scope: Shared
+  - Disposition: New ADR
+  - ADR: `docs/decisions/`
+  - Rationale: The rule removes check-then-use stems and unchecked fallbacks across native compiler stages.
+- Decision: Validate the complete POSIX temporary-parent ownership and sticky-bit chain while retaining the documented
+  MinGW ACL assumption.
+  - Scope: Shared
+  - Disposition: New ADR
+  - ADR: `docs/decisions/`
+  - Rationale: Temporary-parent trust is a cross-stage portability and security boundary independent of workspace
+    reservation.
+- Decision: Remove only known workspace children without following substitutions and retain and report any incompletely
+  cleaned workspace.
+  - Scope: Shared
+  - Disposition: New ADR
+  - ADR: `docs/decisions/`
+  - Rationale: The bounded no-follow cleanup policy constrains failure handling and deliberately rejects recursive
+    deletion.
+- Decision: Keep L1 compile-only publication on its output-local transaction and endpoint-rollback boundary rather than
+  route it through the native build/run workspace.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
+  - Rationale: ADR-0022 owns compile-only same-parent staging, endpoint rollback, recovery files, and external
+    serialization.
+
 ## Diagnostic-Code Plan
 
 No new diagnostic family is expected. Reuse the established driver and output-write diagnostics, including `L0C-9511` /

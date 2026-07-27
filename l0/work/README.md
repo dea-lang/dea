@@ -49,7 +49,23 @@ When closing a plan, `git mv` it into the corresponding `closed/` subdirectory, 
 ## Summary
 
 ...
+
+## ADR Impact
+
+- Decision: [Short architectural question or durable choice]
+  - Scope: [Dea-wide | Shared | Repository/tooling | L0 | N/A]
+  - Disposition: [Pending | New ADR | Amend ADR | Covered by ADR | ADR not warranted]
+  - ADR: [None | scope-matching decisions directory | exact indexed ADR path]
+  - Rationale: [Why this disposition and destination are appropriate]
 ```
+
+Every plan must contain exactly one `## ADR Impact` section using the complete schema and lifecycle rules in root
+`CLAUDE.md`. Repeat the record for independent architectural questions. Use `ADR not warranted` as the sole record when
+the plan contains no ADR-worthy decision.
+
+`Pending` is allowed while a plan is active, but it blocks closure. When closing a plan, resolve every record and
+include the required ADR creation, amendment, or `Related Plans` link in the same change. Run
+`python3 scripts/check_adr_impact.py --all-active` from the repository root while planning.
 
 Accepted proposals should graduate into `l0/docs/specs/`, `l0/docs/reference/`, or `l0/docs/implementation/` rather than
 remaining under `l0/work/`.

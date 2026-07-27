@@ -170,6 +170,16 @@ After at least one successful manual snapshot run:
 - Update `l1/docs/roadmap.md` to mark the plan as completed once all phases are done (snapshot and release workflows
   exist and have been exercised at least once).
 
+## ADR Impact
+
+- Decision: Use level-qualified L1 tags, separate release/snapshot workflows, the L1 matrix, and no initial docs
+  publishing.
+  - Scope: Repository/tooling
+  - Disposition: New ADR
+  - ADR: `docs/decisions/`
+  - Rationale: The tag namespace, publication boundary, workflow split, and support matrix are durable monorepo release
+    policy.
+
 ## Non-Goals
 
 - L1 docs build, PDF rendering, blog dispatch, or Pages deployment. These are deferred until L1 has its own docgen

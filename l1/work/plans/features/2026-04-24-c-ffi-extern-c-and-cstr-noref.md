@@ -158,6 +158,27 @@ Update grammar/design-decision docs and add regression coverage for:
 5. Re-check the live catalog at implementation time before assigning final numbers. If any proposed slot has been used
    in the meantime, choose a different free block then.
 
+## ADR Impact
+
+- Decision: Define a non-variadic C boundary with unmangled `extern "C"` declarations and a distinct `cstr` type.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The declaration envelope, admissible boundary types, naming behavior, and ownership rules form a durable
+    L1 interoperability contract.
+- Decision: Classify C-FFI diagnostics by compiler phase rather than a feature-specific family.
+  - Scope: Shared
+  - Disposition: Amend ADR
+  - ADR: `docs/decisions/0005-diagnostic-code-catalog.md`
+  - Rationale: The shared diagnostic catalog owns cross-level code-family allocation and should state the phase-oriented
+    rule explicitly.
+- Decision: Resolve `string` to `cstr` conversion against non-terminated cheap string views.
+  - Scope: L1
+  - Disposition: Pending
+  - ADR: None
+  - Rationale: The current zero-cost default conflicts with the cheap-string-slice representation and must be resolved
+    before the conversion phase is implemented.
+
 ## Non-Goals
 
 1. Automatic bindgen or C-header parsing.

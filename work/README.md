@@ -51,3 +51,29 @@ Required shared-plan metadata, in addition to the standard plan block:
 
 Do not open a separate level-local follow-up plan just to port a mechanical parity fix already covered by a shared root
 plan.
+
+## ADR Impact
+
+Every plan must contain exactly one `## ADR Impact` section using the schema, scopes, dispositions, and closure rules in
+`CLAUDE.md`. Add one record per independent architectural question. Root plans normally use `Dea-wide`, `Shared`, or
+`Repository/tooling`; they may use `L0`, `L1`, or a future `L<N>` for a targeted level decision. A plan with no
+ADR-worthy decision uses one `ADR not warranted` record.
+
+`Pending` is allowed while a plan is active, but it blocks closure. When closing a plan, resolve every record and
+include the required ADR creation, amendment, or `Related Plans` link in the same change. Run:
+
+```bash
+python3 scripts/check_adr_impact.py --all-active
+```
+
+Use this body fragment in every new root plan:
+
+```markdown
+## ADR Impact
+
+- Decision: [Short architectural question or durable choice]
+  - Scope: [Dea-wide | Shared | Repository/tooling | L0 | L1 | future L<N> | N/A]
+  - Disposition: [Pending | New ADR | Amend ADR | Covered by ADR | ADR not warranted]
+  - ADR: [None | scope-matching decisions directory | exact indexed ADR path]
+  - Rationale: [Why this disposition and destination are appropriate]
+```

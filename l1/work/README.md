@@ -57,7 +57,23 @@ grep for its filename across `l1/docs/`, `l1/work/`, and any shared root docs/wo
 ## Summary
 
 ...
+
+## ADR Impact
+
+- Decision: [Short architectural question or durable choice]
+  - Scope: [Dea-wide | Shared | Repository/tooling | L1 | N/A]
+  - Disposition: [Pending | New ADR | Amend ADR | Covered by ADR | ADR not warranted]
+  - ADR: [None | scope-matching decisions directory | exact indexed ADR path]
+  - Rationale: [Why this disposition and destination are appropriate]
 ```
+
+Every plan and initiative must contain exactly one `## ADR Impact` section using the complete schema and lifecycle rules
+in root `CLAUDE.md`. Repeat the record for independent architectural questions. Use `ADR not warranted` as the sole
+record when the document contains no ADR-worthy decision.
+
+`Pending` is allowed while a document is active, but it blocks closure. When closing a plan or initiative, resolve every
+record and include the required ADR creation, amendment, or `Related Plans` link in the same change. Run
+`python3 scripts/check_adr_impact.py --all-active` from the repository root while planning.
 
 Accepted proposals should graduate into `l1/docs/specs/`, `l1/docs/reference/`, or `l1/docs/implementation/` rather than
 remaining under `l1/work/`.
@@ -86,7 +102,8 @@ initiative from the filename alone (`0001-separate-compilation-and-linking.md`, 
 Each initiative document carries the standard work-document metadata block (`Version`, `Status`, `Kind: Initiative`).
 For initiatives, `Version: YYYY-MM-DD` is the last substantive edit date, not the creation date. As phases become
 actionable, link the spawned `plans/<kind>/<slug>.md` entries from the relevant phase section in the initiative, and
-link back from each plan to its parent initiative.
+link back from each plan to its parent initiative. Include the required `## ADR Impact` section in the initiative; it
+may share ADRs with child plans when they address the same architectural question.
 
 When an initiative is opened, link it from the "Active initiatives" section of [`l1/docs/roadmap.md`][roadmap]. When it
 is closed, move the file into `initiatives/closed/` and move its roadmap entry from "Active initiatives" to "Completed

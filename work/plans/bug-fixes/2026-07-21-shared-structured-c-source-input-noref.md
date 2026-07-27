@@ -90,6 +90,11 @@ No diagnostic-code reservation is expected. Re-check the live catalog before imp
 missing-value/mode diagnostics and the current C-compilation failure codes unless a genuinely distinct failure category
 is discovered.
 
-## ADR Note
+## ADR Impact
 
-No ADR is planned. The option is a structured replacement for an invalid use of the existing option-string channel.
+- Decision: Pass each `--c-source` value as one intact, ordered compiler argument.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0003-shared-cli-contract.md`
+  - Rationale: The shared CLI contract already owns repeatable option semantics, argument preservation, and cross-stage
+    parity.

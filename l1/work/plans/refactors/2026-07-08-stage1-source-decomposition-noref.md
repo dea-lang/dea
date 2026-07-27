@@ -88,6 +88,15 @@ compiler phase or responsibility:
 - Build-driver logic distinguishes option parsing, platform helpers, C toolchain command construction, runtime-library
   resolution, and build/run command orchestration.
 
+## ADR Impact
+
+- Decision: Keep the Stage 1 source decomposition as a behavior-preserving internal module split.
+  - Scope: N/A
+  - Disposition: ADR not warranted
+  - ADR: None
+  - Rationale: The refactor preserves compiler phase contracts, language behavior, public CLI behavior, ABI, runtime
+    behavior, and bootstrap strategy.
+
 ## Non-Goals
 
 - Do not split implementation tests as part of this plan, except for import updates needed by production module moves.

@@ -205,6 +205,52 @@ architecture, C-backend, and separate-compilation references.
 3. Re-check `L1C-2110` through `L1C-2129` against the live [diagnostic catalog][diagnostic-catalog] immediately before
    implementation and move the whole provisional block if any code has been assigned.
 
+## ADR Impact
+
+- Decision: Run `--build` and `--run` through one verified multi-compilation-unit orchestration pipeline.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Graph fan-out, provider selection, entry selection, and link ordering form the durable L1 multi-unit
+    execution boundary.
+- Decision: Use the canonical module graph and provider rules for build/run graph expansion.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md`
+  - Rationale: ADR-0018 already defines artifact identity, graph discovery, and provider authority.
+- Decision: Make `.l1m` artifacts active build/run inputs rather than a future-only interface format.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0014-module-interface-artifact.md`
+  - Rationale: ADR-0014 must reflect the interface artifact's operational role in multi-unit orchestration.
+- Decision: Replace ADR-0018's deferred orchestration statements with the implemented build/run graph behavior.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md`
+  - Rationale: The plan settles work that ADR-0018 currently describes as future integration.
+- Decision: Compose per-module backend and lifecycle entrypoints across every source unit selected by build/run.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
+  - Rationale: ADR-0020 must record how its module-local ABI participates in whole-graph build and execution.
+- Decision: Keep each authoritative `.l1m` and sibling `.o` pair stable through selection, verification, and link
+  submission.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
+  - Rationale: ADR-0022 provides endpoint rollback rather than a reader snapshot, so build/run must serialize
+    externally.
+- Decision: Retain module C that is byte-identical to corresponding `--gen` and `-c --keep-c` output.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: This contributes the build/run portion of the generated-C child plan's cross-mode identity ADR.
+- Decision: Stage build/run artifacts in the shared atomically reserved native workspace.
+  - Scope: Shared
+  - Disposition: New ADR
+  - ADR: `docs/decisions/`
+  - Rationale: The shared native-workspace plan owns reservation, trust validation, and cleanup policy.
+
 ## Non-Goals
 
 1. Reimplementing link graph verification, wrapper generation, lifecycle order, or object classification.

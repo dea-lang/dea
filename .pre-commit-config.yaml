@@ -9,6 +9,12 @@ repos:
         entry: python3 .github/workflows/check_copyright_headers.py
         language: system
         pass_filenames: false
+      - id: adr-impact
+        name: Check ADR impact
+        entry: python3 scripts/check_adr_impact.py --staged
+        language: system
+        pass_filenames: false
+        always_run: true
   - repo: https://github.com/executablebooks/mdformat
     rev: 1.0.0
     hooks:

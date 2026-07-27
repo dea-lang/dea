@@ -615,15 +615,100 @@ the chosen answer and points at the owning section.
    object enters through repeatable `--foreign-object`; it may satisfy unmangled C symbols but has no Dea graph,
    fingerprint, lifecycle, or entry-point role. Valid or malformed Dea metadata cannot be hidden behind the foreign
    option. Archives and shared libraries remain under the external-library options. Anchored in §0.6 and §2a.
-6. **Generated-C and compile-only artifact contract:** compile-only publishes `.o + .l1m` by default and adds the exact
-   `.c` only with `--keep-c`. Successful return leaves the complete new selected set; recoverable failure restores the
-   exact prior set; failed rollback retains recovery files. Publication is sequential and requires external
-   serialization for concurrent readers or same-stem writers. Per-module `--gen` treats a selected `.l1m` as sufficient
-   without inspecting its sibling object, shares generated-C bytes with retained compile/build/run output, and retires
-   whole-closure generation only after all production callers migrate. Anchored in §2a and §Sequencing and dependencies.
+6. **Compile-only artifact publication:** compile-only publishes `.o + .l1m` by default and adds the exact `.c` only
+   with `--keep-c`. Successful return leaves the complete new selected set; recoverable failure restores the exact prior
+   set; failed rollback retains recovery files. Publication is sequential and requires external serialization for
+   concurrent readers or same-stem writers. Anchored in §2a and recorded by [ADR-0022][compile-only-adr].
+7. **Per-module generated C:** `--gen` treats a selected `.l1m` as sufficient without inspecting its sibling object,
+   shares generated-C bytes with retained compile/build/run output, uses stable module-relative compiler-visible paths,
+   and retires whole-closure generation only after all production callers migrate. Owned by the active
+   [per-module generated-C plan][per-module-generated-c] and its future ADR.
 
 FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery open questions live in
 [Initiative 0002][runtime-library].
+
+## ADR Impact
+
+- Decision: Use the established LBI mangling contract for externally visible L1 symbols.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0008-lbi-symbol-mangling.md`
+  - Rationale: ADR-0008 records the canonical mangling grammar consumed by separate compilation and linking.
+- Decision: Use explicit export manifests and aliased imports as the module visibility boundary.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0009-module-visibility-exports-imports.md`
+  - Rationale: ADR-0009 defines which declarations cross compilation-unit boundaries and how consumers name them.
+- Decision: Exchange module interfaces through the canonical `.l1m` artifact.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0014-module-interface-artifact.md`
+  - Rationale: ADR-0014 records the interface format and replay contract used by separate compilation.
+- Decision: Associate module interfaces, objects, and providers through one canonical module graph.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md`
+  - Rationale: ADR-0018 records the artifact-association and dependency-graph rules owned by this initiative.
+- Decision: Verify imported interfaces through canonical whole-module fingerprints.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0019-whole-module-interface-fingerprints.md`
+  - Rationale: ADR-0019 records the hash, canonicalization, and verification contract.
+- Decision: Emit each compilation unit through the per-module backend and lifecycle ABI.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
+  - Rationale: ADR-0020 records module-local emission and the initialization, finalization, and entry hooks used at link
+    time.
+- Decision: Embed and inspect portable object metadata to distinguish verified Dea objects from foreign objects.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0021-portable-object-metadata-and-inspection.md`
+  - Rationale: ADR-0021 records metadata authority, representation, and classification.
+- Decision: Publish compile-only object and interface artifacts with endpoint rollback from one output-local
+  transaction.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
+  - Rationale: ADR-0022 records the implemented artifact set, staging boundary, validation, publication order, rollback,
+    and recovery behavior used by the remaining initiative plans.
+- Decision: Make `--gen` produce one module rather than a whole source closure.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The per-module generated-C child plan owns this public compiler-artifact contract.
+- Decision: Preserve generated-C bytes across generation, compile-only retention, and retained build/run output.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The per-module generated-C child plan owns the cross-mode identity rule.
+- Decision: Use stable module-relative host-compiler paths for deterministic compile-only objects where the toolchain
+  permits.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The per-module generated-C child plan owns deterministic compiler-visible staging.
+- Decision: Remove the transitional legacy whole-closure generator after all production callers migrate.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
+  - Rationale: ADR-0020 explicitly preserved that generator only during the staged migration.
+- Decision: Extend separate compilation and linking through the shared compiler CLI mode and option contract.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0003-shared-cli-contract.md`
+  - Rationale: ADR-0003 owns the cross-level CLI surface and rules for level-specific extensions.
+- Decision: Organize separate-compilation and linking diagnostics by compiler phase, not topic-specific families.
+  - Scope: Shared
+  - Disposition: Amend ADR
+  - ADR: `docs/decisions/0005-diagnostic-code-catalog.md`
+  - Rationale: The shared diagnostic ADR should state the phase-oriented allocation rule settled by this initiative.
+- Decision: Keep external dependencies CLI-only and ordered, without package or per-module link manifests.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The child external-linking plan owns the durable dependency and ordering contract selected by this
+    initiative.
 
 ## Spawned plans
 

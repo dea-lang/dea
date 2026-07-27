@@ -66,6 +66,15 @@ analyzed independently.
 5. Keep child-process trace fixtures behind `make test-stage1-trace-all` or another explicit opt-in target until runtime
    cost is known.
 
+## ADR Impact
+
+- Decision: Keep child-process tracing as an opt-in test-runner facility with isolated parent and child trace streams.
+  - Scope: N/A
+  - Disposition: ADR not warranted
+  - ADR: None
+  - Rationale: This is a narrow verification-tool arrangement that does not alter language, compiler, runtime, CLI, or
+    distribution architecture.
+
 ## Non-Goals
 
 - changing `std.integer` behavior

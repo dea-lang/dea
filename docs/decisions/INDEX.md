@@ -12,3 +12,4 @@
 | [0008](0008-source-text-encoding-and-ascii-language-vocabulary.md)        | Source Text Encoding and ASCII Language Vocabulary         | Accepted |
 | [0009](0009-logical-lexer-error-recovery-tokens-and-codepoint-columns.md) | Logical Lexer-Error Recovery Tokens and Code-Point Columns | Accepted |
 | [0010](0010-checked-runtime-pointer-access-validation.md)                 | Checked Runtime Pointer Access Validation                  | Accepted |
+| [0011](0011-plan-adr-impact-and-closure-gate.md)                          | Plan ADR Impact and Closure Gate                           | Accepted |
