@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-26
+Version: 2026-07-27
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -146,6 +146,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
   pre-node failure caching, kept header-mismatched units out of name lookup, and added isolated link-only provider
   coverage.
+- Bug Fix [2026-07-26-stage1-cross-platform-ci-regressions-noref][cross-platform-ci] made the public runtime header
+  strict-GCC clean, repaired Windows native compiler commands and dangling compile-only parent aliases, and aligned
+  auditable CI/Docker compiler selection.
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
 - Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] made Stage 1 check array
@@ -173,9 +176,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
-- Bug Fix [2026-07-26-stage1-cross-platform-ci-regressions-noref][cross-platform-ci] repairs strict-GCC public-header
-  inclusion, Windows native compiler command construction, dangling output-parent aliases, and aligned CI/Docker
-  compiler selection.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
@@ -295,7 +295,7 @@ update to be promoted to an initiative or plan:
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
 [const-scalar-casts]: ../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
-[cross-platform-ci]: ../work/plans/bug-fixes/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
+[cross-platform-ci]: ../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
 [cstr-proposal]: ../work/proposals/cstr-and-c-string-guards.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md

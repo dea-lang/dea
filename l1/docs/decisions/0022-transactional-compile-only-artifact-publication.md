@@ -1,7 +1,7 @@
 # ADR-0022: Compile-Only Artifact Endpoint Rollback
 
 - Decision date: 2026-07-24
-- Last edited: 2026-07-26
+- Last edited: 2026-07-27
 - Status: Accepted
 
 ## Context
@@ -88,7 +88,7 @@ Global native build/run temporary-workspace hardening is tracked by the active s
 
 ## Related Plans
 
-- [l1/work/plans/bug-fixes/2026-07-26-stage1-cross-platform-ci-regressions-noref.md][cross-platform-ci]
+- [l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md][cross-platform-ci]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md][stage1-safety]
 - [work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-safety]
@@ -104,7 +104,7 @@ Global native build/run temporary-workspace hardening is tracked by the active s
 [backend]: ../reference/c-backend-design.md
 [cli-contract]: ../../../docs/specs/compiler/cli-contract.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
-[cross-platform-ci]: ../../work/plans/bug-fixes/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
+[cross-platform-ci]: ../../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
 [native-safety]: ../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [project-status]: ../project-status.md
 [stage1-safety]: ../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

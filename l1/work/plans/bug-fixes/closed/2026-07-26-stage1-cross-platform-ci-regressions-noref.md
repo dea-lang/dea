@@ -2,8 +2,8 @@
 
 ## Repair Stage 1 cross-platform CI regressions
 
-- Date: 2026-07-26
-- Status: In Progress
+- Date: 2026-07-27
+- Status: Completed
 - Title: Repair Stage 1 cross-platform CI regressions
 - Kind: Bug Fix
 - Severity: High
@@ -80,7 +80,7 @@ independent fallback selection.
 5. Focused normal and trace suites, full host GCC 16 validation, the full Docker GCC 12 gate, staged pre-commit, and the
    existing macOS/Ubuntu/Windows CI lanes pass.
 
-## Local Implementation
+## Resolution
 
 - Public runtime sentinel objects are typed C99 value macros, with strict include-only and value-representation coverage
   across every runtime archive.
@@ -91,7 +91,12 @@ independent fallback selection.
   legacy selector retained as a compatibility fallback, and both entry points report resolved compiler versions.
 - The accepted compile-only publication ADR now records the compiler-private follow/no-follow implementation.
 
-## Local Verification
+## ADR Note
+
+No new architectural decision was required. The implementation preserves the accepted transaction model and records its
+compiler-private follow/no-follow path-classification detail in ADR-0022.
+
+## Verification
 
 ```bash
 make -C l1 L0_CC=gcc-16 L1_CC=gcc-16 L1_RUNTIME_CC=gcc-16 \
@@ -113,18 +118,20 @@ Results:
   suites.
 - The Docker gate resolved all three roles to Debian GCC 12.2.0 and passed the same 61 normal suites, environment
   stackability, 4 examples, and 42 trace suites.
-- Remote Ubuntu, Windows, and macOS CI verification remains pending the manual gate below.
+- [Unified CI run 30222856553][verification-run] passed the complete L1 delegate on Ubuntu GCC 13.3.0, Windows UCRT64
+  GCC 16.1.0, macOS ARM64 Apple Clang 21.0.0, and macOS Intel Apple Clang 17.0.0. Every lane logged the same selected
+  compiler for `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`.
 
-## Manual Remote Gate
+## Remote Verification
 
-Implementation, local testing, plan closure, and a local commit do not authorize a push or workflow dispatch. Before
-updating `origin/ci-probe` or rerunning the GitHub Actions workflow, require fresh user confirmation that discloses the
-pending commit range, the exact remote branch, and the CI/CD effects of that push or dispatch.
+The verification run executed the implementation commit on `ci-probe` and completed successfully. No further remote
+action is part of this plan.
 
 [ci-run]: https://github.com/googlielmo/DEA/actions/runs/30212969416
-[compile-only]: ../features/closed/2026-07-17-compile-only-artifact-production-noref.md
-[fingerprints]: ../features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[object-metadata]: ../features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
-[roadmap]: ../../../docs/roadmap.md
-[transaction-adr]: ../../../docs/decisions/0022-transactional-compile-only-artifact-publication.md
+[compile-only]: ../../features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[fingerprints]: ../../features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[object-metadata]: ../../features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
+[roadmap]: ../../../../docs/roadmap.md
+[transaction-adr]: ../../../../docs/decisions/0022-transactional-compile-only-artifact-publication.md
+[verification-run]: https://github.com/googlielmo/DEA/actions/runs/30222856553
