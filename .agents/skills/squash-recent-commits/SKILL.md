@@ -73,6 +73,19 @@ intermediate behavior as though it were current. Prefer the existing normative r
 surviving final plan, or ADR that owns the topic. Avoid duplicating material already recorded. Follow repository
 metadata and index rules, repair inbound links, and never add commit IDs to repository documentation.
 
+Reconcile every surviving plan or initiative's ADR Impact records against the recorded base, because intermediate commit
+relationships disappear:
+
+- When the target ADR exists in the base, retain or select `Amend ADR` or `Covered by ADR` as warranted and ensure the
+  replacement change updates the ADR with the required plan link.
+- When the target ADR is absent from the base but added by the selected suffix, the replacement commit introduces it.
+  Use `New ADR` with the exact numbered path and ensure the ADR, index row, and Related Plans link are all staged. Apply
+  this independently to each surviving closed document that contributed a decision to the same new ADR.
+- Update nearby timeline-dependent wording so it describes creating or amending the final ADR set rather than acting on
+  an ADR in an intermediate commit.
+- Do not change a disposition merely to satisfy the checker. Confirm that the target ADR records the stated decision; if
+  it does not, choose the substantively correct disposition or stop when that choice is ambiguous.
+
 ## 3. Build the replacement commit
 
 1. After the scope and documentation migration plan are settled, soft-reset `HEAD` to the recorded base. Use a soft
@@ -94,6 +107,20 @@ Apply the history-rewrite rules in `.agents/skills/finalize-dea-work/SKILL.md`:
 - run documentation checks for documentation-only consolidation
 - run broader validation only when the proposed code, build, dependency, or generated-source tree differs
 - always run the staged whitespace check and required pre-commit hooks
+
+Run `python3 scripts/check_adr_impact.py --staged` before the remaining final checks. Treat a failure as an in-scope
+documentation-consolidation correction, rather than a terminal validation failure, only when all of these conditions
+hold:
+
+- the failure says an `Amend ADR` or `Covered by ADR` target must exist in the base or is absent from the base
+- the target ADR is absent from the recorded base and added in the staged replacement tree
+- the affected surviving document and target ADR are both within the selected suffix's combined change
+- the target ADR substantively records the document's decision and links the document from Related Plans
+
+When these conditions hold unambiguously, change the record to `New ADR`, reconcile nearby chronology-dependent wording,
+stage only those documentation edits, review the diff, and rerun the staged ADR check without seeking separate approval.
+Do not use this exception for missing ADR content, index entries, links, unrelated documents, targets that existed in
+the base, or any other validation failure.
 
 If validation or hooks modify files, stage only the expected edits, review the staged diff again, rerun the affected
 checks, and record a new expected tree.
@@ -118,5 +145,6 @@ removed document, name the surviving destination of any migrated facts; explicit
 document existed. Include the original `HEAD` as the local reflog recovery point and report any resulting ahead/behind
 relationship without pushing.
 
-If any rewrite, edit, validation, or commit step fails, stop with the index and worktree intact. Report the recorded
-base and original `HEAD`; do not attempt a hard reset or other destructive recovery without explicit authorization.
+Except for the narrowly defined squash-induced ADR topology correction in section 4, if any rewrite, edit, validation,
+or commit step fails, stop with the index and worktree intact. Report the recorded base and original `HEAD`; do not
+attempt a hard reset or other destructive recovery without explicit authorization.
