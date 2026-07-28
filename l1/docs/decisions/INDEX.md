@@ -29,3 +29,5 @@
 | [0025](0025-pointer-equality-and-ordering-semantics.md)             | L1 Pointer Equality and Ordering Semantics               | Accepted |
 | [0026](0026-real-library-runtime-and-host-math-linkage-boundary.md) | L1 Real-Library Runtime and Host-Math Linkage Boundary   | Accepted |
 | [0027](0027-runtime-archive-and-trace-selection-boundary.md)        | L1 Runtime Archive and Trace-Selection Boundary          | Accepted |
+| [0028](0028-verified-link-set-and-foreign-object-boundary.md)       | Verified Link Set and Foreign-Object Boundary            | Accepted |
+| [0029](0029-output-local-standalone-link-transaction.md)            | Output-Local Standalone Link Transaction                 | Accepted |

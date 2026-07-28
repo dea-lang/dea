@@ -134,6 +134,53 @@ static int32_t l1c_fs_path_kind_native(const char *path, int follow) {
     return L1C_FS_REGULAR;
 }
 
+static int32_t l1c_fs_same_file_native(
+    const char *left,
+    const char *right
+) {
+    BY_HANDLE_FILE_INFORMATION left_info;
+    BY_HANDLE_FILE_INFORMATION right_info;
+    DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+    HANDLE left_handle = CreateFileA(
+        left,
+        FILE_READ_ATTRIBUTES,
+        share,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        NULL
+    );
+    HANDLE right_handle;
+    int32_t result = L1C_FS_ERROR;
+    if (left_handle == INVALID_HANDLE_VALUE) {
+        return result;
+    }
+    right_handle = CreateFileA(
+        right,
+        FILE_READ_ATTRIBUTES,
+        share,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        NULL
+    );
+    if (right_handle != INVALID_HANDLE_VALUE &&
+        GetFileInformationByHandle(left_handle, &left_info) &&
+        GetFileInformationByHandle(right_handle, &right_info)) {
+        result =
+            left_info.dwVolumeSerialNumber == right_info.dwVolumeSerialNumber &&
+            left_info.nFileIndexHigh == right_info.nFileIndexHigh &&
+            left_info.nFileIndexLow == right_info.nFileIndexLow;
+    }
+    if (right_handle != INVALID_HANDLE_VALUE && !CloseHandle(right_handle)) {
+        result = L1C_FS_ERROR;
+    }
+    if (!CloseHandle(left_handle)) {
+        result = L1C_FS_ERROR;
+    }
+    return result;
+}
+
 #else
 
 static int32_t l1c_fs_path_kind_native(const char *path, int follow) {
@@ -152,6 +199,19 @@ static int32_t l1c_fs_path_kind_native(const char *path, int follow) {
         return L1C_FS_ABSENT;
     }
     return L1C_FS_ERROR;
+}
+
+static int32_t l1c_fs_same_file_native(
+    const char *left,
+    const char *right
+) {
+    struct stat left_info;
+    struct stat right_info;
+    if (stat(left, &left_info) != 0 || stat(right, &right_info) != 0) {
+        return L1C_FS_ERROR;
+    }
+    return left_info.st_dev == right_info.st_dev &&
+           left_info.st_ino == right_info.st_ino;
 }
 
 #endif
@@ -246,6 +306,29 @@ int32_t l1c_fs_path_kind_follow(
     int32_t path_len
 ) {
     return l1c_fs_path_kind(path, path_len, 1);
+}
+
+/**
+ * Compare the followed filesystem identities of two existing paths.
+ *
+ * @return 1 when both names address the same file, 0 when distinct, or -1 on
+ *     invalid input or an operating-system error.
+ */
+int32_t l1c_fs_same_file(
+    const uint8_t *left,
+    int32_t left_len,
+    const uint8_t *right,
+    int32_t right_len
+) {
+    char *left_native = l1c_fs_native_path(left, left_len);
+    char *right_native = l1c_fs_native_path(right, right_len);
+    int32_t result = L1C_FS_ERROR;
+    if (left_native != NULL && right_native != NULL) {
+        result = l1c_fs_same_file_native(left_native, right_native);
+    }
+    free(left_native);
+    free(right_native);
+    return result;
 }
 
 /**

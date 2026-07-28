@@ -217,6 +217,22 @@ Closing this plan does not claim that `-c`, `--link`, or multi-CU build/run orch
 3. The unused portions of the former provisional ranges are owned explicitly by the successor plans rather than by this
    closed plan.
 
+## ADR Impact
+
+- Decision: Replay textual module interfaces as direct semantic and code-generation providers without reparsing provider
+  source.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0014-module-interface-artifact.md`
+  - Rationale: ADR-0014 records `.l1m` as the canonical constrained interface artifact and its replay boundary.
+- Decision: Reserve canonical compile-only and interface-search spellings while keeping Dea-specific controls in shared
+  semantic short-option namespaces.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0003-shared-cli-contract.md`
+  - Rationale: ADR-0003 owns `-c`, `-I`, conventional reserved spellings, and the semantic short-option namespaces
+    across levels.
+
 ## Non-Goals
 
 1. Fingerprint hashing and link-time provider verification.
@@ -248,4 +264,4 @@ Closing this plan does not claim that `-c`, `--link`, or multi-CU build/run orch
 [artifact graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
-[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md

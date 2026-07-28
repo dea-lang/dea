@@ -5,6 +5,7 @@
 
 module object_reader_pecoff;
 
+import std.integer;
 import std.string;
 import std.vector;
 
@@ -80,6 +81,106 @@ func orpecoff_symbol_name(bytes: string, symbol_base: int,
     return ort_read_c_string(bytes, string_offset, string_size, name_offset as int);
 }
 
+func orpecoff_section_name_length(bytes: string, section_base: int) -> int {
+    for (let i = 0; i < 8; i = i + 1) {
+        if ((char_at_s(bytes, section_base + i) as int) == 0) {
+            return i;
+        }
+    }
+    return 8;
+}
+
+func orpecoff_base64_digit(value: byte) -> int? {
+    if (value >= 'A' && value <= 'Z') {
+        return (value - 'A') as int;
+    }
+    if (value >= 'a' && value <= 'z') {
+        return (value - 'a') as int + 26;
+    }
+    if (value >= '0' && value <= '9') {
+        return (value - '0') as int + 52;
+    }
+    if (value == '+') {
+        return 62;
+    }
+    if (value == '/') {
+        return 63;
+    }
+    return null;
+}
+
+/**
+ * Decode one slash-prefixed COFF section-name string-table offset.
+ *
+ * Decimal `/123` and LLVM's base-64 `//B7` encoding both occupy the fixed
+ * eight-byte section-name field.  Values beyond the bootstrap `int` range
+ * cannot address this reader's bounded in-memory string.
+ */
+func orpecoff_indirect_section_name_offset(
+    bytes: string,
+    section_base: int
+) -> int? {
+    let name_length = orpecoff_section_name_length(bytes, section_base);
+    if (name_length <= 1 || char_at_s(bytes, section_base) != '/') {
+        return null;
+    }
+
+    let cursor = 1;
+    let radix = 10;
+    if (name_length >= 2 &&
+        char_at_s(bytes, section_base + 1) == '/') {
+        cursor = 2;
+        radix = 64;
+    }
+    if (cursor >= name_length) {
+        return null;
+    }
+
+    let value = 0;
+    while (cursor < name_length) {
+        let digit: int? = null;
+        let current = char_at_s(bytes, section_base + cursor);
+        if (radix == 64) {
+            digit = orpecoff_base64_digit(current);
+        } else if (current >= '0' && current <= '9') {
+            digit = (current - '0') as int;
+        }
+        if (digit == null ||
+            value > (int_max() - (digit as int)) / radix) {
+            return null;
+        }
+        value = value * radix + (digit as int);
+        cursor = cursor + 1;
+    }
+    return value;
+}
+
+/**
+ * Resolve and compare one bounded COFF string-table entry.
+ *
+ * `null` means the offset is outside the table or has no terminator.
+ */
+func orpecoff_string_entry_equals(
+    bytes: string,
+    string_offset: int,
+    string_size: int,
+    relative_offset: int,
+    expected: string
+) -> bool? {
+    if (relative_offset < 4 || relative_offset >= string_size) {
+        return null;
+    }
+    let start = string_offset + relative_offset;
+    let end = string_offset + string_size;
+    for (let cursor = start; cursor < end; cursor = cursor + 1) {
+        if ((char_at_s(bytes, cursor) as int) == 0) {
+            return cursor - start == len_s(expected) &&
+                ort_bytes_equal(bytes, start, expected);
+        }
+    }
+    return null;
+}
+
 /** Remove one machine-specific external-name decoration. */
 func orpecoff_normalize_symbol_name(name: string, machine: int,
                                     is_function: bool) -> string {
@@ -145,8 +246,16 @@ func orpecoff_read_bytes(bytes: string) -> ObjectContainerReadResult* {
     let section_table_end = 20 + (section_table_bytes as int);
 
     let sections = ort_ptr_vec_create(section_count as int);
+    let linker_control = OBJECT_LINKER_CONTROL_NONE;
+    let has_indirect_section_name = false;
     for (let section_i = 0; section_i < section_count as int; section_i = section_i + 1) {
         let base = 20 + section_i * ORCOFF_SECTION_SIZE;
+        if (ort_bytes_equal(bytes, base, ".drectve")) {
+            linker_control = OBJECT_LINKER_CONTROL_PECOFF_DRECTVE;
+        }
+        if (char_at_s(bytes, base) == '/') {
+            has_indirect_section_name = true;
+        }
         let raw_size = ort_read_u32(bytes, base + 16, true);
         let raw_offset = ort_read_u32(bytes, base + 20, true);
         if (raw_size == null || raw_offset == null) {
@@ -186,11 +295,16 @@ func orpecoff_read_bytes(bytes: string) -> ObjectContainerReadResult* {
     }
 
     let container = ort_container_create(OBJECT_FORMAT_PECOFF, bytes);
+    container.linker_control = linker_control;
     if ((symbol_count as int) == 0) {
         ort_sections_free(sections);
         if ((symbol_offset as int) != 0) {
             return ort_container_error(container, OBJECT_READ_CORRUPT,
                 "COFF empty symbol table has a nonzero offset");
+        }
+        if (has_indirect_section_name) {
+            return ort_container_error(container, OBJECT_READ_CORRUPT,
+                "COFF indirect section name has no string table");
         }
         return ort_read_ok(container);
     }
@@ -221,6 +335,34 @@ func orpecoff_read_bytes(bytes: string) -> ObjectContainerReadResult* {
         ort_sections_free(sections);
         return ort_container_error(container, OBJECT_READ_CORRUPT,
             "COFF symbol or string table overlaps the file headers");
+    }
+    if (has_indirect_section_name) {
+        for (let named_i = 0; named_i < section_count as int;
+             named_i = named_i + 1) {
+            let named_base = 20 + named_i * ORCOFF_SECTION_SIZE;
+            if (char_at_s(bytes, named_base) != '/') {
+                continue;
+            }
+            let name_offset = orpecoff_indirect_section_name_offset(
+                bytes, named_base);
+            if (name_offset == null) {
+                ort_sections_free(sections);
+                return ort_container_error(container, OBJECT_READ_CORRUPT,
+                    "COFF indirect section name has an invalid offset encoding");
+            }
+            let is_directive = orpecoff_string_entry_equals(
+                bytes, string_offset, string_size as int,
+                name_offset as int, ".drectve");
+            if (is_directive == null) {
+                ort_sections_free(sections);
+                return ort_container_error(container, OBJECT_READ_CORRUPT,
+                    "COFF indirect section name is out of bounds or unterminated");
+            }
+            if (is_directive as bool) {
+                container.linker_control =
+                    OBJECT_LINKER_CONTROL_PECOFF_DRECTVE;
+            }
+        }
     }
     for (let section_i2 = 0; section_i2 < vec_size(sections); section_i2 = section_i2 + 1) {
         let section = ort_ptr_vec_get(sections, section_i2) as ObjectReaderSection*;

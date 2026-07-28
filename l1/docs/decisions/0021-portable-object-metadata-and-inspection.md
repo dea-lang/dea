@@ -1,7 +1,7 @@
 # ADR-0021: Portable Object Metadata and Inspection
 
 - Decision date: 2026-07-23
-- Last edited: 2026-07-23
+- Last edited: 2026-07-27
 - Status: Accepted
 
 ## Context
@@ -38,14 +38,18 @@ object-level references that retain the records without custom sections, compile
 cross-module lifecycle ordering.
 
 The compiler owns bounded in-repository readers for relocatable ELF, Mach-O, and standard COFF containers. The readers
-inspect only the section, symbol, and string-table data needed to locate defined symbols and recover the two arrays.
-They normalize only exact object-ABI aliases before matching: canonical ELF plus Darwin TinyCC `___dea...` / `_main`,
-one Mach-O or COFF I386 leading underscore, and one leading `#` on COFF ARM64EC function symbols. The standard COFF
-reader accepts I386, ARM, ARMNT, AMD64, ARM64EC, and ARM64; it rejects PE images, bigobj/import objects, and other
-machines. Readers check all offset/count/length arithmetic and do not invoke external inspection tools.
+inspect only the section, load-command, symbol, and string-table data needed to locate defined symbols, recover the two
+arrays, and recognize embedded linker-control carriers. They normalize only exact object-ABI aliases before matching:
+canonical ELF plus Darwin TinyCC `___dea...` / `_main`, one Mach-O or COFF I386 leading underscore, and one leading `#`
+on COFF ARM64EC function symbols. The standard COFF reader accepts I386, ARM, ARMNT, AMD64, ARM64EC, and ARM64; it
+rejects PE images, bigobj/import objects, and other machines. Readers check all offset/count/length arithmetic and do
+not invoke external inspection tools.
 
 A successful container read reports basic container information, exact defined-symbol lookup, process-level C `main`
-presence, and exactly one metadata classification:
+presence, one normalized linker-control kind, and exactly one metadata classification. The control kind is either none,
+ELF dependent libraries, Mach-O linker option, or PE/COFF directive section. Standard decimal and LLVM base-64 COFF
+string-table section-name indirections are resolved before control classification; directive payloads are not
+interpreted or exposed. Metadata classification remains:
 
 - valid Dea metadata, with module identity, fingerprint, ordered imports, and entry presence;
 - no Dea metadata, only when neither a metadata symbol nor an external definition under the normalized `__dea` prefix is
@@ -67,16 +71,19 @@ so a definition under it remains Dea evidence even when its suffix is not a vali
 - A format-neutral tri-state makes the explicit foreign-object boundary safe: absence is meaningfully different from a
   recognizable but invalid Dea artifact.
 - Small bounded readers keep classification deterministic across hosts and avoid parsing arbitrary command output.
+- Normalizing control carriers separately from metadata preserves one format-neutral inspection pass without treating
+  untrusted directive payloads as driver arguments.
 
 ## Consequences
 
 - Per-module objects now have a versioned metadata ABI in addition to source symbols and lifecycle entry points.
 - Any future change to record names, kinds, flags, byte order, or version 1 layout is an ABI change.
-- The standalone-link tranche can validate provider fingerprints and graph closure directly from objects and can reject
-  foreign objects that define C `main`.
+- Standalone link validates provider fingerprints and graph closure directly from objects and rejects foreign objects
+  that define C `main`.
+- Standalone link can reject format-recognized embedded linker controls for both Dea and foreign operand roles.
 - Archives, shared libraries, relocations, debug information, executable loading, and architecture compatibility remain
   outside the object-reader contract.
-- Compile-only production can publish the final metadata-bearing object shape without waiting for standalone linking.
+- Compile-only production and standalone linking share the final metadata-bearing object shape.
 - A future Stage 2 compiler must emit and classify byte-identical metadata under the same rules.
 
 ## Related Plans
@@ -84,7 +91,9 @@ so a definition under it remains Dea evidence even when its suffix is not a vali
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md][lifecycle]
-- [l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
+- [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
+- [l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md][superseded-metadata]
+- [l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md][link-hardening]
 
 ## Current Docs
 
@@ -98,6 +107,8 @@ so a definition under it remains Dea evidence even when its suffix is not a vali
 [backend]: ../reference/c-backend-design.md
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [lifecycle]: ../../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: ../../work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-hardening]: ../../work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
+[link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [object-metadata]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [project-status]: ../project-status.md
+[superseded-metadata]: ../../work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md

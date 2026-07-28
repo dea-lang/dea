@@ -385,14 +385,32 @@ func bd_shell_quote_posix(arg: string) -> string {
 func bd_shell_quote_windows(arg: string) -> string {
     with (let sb = sb_create() => sb_free(sb)) {
         sb_append(sb, "\"");
+        let backslashes = 0;
         for (let i = 0; i < len_s(arg); i = i + 1) {
             let c = char_at_s(arg, i);
-            if (c == '"') {
-                sb_append(sb, "\\");
-                sb_append(sb, "\"");
-            } else {
-                sb_append_byte(sb, c);
+            if (c == '\\') {
+                backslashes = backslashes + 1;
+                continue;
             }
+            if (c == '"') {
+                for (let slash_i = 0; slash_i < backslashes * 2 + 1;
+                     slash_i = slash_i + 1) {
+                    sb_append(sb, "\\");
+                }
+                sb_append(sb, "\"");
+                backslashes = 0;
+                continue;
+            }
+            for (let slash_i2 = 0; slash_i2 < backslashes;
+                 slash_i2 = slash_i2 + 1) {
+                sb_append(sb, "\\");
+            }
+            backslashes = 0;
+            sb_append_byte(sb, c);
+        }
+        for (let trailing_i = 0; trailing_i < backslashes * 2;
+             trailing_i = trailing_i + 1) {
+            sb_append(sb, "\\");
         }
         sb_append(sb, "\"");
         return sb_to_string(sb);
@@ -1178,6 +1196,9 @@ func bd_replay_compile_output(cfg: LogConfig*, stdout_path: string, stderr_path:
 
     if (stderr_text != null && !is_empty_s(stderr_text as string)) {
         log_error(cfg, stderr_text as string);
+    }
+    if (stdout_text != null && !is_empty_s(stdout_text as string)) {
+        log_info(cfg, stdout_text as string);
     }
 }
 

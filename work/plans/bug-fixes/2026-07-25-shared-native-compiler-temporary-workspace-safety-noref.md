@@ -39,7 +39,7 @@
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-fix]
   - [`work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
-  - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][standalone-link]
+  - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][standalone-link]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
   - [`l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`][publication-adr]
 - Repro: reserve or replace a path selected by `bd_temp_stem()` after its `exists()` checks but before the native
@@ -201,5 +201,5 @@ fix.
 [compile-only]: ../../../l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [publication-adr]: ../../../l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md
 [stage1-fix]: ../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md
-[standalone-link]: ../../../l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
+[standalone-link]: ../../../l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [structured-input]: 2026-07-21-shared-structured-c-source-input-noref.md

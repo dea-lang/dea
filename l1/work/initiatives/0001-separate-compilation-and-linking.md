@@ -5,10 +5,11 @@
 - Kind: Initiative
 - Open plans:
   - `l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`
-  - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
+  - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`
@@ -86,15 +87,17 @@ Relevant facts that constrain the plan at the time of writing:
 - Deterministic textual `.l1m` emission, constrained parsing, canonical artifact association, interface-first discovery,
   transitive graph-backed replay, canonical whole-module fingerprinting, and pre-registration verification are
   implemented through internal APIs. Per-module C output embeds provider identity, fingerprint, entry, and ordered
-  direct-import records, and bounded readers inspect ELF, Mach-O, and PE/COFF relocatables. Ordinary build/run imports
-  remain source-based, and link-set provider-object consistency enforcement does not exist yet.
+  direct-import records, and bounded readers inspect ELF, Mach-O, and PE/COFF relocatables. Standalone link now verifies
+  unique identities, dependency closure, provider fingerprints, cycles, and entry selection directly from those objects.
+  Ordinary build/run imports remain source-based.
 - The shared driver CLI implements L1 `-c` / `--compile` with ordered `-I` / `--interface-path` roots, interface-only
   import resolution, object-only host compilation, and endpoint-rollback `.o` / `.l1m` publication. `--keep-c` adds the
   exact generated `.c`; ordinary compile-only leaves that companion path untouched. Successful return leaves the
   complete new selected set, recoverable failure restores the exact prior set, and failed rollback retains recovery
   files. Sequential publication does not provide a reader-visible snapshot. Runtime discovery uses `-Ri` / `-Rl`;
-  host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link`,
-  `--entry`, and `--foreign-object` do not exist yet.
+  host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link` accepts
+  verified positional Dea objects, repeatable explicit `--foreign-object` operands, optional `--entry`, and one
+  mandatory output; it emits the lifecycle wrapper and invokes the host linker without reopening `.l1m` files.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today. `compiler/stage2_l1/` is a placeholder for the future
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
   behavior must be ported there with Stage 1 acting as the L1 behavioral oracle.
@@ -286,8 +289,8 @@ work is split by dependency, not by the former whole-plan labels:
 6. **Per-module generated C:** migrate `--gen` to the shared one-module backend, lock cross-mode generated-C identity,
    and stabilize compiler-visible compile-only paths. Retire the legacy whole-closure generator only after build/run
    fan-out migrates its remaining callers.
-7. **Standalone link set:** validate Dea and explicit foreign objects, resolve the entry module, generate the executable
-   wrapper, and invoke the host linker.
+7. **Standalone link set (complete):** validate Dea and explicit foreign objects, resolve the entry module, generate the
+   executable wrapper, and invoke the host linker.
 8. **Build/run fan-out:** preserve `--build` and `--run` as convenience commands by reusing the same compile and link
    APIs over the source/interface graph.
 9. **External libraries:** extend the ordered link-input stream with libraries, rpaths, and raw host-driver arguments.
@@ -433,11 +436,12 @@ family. `-I` is consumed by the compiler driver during interface discovery for c
 opinion on static vs. dynamic linkage.
 
 The former runtime-specific short aliases retired in the CLI-surface tranche: `-I` is committed to interface search,
-`-L` returns to its normal library-search meaning, and runtime paths use `-Ri` / `-Rl`. The validated runtime archive is
-linked by its selected exact path so a user `-L` directory cannot shadow it. Until this phase implements external
-linking, syntactically complete `-L` / `-l` uses report the shared reserved-option diagnostic. Today's binding workflow
-uses legacy unmangled `extern func`; Initiative 0003 later adds `extern "C"`. Neither workflow requires a raw C-header
-include-path flag in the core compiler.
+`-L` returns to its normal library-search meaning, and runtime paths use `-Ri` / `-Rl`. Validated runtime link inputs
+are passed by exact path so a user `-L` directory cannot shadow them: normal families receive one selected archive,
+while TinyCC receives the complete variant-matched raw-object set when available, with archive fallback. Until this
+phase implements external linking, syntactically complete `-L` / `-l` uses report the shared reserved-option diagnostic.
+Today's binding workflow uses legacy unmangled `extern func`; Initiative 0003 later adds `extern "C"`. Neither workflow
+requires a raw C-header include-path flag in the core compiler.
 
 ### Manifest support
 
@@ -496,13 +500,13 @@ structured --c-source --> shared native workspace ------------------------------
 ```
 
 - Initiative 0002 is complete and supplies the runtime-archive model consumed by the link plans.
-- Artifact-graph, fingerprint, lifecycle, object-metadata, and compile-only work are complete. Standalone linking is the
-  next tranche and consumes the final module-object shape.
+- Artifact-graph, fingerprint, lifecycle, object-metadata, compile-only, and standalone-link work are complete.
+  Build/run graph fan-out is the next link-API consumer.
 - Compile-only artifacts are operational with the final lifecycle and metadata records.
 - Per-module `--gen` may migrate after compile-only; legacy generator removal waits for build/run fan-out.
-- Standalone link owns object classification and wrapper construction; build/run then reuse that API rather than
+- Standalone link owns object classification and wrapper construction; build/run will reuse that API rather than
   creating a second link path.
-- Standalone link owns an atomically reserved transaction beside its mandatory output and supplies explicit scratch
+- Standalone link uses an atomically reserved transaction beside its mandatory output and supplies explicit scratch
   paths to the common link executor. It is not blocked by structured `--c-source` or the shared native workspace.
 - Structured `--c-source` enables the L0 Stage 2 support unit required by the shared native workspace. The link API,
   shared workspace, and pre-fan-out generated-C work converge at build/run fan-out.
@@ -527,7 +531,7 @@ Recorded near-term tranche checkpoints:
 - [x] Emit and inspect provider/consumer object metadata.
 - [x] Make compile-only artifact production operational.
 - [ ] Migrate `--gen` to per-module output and lock cross-mode generated-C identity.
-- [ ] Implement standalone Dea/foreign-object linking and entry selection.
+- [x] Implement standalone Dea/foreign-object linking and entry selection.
 - [ ] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
 - [ ] Add ordered external-library and raw host-driver inputs.
 
@@ -621,7 +625,8 @@ the chosen answer and points at the owning section.
 5. **Foreign relocatable objects:** positional `--link` objects are verified Dea CUs. A metadata-free C relocatable
    object enters through repeatable `--foreign-object`; it may satisfy unmangled C symbols but has no Dea graph,
    fingerprint, lifecycle, or entry-point role. Valid or malformed Dea metadata cannot be hidden behind the foreign
-   option. Archives and shared libraries remain under the external-library options. Anchored in §0.6 and §2a.
+   option. Archives and shared libraries remain under the external-library options. Anchored in §0.6 and §2a. The
+   verified link-set boundary is recorded by [ADR-0028][link-set-adr].
 6. **Compile-only artifact publication:** compile-only publishes `.o + .l1m` by default and adds the exact `.c` only
    with `--keep-c`. Successful return leaves the complete new selected set; recoverable failure restores the exact prior
    set; failed rollback retains recovery files. Publication is sequential and requires external serialization for
@@ -630,6 +635,9 @@ the chosen answer and points at the owning section.
    shares generated-C bytes with retained compile/build/run output, uses stable module-relative compiler-visible paths,
    and retires whole-closure generation only after all production callers migrate. Owned by the active
    [per-module generated-C plan][per-module-generated-c] and its future ADR.
+8. **Standalone link workspace:** validate the complete link set and toolchain/runtime inputs before atomically
+   reserving a bounded output-local `.l1c-link-*` transaction. The common executor receives explicit scratch paths and
+   does not own workspace allocation or cleanup. This boundary is recorded by [ADR-0029][link-transaction-adr].
 
 FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery open questions live in
 [Initiative 0002][runtime-library].
@@ -679,13 +687,25 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
   - Rationale: ADR-0022 records the implemented artifact set, staging boundary, validation, publication order, rollback,
     and recovery behavior used by the remaining initiative plans.
+- Decision: Link verified Dea objects and explicitly classified foreign objects through a generated executable wrapper.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md`
+  - Rationale: ADR-0028 records object classification, complete graph and entry verification, and deterministic wrapper
+    orchestration.
 - Decision: Isolate standalone link wrapper artifacts in an atomically reserved output-local transaction supplied
   explicitly to the common link executor.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
-  - Rationale: The link-set child plan owns a bounded scratch lifecycle that avoids the unsafe native temporary stem
-    without depending on the separate cross-level build/run workspace.
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0029-output-local-standalone-link-transaction.md`
+  - Rationale: ADR-0029 records the bounded scratch lifecycle that avoids the unsafe native temporary stem without
+    depending on the separate cross-level build/run workspace.
+- Decision: Select variant-matched runtime link inputs by compiler family.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md`
+  - Rationale: ADR-0027 records exact archive selection for normal families and the TinyCC raw-object compatibility
+    path.
 - Decision: Stage multi-CU build/run artifacts and wrapper scratch paths in the shared native workspace.
   - Scope: Shared
   - Disposition: New ADR
@@ -763,7 +783,10 @@ implementation tranche proves that one decision area needs additional design wor
   by [ADR-0022][compile-only-adr].
 - Per-module `--gen`, cross-mode generated-C identity, and legacy-generator retirement under
   [per-module generated C][per-module-generated-c].
-- Standalone Dea/foreign-object linking, entry selection, and wrapper construction under [link set][link-set].
+- Standalone Dea/foreign-object linking, entry selection, wrapper construction, and output-local scratch completed under
+  [link set][link-set] and are recorded by [ADR-0028][link-set-adr] and [ADR-0029][link-transaction-adr].
+- Standalone-link input, traversal, lifecycle, and Windows transport hardening under
+  [standalone-link hardening][standalone-link-hardening].
 - `--build` / `--run` graph fan-out through shared compile/link APIs under [build/run fan-out][build-run].
 - Phase 3: external-library linking CLI under
   [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][library-linking]
@@ -796,7 +819,9 @@ implementation tranche proves that one decision area needs additional design wor
 [library-linking]: ../plans/features/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-adr]: ../../docs/decisions/0020-per-module-backend-and-lifecycle-abi.md
 [lifecycle-entrypoints]: ../plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: ../plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: ../plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set-adr]: ../../docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md
+[link-transaction-adr]: ../../docs/decisions/0029-output-local-standalone-link-transaction.md
 [linking]: ../../docs/user/linking.md
 [metadata-adr]: ../../docs/decisions/0021-portable-object-metadata-and-inspection.md
 [module-interface]: ../../docs/specs/compiler/module-interface-format.md
@@ -809,4 +834,5 @@ implementation tranche proves that one decision area needs additional design wor
 [runtime-library]: closed/0002-runtime-static-library.md
 [separate-compilation]: ../../docs/reference/separate-compilation.md
 [siphash]: ../../compiler/shared/runtime/internal/dea_siphash.h
+[standalone-link-hardening]: ../plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
 [symbol-linkage]: ../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md

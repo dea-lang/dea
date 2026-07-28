@@ -143,6 +143,29 @@ incomplete graph.
 4. The successor re-checks the live catalog at implementation time before assigning final numbers and moves the block if
    any proposed slot has been used in the meantime.
 
+## ADR Impact
+
+- Decision: Use one canonical whole-module fingerprint for producer emission and consumer verification of textual module
+  interfaces.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0019-whole-module-interface-fingerprints.md`
+  - Rationale: ADR-0019 fixes the fingerprint algorithm, canonical public-surface input, tagged spelling, and pre-replay
+    recomputation.
+- Decision: Embed provider identity, fingerprints, and expected dependency fingerprints in portable object metadata
+  inspected by bounded in-repository readers.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0021-portable-object-metadata-and-inspection.md`
+  - Rationale: ADR-0021 records the versioned records, lifecycle retention anchor, object readers, and classification
+    boundary.
+- Decision: Compare each consumer's embedded provider expectation with the supplied provider object before invoking the
+  host linker.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md`
+  - Rationale: ADR-0028 records complete object-only link-set and fingerprint verification before host linking.
+
 ## Non-Goals
 
 1. Export/import parser syntax.
@@ -160,5 +183,5 @@ incomplete graph.
 6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
 
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

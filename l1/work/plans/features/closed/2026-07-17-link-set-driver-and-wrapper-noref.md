@@ -2,8 +2,8 @@
 
 ## Link verified Dea and explicit foreign objects
 
-- Date: 2026-07-17
-- Status: Draft
+- Date: 2026-07-28
+- Status: Completed
 - Title: Add the standalone link-set driver and executable wrapper
 - Kind: Feature
 - Severity: High
@@ -11,25 +11,25 @@
 - Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
 - Subsystem: CLI / object verification / lifecycle wrapper / host linker
 - Modules:
+  - `l1/compiler/stage1_l0/src/build_driver.l0`
   - `l1/compiler/stage1_l0/src/cli_args.l0`
+  - `l1/compiler/stage1_l0/src/compile_driver.l0`
   - `l1/compiler/stage1_l0/src/object_metadata.l0`
   - `l1/compiler/stage1_l0/src/object_reader.l0`
   - `l1/compiler/stage1_l0/src/link_driver.l0`
   - `l1/compiler/stage1_l0/src/wrapper_emitter.l0`
-  - `l1/compiler/stage1_l0/src/build_driver.l0`
-  - `l1/compiler/stage1_l0/src/l1c.l0`
   - `l1/compiler/stage1_l0/src/l1c_lib.l0`
+  - `l1/compiler/stage1_l0/support/interface_fingerprint.c`
   - `docs/specs/compiler/cli-contract.md`
   - `l1/docs/specs/compiler/abi.md`
   - `l1/docs/reference/architecture.md`
   - `l1/docs/reference/separate-compilation.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
-  - `l1/compiler/stage1_l0/tests/object_metadata_test.l0`
-  - `l1/compiler/stage1_l0/tests/object_reader_test.l0`
-  - `l1/compiler/stage1_l0/tests/link_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
-  - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
+  - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
+  - `l1/compiler/stage1_l0/tests/link_driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/wrapper_emitter_test.l0`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_link_set_test.py`
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
@@ -43,11 +43,11 @@
   - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-workspace]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
-  `make -C l1 test-stage1 TESTS="cli_args_test object_metadata_test object_reader_test link_driver_test build_driver_test l1c_lib_test"`
+  `make -C l1 test-stage1 TESTS="build_driver_test cli_args_test wrapper_emitter_test link_driver_test l1c_stage1_link_set_test.py"`
 
 ## Summary
 
-Add the missing standalone link stage for Initiative `0001`. It consumes explicitly listed metadata-bearing Dea objects,
+Added the standalone link stage for Initiative `0001`. It consumes explicitly listed metadata-bearing Dea objects,
 validates their complete dependency and fingerprint graph, selects one Dea entry bridge, emits a separate process
 wrapper, and invokes the host compiler driver. It does not reopen `.l1m` files: object metadata is the source of truth
 for module identity, ordered direct imports, expected provider fingerprints, lifecycle symbols, and entry presence.
@@ -55,6 +55,27 @@ for module identity, ordered direct imports, expected provider fingerprints, lif
 The same mode accepts metadata-free C relocatable objects only through repeatable `--foreign-object`. Foreign objects
 may satisfy current unmangled `extern func` references and future `extern "C"` declarations, but they never acquire Dea
 module, fingerprint, lifecycle, dependency, or entry semantics.
+
+## Completion Notes
+
+1. Added the `--link` primary mode, ordered typed operands, explicit entry selection, strict option scope, and the
+   `L1C-2090` through `L1C-2109` diagnostic family.
+2. Implemented one-pass object classification, full dependency and fingerprint verification, cycle detection,
+   deterministic entry selection, and dependency-first lifecycle ordering.
+3. Added the generated process wrapper plus a reusable link executor whose caller supplies scratch paths.
+4. Added output-local exclusive `.l1c-link-*` transactions with registered fixed children and exact-byte input
+   snapshots, bounded no-follow cleanup, and result-bearing cleanup failure.
+5. Selected one exact runtime archive for normal compiler families and the complete variant-matched TinyCC raw-object
+   set when available, with exact-archive fallback under ADR-0027.
+6. Kept `L1_CFLAGS` and `--c-options` wrapper-compilation-only in link mode so raw flags cannot bypass the typed final
+   link-input boundary.
+7. Rendered option- and response-shaped filenames as unambiguous host filesystem arguments so the final command consumes
+   the exact object that passed inspection.
+8. Added unit and end-to-end coverage for verified object graphs, explicit foreign providers, default TinyCC inputs,
+   entry failures, classification failures, stale fingerprints, lifecycle order, command construction, and workspace
+   cleanup.
+9. Rejected executable outputs that alias caller or runtime inputs and hardened Windows command transport against
+   option-shaped paths, response-file spellings, quoting loss, and command-shell expansion.
 
 ## Dependencies and Ownership
 
@@ -65,7 +86,8 @@ module, fingerprint, lifecycle, dependency, or entry semantics.
    `MalformedDeaMetadata` results.
 4. [Compile-only production][compile-only] produces the final verified Dea objects consumed here.
 5. This plan owns the public link-mode CLI, classification enforcement, graph verification, entry selection, wrapper,
-   runtime archive selection, and host link invocation.
+   runtime-link-input selection, and host link invocation. Normal compiler families use one selected archive by exact
+   path; TinyCC uses the complete variant-matched raw-object set by exact paths when available, with archive fallback.
 6. [Build/run fan-out][build-run] reuses the internal link API; [external linking][external-linking] later extends the
    ordered input stream with libraries, rpaths, and raw host-driver arguments.
 7. This plan owns an atomically reserved output-local transaction for standalone wrapper artifacts. The common link
@@ -88,12 +110,12 @@ l1c --link DEA_OBJECT... [--foreign-object C_OBJECT]... [--entry MODULE] -o OUTP
    foreign-object operand at their encounter position. Missing values reuse the shared missing-option-value diagnostic.
 4. `--entry MODULE` accepts following-value and `=VALUE` forms, has no short alias, and may appear at most once. Its
    value must be a canonical dotted module name.
-5. `-o` / `--output` is mandatory in standalone link mode and names the executable. The driver creates its existing
-   parent directory only when that behavior matches current build output policy; it never treats a directory as an
-   executable name.
+5. Exactly one non-empty `-o` / `--output` is mandatory in standalone link mode and names the executable. Its parent
+   directory must already exist; link mode never treats a directory as an executable name.
 6. Host compiler, compiler-option, runtime include/library, tracing, and runtime-checking controls needed to compile the
-   wrapper and select the runtime archive are valid. External libraries and raw link arguments remain reserved until the
-   external-linking plan lands.
+   wrapper and select runtime link inputs are valid. Compiler options affect wrapper compilation only and are never
+   forwarded to the final link. External libraries and raw link arguments remain reserved until the external-linking
+   plan lands.
 7. Shared CLI documentation records link mode as the exception to the normal exactly-one-source-target rule.
 
 ## Object Classification Boundary
@@ -139,8 +161,10 @@ Every input is inspected before wrapper generation or host linking:
    Dea module's lifecycle symbols, and declares the selected module's entry symbol.
 4. The wrapper calls `_rt_init_args(argc, argv)`, every `I4init`, the selected `I5entry`, every `I4fini` in reverse,
    then returns the normalized status. Foreign objects receive no generated calls.
-5. Compile the wrapper with the selected host compiler and runtime include path. Link the wrapper object, typed Dea and
-   foreign inputs in their retained order, and the selected runtime archive by exact path.
+5. Compile the wrapper with the selected host compiler and runtime include path. Snapshot the exact inspected bytes of
+   every typed Dea and foreign input, then link the wrapper object and those snapshots in retained operand order,
+   followed by one selected runtime archive by exact path for normal families or the complete variant-matched TinyCC
+   raw-object set by exact paths when available, with archive fallback.
 6. Preserve host compiler stdout/stderr and return a structured link failure. Remove temporary wrapper C/object files on
    success and failure without deleting any caller-supplied input.
 7. Missing inputs and object-container errors detectable by the bounded readers are driver diagnostics. Unresolved
@@ -157,12 +181,15 @@ Every input is inspected before wrapper generation or host linking:
 03. Exclusively create `.l1c-link-<pid>-<seconds>-<nanoseconds>-<attempt>` beside the output. Try attempts `0` through
     `99`; report setup failure after exhaustion and never return an unchecked fallback.
 04. The transaction owns fixed `wrapper.c`, `wrapper.o`, `compile.stdout`, `compile.stderr`, `link.stdout`, and
-    `link.stderr` children. Caller-supplied objects and the final executable remain outside it.
+    `link.stderr` children plus one registered `input-N.o` snapshot per caller operand. Original caller-supplied objects
+    and the final executable remain outside it.
 05. POSIX creation requests mode `0700`, subject to a more restrictive process umask. This output-local boundary does
     not perform the global temporary-root owner and sticky-bit audit.
 06. MinGW uses `CreateDirectoryA` and inherits the trusted output parent's ACL; the POSIX mode argument is ignored.
     No-follow classification through `FILE_FLAG_OPEN_REPARSE_POINT` rejects symlinks, junctions, devices, and other
     reparse points. The current Stage 1 native narrow-byte path encoding remains the supported Windows path contract.
+    Until direct process spawning replaces `cmd.exe`, command-derived values containing `%`, `!`, carriage return, or
+    line feed fail before scratch allocation.
 07. MinGW/GCC-family wrapper compilation and PE/COFF linking are required end to end. Existing MSVC `/c`, `/Fo:`, and
     `/Fe:` construction remains unit-covered but does not establish full MSVC runtime/link support in this tranche.
 08. The common link executor receives explicit scratch paths. Standalone link owns this transaction; later build/run
@@ -189,10 +216,11 @@ and fingerprints, reject cycles, and resolve the entry module.
 
 ### Phase 3: Wrapper and host link
 
-Compute lifecycle order, emit and compile the wrapper, select the runtime archive, build the host command without shell
-word loss, and invoke the linker through explicit scratch paths. The standalone CLI adapter creates and cleans the
-output-local transaction; the common executor never owns workspace allocation or cleanup. Keep external library options
-out until their owning plan lands.
+Compute lifecycle order, emit and compile the wrapper, select the runtime link inputs, build the host command without
+shell word loss, and invoke the linker through explicit scratch paths. Normal families receive one exact archive path;
+TinyCC receives the complete variant-matched raw-object set by exact paths when available, with archive fallback. The
+standalone CLI adapter creates and cleans the output-local transaction; the common executor never owns workspace
+allocation or cleanup. Keep external library options out until their owning plan lands.
 
 ### Phase 4: Documentation and FFI-forward smoke coverage
 
@@ -215,14 +243,14 @@ repeats the path with `extern "C"`.
 - Decision: Link verified Dea objects and explicitly classified foreign objects through a generated executable wrapper.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md`
   - Rationale: The verified link-set boundary, entry validation, foreign-object distinction, and wrapper ownership
     constrain every future linker-facing workflow.
 - Decision: Isolate standalone wrapper artifacts in an atomically reserved output-local transaction supplied explicitly
   to the common link executor.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0029-output-local-standalone-link-transaction.md`
   - Rationale: Standalone link always has a caller-selected output parent, so it can avoid the unsafe global temporary
     stem without blocking on the separate cross-level build/run workspace policy.
 - Decision: Make the per-module lifecycle ABI the source of wrapper calls and deterministic initialization ordering.
@@ -240,6 +268,12 @@ repeats the path with `extern "C"`.
   - Disposition: Covered by ADR
   - ADR: `docs/decisions/0003-shared-cli-contract.md`
   - Rationale: ADR-0003 owns shared compiler modes, operand validation, and level-specific extensions.
+- Decision: Select runtime link inputs by compiler family and runtime variant.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md`
+  - Rationale: ADR-0027 owns exact archive selection for normal families and the variant-matched TinyCC raw-object
+    compatibility path.
 
 ## Non-Goals
 
@@ -265,7 +299,9 @@ repeats the path with `extern "C"`.
     lifecycle or entry calls.
 07. A foreign object defining C `main` is rejected.
 08. Init calls are dependency-first, fini calls are the exact reverse, and side-effect-only ordered imports are honored.
-09. The runtime archive is passed by exact path, wrapper temporaries are cleaned, and user inputs remain untouched.
+09. Runtime link inputs are passed by exact path: one selected archive for normal families, or the complete
+    variant-matched TinyCC raw-object set when available with archive fallback. Wrapper temporaries are cleaned and user
+    inputs remain untouched.
 10. Focused normal and trace tests pass, followed by `make -C l1 test` once implementation is complete.
 11. Concrete diagnostics are registered in the shared catalog before closure.
 12. Transaction allocation retries collisions, rejects an exhausted candidate set without fallback, and never calls
@@ -277,14 +313,30 @@ repeats the path with `extern "C"`.
     `RemoveDirectoryA` cleanup.
 15. MSVC command-word tests preserve `/c`, `/Fo:`, and `/Fe:` construction without claiming an end-to-end support lane.
 
-[build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
-[compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
-[diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[external-linking]: 2026-04-24-external-library-linking-cli-noref.md
-[fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[native-workspace]: ../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
-[object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md
-[structured-input]: ../../../../work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md
+## Validation
+
+- `make -C l1 test-stage1 TESTS="build_driver_test cli_args_test wrapper_emitter_test link_driver_test l1c_stage1_link_set_test.py"`
+  passed 5 focused normal tests.
+- `make -C l1 test-stage1-trace TESTS="build_driver_test cli_args_test wrapper_emitter_test link_driver_test"` passed 4
+  focused trace tests.
+- `make -C l1 test` passed all 64 Stage 1 tests, the environment-stackability check, and all 4 L1 examples.
+- `make -C l1 test-stage1-trace` passed all 44 default trace tests; the target's documented slow
+  `math_runtime_compile_test` exclusion remained in effect.
+- `./.venv/bin/python scripts/check_adr_impact.py --all-active` and
+  `./.venv/bin/python scripts/check_adr_impact.py --staged` passed.
+- `./.venv/bin/python scripts/validate_architectural_decision_audit.py --json` passed.
+- Root pre-commit passed copyright-header, staged ADR-impact, and Markdown-format hooks over the complete staged change.
+- Unified CI passed the complete L1 delegate on Ubuntu, Windows UCRT64, macOS Intel, and macOS ARM, including the spaced
+  Windows compiler-path and output-junction regressions.
+
+[build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
+[compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
+[diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[external-linking]: ../2026-04-24-external-library-linking-cli-noref.md
+[fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[native-workspace]: ../../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
+[structured-input]: ../../../../../work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md

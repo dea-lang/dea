@@ -161,6 +161,18 @@ func ortest_replace_byte(bytes: string, offset: int, value: int) -> string {
     }
 }
 
+func ortest_replace_bytes(
+    bytes: string,
+    offset: int,
+    replacement: string
+) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        cb_append_s(out, bytes);
+        ortest_put_bytes(out, offset, replacement);
+        return cb_to_string(out);
+    }
+}
+
 func ortest_build_elf(
     fixture: ObjectReaderTestFixture*,
     is_64: bool,
@@ -287,6 +299,58 @@ func ortest_build_elf(
     }
     ortest_put_bytes(out, string_offset, string_bytes);
     vec_free(name_offsets);
+    let result = cb_to_string(out);
+    cb_free(out);
+    return result;
+}
+
+func ortest_build_elf_deplibs_name() -> string {
+    let header_size = 64;
+    let section_size = 64;
+    let section_table = header_size;
+    let data_offset = section_table + 3 * section_size;
+    let names = cb_create();
+    cb_append(names, 0 as byte);
+    cb_append_s(names, ".deplibs");
+    cb_append(names, 0 as byte);
+    cb_append_s(names, ".shstrtab");
+    cb_append(names, 0 as byte);
+    let section_names = cb_to_string(names);
+    cb_free(names);
+    let name_table_offset = data_offset + 1;
+    let out = ortest_zero_buffer(
+        name_table_offset + len_s(section_names));
+
+    ortest_put_u8(out, 0, 127);
+    ortest_put_bytes(out, 1, "ELF");
+    ortest_put_u8(out, 4, 2);
+    ortest_put_u8(out, 5, 1);
+    ortest_put_u8(out, 6, 1);
+    ortest_put_u16(out, 16, 1, true);
+    ortest_put_u16(out, 18, 62, true);
+    ortest_put_u32(out, 20, 1, true);
+    ortest_put_u64(out, 40, section_table, true);
+    ortest_put_u16(out, 52, header_size, true);
+    ortest_put_u16(out, 58, section_size, true);
+    ortest_put_u16(out, 60, 3, true);
+    ortest_put_u16(out, 62, 2, true);
+
+    let dependent_section = section_table + section_size;
+    ortest_put_u32(out, dependent_section, 1, true);
+    ortest_put_u32(out, dependent_section + 4, 1, true);
+    ortest_put_u64(out, dependent_section + 24, data_offset, true);
+    ortest_put_u64(out, dependent_section + 32, 1, true);
+    ortest_put_u64(out, dependent_section + 48, 1, true);
+
+    let name_section = section_table + 2 * section_size;
+    ortest_put_u32(out, name_section, 10, true);
+    ortest_put_u32(out, name_section + 4, 3, true);
+    ortest_put_u64(out, name_section + 24, name_table_offset, true);
+    ortest_put_u64(out, name_section + 32, len_s(section_names), true);
+    ortest_put_u64(out, name_section + 48, 1, true);
+
+    ortest_put_u8(out, data_offset, 1);
+    ortest_put_bytes(out, name_table_offset, section_names);
     let result = cb_to_string(out);
     cb_free(out);
     return result;
@@ -602,6 +666,40 @@ func ortest_build_coff(
     return result;
 }
 
+func ortest_build_coff_indirect_section_name(
+    encoded_name: string,
+    string_entry: string,
+    terminated: bool
+) -> string {
+    let fixture = ortest_fixture_create(byte_to_s(0 as byte));
+    ortest_fixture_add_symbol(fixture, "main", 0, 0);
+    let base = ortest_build_coff(fixture, 34404);
+    ortest_fixture_free(fixture);
+
+    let string_offset = len_s(base) - 4;
+    let out = cb_create();
+    cb_append_s(out, base);
+    cb_append_s(out, string_entry);
+    if (terminated) {
+        cb_append(out, 0 as byte);
+    }
+    let terminator_size = 0;
+    if (terminated) {
+        terminator_size = 1;
+    }
+    ortest_put_u32(
+        out, string_offset,
+        4 + len_s(string_entry) + terminator_size,
+        true);
+    for (let i = 0; i < 8; i = i + 1) {
+        ortest_put_u8(out, 20 + i, 0);
+    }
+    ortest_put_bytes(out, 20, encoded_name);
+    let result = cb_to_string(out);
+    cb_free(out);
+    return result;
+}
+
 func ortest_metadata_records(has_entry: bool) -> StringVector* {
     let result = sv_create(2);
     let identity = om_encode_identity(
@@ -686,6 +784,9 @@ func ortest_assert_valid(bytes: string, expected_format: ObjectFormat) {
             "object format mismatch");
         assert(ord(inspection.metadata.kind) == ord(VALID_DEA_METADATA),
             "valid fixture should classify as Dea metadata");
+        assert(ord(object_inspection_linker_control_kind(inspection)) ==
+                   ord(OBJECT_LINKER_CONTROL_NONE),
+            "ordinary object should not report embedded linker controls");
         let metadata = inspection.metadata.valid as ValidDeaMetadata*;
         assert(metadata.module_name == "demo.main", "module identity mismatch");
         assert(metadata.fingerprint == "sip13:0123456789abcdef",
@@ -1020,6 +1121,89 @@ func ortest_assert_no_truncated_prefix_is_valid(bytes: string) {
     }
 }
 
+func ortest_assert_linker_control(
+    bytes: string,
+    expected: ObjectLinkerControlKind
+) {
+    with (let result = object_inspect_bytes(bytes) =>
+              object_inspection_result_free(result)) {
+        assert(result.error == null,
+            "linker-control carrier should remain a readable object");
+        assert(ord(object_inspection_linker_control_kind(
+                       result.inspection as ObjectInspection*)) ==
+                   ord(expected),
+            "embedded linker-control classification mismatch");
+    }
+}
+
+func ortest_assert_corrupt_object(bytes: string) {
+    with (let result = object_inspect_bytes(bytes) =>
+              object_inspection_result_free(result)) {
+        assert(result.error != null,
+            "malformed indirect COFF section name should be a read error");
+        assert(ord((result.error as ObjectReadError*).kind) ==
+                   ord(OBJECT_READ_CORRUPT),
+            "malformed indirect COFF section name should be corrupt");
+    }
+}
+
+func test_embedded_linker_control_detection() {
+    with (let fixture = ortest_valid_fixture(true) =>
+              ortest_fixture_free(fixture)) {
+        let elf_type = ortest_build_elf(fixture, true, true);
+        let dependent_type =
+            byte_to_s(4 as byte) + byte_to_s(76 as byte) +
+            byte_to_s(255 as byte) + byte_to_s(111 as byte);
+        elf_type = ortest_replace_bytes(
+            elf_type, 64 + 64 + 4, dependent_type);
+        ortest_assert_linker_control(
+            elf_type, OBJECT_LINKER_CONTROL_ELF_DEPENDENT_LIBRARIES);
+        ortest_assert_no_truncated_prefix_is_valid(elf_type);
+
+        let coff = ortest_replace_bytes(
+            ortest_build_coff(fixture, 34404), 20, ".drectve");
+        ortest_assert_linker_control(
+            coff, OBJECT_LINKER_CONTROL_PECOFF_DRECTVE);
+        ortest_assert_no_truncated_prefix_is_valid(coff);
+    }
+
+    let coff_decimal = ortest_build_coff_indirect_section_name(
+        "/4", ".drectve", true);
+    ortest_assert_linker_control(
+        coff_decimal, OBJECT_LINKER_CONTROL_PECOFF_DRECTVE);
+    ortest_assert_no_truncated_prefix_is_valid(coff_decimal);
+
+    let coff_base64 = ortest_build_coff_indirect_section_name(
+        "//E", ".drectve", true);
+    ortest_assert_linker_control(
+        coff_base64, OBJECT_LINKER_CONTROL_PECOFF_DRECTVE);
+    ortest_assert_no_truncated_prefix_is_valid(coff_base64);
+
+    ortest_assert_linker_control(
+        ortest_build_coff_indirect_section_name("/4", ".data", true),
+        OBJECT_LINKER_CONTROL_NONE);
+    ortest_assert_corrupt_object(
+        ortest_build_coff_indirect_section_name(
+            "/9999999", ".drectve", true));
+    ortest_assert_corrupt_object(
+        ortest_build_coff_indirect_section_name(
+            "//?", ".drectve", true));
+    ortest_assert_corrupt_object(
+        ortest_build_coff_indirect_section_name(
+            "/4", ".drectve", false));
+
+    let elf_name = ortest_build_elf_deplibs_name();
+    ortest_assert_linker_control(
+        elf_name, OBJECT_LINKER_CONTROL_ELF_DEPENDENT_LIBRARIES);
+    ortest_assert_no_truncated_prefix_is_valid(elf_name);
+
+    let macho = ortest_replace_byte(
+        ortest_build_macho_unknown_command(false, true, 12), 28, 45);
+    ortest_assert_linker_control(
+        macho, OBJECT_LINKER_CONTROL_MACHO_LINKER_OPTION);
+    ortest_assert_no_truncated_prefix_is_valid(macho);
+}
+
 func test_bounded_container_failures() {
     with (let fixture = ortest_valid_fixture(true) => ortest_fixture_free(fixture)) {
         let elf = ortest_build_elf(fixture, true, true);
@@ -1219,6 +1403,7 @@ func main() {
     test_lbi_parser_is_symbol_length_bounded();
     test_macho_load_command_alignment();
     test_macho_prebound_undefined_and_common_symbols();
+    test_embedded_linker_control_detection();
     test_bounded_container_failures();
     test_unsupported_containers_and_io_errors();
     test_native_compiler_smoke_object();

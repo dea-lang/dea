@@ -11,6 +11,7 @@ import std.text;
 import std.vector;
 import util.diag;
 import build_info;
+import source_paths;
 
 /**
  * Defines the CliMode enumeration.
@@ -19,6 +20,7 @@ enum CliMode {
     CM_RUN;
     CM_BUILD;
     CM_COMPILE;
+    CM_LINK;
     CM_EMIT_INTERFACE;
     CM_GEN;
     CM_CHECK;
@@ -26,6 +28,22 @@ enum CliMode {
     CM_AST;
     CM_SYM;
     CM_TYPE;
+}
+
+/**
+ * Identifies how one standalone-link operand entered the CLI.
+ */
+enum LinkOperandKind {
+    LOK_DEA_OBJECT;
+    LOK_FOREIGN_OBJECT;
+}
+
+/**
+ * Represents one ordered standalone-link input.
+ */
+struct LinkOperand {
+    kind: LinkOperandKind;
+    path: string;
 }
 
 /**
@@ -58,9 +76,66 @@ struct CliOptions {
     all_modules: bool;
     include_eof: bool;
 
+    link_operands: VectorBase*;
+    entry_module: string?;
+
     entry_target: string?;
     extra_target_count: int;
     program_args: StringVector*;
+}
+
+/**
+ * Create an empty vector of owned link operands.
+ *
+ * @return New ordered link-operand vector.
+ */
+func cli_link_operands_create() -> VectorBase* {
+    return vec_create(sizeof(void*), 4);
+}
+
+/**
+ * Append one owned link operand.
+ *
+ * @param operands Ordered link-operand vector.
+ * @param kind Operand classification supplied by the CLI spelling.
+ * @param path Operand path.
+ */
+func cli_link_operands_push(operands: VectorBase*, kind: LinkOperandKind, path: string) {
+    vec_push_ptr(operands, new LinkOperand(kind, path) as void*);
+}
+
+/**
+ * Return the number of ordered link operands.
+ *
+ * @param operands Link-operand vector to inspect.
+ * @return Number of stored operands.
+ */
+func cli_link_operands_count(operands: VectorBase*) -> int {
+    return vec_size(operands);
+}
+
+/**
+ * Return one ordered link operand.
+ *
+ * @param operands Link-operand vector to inspect.
+ * @param index Zero-based operand index.
+ * @return Borrowed operand at `index`.
+ */
+func cli_link_operands_get(operands: VectorBase*, index: int) -> LinkOperand* {
+    return (*(vec_get(operands, index) as void**)) as LinkOperand*;
+}
+
+/**
+ * Free an ordered link-operand vector and its owned entries.
+ *
+ * @param operands Link-operand vector to free.
+ */
+func cli_link_operands_free(operands: VectorBase*) {
+    for (let i = 0; i < vec_size(operands); i = i + 1) {
+        let operand = cli_link_operands_get(operands, i);
+        drop operand;
+    }
+    vec_free(operands);
 }
 
 /**
@@ -102,6 +177,8 @@ func cli_options_create() -> CliOptions* {
         false,
         false,
         false,
+        cli_link_operands_create(),
+        null,
         null,
         0,
         sv_create(4)
@@ -117,6 +194,7 @@ func cli_options_free(self: CliOptions*) {
     sv_free(self.project_roots);
     sv_free(self.sys_roots);
     sv_free(self.interface_paths);
+    cli_link_operands_free(self.link_operands);
     sv_free(self.program_args);
     drop self;
 }
@@ -230,6 +308,7 @@ func cli_mode_flag(mode: CliMode) -> string {
         CM_RUN => { return "--run"; }
         CM_BUILD => { return "--build"; }
         CM_COMPILE => { return "--compile"; }
+        CM_LINK => { return "--link"; }
         CM_EMIT_INTERFACE => { return "--emit-interface"; }
         CM_GEN => { return "--gen"; }
         CM_CHECK => { return "--check"; }
@@ -251,6 +330,7 @@ func cli_mode_name(mode: CliMode) -> string {
         CM_RUN => { return "run"; }
         CM_BUILD => { return "build"; }
         CM_COMPILE => { return "compile"; }
+        CM_LINK => { return "link"; }
         CM_EMIT_INTERFACE => { return "emit-interface"; }
         CM_GEN => { return "gen"; }
         CM_CHECK => { return "check"; }
@@ -370,9 +450,10 @@ func cli_print_blank_line(to_stderr: bool) {
  */
 func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "usage: l1c [-h] [--version] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT] [--run | --build |");
-    cli_print_line(to_stderr, "           -c | --compile | --emit-interface | --gen | --check | --tok | --ast | --sym | --type]");
+    cli_print_line(to_stderr, "           -c | --compile | --link | --emit-interface | --gen | --check | --tok | --ast | --sym | --type]");
     cli_print_line(to_stderr, "           [-I INTERFACE_PATH]");
     cli_print_line(to_stderr, "           [--output OUTPUT]");
+    cli_print_line(to_stderr, "           [--foreign-object C_OBJECT] [--entry MODULE]");
     cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS]");
     cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
     cli_print_line(to_stderr, "           [--no-line-directives] [--trace-arc] [--trace-memory] [--unchecked]");
@@ -380,6 +461,7 @@ func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "           [--keep-c]");
     cli_print_line(to_stderr, "           [--all-modules] [--include-eof]");
     cli_print_line(to_stderr, "           targets [targets ...]");
+    cli_print_line(to_stderr, "       l1c --link DEA_OBJECT... [--foreign-object C_OBJECT]... [--entry MODULE] -o OUTPUT");
 }
 
 /**
@@ -391,8 +473,8 @@ func cli_print_help() {
     cli_print_line(false, cli_compiler_identity_text());
     cli_print_blank_line(false);
     cli_print_line(false, "positional arguments:");
-    cli_print_line(false, "  targets               Target module/file name(s); currently exactly one");
-    cli_print_line(false, "                        target is supported");
+    cli_print_line(false, "  targets               One target module/file name, or one or more positional");
+    cli_print_line(false, "                        Dea object paths with '--link'");
     cli_print_blank_line(false);
     cli_print_line(false, "options:");
     cli_print_line(false, "  -h, --help            show this help message and exit");
@@ -409,6 +491,7 @@ func cli_print_help() {
     cli_print_line(false, "  --run, -r             Build and run a module");
     cli_print_line(false, "  --build               Build an executable (default mode)");
     cli_print_line(false, "  -c, --compile         Compile one module to sibling .o and .l1m artifacts");
+    cli_print_line(false, "  --link                Link verified Dea objects into an executable");
     cli_print_line(false, "  --emit-interface      Emit the module interface (.l1m) text for the target module");
     cli_print_line(false, "  --gen, -Gc, --codegen Generate C code");
     cli_print_line(false, "  --check, --analyze    Parse and analyze a module");
@@ -416,15 +499,20 @@ func cli_print_help() {
     cli_print_line(false, "  --ast                 Pretty-print the AST");
     cli_print_line(false, "  --sym, --symbols      Dump module-level symbols");
     cli_print_line(false, "  --type, --types       Dump resolved types");
-    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--compile', '--emit-interface', '--gen', '--run')");
+    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--compile', '--emit-interface', '--gen', '--link', '--run')");
+    cli_print_line(false, "  --foreign-object C_OBJECT");
+    cli_print_line(false, "                        Add an explicit metadata-free relocatable C object");
+    cli_print_line(false, "                        in encounter order (repeatable; valid in: '--link')");
+    cli_print_line(false, "  --entry MODULE        Select one canonical dotted Dea entry module");
+    cli_print_line(false, "                        (at most once; valid in: '--link')");
     cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");
     cli_print_line(false, "                        C compiler to use (valid in: '--build', '--compile',");
-    cli_print_line(false, "                        '--run'; default: $L1_CC has highest");
+    cli_print_line(false, "                        '--link', '--run'; default: $L1_CC has highest");
     cli_print_line(false, "                        precedence if set; then tcc, gcc, clang, cc from PATH,");
     cli_print_line(false, "                        or $CC, in that order)");
     cli_print_line(false, "  --c-options, -Co C_OPTIONS");
     cli_print_line(false, "                        Extra options to pass to the C compiler (valid in:");
-    cli_print_line(false, "                        '--build', '--compile', '--run'; default");
+    cli_print_line(false, "                        '--build', '--compile', '--link', '--run'; default");
     cli_print_line(false, "                        prepends $L1_CFLAGS; options from --c-options are");
     cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\")");
     cli_print_line(false, "  -I, --interface-path INTERFACE_PATH");
@@ -434,11 +522,11 @@ func cli_print_help() {
     cli_print_line(false, "                        Path to Dea runtime headers such as `dea_rt.h`");
     cli_print_line(false, "                        (default: $L1_RUNTIME_INCLUDE or");
     cli_print_line(false, "                        $L1_BUILD_DIR/include; valid in: '--build',");
-    cli_print_line(false, "                        '--compile', '--run')");
+    cli_print_line(false, "                        '--compile', '--link', '--run')");
     cli_print_line(false, "  --runtime-lib, -Rl RUNTIME_LIB");
     cli_print_line(false, "                        Path to Dea runtime library search directory");
     cli_print_line(false, "                        (default: $L1_RUNTIME_LIB or");
-    cli_print_line(false, "                        $L1_BUILD_DIR/lib; valid in: '--build', '--run')");
+    cli_print_line(false, "                        $L1_BUILD_DIR/lib; valid in: '--build', '--link', '--run')");
     cli_print_line(false, "  -g                    Reserved debug-information option (not supported yet)");
     cli_print_line(false, "  -S                    Reserved assembly-output option (not supported yet)");
     cli_print_line(false, "  -L LIBRARY_PATH       Reserved library search path (not supported yet)");
@@ -524,11 +612,29 @@ func cli_require_next_value(argv: StringVector*, i: int, option: string, diags: 
  * @param token Positional argument to record.
  */
 func cli_assign_target(opts: CliOptions*, token: string) {
+    cli_link_operands_push(opts.link_operands, LOK_DEA_OBJECT, token);
     if (opts.entry_target == null) {
         opts.entry_target = token;
     } else {
         opts.extra_target_count = opts.extra_target_count + 1;
     }
+}
+
+/**
+ * Count ordered operands with one CLI classification.
+ *
+ * @param opts Parsed CLI options.
+ * @param kind Operand kind to count.
+ * @return Number of matching operands.
+ */
+func cli_count_link_operands(opts: CliOptions*, kind: LinkOperandKind) -> int {
+    let count = 0;
+    for (let i = 0; i < cli_link_operands_count(opts.link_operands); i = i + 1) {
+        if (ord(cli_link_operands_get(opts.link_operands, i).kind) == ord(kind)) {
+            count = count + 1;
+        }
+    }
+    return count;
 }
 
 /**
@@ -539,15 +645,32 @@ func cli_assign_target(opts: CliOptions*, token: string) {
  */
 func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     let mode = opts.mode;
+    let is_link = ord(mode) == ord(CM_LINK);
+
+    if (is_link && sv_size(opts.project_roots) > 0) {
+        cli_emit_error(
+            diags,
+            "L1C-2090",
+            "option '--project-root' is not valid with mode: --link"
+        );
+    }
+
+    if (is_link && sv_size(opts.sys_roots) > 0) {
+        cli_emit_error(
+            diags,
+            "L1C-2090",
+            "option '--sys-root' is not valid with mode: --link"
+        );
+    }
 
     if (sv_size(opts.interface_paths) > 0 && ord(mode) != ord(CM_COMPILE)) {
         cli_emit_error(diags, "L1C-2031", "option '--interface-path' is valid only with mode: --compile");
     }
 
     if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
-        ord(mode) != ord(CM_COMPILE) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) &&
         ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_EMIT_INTERFACE)) {
-        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --compile, --emit-interface, --gen, --run");
+        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --compile, --emit-interface, --gen, --link, --run");
     }
 
     if (opts.keep_c && ord(mode) != ord(CM_BUILD) &&
@@ -556,22 +679,23 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     }
 
     if (opts.c_compiler != null && ord(mode) != ord(CM_BUILD) &&
-        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2012", "option '--c-compiler' is valid only with modes: --build, --compile, --run");
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2012", "option '--c-compiler' is valid only with modes: --build, --compile, --link, --run");
     }
 
     if (opts.c_options != null && ord(mode) != ord(CM_BUILD) &&
-        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2013", "option '--c-options' is valid only with modes: --build, --compile, --run");
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2013", "option '--c-options' is valid only with modes: --build, --compile, --link, --run");
     }
 
     if (opts.runtime_include != null && ord(mode) != ord(CM_BUILD) &&
-        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2014", "option '--runtime-include' is valid only with modes: --build, --compile, --run");
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2014", "option '--runtime-include' is valid only with modes: --build, --compile, --link, --run");
     }
 
-    if (opts.runtime_lib != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2015", "option '--runtime-lib' is valid only with modes: --build, --run");
+    if (opts.runtime_lib != null && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2015", "option '--runtime-lib' is valid only with modes: --build, --link, --run");
     }
 
     if (opts.no_line_directives && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
@@ -580,13 +704,13 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     }
 
     if (opts.trace_arc && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
-        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2017", "option '--trace-arc' is valid only with modes: --build, --compile, --gen, --run");
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
+        cli_emit_error(diags, "L1C-2017", "option '--trace-arc' is valid only with modes: --build, --compile, --gen, --link, --run");
     }
 
     if (opts.trace_memory && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
-        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2018", "option '--trace-memory' is valid only with modes: --build, --compile, --gen, --run");
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
+        cli_emit_error(diags, "L1C-2018", "option '--trace-memory' is valid only with modes: --build, --compile, --gen, --link, --run");
     }
 
     if (ord(mode) == ord(CM_GEN) && (opts.trace_arc || opts.trace_memory)) {
@@ -598,13 +722,13 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     }
 
     if (opts.unchecked && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
-        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2025", "option '--unchecked' is valid only with modes: --build, --compile, --gen, --run");
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
+        cli_emit_error(diags, "L1C-2025", "option '--unchecked' is valid only with modes: --build, --compile, --gen, --link, --run");
     }
 
     if (opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
-        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2027", "option '--check-basic' is valid only with modes: --build, --compile, --gen, --run");
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
+        cli_emit_error(diags, "L1C-2027", "option '--check-basic' is valid only with modes: --build, --compile, --gen, --link, --run");
     }
 
     if (opts.unchecked && (opts.trace_arc || opts.trace_memory)) {
@@ -641,6 +765,14 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
 
     if (opts.include_eof && ord(mode) != ord(CM_TOK)) {
         cli_emit_error(diags, "L1C-2020", "option '--include-eof' is valid only with modes: --tok");
+    }
+
+    if (cli_count_link_operands(opts, LOK_FOREIGN_OBJECT) > 0 && !is_link) {
+        cli_emit_error(diags, "L1C-2091", "option '--foreign-object' is valid only with mode: --link");
+    }
+
+    if (opts.entry_module != null && !is_link) {
+        cli_emit_error(diags, "L1C-2092", "option '--entry' is valid only with mode: --link");
     }
 }
 
@@ -701,6 +833,8 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
         }
 
         let i = 0;
+        let entry_option_count = 0;
+        let output_option_count = 0;
         while (i < cli_end) {
             let token = sv_get(argv, i);
 
@@ -716,6 +850,11 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
             if (token == "-c" || token == "--compile") {
                 cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_COMPILE);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--link") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_LINK);
                 i = i + 1;
                 continue;
             }
@@ -822,6 +961,82 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
+            if (token == "--foreign-object") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    cli_link_operands_push(
+                        (opts as CliOptions*).link_operands,
+                        LOK_FOREIGN_OBJECT,
+                        value as string
+                    );
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--foreign-object=")) {
+                let value = slice_s(token, len_s("--foreign-object="), len_s(token));
+                if (is_empty_s(value)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2003",
+                        "missing value for option '--foreign-object'"
+                    );
+                } else {
+                    cli_link_operands_push(
+                        (opts as CliOptions*).link_operands,
+                        LOK_FOREIGN_OBJECT,
+                        value
+                    );
+                }
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "--entry") {
+                entry_option_count = entry_option_count + 1;
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (entry_option_count > 1) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2093",
+                        "option '--entry' may be provided at most once"
+                    );
+                } else if (value != null) {
+                    (opts as CliOptions*).entry_module = value;
+                }
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--entry=")) {
+                entry_option_count = entry_option_count + 1;
+                let value = slice_s(token, len_s("--entry="), len_s(token));
+                if (entry_option_count > 1) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2093",
+                        "option '--entry' may be provided at most once"
+                    );
+                } else if (is_empty_s(value)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2003",
+                        "missing value for option '--entry'"
+                    );
+                } else {
+                    (opts as CliOptions*).entry_module = value;
+                }
+                i = i + 1;
+                continue;
+            }
+
             if (token == "-Rp" || token == "--project-root") {
                 let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
@@ -873,6 +1088,7 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
 
             if (token == "-o" || token == "--output") {
+                output_option_count = output_option_count + 1;
                 let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
@@ -884,7 +1100,17 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
 
             if (starts_with_s(token, "--output=")) {
-                (opts as CliOptions*).output = slice_s(token, len_s("--output="), len_s(token));
+                output_option_count = output_option_count + 1;
+                let value = slice_s(token, len_s("--output="), len_s(token));
+                if (is_empty_s(value)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2003",
+                        "missing value for option '--output'"
+                    );
+                } else {
+                    (opts as CliOptions*).output = value;
+                }
                 i = i + 1;
                 continue;
             }
@@ -1083,11 +1309,38 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             return missing_value_result;
         }
 
-        if ((opts as CliOptions*).entry_target == null) {
+        let parsed_opts = opts as CliOptions*;
+        if (ord(parsed_opts.mode) == ord(CM_LINK)) {
+            if (cli_count_link_operands(parsed_opts, LOK_DEA_OBJECT) == 0) {
+                cli_emit_error(
+                    diags as DiagCollector*,
+                    "L1C-2095",
+                    "mode '--link' requires at least one positional Dea object"
+                );
+            }
+            if (output_option_count != 1 || parsed_opts.output == null) {
+                cli_emit_error(
+                    diags as DiagCollector*,
+                    "L1C-2096",
+                    "mode '--link' requires exactly one output path through '-o' or '--output'"
+                );
+            }
+            if (parsed_opts.entry_module != null) {
+                let entry_module = parsed_opts.entry_module as string;
+                if (!sp_is_valid_module_name(entry_module)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2094",
+                        "invalid entry module name '" + entry_module +
+                        "': expected a canonical dotted module name"
+                    );
+                }
+            }
+        } else if (parsed_opts.entry_target == null) {
             cli_emit_error(diags as DiagCollector*, "L1C-2021", "missing required target module/file name");
         }
 
-        if (ord((opts as CliOptions*).mode) == ord(CM_RUN)) {
+        if (ord(parsed_opts.mode) == ord(CM_RUN)) {
             if ((opts as CliOptions*).extra_target_count > 0) {
                 cli_emit_error(
                     diags as DiagCollector*,
@@ -1095,7 +1348,7 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                     "mode '--run' accepts exactly one target; use '--' before runtime program arguments"
                 );
             }
-        } else {
+        } else if (ord(parsed_opts.mode) != ord(CM_LINK)) {
             if (split_idx >= 0) {
                 cli_emit_error(
                     diags as DiagCollector*,
@@ -1110,6 +1363,12 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                     "multiple targets are not supported yet; pass exactly one target"
                 );
             }
+        } else if (split_idx >= 0) {
+            cli_emit_error(
+                diags as DiagCollector*,
+                "L1C-2023",
+                "arguments after '--' are valid only with '--run'"
+            );
         }
 
         cli_validate_mode_scoped_flags(opts as CliOptions*, diags as DiagCollector*);

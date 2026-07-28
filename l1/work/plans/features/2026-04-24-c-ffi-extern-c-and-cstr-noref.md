@@ -33,7 +33,7 @@
   - `l1/docs/roadmap.md`
   - `l1/docs/reference/design-decisions.md`
   - `l1/work/initiatives/0003-c-ffi.md`
-  - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
+  - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
   - `l1/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
   - `l1/work/proposals/cstr-and-c-string-guards.md`

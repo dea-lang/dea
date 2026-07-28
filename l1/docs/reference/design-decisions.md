@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-07-22
+Version: 2026-07-27
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -8,6 +8,8 @@ Related docs:
 
 - compiler structure and pass flow: [architecture.md](architecture.md)
 - backend lowering details: [c-backend-design.md](c-backend-design.md)
+- separate-compilation and standalone-link contract:
+  [l1/docs/reference/separate-compilation.md](separate-compilation.md)
 - ownership and cleanup rules: [ownership.md](ownership.md)
 - standard library surface: [standard-library.md](standard-library.md)
 
@@ -35,6 +37,12 @@ The current stack is intentionally layered:
 
 This keeps platform-specific behavior concentrated at the runtime boundary instead of leaking into core language
 semantics.
+
+Standalone `--link` preserves this boundary rather than asking the host linker to discover a runtime by library name.
+For normal compiler families the driver selects the runtime variant and passes its archive by exact path. The ADR-0027
+TinyCC compatibility carve-out instead permits the complete variant-matched raw runtime object set when TinyCC's object
+format is incompatible with the platform archive; when that set is unavailable, exact archive selection remains the
+fallback. This exception does not make raw runtime objects the general public link contract.
 
 ## 3. Portability Policy
 

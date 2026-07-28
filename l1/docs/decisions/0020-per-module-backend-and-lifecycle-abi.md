@@ -1,7 +1,7 @@
 # ADR-0020: Per-Module Backend and Lifecycle ABI
 
 - Decision date: 2026-07-22
-- Last edited: 2026-07-24
+- Last edited: 2026-07-27
 - Status: Accepted
 
 ## Context
@@ -12,8 +12,8 @@ Separate compilation needs an independently compilable C unit for one source mod
 graph fan-out land.
 
 Later object metadata also needs one always-present symbol that anchors compiler-generated records against dead-strip.
-The future executable wrapper needs stable entry points for module initialization, finalization, and selection of a
-possibly non-exported source `main` without giving imported modules permission to orchestrate one another.
+The executable wrapper needs stable entry points for module initialization, finalization, and selection of a possibly
+non-exported source `main` without giving imported modules permission to orchestrate one another.
 
 ## Decision
 
@@ -42,8 +42,10 @@ conditionally defines the following entry bridge:
   can call a non-exported source definition within the same translation unit and normalizes results to a C status: `int`
   directly, `bool` as `true` to `0` and `false` to `1`, and every other form to `0` after the call.
 
-`I5entry` does not initialize runtime argument state or call lifecycle functions. Exact cross-module init/fini ordering,
-runtime argument setup, entry selection, and process-wrapper generation belong to the standalone-link tranche.
+`I5entry` does not initialize runtime argument state or call lifecycle functions. The standalone linker composes the
+per-module ABI through a separate process wrapper: it calls `_rt_init_args`, calls each selected Dea module's `I4init`
+in deterministic dependency-first order, invokes exactly one selected `I5entry`, and calls `I4fini` in exact reverse
+order. Foreign objects do not participate in this lifecycle sequence.
 
 ## Rationale
 
@@ -57,8 +59,8 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
   context needed to order modules correctly.
 - An in-module entry bridge reaches a private source `main` without turning it into a source export or placing a process
   wrapper in every object.
-- Preserving the legacy generator avoids a partially migrated build/run workflow before object metadata and standalone
-  linking exist.
+- Preserving the legacy generator avoids a partially migrated build/run workflow until graph fan-out reuses the
+  operational compile/link APIs.
 
 ## Consequences
 
@@ -66,8 +68,8 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
 - The internal module generator produces the lifecycle-bearing staged C used by operational compile-only mode.
   Compile-only always publishes the object and interface, while `--keep-c` also publishes that exact generated C.
 - Object metadata may anchor its portable records from `I4init` without introducing a conditional symbol.
-- The standalone linker must select at most one `I5entry`, call `I4init` in dependency order, call `I4fini` in reverse
-  order, and keep foreign objects outside Dea lifecycle orchestration.
+- The standalone linker selects exactly one `I5entry`, calls `I4init` in dependency order, calls `I4fini` in reverse
+  order, and keeps foreign objects outside Dea lifecycle orchestration.
 - Future Stage 2 implementation must preserve the same module-output and LBI behavior.
 
 ## Related Plans
@@ -77,7 +79,7 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
 - [l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md][superseded-init]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
-- [l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
+- [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 
 ## Current Docs
 
@@ -91,7 +93,7 @@ runtime argument setup, entry selection, and process-wrapper generation belong t
 [backend]: ../reference/c-backend-design.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [lifecycle]: ../../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: ../../work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [project-status]: ../project-status.md

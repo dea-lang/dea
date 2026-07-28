@@ -39,7 +39,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c]
-  - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
+  - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
   - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
@@ -152,8 +152,10 @@ modes.
    but never become graph providers, entry candidates, or lifecycle participants.
 5. Preserve the common link API's typed input order. Source-built and interface-backed Dea operands occupy their
    deterministic graph positions; user-declared foreign objects keep their relative declaration order.
-6. The wrapper, exact runtime archive, object classification, fingerprint checks, and final host compiler invocation
-   remain owned by the [link-set plan][link-set]. Build/run surface its structured failures without rewriting them.
+6. The wrapper, exact runtime link inputs, object classification, fingerprint checks, and final host compiler invocation
+   remain owned by the [link-set plan][link-set]. Normal families receive one selected archive; TinyCC receives the
+   complete variant-matched raw-object set when available, with archive fallback. Build/run surface the common link
+   API's structured failures without rewriting them.
 7. The common link executor accepts explicit wrapper and capture paths and never allocates or cleans a workspace.
    Build/run derives those paths beneath its atomically reserved invocation-private workspace and retains ownership of
    whole-workspace cleanup. The standalone link adapter's output-local transaction is not reused here.
@@ -300,7 +302,7 @@ architecture, C-backend, and separate-compilation references.
 [generated-c]: 2026-07-24-per-module-generated-c-mode-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [native-temp-safety]: ../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md

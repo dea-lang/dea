@@ -16,6 +16,14 @@ enum ObjectFormat {
     OBJECT_FORMAT_PECOFF;
 }
 
+/** Format-specific carriers that can add implicit final-link controls. */
+enum ObjectLinkerControlKind {
+    OBJECT_LINKER_CONTROL_NONE;
+    OBJECT_LINKER_CONTROL_ELF_DEPENDENT_LIBRARIES;
+    OBJECT_LINKER_CONTROL_MACHO_LINKER_OPTION;
+    OBJECT_LINKER_CONTROL_PECOFF_DRECTVE;
+}
+
 /** Failures outside the Dea metadata classification tri-state. */
 enum ObjectReadErrorKind {
     OBJECT_READ_IO;
@@ -50,6 +58,7 @@ struct ObjectContainer {
     format: ObjectFormat;
     bytes: string;
     defined_symbols: VectorBase*; /* ObjectDefinedSymbol*, duplicates retained */
+    linker_control: ObjectLinkerControlKind;
 }
 
 /** Adapter result; exactly one of `container` and `error` is non-null. */
@@ -140,7 +149,8 @@ func ort_container_error(container: ObjectContainer*, kind: ObjectReadErrorKind,
 
 /** Create an empty format-neutral container retaining the original bytes. */
 func ort_container_create(format: ObjectFormat, bytes: string) -> ObjectContainer* {
-    return new ObjectContainer(format, bytes, ort_ptr_vec_create(16));
+    return new ObjectContainer(
+        format, bytes, ort_ptr_vec_create(16), OBJECT_LINKER_CONTROL_NONE);
 }
 
 /** Append one externally defined symbol without coalescing duplicates. */

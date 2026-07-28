@@ -26,7 +26,7 @@
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
-  - `l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`
+  - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="cli_args_test build_driver_test driver_test"`
@@ -65,13 +65,17 @@ linker/include-path behavior.
    native-linker argument.
 4. `--rpath` is translated for each supported compiler family; unsupported host/platform combinations receive a driver
    diagnostic rather than an invented spelling.
-5. The already selected runtime archive is passed by exact path so user `-L` entries cannot shadow it.
+5. The already selected runtime link inputs are passed by exact path so user `-L` entries cannot shadow them: one
+   selected archive for normal families, or the complete variant-matched TinyCC raw-object set when available with
+   archive fallback.
 6. Existing legacy `extern func` binding modules are the workflow available when this plan lands. Initiative `0003`
    later adds `extern "C"`; package manifests and automatic dependency metadata stay out of scope.
 7. `--link-arg` cannot bypass object classification. A value that directly or through a supported host-driver
    pass-through spelling introduces a relocatable object is rejected with guidance to use a positional verified Dea
    object or `--foreign-object`. Opaque response-file indirection is rejected. Archive and shared-library operands
    remain valid external-library inputs.
+8. Format-recognized linker controls embedded inside Dea or foreign relocatable objects remain rejected. Libraries,
+   search paths, rpaths, and raw arguments must enter through this plan's explicit typed CLI surface.
 
 ## Goal
 
@@ -98,9 +102,10 @@ turns the reserved `-L` / `-l` grammar into usable link inputs without changing 
 
 Thread the accepted flags through `--link`, `--build`, and `--run` using the common typed input stream. Preserve the
 user's order across Dea objects, `--foreign-object` operands, libraries, and raw host-driver arguments wherever order is
-semantically observable. Translate rpath values per supported compiler family and pass the validated runtime archive by
-exact path. Validate raw host-driver arguments before invocation so relocatable objects and response-file indirection
-cannot evade the Dea/foreign classification boundary.
+semantically observable. Translate rpath values per supported compiler family and pass the validated runtime link inputs
+by exact path: one selected archive for normal families, or the complete variant-matched TinyCC raw-object set when
+available with archive fallback. Validate raw host-driver arguments before invocation so relocatable objects and
+response-file indirection cannot evade the Dea/foreign classification boundary.
 
 ### Phase 3: Docs and smoke coverage
 
@@ -143,9 +148,11 @@ for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 1. `-l`, `-L`, `--rpath`, and `--link-arg` parse and validate as specified.
 2. Link-involving flows forward the requested flags to the host toolchain deterministically.
 3. Mixed Dea objects, explicit foreign objects, libraries, rpaths, and raw host-driver arguments retain the documented
-   order, and user search paths cannot shadow the validated runtime archive.
+   order, and user search paths cannot shadow the validated runtime link inputs.
 4. A relocatable object supplied directly or through a supported host-driver pass-through spelling in `--link-arg` fails
    with classification guidance, and response-file indirection cannot hide object inputs. Archives and shared libraries
    remain valid external inputs.
-5. The roadmap and user docs distinguish the currently usable `extern func` workflow from future `extern "C"` support.
-6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+5. A Dea or foreign object containing an embedded linker-control carrier remains rejected even when the equivalent
+   library or raw argument could be supplied explicitly.
+6. The roadmap and user docs distinguish the currently usable `extern func` workflow from future `extern "C"` support.
+7. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.

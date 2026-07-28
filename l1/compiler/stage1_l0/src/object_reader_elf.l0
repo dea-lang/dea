@@ -19,6 +19,7 @@ let ORELF_SHT_NULL: int = 0;
 let ORELF_SHT_SYMTAB: int = 2;
 let ORELF_SHT_STRTAB: int = 3;
 let ORELF_SHT_NOBITS: int = 8;
+let ORELF_SHT_LLVM_DEPENDENT_LIBRARIES: int = 1879002116;
 let ORELF_SHN_UNDEF: int = 0;
 let ORELF_SHN_LORESERVE: int = 65280;
 
@@ -93,6 +94,23 @@ func orelf_symbol_section_offset(is_64: bool) -> int {
         return 6;
     }
     return 14;
+}
+
+/** Compare one bounded section-name-table entry without allocating it. */
+func orelf_section_name_equals(
+    bytes: string,
+    table_offset: int,
+    table_size: int,
+    relative_offset: int,
+    expected: string
+) -> bool {
+    let expected_size = len_s(expected);
+    return relative_offset >= 0 &&
+        expected_size < table_size &&
+        relative_offset <= table_size - expected_size - 1 &&
+        ort_bytes_equal(bytes, table_offset + relative_offset, expected) &&
+        (char_at_s(
+            bytes, table_offset + relative_offset + expected_size) as int) == 0;
 }
 
 /**
@@ -209,6 +227,8 @@ func orelf_read_bytes(bytes: string) -> ObjectContainerReadResult* {
         return ort_read_error(OBJECT_READ_CORRUPT, "ELF section zero is not null");
     }
 
+    let linker_control = OBJECT_LINKER_CONTROL_NONE;
+
     /* Validate every file-backed section before following symbol references. */
     for (let section_i = 0; section_i < section_count as int; section_i = section_i + 1) {
         let base = orelf_section_base(section_table as int, section_header_size, section_i);
@@ -218,6 +238,10 @@ func orelf_read_bytes(bytes: string) -> ObjectContainerReadResult* {
         if (section_type == null || file_offset == null || file_size == null) {
             return ort_read_error(OBJECT_READ_UNSUPPORTED,
                 "ELF section range exceeds supported integer bounds");
+        }
+        if ((section_type as int) == ORELF_SHT_LLVM_DEPENDENT_LIBRARIES) {
+            linker_control =
+                OBJECT_LINKER_CONTROL_ELF_DEPENDENT_LIBRARIES;
         }
         if ((section_type as int) != ORELF_SHT_NOBITS &&
             !ort_range_valid(len_s(bytes), file_offset as int, file_size as int)) {
@@ -252,7 +276,48 @@ func orelf_read_bytes(bytes: string) -> ObjectContainerReadResult* {
         }
     }
 
+    if ((section_name_index as int) != 0) {
+        let name_table_base = orelf_section_base(
+            section_table as int, section_header_size,
+            section_name_index as int);
+        let name_table_type = orelf_section_type(
+            bytes, name_table_base, little);
+        let name_table_offset = orelf_section_offset(
+            bytes, name_table_base, is_64, little);
+        let name_table_size = orelf_section_size(
+            bytes, name_table_base, is_64, little);
+        if (name_table_type == null || name_table_offset == null ||
+            name_table_size == null ||
+            (name_table_type as int) != ORELF_SHT_STRTAB ||
+            (name_table_size as int) <= 0 ||
+            !ort_range_valid(
+                len_s(bytes), name_table_offset as int,
+                name_table_size as int) ||
+            (char_at_s(bytes, name_table_offset as int) as int) != 0) {
+            return ort_read_error(
+                OBJECT_READ_CORRUPT, "ELF section-name table is invalid");
+        }
+        for (let named_i = 0; named_i < section_count as int;
+             named_i = named_i + 1) {
+            let named_base = orelf_section_base(
+                section_table as int, section_header_size, named_i);
+            let name_offset = ort_read_u32(bytes, named_base, little);
+            if (name_offset == null) {
+                return ort_read_error(
+                    OBJECT_READ_CORRUPT, "truncated ELF section name");
+            }
+            if (orelf_section_name_equals(
+                    bytes, name_table_offset as int,
+                    name_table_size as int, name_offset as int,
+                    ".deplibs")) {
+                linker_control =
+                    OBJECT_LINKER_CONTROL_ELF_DEPENDENT_LIBRARIES;
+            }
+        }
+    }
+
     let container = ort_container_create(OBJECT_FORMAT_ELF, bytes);
+    container.linker_control = linker_control;
     for (let section_i2 = 0; section_i2 < section_count as int; section_i2 = section_i2 + 1) {
         let section_base = orelf_section_base(
             section_table as int, section_header_size, section_i2);

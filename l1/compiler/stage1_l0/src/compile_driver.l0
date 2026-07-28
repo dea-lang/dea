@@ -38,6 +38,12 @@ import sem_context;
 extern func l1c_fs_mkdir(path: byte*, path_len: int, mode: int) -> int;
 extern func l1c_fs_path_kind_follow(path: byte*, path_len: int) -> int;
 extern func l1c_fs_path_kind_nofollow(path: byte*, path_len: int) -> int;
+extern func l1c_fs_same_file(
+    left: byte*,
+    left_len: int,
+    right: byte*,
+    right_len: int
+) -> int;
 extern func l1c_fs_rename_absent(
     source: byte*,
     source_len: int,
@@ -102,6 +108,16 @@ func cd_path_kind(path: string) -> int {
 /** Call the compiler-internal follow path classifier. */
 func cd_path_kind_follow(path: string) -> int {
     return l1c_fs_path_kind_follow(rt_string_bytes_ptr(path), len_s(path));
+}
+
+/** Compare the followed filesystem identities of two existing paths. */
+func cd_same_file(left: string, right: string) -> int {
+    return l1c_fs_same_file(
+        rt_string_bytes_ptr(left),
+        len_s(left),
+        rt_string_bytes_ptr(right),
+        len_s(right)
+    );
 }
 
 /** Create one directory using the compiler-internal raw-byte ABI. */

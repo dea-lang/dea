@@ -20,8 +20,11 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   plus conditional `I5entry`. Per-module output also embeds portable identity and ordered-import records, and bounded
   readers inspect ELF, Mach-O, and PE/COFF relocatables. Compile-only publishes one module's `.o` and `.l1m` artifacts
   against verified interfaces with endpoint rollback and adds the exact generated `.c` only with `--keep-c`. Its
-  sequential renames are not a concurrent-reader snapshot; standalone linking and multi-CU build/run remain
-  non-operational.
+  sequential renames are not a concurrent-reader snapshot. Standalone `--link` now classifies positional Dea and
+  explicit foreign objects, verifies graph closure and exact provider fingerprints, selects one entry, emits a
+  deterministic lifecycle wrapper, and links through a bounded output-local transaction. Normal compiler families
+  receive an exact runtime archive path; TinyCC retains the ADR-0027 variant-matched raw-object compatibility carve-out
+  when that set is available, with archive fallback otherwise. Multi-CU build/run remains non-operational.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 - Exact generated-C golden-file parity and L1 triple-bootstrap are not part of the current Stage 1 contract.
@@ -141,6 +144,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   `--keep-c` adds the exact generated `.c`. Successful return leaves the complete new selected set, recoverable failure
   restores the prior set, failed rollback retains recovery files, and concurrent readers or same-stem writers require
   external serialization.
+- Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] added verified Dea-object linking, explicit foreign
+  objects, complete graph and entry validation, deterministic lifecycle wrapper generation, compiler-family runtime
+  inputs, and bounded output-local scratch.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -185,8 +191,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] migrates `--gen` from whole-closure
   output to one source-backed module, locks cross-mode generated-C identity, and retires the legacy generator after
   build/run fan-out.
-- Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] adds verified Dea-object linking, explicit foreign C
-  objects, entry selection, lifecycle wrapper generation, and host linking.
 - Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] converts `--build` and `--run` to the shared
   multi-CU compile/link APIs.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `--rpath`, and `--link-arg`
@@ -310,7 +314,7 @@ update to be promoted to an initiative or plan:
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: ../work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: ../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph-invariant-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md
 [module-interface-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
 [named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md

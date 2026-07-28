@@ -45,7 +45,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
-  - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
+  - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-temp-safety]
   - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
@@ -180,6 +180,16 @@ interface-only dependency fixtures.
    staging write failure. Target resolution, interface discovery, fingerprints, and object metadata retain their owning
    diagnostic families.
 
+## ADR Impact
+
+- Decision: Publish the compile-only object and interface, plus exact generated C only when requested, with output-local
+  staging and endpoint rollback rather than a reader-visible snapshot.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
+  - Rationale: ADR-0022 records the selected artifact set, validation, publication order, rollback, recovery, and
+    concurrency boundary.
+
 ## Non-Goals
 
 1. Compiling any imported source module or emitting more than one module object.
@@ -245,7 +255,7 @@ Validation:
 [foundation]: 2026-04-24-separate-compilation-driver-surface-noref.md
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [native-temp-safety]: ../../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

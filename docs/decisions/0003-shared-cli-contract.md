@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-07-16
+- Last edited: 2026-07-27
 - Status: Accepted
 
 ## Context
@@ -17,7 +17,8 @@ share the same overall usage model.
 
 A normative shared CLI contract is defined in `docs/specs/compiler/cli-contract.md` and covers:
 
-- The set of operating modes (`--check`, `--compile`, `--gen`, `--build`, `--run`, `--tok`, `--ast`, `--sym`, `--type`).
+- The set of operating modes (`--check`, `--compile`, `--link`, `--gen`, `--build`, `--run`, `--tok`, `--ast`, `--sym`,
+  `--type`).
 - Global and mode-scoped flags, including the semantic short-option namespaces used for source roots, runtime paths,
   host-C controls, and log presentation.
 - Exit codes.
@@ -27,6 +28,10 @@ Both Stage 1 and Stage 2 of the L0 compiler, and the L1 compiler, must conform t
 The same token never acquires a different meaning at another stage or level. A level may recognize a shared operation
 and report that the capability is unavailable, and documented extensions such as L1 `--emit-interface` remain allowed.
 Silently changing a shared flag or exit-code meaning is a bug.
+
+The normal driver grammar accepts exactly one source target. L1 standalone `--link` is a documented level-specific
+operand exception: it accepts one or more positional Dea objects plus repeatable explicitly typed foreign objects and
+does not reinterpret those paths as source targets.
 
 When Dea exposes an operation equivalent to a widespread compiler-driver operation, its short spelling follows that
 convention. `-c`, `-I`, `-L`, and `-l` therefore mean compile without linking, interface/import search, native-library
@@ -59,6 +64,10 @@ canonical path/library spellings may use attached values. Only `-vv...` is a val
   introduced the contract spec
 - [l0/work/plans/features/closed/2026-03-12-cli-version-flag-and-identity-text-noref.md](../../l0/work/plans/features/closed/2026-03-12-cli-version-flag-and-identity-text-noref.md):
   version flag
+- [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md](../../l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md):
+  L1 compile-only mode and semantic option reservations
+- [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md](../../l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md):
+  L1 standalone link operands and option scope
 
 ## Current Docs
 

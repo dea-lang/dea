@@ -37,6 +37,11 @@ func test_shell_quote_posix_handles_spaces_and_quotes() {
 func test_shell_quote_windows_handles_spaces_and_quotes() {
     assert(bd_shell_quote_windows("two words") == "\"two words\"", "space quoting mismatch");
     assert(bd_shell_quote_windows("say \"hi\"") == "\"say \\\"hi\\\"\"", "double-quote escaping mismatch");
+    assert(bd_shell_quote_windows("C:\\") == "\"C:\\\\\"",
+        "trailing backslash must be doubled before the closing quote");
+    assert(bd_shell_quote_windows("C:\\path\\\"quoted\"") ==
+        "\"C:\\path\\\\\\\"quoted\\\"\"",
+        "backslashes before embedded quotes must follow CRT argv rules");
     assert(bd_shell_quote_windows("") == "\"\"", "empty string should still be quoted");
 }
 

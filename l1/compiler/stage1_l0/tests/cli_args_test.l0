@@ -282,6 +282,267 @@ func test_compile_mode_validation() {
 }
 
 /**
+ * Tests link mode records positional Dea and explicit foreign objects in
+ * exact encounter order.
+ */
+func test_link_mode_ordered_typed_operands() {
+    with (let argv = sv_create(16) => sv_free(argv)) {
+        sv_push(argv, "obj/first.o");
+        sv_push(argv, "--foreign-object");
+        sv_push(argv, "obj/provider.o");
+        sv_push(argv, "--link");
+        sv_push(argv, "--entry=app.main");
+        sv_push(argv, "obj/second.o");
+        sv_push(argv, "--foreign-object=obj/helper.o");
+        sv_push(argv, "-o");
+        sv_push(argv, "bin/app");
+
+        let parsed = cli_parse(argv);
+        assert(!diag_has_errors(parsed.diags), "expected link-mode parse success");
+        assert(parsed.options != null, "expected link-mode options");
+        let opts = parsed.options as CliOptions*;
+        assert(ord(opts.mode) == ord(CM_LINK), "expected CM_LINK");
+        assert(opts.entry_module as string == "app.main", "explicit entry module mismatch");
+        assert(opts.output as string == "bin/app", "link output mismatch");
+        assert(cli_link_operands_count(opts.link_operands) == 4, "expected four ordered link operands");
+
+        let first = cli_link_operands_get(opts.link_operands, 0);
+        let provider = cli_link_operands_get(opts.link_operands, 1);
+        let second = cli_link_operands_get(opts.link_operands, 2);
+        let helper = cli_link_operands_get(opts.link_operands, 3);
+        assert(ord(first.kind) == ord(LOK_DEA_OBJECT), "first operand should be a Dea object");
+        assert(first.path == "obj/first.o", "first Dea object path mismatch");
+        assert(ord(provider.kind) == ord(LOK_FOREIGN_OBJECT), "provider should be a foreign object");
+        assert(provider.path == "obj/provider.o", "provider object path mismatch");
+        assert(ord(second.kind) == ord(LOK_DEA_OBJECT), "second positional should be a Dea object");
+        assert(second.path == "obj/second.o", "second Dea object path mismatch");
+        assert(ord(helper.kind) == ord(LOK_FOREIGN_OBJECT), "helper should be a foreign object");
+        assert(helper.path == "obj/helper.o", "helper object path mismatch");
+
+        cli_parse_result_free(parsed);
+    }
+}
+
+/**
+ * Tests link mode requires both a positional Dea object and an output.
+ */
+func test_link_mode_required_operands_and_output() {
+    with (let foreign_only = sv_create(8) => sv_free(foreign_only)) {
+        sv_push(foreign_only, "--link");
+        sv_push(foreign_only, "--foreign-object");
+        sv_push(foreign_only, "provider.o");
+        sv_push(foreign_only, "-o");
+        sv_push(foreign_only, "app");
+
+        let parsed = cli_parse(foreign_only);
+        assert(cli_result_has_code(parsed, "L1C-2095"), "expected missing positional Dea object diagnostic");
+        assert(!cli_result_has_code(parsed, "L1C-2021"), "link mode must not use source-target diagnostics");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let no_output = sv_create(4) => sv_free(no_output)) {
+        sv_push(no_output, "--link");
+        sv_push(no_output, "app.o");
+
+        let parsed2 = cli_parse(no_output);
+        assert(cli_result_has_code(parsed2, "L1C-2096"), "expected mandatory link output diagnostic");
+        assert(!cli_result_has_code(parsed2, "L1C-2024"), "link mode must accept multiple positional objects");
+        cli_parse_result_free(parsed2);
+    }
+
+    with (let duplicate_output = sv_create(8) => sv_free(duplicate_output)) {
+        sv_push(duplicate_output, "--link");
+        sv_push(duplicate_output, "app.o");
+        sv_push(duplicate_output, "-o");
+        sv_push(duplicate_output, "first");
+        sv_push(duplicate_output, "--output=second");
+
+        let parsed3 = cli_parse(duplicate_output);
+        assert(cli_result_has_code(parsed3, "L1C-2096"), "expected exactly-one link output diagnostic");
+        cli_parse_result_free(parsed3);
+    }
+
+    with (let empty_output = sv_create(6) => sv_free(empty_output)) {
+        sv_push(empty_output, "--link");
+        sv_push(empty_output, "app.o");
+        sv_push(empty_output, "--output=");
+
+        let parsed4 = cli_parse(empty_output);
+        assert(diag_count(parsed4.diags) == 1, "empty inline output should emit one diagnostic");
+        assert(cli_result_has_code(parsed4, "L1C-2003"), "empty inline output should reuse L1C-2003");
+        assert(
+            diag_get(parsed4.diags, 0).message == "missing value for option '--output'",
+            "empty inline output message mismatch"
+        );
+        cli_parse_result_free(parsed4);
+    }
+}
+
+/**
+ * Tests explicit entry spelling, cardinality, and canonical-name validation.
+ */
+func test_link_mode_entry_validation() {
+    with (let duplicate = sv_create(10) => sv_free(duplicate)) {
+        sv_push(duplicate, "--link");
+        sv_push(duplicate, "app.o");
+        sv_push(duplicate, "--entry");
+        sv_push(duplicate, "app.main");
+        sv_push(duplicate, "--entry=app.other");
+        sv_push(duplicate, "-o");
+        sv_push(duplicate, "app");
+
+        let parsed = cli_parse(duplicate);
+        assert(cli_result_has_code(parsed, "L1C-2093"), "expected duplicate --entry diagnostic");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let invalid = sv_create(8) => sv_free(invalid)) {
+        sv_push(invalid, "--link");
+        sv_push(invalid, "app.o");
+        sv_push(invalid, "--entry=app..main");
+        sv_push(invalid, "-o");
+        sv_push(invalid, "app");
+
+        let parsed2 = cli_parse(invalid);
+        assert(cli_result_has_code(parsed2, "L1C-2094"), "expected non-canonical entry diagnostic");
+        cli_parse_result_free(parsed2);
+    }
+}
+
+/**
+ * Tests link-only options retain their scope and shared missing-value behavior.
+ */
+func test_link_option_scope_and_missing_values() {
+    with (let build_foreign = sv_create(6) => sv_free(build_foreign)) {
+        sv_push(build_foreign, "--build");
+        sv_push(build_foreign, "--foreign-object=provider.o");
+        sv_push(build_foreign, "app.main");
+        let parsed = cli_parse(build_foreign);
+        assert(cli_result_has_code(parsed, "L1C-2091"), "expected foreign-object scope diagnostic");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let build_entry = sv_create(6) => sv_free(build_entry)) {
+        sv_push(build_entry, "--build");
+        sv_push(build_entry, "--entry=app.main");
+        sv_push(build_entry, "app.main");
+        let parsed2 = cli_parse(build_entry);
+        assert(cli_result_has_code(parsed2, "L1C-2092"), "expected entry-option scope diagnostic");
+        cli_parse_result_free(parsed2);
+    }
+
+    with (let value_options = sv_create(4) => sv_free(value_options)) {
+        sv_push(value_options, "--foreign-object");
+        sv_push(value_options, "--entry");
+        for (let i = 0; i < sv_size(value_options); i = i + 1) {
+            let option = sv_get(value_options, i);
+            with (let argv = sv_create(8) => sv_free(argv)) {
+                sv_push(argv, "--link");
+                sv_push(argv, "app.o");
+                sv_push(argv, "-o");
+                sv_push(argv, "app");
+                sv_push(argv, option);
+                sv_push(argv, "--");
+                let parsed3 = cli_parse(argv);
+                assert(diag_count(parsed3.diags) == 1, option + " should emit only one missing-value diagnostic");
+                assert(cli_result_has_code(parsed3, "L1C-2003"), option + " should reuse L1C-2003");
+                assert(
+                    diag_get(parsed3.diags, 0).message == "missing value for option '" + option + "'",
+                    option + " missing-value message mismatch"
+                );
+                cli_parse_result_free(parsed3);
+            }
+        }
+    }
+
+    with (let empty_foreign = sv_create(8) => sv_free(empty_foreign)) {
+        sv_push(empty_foreign, "--link");
+        sv_push(empty_foreign, "app.o");
+        sv_push(empty_foreign, "-o");
+        sv_push(empty_foreign, "app");
+        sv_push(empty_foreign, "--foreign-object=");
+        let parsed4 = cli_parse(empty_foreign);
+        assert(diag_count(parsed4.diags) == 1, "empty inline foreign object should emit one diagnostic");
+        assert(cli_result_has_code(parsed4, "L1C-2003"), "empty inline foreign object should reuse L1C-2003");
+        assert(
+            diag_get(parsed4.diags, 0).message == "missing value for option '--foreign-object'",
+            "empty inline foreign-object message mismatch"
+        );
+        cli_parse_result_free(parsed4);
+    }
+
+    with (let empty_entry = sv_create(8) => sv_free(empty_entry)) {
+        sv_push(empty_entry, "--link");
+        sv_push(empty_entry, "app.o");
+        sv_push(empty_entry, "-o");
+        sv_push(empty_entry, "app");
+        sv_push(empty_entry, "--entry=");
+        let parsed5 = cli_parse(empty_entry);
+        assert(diag_count(parsed5.diags) == 1, "empty inline entry should emit one diagnostic");
+        assert(cli_result_has_code(parsed5, "L1C-2003"), "empty inline entry should reuse L1C-2003");
+        assert(
+            diag_get(parsed5.diags, 0).message == "missing value for option '--entry'",
+            "empty inline entry message mismatch"
+        );
+        cli_parse_result_free(parsed5);
+    }
+}
+
+/**
+ * Tests the exact standalone-link option matrix.
+ */
+func test_link_mode_option_matrix() {
+    with (let supported = sv_create(20) => sv_free(supported)) {
+        sv_push(supported, "--link");
+        sv_push(supported, "-Cc");
+        sv_push(supported, "clang");
+        sv_push(supported, "-Co=-O2");
+        sv_push(supported, "-Ri");
+        sv_push(supported, "runtime/include");
+        sv_push(supported, "-Rl=runtime/lib");
+        sv_push(supported, "--trace-arc");
+        sv_push(supported, "app.o");
+        sv_push(supported, "--output=app");
+
+        let parsed = cli_parse(supported);
+        assert(!diag_has_errors(parsed.diags), "link mode should accept host and runtime link controls");
+        let opts = parsed.options as CliOptions*;
+        assert(opts.c_compiler as string == "clang", "link C compiler mismatch");
+        assert(opts.c_options as string == "-O2", "link C options mismatch");
+        assert(opts.runtime_include as string == "runtime/include", "link runtime include mismatch");
+        assert(opts.runtime_lib as string == "runtime/lib", "link runtime library mismatch");
+        assert(opts.trace_arc, "link trace-arc option mismatch");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let unsupported = sv_create(24) => sv_free(unsupported)) {
+        sv_push(unsupported, "--link");
+        sv_push(unsupported, "-Rp");
+        sv_push(unsupported, "project");
+        sv_push(unsupported, "-Rs");
+        sv_push(unsupported, "system");
+        sv_push(unsupported, "-I");
+        sv_push(unsupported, "interfaces");
+        sv_push(unsupported, "--keep-c");
+        sv_push(unsupported, "--no-line-directives");
+        sv_push(unsupported, "--all-modules");
+        sv_push(unsupported, "--include-eof");
+        sv_push(unsupported, "app.o");
+        sv_push(unsupported, "-o");
+        sv_push(unsupported, "app");
+
+        let parsed2 = cli_parse(unsupported);
+        assert(cli_result_has_code(parsed2, "L1C-2090"), "link mode should reject source roots");
+        assert(cli_result_has_code(parsed2, "L1C-2031"), "link mode should reject interface paths");
+        assert(cli_result_has_code(parsed2, "L1C-2011"), "link mode should reject --keep-c");
+        assert(cli_result_has_code(parsed2, "L1C-2016"), "link mode should reject line-directive controls");
+        assert(cli_result_has_code(parsed2, "L1C-2019"), "link mode should reject --all-modules");
+        assert(cli_result_has_code(parsed2, "L1C-2020"), "link mode should reject --include-eof");
+        cli_parse_result_free(parsed2);
+    }
+}
+
+/**
  * Tests interface paths are gated to compile mode and require values.
  */
 func test_interface_path_scope_and_value_validation() {
@@ -870,6 +1131,11 @@ func main() {
     test_multiple_targets_rejected();
     test_compile_mode_and_interface_paths_parsed();
     test_compile_mode_validation();
+    test_link_mode_ordered_typed_operands();
+    test_link_mode_required_operands_and_output();
+    test_link_mode_entry_validation();
+    test_link_option_scope_and_missing_values();
+    test_link_mode_option_matrix();
     test_interface_path_scope_and_value_validation();
     test_separated_values_do_not_consume_separator();
     test_namespaced_aliases_and_long_forms();

@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module linkset.stale.main;
+
+import linkset.stale.provider;
+
+func main() -> int {
+    return linkset.stale.provider::value();
+}

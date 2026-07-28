@@ -32,7 +32,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][fingerprints]
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
-  - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
+  - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md`][superseded-metadata]
   - [`l1/docs/specs/compiler/module-interface-format.md`][interface-format]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
@@ -247,6 +247,16 @@ hand the typed inspection result to the later link-set plan without changing cur
 4. Register only diagnostics that are actually implemented, with Stage 1 and future Stage 2 parity expectations stated
    in the catalog.
 
+## ADR Impact
+
+- Decision: Use versioned portable object metadata and bounded in-repository object readers as the authority for valid,
+  absent, or malformed Dea-object classification.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0021-portable-object-metadata-and-inspection.md`
+  - Rationale: ADR-0021 records the wire format, retention anchor, supported readers, exact alias normalization, and
+    tri-state boundary.
+
 ## Non-Goals
 
 1. Computing or canonicalizing whole-module fingerprints.
@@ -300,6 +310,6 @@ suites, environment stackability, all four L1 examples, and all 41 default ARC/m
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [interface-format]: ../../../../docs/specs/compiler/module-interface-format.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [superseded-metadata]: 2026-04-24-interface-fingerprints-and-object-metadata-noref.md

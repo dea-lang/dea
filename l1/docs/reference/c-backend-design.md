@@ -1,12 +1,14 @@
 # L1 C Backend Design
 
-Version: 2026-07-26
+Version: 2026-07-27
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
 Related docs:
 
 - Compiler architecture and pass flow: [architecture.md](architecture.md)
+- Separate-compilation and standalone-link behavior:
+  [l1/docs/reference/separate-compilation.md](separate-compilation.md)
 - Language/runtime rationale and policy: [design-decisions.md](design-decisions.md)
 - Current status snapshot: [l1/docs/project-status.md](../project-status.md)
 
@@ -24,13 +26,15 @@ The separate-compilation object boundary adds:
 - format-neutral inspection and classification in `object_reader.l0`
 - bounded ELF, Mach-O, and PE/COFF adapters in `object_reader_elf.l0`, `object_reader_macho.l0`, and
   `object_reader_pecoff.l0`
+- verified object-graph preparation and host-link orchestration in `link_driver.l0`
+- process-wrapper C generation in `wrapper_emitter.l0`
 
 Input is a fully typed analysis result. The backend exposes two supported output boundaries:
 
 - `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit used by the current `--gen`,
   `--build`, and `--run` flows.
 - `backend_generate_module(result, target_module, opts, cfg)` emits one source-backed module translation unit for
-  `--compile` and later separate-compilation consumers. Build and run do not use this boundary yet.
+  `--compile`; the resulting objects feed standalone `--link`. Build and run do not use this boundary yet.
 
 `compiler/stage2_l1/` does not currently provide a second backend implementation.
 
@@ -57,7 +61,8 @@ Input is a fully typed analysis result. The backend exposes two supported output
 - encode and decode the fixed version 1 metadata records
 - inspect relocatable object section, symbol, and string tables without external tools
 - normalize only the documented object-ABI C symbol aliases before exact symbol matching
-- expose defined-symbol lookup and the valid, absent, or malformed Dea metadata classification
+- expose defined-symbol lookup, normalized embedded-linker-control classification, and the valid, absent, or malformed
+  Dea metadata classification
 - reject unsupported or corrupt containers as object-read errors outside that classification
 
 ## Generated Unit Layout
@@ -100,7 +105,7 @@ definitions keep external linkage; non-exported target definitions use `static`.
 external regardless of the source export manifest.
 
 Module output contains no process-level C `main`, legacy global init chain, or calls to dependency lifecycle functions.
-The later standalone-link tranche owns the executable wrapper and cross-module ordering.
+Standalone link owns the executable wrapper and cross-module ordering.
 
 Compile-only writes this per-module C output, the host-compiled relocatable object, and the corresponding fingerprinted
 interface into one sibling transaction directory. The driver publishes the object before the interface; `--keep-c` also
@@ -113,6 +118,27 @@ The identity record contains the target's canonical module name, whole-module in
 flag. The import record contains every unique direct object-backed (non-virtual) provider in first source-import order
 with its expected fingerprint, including side-effect-only imports. `I4init` performs one volatile byte read from each
 array before its ordinary module-local work, retaining both records through linker dead-strip.
+
+### Standalone executable wrapper
+
+`wrapper_emitter.l0` receives one already verified dependency-first module order plus the selected entry module. It
+emits a separate C99 translation unit that:
+
+1. includes `dea_rt.h`;
+2. declares every linked Dea module's external `I4init` and `I4fini`;
+3. declares only the selected module's `I5entry`;
+4. defines the link set's only process-level `main(int argc, char **argv)`;
+5. calls `_rt_init_args(argc, argv)`, each initializer in dependency-first order, the selected entry bridge, and each
+   finalizer in exact reverse order; and
+6. returns the normalized status supplied by `I5entry`.
+
+The wrapper has no foreign-object-specific declarations or lifecycle calls. It is compiled to a standalone relocatable
+object before the final host link. The final command places the wrapper object first, retains all user-supplied Dea and
+foreign objects in CLI encounter order, appends the selected runtime inputs, and adds `-lm` for non-MSVC compiler
+families because object metadata does not encode `sys.real` use. `L1_CFLAGS` and `--c-options` configure wrapper
+compilation only and are deliberately absent from the final link command, so raw compiler options cannot bypass the
+typed `--foreign-object` boundary. Before final linking, the driver also inspects the generated wrapper and rejects ELF
+dependent-library sections, Mach-O linker-option commands, or PE/COFF directive sections synthesized by those options.
 
 ## Type Lowering
 
@@ -160,7 +186,10 @@ Runtime artifacts are produced per toolchain: the official archives (`libdea_rt.
 `libdea_rt_check_basic.a`, and `libdea_rt_unchecked.a`) match the platform compiler's object format, while tcc
 additionally builds raw `.o` objects under `build/dea/runtime/tcc/{default,traced,check_basic,unchecked}/`. When the
 active C compiler family is tcc, the build driver links those objects directly to avoid object-format mismatches such as
-Darwin tcc ELF objects versus platform Mach-O archives.
+Darwin tcc ELF objects versus platform Mach-O archives. Standalone link follows the same ADR-0027 compatibility
+boundary: normal compiler families always receive the selected archive as one exact path, while TinyCC receives the
+complete variant-matched raw-object set when available and otherwise falls back to the exact archive path. The driver
+does not translate normal archive paths into `-L` / `-l` search requests.
 
 Each archive and tcc object variant depends on a content-sensitive build-configuration stamp recording its compiler,
 runtime flags, mode defines, and baked tuning flags. Make therefore rebuilds affected variants when configuration
@@ -318,6 +347,9 @@ Current backend validation is centered on the copied bootstrap test suite under 
 - `l1c_lib_test.l0`
 - `object_metadata_test.l0`
 - `object_reader_test.l0`
+- `link_driver_test.l0`
+- `wrapper_emitter_test.l0`
+- `l1c_stage1_link_set_test.py`
 
 Ownership and trace-oriented validation also uses:
 

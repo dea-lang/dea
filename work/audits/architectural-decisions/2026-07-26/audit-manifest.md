@@ -35,7 +35,9 @@ ADR coverage was checked from each index and then against every numbered ADR fil
 
 - Post-baseline closed plan: `l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`
 - Post-baseline closed plan: `l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md`
+- Post-baseline closed plan: `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
 - Post-baseline closed plan: `l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`
+- Post-baseline closed plan: `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
 - Post-baseline closed plan: `work/plans/tools/closed/2026-07-26-shared-adr-impact-closure-gate-noref.md`
 - Post-baseline closed plan: `work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md`
 - Post-baseline ADR: `docs/decisions/0011-plan-adr-impact-and-closure-gate.md`
@@ -63,6 +65,8 @@ ADR coverage was checked from each index and then against every numbered ADR fil
 - Post-baseline ADR: `l1/docs/decisions/0025-pointer-equality-and-ordering-semantics.md`
 - Post-baseline ADR: `l1/docs/decisions/0026-real-library-runtime-and-host-math-linkage-boundary.md`
 - Post-baseline ADR: `l1/docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md`
+- Post-baseline ADR: `l1/docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md`
+- Post-baseline ADR: `l1/docs/decisions/0029-output-local-standalone-link-transaction.md`
 - Post-baseline ADR amendment: `l0/docs/decisions/0014-bootstrap-self-hosting-strategy.md`
 
 The closed plans and new ADRs above were created after the audited commit; the listed amendment was made after the

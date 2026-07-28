@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-26
+Version: 2026-07-27
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -20,6 +20,8 @@ Use this file as the status snapshot. For implementation details, use:
 
 - [l1/docs/reference/architecture.md](reference/architecture.md) for pass structure and data flow
 - [l1/docs/reference/c-backend-design.md](reference/c-backend-design.md) for backend lowering and generated C behavior
+- [l1/docs/reference/separate-compilation.md](reference/separate-compilation.md) for compile-only artifacts and
+  standalone object-link behavior
 - [l1/docs/reference/design-decisions.md](reference/design-decisions.md) for language and runtime rationale
 - [l1/docs/reference/grammar.md](reference/grammar.md) for accepted concrete syntax
 - [l1/docs/reference/ownership.md](reference/ownership.md) for ownership and cleanup behavior
@@ -37,7 +39,8 @@ The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 ### Compiler
 
 `compiler/stage1_l0/` is the only implemented L1 compiler today. It provides the bootstrap frontend, semantic analysis,
-C generation, compile-only artifact production, and host build/run integration for `.l1` inputs.
+C generation, compile-only artifact production, verified standalone object linking, and host build/run integration for
+`.l1` inputs.
 
 The implementation sources remain `.l0`, while user-facing L1 source inputs, examples, and stdlib modules use `.l1`.
 
@@ -85,11 +88,11 @@ module boundary; the legacy `backend_generate(...)` path remains the ordinary ge
 The compiler includes bounded readers for ELF, Mach-O, and standard COFF relocatable objects. Exact normalization covers
 Darwin TinyCC ELF aliases, Mach-O and COFF I386 leading underscores, and the leading `#` on ARM64EC function symbols;
 supported COFF machines are I386, ARM, ARMNT, AMD64, ARM64EC, and ARM64. The format-neutral inspection API reports
-container information, exact defined symbols, process-level C `main` presence, and one of valid Dea metadata, no Dea
-metadata, or malformed Dea metadata. Every external definition under the normalized, reserved `__dea` prefix without a
-complete consistent metadata pair is malformed rather than foreign-compatible, even when its suffix is not valid LBI.
-File access failures and unsupported or corrupt containers remain separate object-read errors. Standalone link-set
-validation and host linking remain future work.
+container information, exact defined symbols, process-level C `main` presence, one normalized embedded-linker-control
+kind, and one of valid Dea metadata, no Dea metadata, or malformed Dea metadata. Every external definition under the
+normalized, reserved `__dea` prefix without a complete consistent metadata pair is malformed rather than
+foreign-compatible, even when its suffix is not valid LBI. File access failures and unsupported or corrupt containers
+remain separate object-read errors.
 
 Ordinary build/run CLI imports remain source-based today. Compile-only instead requires verified `.l1m` interfaces for
 non-virtual imports and never falls back to provider source.
@@ -106,7 +109,24 @@ recovery files. Publication and rollback use sequential renames, so concurrent r
 mixed generations and same-stem access requires external serialization. The shared semantic aliases are `-Gc` for
 generated C, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` for host-C controls, `-Ri` / `-Rl` for runtime paths, and
 `-Vl` for rich logging. The conventional `-g`, `-S`, `-L`, and `-l` meanings are reserved but not implemented.
-Standalone linking does not exist, and `--build` / `--run` remain source-based single-CU operations.
+
+The CLI implements `l1c --link DEA_OBJECT... [--foreign-object C_OBJECT]... [--entry MODULE] -o OUTPUT`. Positional
+inputs must carry valid Dea metadata; metadata-free relocatables require the explicit foreign spelling; malformed Dea
+evidence, foreign objects defining process `main`, and either role's ELF, Mach-O, or PE/COFF embedded linker controls
+are rejected. The generated wrapper object receives the same control inspection before final linking. The driver
+verifies unique module identities, complete ordered-import closure, exact provider fingerprints, an acyclic graph, and
+one explicit or inferred entry without reopening source or `.l1m` files.
+
+An explicit depth-first frame stack computes deterministic dependency-first lifecycle order without native recursion.
+The generated wrapper calls only the selected entry bridge and finalizes modules in exact reverse order. Normal compiler
+families receive the selected runtime archive by exact path. TinyCC may instead receive the complete variant-matched
+repo-local raw object set under the ADR-0027 compatibility carve-out when that set is available, with exact archive
+fallback otherwise. Wrapper artifacts live in an exclusive output-local `.l1c-link-...` transaction with bounded,
+non-recursive cleanup; the host linker writes the final executable directly to the caller-selected path. Native Windows
+rejects expansion-, quote-, or line-break-bearing standalone command words and redirection paths while the transport
+still passes through `cmd.exe`.
+
+Ordinary `--build` / `--run` remain source-based single-CU operations.
 
 ### Runtime and Standard Library
 
@@ -244,7 +264,8 @@ These remain true today:
 1. There is no implemented `stage2_l1` compiler yet.
 2. Ordinary build/run CLI backend output is one legacy whole-program C translation unit; compile-only uses the internal
    module generator, but multi-CU build/run orchestration is not operational.
-3. Standalone linking and multi-CU build/run orchestration are not operational.
+3. Standalone linking consumes explicit object paths and does not discover objects, compile sources, or accept external
+   libraries, rpaths, or raw host-link arguments.
 4. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
 5. Address-of (`&`) and generics are not part of the current active language surface.

@@ -1,0 +1,1542 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver;
+
+import std.fs;
+import std.hashmap;
+import std.path;
+import std.string;
+import std.system;
+import std.text;
+import std.time;
+import std.vector;
+import util.diag;
+import util.log;
+
+import build_driver;
+import cli_args;
+import compile_driver;
+import diag_print;
+import object_reader;
+import object_reader_types;
+import wrapper_emitter;
+
+/** One inspected, typed standalone-link input. */
+struct LinkInput {
+    kind: LinkOperandKind;
+    path: string;
+    inspection: ObjectInspection*;
+    visit_state: int;
+    object_bytes: string?;
+    link_path: string?;
+}
+
+/** Verified standalone link set and its deterministic lifecycle order. */
+struct LinkPlan {
+    inputs: VectorBase*; /* LinkInput* in CLI encounter order */
+    modules_by_name: StringPtrMap*; /* module name -> borrowed LinkInput* */
+    lifecycle_order: StringVector*;
+    entry_module: string;
+}
+
+/** One explicit dependency-walk frame. */
+struct LinkVisitFrame {
+    input: LinkInput*;
+    next_import: int;
+}
+
+/** Fixed paths owned by one standalone-link transaction. */
+struct LinkTransaction {
+    root: string;
+    wrapper_c: string;
+    wrapper_object: string;
+    compile_stdout: string;
+    compile_stderr: string;
+    link_stdout: string;
+    link_stderr: string;
+    input_snapshots: StringVector*;
+}
+
+/** Create one pointer-element vector. */
+func ld_ptr_vec_create(capacity: int) -> VectorBase* {
+    return vec_create(sizeof(void*), capacity);
+}
+
+/** Append one pointer to a pointer-element vector. */
+func ld_ptr_vec_push(values: VectorBase*, value: void*) {
+    vec_push_ptr(values, value);
+}
+
+/** Read one pointer from a pointer-element vector. */
+func ld_ptr_vec_get(values: VectorBase*, index: int) -> void* {
+    return *(vec_get(values, index) as void**);
+}
+
+/** Free an owned vector of dependency-walk frames. */
+func ld_visit_frames_free(frames: VectorBase*) {
+    for (let i = 0; i < vec_size(frames); i = i + 1) {
+        let frame = ld_ptr_vec_get(frames, i) as LinkVisitFrame*;
+        drop frame;
+    }
+    vec_free(frames);
+}
+
+/** Remove and release the final string-vector entry. */
+func ld_string_vector_pop(values: StringVector*) {
+    let last = sv_size(values) - 1;
+    let slot = vec_get(values, last) as string*;
+    *slot = "";
+    values.length = last;
+}
+
+/** Emit one link-driver diagnostic without source coordinates. */
+func ld_error(diags: DiagCollector*, code: string, message: string, path: string) {
+    diag_error(diags, "l1c", code, message, path, 0, 0, 0, 0);
+}
+
+/**
+ * Create one inspected link input.
+ *
+ * Ownership of `inspection` transfers to the returned input.
+ */
+func ld_input_create(
+    kind: LinkOperandKind,
+    path: string,
+    inspection: ObjectInspection*
+) -> LinkInput* {
+    return new LinkInput(kind, path, inspection, 0, null, null);
+}
+
+/** Free one inspected link input. */
+func ld_input_free(input: LinkInput*) {
+    object_inspection_free(input.inspection);
+    drop input;
+}
+
+/** Free an owned vector of inspected link inputs. */
+func ld_inputs_free(inputs: VectorBase*) {
+    for (let i = 0; i < vec_size(inputs); i = i + 1) {
+        ld_input_free(ld_ptr_vec_get(inputs, i) as LinkInput*);
+    }
+    vec_free(inputs);
+}
+
+/** Return the valid Dea metadata carried by one verified Dea input. */
+func ld_input_metadata(input: LinkInput*) -> ValidDeaMetadata* {
+    return input.inspection.metadata.valid as ValidDeaMetadata*;
+}
+
+/** Free a verified link plan and every inspected input it owns. */
+func ld_plan_free(plan: LinkPlan*) {
+    ld_inputs_free(plan.inputs);
+    spm_free(plan.modules_by_name);
+    sv_free(plan.lifecycle_order);
+    drop plan;
+}
+
+/** Return one verified input by its encounter index. */
+func ld_plan_input_get(plan: LinkPlan*, index: int) -> LinkInput* {
+    return ld_ptr_vec_get(plan.inputs, index) as LinkInput*;
+}
+
+/** Return the owned snapshot path when present, otherwise the caller path. */
+func ld_input_link_path(input: LinkInput*) -> string {
+    if (input.link_path != null) {
+        return input.link_path as string;
+    }
+    return input.path;
+}
+
+/** Join canonical module names for deterministic diagnostics. */
+func ld_join_module_names(names: StringVector*) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            if (i > 0) {
+                cb_append_s(out, ", ");
+            }
+            cb_append_s(out, sv_get(names, i));
+        }
+        return cb_to_string(out);
+    }
+}
+
+/** Format the canonical cycle ending at `module_name`. */
+func ld_format_cycle(stack: StringVector*, module_name: string) -> string {
+    let start = 0;
+    for (let i = 0; i < sv_size(stack); i = i + 1) {
+        if (sv_get(stack, i) == module_name) {
+            start = i;
+            break;
+        }
+    }
+
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = start; i < sv_size(stack); i = i + 1) {
+            if (i > start) {
+                cb_append_s(out, " -> ");
+            }
+            cb_append_s(out, sv_get(stack, i));
+        }
+        if (sv_size(stack) > start) {
+            cb_append_s(out, " -> ");
+        }
+        cb_append_s(out, module_name);
+        return cb_to_string(out);
+    }
+}
+
+/** Stable diagnostic label for one object-embedded linker-control carrier. */
+func ld_linker_control_label(kind: ObjectLinkerControlKind) -> string {
+    if (ord(kind) ==
+        ord(OBJECT_LINKER_CONTROL_ELF_DEPENDENT_LIBRARIES)) {
+        return "ELF dependent-library section";
+    }
+    if (ord(kind) == ord(OBJECT_LINKER_CONTROL_MACHO_LINKER_OPTION)) {
+        return "Mach-O LC_LINKER_OPTION command";
+    }
+    return "PE/COFF .drectve section";
+}
+
+/**
+ * Reject one object-embedded linker control at a standalone-link boundary.
+ */
+func ld_validate_linker_control(
+    path: string,
+    inspection: ObjectInspection*,
+    diags: DiagCollector*
+) -> bool {
+    let kind = object_inspection_linker_control_kind(inspection);
+    if (ord(kind) == ord(OBJECT_LINKER_CONTROL_NONE)) {
+        return true;
+    }
+    let label = ld_linker_control_label(kind);
+    ld_error(
+        diags,
+        "L1C-2110",
+        "standalone-link object '" + path +
+            "' contains an embedded " + label +
+            "; object-embedded linker controls cannot bypass the typed " +
+            "link-input boundary",
+        path
+    );
+    return false;
+}
+
+/**
+ * Reject every object-embedded linker control before registering any module.
+ */
+func ld_validate_linker_controls(
+    plan: LinkPlan*,
+    diags: DiagCollector*
+) -> bool {
+    let ok = true;
+    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+        let input = ld_plan_input_get(plan, i);
+        if (!ld_validate_linker_control(
+                input.path, input.inspection, diags)) {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+/** Validate one CLI-declared operand classification and register Dea modules. */
+func ld_classify_inputs(plan: LinkPlan*, diags: DiagCollector*) -> bool {
+    if (!ld_validate_linker_controls(plan, diags)) {
+        return false;
+    }
+
+    let ok = true;
+    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+        let input = ld_plan_input_get(plan, i);
+        let classification = input.inspection.metadata;
+        let is_dea = ord(input.kind) == ord(LOK_DEA_OBJECT);
+
+        if (is_dea) {
+            if (ord(classification.kind) == ord(NO_DEA_METADATA)) {
+                ld_error(
+                    diags,
+                    "L1C-2098",
+                    "positional link input '" + input.path +
+                        "' has no Dea metadata; pass it with '--foreign-object'",
+                    input.path
+                );
+                ok = false;
+                continue;
+            }
+            if (ord(classification.kind) == ord(MALFORMED_DEA_METADATA)) {
+                ld_error(
+                    diags,
+                    "L1C-2098",
+                    "positional link input '" + input.path +
+                        "' has malformed Dea metadata: " + classification.reason,
+                    input.path
+                );
+                ok = false;
+                continue;
+            }
+
+            let metadata = classification.valid as ValidDeaMetadata*;
+            if (spm_has(plan.modules_by_name, metadata.module_name)) {
+                let previous = spm_get(
+                    plan.modules_by_name, metadata.module_name) as LinkInput*;
+                ld_error(
+                    diags,
+                    "L1C-2100",
+                    "duplicate Dea module identity '" + metadata.module_name +
+                        "' in '" + previous.path + "' and '" + input.path + "'",
+                    input.path
+                );
+                ok = false;
+                continue;
+            }
+            spm_put(plan.modules_by_name, metadata.module_name, input as void*);
+            continue;
+        }
+
+        if (ord(classification.kind) == ord(VALID_DEA_METADATA)) {
+            let metadata2 = classification.valid as ValidDeaMetadata*;
+            ld_error(
+                diags,
+                "L1C-2098",
+                "foreign object '" + input.path + "' contains verified Dea module '" +
+                    metadata2.module_name +
+                    "'; pass Dea objects positionally so link verification cannot be bypassed",
+                input.path
+            );
+            ok = false;
+            continue;
+        }
+        if (ord(classification.kind) == ord(MALFORMED_DEA_METADATA)) {
+            ld_error(
+                diags,
+                "L1C-2098",
+                "foreign object '" + input.path +
+                    "' contains malformed Dea metadata: " + classification.reason,
+                input.path
+            );
+            ok = false;
+            continue;
+        }
+        if (object_inspection_defines_main(input.inspection)) {
+            ld_error(
+                diags,
+                "L1C-2099",
+                "foreign object '" + input.path +
+                    "' defines process symbol 'main'; the generated Dea wrapper owns process entry",
+                input.path
+            );
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+/** Validate dependency closure and exact provider fingerprints. */
+func ld_validate_dependencies(plan: LinkPlan*, diags: DiagCollector*) -> bool {
+    let ok = true;
+
+    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+        let consumer = ld_plan_input_get(plan, i);
+        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT) ||
+            ord(consumer.inspection.metadata.kind) != ord(VALID_DEA_METADATA)) {
+            continue;
+        }
+        let metadata = ld_input_metadata(consumer);
+        for (let dep_i = 0; dep_i < sv_size(metadata.ordered_imports);
+             dep_i = dep_i + 1) {
+            let provider_name = sv_get(metadata.ordered_imports, dep_i);
+            let provider_value = spm_get(plan.modules_by_name, provider_name);
+            if (provider_value == null) {
+                ld_error(
+                    diags,
+                    "L1C-2101",
+                    "Dea module '" + metadata.module_name +
+                        "' requires missing provider module '" + provider_name + "'",
+                    consumer.path
+                );
+                ok = false;
+                continue;
+            }
+            let provider = provider_value as LinkInput*;
+            let provider_metadata = ld_input_metadata(provider);
+            let expected = sv_get(metadata.import_fingerprints, dep_i);
+            if (expected != provider_metadata.fingerprint) {
+                ld_error(
+                    diags,
+                    "L1C-2102",
+                    "Dea module '" + metadata.module_name + "' expects provider '" +
+                        provider_name + "' fingerprint '" + expected +
+                        "', but supplied object '" + provider.path + "' carries '" +
+                        provider_metadata.fingerprint + "'",
+                    consumer.path
+                );
+                ok = false;
+            }
+        }
+    }
+
+    return ok;
+}
+
+/** Resolve the explicit or inferred Dea entry module. */
+func ld_select_entry(
+    plan: LinkPlan*,
+    explicit_entry: string?,
+    diags: DiagCollector*
+) -> string? {
+    if (explicit_entry != null) {
+        let requested = explicit_entry as string;
+        let input_value = spm_get(plan.modules_by_name, requested);
+        if (input_value == null) {
+            ld_error(
+                diags,
+                "L1C-2104",
+                "explicit entry module '" + requested + "' is not present in the Dea link set",
+                ""
+            );
+            return null;
+        }
+        let input = input_value as LinkInput*;
+        if (!ld_input_metadata(input).has_entry) {
+            ld_error(
+                diags,
+                "L1C-2104",
+                "explicit entry module '" + requested + "' does not define a Dea entry bridge",
+                input.path
+            );
+            return null;
+        }
+        return slice_s(requested, 0, len_s(requested));
+    }
+
+    with (let candidates = sv_create(2) => sv_free(candidates)) {
+        for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+            let input2 = ld_plan_input_get(plan, i);
+            if (ord(input2.kind) == ord(LOK_DEA_OBJECT) &&
+                ord(input2.inspection.metadata.kind) == ord(VALID_DEA_METADATA) &&
+                ld_input_metadata(input2).has_entry) {
+                sv_push(candidates, ld_input_metadata(input2).module_name);
+            }
+        }
+        sv_sort(candidates);
+
+        if (sv_size(candidates) == 0) {
+            ld_error(
+                diags,
+                "L1C-2104",
+                "Dea link set has no entry module; pass an object whose metadata carries HAS_ENTRY",
+                ""
+            );
+            return null;
+        }
+        if (sv_size(candidates) > 1) {
+            ld_error(
+                diags,
+                "L1C-2104",
+                "Dea link set has multiple entry modules: " +
+                    ld_join_module_names(candidates) +
+                    "; select one with '--entry'",
+                ""
+            );
+            return null;
+        }
+        let selected = sv_get(candidates, 0);
+        return slice_s(selected, 0, len_s(selected));
+    }
+}
+
+/** Visit one Dea module in dependency-first order without native recursion. */
+func ld_visit_module(
+    plan: LinkPlan*,
+    input: LinkInput*,
+    stack: StringVector*,
+    diags: DiagCollector*
+) -> bool {
+    if (input.visit_state == 2) {
+        return true;
+    }
+
+    let metadata = ld_input_metadata(input);
+    if (input.visit_state == 1) {
+        ld_error(
+            diags,
+            "L1C-2103",
+            "Dea object dependency cycle: " +
+                ld_format_cycle(stack, metadata.module_name),
+            input.path
+        );
+        return false;
+    }
+
+    with (let frames = ld_ptr_vec_create(8) =>
+              ld_visit_frames_free(frames)) {
+        input.visit_state = 1;
+        sv_push(stack, metadata.module_name);
+        ld_ptr_vec_push(
+            frames, new LinkVisitFrame(input, 0) as void*);
+
+        while (vec_size(frames) > 0) {
+            let frame_i = vec_size(frames) - 1;
+            let frame = ld_ptr_vec_get(
+                frames, frame_i) as LinkVisitFrame*;
+            let frame_metadata = ld_input_metadata(frame.input);
+
+            if (frame.next_import <
+                sv_size(frame_metadata.ordered_imports)) {
+                let provider = spm_get(
+                    plan.modules_by_name,
+                    sv_get(
+                        frame_metadata.ordered_imports,
+                        frame.next_import
+                    )
+                ) as LinkInput*;
+                frame.next_import = frame.next_import + 1;
+
+                if (provider.visit_state == 2) {
+                    continue;
+                }
+                let provider_metadata = ld_input_metadata(provider);
+                if (provider.visit_state == 1) {
+                    ld_error(
+                        diags,
+                        "L1C-2103",
+                        "Dea object dependency cycle: " +
+                            ld_format_cycle(
+                                stack, provider_metadata.module_name),
+                        provider.path
+                    );
+                    return false;
+                }
+
+                provider.visit_state = 1;
+                sv_push(stack, provider_metadata.module_name);
+                ld_ptr_vec_push(
+                    frames, new LinkVisitFrame(provider, 0) as void*);
+                continue;
+            }
+
+            ld_string_vector_pop(stack);
+            frame.input.visit_state = 2;
+            sv_push(
+                plan.lifecycle_order,
+                frame_metadata.module_name
+            );
+            frames.length = frame_i;
+            drop frame;
+        }
+    }
+    return true;
+}
+
+/** Compute the selected-entry-first deterministic lifecycle order. */
+func ld_compute_lifecycle_order(plan: LinkPlan*, diags: DiagCollector*) -> bool {
+    with (let stack = sv_create(8) => sv_free(stack)) {
+        let entry_input = spm_get(
+            plan.modules_by_name, plan.entry_module) as LinkInput*;
+        if (!ld_visit_module(plan, entry_input, stack, diags)) {
+            return false;
+        }
+
+        for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+            let input = ld_plan_input_get(plan, i);
+            if (ord(input.kind) == ord(LOK_DEA_OBJECT) &&
+                input.visit_state == 0 &&
+                !ld_visit_module(plan, input, stack, diags)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * Validate already inspected inputs and build one link plan.
+ *
+ * Ownership of `inputs` transfers to this function whether it succeeds or
+ * fails. Tests may use this boundary to construct format-neutral inspections
+ * without writing temporary object files.
+ */
+func ld_prepare_inputs(
+    inputs: VectorBase*,
+    explicit_entry: string?,
+    diags: DiagCollector*
+) -> LinkPlan*? {
+    let plan = new LinkPlan(inputs, spm_create(), sv_create(vec_size(inputs)), "");
+
+    if (!ld_classify_inputs(plan, diags) ||
+        !ld_validate_dependencies(plan, diags)) {
+        ld_plan_free(plan);
+        return null;
+    }
+
+    let entry = ld_select_entry(plan, explicit_entry, diags);
+    if (entry == null) {
+        ld_plan_free(plan);
+        return null;
+    }
+    plan.entry_module = entry as string;
+
+    if (!ld_compute_lifecycle_order(plan, diags)) {
+        ld_plan_free(plan);
+        return null;
+    }
+    return plan;
+}
+
+/** Inspect every typed CLI operand exactly once and prepare a verified plan. */
+func ld_prepare_cli_inputs(
+    operands: VectorBase*,
+    explicit_entry: string?,
+    diags: DiagCollector*
+) -> LinkPlan*? {
+    let inputs = ld_ptr_vec_create(cli_link_operands_count(operands));
+
+    for (let i = 0; i < cli_link_operands_count(operands); i = i + 1) {
+        let operand = cli_link_operands_get(operands, i);
+        let bytes = read_file(operand.path);
+        if (bytes == null) {
+            ld_error(
+                diags,
+                "L1C-2097",
+                "cannot inspect link input '" + operand.path +
+                    "': failed to read object file '" + operand.path + "'",
+                operand.path
+            );
+            ld_inputs_free(inputs);
+            return null;
+        }
+
+        let read_result = object_inspect_bytes(bytes as string);
+        if (read_result.error != null) {
+            let read_error = read_result.error as ObjectReadError*;
+            ld_error(
+                diags,
+                "L1C-2097",
+                "cannot inspect link input '" + operand.path + "': " +
+                    read_error.message,
+                operand.path
+            );
+            object_inspection_result_free(read_result);
+            ld_inputs_free(inputs);
+            return null;
+        }
+
+        let inspection = read_result.inspection as ObjectInspection*;
+        read_result.inspection = null;
+        object_inspection_result_free(read_result);
+        let input = ld_input_create(operand.kind, operand.path, inspection);
+        input.object_bytes = bytes as string;
+        ld_ptr_vec_push(inputs, input as void*);
+    }
+
+    return ld_prepare_inputs(inputs, explicit_entry, diags);
+}
+
+/** Construct the fixed paths inside one standalone-link transaction. */
+func ld_transaction_create(root: string) -> LinkTransaction* {
+    return new LinkTransaction(
+        root,
+        join(root, "wrapper.c"),
+        join(root, "wrapper.o"),
+        join(root, "compile.stdout"),
+        join(root, "compile.stderr"),
+        join(root, "link.stdout"),
+        join(root, "link.stderr"),
+        sv_create(4)
+    );
+}
+
+/** Free a transaction-path bundle without removing filesystem state. */
+func ld_transaction_free(txn: LinkTransaction*) {
+    sv_free(txn.input_snapshots);
+    drop txn;
+}
+
+/** Exclusively create one output-local transaction for a fixed identity. */
+func ld_create_transaction_for_identity(
+    output_parent: string,
+    pid: int,
+    sec: int,
+    nsec: int,
+    diags: DiagCollector*
+) -> LinkTransaction*? {
+    for (let attempt = 0; attempt < 100; attempt = attempt + 1) {
+        let root = join(
+            output_parent,
+            ".l1c-link-" + int_to_string(pid) + "-" +
+                int_to_string(sec) + "-" + int_to_string(nsec) + "-" +
+                int_to_string(attempt)
+        );
+        /* POSIX 0700; MinGW inherits access control from the trusted parent. */
+        let created = cd_mkdir(root, 448);
+        if (created == 1) {
+            return ld_transaction_create(root);
+        }
+        if (created < 0) {
+            ld_error(
+                diags,
+                "L1C-2107",
+                "cannot create standalone-link transaction directory: " + root,
+                root
+            );
+            return null;
+        }
+    }
+
+    ld_error(
+        diags,
+        "L1C-2107",
+        "cannot create a unique standalone-link transaction directory under: " +
+            output_parent,
+        output_parent
+    );
+    return null;
+}
+
+/** Exclusively create one output-local transaction beside the executable. */
+func ld_create_transaction(
+    output_parent: string,
+    diags: DiagCollector*
+) -> LinkTransaction*? {
+    let pid = get_pid();
+    let sec = 0;
+    let nsec = 0;
+    let now_opt = wall_now();
+    if (now_opt != null) {
+        let now = now_opt as WallTime;
+        sec = now.sec;
+        nsec = now.nsec;
+    }
+    return ld_create_transaction_for_identity(
+        output_parent, pid, sec, nsec, diags);
+}
+
+/**
+ * Remove known regular children and then the verified empty transaction.
+ *
+ * No recursive removal is performed. Unexpected or substituted contents make
+ * cleanup fail and retain the transaction for inspection.
+ */
+func ld_cleanup_transaction(txn: LinkTransaction*) -> bool {
+    let ok = true;
+    for (let i = 0; i < sv_size(txn.input_snapshots); i = i + 1) {
+        if (!cd_delete_if_present(sv_get(txn.input_snapshots, i))) {
+            ok = false;
+        }
+    }
+    if (!cd_delete_if_present(txn.wrapper_c)) ok = false;
+    if (!cd_delete_if_present(txn.wrapper_object)) ok = false;
+    if (!cd_delete_if_present(txn.compile_stdout)) ok = false;
+    if (!cd_delete_if_present(txn.compile_stderr)) ok = false;
+    if (!cd_delete_if_present(txn.link_stdout)) ok = false;
+    if (!cd_delete_if_present(txn.link_stderr)) ok = false;
+    if (cd_remove_empty_dir(txn.root) != 1) ok = false;
+    return ok;
+}
+
+/**
+ * Publish the exact inspected input bytes into transaction-owned snapshots.
+ *
+ * The final host linker consumes these copies, so concurrent replacement of a
+ * caller path cannot change the verified bytes after inspection.
+ */
+func ld_snapshot_inputs(
+    plan: LinkPlan*,
+    txn: LinkTransaction*,
+    diags: DiagCollector*
+) -> bool {
+    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+        let input = ld_plan_input_get(plan, i);
+        if (input.object_bytes == null) {
+            ld_error(
+                diags,
+                "L1C-2107",
+                "standalone-link input has no inspected byte snapshot: " +
+                    input.path,
+                input.path
+            );
+            return false;
+        }
+        let snapshot_path = join(
+            txn.root, "input-" + int_to_string(i) + ".o");
+        sv_push(txn.input_snapshots, snapshot_path);
+        if (write_file(snapshot_path, input.object_bytes as string) == null) {
+            ld_error(
+                diags,
+                "L1C-2107",
+                "cannot write standalone-link input snapshot: " +
+                    snapshot_path,
+                snapshot_path
+            );
+            return false;
+        }
+        input.link_path = snapshot_path;
+    }
+    return true;
+}
+
+/** Validate the caller-selected executable destination without creating it. */
+func ld_validate_output(output_path: string, diags: DiagCollector*) -> bool {
+    if (is_empty_s(output_path)) {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "standalone-link output path must not be empty",
+            output_path
+        );
+        return false;
+    }
+
+    let output_parent = parent(output_path);
+    let parent_kind = cd_path_kind_follow(output_parent);
+    if (parent_kind != CD_PATH_DIRECTORY) {
+        if (parent_kind < 0) {
+            ld_error(
+                diags,
+                "L1C-2105",
+                "cannot inspect standalone-link output parent: " + output_parent,
+                output_parent
+            );
+        } else {
+            ld_error(
+                diags,
+                "L1C-2105",
+                "standalone-link output parent does not exist or is not a directory: " +
+                    output_parent,
+                output_parent
+            );
+        }
+        return false;
+    }
+
+    let output_kind = cd_path_kind(output_path);
+    if (output_kind == CD_PATH_ABSENT || output_kind == CD_PATH_REGULAR) {
+        return true;
+    }
+    if (output_kind < 0) {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "cannot inspect standalone-link output: " + output_path,
+            output_path
+        );
+    } else {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "standalone-link output must be absent or a regular file: " +
+                output_path,
+            output_path
+        );
+    }
+    return false;
+}
+
+/**
+ * Reject an existing output that aliases a caller or runtime link input.
+ *
+ * Filesystem identity, rather than path spelling, catches hard links and
+ * trusted-parent aliases before the host linker can replace an input.
+ */
+func ld_validate_output_aliases(
+    output_path: string,
+    plan: LinkPlan*,
+    runtime_inputs: StringVector*,
+    diags: DiagCollector*
+) -> bool {
+    if (cd_path_kind(output_path) != CD_PATH_REGULAR) {
+        return true;
+    }
+
+    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+        let input = ld_plan_input_get(plan, i);
+        let same = cd_same_file(output_path, input.path);
+        if (same < 0) {
+            ld_error(
+                diags,
+                "L1C-2105",
+                "cannot compare standalone-link output identity with input: " +
+                    input.path,
+                output_path
+            );
+            return false;
+        }
+        if (same == 1) {
+            ld_error(
+                diags,
+                "L1C-2105",
+                "standalone-link output aliases caller input: " + input.path,
+                output_path
+            );
+            return false;
+        }
+    }
+
+    for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
+         runtime_i = runtime_i + 1) {
+        let runtime_path = sv_get(runtime_inputs, runtime_i);
+        let same_runtime = cd_same_file(output_path, runtime_path);
+        if (same_runtime < 0) {
+            ld_error(
+                diags,
+                "L1C-2105",
+                "cannot compare standalone-link output identity with runtime input: " +
+                    runtime_path,
+                output_path
+            );
+            return false;
+        }
+        if (same_runtime == 1) {
+            ld_error(
+                diags,
+                "L1C-2105",
+                "standalone-link output aliases runtime input: " +
+                    runtime_path,
+                output_path
+            );
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Resolve and validate the runtime include directory and public header. */
+func ld_runtime_include(
+    opts: CliOptions*,
+    diags: DiagCollector*
+) -> string? {
+    let include_opt = bd_runtime_include_dir(opts);
+    if (include_opt == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "cannot resolve the L1 runtime include directory for standalone linking",
+            ""
+        );
+        return null;
+    }
+    let include_dir = include_opt as string;
+    let header_path = join(include_dir, "dea_rt.h");
+    if (cd_path_kind_follow(include_dir) != CD_PATH_DIRECTORY ||
+        cd_path_kind_follow(header_path) != CD_PATH_REGULAR ||
+        read_file(header_path) == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "runtime include directory '" + include_dir +
+                "' does not contain a readable regular 'dea_rt.h'",
+            include_dir
+        );
+        return null;
+    }
+    return include_dir;
+}
+
+/** Resolve and validate the selected runtime archive by exact path. */
+func ld_runtime_archive(
+    opts: CliOptions*,
+    diags: DiagCollector*
+) -> string? {
+    let library_opt = bd_runtime_lib_dir(opts);
+    if (library_opt == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "cannot resolve the L1 runtime library directory for standalone linking",
+            ""
+        );
+        return null;
+    }
+    let library_dir = library_opt as string;
+    let archive_path = join(library_dir, bd_runtime_archive_filename(opts));
+    if (cd_path_kind_follow(library_dir) != CD_PATH_DIRECTORY ||
+        cd_path_kind_follow(archive_path) != CD_PATH_REGULAR ||
+        read_file(archive_path) == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "selected runtime archive is not a readable regular file: " +
+                archive_path,
+            archive_path
+        );
+        return null;
+    }
+    return archive_path;
+}
+
+/**
+ * Resolve and validate the runtime inputs for the selected compiler family.
+ *
+ * Normal compiler families receive the selected archive as one exact path.
+ * TinyCC receives the repo-local variant-matched raw-object set when present,
+ * preserving the accepted cross-format compatibility boundary.
+ */
+func ld_runtime_link_inputs(
+    opts: CliOptions*,
+    compiler: string,
+    diags: DiagCollector*
+) -> StringVector*? {
+    let family = bd_compiler_flag_family(compiler);
+    if (family == "tcc") {
+        let runtime_objects = bd_runtime_object_paths(opts);
+        if (runtime_objects != null &&
+            bd_runtime_object_paths_exist(runtime_objects as StringVector*)) {
+            let valid_objects = true;
+            for (let i = 0; i < sv_size(runtime_objects as StringVector*);
+                 i = i + 1) {
+                let object_path = sv_get(
+                    runtime_objects as StringVector*, i);
+                if (cd_path_kind_follow(object_path) != CD_PATH_REGULAR ||
+                    read_file(object_path) == null) {
+                    ld_error(
+                        diags,
+                        "L1C-2106",
+                        "selected TinyCC runtime object is not a readable regular file: " +
+                            object_path,
+                        object_path
+                    );
+                    valid_objects = false;
+                }
+            }
+            if (valid_objects) {
+                return runtime_objects as StringVector*;
+            }
+            bd_runtime_object_paths_free(runtime_objects);
+            return null;
+        }
+        bd_runtime_object_paths_free(runtime_objects);
+    }
+
+    let archive = ld_runtime_archive(opts, diags);
+    if (archive == null) {
+        return null;
+    }
+    let result = sv_create(1);
+    sv_push(result, archive as string);
+    return result;
+}
+
+/** Resolve the selected host compiler before scratch allocation. */
+func ld_take_compiler(opts: CliOptions*, diags: DiagCollector*) -> string? {
+    let compiler = bd_take_c_compiler(opts);
+    if (compiler == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "no C compiler found for standalone linking: use '--c-compiler' or set L1_CC",
+            ""
+        );
+        return null;
+    }
+    return compiler;
+}
+
+/**
+ * Return a host-driver argument that is unambiguously a filesystem path.
+ *
+ * Prefixing relative option/response-shaped names preserves the selected file
+ * while preventing the host driver from reinterpreting it. MSVC receives
+ * rooted forward-slash paths with native separators so `/path` is not parsed
+ * as an option.
+ */
+func ld_host_input_path(path: string, family: string) -> string {
+    if (family == "msvc" && len_s(path) > 0 &&
+        char_at_s(path, 0) == '/') {
+        return replace_s(path, "/", "\\");
+    }
+    if (!is_absolute(path) && len_s(path) > 0 &&
+        (char_at_s(path, 0) == '-' || char_at_s(path, 0) == '@')) {
+        return join(".", path);
+    }
+    return path;
+}
+
+/** Return whether one word is stable through the Windows `system()` shell. */
+func ld_windows_shell_word_safe(word: string) -> bool {
+    for (let i = 0; i < len_s(word); i = i + 1) {
+        let c = char_at_s(word, i);
+        if (c == '%' || c == '!' || c == '"' ||
+            c == '\r' || c == '\n') {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Lowercase hexadecimal digit used by command-value diagnostic escaping. */
+func ld_diagnostic_hex_digit(value: int) -> byte {
+    if (value < 10) {
+        return (('0' as int) + value) as byte;
+    }
+    return (('a' as int) + value - 10) as byte;
+}
+
+/** Render one rejected command word without diagnostic control characters. */
+func ld_diagnostic_word(word: string) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = 0; i < len_s(word); i = i + 1) {
+            let value = char_at_s(word, i) as int;
+            if (value < 32 || value == 127) {
+                cb_append_s(out, "\\x");
+                cb_append(out, ld_diagnostic_hex_digit(value / 16));
+                cb_append(out, ld_diagnostic_hex_digit(value % 16));
+            } else {
+                cb_append(out, value as byte);
+            }
+        }
+        return cb_to_string(out);
+    }
+}
+
+/** Validate exact Windows host-command words with one diagnostic contract. */
+func ld_validate_windows_shell_words(
+    words: StringVector*,
+    code: string,
+    message: string,
+    diags: DiagCollector*
+) -> bool {
+    for (let i = 0; i < sv_size(words); i = i + 1) {
+        let word = sv_get(words, i);
+        if (!ld_windows_shell_word_safe(word)) {
+            let displayed = ld_diagnostic_word(word);
+            ld_error(
+                diags, code, message + ": " + displayed, displayed);
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Validate standalone values before Windows shell-backed scratch work. */
+func ld_validate_windows_shell_values(
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    runtime_inputs: StringVector*,
+    output_path: string,
+    diags: DiagCollector*
+) -> bool {
+    with (let values = sv_create(
+              8 + sv_size(extra_opts) + sv_size(runtime_inputs)) =>
+              sv_free(values)) {
+        sv_push(values, compiler);
+        sv_push(values, runtime_include);
+        sv_push(values, output_path);
+        for (let option_i = 0; option_i < sv_size(extra_opts);
+             option_i = option_i + 1) {
+            sv_push(values, sv_get(extra_opts, option_i));
+        }
+        for (let i = 0; i < sv_size(runtime_inputs); i = i + 1) {
+            sv_push(values, sv_get(runtime_inputs, i));
+        }
+        return ld_validate_windows_shell_words(
+            values,
+            "L1C-2106",
+            "standalone linking does not support '%', '!', double quotes, " +
+                "or line breaks in Windows host-command values",
+            diags
+        );
+    }
+}
+
+/** Push the wrapper-only host compilation command. */
+func ld_push_wrapper_compile_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    extra_opts: StringVector*,
+    optimize: string?,
+    runtime_include: string,
+    wrapper_c: string,
+    wrapper_object: string
+) {
+    cd_push_object_compile_words(
+        words,
+        compiler,
+        family,
+        extra_opts,
+        optimize,
+        runtime_include,
+        ld_host_input_path(wrapper_c, family),
+        ld_host_input_path(wrapper_object, family)
+    );
+}
+
+/** Push the final host-link command while retaining typed input order. */
+func ld_push_final_link_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    wrapper_object: string,
+    plan: LinkPlan*,
+    runtime_archive: string,
+    output_path: string
+) {
+    with (let runtime_inputs = sv_create(1) => sv_free(runtime_inputs)) {
+        sv_push(runtime_inputs, runtime_archive);
+        ld_push_final_link_words_with_runtime_inputs(
+            words,
+            compiler,
+            family,
+            wrapper_object,
+            plan,
+            runtime_inputs,
+            output_path
+        );
+    }
+}
+
+/** Push the final host-link command with prevalidated runtime inputs. */
+func ld_push_final_link_words_with_runtime_inputs(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    wrapper_object: string,
+    plan: LinkPlan*,
+    runtime_inputs: StringVector*,
+    output_path: string
+) {
+    sv_push(words, compiler);
+    /*
+     * Raw C options are intentionally wrapper-compile-only in link mode.
+     * Forwarding them here would let response files, object paths, library
+     * flags, or linker pass-through options bypass the typed input boundary.
+     */
+    sv_push(words, ld_host_input_path(wrapper_object, family));
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        sv_push(words, ld_host_input_path(
+            ld_input_link_path(ld_plan_input_get(plan, input_i)), family));
+    }
+    for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
+         runtime_i = runtime_i + 1) {
+        sv_push(words, ld_host_input_path(
+            sv_get(runtime_inputs, runtime_i), family));
+    }
+    if (family != "msvc") {
+        /*
+         * Object metadata does not encode `sys.real` use. Supplying the host
+         * math library unconditionally keeps separately compiled real-number
+         * users linkable without reopening source or interface artifacts.
+         */
+        sv_push(words, "-lm");
+    }
+    bd_push_output_flags(words, family, output_path);
+}
+
+/**
+ * Add the platform transport quoting required by `system()`.
+ *
+ * Windows `system()` delegates to `cmd.exe /c`. The extra outer quote pair
+ * lets cmd.exe consume that transport layer while preserving the inner quote
+ * pair around a compiler executable path that contains spaces.
+ */
+func ld_wrap_system_command(command: string, windows: bool) -> string {
+    if (windows) {
+        return "\"" + command + "\"";
+    }
+    return command;
+}
+
+/** Execute one captured host command and preserve its output. */
+func ld_run_host_command(
+    words: StringVector*,
+    stdout_path: string,
+    stderr_path: string,
+    code: string,
+    failure_message: string,
+    cfg: LogConfig*,
+    diags: DiagCollector*
+) -> bool {
+    if (bd_is_windows()) {
+        with (let shell_values = sv_create(sv_size(words) + 2) =>
+                  sv_free(shell_values)) {
+            for (let i = 0; i < sv_size(words); i = i + 1) {
+                sv_push(shell_values, sv_get(words, i));
+            }
+            sv_push(shell_values, stdout_path);
+            sv_push(shell_values, stderr_path);
+            if (!ld_validate_windows_shell_words(
+                    shell_values,
+                    code,
+                    failure_message +
+                        ": unsupported Windows shell expansion or quote character",
+                    diags)) {
+                return false;
+            }
+        }
+    }
+    log_info(cfg, bd_join_display_words(words));
+    let command = ld_wrap_system_command(
+        bd_join_shell_words(words) + " > " +
+            bd_shell_quote(stdout_path) + " 2> " +
+            bd_shell_quote(stderr_path),
+        bd_is_windows()
+    );
+    let rc = system(command);
+    let failed = rc != 0;
+    if (failed) {
+        ld_error(diags, code, failure_message, "");
+    }
+    bd_replay_compile_output(cfg, stdout_path, stderr_path, failed);
+    return !failed;
+}
+
+/** Validate that wrapper compilation produced the expected foreign object. */
+func ld_validate_wrapper_object(
+    wrapper_path: string,
+    diags: DiagCollector*
+) -> bool {
+    if (cd_path_kind(wrapper_path) != CD_PATH_REGULAR) {
+        ld_error(
+            diags,
+            "L1C-2108",
+            "wrapper compiler did not produce a regular relocatable object: " +
+                wrapper_path,
+            wrapper_path
+        );
+        return false;
+    }
+
+    let inspected = object_inspect_path(wrapper_path);
+    if (inspected.error != null) {
+        let error = inspected.error as ObjectReadError*;
+        ld_error(
+            diags,
+            "L1C-2108",
+            "wrapper compiler did not produce a supported relocatable object: " +
+                error.message,
+            wrapper_path
+        );
+        object_inspection_result_free(inspected);
+        return false;
+    }
+
+    let inspection = inspected.inspection as ObjectInspection*;
+    if (!ld_validate_linker_control(wrapper_path, inspection, diags)) {
+        object_inspection_result_free(inspected);
+        return false;
+    }
+    let valid = ord(inspection.metadata.kind) == ord(NO_DEA_METADATA) &&
+        object_inspection_defines_main(inspection);
+    if (!valid) {
+        ld_error(
+            diags,
+            "L1C-2108",
+            "wrapper object must be metadata-free and define process symbol 'main': " +
+                wrapper_path,
+            wrapper_path
+        );
+    }
+    object_inspection_result_free(inspected);
+    return valid;
+}
+
+/**
+ * Compile and link one verified plan through caller-supplied scratch paths.
+ *
+ * This common executor never allocates or cleans the transaction that owns
+ * `scratch`; standalone CLI orchestration and later build/run orchestration
+ * retain that responsibility.
+ */
+func ld_execute_plan(
+    plan: LinkPlan*,
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    runtime_inputs: StringVector*,
+    output_path: string,
+    scratch: LinkTransaction*,
+    cfg: LogConfig*,
+    diags: DiagCollector*
+) -> bool {
+    let wrapper_source = we_emit_wrapper(
+        plan.lifecycle_order, plan.entry_module);
+    if (write_file(scratch.wrapper_c, wrapper_source) == null) {
+        ld_error(
+            diags,
+            "L1C-2107",
+            "cannot write standalone-link wrapper: " + scratch.wrapper_c,
+            scratch.wrapper_c
+        );
+        return false;
+    }
+
+    with (
+        let compile_words = sv_create(20) => sv_free(compile_words),
+        let link_words = sv_create(20 + vec_size(plan.inputs)) =>
+            sv_free(link_words)
+    ) {
+        let family = bd_compiler_flag_family(compiler);
+        let optimize = bd_get_optimize_flag(family, extra_opts);
+        ld_push_wrapper_compile_words(
+            compile_words,
+            compiler,
+            family,
+            extra_opts,
+            optimize,
+            runtime_include,
+            scratch.wrapper_c,
+            scratch.wrapper_object
+        );
+        log_info(cfg, "Compiling standalone-link wrapper:");
+        if (!ld_run_host_command(
+                compile_words,
+                scratch.compile_stdout,
+                scratch.compile_stderr,
+                "L1C-2108",
+                "standalone-link wrapper compilation failed",
+                cfg,
+                diags)) {
+            return false;
+        }
+        if (!ld_validate_wrapper_object(scratch.wrapper_object, diags)) {
+            return false;
+        }
+
+        ld_push_final_link_words_with_runtime_inputs(
+            link_words,
+            compiler,
+            family,
+            scratch.wrapper_object,
+            plan,
+            runtime_inputs,
+            output_path
+        );
+        log_info(cfg, "Linking standalone executable:");
+        if (!ld_run_host_command(
+                link_words,
+                scratch.link_stdout,
+                scratch.link_stderr,
+                "L1C-2109",
+                "standalone host link failed",
+                cfg,
+                diags)) {
+            return false;
+        }
+    }
+
+    if (cd_path_kind(output_path) != CD_PATH_REGULAR) {
+        ld_error(
+            diags,
+            "L1C-2109",
+            "host linker did not produce a regular executable: " + output_path,
+            output_path
+        );
+        return false;
+    }
+    return true;
+}
+
+/** Execute public `l1c --link` mode. */
+func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let plan = ld_prepare_cli_inputs(
+            opts.link_operands, opts.entry_module, diags);
+        if (plan == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let verified = plan as LinkPlan*;
+        let output_path = opts.output as string;
+
+        let valid_output = ld_validate_output(output_path, diags);
+        let compiler = ld_take_compiler(opts, diags);
+        let extra_opts = bd_collect_c_option_words(opts);
+        let runtime_include = ld_runtime_include(opts, diags);
+        let runtime_inputs: StringVector*? = null;
+        if (compiler != null) {
+            runtime_inputs = ld_runtime_link_inputs(
+                opts, compiler as string, diags);
+        }
+        let valid_aliases = true;
+        let valid_windows_values = true;
+        if (valid_output && runtime_inputs != null) {
+            valid_aliases = ld_validate_output_aliases(
+                output_path,
+                verified,
+                runtime_inputs as StringVector*,
+                diags
+            );
+        }
+        if (bd_is_windows() &&
+            compiler != null && runtime_include != null &&
+            runtime_inputs != null) {
+            valid_windows_values = ld_validate_windows_shell_values(
+                compiler as string,
+                extra_opts,
+                runtime_include as string,
+                runtime_inputs as StringVector*,
+                output_path,
+                diags
+            );
+        }
+        if (!valid_output || compiler == null ||
+            runtime_include == null || runtime_inputs == null ||
+            !valid_aliases || !valid_windows_values) {
+            dp_print_collector(diags);
+            if (runtime_inputs != null) {
+                sv_free(runtime_inputs as StringVector*);
+            }
+            sv_free(extra_opts);
+            ld_plan_free(verified);
+            return 1;
+        }
+
+        let output_parent = parent(output_path);
+        let txn = ld_create_transaction(output_parent, diags);
+        if (txn == null) {
+            dp_print_collector(diags);
+            sv_free(runtime_inputs as StringVector*);
+            sv_free(extra_opts);
+            ld_plan_free(verified);
+            return 1;
+        }
+        let scratch = txn as LinkTransaction*;
+
+        let snapshotted = ld_snapshot_inputs(verified, scratch, diags);
+        let succeeded = false;
+        if (snapshotted) {
+            succeeded = ld_execute_plan(
+                verified,
+                compiler as string,
+                extra_opts,
+                runtime_include as string,
+                runtime_inputs as StringVector*,
+                output_path,
+                scratch,
+                cfg,
+                diags
+            );
+        }
+        let cleaned = ld_cleanup_transaction(scratch);
+        if (!cleaned) {
+            ld_error(
+                diags,
+                "L1C-2109",
+                "standalone-link transaction cleanup failed; retained files in " +
+                    scratch.root,
+                scratch.root
+            );
+        }
+
+        if (diag_count(diags) > 0) {
+            dp_print_collector(diags);
+        }
+        ld_transaction_free(scratch);
+        sv_free(runtime_inputs as StringVector*);
+        sv_free(extra_opts);
+        ld_plan_free(verified);
+
+        if (!succeeded || !cleaned) {
+            return 1;
+        }
+        log_info(cfg, "Linked executable: " + output_path);
+        return 0;
+    }
+}

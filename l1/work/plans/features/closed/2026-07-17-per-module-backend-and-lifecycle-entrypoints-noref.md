@@ -28,7 +28,7 @@
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
-  - [`l1/work/plans/features/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
+  - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md`][superseded-init]
 - Repro: `make -C l1 test-stage1 TESTS="backend_test c_emitter_test l1c_lib_test"`
 
@@ -187,6 +187,15 @@ the legacy generator until the fan-out plan removes it.
 3. If implementation exposes a genuinely user-triggerable lifecycle diagnostic, inspect the live catalog and plan an
    unused code before adding it; do not consume the object-metadata reservation owned by the next plan.
 
+## ADR Impact
+
+- Decision: Emit one source module per internal backend output with always-present module-local initialization and
+  finalization entry points plus a conditional entry bridge.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
+  - Rationale: ADR-0020 records target-only emission, `I4init`, `I4fini`, `I5entry`, linkage, and ownership boundaries.
+
 ## Non-Goals
 
 1. Computing or embedding interface fingerprints.
@@ -213,7 +222,7 @@ the legacy generator until the fan-out plan removes it.
 9. The ABI and C backend design documents describe the three compiler-generated symbols before this plan closes.
 
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
-[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
 [superseded-init]: 2026-04-24-multi-cu-initialization-and-link-order-noref.md

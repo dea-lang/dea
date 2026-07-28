@@ -14,6 +14,7 @@ let ORMACHO_MH_OBJECT: int = 1;
 let ORMACHO_LC_SEGMENT: int = 1;
 let ORMACHO_LC_SYMTAB: int = 2;
 let ORMACHO_LC_SEGMENT_64: int = 25;
+let ORMACHO_LC_LINKER_OPTION: int = 45;
 let ORMACHO_N_TYPE_UNDF: int = 0;
 let ORMACHO_N_TYPE_PBUD: int = 6;
 let ORMACHO_N_TYPE_SECT: int = 7;
@@ -127,6 +128,7 @@ func ormacho_read_bytes(bytes: string) -> ObjectContainerReadResult* {
     let symbol_count = 0;
     let string_offset = 0;
     let string_size = 0;
+    let linker_control = OBJECT_LINKER_CONTROL_NONE;
     let command_cursor = header_size;
     let command_end = header_size + (command_bytes as int);
     for (let command_i = 0; command_i < command_count as int;
@@ -143,6 +145,9 @@ func ormacho_read_bytes(bytes: string) -> ObjectContainerReadResult* {
             !ort_range_valid(command_end, command_cursor, command_size as int)) {
             ort_sections_free(sections);
             return ort_read_error(OBJECT_READ_CORRUPT, "invalid Mach-O load command size");
+        }
+        if ((command as int) == ORMACHO_LC_LINKER_OPTION) {
+            linker_control = OBJECT_LINKER_CONTROL_MACHO_LINKER_OPTION;
         }
 
         if ((command as int) == ORMACHO_LC_SEGMENT ||
@@ -274,6 +279,7 @@ func ormacho_read_bytes(bytes: string) -> ObjectContainerReadResult* {
     }
 
     let container = ort_container_create(OBJECT_FORMAT_MACHO, bytes);
+    container.linker_control = linker_control;
     if (!have_symtab) {
         ort_sections_free(sections);
         return ort_read_ok(container);

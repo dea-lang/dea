@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module linkset.stale.provider;
+
+export value, extra;
+
+func value() -> int {
+    return 12;
+}
+
+func extra() -> int {
+    return 1;
+}

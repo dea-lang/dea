@@ -102,6 +102,16 @@ modules and not just the old single-CU build shape.
 2. Existing import-cycle and entry-wrapper diagnostics should be reused first if the implementation exposes new failure
    paths while building the ordered init chain.
 
+## ADR Impact
+
+- Decision: Compose per-module lifecycle entry points in deterministic dependency-first initialization order and exact
+  reverse finalization order through the executable wrapper.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
+  - Rationale: ADR-0020 records the module-local lifecycle ABI and wrapper composition that replaced this superseded
+    tranche.
+
 ## Non-Goals
 
 1. Non-constant top-level `let` semantics; those are already established.
@@ -117,4 +127,4 @@ modules and not just the old single-CU build shape.
 
 [build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: ../2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md

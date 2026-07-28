@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-07-23
+Version: 2026-07-27
 
 Status: Finalized
 
@@ -90,6 +90,12 @@ lifecycle function or cleans imported storage.
 `I8metadata` and `I7imports` are externally linked C99 byte arrays. `I4init` performs one volatile byte read from each
 array so a linker dead-strip pass retains the records without custom sections or compiler-specific attributes. These
 reads do not change lifecycle ordering or make initialization conditional.
+
+The standalone link driver supplies the process wrapper that composes these symbols. It computes one dependency-first
+module order from verified object metadata, calls `_rt_init_args`, calls each `I4init` once in that order, calls only
+the selected `I5entry`, and calls each `I4fini` once in the exact reverse order. The wrapper defines the only
+process-level C `main`; compiler-emitted module objects do not define it, and an explicit foreign object is rejected if
+it does.
 
 ## Type Components
 
@@ -301,6 +307,27 @@ every such definition is Dea evidence even when the rest of the name is not a va
 definition with absent or invalid records is malformed, not a foreign-compatible object. Container read failures and
 unsupported or corrupt object formats remain object-read errors outside this metadata classification.
 
+### Standalone link-set validation
+
+`l1c --link` treats embedded object metadata as the link-time authority and does not reopen source or textual `.l1m`
+interfaces. A positional operand must classify as valid Dea metadata. An explicit `--foreign-object` must classify as
+metadata-free and must not define normalized process symbol `main`. Malformed Dea evidence and object-read failures are
+errors under either spelling.
+
+Metadata classification is independent of embedded linker-control inspection. ELF dependent-library sections, Mach-O
+linker-option commands, and PE/COFF directive sections reject either operand role before graph or host-link work; their
+payloads never become implicit libraries or raw linker arguments. The generated wrapper object is subject to the same
+inspection before the final host link.
+
+The driver requires one supplied object per canonical Dea module identity, complete ordered-import closure, exact
+consumer/provider fingerprint agreement, and an acyclic dependency graph. Entry inference requires exactly one object
+whose identity record carries `HAS_ENTRY`; explicit selection requires the named supplied object to carry that flag.
+Valid metadata already guarantees agreement between `HAS_ENTRY` and the exact module-owned `I5entry` definition. Foreign
+objects have no module identity, fingerprint, dependency, lifecycle, or entry semantics.
+
+The full CLI, lifecycle-ordering, output-transaction, and host-link contracts are specified in
+[l1/docs/reference/separate-compilation.md][separate-compilation].
+
 ## Portability
 
 The LBI uses only ISO C99 identifier characters `[A-Za-z0-9_]`. Generated C is expected to compile under
@@ -321,3 +348,4 @@ ARM64 (`0xaa64`). PE images, COFF bigobj and import-object encodings, and other 
 unsupported.
 
 [module-interface-format]: module-interface-format.md
+[separate-compilation]: ../../reference/separate-compilation.md

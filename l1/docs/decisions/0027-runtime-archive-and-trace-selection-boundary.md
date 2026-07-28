@@ -32,6 +32,10 @@ The traced runtime preserves the stable `rt_*` / `_rt_*` wrapper ABI for callers
 Generated traced C calls `_rt_*_impl` entry points with its source file and line directly so diagnostics retain the
 actual caller location.
 
+Standalone link uses the same variant and compiler-family selection boundary. Normal compiler families receive the
+selected runtime archive by exact path. TinyCC receives the complete variant-matched raw-object set by exact paths when
+available, with the selected archive as the fallback.
+
 This split is L1-specific. L0 keeps its header-only runtime at the L0 1.0 boundary.
 
 ## Rationale
@@ -57,6 +61,7 @@ the platform archive, and backporting the split to L0.
 ## Related Plans
 
 - [l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md][runtime-split]
+- [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 - [l1/work/initiatives/closed/0002-runtime-static-library.md][runtime-initiative]
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md][publication-plan]
 
@@ -64,6 +69,7 @@ the platform archive, and backporting the split to L0.
 
 - [l1/docs/reference/c-backend-design.md][backend]: runtime headers, archive variants, and TinyCC object selection
 - [l1/docs/specs/compiler/abi.md][abi]: stable runtime-facing ABI context
+- [l1/docs/reference/separate-compilation.md][separate-compilation]: standalone runtime-input selection
 - [l1/docs/reference/design-decisions.md][l1-decisions]: L1 runtime boundary and variant behavior
 - [l0/docs/reference/design-decisions.md][l0-decisions]: retained L0 runtime boundary
 
@@ -71,6 +77,8 @@ the platform archive, and backporting the split to L0.
 [backend]: ../reference/c-backend-design.md
 [l0-decisions]: ../../../l0/docs/reference/design-decisions.md
 [l1-decisions]: ../reference/design-decisions.md
+[link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [publication-plan]: ../../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md
 [runtime-initiative]: ../../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-split]: ../../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
+[separate-compilation]: ../reference/separate-compilation.md

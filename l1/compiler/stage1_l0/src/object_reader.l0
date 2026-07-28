@@ -128,6 +128,13 @@ func object_inspection_defines_main(self: ObjectInspection*) -> bool {
     return self.defines_main;
 }
 
+/** Embedded linker-control carrier reported by the format adapter. */
+func object_inspection_linker_control_kind(
+    self: ObjectInspection*
+) -> ObjectLinkerControlKind {
+    return self.container.linker_control;
+}
+
 /** Number of normalized external definitions, including duplicates. */
 func object_inspection_defined_symbol_count(self: ObjectInspection*) -> int {
     return vec_size(self.container.defined_symbols);

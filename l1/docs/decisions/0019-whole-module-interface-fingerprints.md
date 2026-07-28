@@ -1,7 +1,7 @@
 # ADR-0019: Whole-Module Interface Fingerprints
 
 - Decision date: 2026-07-21
-- Last edited: 2026-07-23
+- Last edited: 2026-07-27
 - Status: Accepted
 
 ## Context
@@ -67,14 +67,15 @@ failure.
   records checked preorder payload sizes and then streams bytes from those cached sizes; overflow is a canonicalization
   failure.
 - The compiler uses a narrow allocation-free C bridge to obtain all 64 SipHash bits during Stage 1 bootstrap.
-- Object metadata embedding, provider-object readers, and link-time comparison remain future work. They must consume
-  this fingerprint contract rather than introduce a second public-surface hash.
+- Object metadata embedding, provider-object readers, and standalone link comparison consume this fingerprint contract
+  rather than introducing a second public-surface hash.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+- [l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md][superseded-metadata]
 
 ## Current Docs
 
@@ -90,3 +91,4 @@ failure.
 [module-format]: ../specs/compiler/module-interface-format.md
 [module-graph]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
+[superseded-metadata]: ../../work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md
