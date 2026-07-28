@@ -288,12 +288,13 @@ func test_compile_mode_validation() {
 func test_link_mode_ordered_typed_operands() {
     with (let argv = sv_create(16) => sv_free(argv)) {
         sv_push(argv, "obj/first.o");
-        sv_push(argv, "--foreign-object");
+        sv_push(argv, "-Cf");
         sv_push(argv, "obj/provider.o");
-        sv_push(argv, "--link");
-        sv_push(argv, "--entry=app.main");
+        sv_push(argv, "-k");
+        sv_push(argv, "-e");
+        sv_push(argv, "app.main");
         sv_push(argv, "obj/second.o");
-        sv_push(argv, "--foreign-object=obj/helper.o");
+        sv_push(argv, "-Cf=obj/helper.o");
         sv_push(argv, "-o");
         sv_push(argv, "bin/app");
 
@@ -415,7 +416,7 @@ func test_link_mode_entry_validation() {
 func test_link_option_scope_and_missing_values() {
     with (let build_foreign = sv_create(6) => sv_free(build_foreign)) {
         sv_push(build_foreign, "--build");
-        sv_push(build_foreign, "--foreign-object=provider.o");
+        sv_push(build_foreign, "-Cf=provider.o");
         sv_push(build_foreign, "app.main");
         let parsed = cli_parse(build_foreign);
         assert(cli_result_has_code(parsed, "L1C-2091"), "expected foreign-object scope diagnostic");
@@ -424,16 +425,19 @@ func test_link_option_scope_and_missing_values() {
 
     with (let build_entry = sv_create(6) => sv_free(build_entry)) {
         sv_push(build_entry, "--build");
-        sv_push(build_entry, "--entry=app.main");
+        sv_push(build_entry, "-e");
+        sv_push(build_entry, "app.main");
         sv_push(build_entry, "app.main");
         let parsed2 = cli_parse(build_entry);
         assert(cli_result_has_code(parsed2, "L1C-2092"), "expected entry-option scope diagnostic");
         cli_parse_result_free(parsed2);
     }
 
-    with (let value_options = sv_create(4) => sv_free(value_options)) {
+    with (let value_options = sv_create(8) => sv_free(value_options)) {
         sv_push(value_options, "--foreign-object");
+        sv_push(value_options, "-Cf");
         sv_push(value_options, "--entry");
+        sv_push(value_options, "-e");
         for (let i = 0; i < sv_size(value_options); i = i + 1) {
             let option = sv_get(value_options, i);
             with (let argv = sv_create(8) => sv_free(argv)) {
@@ -460,12 +464,12 @@ func test_link_option_scope_and_missing_values() {
         sv_push(empty_foreign, "app.o");
         sv_push(empty_foreign, "-o");
         sv_push(empty_foreign, "app");
-        sv_push(empty_foreign, "--foreign-object=");
+        sv_push(empty_foreign, "-Cf=");
         let parsed4 = cli_parse(empty_foreign);
         assert(diag_count(parsed4.diags) == 1, "empty inline foreign object should emit one diagnostic");
         assert(cli_result_has_code(parsed4, "L1C-2003"), "empty inline foreign object should reuse L1C-2003");
         assert(
-            diag_get(parsed4.diags, 0).message == "missing value for option '--foreign-object'",
+            diag_get(parsed4.diags, 0).message == "missing value for option '-Cf'",
             "empty inline foreign-object message mismatch"
         );
         cli_parse_result_free(parsed4);
@@ -658,6 +662,8 @@ func test_namespaced_aliases_and_long_forms() {
     }
 
     with (let build = sv_create(12) => sv_free(build)) {
+        sv_push(build, "-Gk");
+        sv_push(build, "-Va");
         sv_push(build, "-Cc");
         sv_push(build, "tcc");
         sv_push(build, "-Co=-Og -DDEBUG");
@@ -668,6 +674,8 @@ func test_namespaced_aliases_and_long_forms() {
         let parsed2 = cli_parse(build);
         assert(!diag_has_errors(parsed2.diags), "expected namespaced build aliases to parse");
         let opts2 = parsed2.options as CliOptions*;
+        assert(opts2.keep_c, "keep-C alias mismatch");
+        assert(opts2.trace_arc, "ARC-trace alias mismatch");
         assert(opts2.c_compiler as string == "tcc", "C compiler alias mismatch");
         assert(opts2.c_options as string == "-Og -DDEBUG", "C options alias mismatch");
         assert(opts2.runtime_include as string == "runtime/include", "runtime include alias mismatch");
@@ -684,6 +692,43 @@ func test_namespaced_aliases_and_long_forms() {
         cli_parse_result_free(parsed3);
     }
 
+    with (let emit_interface = sv_create(3) => sv_free(emit_interface)) {
+        sv_push(emit_interface, "-Gi");
+        sv_push(emit_interface, "app.main");
+        let parsed4 = cli_parse(emit_interface);
+        assert(!diag_has_errors(parsed4.diags), "expected -Gi parse success");
+        assert(ord((parsed4.options as CliOptions*).mode) == ord(CM_EMIT_INTERFACE),
+            "expected -Gi emit-interface mode");
+        cli_parse_result_free(parsed4);
+    }
+
+    with (let basic = sv_create(3) => sv_free(basic)) {
+        sv_push(basic, "-Sb");
+        sv_push(basic, "app.main");
+        let parsed5 = cli_parse(basic);
+        assert(!diag_has_errors(parsed5.diags), "expected -Sb parse success");
+        assert((parsed5.options as CliOptions*).check_basic, "check-basic alias mismatch");
+        cli_parse_result_free(parsed5);
+    }
+
+    with (let unchecked = sv_create(3) => sv_free(unchecked)) {
+        sv_push(unchecked, "-Su");
+        sv_push(unchecked, "app.main");
+        let parsed6 = cli_parse(unchecked);
+        assert(!diag_has_errors(parsed6.diags), "expected -Su parse success");
+        assert((parsed6.options as CliOptions*).unchecked, "unchecked alias mismatch");
+        cli_parse_result_free(parsed6);
+    }
+
+    with (let memory = sv_create(3) => sv_free(memory)) {
+        sv_push(memory, "-Vm");
+        sv_push(memory, "app.main");
+        let parsed7 = cli_parse(memory);
+        assert(!diag_has_errors(parsed7.diags), "expected -Vm parse success");
+        assert((parsed7.options as CliOptions*).trace_memory, "memory-trace alias mismatch");
+        cli_parse_result_free(parsed7);
+    }
+
     with (let long_forms = sv_create(12) => sv_free(long_forms)) {
         sv_push(long_forms, "--log");
         sv_push(long_forms, "--project-root=project/long");
@@ -693,9 +738,9 @@ func test_namespaced_aliases_and_long_forms() {
         sv_push(long_forms, "--runtime-include=runtime/include-long");
         sv_push(long_forms, "--runtime-lib=runtime/lib-long");
         sv_push(long_forms, "app.main");
-        let parsed4 = cli_parse(long_forms);
-        assert(!diag_has_errors(parsed4.diags), "expected unchanged long forms to parse");
-        let long_opts = parsed4.options as CliOptions*;
+        let parsed8 = cli_parse(long_forms);
+        assert(!diag_has_errors(parsed8.diags), "expected unchanged long forms to parse");
+        let long_opts = parsed8.options as CliOptions*;
         assert(long_opts.log, "long log option mismatch");
         assert(sv_get(long_opts.project_roots, 0) == "project/long", "long project root mismatch");
         assert(sv_get(long_opts.sys_roots, 0) == "system/long", "long system root mismatch");
@@ -703,7 +748,7 @@ func test_namespaced_aliases_and_long_forms() {
         assert(long_opts.c_options as string == "-O2", "long C options mismatch");
         assert(long_opts.runtime_include as string == "runtime/include-long", "long runtime include mismatch");
         assert(long_opts.runtime_lib as string == "runtime/lib-long", "long runtime lib mismatch");
-        cli_parse_result_free(parsed4);
+        cli_parse_result_free(parsed8);
     }
 }
 
@@ -711,16 +756,26 @@ func test_namespaced_aliases_and_long_forms() {
  * Tests namespaced value options reject concatenated spellings.
  */
 func test_namespaced_values_reject_concatenation() {
-    with (let concatenated = sv_create(10) => sv_free(concatenated)) {
+    with (let concatenated = sv_create(24) => sv_free(concatenated)) {
         sv_push(concatenated, "-Rpproject");
         sv_push(concatenated, "-Rssystem");
         sv_push(concatenated, "-Ccclang");
         sv_push(concatenated, "-Co-O2");
         sv_push(concatenated, "-Riruntime/include");
         sv_push(concatenated, "-Rlruntime/lib");
+        sv_push(concatenated, "-Gkmore");
+        sv_push(concatenated, "-Gimore");
+        sv_push(concatenated, "-Sbmore");
+        sv_push(concatenated, "-Sumore");
+        sv_push(concatenated, "-Vamore");
+        sv_push(concatenated, "-Vmmore");
+        sv_push(concatenated, "-Vmore");
+        sv_push(concatenated, "-kmore");
+        sv_push(concatenated, "-eapp.main");
+        sv_push(concatenated, "-Cfprovider.o");
         sv_push(concatenated, "app.main");
         let parsed = cli_parse(concatenated);
-        assert(diag_count(parsed.diags) == 6, "expected each concatenated namespaced value to be rejected");
+        assert(diag_count(parsed.diags) == 16, "expected each concatenated alias to be rejected");
         for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
             assert(diag_get(parsed.diags, i).code == "L1C-2001", "expected unknown-option diagnostic");
         }
@@ -735,13 +790,31 @@ func test_namespaced_values_reject_concatenation() {
         cli_parse_result_free(parsed2);
     }
 
+    with (let deferred = sv_create(4) => sv_free(deferred)) {
+        sv_push(deferred, "-Cs");
+        sv_push(deferred, "-Rr");
+        sv_push(deferred, "-Cl");
+        for (let i = 0; i < sv_size(deferred); i = i + 1) {
+            with (let argv = sv_create(3) => sv_free(argv)) {
+                sv_push(argv, sv_get(deferred, i));
+                sv_push(argv, "app.main");
+                let parsed3 = cli_parse(argv);
+                assert(
+                    diag_count(parsed3.diags) == 1 && diag_get(parsed3.diags, 0).code == "L1C-2001",
+                    "deferred namespaced alias must remain unknown"
+                );
+                cli_parse_result_free(parsed3);
+            }
+        }
+    }
+
     with (let missing = sv_create(3) => sv_free(missing)) {
         sv_push(missing, "app.main");
         sv_push(missing, "-Cc");
-        let parsed3 = cli_parse(missing);
-        assert(diag_count(parsed3.diags) == 1, "expected one namespaced missing-value diagnostic");
-        assert(cli_result_has_code(parsed3, "L1C-2003"), "expected namespaced missing-value diagnostic");
-        cli_parse_result_free(parsed3);
+        let parsed4 = cli_parse(missing);
+        assert(diag_count(parsed4.diags) == 1, "expected one namespaced missing-value diagnostic");
+        assert(cli_result_has_code(parsed4, "L1C-2003"), "expected namespaced missing-value diagnostic");
+        cli_parse_result_free(parsed4);
     }
 }
 
@@ -850,7 +923,7 @@ func test_help_flag_short_circuits_validation() {
  */
 func test_version_flag_short_circuits_validation() {
     with (let argv = sv_create(4) => sv_free(argv)) {
-        sv_push(argv, "--version");
+        sv_push(argv, "-V");
         sv_push(argv, "--bogus");
 
         let parsed = cli_parse(argv);

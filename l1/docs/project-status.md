@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-27
+Version: 2026-07-28
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -56,7 +56,7 @@ components where needed, nominal types use `S` / `E`, and compiler-generated mod
 lets, and consts. In per-module output, compiler-generated `I4init`, `I4fini`, and `I5entry` infrastructure retains
 external linkage independently of source exports.
 
-The bootstrap compiler can emit deterministic textual `.l1m` module interface artifacts through the internal
+The bootstrap compiler can emit deterministic textual `.l1m` module interface artifacts through the internal `-Gi` /
 `--emit-interface` mode and round-trip them through a constrained interface parser. Emission computes a canonical
 SipHash-1-3 fingerprint over the effective exported surface, writes the mandatory
 `sip13:<16 lowercase hexadecimal digits>` value, and fills every dependency entry with its provider module's
@@ -106,16 +106,18 @@ no-follow classification.
 The driver stages generated C, the object, and the interface beside the selected destinations. Successful return leaves
 the complete new selected set; recoverable publication failure restores the exact prior set; failed rollback retains
 recovery files. Publication and rollback use sequential renames, so concurrent readers may observe missing paths or
-mixed generations and same-stem access requires external serialization. The shared semantic aliases are `-Gc` for
-generated C, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` for host-C controls, `-Ri` / `-Rl` for runtime paths, and
-`-Vl` for rich logging. The conventional `-g`, `-S`, `-L`, and `-l` meanings are reserved but not implemented.
+mixed generations and same-stem access requires external serialization. The shared semantic aliases include `-Gc` /
+`-Gi` / `-Gk` for generated artifacts, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` / `-Cf` for host-C controls and
+explicit foreign objects, `-Ri` / `-Rl` for runtime paths, `-Sb` / `-Su` for runtime safety, and `-Vl` / `-Va` / `-Vm`
+for logging and tracing. `-V` prints version information. The conventional `-g`, `-S`, `-L`, and `-l` meanings are
+reserved but not implemented.
 
-The CLI implements `l1c --link DEA_OBJECT... [--foreign-object C_OBJECT]... [--entry MODULE] -o OUTPUT`. Positional
-inputs must carry valid Dea metadata; metadata-free relocatables require the explicit foreign spelling; malformed Dea
-evidence, foreign objects defining process `main`, and either role's ELF, Mach-O, or PE/COFF embedded linker controls
-are rejected. The generated wrapper object receives the same control inspection before final linking. The driver
-verifies unique module identities, complete ordered-import closure, exact provider fingerprints, an acyclic graph, and
-one explicit or inferred entry without reopening source or `.l1m` files.
+The CLI implements `l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT`, with long aliases `--link`,
+`--foreign-object`, and `--entry`. Positional inputs must carry valid Dea metadata; metadata-free relocatables require
+the explicit foreign spelling; malformed Dea evidence, foreign objects defining process `main`, and either role's ELF,
+Mach-O, or PE/COFF embedded linker controls are rejected. The generated wrapper object receives the same control
+inspection before final linking. The driver verifies unique module identities, complete ordered-import closure, exact
+provider fingerprints, an acyclic graph, and one explicit or inferred entry without reopening source or `.l1m` files.
 
 An explicit depth-first frame stack computes deterministic dependency-first lifecycle order without native recursion.
 The generated wrapper calls only the selected entry bridge and finalizes modules in exact reverse order. Normal compiler

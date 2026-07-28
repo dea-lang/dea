@@ -1,6 +1,6 @@
 # L0 Project Status
 
-Version: 2026-07-16
+Version: 2026-07-28
 
 This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `1.1.0`; the current
 development line targets `2.0.0` and includes a coordinated breaking CLI alias migration.
@@ -35,7 +35,7 @@ At a high level, it provides:
 - the full current frontend pipeline from lexing through type checking,
 - C99 code generation for the implemented L0 language surface,
 - the shared public CLI surface documented in [l0/docs/specs/compiler/cli-contract.md](specs/compiler/cli-contract.md),
-- tracing support via `--trace-arc` and `--trace-memory`.
+- tracing support via `-Va` / `--trace-arc` and `-Vm` / `--trace-memory`.
 
 ### Stage 2
 
@@ -59,9 +59,10 @@ At a high level, it provides:
 Stage 1 remains the behavioral oracle for equivalent Stage 2 paths.
 
 The 2.0 CLI gives conventional driver spellings stable meanings across levels. Dea-specific short options use semantic
-namespaces such as `-Gc`, `-Rp` / `-Rs`, `-Cc` / `-Co`, `-Ri` / `-Rl`, and `-Vl`; the long forms remain unchanged.
-Compile-only output, interface discovery, debug/assembly emission, and external-library forwarding are not implemented
-in L0.
+namespaces such as `-Gc` / `-Gk` for generated artifacts, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` for host-C
+controls, `-Ri` / `-Rl` for runtime paths, `-Sb` / `-Su` for runtime safety, and `-Vl` / `-Va` / `-Vm` for logging and
+tracing; `-V` prints version information. The long forms remain unchanged. Compile-only output, interface discovery,
+debug/assembly emission, and external-library forwarding are not implemented in L0.
 
 ## Language and Library Coverage
 

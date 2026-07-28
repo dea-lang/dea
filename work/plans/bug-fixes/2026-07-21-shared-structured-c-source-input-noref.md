@@ -44,8 +44,8 @@ compiler implementations intentionally split `L0_CFLAGS` and `--c-options` on wh
 spaces becomes multiple C compiler arguments and the Stage 1 build fails.
 
 The correct fix is an additive structured source-input option, not quoting rules inside option strings. This plan adds a
-repeatable `--c-source PATH` contract to both L0 compiler stages and migrates L1 to pass its support unit through that
-contract. It is intentionally deferred and remains unimplemented.
+repeatable `-Cs PATH` / `-Cs=PATH` / `--c-source PATH` contract to both L0 compiler stages and migrates L1 to pass its
+support unit through that contract. It is intentionally deferred and remains unimplemented.
 
 This option is a prerequisite for the L0 Stage 2 support translation unit required by the shared native build/run
 workspace plan. It is not a prerequisite for standalone L1 `--link`: that mode compiles its generated wrapper through
@@ -53,8 +53,8 @@ the L1 compiler's direct host-driver command path and owns an output-local link 
 
 ## Required Contract
 
-1. `--c-source PATH` is repeatable in `--build` and `--run` modes; each occurrence contributes exactly one argv element
-   regardless of whitespace or platform path syntax.
+1. `-Cs PATH` / `-Cs=PATH` / `--c-source PATH` is repeatable in `--build` and `--run` modes; each occurrence contributes
+   exactly one argv element regardless of whitespace or platform path syntax.
 2. Extra sources retain CLI occurrence order. The C command places generated C first, followed by extra sources, before
    output and runtime-library flags.
 3. `L0_CFLAGS` and `--c-options` remain option-only, whitespace-delimited inputs with their existing env-first, CLI-last

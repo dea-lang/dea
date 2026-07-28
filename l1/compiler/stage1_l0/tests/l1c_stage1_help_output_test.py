@@ -66,11 +66,15 @@ def main() -> int:
 
     help_text = completed.stdout
     expected_fragments = (
-        "usage: l1c [-h] [--version] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT]",
+        "usage: l1c [-h] [-V] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT]",
+        "       l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT",
+        "  -V, --version         show compiler version and exit",
         "  -Vl, --log            Enable rich log formatting",
         "  -Rp, --project-root PROJECT_ROOT",
         "  -Rs, --sys-root SYS_ROOT",
         "  -c, --compile         Compile one module to sibling .o and .l1m artifacts",
+        "  -k, --link            Link verified Dea objects into an executable",
+        "  -Gi, --emit-interface Emit the module interface",
         "  --gen, -Gc, --codegen Generate C code",
         "  --c-compiler, -Cc C_COMPILER",
         "  --c-options, -Co C_OPTIONS",
@@ -78,7 +82,13 @@ def main() -> int:
         "'--compile'; searched in declaration order)",
         "  --runtime-include, -Ri RUNTIME_INCLUDE",
         "  --runtime-lib, -Rl RUNTIME_LIB",
-        "  --keep-c              Keep generated C file (valid in: '--build', '--compile',",
+        "  -Cf, --foreign-object C_OBJECT",
+        "  -e, --entry MODULE    Select one canonical dotted Dea entry module",
+        "  -Gk, --keep-c         Keep generated C file (valid in: '--build', '--compile',",
+        "  -Sb, --check-basic",
+        "  -Su, --unchecked",
+        "  -Va, --trace-arc",
+        "  -Vm, --trace-memory",
         "'--run'; compile mode adds the sibling .c artifact)",
         "  -g                    Reserved debug-information option (not supported yet)",
         "  -S                    Reserved assembly-output option (not supported yet)",
@@ -100,6 +110,31 @@ def main() -> int:
     )
     for fragment in retired_fragments:
         assert fragment not in help_text, f"retired help fragment remains: {fragment!r}"
+
+    long_version = subprocess.run(
+        [str(compiler), "--version"],
+        cwd=L1_ROOT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    short_version = subprocess.run(
+        [str(compiler), "-V"],
+        cwd=L1_ROOT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert long_version.returncode == 0, f"--version exited with {long_version.returncode}: {long_version.stderr}"
+    assert short_version.returncode == 0, f"-V exited with {short_version.returncode}: {short_version.stderr}"
+    assert short_version.stdout == long_version.stdout, "-V and --version output differ"
+    assert short_version.stderr == long_version.stderr == "", "version aliases wrote stderr"
 
     print("l1c_stage1_help_output_test: PASS", flush=True)
     return 0

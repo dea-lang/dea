@@ -1376,22 +1376,22 @@ def _add_codegen_arg(parser: argparse.ArgumentParser) -> None:
         help="Disable #line directives in generated C code (valid in: '--build', '--run', '--gen')",
     )
     parser.add_argument(
-        "--trace-arc",
+        "-Va", "--trace-arc",
         action="store_true",
         help="Enable ARC runtime tracing in generated C code (emits L0_TRACE_ARC; valid in: '--build', '--run', '--gen')",
     )
     parser.add_argument(
-        "--trace-memory",
+        "-Vm", "--trace-memory",
         action="store_true",
         help="Enable memory runtime tracing in generated C code (emits L0_TRACE_MEMORY; valid in: '--build', '--run', '--gen')",
     )
     parser.add_argument(
-        "--unchecked",
+        "-Su", "--unchecked",
         action="store_true",
         help="Disable runtime pointer validation in generated C code (emits L0_RT_UNCHECKED; valid in: '--build', '--run', '--gen')",
     )
     parser.add_argument(
-        "--check-basic",
+        "-Sb", "--check-basic",
         action="store_true",
         help="Use basic checked runtime pointer validation in generated C code (emits L0_RT_CHECK_BASIC; valid in: '--build', '--run', '--gen')",
     )
@@ -1433,11 +1433,17 @@ def _normalize_cli_argv(
     """
     short_flags = {
         "-h",
+        "-V",
         "-v",
         "-Vl",
+        "-Va",
+        "-Vm",
         "-r",
         "-c",
         "-Gc",
+        "-Gk",
+        "-Sb",
+        "-Su",
         "-g",
         "-S",
         "-NLD",
@@ -1665,7 +1671,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         ),
     )
     parser.add_argument(
-        "--version",
+        "-V", "--version",
         action="version",
         version=compiler_identity_text(),
         help="show compiler version and exit",
@@ -1762,7 +1768,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     )
     _add_codegen_arg(parser)
     parser.add_argument(
-        "--keep-c",
+        "-Gk", "--keep-c",
         action="store_true",
         help="Keep generated C file (valid in: '--build', '--run'; use with '--output' to specify C file path"
     )
@@ -1778,7 +1784,7 @@ def main(argv: Optional[List[str]] = None) -> None:
             (
                 token
                 for token in cli_argv
-                if token in {"-h", "--help", "--version"}
+                if token in {"-h", "--help", "-V", "--version"}
             ),
             None,
         )

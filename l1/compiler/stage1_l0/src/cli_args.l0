@@ -405,11 +405,12 @@ func cli_has_help_flag(argv: StringVector*, cli_end: int) -> bool {
  *
  * @param argv Full argument vector excluding the executable name.
  * @param cli_end Exclusive end index for compiler CLI arguments.
- * @return `true` when `--version` is present before `cli_end`.
+ * @return `true` when `-V` or `--version` is present before `cli_end`.
  */
 func cli_has_version_flag(argv: StringVector*, cli_end: int) -> bool {
     for (let i = 0; i < cli_end; i = i + 1) {
-        if (sv_get(argv, i) == "--version") {
+        let token = sv_get(argv, i);
+        if (token == "-V" || token == "--version") {
             return true;
         }
     }
@@ -449,19 +450,18 @@ func cli_print_blank_line(to_stderr: bool) {
  * @param to_stderr Whether the banner should be written to standard error.
  */
 func cli_print_usage(to_stderr: bool) {
-    cli_print_line(to_stderr, "usage: l1c [-h] [--version] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT] [--run | --build |");
-    cli_print_line(to_stderr, "           -c | --compile | --link | --emit-interface | --gen | --check | --tok | --ast | --sym | --type]");
+    cli_print_line(to_stderr, "usage: l1c [-h] [-V] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT] [--run | --build |");
+    cli_print_line(to_stderr, "           -c | --compile | -k | -Gi | --gen | --check | --tok | --ast | --sym | --type]");
     cli_print_line(to_stderr, "           [-I INTERFACE_PATH]");
     cli_print_line(to_stderr, "           [--output OUTPUT]");
-    cli_print_line(to_stderr, "           [--foreign-object C_OBJECT] [--entry MODULE]");
+    cli_print_line(to_stderr, "           [-Cf C_OBJECT] [-e MODULE]");
     cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS]");
     cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
-    cli_print_line(to_stderr, "           [--no-line-directives] [--trace-arc] [--trace-memory] [--unchecked]");
-    cli_print_line(to_stderr, "           [--check-basic]");
-    cli_print_line(to_stderr, "           [--keep-c]");
+    cli_print_line(to_stderr, "           [--no-line-directives] [-Va] [-Vm] [-Su] [-Sb]");
+    cli_print_line(to_stderr, "           [-Gk]");
     cli_print_line(to_stderr, "           [--all-modules] [--include-eof]");
     cli_print_line(to_stderr, "           targets [targets ...]");
-    cli_print_line(to_stderr, "       l1c --link DEA_OBJECT... [--foreign-object C_OBJECT]... [--entry MODULE] -o OUTPUT");
+    cli_print_line(to_stderr, "       l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT");
 }
 
 /**
@@ -478,7 +478,7 @@ func cli_print_help() {
     cli_print_blank_line(false);
     cli_print_line(false, "options:");
     cli_print_line(false, "  -h, --help            show this help message and exit");
-    cli_print_line(false, "  --version             show compiler version and exit");
+    cli_print_line(false, "  -V, --version         show compiler version and exit");
     cli_print_line(false, "  -v, --verbose         Increase verbosity: -v=INFO, -vvv=DEBUG");
     cli_print_line(false, "  -Vl, --log            Enable rich log formatting (timestamps, levels)");
     cli_print_line(false, "  -Rp, --project-root PROJECT_ROOT");
@@ -491,8 +491,8 @@ func cli_print_help() {
     cli_print_line(false, "  --run, -r             Build and run a module");
     cli_print_line(false, "  --build               Build an executable (default mode)");
     cli_print_line(false, "  -c, --compile         Compile one module to sibling .o and .l1m artifacts");
-    cli_print_line(false, "  --link                Link verified Dea objects into an executable");
-    cli_print_line(false, "  --emit-interface      Emit the module interface (.l1m) text for the target module");
+    cli_print_line(false, "  -k, --link            Link verified Dea objects into an executable");
+    cli_print_line(false, "  -Gi, --emit-interface Emit the module interface (.l1m) text for the target module");
     cli_print_line(false, "  --gen, -Gc, --codegen Generate C code");
     cli_print_line(false, "  --check, --analyze    Parse and analyze a module");
     cli_print_line(false, "  --tok, --tokens       Dump lexer tokens");
@@ -500,10 +500,10 @@ func cli_print_help() {
     cli_print_line(false, "  --sym, --symbols      Dump module-level symbols");
     cli_print_line(false, "  --type, --types       Dump resolved types");
     cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--compile', '--emit-interface', '--gen', '--link', '--run')");
-    cli_print_line(false, "  --foreign-object C_OBJECT");
+    cli_print_line(false, "  -Cf, --foreign-object C_OBJECT");
     cli_print_line(false, "                        Add an explicit metadata-free relocatable C object");
     cli_print_line(false, "                        in encounter order (repeatable; valid in: '--link')");
-    cli_print_line(false, "  --entry MODULE        Select one canonical dotted Dea entry module");
+    cli_print_line(false, "  -e, --entry MODULE    Select one canonical dotted Dea entry module");
     cli_print_line(false, "                        (at most once; valid in: '--link')");
     cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");
     cli_print_line(false, "                        C compiler to use (valid in: '--build', '--compile',");
@@ -534,19 +534,19 @@ func cli_print_help() {
     cli_print_line(false, "  --no-line-directives, -NLD");
     cli_print_line(false, "                        Disable #line directives in generated C code (valid");
     cli_print_line(false, "                        in: '--build', '--compile', '--gen', '--run')");
-    cli_print_line(false, "  --trace-arc           Use the traced runtime archive for ARC diagnostics;");
+    cli_print_line(false, "  -Va, --trace-arc      Use the traced runtime archive for ARC diagnostics;");
     cli_print_line(false, "                        with '--gen', generated C calls traced runtime");
     cli_print_line(false, "                        entrypoints directly (link libdea_rt_traced.a)");
-    cli_print_line(false, "  --trace-memory        Use the traced runtime archive for memory diagnostics;");
+    cli_print_line(false, "  -Vm, --trace-memory   Use the traced runtime archive for memory diagnostics;");
     cli_print_line(false, "                        with '--gen', generated C calls traced runtime");
     cli_print_line(false, "                        entrypoints directly (link libdea_rt_traced.a)");
-    cli_print_line(false, "  --unchecked           Disable runtime pointer validation and use the unchecked");
+    cli_print_line(false, "  -Su, --unchecked      Disable runtime pointer validation and use the unchecked");
     cli_print_line(false, "                        runtime archive; with '--gen', generated C defines");
     cli_print_line(false, "                        DEA_RT_UNCHECKED (link libdea_rt_unchecked.a)");
-    cli_print_line(false, "  --check-basic         Use the basic checked runtime archive; with '--gen',");
+    cli_print_line(false, "  -Sb, --check-basic    Use the basic checked runtime archive; with '--gen',");
     cli_print_line(false, "                        generated C defines DEA_RT_CHECK_BASIC (link");
     cli_print_line(false, "                        libdea_rt_check_basic.a)");
-    cli_print_line(false, "  --keep-c              Keep generated C file (valid in: '--build', '--compile',");
+    cli_print_line(false, "  -Gk, --keep-c         Keep generated C file (valid in: '--build', '--compile',");
     cli_print_line(false, "                        '--run'; compile mode adds the sibling .c artifact)");
     cli_print_line(false, "  --all-modules, -a     Process all modules in the compilation unit (valid in:");
     cli_print_line(false, "                        '--tok', '--ast', '--sym', '--type')");
@@ -853,12 +853,12 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 i = i + 1;
                 continue;
             }
-            if (token == "--link") {
+            if (token == "-k" || token == "--link") {
                 cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_LINK);
                 i = i + 1;
                 continue;
             }
-            if (token == "--emit-interface") {
+            if (token == "-Gi" || token == "--emit-interface") {
                 cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_EMIT_INTERFACE);
                 i = i + 1;
                 continue;
@@ -919,31 +919,31 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "--unchecked") {
+            if (token == "-Su" || token == "--unchecked") {
                 (opts as CliOptions*).unchecked = true;
                 i = i + 1;
                 continue;
             }
 
-            if (token == "--check-basic") {
+            if (token == "-Sb" || token == "--check-basic") {
                 (opts as CliOptions*).check_basic = true;
                 i = i + 1;
                 continue;
             }
 
-            if (token == "--trace-arc") {
+            if (token == "-Va" || token == "--trace-arc") {
                 (opts as CliOptions*).trace_arc = true;
                 i = i + 1;
                 continue;
             }
 
-            if (token == "--trace-memory") {
+            if (token == "-Vm" || token == "--trace-memory") {
                 (opts as CliOptions*).trace_memory = true;
                 i = i + 1;
                 continue;
             }
 
-            if (token == "--keep-c") {
+            if (token == "-Gk" || token == "--keep-c") {
                 (opts as CliOptions*).keep_c = true;
                 i = i + 1;
                 continue;
@@ -961,7 +961,7 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "--foreign-object") {
+            if (token == "-Cf" || token == "--foreign-object") {
                 let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
@@ -995,7 +995,26 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
-            if (token == "--entry") {
+            if (starts_with_s(token, "-Cf=")) {
+                let value = slice_s(token, len_s("-Cf="), len_s(token));
+                if (is_empty_s(value)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2003",
+                        "missing value for option '-Cf'"
+                    );
+                } else {
+                    cli_link_operands_push(
+                        (opts as CliOptions*).link_operands,
+                        LOK_FOREIGN_OBJECT,
+                        value
+                    );
+                }
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-e" || token == "--entry") {
                 entry_option_count = entry_option_count + 1;
                 let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (entry_option_count > 1) {

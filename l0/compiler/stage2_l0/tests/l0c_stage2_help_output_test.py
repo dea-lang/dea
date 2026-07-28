@@ -64,12 +64,17 @@ def main() -> int:
         assert_contains(help_stdout, "usage: l0c [-h]")
         assert_contains(help_stdout, "Dea language / L0 compiler")
         assert_contains(help_stdout, "  -h, --help            show this help message and exit")
-        assert_contains(help_stdout, "  --version             show compiler version and exit")
+        assert_contains(help_stdout, "  -V, --version         show compiler version and exit")
         assert_contains(help_stdout, "  -Vl, --log")
         assert_contains(help_stdout, "  -Rp, --project-root PROJECT_ROOT")
         assert_contains(help_stdout, "  -Rs, --sys-root SYS_ROOT")
         assert_contains(help_stdout, "  -c, --compile")
         assert_contains(help_stdout, "  -Gc, --gen, --codegen")
+        assert_contains(help_stdout, "  -Gk, --keep-c")
+        assert_contains(help_stdout, "  -Sb, --check-basic")
+        assert_contains(help_stdout, "  -Su, --unchecked")
+        assert_contains(help_stdout, "  -Va, --trace-arc")
+        assert_contains(help_stdout, "  -Vm, --trace-memory")
         assert_contains(help_stdout, "  -I, --interface-path INTERFACE_PATH")
         assert_contains(help_stdout, "  --c-compiler, -Cc C_COMPILER")
         assert_contains(help_stdout, "  --c-options, -Co C_OPTIONS")
@@ -96,6 +101,14 @@ def main() -> int:
         run_to_files([l0c, "--version"], version_stdout, version_stderr, env=clean_env())
         assert_version_report(version_stdout)
         assert_empty(version_stderr)
+
+        short_version_stdout = tmp_dir / "short-version.stdout"
+        short_version_stderr = tmp_dir / "short-version.stderr"
+        run_to_files([l0c, "-V"], short_version_stdout, short_version_stderr, env=clean_env())
+        assert_version_report(short_version_stdout)
+        assert_empty(short_version_stderr)
+        if read_text(version_stdout) != read_text(short_version_stdout):
+            raise ToolTestFailure("-V and --version output must match")
 
         native_version_stdout = tmp_dir / "native-version.stdout"
         native_version_stderr = tmp_dir / "native-version.stderr"
@@ -128,7 +141,7 @@ def main() -> int:
             raise ToolTestFailure(f"expected -v without target exit code 2, got {completed.returncode}")
         assert_empty(verbose_fail_stdout)
         assert_contains(verbose_fail_stderr, "Dea language / L0 compiler")
-        assert_contains(verbose_fail_stderr, "usage: l0c [-h] [--version]")
+        assert_contains(verbose_fail_stderr, "usage: l0c [-h] [-V]")
         assert_contains(verbose_fail_stderr, "error: [L0C-2021] missing required target module/file name")
 
         noargs_stdout = tmp_dir / "noargs.stdout"
@@ -143,7 +156,7 @@ def main() -> int:
         if completed.returncode != 2:
             raise ToolTestFailure(f"expected no-args exit code 2, got {completed.returncode}")
         assert_empty(noargs_stdout)
-        assert_contains(noargs_stderr, "usage: l0c [-h] [--version]")
+        assert_contains(noargs_stderr, "usage: l0c [-h] [-V]")
         assert_contains(noargs_stderr, "error: [L0C-2021] missing required target module/file name")
     except ToolTestFailure as exc:
         return fail(str(exc))

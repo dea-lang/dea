@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-07-27
+Version: 2026-07-28
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -193,8 +193,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   build/run fan-out.
 - Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] converts `--build` and `--run` to the shared
   multi-CU compile/link APIs.
-- Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `--rpath`, and `--link-arg`
-  as the external-library linking surface.
+- Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl`
+  / `--link-arg` as the external-library linking surface.
 - Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
   non-variadic C boundary.
 - Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] decomposes oversized Stage 1

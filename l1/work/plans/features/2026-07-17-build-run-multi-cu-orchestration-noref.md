@@ -83,11 +83,11 @@ modes.
 1. Existing source forms remain primary:
 
    ```text
-   l1c --build MODULE [-I ROOT]... [--foreign-object C_OBJECT]... [-o OUTPUT]
-   l1c --run MODULE [-I ROOT]... [--foreign-object C_OBJECT]... [-- PROGRAM_ARG...]
+   l1c --build MODULE [-I ROOT]... [-Cf C_OBJECT]... [-o OUTPUT]
+   l1c --run MODULE [-I ROOT]... [-Cf C_OBJECT]... [-- PROGRAM_ARG...]
    ```
 
-2. `--foreign-object PATH` and `--foreign-object=PATH` are repeatable, have no short alias, and are valid in `--build`
+2. `-Cf PATH` / `-Cf=PATH` / `--foreign-object PATH` / `--foreign-object=PATH` are repeatable and are valid in `--build`
    and `--run` because both modes link. Each occurrence is retained at its declaration point in the shared typed link
    input stream.
 

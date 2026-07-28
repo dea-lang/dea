@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-07-27
+Version: 2026-07-28
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -143,13 +143,13 @@ rollback reports a publication failure; if rollback itself fails, the compiler r
 `L1C-2036` instead of discarding them. Cleanup is deliberately non-recursive: an auxiliary file requested through raw
 host-C options is reported and retained with the transaction directory rather than silently removed.
 
-The CLI also implements standalone `l1c --link DEA_OBJECT... [--foreign-object C_OBJECT]... [--entry MODULE] -o OUTPUT`.
-The driver inspects each operand once, enforces the explicit Dea/foreign classification, verifies unique Dea module
-identities, closes every ordered import against one supplied provider, compares exact interface fingerprints, rejects
-cycles, and resolves one entry module. It never reopens source or `.l1m` files. Format adapters also mark ELF
-dependent-library sections, Mach-O linker-option commands, and PE/COFF directive sections; either operand role rejects
-those hidden linker controls before scratch allocation. The generated wrapper object passes through the same inspection
-before the final host link, closing the corresponding wrapper-option path.
+The CLI also implements standalone `l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT`, with long aliases
+`--link`, `--foreign-object`, and `--entry`. The driver inspects each operand once, enforces the explicit Dea/foreign
+classification, verifies unique Dea module identities, closes every ordered import against one supplied provider,
+compares exact interface fingerprints, rejects cycles, and resolves one entry module. It never reopens source or `.l1m`
+files. Format adapters also mark ELF dependent-library sections, Mach-O linker-option commands, and PE/COFF directive
+sections; either operand role rejects those hidden linker controls before scratch allocation. The generated wrapper
+object passes through the same inspection before the final host link, closing the corresponding wrapper-option path.
 
 After validation, `link_driver.l0` records one deterministic dependency-first lifecycle order through an explicit
 depth-first frame stack. It traverses the selected entry component first in embedded import order, then visits unvisited

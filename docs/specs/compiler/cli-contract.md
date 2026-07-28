@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-07-27
+Version: 2026-07-28
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -30,7 +30,7 @@ Canonical level-specific detail:
 | `--run`     | `-r`               | Build and run one source target                                 |
 | `--build`   |                    | Build one executable                                            |
 | `--compile` | `-c`               | Reserved in L0; compile one module without linking in L1        |
-| `--link`    |                    | L1-only: link verified Dea objects and explicit foreign objects |
+| `--link`    | `-k`               | L1-only: link verified Dea objects and explicit foreign objects |
 | `--gen`     | `-Gc`, `--codegen` | Emit generated C                                                |
 | `--check`   | `--analyze`        | Parse and analyze                                               |
 | `--tok`     | `--tokens`         | Dump lexer tokens                                               |
@@ -40,15 +40,15 @@ Canonical level-specific detail:
 
 The dump modes are developer-facing; their text formats are not stable interfaces. All current compilers recognize
 `--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. L1 Stage 1
-implements the endpoint-rollback compile-only artifact set in section 6 and additionally implements `--emit-interface`,
-which emits the target module's textual `.l1m` interface. L1 Stage 1 also implements the standalone `--link` mode in
-section 7.
+implements the endpoint-rollback compile-only artifact set in section 6 and additionally implements `--emit-interface` /
+`-Gi`, which emits the target module's textual `.l1m` interface. L1 Stage 1 also implements the standalone `--link` /
+`-k` mode in section 7.
 
 ## 3. Shared Options
 
 The current shared option surface is:
 
-- `--help` / `-h`, `--version`, counted `--verbose` / `-v`, and `--log` / `-Vl`
+- `--help` / `-h`, `--version` / `-V`, counted `--verbose` / `-v`, and `--log` / `-Vl`
 - repeatable project and system roots through `--project-root` / `-Rp` and `--sys-root` / `-Rs`; L1 `--link` rejects
   both because it consumes objects without resolving source
 - repeatable compile-mode interface paths through `--interface-path` / `-I`; L1 consumes them in declaration order,
@@ -57,14 +57,14 @@ The current shared option surface is:
 - `--c-compiler` / `-Cc`, `--c-options` / `-Co`, and `--runtime-include` / `-Ri` for build/run, L1 compile-only, and L1
   standalone linking; in standalone link mode, C options apply only while compiling the generated wrapper and are not
   forwarded to the final host-link command. `--runtime-lib` / `-Rl` is valid for build/run and L1 standalone linking
-- `--no-line-directives` / `-NLD`, `--trace-arc`, `--trace-memory`, `--unchecked`, and `--check-basic` for generated-C
-  modes, including L1 compile-only; L1 standalone linking additionally accepts the trace and checking controls to select
-  its runtime link inputs
-- `--keep-c` for build/run and L1 compile-only
+- `--no-line-directives` / `-NLD`, `--trace-arc` / `-Va`, `--trace-memory` / `-Vm`, `--unchecked` / `-Su`, and
+  `--check-basic` / `-Sb` for generated-C modes, including L1 compile-only; L1 standalone linking additionally accepts
+  the trace and checking controls to select its runtime link inputs
+- `--keep-c` / `-Gk` for build/run and L1 compile-only
 - `--all-modules` / `-a` for token, AST, symbol, and type dumps
 - `--include-eof` for token dumps
-- repeatable L1 `--foreign-object PATH` / `--foreign-object=PATH` and optional `--entry MODULE` / `--entry=MODULE` for
-  standalone linking
+- repeatable L1 `--foreign-object PATH` / `--foreign-object=PATH` / `-Cf PATH` / `-Cf=PATH` and optional
+  `--entry MODULE` / `--entry=MODULE` / `-e MODULE` for standalone linking
 
 Using a mode-scoped option with an incompatible mode is a CLI argument error. In particular, interface paths are valid
 only with `--compile` and produce `L0C-2031` or `L1C-2031` elsewhere.
@@ -76,8 +76,12 @@ following value when their implementations land.
 
 Multi-letter short options are exact, case-sensitive tokens. Value-taking namespaced options accept a following value or
 `=VALUE`, but not an attached suffix. Canonical `-I`, `-L`, and `-l` accept directly attached or following values; their
-`-I=...`, `-L=...`, and `-l=...` forms are invalid. Only the counted `-vv...` form is a short-option cluster; other
-clusters are invalid. Bare namespace prefixes such as `-C`, `-R`, and `-V` are not options.
+`-I=...`, `-L=...`, and `-l=...` forms are invalid. `-e` accepts only a following value. Only the counted `-vv...` form
+is a short-option cluster; other clusters are invalid. `-V` is explicitly assigned to version; unassigned bare namespace
+prefixes such as `-C` and `-R` are not options.
+
+The namespaced spellings `-Cs`, `-Rr`, and `-Cl` are reserved for the planned `--c-source`, `--rpath`, and `--link-arg`
+options. They remain unknown until their owning capabilities land.
 
 ## 4. Level-Scoped Environment
 
@@ -109,7 +113,7 @@ supplied through `--c-options`.
 The L1 Stage 1 compile-only form is:
 
 ```text
-l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [--keep-c]
+l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 ```
 
 - `MODULE` resolves to one source implementation. Non-virtual imports must resolve from verified `.l1m` interfaces;
@@ -147,20 +151,20 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [--keep-c]
 The implemented L1 Stage 1 form is:
 
 ```text
-l1c --link DEA_OBJECT... [--foreign-object C_OBJECT]... [--entry MODULE] -o OUTPUT
+l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
 ```
 
 - At least one positional Dea object and exactly one non-empty output path are required. Positional Dea objects and
   explicit foreign objects may be interleaved with options; the final host-link command retains their encounter order.
-- `--foreign-object` is repeatable, has no short alias, and accepts only a supported metadata-free relocatable object. A
+- `--foreign-object` / `-Cf` is repeatable and accepts only a supported metadata-free relocatable object. A
   metadata-free positional input is rejected with guidance to use this option. A valid or malformed Dea object is
   rejected when supplied as foreign, and a foreign object that defines normalized process symbol `main` is rejected.
   Neither Dea nor foreign objects may contain format-recognized embedded linker controls such as ELF dependent-library
   sections, Mach-O linker-option commands, or PE/COFF directive sections. The generated wrapper object is inspected
   under the same rule before it can enter the final host link.
-- `--entry` has no short alias, may appear at most once, and requires a canonical dotted module name. Without it, the
-  link set must contain exactly one verified Dea object whose metadata carries `HAS_ENTRY`. With it, the named supplied
-  module must carry `HAS_ENTRY` and the matching entry bridge.
+- `--entry` / `-e` may appear at most once and requires a canonical dotted module name. Without it, the link set must
+  contain exactly one verified Dea object whose metadata carries `HAS_ENTRY`. With it, the named supplied module must
+  carry `HAS_ENTRY` and the matching entry bridge.
 - The linker reads each object's embedded metadata without reopening source or `.l1m` files. Dea module identities must
   be unique; every ordered direct import must have one supplied provider with the exact expected fingerprint; and the
   dependency graph must be acyclic.

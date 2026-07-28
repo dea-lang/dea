@@ -95,9 +95,10 @@ Relevant facts that constrain the plan at the time of writing:
   exact generated `.c`; ordinary compile-only leaves that companion path untouched. Successful return leaves the
   complete new selected set, recoverable failure restores the exact prior set, and failed rollback retains recovery
   files. Sequential publication does not provide a reader-visible snapshot. Runtime discovery uses `-Ri` / `-Rl`;
-  host-C, root, generated-C, and log controls use the coordinated semantic short namespaces. Standalone `--link` accepts
-  verified positional Dea objects, repeatable explicit `--foreign-object` operands, optional `--entry`, and one
-  mandatory output; it emits the lifecycle wrapper and invokes the host linker without reopening `.l1m` files.
+  host-C, root, generated-C, safety, and visibility controls use the coordinated semantic short namespaces. Standalone
+  `-k` / `--link` accepts verified positional Dea objects, repeatable explicit `-Cf` / `--foreign-object` operands,
+  optional `-e` / `--entry`, and one mandatory output; it emits the lifecycle wrapper and invokes the host linker
+  without reopening `.l1m` files.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today. `compiler/stage2_l1/` is a placeholder for the future
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
   behavior must be ported there with Stage 1 acting as the L1 behavioral oracle.
@@ -304,9 +305,9 @@ The driver ultimately exposes these contracts:
   is selected.
 - `-I <dir>` adds an interface-search root. Explicit interfaces take precedence for imports; compile-only requires an
   interface for every import, while build/run may fall back to source and schedule that module for compilation.
-- `--link <dea-object> [<dea-object> ...] [--foreign-object <c-object>]... [--entry <module>] -o <out>` links an
-  executable. Positional objects require valid Dea metadata; metadata-free C relocatable objects require the explicit
-  repeatable foreign-object option.
+- `-k <dea-object> [<dea-object> ...] [-Cf <c-object>]... [-e <module>] -o <out>` links an executable. The canonical
+  long forms are `--link`, `--foreign-object`, and `--entry`. Positional objects require valid Dea metadata;
+  metadata-free C relocatable objects require the explicit repeatable foreign-object option.
 
 `--link` infers the entry when exactly one Dea object exposes `I5entry`. Multiple candidates require `--entry`; zero
 candidates, an unknown selection, or a selected module without `I5entry` fail before host linking. `--build` and `--run`
@@ -426,14 +427,14 @@ Matches `cc` conventions, since users already know them:
 - `-l<name>` or `-l <name>`: link library.
 - `-L<dir>` or `-L <dir>`: library search path.
 - `-I<dir>` or `-I <dir>`: interface search path for `.l1m` discovery during separate compilation.
-- `--rpath=<dir>`: for dynamic libraries.
-- `--link-arg=<flag>`: escape hatch for raw linker flags.
+- `-Rr=<dir>` / `--rpath=<dir>`: for dynamic libraries.
+- `-Cl=<flag>` / `--link-arg=<flag>`: escape hatch for raw linker flags.
 
-`-l`, `-L`, `--rpath`, and `--link-arg` are accepted by `--link`, `--build`, and `--run`. They extend the typed ordered
-link-input stream established for Dea and foreign objects; order-sensitive operands are not regrouped by category.
-`--link-arg` denotes one host compiler-driver argument, while rpath spelling is translated per supported compiler
-family. `-I` is consumed by the compiler driver during interface discovery for compile-involving flows. L1 has no
-opinion on static vs. dynamic linkage.
+`-l`, `-L`, `-Rr` / `--rpath`, and `-Cl` / `--link-arg` are accepted by `--link`, `--build`, and `--run`. They extend
+the typed ordered link-input stream established for Dea and foreign objects; order-sensitive operands are not regrouped
+by category. `--link-arg` denotes one host compiler-driver argument, while rpath spelling is translated per supported
+compiler family. `-I` is consumed by the compiler driver during interface discovery for compile-involving flows. L1 has
+no opinion on static vs. dynamic linkage.
 
 The former runtime-specific short aliases retired in the CLI-surface tranche: `-I` is committed to interface search,
 `-L` returns to its normal library-search meaning, and runtime paths use `-Ri` / `-Rl`. Validated runtime link inputs
@@ -618,10 +619,10 @@ the chosen answer and points at the owning section.
    `L1C-2069`; every successor records its own non-overlapping provisional range and re-check requirement. Anchored in
    §2e and §Diagnostic-code registration.
 4. **External-library manifest format:** deferred indefinitely unless and until Dea decides to adopt package management.
-   Phase 3 ships with CLI flags only (`-l`, `-L`, `--rpath`, `--link-arg`, plus `-I` for interface search). No
-   per-module `[link]` sidecar, no `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit this if FFI
-   bindings prove a binding-module-local hint mechanism is necessary, in which case extending CLI ergonomics is
-   preferred over a new file format. Anchored in §Phase 3 / Manifest support.
+   Phase 3 ships with CLI flags only (`-l`, `-L`, `-Rr` / `--rpath`, `-Cl` / `--link-arg`, plus `-I` for interface
+   search). No per-module `[link]` sidecar, no `Dea.toml`, no other in-tree manifest format. Initiative 0003 may revisit
+   this if FFI bindings prove a binding-module-local hint mechanism is necessary, in which case extending CLI ergonomics
+   is preferred over a new file format. Anchored in §Phase 3 / Manifest support.
 5. **Foreign relocatable objects:** positional `--link` objects are verified Dea CUs. A metadata-free C relocatable
    object enters through repeatable `--foreign-object`; it may satisfy unmangled C symbols but has no Dea graph,
    fingerprint, lifecycle, or entry-point role. Valid or malformed Dea metadata cannot be hidden behind the foreign

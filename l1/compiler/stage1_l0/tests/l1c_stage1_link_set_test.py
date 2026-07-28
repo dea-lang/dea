@@ -311,6 +311,7 @@ def run_link(
     foreign_equals: bool = False,
     c_options: str | None = None,
     trace_arc: bool = False,
+    short_aliases: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run one public standalone link invocation.
 
@@ -326,21 +327,23 @@ def run_link(
             foreign object.
         c_options: Optional wrapper-compilation options.
         trace_arc: Select the traced runtime and preserve ARC source locations.
+        short_aliases: Use the public short spellings for link-specific options.
 
     Returns:
         Completed compiler process.
     """
 
-    args = ["--link", *(str(path) for path in dea_objects)]
+    args = ["-k" if short_aliases else "--link", *(str(path) for path in dea_objects)]
     if trace_arc:
-        args.append("--trace-arc")
+        args.append("-Va" if short_aliases else "--trace-arc")
     for index, path in enumerate(foreign_objects or []):
         if foreign_equals and index == 0:
-            args.append(f"--foreign-object={path}")
+            option = "-Cf" if short_aliases else "--foreign-object"
+            args.append(f"{option}={path}")
         else:
-            args.extend(["--foreign-object", str(path)])
+            args.extend(["-Cf" if short_aliases else "--foreign-object", str(path)])
     if entry is not None:
-        args.extend(["--entry", entry])
+        args.extend(["-e" if short_aliases else "--entry", entry])
     if c_options is not None:
         args.extend(["--c-options", c_options])
     args.extend(["--c-compiler", c_compiler, "--output", str(output)])
@@ -1027,6 +1030,7 @@ def test_entry_selection(
         inputs,
         selected_output,
         entry="linkset.main",
+        short_aliases=True,
     )
     require_link_success(selected, selected_output, "explicit entry selection")
     require_program_status(selected_output, 7, "explicitly selected executable")
@@ -1053,6 +1057,7 @@ def test_explicit_foreign_object(
         output,
         foreign_objects=[foreign_answer],
         foreign_equals=True,
+        short_aliases=True,
     )
     require_link_success(completed, output, "explicit foreign provider link")
     require_program_status(output, 37, "foreign-provider executable")

@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-07-27
+- Last edited: 2026-07-28
 - Status: Accepted
 
 ## Context
@@ -19,8 +19,8 @@ A normative shared CLI contract is defined in `docs/specs/compiler/cli-contract.
 
 - The set of operating modes (`--check`, `--compile`, `--link`, `--gen`, `--build`, `--run`, `--tok`, `--ast`, `--sym`,
   `--type`).
-- Global and mode-scoped flags, including the semantic short-option namespaces used for source roots, runtime paths,
-  host-C controls, and log presentation.
+- Global and mode-scoped flags, including semantic short-option namespaces for generated artifacts, host-C controls,
+  resource and runtime paths, runtime safety, and diagnostic visibility.
 - Exit codes.
 - Source-path resolution rules.
 
@@ -38,10 +38,17 @@ convention. `-c`, `-I`, `-L`, and `-l` therefore mean compile without linking, i
 search, and native-library selection. `-g` and `-S` are reserved for debug information and assembly output rather than
 being reused for generated C and system source roots.
 
-Dea-specific controls use exact, case-sensitive semantic namespaces: `-Gc` for generated C; `-Rp` / `-Rs` for project
-and system resource roots; `-Ri` / `-Rl` for runtime paths; `-Cc` / `-Co` for host-C selection and options; and `-Vl`
-for rich log presentation. Bare namespace prefixes are invalid. Namespaced values are separated or use `=VALUE`, while
-canonical path/library spellings may use attached values. Only `-vv...` is a valid short-option cluster.
+Dea-specific controls use exact, case-sensitive semantic namespaces. `-Gc`, `-Gi`, and `-Gk` cover generated C,
+interface emission, and generated-C retention. `-Cc`, `-Co`, `-Cs`, `-Cf`, and `-Cl` cover host-C selection, options,
+structured sources, explicit foreign objects, and raw link arguments. `-Rp` / `-Rs` cover source roots, while `-Ri` /
+`-Rl` / `-Rr` cover runtime include, library, and dynamic-search paths. `-Sb` / `-Su` select basic or unchecked runtime
+safety, and `-Vl` / `-Va` / `-Vm` select log, ARC-trace, and memory-trace visibility. `-V` is the version flag; other
+unassigned bare namespace prefixes remain invalid.
+
+L1 standalone linking uses `-k` / `--link`, conventional `-e` / `--entry`, and `-Cf` / `--foreign-object`. The `-Cs`,
+`-Rr`, and `-Cl` spellings are reserved for the planned options and are not parsed before those capabilities land.
+Namespaced values are separated or use `=VALUE`, while canonical path/library spellings may use attached values. Only
+`-vv...` is a valid short-option cluster.
 
 ## Rationale
 
@@ -68,6 +75,8 @@ canonical path/library spellings may use attached values. Only `-vv...` is a val
   L1 compile-only mode and semantic option reservations
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md](../../l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md):
   L1 standalone link operands and option scope
+- [work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md](../../work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md):
+  coordinated current aliases and deferred semantic reservations
 
 ## Current Docs
 

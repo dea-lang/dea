@@ -1,6 +1,6 @@
 # L1 Separate Compilation and Standalone Linking
 
-Version: 2026-07-27
+Version: 2026-07-28
 
 This document describes the implemented Dea/L1 Stage 1 path from one-module compilation to a verified standalone
 executable. It is the current behavioral reference for `l1c --compile` and `l1c --link`.
@@ -22,7 +22,7 @@ Related canonical documents:
 Compile each source-backed module against verified textual interfaces:
 
 ```text
-l1c --compile MODULE [-I INTERFACE_ROOT]... [-o CANONICAL_OBJECT_PATH] [--keep-c]
+l1c --compile MODULE [-I INTERFACE_ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 ```
 
 Each successful invocation publishes a reusable `.o` plus `.l1m` pair. `--keep-c` additionally publishes the exact
@@ -32,13 +32,13 @@ source.
 Link an explicitly supplied object set:
 
 ```text
-l1c --link DEA_OBJECT... [--foreign-object C_OBJECT]... [--entry MODULE] -o OUTPUT
+l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
 ```
 
-`--link` requires at least one positional Dea object and exactly one non-empty output path. Positional Dea paths and
-repeatable `--foreign-object PATH` / `--foreign-object=PATH` operands retain their CLI encounter order. `--entry MODULE`
-/ `--entry=MODULE` is optional, has no short alias, accepts one canonical dotted module name, and may appear at most
-once.
+`--link` / `-k` requires at least one positional Dea object and exactly one non-empty output path. Positional Dea paths
+and repeatable `--foreign-object PATH` / `--foreign-object=PATH` / `-Cf PATH` / `-Cf=PATH` operands retain their CLI
+encounter order. `--entry MODULE` / `--entry=MODULE` / `-e MODULE` is optional, accepts one canonical dotted module
+name, and may appear at most once.
 
 Source roots, system roots, interface roots, `--keep-c`, `--all-modules`, `--include-eof`, runtime arguments after `--`,
 and analysis-only options are not valid link inputs. Host compiler/options, runtime include/library paths, trace flags,

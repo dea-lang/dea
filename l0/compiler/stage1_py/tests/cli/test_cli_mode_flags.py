@@ -396,6 +396,30 @@ def test_namespaced_c_and_runtime_aliases(monkeypatch):
     assert args.runtime_lib == "runtime/lib"
 
 
+@pytest.mark.parametrize(
+    "aliases, expected",
+    [
+        (["-Gk", "-Va"], {"keep_c": True, "trace_arc": True}),
+        (["-Vm"], {"trace_memory": True}),
+        (["-Sb"], {"check_basic": True}),
+        (["-Su"], {"unchecked": True}),
+    ],
+)
+def test_generated_safety_and_visibility_aliases(
+    monkeypatch, aliases, expected
+):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main(["--run", *aliases, "app.main"])
+
+    assert rc == 0
+    assert len(calls) == 1
+    name, args = calls[0]
+    assert name == "run"
+    for attr, value in expected.items():
+        assert getattr(args, attr) is value
+
+
 def test_long_configuration_forms_are_unchanged(monkeypatch):
     calls = _patch_handlers(monkeypatch)
 
@@ -431,7 +455,6 @@ def test_long_configuration_forms_are_unchanged(monkeypatch):
         ["-P", "project", "app.main"],
         ["-C", "-Og", "app.main"],
         ["-R", "app.main"],
-        ["-V", "app.main"],
     ],
 )
 def test_retired_unprefixed_aliases_are_unknown(monkeypatch, capsys, argv):
@@ -457,6 +480,12 @@ def test_retired_unprefixed_aliases_are_unknown(monkeypatch, capsys, argv):
         ["-Rl_lib", "app.main"],
         ["-Vl_extra", "app.main"],
         ["-Gcmore", "app.main"],
+        ["-Gkmore", "app.main"],
+        ["-Sbmore", "app.main"],
+        ["-Sumore", "app.main"],
+        ["-Vamore", "app.main"],
+        ["-Vmmore", "app.main"],
+        ["-Vmore", "app.main"],
     ],
 )
 def test_namespaced_aliases_reject_concatenated_values(
@@ -471,6 +500,21 @@ def test_namespaced_aliases_reject_concatenated_values(
     stderr = capsys.readouterr().err
     assert "[L0C-2001]" in stderr
     assert "unknown option" in stderr
+
+
+@pytest.mark.parametrize("option", ["-Cs", "-Rr", "-Cl"])
+def test_deferred_namespaced_aliases_remain_unknown(
+    monkeypatch, capsys, option
+):
+    calls = _patch_handlers(monkeypatch)
+
+    rc = _run_main([option, "app.main"])
+
+    assert rc == 2
+    assert calls == []
+    stderr = capsys.readouterr().err
+    assert "[L0C-2001]" in stderr
+    assert f"unknown option '{option}'" in stderr
 
 
 @pytest.mark.parametrize(
@@ -701,11 +745,17 @@ def test_help_uses_compiler_identity_text(capsys):
     captured = capsys.readouterr()
     assert "Dea language / L0 compiler (Stage 1)" in captured.out
     assert "show compiler version and exit" in captured.out
+    assert "-V, --version" in captured.out
     assert "-Vl, --log" in captured.out
     assert "-Rp, --project-root PROJECT_ROOT" in captured.out
     assert "-Rs, --sys-root SYS_ROOT" in captured.out
     assert "-c, --compile" in captured.out
     assert "--gen, -Gc, --codegen" in captured.out
+    assert "-Gk, --keep-c" in captured.out
+    assert "-Sb, --check-basic" in captured.out
+    assert "-Su, --unchecked" in captured.out
+    assert "-Va, --trace-arc" in captured.out
+    assert "-Vm, --trace-memory" in captured.out
     assert "-Cc, --c-compiler C_COMPILER" in captured.out
     assert "-Co, --c-options C_OPTIONS" in captured.out
     assert "-I, --interface-path INTERFACE_PATH" in captured.out
@@ -723,7 +773,7 @@ def test_help_uses_compiler_identity_text(capsys):
     assert captured.err == ""
 
 
-@pytest.mark.parametrize("early_exit", ["--help", "--version"])
+@pytest.mark.parametrize("early_exit", ["--help", "-V", "--version"])
 def test_help_and_version_short_circuit_reserved_options(capsys, early_exit):
     with pytest.raises(SystemExit) as exc:
         l0c.main(["-g", early_exit])
@@ -733,7 +783,7 @@ def test_help_and_version_short_circuit_reserved_options(capsys, early_exit):
     assert "[L0C-2032]" not in captured.err
 
 
-@pytest.mark.parametrize("early_exit", ["--help", "--version"])
+@pytest.mark.parametrize("early_exit", ["--help", "-V", "--version"])
 def test_help_and_version_short_circuit_bare_separator_validation(
     capsys, early_exit
 ):
@@ -744,9 +794,10 @@ def test_help_and_version_short_circuit_bare_separator_validation(
     assert capsys.readouterr().err == ""
 
 
-def test_version_prints_compiler_identity_text(capsys):
+@pytest.mark.parametrize("version_option", ["-V", "--version"])
+def test_version_prints_compiler_identity_text(capsys, version_option):
     with pytest.raises(SystemExit) as exc:
-        l0c.main(["--version"])
+        l0c.main([version_option])
 
     assert exc.value.code == 0
     captured = capsys.readouterr()

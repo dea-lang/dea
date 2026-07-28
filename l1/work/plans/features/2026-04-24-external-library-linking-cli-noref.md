@@ -38,8 +38,8 @@ modules can link against host libraries without bespoke runtime-only flags. This
 
 - `-l<name>` or `-l <name>`
 - `-L<dir>` or `-L <dir>`
-- `--rpath=<dir>`
-- `--link-arg=<flag>`
+- `-Rr=<dir>` / `--rpath=<dir>`
+- `-Cl=<flag>` / `--link-arg=<flag>`
 
 It extends the typed ordered input stream already established for verified Dea objects and explicit `--foreign-object` C
 relocatables. It also completes the cleanup that frees `-I` for interface-path lookup rather than raw
@@ -57,8 +57,8 @@ linker/include-path behavior.
 
 ## Defaults Chosen
 
-1. `-l`, `-L`, `--rpath`, and `--link-arg` follow host-compiler-driver conventions; `-l` / `-L` accept attached and
-   following values.
+1. `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl` / `--link-arg` follow the shared CLI contract; `-l` / `-L` accept attached
+   and following values, while the namespaced aliases accept following or `=VALUE` forms.
 2. `-I` is reserved for interface-file discovery and is not repurposed as a C-header include-path flag in core L1.
 3. The driver preserves declaration order for order-sensitive objects, libraries, and raw arguments rather than sorting
    inputs by category. `--link-arg` contributes one host compiler-driver argument; it is not implicitly rewritten as a
@@ -92,8 +92,8 @@ Teach CLI parsing and validation for:
 
 - `-l`,
 - `-L`,
-- `--rpath`,
-- `--link-arg`.
+- `-Rr` / `--rpath`,
+- `-Cl` / `--link-arg`.
 
 The coordinated CLI-surface tranche has already removed the old runtime meanings and assigned `-Ri` / `-Rl`. This phase
 turns the reserved `-L` / `-l` grammar into usable link inputs without changing the runtime-path aliases.
@@ -123,7 +123,8 @@ for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 
 ## ADR Impact
 
-- Decision: Expose external-library inputs through the shared `-l`, `-L`, `--rpath`, and `--link-arg` CLI spellings.
+- Decision: Expose external-library inputs through the shared `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl` / `--link-arg`
+  CLI spellings.
   - Scope: Shared
   - Disposition: Covered by ADR
   - ADR: `docs/decisions/0003-shared-cli-contract.md`
@@ -145,7 +146,7 @@ for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 
 ## Verification Criteria
 
-1. `-l`, `-L`, `--rpath`, and `--link-arg` parse and validate as specified.
+1. `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl` / `--link-arg` parse and validate as specified.
 2. Link-involving flows forward the requested flags to the host toolchain deterministically.
 3. Mixed Dea objects, explicit foreign objects, libraries, rpaths, and raw host-driver arguments retain the documented
    order, and user search paths cannot shadow the validated runtime link inputs.

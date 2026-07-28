@@ -1,6 +1,6 @@
 # L0 Compiler CLI Contract
 
-Version: 2026-07-16
+Version: 2026-07-28
 
 This document is the normative shared CLI contract for the L0 compiler across Stage 1 and Stage 2. Stage-specific
 differences are called out explicitly in [Section 9](#9-stage-specific-differences).
@@ -39,14 +39,14 @@ stable.
 Global options are accepted with any mode:
 
 - `--help` / `-h`
-- `--version`
+- `--version` / `-V`
 - `-v` / `--verbose` (counted; `-v` = info, `-vv` currently equivalent to `-v`, `-vvv` = debug)
 - `-Vl` / `--log`
 - `-Rp` / `--project-root`
 - `-Rs` / `--sys-root`
 
-`--help` and `--version` short-circuit all other parsing and validation; remaining flags are ignored when either is
-present.
+`--help` and `--version` / `-V` short-circuit all other parsing and validation; remaining flags are ignored when either
+is present.
 
 ## 3. Mode-Scoped Options
 
@@ -55,17 +55,17 @@ The following options are enforced by CLI argument validation and are only accep
 | Option                          | Valid modes                 |
 | ------------------------------- | --------------------------- |
 | `-o` / `--output`               | `build`, `gen`, `run`       |
-| `--keep-c`                      | `build`, `run`              |
+| `-Gk` / `--keep-c`              | `build`, `run`              |
 | `-I` / `--interface-path`       | `compile`                   |
 | `-Cc` / `--c-compiler`          | `build`, `run`              |
 | `-Co` / `--c-options`           | `build`, `run`              |
 | `-Ri` / `--runtime-include`     | `build`, `run`              |
 | `-Rl` / `--runtime-lib`         | `build`, `run`              |
 | `-NLD` / `--no-line-directives` | `build`, `run`, `gen`       |
-| `--trace-arc`                   | `build`, `run`, `gen`       |
-| `--trace-memory`                | `build`, `run`, `gen`       |
-| `--unchecked`                   | `build`, `run`, `gen`       |
-| `--check-basic`                 | `build`, `run`, `gen`       |
+| `-Va` / `--trace-arc`           | `build`, `run`, `gen`       |
+| `-Vm` / `--trace-memory`        | `build`, `run`, `gen`       |
+| `-Su` / `--unchecked`           | `build`, `run`, `gen`       |
+| `-Sb` / `--check-basic`         | `build`, `run`, `gen`       |
 | `--all-modules` / `-a`          | `tok`, `ast`, `sym`, `type` |
 | `--include-eof`                 | `tok`                       |
 
@@ -95,7 +95,7 @@ capabilities are not implemented in L0. `-L` and `-l` accept either attached or 
 
 Namespaced short options are exact, case-sensitive tokens. Their values use a following token or `=VALUE`, not an
 attached suffix. `-I`, `-L`, and `-l` accept directly attached and following values, but their `=VALUE` spellings are
-invalid. Only `-vv...` is a valid short-option cluster.
+invalid. `-V` is explicitly assigned to version. Only `-vv...` is a valid short-option cluster.
 
 ## 4. Target and Separator Rules
 
