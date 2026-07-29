@@ -45,10 +45,11 @@ structured sources, explicit foreign objects, and raw link arguments. `-Rp` / `-
 safety, and `-Vl` / `-Va` / `-Vm` select log, ARC-trace, and memory-trace visibility. `-V` is the version flag; other
 unassigned bare namespace prefixes remain invalid.
 
-L1 standalone linking uses `-k` / `--link`, conventional `-e` / `--entry`, and `-Cf` / `--foreign-object`. The `-Cs`,
-`-Rr`, and `-Cl` spellings are reserved for the planned options and are not parsed before those capabilities land.
-Namespaced values are separated or use `=VALUE`, while canonical path/library spellings may use attached values. Only
-`-vv...` is a valid short-option cluster.
+L1 standalone linking uses `-k` / `--link`, conventional `-e` / `--entry`, and `-Cf` / `--foreign-object`. L0 build and
+run modes use repeatable `-Cs` / `--c-source` values for intact, ordered additional C source arguments. The `-Rr` and
+`-Cl` spellings are reserved for planned options and are not parsed before those capabilities land. Namespaced values
+are separated or use `=VALUE`, while canonical path/library spellings may use attached values. Only `-vv...` is a valid
+short-option cluster.
 
 ## Rationale
 
@@ -77,6 +78,8 @@ Namespaced values are separated or use `=VALUE`, while canonical path/library sp
   L1 standalone link operands and option scope
 - [work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md](../../work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md):
   coordinated current aliases and deferred semantic reservations
+- [work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md](../../work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md):
+  structured additional C-source arguments and cross-stage parity
 
 ## Current Docs
 

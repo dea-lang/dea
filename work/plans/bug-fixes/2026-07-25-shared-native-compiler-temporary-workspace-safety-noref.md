@@ -37,7 +37,7 @@
   - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_workspace_test.py` (new)
 - Related:
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-fix]
-  - [`work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
+  - [`work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][standalone-link]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
@@ -202,4 +202,4 @@ fix.
 [publication-adr]: ../../../l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md
 [stage1-fix]: ../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md
 [standalone-link]: ../../../l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
-[structured-input]: 2026-07-21-shared-structured-c-source-input-noref.md
+[structured-input]: closed/2026-07-21-shared-structured-c-source-input-noref.md

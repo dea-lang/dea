@@ -28,6 +28,7 @@ def _build_args(tmp_path, entry: str, **overrides):
         output=str(tmp_path / "a.out"),
         c_compiler="cc",
         c_options=None,
+        c_sources=[],
         runtime_include=None,
         runtime_lib=None,
         keep_c=False,
@@ -317,6 +318,25 @@ def test_build_merges_l0_cflags_and_cli_c_options_with_cli_last(tmp_path, monkey
 
     assert env_one_idx < cli_one_idx
     assert env_two_idx < cli_two_idx
+
+
+def test_build_preserves_ordered_c_source_arguments(tmp_path, monkeypatch):
+    _write_module(tmp_path, "main", "module main; func main() -> int { return 0; }")
+    captured = {}
+
+    def _fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+        return _RunResult(returncode=0)
+
+    sources = ["extra source.c", "quote'and\\backslash.c", "C:\\native\\unit.c"]
+    monkeypatch.delenv("L0_RUNTIME_LIB", raising=False)
+    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+
+    rc = cmd_build(_build_args(tmp_path, "main", c_compiler="gcc", c_sources=sources))
+
+    assert rc == 0
+    generated_index = next(i for i, word in enumerate(captured["cmd"]) if word.endswith(".c"))
+    assert captured["cmd"][generated_index + 1 : generated_index + 4] == sources
 
 
 def test_build_uses_a_exe_by_default_on_windows(tmp_path, monkeypatch):

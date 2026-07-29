@@ -278,13 +278,14 @@ func test_compile_mode_validation() {
         cli_parse_result_free(parsed3);
     }
 
-    with (let scoped = sv_create(14) => sv_free(scoped)) {
+    with (let scoped = sv_create(16) => sv_free(scoped)) {
         sv_push(scoped, "--compile");
         sv_push(scoped, "--output");
         sv_push(scoped, "out.o");
         sv_push(scoped, "-Cc");
         sv_push(scoped, "clang");
         sv_push(scoped, "-Co=-O0");
+        sv_push(scoped, "-Cs=extra.c");
         sv_push(scoped, "-Ri");
         sv_push(scoped, "runtime/include");
         sv_push(scoped, "-Rl=runtime/lib");
@@ -293,6 +294,7 @@ func test_compile_mode_validation() {
         assert(cli_result_has_code(parsed4, "L0C-2010"), "expected compile output scope diagnostic");
         assert(cli_result_has_code(parsed4, "L0C-2012"), "expected compile C compiler scope diagnostic");
         assert(cli_result_has_code(parsed4, "L0C-2013"), "expected compile C options scope diagnostic");
+        assert(cli_result_has_code(parsed4, "L0C-2029"), "expected compile C source scope diagnostic");
         assert(cli_result_has_code(parsed4, "L0C-2014"), "expected compile runtime include scope diagnostic");
         assert(cli_result_has_code(parsed4, "L0C-2015"), "expected compile runtime lib scope diagnostic");
         cli_parse_result_free(parsed4);
@@ -431,6 +433,9 @@ func test_namespaced_aliases_and_long_forms() {
         sv_push(long_forms, "--c-compiler=cc");
         sv_push(long_forms, "--c-options");
         sv_push(long_forms, "-O0");
+        sv_push(long_forms, "--c-source=extra source.c");
+        sv_push(long_forms, "-Cs");
+        sv_push(long_forms, "second.c");
         sv_push(long_forms, "--runtime-include=runtime/include-long");
         sv_push(long_forms, "--runtime-lib");
         sv_push(long_forms, "runtime/lib-long");
@@ -440,6 +445,9 @@ func test_namespaced_aliases_and_long_forms() {
         let long_opts = parsed7.options as CliOptions*;
         assert(long_opts.c_compiler as string == "cc", "long C compiler option mismatch");
         assert(long_opts.c_options as string == "-O0", "long C options mismatch");
+        assert(sv_size(long_opts.c_sources) == 2, "C source count mismatch");
+        assert(sv_get(long_opts.c_sources, 0) == "extra source.c", "long C source mismatch");
+        assert(sv_get(long_opts.c_sources, 1) == "second.c", "short C source mismatch");
         assert(long_opts.runtime_include as string == "runtime/include-long", "long runtime include mismatch");
         assert(long_opts.runtime_lib as string == "runtime/lib-long", "long runtime lib mismatch");
         cli_parse_result_free(parsed7);
@@ -489,8 +497,7 @@ func test_namespaced_values_and_clusters_are_exact() {
         cli_parse_result_free(parsed3);
     }
 
-    with (let deferred = sv_create(4) => sv_free(deferred)) {
-        sv_push(deferred, "-Cs");
+    with (let deferred = sv_create(3) => sv_free(deferred)) {
         sv_push(deferred, "-Rr");
         sv_push(deferred, "-Cl");
         for (let i = 0; i < sv_size(deferred); i = i + 1) {

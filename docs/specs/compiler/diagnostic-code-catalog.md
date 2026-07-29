@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-27
+Version: 2026-07-28
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -298,6 +298,7 @@ diagnostic.
 | `L0C-2026` | `L1C-2026` | All     | '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'                                |
 | `L0C-2027` | `L1C-2027` | All     | '--check-basic' is valid with generated-C modes, including L1 '--compile', and with L1 '--link'        |
 | `L0C-2028` | `L1C-2028` | All     | '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'              |
+| `L0C-2029` |            | L0 only | '--c-source' is valid only with '--build' or '--run'                                                   |
 |            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                 |
 | `L0C-2031` | `L1C-2031` | All     | Interface search paths are valid only with compile-only mode                                           |
 | `L0C-2032` | `L1C-2032` | All     | Recognized canonical driver option is reserved but its capability is not implemented yet               |

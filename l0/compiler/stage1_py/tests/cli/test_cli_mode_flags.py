@@ -329,6 +329,7 @@ def test_runtime_include_is_rejected_outside_build_run(monkeypatch, capsys):
         ("--output=", "L0C-2010"),
         ("--c-compiler=", "L0C-2012"),
         ("--c-options=", "L0C-2013"),
+        ("--c-source=", "L0C-2029"),
         ("--runtime-include=", "L0C-2014"),
         ("--runtime-lib=", "L0C-2015"),
         ("--interface-path=", "L0C-2031"),
@@ -502,7 +503,7 @@ def test_namespaced_aliases_reject_concatenated_values(
     assert "unknown option" in stderr
 
 
-@pytest.mark.parametrize("option", ["-Cs", "-Rr", "-Cl"])
+@pytest.mark.parametrize("option", ["-Rr", "-Cl"])
 def test_deferred_namespaced_aliases_remain_unknown(
     monkeypatch, capsys, option
 ):

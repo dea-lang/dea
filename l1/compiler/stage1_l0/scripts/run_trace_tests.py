@@ -30,6 +30,7 @@ from test_runner_common import (
     require_repo_stage1_test_env,
     resolve_trace_job_count,
     run_captured_binary_output,
+    stage1_support_args,
 )
 
 
@@ -128,6 +129,7 @@ def run_one(
     run_result = run_captured_binary_output(
         [
             *repo_stage1_command(),
+            *stage1_support_args(),
             "--trace-memory",
             "--trace-arc",
             "--project-root",

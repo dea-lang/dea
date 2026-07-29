@@ -59,6 +59,7 @@ The following options are enforced by CLI argument validation and are only accep
 | `-I` / `--interface-path`       | `compile`                   |
 | `-Cc` / `--c-compiler`          | `build`, `run`              |
 | `-Co` / `--c-options`           | `build`, `run`              |
+| `-Cs` / `--c-source`            | `build`, `run`              |
 | `-Ri` / `--runtime-include`     | `build`, `run`              |
 | `-Rl` / `--runtime-lib`         | `build`, `run`              |
 | `-NLD` / `--no-line-directives` | `build`, `run`, `gen`       |
@@ -81,6 +82,9 @@ L1 additionally selects the `libdea_rt_check_basic.a` archive. It is mutually ex
 `--trace-arc`, and `--trace-memory`.
 
 C compiler flags are merged as: `$L0_CFLAGS` first, then `--c-options`.
+
+`--c-source` is repeatable. Each value is preserved as one host-compiler argument; generated C comes first, followed by
+additional sources in CLI occurrence order, then output and runtime-library flags.
 
 `--runtime-lib` / `$L0_RUNTIME_LIB` provide an additional runtime library search directory for build/run. When supplied,
 the path must exist and be a directory.

@@ -844,6 +844,7 @@ func bd_push_output_flags(words: StringVector*, family: string, exe_path: string
  * @param optimize Selected default optimization flag, or `null`.
  * @param runtime_include Runtime header include path, or `null`.
  * @param c_path Generated C input path.
+ * @param c_sources Additional C source input paths.
  * @param exe_path Output executable path.
  * @param runtime_lib Runtime library search path, or `null`.
  */
@@ -855,6 +856,7 @@ func bd_push_c_compile_command_words(
     optimize: string?,
     runtime_include: string?,
     c_path: string,
+    c_sources: StringVector*,
     exe_path: string,
     runtime_lib: string?
 ) {
@@ -872,6 +874,9 @@ func bd_push_c_compile_command_words(
     }
 
     sv_push(words, c_path);
+    for (let source_i = 0; source_i < sv_size(c_sources); source_i = source_i + 1) {
+        sv_push(words, sv_get(c_sources, source_i));
+    }
     bd_push_output_flags(words, family, exe_path);
 
     if (runtime_lib != null) {
@@ -1067,6 +1072,7 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 optimize,
                 bd_runtime_include_dir(opts),
                 c_path as string,
+                opts.c_sources,
                 exe_path,
                 runtime_lib
             );

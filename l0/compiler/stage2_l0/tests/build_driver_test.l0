@@ -157,9 +157,11 @@ func test_output_flag_selection_matches_compiler_family() {
 func test_compile_command_order_places_source_after_compiler_flags() {
     with (
         let extra_opts = sv_create(1) => sv_free(extra_opts),
+        let c_sources = sv_create(2) => sv_free(c_sources),
         let words = sv_create(13) => sv_free(words)
     ) {
         sv_push(extra_opts, "-DVALUE=1");
+        sv_push(c_sources, "extra source.c");
 
         let optimize = bd_get_optimize_flag("tcc", extra_opts);
         assert(optimize != null && optimize as string == "-O1", "tcc default optimize flag mismatch");
@@ -171,6 +173,7 @@ func test_compile_command_order_places_source_after_compiler_flags() {
             optimize,
             "runtime/include",
             "input.c",
+            c_sources,
             "out.exe",
             "runtime/lib"
         );
@@ -181,8 +184,9 @@ func test_compile_command_order_places_source_after_compiler_flags() {
         assert(sv_get(words, 5) == "-O1", "optimization flag should precede source");
         assert(sv_get(words, 6) == "-I", "runtime include flag should precede source");
         assert(sv_get(words, 8) == "input.c", "source path should follow compiler flags");
-        assert(sv_get(words, 9) == "-o", "output flag should follow source");
-        assert(sv_get(words, 11) == "-L", "runtime library flag should follow source");
+        assert(sv_get(words, 9) == "extra source.c", "additional source should remain one ordered word");
+        assert(sv_get(words, 10) == "-o", "output flag should follow sources");
+        assert(sv_get(words, 12) == "-L", "runtime library flag should follow source");
     }
 }
 

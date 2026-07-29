@@ -19,6 +19,7 @@ import textwrap
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 L1_ROOT = REPO_ROOT / "l1"
+STAGE1_SUPPORT_SOURCE = L1_ROOT / "compiler" / "stage1_l0" / "support" / "interface_fingerprint.c"
 
 
 class CleanupPolicyIceFailure(RuntimeError):
@@ -79,7 +80,15 @@ def run_ice_case(case_name: str, source: str, expected_ice: str, artifact_dir: P
     stderr_path = artifact_dir / f"{case_name}.stderr.log"
 
     run_result = subprocess.run(
-        [str(compiler), "--project-root", "compiler/stage1_l0/src", "--run", str(source_path)],
+        [
+            str(compiler),
+            "--project-root",
+            "compiler/stage1_l0/src",
+            "--run",
+            "--c-source",
+            str(STAGE1_SUPPORT_SOURCE),
+            str(source_path),
+        ],
         cwd=L1_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

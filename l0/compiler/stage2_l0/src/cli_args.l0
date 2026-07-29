@@ -45,6 +45,7 @@ struct CliOptions {
     keep_c: bool;
     c_compiler: string?;
     c_options: string?;
+    c_sources: StringVector*;
     runtime_include: string?;
     runtime_lib: string?;
 
@@ -92,6 +93,7 @@ func cli_options_create() -> CliOptions* {
         false,
         null,
         null,
+        sv_create(2),
         null,
         null,
         false,
@@ -116,6 +118,7 @@ func cli_options_free(self: CliOptions*) {
     sv_free(self.project_roots);
     sv_free(self.sys_roots);
     sv_free(self.interface_paths);
+    sv_free(self.c_sources);
     sv_free(self.program_args);
     drop self;
 }
@@ -359,7 +362,7 @@ func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "usage: l0c [-h] [-V] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT]");
     cli_print_line(to_stderr, "           [--run | --build | --compile | --gen | --check | --tok | --ast | --sym | --type]");
     cli_print_line(to_stderr, "           [-I INTERFACE_PATH] [--output OUTPUT]");
-    cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS]");
+    cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS] [--c-source PATH]");
     cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
     cli_print_line(to_stderr, "           [--no-line-directives] [-Va] [-Vm] [-Su] [-Sb]");
     cli_print_line(to_stderr, "           [-Gk] [--all-modules] [--include-eof]");
@@ -413,6 +416,8 @@ func cli_print_help() {
     cli_print_line(false, "                        prepends $L0_CFLAGS; options from --c-options are");
     cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\";");
     cli_print_line(false, "                        valid in: '--build', '--run')");
+    cli_print_line(false, "  --c-source, -Cs PATH  Additional C source to compile after generated C");
+    cli_print_line(false, "                        (repeatable; valid in: '--build', '--run')");
     cli_print_line(false, "  --runtime-include, -Ri RUNTIME_INCLUDE");
     cli_print_line(false, "                        Path to L0 runtime headers (default:");
     cli_print_line(false, "                        $L0_RUNTIME_INCLUDE; valid in: '--build', '--run')");
@@ -541,6 +546,10 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
 
     if (opts.c_options != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
         cli_emit_error(diags, "L0C-2013", "option '--c-options' is valid only with modes: --build, --run");
+    }
+
+    if (sv_size(opts.c_sources) > 0 && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L0C-2029", "option '--c-source' is valid only with modes: --build, --run");
     }
 
     if (opts.runtime_include != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
@@ -886,6 +895,29 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
 
             if (starts_with_s(token, "--c-options=")) {
                 (opts as CliOptions*).c_options = slice_s(token, len_s("--c-options="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Cs" || token == "--c-source") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    sv_push((opts as CliOptions*).c_sources, value as string);
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "-Cs=")) {
+                sv_push((opts as CliOptions*).c_sources, slice_s(token, len_s("-Cs="), len_s(token)));
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "--c-source=")) {
+                sv_push((opts as CliOptions*).c_sources, slice_s(token, len_s("--c-source="), len_s(token)));
                 i = i + 1;
                 continue;
             }

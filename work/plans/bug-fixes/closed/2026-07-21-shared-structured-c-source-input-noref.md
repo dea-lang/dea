@@ -3,7 +3,7 @@
 ## Pass additional C sources as structured compiler arguments
 
 - Date: 2026-07-21
-- Status: Draft
+- Status: Completed
 - Title: Replace C-source injection through whitespace-split compiler options with structured arguments
 - Kind: Bug Fix
 - Scope: Shared
@@ -17,9 +17,9 @@
 - Porting rule: Settle the repeatable option and C-command ordering in Python Stage 1, port the same observable contract
   mechanically to L0 Stage 2, then migrate L1 build and test helpers as consumers.
 - Target status:
-  - L0 Stage 1 Python compiler: Pending
-  - L0 Stage 2 self-hosted compiler: Pending
-  - L1 Stage 1 bootstrap integration: Pending
+  - L0 Stage 1 Python compiler: Completed
+  - L0 Stage 2 self-hosted compiler: Completed
+  - L1 Stage 1 bootstrap integration: Completed
 - Subsystem: Compiler CLI / C compiler invocation / Bootstrap tooling
 - Modules:
   - `l0/compiler/stage1_py/l0c.py`
@@ -45,7 +45,8 @@ spaces becomes multiple C compiler arguments and the Stage 1 build fails.
 
 The correct fix is an additive structured source-input option, not quoting rules inside option strings. This plan adds a
 repeatable `-Cs PATH` / `-Cs=PATH` / `--c-source PATH` contract to both L0 compiler stages and migrates L1 to pass its
-support unit through that contract. It is intentionally deferred and remains unimplemented.
+support unit through that contract. The structured input is implemented across both L0 compiler stages, and L1 bootstrap
+tooling now consumes it.
 
 This option is a prerequisite for the L0 Stage 2 support translation unit required by the shared native build/run
 workspace plan. It is not a prerequisite for standalone L1 `--link`: that mode compiles its generated wrapper through
@@ -90,9 +91,8 @@ the L1 compiler's direct host-driver command path and owns an output-local link 
 
 ## Diagnostic-Code Plan
 
-No diagnostic-code reservation is expected. Re-check the live catalog before implementation; use existing CLI
-missing-value/mode diagnostics and the current C-compilation failure codes unless a genuinely distinct failure category
-is discovered.
+Missing values continue to use `L0C-2003`, and C compilation failures continue to use `L0C-0010`. Invalid-mode
+`--c-source` use is distinct from the cataloged `--c-options` condition and uses the nearby L0 CLI code `L0C-2029`.
 
 ## ADR Impact
 
@@ -102,3 +102,14 @@ is discovered.
   - ADR: `docs/decisions/0003-shared-cli-contract.md`
   - Rationale: The shared CLI contract already owns repeatable option semantics, argument preservation, and cross-stage
     parity.
+
+## Completion
+
+Implemented the repeatable structured C-source contract in both L0 compiler stages and migrated L1 compiler
+construction, normal tests, and trace tests away from support-source injection through `L0_CFLAGS`. Validation covers
+intact ordered source arguments, CLI parsing and mode scope, Stage 2 command construction, and L1 support-source
+composition.
+
+Validation completed with the L0 Stage 1 and Stage 2 suites, L0 examples and workflow checks, and the clean L1 normal
+suite. The change is trace-independent because it only adds intact host-compiler input words and does not alter emitted
+C, runtime configuration, ownership, lifetime, or trace selection.

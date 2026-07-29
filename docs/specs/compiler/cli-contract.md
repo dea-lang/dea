@@ -57,6 +57,8 @@ The current shared option surface is:
 - `--c-compiler` / `-Cc`, `--c-options` / `-Co`, and `--runtime-include` / `-Ri` for build/run, L1 compile-only, and L1
   standalone linking; in standalone link mode, C options apply only while compiling the generated wrapper and are not
   forwarded to the final host-link command. `--runtime-lib` / `-Rl` is valid for build/run and L1 standalone linking
+- repeatable L0 `--c-source PATH` / `--c-source=PATH` / `-Cs PATH` / `-Cs=PATH` for build/run; every value remains one
+  intact host-compiler argument, and the generated C source precedes additional sources in occurrence order
 - `--no-line-directives` / `-NLD`, `--trace-arc` / `-Va`, `--trace-memory` / `-Vm`, `--unchecked` / `-Su`, and
   `--check-basic` / `-Sb` for generated-C modes, including L1 compile-only; L1 standalone linking additionally accepts
   the trace and checking controls to select its runtime link inputs
@@ -80,8 +82,8 @@ Multi-letter short options are exact, case-sensitive tokens. Value-taking namesp
 is a short-option cluster; other clusters are invalid. `-V` is explicitly assigned to version; unassigned bare namespace
 prefixes such as `-C` and `-R` are not options.
 
-The namespaced spellings `-Cs`, `-Rr`, and `-Cl` are reserved for the planned `--c-source`, `--rpath`, and `--link-arg`
-options. They remain unknown until their owning capabilities land.
+The namespaced spellings `-Rr` and `-Cl` are reserved for the planned `--rpath` and `--link-arg` options. They remain
+unknown until their owning capabilities land.
 
 ## 4. Level-Scoped Environment
 

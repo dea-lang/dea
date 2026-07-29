@@ -125,14 +125,15 @@ def _append_cflag(cflags: str, flag: str) -> str:
 
 
 def stage1_support_build_env(source_env: Mapping[str, str]) -> dict[str, str]:
-    """Return an env that links the L1-owned Stage 1 support translation unit."""
+    """Return an independent copy of the Stage 1 build environment."""
 
-    build_env = dict(source_env)
-    cflags = build_env.get("L0_CFLAGS", "")
-    support_source = str(STAGE1_SUPPORT_SOURCE)
-    if support_source not in cflags.split():
-        build_env["L0_CFLAGS"] = _append_cflag(cflags, support_source)
-    return build_env
+    return dict(source_env)
+
+
+def stage1_support_args() -> list[str]:
+    """Return structured compiler arguments for the Stage 1 support source."""
+
+    return ["--c-source", str(STAGE1_SUPPORT_SOURCE)]
 
 
 def _has_c_define(cflags: str, name: str) -> bool:
@@ -266,7 +267,7 @@ def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], k
     native_bin = layout.bin_dir / "l1c-stage1.native"
     c_output = layout.bin_dir / "l1c-stage1.c"
 
-    build_args = [*bootstrap_command, "--build"]
+    build_args = [*bootstrap_command, "--build", *stage1_support_args()]
     if keep_c:
         build_args.append("--keep-c")
     else:

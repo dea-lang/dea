@@ -28,6 +28,7 @@ from build_stage1_l1c import (  # noqa: E402
     L1_COMPILER_RT_UNCHECKED_ENV,
     STAGE1_SUPPORT_SOURCE,
     compiler_runtime_build_env,
+    stage1_support_args,
     stage1_support_build_env,
 )
 
@@ -155,8 +156,7 @@ def require_build_env_cases() -> None:
         if result is case.source:
             raise AssertionError(f"{case.name}: helper returned the source mapping")
 
-        support_source = str(STAGE1_SUPPORT_SOURCE)
-        expected_cflags = f"{case.expected_cflags or ''} {support_source}".strip()
+        expected_cflags = case.expected_cflags
         actual_cflags = result.get("L0_CFLAGS")
         if actual_cflags != expected_cflags:
             raise AssertionError(
@@ -170,17 +170,19 @@ def require_support_source_composition() -> None:
     """Require compiler and test builds to link the support source exactly once."""
 
     support_source = str(STAGE1_SUPPORT_SOURCE)
-    source = {"L0_CFLAGS": f"-O2 {support_source}"}
+    source = {"L0_CFLAGS": "-O2"}
     source_before = dict(source)
     result = stage1_support_build_env(source)
     if source != source_before:
         raise AssertionError("support-source composition mutated its source mapping")
-    if result.get("L0_CFLAGS", "").split().count(support_source) != 1:
-        raise AssertionError("support-source composition duplicated its C translation unit")
+    if result.get("L0_CFLAGS") != "-O2":
+        raise AssertionError("support-source composition changed C compiler options")
 
     test_env = build_repo_test_env("build/dea", L1_ROOT / "build" / "dea")
-    if test_env.get("L0_CFLAGS", "").split().count(support_source) != 1:
-        raise AssertionError("Stage 1 test environment did not inject the support source exactly once")
+    if support_source in test_env.get("L0_CFLAGS", "").split():
+        raise AssertionError("Stage 1 test environment injected the support source into L0_CFLAGS")
+    if stage1_support_args() != ["--c-source", support_source]:
+        raise AssertionError("support source was not represented as one structured compiler argument")
 
 
 def require_make_help_parity() -> None:

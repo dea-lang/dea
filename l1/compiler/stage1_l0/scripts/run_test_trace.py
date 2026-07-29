@@ -13,7 +13,13 @@ from pathlib import Path
 import sys
 import tempfile
 
-from test_runner_common import REPO_ROOT, discover_trace_l0_tests, repo_stage1_command, require_repo_stage1_test_env
+from test_runner_common import (
+    REPO_ROOT,
+    discover_trace_l0_tests,
+    repo_stage1_command,
+    require_repo_stage1_test_env,
+    stage1_support_args,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +70,7 @@ def main() -> int:
     completed = subprocess.run(
         [
             *repo_stage1_command(),
+            *stage1_support_args(),
             "--trace-memory",
             "--trace-arc",
             "--project-root",

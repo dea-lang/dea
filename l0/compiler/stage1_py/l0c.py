@@ -46,6 +46,7 @@ _CLI_LONG_VALUE_OPTIONS = {
     "--sys-root",
     "--c-compiler",
     "--c-options",
+    "--c-source",
     "--runtime-include",
     "--runtime-lib",
     "--interface-path",
@@ -56,6 +57,7 @@ _CLI_NAMESPACED_SHORT_VALUE_OPTIONS = {
     "-Rs",
     "-Cc",
     "-Co",
+    "-Cs",
     "-Ri",
     "-Rl",
 }
@@ -749,6 +751,7 @@ def _compile_generated_c(
         )
 
     cmd.append(str(c_path))
+    cmd.extend(getattr(args, "c_sources", []))
     cmd.extend(_output_flags(flag_family, exe_path))
 
     runtime_lib_path = args.runtime_lib or os.getenv("L0_RUNTIME_LIB")
@@ -896,6 +899,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             output=temp_exe,
             c_compiler=args.c_compiler,
             c_options=args.c_options,
+            c_sources=getattr(args, "c_sources", []),
             runtime_include=args.runtime_include,
             runtime_lib=args.runtime_lib,
             keep_c=keep_c,
@@ -1355,6 +1359,17 @@ def _add_runtime_args(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "-Cs", "--c-source",
+        dest="c_sources",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help=(
+            "Additional C source to compile after generated C (repeatable; "
+            "valid in: '--build', '--run')"
+        ),
+    )
+    parser.add_argument(
         "-Ri", "--runtime-include",
         help="Path to L0 runtime headers (default: $L0_RUNTIME_INCLUDE; valid in: '--build', '--run')",
     )
@@ -1578,6 +1593,7 @@ def _validate_mode_scoped_flags(parser: argparse.ArgumentParser, args: argparse.
         ("keep_c", "--keep-c", {"build", "run"}, "L0C-2011"),
         ("c_compiler", "--c-compiler", {"build", "run"}, "L0C-2012"),
         ("c_options", "--c-options", {"build", "run"}, "L0C-2013"),
+        ("c_sources", "--c-source", {"build", "run"}, "L0C-2029"),
         ("runtime_include", "--runtime-include", {"build", "run"}, "L0C-2014"),
         ("runtime_lib", "--runtime-lib", {"build", "run"}, "L0C-2015"),
         ("no_line_directives", "--no-line-directives", {"build", "run", "gen"}, "L0C-2016"),

@@ -23,7 +23,7 @@ for scripts_root in (MONOREPO_SCRIPTS_ROOT, L1_SCRIPTS_ROOT):
         sys.path.insert(0, str(scripts_root))
 
 from dea_tooling.bootstrap import resolve_bootstrap_compiler, wrapper_command
-from build_stage1_l1c import stage1_support_build_env
+from build_stage1_l1c import stage1_support_args, stage1_support_build_env
 
 
 DEFAULT_MAX_JOBS = 12
@@ -252,7 +252,14 @@ def build_normal_test_command(case: TestCase, build_dir: Path) -> list[str]:
     """Return the subprocess command for one normal L1 Stage 1 implementation test."""
 
     if case.kind == "l0":
-        return [*repo_stage1_command(), "--project-root", "compiler/stage1_l0/src", "--run", str(case.path)]
+        return [
+            *repo_stage1_command(),
+            "--project-root",
+            "compiler/stage1_l0/src",
+            "--run",
+            *stage1_support_args(),
+            str(case.path),
+        ]
     if case.kind == "python":
         return [str(REPO_VENV_PYTHON), str(case.path)]
     raise ValueError(f"Unsupported test kind: {case.kind}")
