@@ -1,6 +1,6 @@
 # L0 Stage 2 Compiler Contract
 
-Version: 2026-04-14
+Version: 2026-07-29
 
 This document covers Stage 2-specific guarantees not part of the shared CLI contract.
 
@@ -63,3 +63,30 @@ on POSIX; from Python's `platform` module on Windows. Example: `Darwin 24.6.0 ar
 When any of `build`, `build time`, `host`, or `compiler` cannot be determined (value would be `unknown`), the entire
 provenance block is suppressed. `--version` prints only the identity line. Raw compiler 2 / compiler 3 binaries produced
 by the triple-bootstrap pipeline always use this fallback path.
+
+## 3. Native Build/Run Workspace
+
+Stage 2 `--build` and `--run` implement the shared native temporary-workspace contract in
+[docs/specs/compiler/cli-contract.md](../../../../docs/specs/compiler/cli-contract.md#6-native-buildrun-temporary-workspace).
+Each command creates exactly one private workspace after source and entry-point validation, passes it through the native
+compile path, retains it through child execution for `--run`, and cleans it from one command-owned epilogue.
+
+The Stage 2 binding has these concrete properties:
+
+- `compiler_filesystem.l0` owns temporary-parent selection, canonical trust validation, exclusive reservation,
+  registered-child cleanup, and result precedence. Its raw filesystem ABI is compiler-private and implemented by
+  `support/compiler_filesystem.c`; it is not a runtime or standard-library API.
+- Parent selection uses `TMPDIR`, `TEMP`, `TMP`, `/tmp`, then `.`. Nonexistent and non-directory candidates fall
+  through, but a filesystem inspection error is fatal. Canonical resolution or trust failure for the first existing
+  directory also reports `L0C-9513` rather than selecting a later candidate.
+- Actual POSIX hosts validate the canonical parent chain and request mode `0700`; actual MinGW hosts retain the
+  trusted-parent ACL assumption. Platform-behavior aliases do not select the trust policy.
+- Workspace and fixed-child paths use actual-host separators, so a trailing literal `\` in a POSIX parent name cannot
+  place the workspace beside that selected parent.
+- Driver-selected generated C, compiler output captures, and the temporary run executable are registered workspace
+  children. A caller-selected executable and `--keep-c` output remain at their documented external paths. The driver
+  does not change the host compiler's working directory or temporary-directory environment and does not claim ownership
+  of auxiliary files independently created by that compiler.
+- Cleanup is bounded and no-follow. It removes only registered regular children and then the empty real workspace
+  directory. Unexpected or substituted contents cause `L0C-9514`, retain the workspace for inspection, and change
+  success to status 1 without replacing an already nonzero primary result.

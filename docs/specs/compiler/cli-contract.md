@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-07-28
+Version: 2026-07-29
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -40,9 +40,9 @@ Canonical level-specific detail:
 
 The dump modes are developer-facing; their text formats are not stable interfaces. All current compilers recognize
 `--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. L1 Stage 1
-implements the endpoint-rollback compile-only artifact set in section 6 and additionally implements `--emit-interface` /
+implements the endpoint-rollback compile-only artifact set in section 7 and additionally implements `--emit-interface` /
 `-Gi`, which emits the target module's textual `.l1m` interface. L1 Stage 1 also implements the standalone `--link` /
-`-k` mode in section 7.
+`-k` mode in section 8.
 
 ## 3. Shared Options
 
@@ -110,7 +110,43 @@ supplied through `--c-options`.
 - A plain filename or module name resolves using the active level's source extension (`.l0` or `.l1`).
 - Repeated system or project roots preserve declaration order within their root group.
 
-## 6. L1 Compile-Only Artifact Set
+## 6. Native Build/Run Temporary Workspace
+
+Each L0 Stage 2 or L1 Stage 1 `--build` or `--run` command owns one private temporary workspace for the complete native
+operation. The command creates the workspace after CLI, source, and entry-point validation, passes it through its
+compile and link helpers, keeps it through child execution for `--run`, and releases it from one cleanup path.
+Subordinate helpers do not create or independently clean another build/run workspace.
+
+- The temporary parent uses `TMPDIR`, `TEMP`, `TMP`, `/tmp`, then `.` in that order. An absent, nonexistent, or
+  non-directory candidate falls through. A filesystem inspection error is fatal. Once an existing directory is selected,
+  canonical resolution or trust validation failure is fatal rather than falling through to another candidate.
+- Workspace creation uses the selected parent's canonical path and reserves a new directory exclusively. On an actual
+  POSIX host, every directory from the filesystem root through that parent must be owned by the effective user or root;
+  every group- or other-writable directory must have the sticky bit. The private workspace requests mode `0700`. On an
+  actual MinGW host, creation uses the native directory path and assumes the selected parent's ACL is trusted. These
+  policies follow the compiled host, not `L0_PLATFORM`, `L1_PLATFORM`, or another target-behavior alias.
+- Workspace and fixed-child path construction also follows actual-host separator semantics. In particular, a `\` byte at
+  the end of a POSIX parent name remains a literal filename byte and cannot move the workspace to a sibling path.
+- The containment guarantee covers scratch paths selected or explicitly supplied by the driver: generated C, compiler
+  stdout and stderr captures, temporary objects and interfaces, generated wrappers, and temporary run executables.
+  `--keep-c` and caller-selected build outputs retain their documented external paths and behavior.
+- The driver does not change the host compiler's current directory, rewrite its temporary-directory environment,
+  normalize arbitrary path-bearing C options, or claim containment of auxiliary files independently created by the host
+  compiler.
+- Cleanup is bounded and no-follow: it removes only registered regular children and then the empty owned directory. It
+  does not recursively delete unexpected contents or follow a substituted symlink or reparse-point directory. An
+  incompletely cleaned workspace is retained for inspection.
+- Temporary-parent inspection, workspace setup, parent-trust validation, and exclusive-reservation failures report
+  `L0C-9513` or `L1C-9513`. Cleanup failures report `L0C-9514` or `L1C-9514` together with the retained workspace path.
+- Cleanup failure changes a successful primary result to status 1. An existing compilation or launch failure, or a
+  nonzero child-program status, remains the command result. A successfully produced retained output remains available in
+  either case.
+
+This workspace contract does not apply to the Python L0 Stage 1 compiler. L1 compile-only keeps the output-local
+transaction described in section 7, and L1 standalone linking keeps the output-local transaction described in section 8;
+neither operation is routed through the native build/run workspace.
+
+## 7. L1 Compile-Only Artifact Set
 
 The L1 Stage 1 compile-only form is:
 
@@ -148,7 +184,7 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 - `--runtime-lib`, external-library options, and runtime program arguments remain invalid because compile-only neither
   links nor runs.
 
-## 7. L1 Standalone Link Mode
+## 8. L1 Standalone Link Mode
 
 The implemented L1 Stage 1 form is:
 
@@ -188,7 +224,7 @@ l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
 The detailed artifact, validation, ordering, transaction, and portability contracts live in
 [l1/docs/reference/separate-compilation.md](../../../l1/docs/reference/separate-compilation.md).
 
-## 8. Compatibility Rule
+## 9. Compatibility Rule
 
 Equivalent behavior keeps the same flag names, aliases, option ordering, exit-code meanings, and diagnostic meanings
 across stages and levels. A level may recognize a shared spelling while reporting that its capability is unavailable,

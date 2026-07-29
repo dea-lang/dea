@@ -13,7 +13,6 @@ import std.path;
 import std.string;
 import std.system;
 import std.text;
-import std.time;
 import std.vector;
 import util.diag;
 import util.log;
@@ -29,6 +28,7 @@ import symbols;
 import types;
 import cli_args;
 import codegen_options;
+import compiler_filesystem;
 import diag_print;
 
 /**
@@ -206,90 +206,6 @@ func bd_is_dir(path: string) -> bool {
 }
 
 /**
- * Return the first usable temp root from environment variables or fallbacks.
- *
- * @return Existing directory path for temporary files.
- */
-func bd_temp_root() -> string {
-    let tmpdir = env_get("TMPDIR");
-    if (tmpdir != null && bd_is_dir(tmpdir as string)) {
-        return tmpdir as string;
-    }
-
-    let temp = env_get("TEMP");
-    if (temp != null && bd_is_dir(temp as string)) {
-        return temp as string;
-    }
-
-    let tmp = env_get("TMP");
-    if (tmp != null && bd_is_dir(tmp as string)) {
-        return tmp as string;
-    }
-
-    if (bd_is_dir("/tmp")) {
-        return "/tmp";
-    }
-    return ".";
-}
-
-/**
- * Build one temporary-file stem under the configured temp root.
- *
- * @param tag Small tag describing the temp-artifact family.
- * @return Unique per-process stem path without extension.
- */
-func bd_temp_stem(tag: string) -> string {
-    let root = bd_temp_root();
-    let pid = get_pid();
-    let sec = 0;
-    let nsec = 0;
-    let now_opt = wall_now();
-    if (now_opt != null) {
-        let now = now_opt as WallTime;
-        sec = now.sec;
-        nsec = now.nsec;
-    }
-
-    for (let attempt = 0; attempt < 100; attempt = attempt + 1) {
-        with (let sb = sb_create() => sb_free(sb)) {
-            sb_append(sb, "l1c-stage1-");
-            sb_append(sb, tag);
-            sb_append(sb, "-");
-            sb_append_int(sb, pid);
-            sb_append(sb, "-");
-            sb_append_int(sb, sec);
-            sb_append(sb, "-");
-            sb_append_int(sb, nsec);
-            sb_append(sb, "-");
-            sb_append_int(sb, attempt);
-            let temp_stem = join(root, sb_to_string(sb));
-            if (!exists(temp_stem) &&
-                !exists(temp_stem + ".c") &&
-                !exists(temp_stem + ".out") &&
-                !exists(temp_stem + ".exe") &&
-                !exists(temp_stem + ".stdout") &&
-                !exists(temp_stem + ".stderr"))
-            {
-                return temp_stem;
-            }
-        }
-    }
-
-    return join(root, "l1c-stage1-" + tag + "-fallback");
-}
-
-/**
- * Delete a file when it exists, ignoring failures.
- *
- * @param path File path to remove.
- */
-func bd_delete_if_present(path: string) {
-    if (exists(path)) {
-        delete_file(path);
-    }
-}
-
-/**
  * Return whether the current host should use Windows command behavior.
  *
  * @return `true` when Windows shell rules should apply.
@@ -456,8 +372,7 @@ func bd_windows_token_is_plain(arg: string) -> bool {
  *
  * Relative `./...` command paths are valid under POSIX shells but `cmd.exe`
  * interprets the leading `./` as a command named `.`. Rewriting the slash
- * separators to `.\...` keeps repo-local temp executables runnable when the
- * temp-root fallback is the current directory.
+ * separators to `.\...` keeps caller-selected relative executables runnable.
  *
  * @param arg Raw executable token.
  * @return Command token with cmd.exe-safe relative separators.
@@ -1213,15 +1128,16 @@ func bd_emit_write_error(diags: DiagCollector*, path: string) {
 }
 
 /**
- * Build an executable at the requested path.
+ * Analyze and validate one build/run entry before reserving scratch storage.
  *
  * @param opts Parsed CLI options.
  * @param cfg Logging configuration.
- * @param exe_path Output executable path.
- * @param keep_c_path Optional kept-C output path.
- * @return Process-style status code.
+ * @return Valid analysis result, or `null` after printing diagnostics.
  */
-func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_c_path: string?) -> int {
+func bd_prepare_build_analysis(
+    opts: CliOptions*,
+    cfg: LogConfig*
+) -> AnalysisResult*? {
     with (
         let validate_diags = diag_create() => diag_free(validate_diags),
         let cmd_diags = diag_create() => diag_free(cmd_diags)
@@ -1229,39 +1145,67 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
         let prepared = bd_prepare_input(opts, cmd_diags, cfg);
         if (prepared == null) {
             dp_print_collector(cmd_diags);
-            return 1;
+            return null;
         }
 
         let prep = prepared as BuildPreparedInput*;
-        let result = analysis_analyze_entry(prep.search_paths, prep.entry_module, cfg);
+        let result = analysis_analyze_entry(
+            prep.search_paths, prep.entry_module, cfg);
         bd_prepared_input_free(prep);
         prepared = null;
 
         if (analysis_diag_count(result) > 0) {
-            dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
+            dp_print_collector_with_sources(
+                result.diags,
+                analysis_source_names(result),
+                analysis_source_texts(result)
+            );
         }
-
         if (analysis_has_errors(result)) {
             analysis_result_free(result);
-            return 1;
+            return null;
         }
 
-        if (!bd_validate_entry_main(result, result.driver_state.entry_module, validate_diags)) {
+        if (!bd_validate_entry_main(
+                result, result.driver_state.entry_module, validate_diags)) {
             dp_print_collector(validate_diags);
             analysis_result_free(result);
-            return 1;
+            return null;
         }
         if (diag_count(validate_diags) > 0) {
             dp_print_collector(validate_diags);
         }
+        return result;
+    }
+}
 
-        with (
-            let cg_opts = cg_options_create() => cg_options_free(cg_opts),
-            let env_opts = sv_create(4) => sv_free(env_opts),
-            let cli_opts = sv_create(4) => sv_free(cli_opts),
-            let extra_opts = sv_create(4) => sv_free(extra_opts),
-            let command_words = sv_create(16) => sv_free(command_words)
-        ) {
+/**
+ * Build an executable at the requested path.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @param exe_path Output executable path.
+ * @param keep_c_path Optional kept-C output path.
+ * @param workspace Command-owned temporary workspace.
+ * @param result Valid analyzed program; ownership transfers to this function.
+ * @return Process-style status code.
+ */
+func bd_build_to_exe(
+    opts: CliOptions*,
+    cfg: LogConfig*,
+    exe_path: string,
+    keep_c_path: string?,
+    workspace: CompilerWorkspace*,
+    result: AnalysisResult*
+) -> int {
+    with (
+        let cmd_diags = diag_create() => diag_free(cmd_diags),
+        let cg_opts = cg_options_create() => cg_options_free(cg_opts),
+        let env_opts = sv_create(4) => sv_free(env_opts),
+        let cli_opts = sv_create(4) => sv_free(cli_opts),
+        let extra_opts = sv_create(4) => sv_free(extra_opts),
+        let command_words = sv_create(16) => sv_free(command_words)
+    ) {
             bd_append_c_option_words(env_opts, env_get("L1_CFLAGS"));
             bd_append_c_option_words(cli_opts, opts.c_options);
             for (let i = 0; i < sv_size(env_opts); i = i + 1) {
@@ -1284,26 +1228,23 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             }
 
             let c_code = backend_generate(result, cg_opts, cfg);
-            let temp_stem = bd_temp_stem("build");
             let keep_c_enabled = keep_c_path != null;
             let c_path = "";
             if (keep_c_enabled) {
                 c_path = keep_c_path as string;
             } else {
-                c_path = temp_stem + ".c";
+                c_path = cfs_workspace_child(
+                    workspace, "generated.c");
             }
-            let stdout_path = temp_stem + ".stdout";
-            let stderr_path = temp_stem + ".stderr";
+            let stdout_path = cfs_workspace_child(
+                workspace, "compiler.stdout");
+            let stderr_path = cfs_workspace_child(
+                workspace, "compiler.stderr");
 
             if (write_file(c_path, c_code) == null) {
                 bd_emit_write_error(cmd_diags, c_path);
                 dp_print_collector(cmd_diags);
                 analysis_result_free(result);
-                bd_delete_if_present(stdout_path);
-                bd_delete_if_present(stderr_path);
-                if (!keep_c_enabled) {
-                    bd_delete_if_present(c_path);
-                }
                 return 1;
             }
             log_info(cfg, "Generated C code: " + c_path);
@@ -1323,11 +1264,6 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 );
                 dp_print_collector(cmd_diags);
                 analysis_result_free(result);
-                bd_delete_if_present(stdout_path);
-                bd_delete_if_present(stderr_path);
-                if (!keep_c_enabled) {
-                    bd_delete_if_present(c_path);
-                }
                 return 1;
             }
             let compiler = compiler_opt as string;
@@ -1377,22 +1313,12 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
                 if (!bd_validate_runtime_lib(runtime_lib, cmd_diags)) {
                     dp_print_collector(cmd_diags);
                     analysis_result_free(result);
-                    bd_delete_if_present(stdout_path);
-                    bd_delete_if_present(stderr_path);
-                    if (!keep_c_enabled) {
-                        bd_delete_if_present(c_path);
-                    }
                     return 1;
                 }
 
                 if (!bd_validate_runtime_archive(runtime_lib, opts, cmd_diags)) {
                     dp_print_collector(cmd_diags);
                     analysis_result_free(result);
-                    bd_delete_if_present(stdout_path);
-                    bd_delete_if_present(stderr_path);
-                    if (!keep_c_enabled) {
-                        bd_delete_if_present(c_path);
-                    }
                     return 1;
                 }
 
@@ -1425,11 +1351,6 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             bd_replay_compile_output(cfg, stdout_path, stderr_path, compile_failed);
 
             analysis_result_free(result);
-            bd_delete_if_present(stdout_path);
-            bd_delete_if_present(stderr_path);
-            if (!keep_c_enabled) {
-                bd_delete_if_present(c_path);
-            }
 
             if (compile_failed) {
                 return 1;
@@ -1438,7 +1359,6 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
             return 0;
         }
     }
-}
 
 /**
  * Execute Stage 1 `--build`.
@@ -1448,22 +1368,48 @@ func bd_build_to_exe(opts: CliOptions*, cfg: LogConfig*, exe_path: string, keep_
  * @return Process-style status code.
  */
 func bd_cmd_build(opts: CliOptions*, cfg: LogConfig*) -> int {
+    let exe_path = bd_default_exe_name();
     if (opts.output != null) {
-        let exe_path = opts.output as string;
+        exe_path = opts.output as string;
         opts.output = null;
-        if (opts.keep_c) {
-            let keep_c_path = bd_with_c_suffix(exe_path);
-            return bd_build_to_exe(opts, cfg, exe_path, keep_c_path);
-        }
-        return bd_build_to_exe(opts, cfg, exe_path, null);
     }
 
-    let exe_path = bd_default_exe_name();
+    let keep_c_path: string? = null;
     if (opts.keep_c) {
-        let keep_c_path = bd_with_c_suffix(exe_path);
-        return bd_build_to_exe(opts, cfg, exe_path, keep_c_path);
+        keep_c_path = bd_with_c_suffix(exe_path);
     }
-    return bd_build_to_exe(opts, cfg, exe_path, null);
+
+    let result = bd_prepare_build_analysis(opts, cfg);
+    if (result == null) {
+        return 1;
+    }
+
+    with (let workspace_diags = diag_create() =>
+              diag_free(workspace_diags)) {
+        let workspace = cfs_workspace_create("build", workspace_diags);
+        if (workspace == null) {
+            dp_print_collector(workspace_diags);
+            analysis_result_free(result as AnalysisResult*);
+            return 1;
+        }
+
+        let owned_workspace = workspace as CompilerWorkspace*;
+        let primary_status = bd_build_to_exe(
+            opts,
+            cfg,
+            exe_path,
+            keep_c_path,
+            owned_workspace,
+            result as AnalysisResult*
+        );
+        let cleanup_ok = cfs_workspace_cleanup(
+            owned_workspace, workspace_diags);
+        if (!cleanup_ok) {
+            dp_print_collector(workspace_diags);
+        }
+        cfs_workspace_free(owned_workspace);
+        return cfs_apply_cleanup_status(primary_status, cleanup_ok);
+    }
 }
 
 /**
@@ -1474,10 +1420,10 @@ func bd_cmd_build(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @return Process-style status code.
  */
 func bd_cmd_run(opts: CliOptions*, cfg: LogConfig*) -> int {
-    with (let run_diags = diag_create() => diag_free(run_diags)) {
-        let temp_stem = bd_temp_stem("run");
-        let temp_exe = temp_stem + bd_exe_suffix();
-
+    with (
+        let run_diags = diag_create() => diag_free(run_diags),
+        let workspace_diags = diag_create() => diag_free(workspace_diags)
+    ) {
         if (opts.output != null && !opts.keep_c) {
             diag_warn(
                 run_diags,
@@ -1502,26 +1448,55 @@ func bd_cmd_run(opts: CliOptions*, cfg: LogConfig*) -> int {
             }
         }
 
-        let rc = bd_build_to_exe(opts, cfg, temp_exe, keep_c_path);
-        if (rc != 0) {
-            bd_delete_if_present(temp_exe);
-            return rc;
+        let result = bd_prepare_build_analysis(opts, cfg);
+        if (result == null) {
+            return 1;
         }
 
-        with (let words = sv_create(sv_size(opts.program_args) + 1) => sv_free(words)) {
-            sv_push(words, temp_exe);
-            for (let i = 0; i < sv_size(opts.program_args); i = i + 1) {
-                sv_push(words, sv_get(opts.program_args, i));
-            }
-
-            log_info(cfg, "Running: " + bd_join_display_words(words));
-            let run_cmd = bd_join_shell_words(words);
-            let run_rc = system(run_cmd);
-            bd_delete_if_present(temp_exe);
-            if (run_rc < 0) {
-                return 1;
-            }
-            return run_rc;
+        let workspace = cfs_workspace_create("run", workspace_diags);
+        if (workspace == null) {
+            dp_print_collector(workspace_diags);
+            analysis_result_free(result as AnalysisResult*);
+            return 1;
         }
+        let owned_workspace = workspace as CompilerWorkspace*;
+        let temp_exe = cfs_workspace_child(
+            owned_workspace, "program" + bd_exe_suffix());
+
+        let primary_status = bd_build_to_exe(
+            opts,
+            cfg,
+            temp_exe,
+            keep_c_path,
+            owned_workspace,
+            result as AnalysisResult*
+        );
+        if (primary_status == 0) {
+            with (
+                let words = sv_create(sv_size(opts.program_args) + 1) =>
+                    sv_free(words)
+            ) {
+                sv_push(words, temp_exe);
+                for (let i = 0; i < sv_size(opts.program_args);
+                     i = i + 1) {
+                    sv_push(words, sv_get(opts.program_args, i));
+                }
+
+                log_info(cfg, "Running: " + bd_join_display_words(words));
+                let run_cmd = bd_join_shell_words(words);
+                primary_status = system(run_cmd);
+                if (primary_status < 0) {
+                    primary_status = 1;
+                }
+            }
+        }
+
+        let cleanup_ok = cfs_workspace_cleanup(
+            owned_workspace, workspace_diags);
+        if (!cleanup_ok) {
+            dp_print_collector(workspace_diags);
+        }
+        cfs_workspace_free(owned_workspace);
+        return cfs_apply_cleanup_status(primary_status, cleanup_ok);
     }
 }

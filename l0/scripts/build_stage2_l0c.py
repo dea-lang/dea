@@ -35,6 +35,9 @@ RT_CHECK_BASIC_DEFINE = "L0_RT_CHECK_BASIC"
 RT_UNCHECKED_DEFINE = "L0_RT_UNCHECKED"
 RT_QUARANTINE_MAX_BYTES_DEFINE = "_RT_QUARANTINE_MAX_BYTES"
 RT_QUARANTINE_MAX_COUNT_DEFINE = "_RT_QUARANTINE_MAX_COUNT"
+STAGE2_COMPILER_SUPPORT_SOURCE = (
+    "compiler/stage2_l0/support/compiler_filesystem.c"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -127,7 +130,17 @@ def build_stage2_artifact(
         c_output.unlink(missing_ok=True)
     for root in extra_project_roots or ():
         build_args.extend(["--project-root", root])
-    build_args.extend(["--project-root", "compiler/stage2_l0/src", "-o", str(native_bin), "l0c"])
+    build_args.extend(
+        [
+            "--c-source",
+            STAGE2_COMPILER_SUPPORT_SOURCE,
+            "--project-root",
+            "compiler/stage2_l0/src",
+            "-o",
+            str(native_bin),
+            "l0c",
+        ]
+    )
 
     build_env = os.environ.copy()
     if extra_env is not None:

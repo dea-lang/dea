@@ -18,7 +18,11 @@ import subprocess
 import sys
 import tempfile
 
-from build_stage2_l0c import build_stage2_artifact, compiler_runtime_build_env
+from build_stage2_l0c import (
+    STAGE2_COMPILER_SUPPORT_SOURCE,
+    build_stage2_artifact,
+    compiler_runtime_build_env,
+)
 from dist_tools_lib import (
     create_stage2_distribution,
     distribution_archive_basename,
@@ -169,6 +173,8 @@ def main() -> int:
                         [
                             *stage2_wrapper_command(stage2_wrapper),
                             "--build",
+                            "--c-source",
+                            STAGE2_COMPILER_SUPPORT_SOURCE,
                             "--project-root",
                             str(overlay.overlay_root),
                             "--project-root",
@@ -225,6 +231,8 @@ def main() -> int:
                         [
                             *stage2_wrapper_command(stage2_wrapper),
                             "--build",
+                            "--c-source",
+                            STAGE2_COMPILER_SUPPORT_SOURCE,
                             "--project-root",
                             str(overlay.overlay_root),
                             "--project-root",

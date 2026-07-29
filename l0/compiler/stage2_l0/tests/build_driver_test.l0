@@ -5,12 +5,20 @@
 
 module build_driver_test;
 
+import sys.rt;
+
 import std.assert;
+import std.fs;
 import std.io;
+import std.path;
 import std.string;
+import std.system;
+import std.text;
 import std.vector;
+import util.diag;
 
 import build_driver;
+import compiler_filesystem;
 
 /**
  * Tests test_with_c_suffix_rewrites_existing_extension.
@@ -206,6 +214,291 @@ func test_exe_name_helpers_are_consistent() {
 }
 
 /**
+ * Tests deterministic workspace collision retry and idempotent cleanup.
+ */
+func test_workspace_collision_and_idempotent_cleanup() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let parent_opt = cfs_resolve_trusted_temp_parent(".");
+        assert(parent_opt != null, "test parent should resolve as trusted");
+        let parent_path = parent_opt as string;
+        let pid = get_pid();
+        let collision = join(
+            parent_path,
+            ".l0c-unit-workspace-" + int_to_string(pid) +
+                "-101-202-0"
+        );
+        /* Recover only this empty fixture after an interrupted prior run. */
+        cfs_remove_empty_dir(collision);
+        assert(
+            cfs_mkdir(collision, 448) == 1,
+            "collision fixture directory should be created"
+        );
+
+        let workspace_opt = cfs_workspace_create_for_identity(
+            parent_path, "unit", pid, 101, 202, diags);
+        assert(
+            workspace_opt != null,
+            "workspace reservation should retry after collision"
+        );
+        let workspace = workspace_opt as CompilerWorkspace*;
+        assert(
+            workspace.root != collision,
+            "workspace must not reuse a colliding candidate"
+        );
+
+        let child = cfs_workspace_child(workspace, "known-child");
+        assert(
+            write_file(child, "owned") != null,
+            "known workspace child should be writable"
+        );
+        assert(
+            cfs_workspace_cleanup(workspace, diags),
+            "known children and workspace should clean successfully"
+        );
+        assert(
+            cfs_workspace_cleanup(workspace, diags),
+            "workspace cleanup should be idempotent"
+        );
+        cfs_workspace_free(workspace);
+        assert(
+            cfs_remove_empty_dir(collision) == 1,
+            "collision fixture should remain independently removable"
+        );
+        assert(
+            diag_count(diags) == 0,
+            "successful collision retry should not emit diagnostics"
+        );
+    }
+}
+
+/**
+ * Tests actual-host joining beneath a POSIX parent ending in `\`.
+ */
+func test_workspace_literal_backslash_parent_containment() {
+    let joined = cfs_join_child("parent\\", "child");
+    if (bd_is_windows()) {
+        assert(
+            joined == "parent\\child",
+            "Windows join should preserve a trailing backslash separator"
+        );
+        return;
+    }
+    assert(
+        joined == "parent\\/child",
+        "POSIX join should insert '/' after a literal trailing backslash"
+    );
+
+    with (let diags = diag_create() => diag_free(diags)) {
+        let parent_opt = cfs_resolve_trusted_temp_parent(".");
+        assert(parent_opt != null, "test parent should resolve as trusted");
+        let parent_path = parent_opt as string;
+        let pid = get_pid();
+        let literal_parent = parent_path +
+            "/.l0c-backslash-parent-" + int_to_string(pid) + "\\";
+        cfs_remove_empty_dir(literal_parent);
+        assert(
+            cfs_mkdir(literal_parent, 448) == 1,
+            "literal-backslash fixture directory should be created"
+        );
+
+        let workspace_opt = cfs_workspace_create_for_identity(
+            literal_parent,
+            "backslash",
+            pid,
+            707,
+            808,
+            diags
+        );
+        assert(
+            workspace_opt != null,
+            "workspace should be reserved beneath backslash parent"
+        );
+        let workspace = workspace_opt as CompilerWorkspace*;
+        assert(
+            starts_with_s(workspace.root, literal_parent + "/"),
+            "workspace root must remain inside literal-backslash parent"
+        );
+        assert(
+            cfs_workspace_cleanup(workspace, diags),
+            "literal-backslash workspace should clean successfully"
+        );
+        cfs_workspace_free(workspace);
+        assert(
+            cfs_remove_empty_dir(literal_parent) == 1,
+            "literal-backslash fixture parent should be removed"
+        );
+        assert(
+            diag_count(diags) == 0,
+            "literal-backslash containment should emit no diagnostics"
+        );
+    }
+}
+
+/**
+ * Tests complete temporary-parent precedence and classifier outcomes.
+ */
+func test_workspace_parent_selection_precedence() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let parent_opt = cfs_resolve_trusted_temp_parent(".");
+        assert(parent_opt != null, "test parent should resolve as trusted");
+        let workspace_opt = cfs_workspace_create_for_identity(
+            parent_opt as string,
+            "selection",
+            get_pid(),
+            505,
+            606,
+            diags
+        );
+        assert(
+            workspace_opt != null,
+            "selection fixture workspace should be reserved"
+        );
+        let workspace = workspace_opt as CompilerWorkspace*;
+        let directory = workspace.root;
+        let regular = cfs_workspace_child(workspace, "regular");
+        assert(
+            write_file(regular, "not a directory") != null,
+            "selection fixture file should be writable"
+        );
+        let missing = join(directory, "missing");
+        let non_directory_descendant = join(regular, "child");
+        let fallback = join(directory, "fallback");
+
+        let selected_tmpdir = cfs_select_temp_parent_from_values(
+            directory, null, null, missing, fallback, diags);
+        assert(
+            selected_tmpdir != null &&
+                selected_tmpdir as string == directory,
+            "TMPDIR directory should have first precedence"
+        );
+
+        let selected_temp = cfs_select_temp_parent_from_values(
+            missing, directory, null, missing, fallback, diags);
+        assert(
+            selected_temp != null &&
+                selected_temp as string == directory,
+            "TEMP directory should follow an absent TMPDIR"
+        );
+
+        let selected_after_non_directory_parent =
+            cfs_select_temp_parent_from_values(
+                non_directory_descendant,
+                directory,
+                null,
+                missing,
+                fallback,
+                diags
+            );
+        assert(
+            selected_after_non_directory_parent != null &&
+                selected_after_non_directory_parent as string == directory,
+            "path beneath a regular file should fall through"
+        );
+
+        let selected_tmp = cfs_select_temp_parent_from_values(
+            "", regular, directory, missing, fallback, diags);
+        assert(
+            selected_tmp != null &&
+                selected_tmp as string == directory,
+            "TMP directory should follow empty and non-directory candidates"
+        );
+
+        let selected_system = cfs_select_temp_parent_from_values(
+            null, null, null, directory, fallback, diags);
+        assert(
+            selected_system != null &&
+                selected_system as string == directory,
+            "system temporary directory should have fourth precedence"
+        );
+
+        let selected_fallback = cfs_select_temp_parent_from_values(
+            missing, regular, missing, missing, fallback, diags);
+        assert(
+            selected_fallback != null &&
+                selected_fallback as string == fallback,
+            "fallback should be returned after four non-directory outcomes"
+        );
+
+        let before_error = diag_count(diags);
+        let invalid = "invalid" + byte_to_s(0 as byte) + "candidate";
+        let selected_error = cfs_select_temp_parent_from_values(
+            invalid, directory, directory, directory, fallback, diags);
+        assert(
+            selected_error == null,
+            "inspection error must not fall through to a later directory"
+        );
+        assert(
+            diag_count(diags) == before_error + 1,
+            "inspection error should emit exactly one setup diagnostic"
+        );
+
+        assert(
+            cfs_workspace_cleanup(workspace, diags),
+            "selection fixture should clean successfully"
+        );
+        cfs_workspace_free(workspace);
+    }
+}
+
+/**
+ * Tests bounded cleanup retention and status precedence.
+ */
+func test_workspace_cleanup_retains_unexpected_contents() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let parent_opt = cfs_resolve_trusted_temp_parent(".");
+        assert(parent_opt != null, "test parent should resolve as trusted");
+        let workspace_opt = cfs_workspace_create_for_identity(
+            parent_opt as string,
+            "retention",
+            get_pid(),
+            303,
+            404,
+            diags
+        );
+        assert(
+            workspace_opt != null,
+            "retention workspace should be reserved"
+        );
+        let workspace = workspace_opt as CompilerWorkspace*;
+        let unexpected = join(workspace.root, "unexpected");
+        assert(
+            write_file(unexpected, "retain") != null,
+            "unexpected fixture should be writable"
+        );
+        assert(
+            !cfs_workspace_cleanup(workspace, diags),
+            "unexpected contents should retain the workspace"
+        );
+        assert(
+            cfs_path_kind(workspace.root) == CFS_PATH_DIRECTORY,
+            "retained workspace should remain a real directory"
+        );
+        assert(
+            diag_count(diags) == 1,
+            "retention should emit one cleanup diagnostic"
+        );
+        assert(
+            cfs_apply_cleanup_status(0, false) == 1,
+            "cleanup failure should turn success into failure"
+        );
+        assert(
+            cfs_apply_cleanup_status(7, false) == 7,
+            "cleanup failure should preserve a child status"
+        );
+
+        assert(
+            cfs_remove_regular_file(unexpected) == 1,
+            "test should remove its unexpected fixture"
+        );
+        assert(
+            cfs_workspace_cleanup(workspace, diags),
+            "workspace should clean once unexpected contents are removed"
+        );
+        cfs_workspace_free(workspace);
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -221,5 +514,9 @@ func main() {
     test_output_flag_selection_matches_compiler_family();
     test_compile_command_order_places_source_after_compiler_flags();
     test_exe_name_helpers_are_consistent();
+    test_workspace_collision_and_idempotent_cleanup();
+    test_workspace_literal_backslash_parent_containment();
+    test_workspace_parent_selection_precedence();
+    test_workspace_cleanup_retains_unexpected_contents();
     printl_s("build_driver_test: all tests passed");
 }

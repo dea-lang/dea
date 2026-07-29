@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-28
+Version: 2026-07-29
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -330,6 +330,8 @@ diagnostic.
 | `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                    |
 | `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                            |
 | `L0C-9512` |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                            |
+| `L0C-9513` | `L1C-9513` | All     | Native compiler temporary-parent inspection, setup, trust validation, or exclusive reservation failed  |
+| `L0C-9514` | `L1C-9514` | All     | Native compiler temporary workspace cleanup failed and the retained workspace path was reported        |
 
 ## Name Resolution and Import Analysis
 

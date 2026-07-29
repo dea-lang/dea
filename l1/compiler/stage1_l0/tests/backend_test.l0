@@ -22,6 +22,7 @@ import ast;
 import backend;
 import build_driver;
 import codegen_options;
+import compiler_filesystem;
 import driver;
 import expr_types;
 import interface_fingerprint;
@@ -2691,13 +2692,19 @@ func test_backend_module_native_metadata_round_trip() {
         assert(include_dir != null,
             "backend metadata round-trip requires the runtime header");
 
-        let temp_stem = bd_temp_stem("backend-object-metadata");
-        let c_path = temp_stem + ".c";
+        let workspace_diags = diag_create();
+        let workspace_opt = cfs_workspace_create(
+            "backend-object-metadata-test", workspace_diags);
+        assert(workspace_opt != null,
+            "backend metadata round-trip requires a temporary workspace");
+        let workspace = workspace_opt as CompilerWorkspace*;
+        let c_path = cfs_workspace_child(workspace, "input.c");
         let object_suffix = ".o";
         if (bd_is_windows()) {
             object_suffix = ".obj";
         }
-        let object_path = temp_stem + object_suffix;
+        let object_path = cfs_workspace_child(
+            workspace, "output" + object_suffix);
         assert(write_file(c_path, generated) != null,
             "generated module C should be writable");
 
@@ -2756,8 +2763,10 @@ func test_backend_module_native_metadata_round_trip() {
                        inspection, "__deaM5smoke4mainI5entry"),
                 "round-trip entry symbol should be defined");
         }
-        delete_file(c_path);
-        delete_file(object_path);
+        assert(cfs_workspace_cleanup(workspace, workspace_diags),
+            "backend metadata workspace cleanup should succeed");
+        cfs_workspace_free(workspace);
+        diag_free(workspace_diags);
         analysis_result_free(result);
     }
 }

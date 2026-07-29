@@ -31,7 +31,10 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from build_stage2_l0c import compiler_runtime_build_env
+from build_stage2_l0c import (
+    STAGE2_COMPILER_SUPPORT_SOURCE,
+    compiler_runtime_build_env,
+)
 from test_runner_common import require_repo_stage2_test_env
 
 BUILD_TESTS_DIR = REPO_ROOT / "build" / "tests"
@@ -619,6 +622,8 @@ def main() -> int:
                 *stage2_wrapper_command(stage2_wrapper),
                 "--build",
                 "--keep-c",
+                "--c-source",
+                STAGE2_COMPILER_SUPPORT_SOURCE,
                 "--project-root",
                 "compiler/stage2_l0/src",
                 "-o",
@@ -650,6 +655,8 @@ def main() -> int:
                 str(second_native),
                 "--build",
                 "--keep-c",
+                "--c-source",
+                STAGE2_COMPILER_SUPPORT_SOURCE,
                 "--project-root",
                 "compiler/stage2_l0/src",
                 "-o",

@@ -11,8 +11,13 @@
  * explicit native path byte spans.
  */
 
-#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#if !defined(_WIN32)
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
+#ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#endif
 #endif
 
 #include <errno.h>
@@ -31,6 +36,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#ifndef S_ISVTX
+#define S_ISVTX 01000
+#endif
 #endif
 
 #include "../../shared/runtime/internal/dea_interface_fingerprint.h"
@@ -111,7 +119,9 @@ static int32_t l1c_fs_path_kind_native(const char *path, int follow) {
     );
     if (handle == INVALID_HANDLE_VALUE) {
         DWORD error = GetLastError();
-        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+        if (error == ERROR_FILE_NOT_FOUND ||
+            error == ERROR_PATH_NOT_FOUND ||
+            error == ERROR_DIRECTORY) {
             return L1C_FS_ABSENT;
         }
         return L1C_FS_ERROR;
@@ -181,6 +191,67 @@ static int32_t l1c_fs_same_file_native(
     return result;
 }
 
+static char *l1c_fs_resolve_temp_parent_native(const char *path) {
+    DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+    HANDLE handle = CreateFileA(
+        path,
+        FILE_READ_ATTRIBUTES,
+        share,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        NULL
+    );
+    BY_HANDLE_FILE_INFORMATION info;
+    DWORD capacity = MAX_PATH;
+    char *resolved = NULL;
+    DWORD length;
+    int attempt;
+    if (handle == INVALID_HANDLE_VALUE) {
+        return NULL;
+    }
+    if (!GetFileInformationByHandle(handle, &info) ||
+        (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        CloseHandle(handle);
+        return NULL;
+    }
+    for (attempt = 0; attempt < 4; ++attempt) {
+        resolved = (char *)malloc((size_t)capacity);
+        if (resolved == NULL) {
+            break;
+        }
+        length = GetFinalPathNameByHandleA(
+            handle,
+            resolved,
+            capacity,
+            FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
+        );
+        if (length == 0) {
+            free(resolved);
+            resolved = NULL;
+            break;
+        }
+        if (length < capacity) {
+            break;
+        }
+        free(resolved);
+        resolved = NULL;
+        capacity = length;
+    }
+    if (!CloseHandle(handle) || resolved == NULL) {
+        free(resolved);
+        return NULL;
+    }
+    if (length >= 8 && memcmp(resolved, "\\\\?\\UNC\\", 8) == 0) {
+        memmove(resolved + 2, resolved + 8, (size_t)length - 7);
+        resolved[0] = '\\';
+        resolved[1] = '\\';
+    } else if (length >= 4 && memcmp(resolved, "\\\\?\\", 4) == 0) {
+        memmove(resolved, resolved + 4, (size_t)length - 3);
+    }
+    return resolved;
+}
+
 #else
 
 static int32_t l1c_fs_path_kind_native(const char *path, int follow) {
@@ -195,7 +266,7 @@ static int32_t l1c_fs_path_kind_native(const char *path, int follow) {
         }
         return L1C_FS_OTHER;
     }
-    if (errno == ENOENT) {
+    if (errno == ENOENT || errno == ENOTDIR) {
         return L1C_FS_ABSENT;
     }
     return L1C_FS_ERROR;
@@ -212,6 +283,65 @@ static int32_t l1c_fs_same_file_native(
     }
     return left_info.st_dev == right_info.st_dev &&
            left_info.st_ino == right_info.st_ino;
+}
+
+static int l1c_fs_temp_component_is_trusted(
+    const char *path,
+    uid_t effective_uid
+) {
+    struct stat info;
+    mode_t writable_mask = (mode_t)(S_IWGRP | S_IWOTH);
+    if (stat(path, &info) != 0 || !S_ISDIR(info.st_mode)) {
+        return 0;
+    }
+    if (info.st_uid != (uid_t)0 && info.st_uid != effective_uid) {
+        return 0;
+    }
+    if ((info.st_mode & writable_mask) != 0 &&
+        (info.st_mode & (mode_t)S_ISVTX) == 0) {
+        return 0;
+    }
+    return 1;
+}
+
+static int l1c_fs_temp_hierarchy_is_trusted(char *resolved) {
+    uid_t effective_uid = geteuid();
+    char *cursor;
+    if (resolved[0] != '/' ||
+        !l1c_fs_temp_component_is_trusted("/", effective_uid)) {
+        return 0;
+    }
+    cursor = resolved + 1;
+    for (;;) {
+        if (*cursor == '/' || *cursor == '\0') {
+            char saved = *cursor;
+            *cursor = '\0';
+            if (resolved[1] != '\0' &&
+                !l1c_fs_temp_component_is_trusted(
+                    resolved, effective_uid)) {
+                *cursor = saved;
+                return 0;
+            }
+            *cursor = saved;
+            if (saved == '\0') {
+                break;
+            }
+        }
+        ++cursor;
+    }
+    return 1;
+}
+
+static char *l1c_fs_resolve_temp_parent_native(const char *path) {
+    char *resolved = realpath(path, NULL);
+    if (resolved == NULL) {
+        return NULL;
+    }
+    if (!l1c_fs_temp_hierarchy_is_trusted(resolved)) {
+        free(resolved);
+        return NULL;
+    }
+    return resolved;
 }
 
 #endif
@@ -309,6 +439,60 @@ int32_t l1c_fs_path_kind_follow(
 }
 
 /**
+ * Join one parent path and fixed child name using actual-host separators.
+ *
+ * The inserted separator remains `/`, matching the compiler's previous
+ * lexical join behavior and Win32 API support. POSIX recognizes only `/` as
+ * an existing trailing separator; Windows recognizes both `/` and `\\`.
+ *
+ * The return value is the joined byte length without a trailing NUL. When
+ * `output` is null or too small, no bytes are copied and the required length
+ * is still returned.
+ *
+ * @return Positive joined byte length, or -1 on invalid input/overflow.
+ */
+int32_t l1c_fs_join_child(
+    const uint8_t *parent,
+    int32_t parent_len,
+    const uint8_t *child,
+    int32_t child_len,
+    uint8_t *output,
+    int32_t output_capacity
+) {
+    int add_separator;
+    size_t length;
+    size_t cursor;
+    if (!l1c_fs_raw_path_is_valid(parent, parent_len) ||
+        !l1c_fs_raw_path_is_valid(child, child_len) ||
+        output_capacity < 0 ||
+        (output == NULL && output_capacity != 0)) {
+        return L1C_FS_ERROR;
+    }
+#if defined(_WIN32)
+    add_separator =
+        parent[parent_len - 1] != (uint8_t)'/' &&
+        parent[parent_len - 1] != (uint8_t)'\\';
+#else
+    add_separator = parent[parent_len - 1] != (uint8_t)'/';
+#endif
+    if (parent_len > INT32_MAX - child_len - add_separator) {
+        return L1C_FS_ERROR;
+    }
+    length = (size_t)parent_len + (size_t)child_len +
+        (size_t)add_separator;
+    if (output != NULL && output_capacity >= (int32_t)length) {
+        memcpy(output, parent, (size_t)parent_len);
+        cursor = (size_t)parent_len;
+        if (add_separator) {
+            output[cursor] = (uint8_t)'/';
+            ++cursor;
+        }
+        memcpy(output + cursor, child, (size_t)child_len);
+    }
+    return (int32_t)length;
+}
+
+/**
  * Compare the followed filesystem identities of two existing paths.
  *
  * @return 1 when both names address the same file, 0 when distinct, or -1 on
@@ -328,6 +512,53 @@ int32_t l1c_fs_same_file(
     }
     free(left_native);
     free(right_native);
+    return result;
+}
+
+/**
+ * Resolve and validate one selected compiler temporary parent.
+ *
+ * POSIX validates every component of the canonical hierarchy from the
+ * filesystem root: each directory must be owned by root or the effective
+ * user, and group- or other-writable directories must carry the sticky bit.
+ * Windows canonicalizes the selected directory and relies on the documented
+ * trusted-parent ACL assumption.
+ *
+ * The return value is the canonical byte length excluding a trailing NUL.
+ * When `output` is null or too small, no bytes are copied and the required
+ * length is still returned so the caller can allocate and retry.
+ *
+ * @return Positive canonical byte length, or -1 on validation/error.
+ */
+int32_t l1c_fs_resolve_trusted_temp_parent(
+    const uint8_t *path,
+    int32_t path_len,
+    uint8_t *output,
+    int32_t output_capacity
+) {
+    char *native = l1c_fs_native_path(path, path_len);
+    char *resolved;
+    size_t length;
+    int32_t result;
+    if (native == NULL || output_capacity < 0) {
+        free(native);
+        return L1C_FS_ERROR;
+    }
+    resolved = l1c_fs_resolve_temp_parent_native(native);
+    free(native);
+    if (resolved == NULL) {
+        return L1C_FS_ERROR;
+    }
+    length = strlen(resolved);
+    if (length == 0 || length > (size_t)INT32_MAX) {
+        free(resolved);
+        return L1C_FS_ERROR;
+    }
+    result = (int32_t)length;
+    if (output != NULL && output_capacity >= result) {
+        memcpy(output, resolved, length);
+    }
+    free(resolved);
     return result;
 }
 
@@ -400,6 +631,61 @@ int32_t l1c_fs_rename_absent(
     }
     free(source_native);
     free(destination_native);
+    return result;
+#endif
+}
+
+/**
+ * Remove one regular file without accepting a symbolic link/reparse point.
+ *
+ * @return 1 after removal, 0 when the path is absent, or -1 on error.
+ */
+int32_t l1c_fs_remove_regular_file(
+    const uint8_t *path,
+    int32_t path_len
+) {
+#if defined(_WIN32)
+    char *native = l1c_fs_native_path(path, path_len);
+    int32_t result = L1C_FS_ERROR;
+    int32_t kind;
+    if (native == NULL) {
+        return result;
+    }
+    kind = l1c_fs_path_kind_native(native, 0);
+    if (kind == L1C_FS_ABSENT) {
+        result = 0;
+    } else if (kind == L1C_FS_REGULAR) {
+        if (DeleteFileA(native)) {
+            result = 1;
+        } else {
+            DWORD error = GetLastError();
+            if (error == ERROR_FILE_NOT_FOUND ||
+                error == ERROR_PATH_NOT_FOUND) {
+                result = 0;
+            }
+        }
+    }
+    free(native);
+    return result;
+#else
+    char *native = l1c_fs_native_path(path, path_len);
+    struct stat info;
+    int32_t result = L1C_FS_ERROR;
+    if (native == NULL) {
+        return result;
+    }
+    if (lstat(native, &info) != 0) {
+        if (errno == ENOENT) {
+            result = 0;
+        }
+    } else if (S_ISREG(info.st_mode)) {
+        if (unlink(native) == 0) {
+            result = 1;
+        } else if (errno == ENOENT) {
+            result = 0;
+        }
+    }
+    free(native);
     return result;
 #endif
 }

@@ -5,8 +5,6 @@
 
 module compile_driver;
 
-import sys.rt;
-
 import std.fs;
 import std.path;
 import std.string;
@@ -22,6 +20,7 @@ import backend;
 import build_driver;
 import cli_args;
 import codegen_options;
+import compiler_filesystem;
 import diag_print;
 import interface_fingerprint;
 import mi_utils;
@@ -30,36 +29,6 @@ import module_interface;
 import object_reader;
 import parser.interface;
 import sem_context;
-
-/*
- * This ABI is compiler-internal.  Its implementation lives in the existing
- * L1 compiler-support translation unit, not in the Dea runtime or stdlib.
- */
-extern func l1c_fs_mkdir(path: byte*, path_len: int, mode: int) -> int;
-extern func l1c_fs_path_kind_follow(path: byte*, path_len: int) -> int;
-extern func l1c_fs_path_kind_nofollow(path: byte*, path_len: int) -> int;
-extern func l1c_fs_same_file(
-    left: byte*,
-    left_len: int,
-    right: byte*,
-    right_len: int
-) -> int;
-extern func l1c_fs_rename_absent(
-    source: byte*,
-    source_len: int,
-    destination: byte*,
-    destination_len: int
-) -> int;
-extern func l1c_fs_remove_empty_dir(path: byte*, path_len: int) -> int;
-
-/** No filesystem object exists at the path. */
-let CD_PATH_ABSENT: int = 0;
-/** A regular file exists at the path. */
-let CD_PATH_REGULAR: int = 1;
-/** A directory exists at the path. */
-let CD_PATH_DIRECTORY: int = 2;
-/** A symlink, reparse point, or other unsupported object exists at the path. */
-let CD_PATH_OTHER: int = 3;
 
 /** Paths owned by one compile-only transaction directory. */
 struct CompileTransaction {
@@ -100,46 +69,6 @@ func cd_error(diags: DiagCollector*, code: string, message: string, path: string
     diag_error(diags, "l1c", code, message, path, 0, 0, 0, 0);
 }
 
-/** Call the compiler-internal no-follow path classifier. */
-func cd_path_kind(path: string) -> int {
-    return l1c_fs_path_kind_nofollow(rt_string_bytes_ptr(path), len_s(path));
-}
-
-/** Call the compiler-internal follow path classifier. */
-func cd_path_kind_follow(path: string) -> int {
-    return l1c_fs_path_kind_follow(rt_string_bytes_ptr(path), len_s(path));
-}
-
-/** Compare the followed filesystem identities of two existing paths. */
-func cd_same_file(left: string, right: string) -> int {
-    return l1c_fs_same_file(
-        rt_string_bytes_ptr(left),
-        len_s(left),
-        rt_string_bytes_ptr(right),
-        len_s(right)
-    );
-}
-
-/** Create one directory using the compiler-internal raw-byte ABI. */
-func cd_mkdir(path: string, mode: int) -> int {
-    return l1c_fs_mkdir(rt_string_bytes_ptr(path), len_s(path), mode);
-}
-
-/** Rename one path only when the destination is absent. */
-func cd_rename_absent(source: string, destination: string) -> int {
-    return l1c_fs_rename_absent(
-        rt_string_bytes_ptr(source),
-        len_s(source),
-        rt_string_bytes_ptr(destination),
-        len_s(destination)
-    );
-}
-
-/** Remove one empty directory through the compiler-internal ABI. */
-func cd_remove_empty_dir(path: string) -> int {
-    return l1c_fs_remove_empty_dir(rt_string_bytes_ptr(path), len_s(path));
-}
-
 /**
  * Create a directory and all missing lexical parents.
  *
@@ -149,29 +78,29 @@ func cd_remove_empty_dir(path: string) -> int {
  * absent path that may be created.
  */
 func cd_ensure_directory(path: string, diags: DiagCollector*) -> bool {
-    let followed_kind = cd_path_kind_follow(path);
-    if (followed_kind == CD_PATH_DIRECTORY) {
+    let followed_kind = cfs_path_kind_follow(path);
+    if (followed_kind == CFS_PATH_DIRECTORY) {
         return true;
     }
     if (followed_kind < 0) {
         cd_error(diags, "L1C-2033", "cannot inspect compile output parent: " + path, path);
         return false;
     }
-    if (followed_kind != CD_PATH_ABSENT) {
+    if (followed_kind != CFS_PATH_ABSENT) {
         cd_error(diags, "L1C-2033", "compile output parent is not a directory: " + path, path);
         return false;
     }
 
-    let entry_kind = cd_path_kind(path);
+    let entry_kind = cfs_path_kind(path);
     if (entry_kind < 0) {
         cd_error(diags, "L1C-2033", "cannot inspect compile output parent: " + path, path);
         return false;
     }
-    if (entry_kind == CD_PATH_DIRECTORY) {
+    if (entry_kind == CFS_PATH_DIRECTORY) {
         /* A real directory appeared between the follow and no-follow checks. */
         return true;
     }
-    if (entry_kind != CD_PATH_ABSENT) {
+    if (entry_kind != CFS_PATH_ABSENT) {
         cd_error(diags, "L1C-2033", "compile output parent is not a directory: " + path, path);
         return false;
     }
@@ -186,13 +115,13 @@ func cd_ensure_directory(path: string, diags: DiagCollector*) -> bool {
     }
 
     /* 0777, filtered by the process umask. */
-    let created = cd_mkdir(path, 511);
+    let created = cfs_mkdir(path, 511);
     if (created == 1) {
         return true;
     }
     if (created == 0) {
-        let collision_kind = cd_path_kind_follow(path);
-        if (collision_kind == CD_PATH_DIRECTORY) {
+        let collision_kind = cfs_path_kind_follow(path);
+        if (collision_kind == CFS_PATH_DIRECTORY) {
             return true;
         }
         if (collision_kind < 0) {
@@ -208,8 +137,8 @@ func cd_ensure_directory(path: string, diags: DiagCollector*) -> bool {
 
 /** Validate one final artifact destination. */
 func cd_validate_destination(path: string, diags: DiagCollector*) -> bool {
-    let kind = cd_path_kind(path);
-    if (kind == CD_PATH_ABSENT || kind == CD_PATH_REGULAR) {
+    let kind = cfs_path_kind(path);
+    if (kind == CFS_PATH_ABSENT || kind == CFS_PATH_REGULAR) {
         return true;
     }
     if (kind < 0) {
@@ -278,7 +207,7 @@ func cd_create_transaction_for_identity(
             int_to_string(attempt);
         let root = join(output_parent, name);
         /* POSIX 0700; MinGW inherits access control from the trusted parent. */
-        let created = cd_mkdir(root, 448);
+        let created = cfs_mkdir(root, 448);
         if (created == 1) {
             return cd_transaction_create(root);
         }
@@ -311,14 +240,7 @@ func cd_create_transaction(output_parent: string, diags: DiagCollector*) -> Comp
 
 /** Delete a regular transaction file when present. */
 func cd_delete_if_present(path: string) -> bool {
-    let kind = cd_path_kind(path);
-    if (kind == CD_PATH_ABSENT) {
-        return true;
-    }
-    if (kind != CD_PATH_REGULAR) {
-        return false;
-    }
-    return delete_file(path) != null;
+    return cfs_remove_regular_file(path) >= 0;
 }
 
 /**
@@ -337,7 +259,7 @@ func cd_cleanup_transaction(txn: CompileTransaction*) -> bool {
     if (!cd_delete_if_present(txn.backup_interface)) ok = false;
     if (!cd_delete_if_present(txn.compiler_stdout)) ok = false;
     if (!cd_delete_if_present(txn.compiler_stderr)) ok = false;
-    if (cd_remove_empty_dir(txn.root) != 1) ok = false;
+    if (cfs_remove_empty_dir(txn.root) != 1) ok = false;
     return ok;
 }
 
@@ -363,7 +285,7 @@ func cd_testable_rename(state: CompileRenameState*, source: string, destination:
     if (ordinal == state.fail_at) {
         return -1;
     }
-    return cd_rename_absent(source, destination);
+    return cfs_rename_absent(source, destination);
 }
 
 /** Back up one existing final destination. */
@@ -473,10 +395,10 @@ func cd_publish_artifacts(
 
     let existing_c = false;
     if (publish_c) {
-        existing_c = cd_path_kind(artifacts.c_path) == CD_PATH_REGULAR;
+        existing_c = cfs_path_kind(artifacts.c_path) == CFS_PATH_REGULAR;
     }
-    let existing_object = cd_path_kind(artifacts.object_path) == CD_PATH_REGULAR;
-    let existing_interface = cd_path_kind(artifacts.interface_path) == CD_PATH_REGULAR;
+    let existing_object = cfs_path_kind(artifacts.object_path) == CFS_PATH_REGULAR;
+    let existing_interface = cfs_path_kind(artifacts.interface_path) == CFS_PATH_REGULAR;
 
     let published = true;
     if (publish_c) {
@@ -597,13 +519,13 @@ func cd_validate_staged(
     expected_interface_text: string,
     diags: DiagCollector*
 ) -> bool {
-    if (cd_path_kind(txn.staged_c) != CD_PATH_REGULAR) {
+    if (cfs_path_kind(txn.staged_c) != CFS_PATH_REGULAR) {
         return cd_staged_invalid(diags, txn.staged_c, "generated C is not a regular file");
     }
-    if (cd_path_kind(txn.staged_object) != CD_PATH_REGULAR) {
+    if (cfs_path_kind(txn.staged_object) != CFS_PATH_REGULAR) {
         return cd_staged_invalid(diags, txn.staged_object, "compiled object is not a regular file");
     }
-    if (cd_path_kind(txn.staged_interface) != CD_PATH_REGULAR) {
+    if (cfs_path_kind(txn.staged_interface) != CFS_PATH_REGULAR) {
         return cd_staged_invalid(diags, txn.staged_interface, "interface is not a regular file");
     }
 

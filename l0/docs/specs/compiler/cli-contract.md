@@ -1,6 +1,6 @@
 # L0 Compiler CLI Contract
 
-Version: 2026-07-28
+Version: 2026-07-29
 
 This document is the normative shared CLI contract for the L0 compiler across Stage 1 and Stage 2. Stage-specific
 differences are called out explicitly in [Section 9](#9-stage-specific-differences).
@@ -200,3 +200,9 @@ contracts.
 
 Stage 2 CLI details that are not part of the shared contract are documented in [stage2-contract.md](stage2-contract.md),
 including `--version` provenance field formats, fallback behavior, and stability guarantees.
+
+Stage 2 `--build` and `--run` implement the command-owned native temporary-workspace contract in
+[docs/specs/compiler/cli-contract.md](../../../../docs/specs/compiler/cli-contract.md#6-native-buildrun-temporary-workspace).
+Temporary-parent inspection, workspace setup, or trust failure reports `L0C-9513`; incomplete cleanup reports `L0C-9514`
+with the retained path. Cleanup failure changes an otherwise successful command to status 1, but does not replace an
+existing compilation, launch, or child-program failure status.

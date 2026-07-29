@@ -17,6 +17,7 @@ import sys
 from test_runner_common import (
     REPO_ROOT,
     SCRIPT_DIR,
+    STAGE2_COMPILER_SUPPORT_SOURCE,
     TESTS_DIR,
     discover_l0_tests,
     require_repo_stage2_test_env,
@@ -109,6 +110,8 @@ def main() -> int:
     result = run_captured_binary_output(
         [
             *source_tree_l0c_command(),
+            "--c-source",
+            STAGE2_COMPILER_SUPPORT_SOURCE,
             "--project-root",
             "compiler/stage2_l0/src",
             "--run",

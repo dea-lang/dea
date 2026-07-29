@@ -1,0 +1,495 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module compiler_filesystem;
+
+import sys.rt;
+
+import std.array;
+import std.string;
+import std.system;
+import std.text;
+import std.time;
+import std.vector;
+import util.diag;
+
+/*
+ * This ABI is compiler-internal. Its implementation lives in the L1
+ * compiler-support translation unit, not in the Dea runtime or stdlib.
+ */
+extern func l1c_fs_mkdir(path: byte*, path_len: int, mode: int) -> int;
+extern func l1c_fs_path_kind_follow(path: byte*, path_len: int) -> int;
+extern func l1c_fs_path_kind_nofollow(path: byte*, path_len: int) -> int;
+extern func l1c_fs_same_file(
+    left: byte*,
+    left_len: int,
+    right: byte*,
+    right_len: int
+) -> int;
+extern func l1c_fs_rename_absent(
+    source: byte*,
+    source_len: int,
+    destination: byte*,
+    destination_len: int
+) -> int;
+extern func l1c_fs_remove_regular_file(path: byte*, path_len: int) -> int;
+extern func l1c_fs_remove_empty_dir(path: byte*, path_len: int) -> int;
+extern func l1c_fs_join_child(
+    parent: byte*,
+    parent_len: int,
+    child: byte*,
+    child_len: int,
+    output: byte*?,
+    output_capacity: int
+) -> int;
+extern func l1c_fs_resolve_trusted_temp_parent(
+    path: byte*,
+    path_len: int,
+    output: byte*?,
+    output_capacity: int
+) -> int;
+
+/** No filesystem object exists at the path. */
+let CFS_PATH_ABSENT: int = 0;
+/** A regular file exists at the path. */
+let CFS_PATH_REGULAR: int = 1;
+/** A directory exists at the path. */
+let CFS_PATH_DIRECTORY: int = 2;
+/** A symlink, reparse point, or other unsupported object exists at the path. */
+let CFS_PATH_OTHER: int = 3;
+/** Internal marker requesting actual-host classification of one candidate. */
+let CFS_TEMP_KIND_INSPECT: int = -2;
+
+/** Invocation-owned native build/run workspace. */
+struct CompilerWorkspace {
+    root: string;
+    children: StringVector*;
+}
+
+/** Emit one compiler-filesystem diagnostic without source coordinates. */
+func cfs_error(
+    diags: DiagCollector*,
+    code: string,
+    message: string,
+    path: string
+) {
+    diag_error(diags, "l1c", code, message, path, 0, 0, 0, 0);
+}
+
+/** Call the compiler-internal no-follow path classifier. */
+func cfs_path_kind(path: string) -> int {
+    return l1c_fs_path_kind_nofollow(
+        rt_string_bytes_ptr(path), len_s(path));
+}
+
+/** Call the compiler-internal follow path classifier. */
+func cfs_path_kind_follow(path: string) -> int {
+    return l1c_fs_path_kind_follow(
+        rt_string_bytes_ptr(path), len_s(path));
+}
+
+/** Compare the followed filesystem identities of two existing paths. */
+func cfs_same_file(left: string, right: string) -> int {
+    return l1c_fs_same_file(
+        rt_string_bytes_ptr(left),
+        len_s(left),
+        rt_string_bytes_ptr(right),
+        len_s(right)
+    );
+}
+
+/** Create one directory using the compiler-internal raw-byte ABI. */
+func cfs_mkdir(path: string, mode: int) -> int {
+    return l1c_fs_mkdir(
+        rt_string_bytes_ptr(path), len_s(path), mode);
+}
+
+/** Rename one regular path only when the destination is absent. */
+func cfs_rename_absent(source: string, destination: string) -> int {
+    return l1c_fs_rename_absent(
+        rt_string_bytes_ptr(source),
+        len_s(source),
+        rt_string_bytes_ptr(destination),
+        len_s(destination)
+    );
+}
+
+/** Remove one regular file without following a substituted path. */
+func cfs_remove_regular_file(path: string) -> int {
+    return l1c_fs_remove_regular_file(
+        rt_string_bytes_ptr(path), len_s(path));
+}
+
+/** Remove one empty real directory through the compiler-internal ABI. */
+func cfs_remove_empty_dir(path: string) -> int {
+    return l1c_fs_remove_empty_dir(
+        rt_string_bytes_ptr(path), len_s(path));
+}
+
+/**
+ * Join one fixed child name using actual-host separator semantics.
+ *
+ * POSIX treats only `/` as a separator, so a canonical parent ending in a
+ * literal backslash still receives `/child`. Windows preserves the prior
+ * behavior where either slash is already a separator. The fallback is
+ * containment-safe on both hosts for the compiler's fixed child names.
+ */
+func cfs_join_child(parent: string, child: string) -> string {
+    let required = l1c_fs_join_child(
+        rt_string_bytes_ptr(parent),
+        len_s(parent),
+        rt_string_bytes_ptr(child),
+        len_s(child),
+        null,
+        0
+    );
+    if (required <= 0) {
+        return parent + "/" + child;
+    }
+
+    let buffer = ba_create(required);
+    let actual = l1c_fs_join_child(
+        rt_string_bytes_ptr(parent),
+        len_s(parent),
+        rt_string_bytes_ptr(child),
+        len_s(child),
+        buffer.storage.data as byte*,
+        required
+    );
+    if (actual != required) {
+        ba_free(buffer);
+        return parent + "/" + child;
+    }
+    let joined = bytes_to_s(buffer.storage.data as byte*, actual);
+    ba_free(buffer);
+    return joined;
+}
+
+/**
+ * Resolve and validate one selected temporary parent.
+ *
+ * The support ABI determines the actual host. POSIX validates the complete
+ * resolved owner/sticky-bit chain; Windows retains the trusted-parent ACL
+ * assumption. Platform-alias environment variables are deliberately ignored.
+ *
+ * @param path Selected existing directory.
+ * @return Canonical trusted path, or `null` on failure.
+ */
+func cfs_resolve_trusted_temp_parent(path: string) -> string? {
+    let required = l1c_fs_resolve_trusted_temp_parent(
+        rt_string_bytes_ptr(path), len_s(path), null, 0);
+    if (required <= 0) {
+        return null;
+    }
+
+    for (let attempt = 0; attempt < 4; attempt = attempt + 1) {
+        let buffer = ba_create(required);
+        let actual = l1c_fs_resolve_trusted_temp_parent(
+            rt_string_bytes_ptr(path),
+            len_s(path),
+            buffer.storage.data as byte*,
+            required
+        );
+        if (actual < 0) {
+            ba_free(buffer);
+            return null;
+        }
+        if (actual <= required) {
+            let resolved = bytes_to_s(
+                buffer.storage.data as byte*, actual);
+            ba_free(buffer);
+            return resolved;
+        }
+        ba_free(buffer);
+        required = actual;
+    }
+    return null;
+}
+
+/** Return an environment value, treating absence as an empty candidate. */
+func cfs_temp_env_value(name: string) -> string {
+    let value = env_get(name);
+    if (value == null) {
+        return "";
+    }
+    let path = value as string;
+    value = null;
+    return path;
+}
+
+/**
+ * Classify a nonempty selection candidate.
+ *
+ * Tests supply a deterministic kind. Production passes
+ * `CFS_TEMP_KIND_INSPECT`, keeping actual filesystem inspection lazy and in
+ * precedence order through the same value-driven selection seam.
+ */
+func cfs_temp_candidate_kind(path: string, supplied_kind: int) -> int {
+    if (is_empty_s(path)) {
+        return CFS_PATH_ABSENT;
+    }
+    if (supplied_kind == CFS_TEMP_KIND_INSPECT) {
+        return cfs_path_kind_follow(path);
+    }
+    return supplied_kind;
+}
+
+/**
+ * Select a temporary parent from explicit values and candidate kinds.
+ *
+ * Empty, absent, nonexistent, and non-directory values fall through. An
+ * inspection error is fatal so an inaccessible configured parent cannot be
+ * mistaken for a harmless missing candidate.
+ */
+func cfs_select_temp_parent_from_values(
+    tmpdir: string,
+    tmpdir_kind: int,
+    temp: string,
+    temp_kind: int,
+    tmp: string,
+    tmp_kind: int,
+    system_temp: string,
+    system_temp_kind: int,
+    fallback: string,
+    diags: DiagCollector*
+) -> string? {
+    let kind = cfs_temp_candidate_kind(tmpdir, tmpdir_kind);
+    if (kind == CFS_PATH_DIRECTORY) {
+        return tmpdir;
+    }
+    if (kind < 0) {
+        cfs_error(
+            diags,
+            "L1C-9513",
+            "cannot inspect compiler temporary parent: " + tmpdir,
+            tmpdir
+        );
+        return null;
+    }
+
+    kind = cfs_temp_candidate_kind(temp, temp_kind);
+    if (kind == CFS_PATH_DIRECTORY) {
+        return temp;
+    }
+    if (kind < 0) {
+        cfs_error(
+            diags,
+            "L1C-9513",
+            "cannot inspect compiler temporary parent: " + temp,
+            temp
+        );
+        return null;
+    }
+
+    kind = cfs_temp_candidate_kind(tmp, tmp_kind);
+    if (kind == CFS_PATH_DIRECTORY) {
+        return tmp;
+    }
+    if (kind < 0) {
+        cfs_error(
+            diags,
+            "L1C-9513",
+            "cannot inspect compiler temporary parent: " + tmp,
+            tmp
+        );
+        return null;
+    }
+
+    kind = cfs_temp_candidate_kind(system_temp, system_temp_kind);
+    if (kind == CFS_PATH_DIRECTORY) {
+        return system_temp;
+    }
+    if (kind < 0) {
+        cfs_error(
+            diags,
+            "L1C-9513",
+            "cannot inspect compiler temporary parent: " + system_temp,
+            system_temp
+        );
+        return null;
+    }
+    return fallback;
+}
+
+/**
+ * Return the first existing temporary-parent directory by stable precedence.
+ */
+func cfs_select_temp_parent(diags: DiagCollector*) -> string? {
+    return cfs_select_temp_parent_from_values(
+        cfs_temp_env_value("TMPDIR"),
+        CFS_TEMP_KIND_INSPECT,
+        cfs_temp_env_value("TEMP"),
+        CFS_TEMP_KIND_INSPECT,
+        cfs_temp_env_value("TMP"),
+        CFS_TEMP_KIND_INSPECT,
+        "/tmp",
+        CFS_TEMP_KIND_INSPECT,
+        ".",
+        diags
+    );
+}
+
+/** Release a workspace path bundle after explicit cleanup. */
+func cfs_workspace_free(self: CompilerWorkspace*) {
+    sv_free(self.children);
+    drop self;
+}
+
+/**
+ * Register and return one fixed driver-selected workspace child.
+ *
+ * @param workspace Workspace that owns the child.
+ * @param leaf Fixed child filename.
+ * @return Joined child path.
+ */
+func cfs_workspace_child(
+    workspace: CompilerWorkspace*,
+    leaf: string
+) -> string {
+    let child = cfs_join_child(workspace.root, leaf);
+    sv_push(workspace.children, child);
+    return child;
+}
+
+/**
+ * Exclusively reserve one workspace from a deterministic identity tuple.
+ *
+ * Pre-existing candidates are skipped and no unchecked fallback is returned.
+ */
+func cfs_workspace_create_for_identity(
+    parent_path: string,
+    tag: string,
+    pid: int,
+    sec: int,
+    nsec: int,
+    diags: DiagCollector*
+) -> CompilerWorkspace*? {
+    for (let attempt = 0; attempt < 100; attempt = attempt + 1) {
+        let name = ".l1c-" + tag + "-workspace-" +
+            int_to_string(pid) + "-" +
+            int_to_string(sec) + "-" + int_to_string(nsec) + "-" +
+            int_to_string(attempt);
+        let root = cfs_join_child(parent_path, name);
+        /* POSIX 0700; MinGW inherits access control from the trusted parent. */
+        let created = cfs_mkdir(root, 448);
+        if (created == 1) {
+            return new CompilerWorkspace(root, sv_create(4));
+        }
+        if (created < 0) {
+            cfs_error(
+                diags,
+                "L1C-9513",
+                "cannot create compiler temporary workspace: " + root,
+                root
+            );
+            return null;
+        }
+    }
+
+    cfs_error(
+        diags,
+        "L1C-9513",
+        "cannot reserve a unique compiler temporary workspace under: " +
+            parent_path,
+        parent_path
+    );
+    return null;
+}
+
+/**
+ * Select, resolve, validate, and exclusively reserve one compiler workspace.
+ */
+func cfs_workspace_create(
+    tag: string,
+    diags: DiagCollector*
+) -> CompilerWorkspace*? {
+    let selected_opt = cfs_select_temp_parent(diags);
+    if (selected_opt == null) {
+        return null;
+    }
+    let selected = selected_opt as string;
+    let resolved = cfs_resolve_trusted_temp_parent(selected);
+    if (resolved == null) {
+        cfs_error(
+            diags,
+            "L1C-9513",
+            "cannot resolve or trust compiler temporary parent: " + selected,
+            selected
+        );
+        return null;
+    }
+
+    let pid = get_pid();
+    let sec = 0;
+    let nsec = 0;
+    let now_opt = wall_now();
+    if (now_opt != null) {
+        let now = now_opt as WallTime;
+        sec = now.sec;
+        nsec = now.nsec;
+    }
+    return cfs_workspace_create_for_identity(
+        resolved as string, tag, pid, sec, nsec, diags);
+}
+
+/**
+ * Remove only known regular children, then the empty owned directory.
+ *
+ * Cleanup first verifies the workspace root without following aliases. An
+ * unexpected child or substituted path retains the workspace for inspection.
+ */
+func cfs_workspace_cleanup(
+    workspace: CompilerWorkspace*,
+    diags: DiagCollector*
+) -> bool {
+    let root_kind = cfs_path_kind(workspace.root);
+    if (root_kind == CFS_PATH_ABSENT) {
+        return true;
+    }
+    if (root_kind != CFS_PATH_DIRECTORY) {
+        cfs_error(
+            diags,
+            "L1C-9514",
+            "cannot clean compiler temporary workspace; retained at '" +
+                workspace.root + "'",
+            workspace.root
+        );
+        return false;
+    }
+
+    let ok = true;
+    for (let i = 0; i < sv_size(workspace.children); i = i + 1) {
+        if (cfs_remove_regular_file(
+                sv_get(workspace.children, i)) < 0) {
+            ok = false;
+        }
+    }
+    if (cfs_remove_empty_dir(workspace.root) < 0) {
+        ok = false;
+    }
+    if (!ok) {
+        cfs_error(
+            diags,
+            "L1C-9514",
+            "cannot clean compiler temporary workspace; retained at '" +
+                workspace.root + "'",
+            workspace.root
+        );
+    }
+    return ok;
+}
+
+/**
+ * Apply cleanup failure to a command's already-determined status.
+ *
+ * Cleanup turns success into status 1, while an existing failure or program
+ * status remains authoritative.
+ */
+func cfs_apply_cleanup_status(primary_status: int, cleanup_ok: bool) -> int {
+    if (primary_status == 0 && !cleanup_ok) {
+        return 1;
+    }
+    return primary_status;
+}

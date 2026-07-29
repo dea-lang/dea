@@ -1,6 +1,6 @@
 # L0 Compiler Architecture
 
-Version: 2026-07-16
+Version: 2026-07-29
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
@@ -75,7 +75,8 @@ expr_types.l0 -> expression types + semantic diagnostics
 backend.l0 + c_emitter.l0 -> single C99 translation unit
   |
   v
-build_driver.l0 -> host C compiler invocation (`--build` / `--run`)
+build_driver.l0 + compiler_filesystem.l0
+  -> command-owned workspace + host C compiler invocation (`--build` / `--run`)
   |
   v
 Executable launch (`--run`)
@@ -96,6 +97,13 @@ the self-hosted Stage 2 compiler (`S1 -> S2`, then `S2 -> S2`) plus copied share
 implemented Stage 2 CLI modes are `--check`, `--tok`, `--sym`, `--type`, `--ast`, `--gen`, `--build`, and `--run`.
 `--compile` / `-c` is recognized as a shared reserved mode and reports `L0C-9510` without producing artifacts. Stage 2
 public CLI parity with Stage 1 is complete for the current public surface.
+
+For native `--build` and `--run`, Stage 2 completes source and entry-point validation before reserving one command-owned
+temporary workspace. The driver registers its generated C, compiler output captures, and temporary run executable there,
+but leaves caller-selected executables and `--keep-c` outputs at their public paths. The compiler-private
+`compiler_filesystem.l0` module owns canonical temporary-parent validation, exclusive directory creation, bounded
+no-follow cleanup, and cleanup-result precedence; `support/compiler_filesystem.c` supplies actual-host child-path and
+filesystem primitives without extending the runtime or standard library.
 
 ## 2. Pass Responsibilities
 
@@ -152,6 +160,16 @@ public CLI parity with Stage 1 is complete for the current public surface.
 - Consumes a typed `AnalysisResult` and emits C99.
 - Canonical backend details are maintained only in [reference/c-backend-design.md](c-backend-design.md).
 
+### 2.8 Stage 2 Driver (`build_driver.l0`, `compiler_filesystem.l0`)
+
+- Coordinates host compilation and child execution after analysis and entry-point validation.
+- Owns one private native workspace for each `--build` or `--run` command and keeps it alive through the complete
+  operation.
+- Registers only driver-selected scratch children and removes them with bounded no-follow cleanup. Setup/trust failures
+  report `L0C-9513`; incomplete cleanup reports `L0C-9514` and retains the workspace.
+- Implements the detailed safety and result contract in
+  [docs/specs/compiler/cli-contract.md](../../../docs/specs/compiler/cli-contract.md#6-native-buildrun-temporary-workspace).
+
 ## 3. Core Data Flow
 
 Primary aggregate: `AnalysisResult` (`l0_analysis.py`).
@@ -206,6 +224,13 @@ Main Stage 1 modules under `compiler/stage1_py/`:
 - `l0_context.py`
 - `l0_paths.py`
 - `l0_compilation.py`
+
+The Stage 2 native driver boundary under `compiler/stage2_l0/` includes:
+
+- `src/build_driver.l0` for build/run orchestration and host-command construction
+- `src/compiler_filesystem.l0` for compiler-private workspace policy and lifecycle
+- `support/compiler_filesystem.c` for actual-host canonicalization, trust validation, exclusive creation, no-follow
+  classification, and bounded removal primitives
 
 ## 6. Host/Toolchain Assumptions
 

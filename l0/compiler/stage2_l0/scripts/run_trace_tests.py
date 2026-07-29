@@ -20,6 +20,7 @@ import tempfile
 from test_runner_common import (
     REPO_ROOT,
     SCRIPT_DIR,
+    STAGE2_COMPILER_SUPPORT_SOURCE,
     TRACE_EXCLUDED_L0_TESTS,
     discover_trace_l0_tests,
     first_lines,
@@ -111,6 +112,8 @@ def run_one(
             *source_tree_l0c_command(),
             "--trace-memory",
             "--trace-arc",
+            "--c-source",
+            STAGE2_COMPILER_SUPPORT_SOURCE,
             "--project-root",
             "compiler/stage2_l0/src",
             "--run",

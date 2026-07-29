@@ -12,6 +12,7 @@ import std.vector;
 
 import cli_args;
 import compile_driver;
+import compiler_filesystem;
 import module_graph;
 import util.diag;
 import util.log;
@@ -42,7 +43,7 @@ func cdt_delete_finals(artifacts: ModuleArtifactPaths*) {
 
 /** Remove one known transaction directory left by an interrupted test. */
 func cdt_remove_stale_transaction(root: string) {
-    if (cd_path_kind(root) != CD_PATH_DIRECTORY) {
+    if (cfs_path_kind(root) != CFS_PATH_DIRECTORY) {
         return;
     }
     let stale = cd_transaction_create(root);
@@ -74,7 +75,7 @@ func cdt_assert_prior(
     if (was_present) {
         cdt_assert_file_text(path, expected, context);
     } else {
-        assert(cd_path_kind(path) == CD_PATH_ABSENT,
+        assert(cfs_path_kind(path) == CFS_PATH_ABSENT,
             "previously absent artifact should remain absent for " + context);
     }
 }
@@ -87,8 +88,8 @@ func cdt_prepare_publication_case(
 ) -> CompileTransaction* {
     cdt_delete_finals(artifacts);
     cdt_remove_stale_transaction(root);
-    assert(cd_path_kind(root) == CD_PATH_ABSENT, "transaction root should start absent");
-    assert(cd_mkdir(root, 448) == 1, "expected transaction directory creation");
+    assert(cfs_path_kind(root) == CFS_PATH_ABSENT, "transaction root should start absent");
+    assert(cfs_mkdir(root, 448) == 1, "expected transaction directory creation");
 
     let txn = cd_transaction_create(root);
     if (cdt_prior_has(prior_mask, 1)) {
@@ -255,7 +256,7 @@ func test_publication_success_for_pair_and_triple() {
     cdt_assert_file_text(artifacts.c_path, "old-c", "untouched C companion");
     cdt_assert_file_text(artifacts.object_path, "new-o", "published object");
     cdt_assert_file_text(artifacts.interface_path, "new-l1m", "published interface");
-    assert(cd_path_kind(root) == CD_PATH_ABSENT,
+    assert(cfs_path_kind(root) == CFS_PATH_ABSENT,
         "successful pair publication should remove transaction root");
     diag_free(pair_diags);
     cd_transaction_free(pair_txn);
@@ -270,7 +271,7 @@ func test_publication_success_for_pair_and_triple() {
     cdt_assert_file_text(artifacts.c_path, "new-c", "published C");
     cdt_assert_file_text(artifacts.object_path, "new-o", "published object");
     cdt_assert_file_text(artifacts.interface_path, "new-l1m", "published interface");
-    assert(cd_path_kind(root) == CD_PATH_ABSENT,
+    assert(cfs_path_kind(root) == CFS_PATH_ABSENT,
         "successful triple publication should remove transaction root");
 
     drop cfg;
@@ -315,7 +316,7 @@ func test_publication_failures_restore_previous_set() {
                 cdt_assert_prior(
                     artifacts.interface_path, cdt_prior_has(prior_mask, 4), "old-l1m",
                     "restored interface");
-                assert(cd_path_kind(root) == CD_PATH_ABSENT,
+                assert(cfs_path_kind(root) == CFS_PATH_ABSENT,
                     "successful rollback should remove transaction root");
                 diag_free(diags);
                 cd_transaction_free(txn);
@@ -343,15 +344,15 @@ func test_rollback_failure_retains_recovery_files() {
     assert(!cd_publish_artifacts(artifacts, txn, true, 3, 0, diags, cfg),
         "injected rollback rename should fail publication");
     assert(cdt_has_code(diags, "L1C-2036"), "rollback failure should report L1C-2036");
-    assert(cd_path_kind(root) == CD_PATH_DIRECTORY, "rollback failure should retain transaction root");
-    assert(cd_path_kind(txn.backup_interface) == CD_PATH_REGULAR,
+    assert(cfs_path_kind(root) == CFS_PATH_DIRECTORY, "rollback failure should retain transaction root");
+    assert(cfs_path_kind(txn.backup_interface) == CFS_PATH_REGULAR,
         "failed interface restore should retain its recovery file");
-    assert(cd_path_kind(artifacts.interface_path) == CD_PATH_ABSENT,
+    assert(cfs_path_kind(artifacts.interface_path) == CFS_PATH_ABSENT,
         "failed interface restore should leave the destination absent");
     cdt_assert_file_text(artifacts.c_path, "old-c", "partially recovered C");
     cdt_assert_file_text(artifacts.object_path, "old-o", "partially recovered object");
 
-    assert(cd_rename_absent(txn.backup_interface, artifacts.interface_path) == 1,
+    assert(cfs_rename_absent(txn.backup_interface, artifacts.interface_path) == 1,
         "test cleanup should restore the retained interface backup");
     assert(cd_cleanup_transaction(txn), "test cleanup should remove retained transaction files");
     cdt_assert_file_text(artifacts.interface_path, "old-l1m", "manually recovered interface");
@@ -382,7 +383,7 @@ func test_cleanup_failure_is_checked() {
     assert(cd_publish_artifacts(artifacts, txn, true, -1, -1, diags, cfg),
         "cleanup failure should not invalidate committed final artifacts");
     assert(!diag_has_errors(diags), "cleanup failure should not invent a public diagnostic");
-    assert(cd_path_kind(root) == CD_PATH_DIRECTORY,
+    assert(cfs_path_kind(root) == CFS_PATH_DIRECTORY,
         "failed cleanup should retain the transaction directory");
     cdt_assert_file_text(extra, "sidecar", "retained compiler sidecar");
     cdt_assert_file_text(artifacts.c_path, "new-c", "committed C after cleanup failure");
@@ -429,7 +430,7 @@ func test_rollback_cleanup_failure_keeps_restore_diagnostic() {
         artifacts.object_path, "old-o", "restored object after cleanup failure");
     cdt_assert_file_text(
         artifacts.interface_path, "old-l1m", "restored interface after cleanup failure");
-    assert(cd_path_kind(root) == CD_PATH_DIRECTORY,
+    assert(cfs_path_kind(root) == CFS_PATH_DIRECTORY,
         "cleanup failure should retain the transaction root");
     cdt_assert_file_text(extra, "sidecar", "retained rollback cleanup sidecar");
 
@@ -452,12 +453,12 @@ func test_transaction_collision_skips_existing_candidate() {
     delete_file(sentinel);
     cdt_remove_stale_transaction(candidate0);
     cdt_remove_stale_transaction(candidate1);
-    if (cd_path_kind(parent_root) == CD_PATH_DIRECTORY) {
-        assert(cd_remove_empty_dir(parent_root) == 1,
+    if (cfs_path_kind(parent_root) == CFS_PATH_DIRECTORY) {
+        assert(cfs_remove_empty_dir(parent_root) == 1,
             "test setup should remove stale collision parent");
     }
-    assert(cd_mkdir(parent_root, 448) == 1, "expected collision parent directory");
-    assert(cd_mkdir(candidate0, 448) == 1, "expected pre-existing transaction candidate");
+    assert(cfs_mkdir(parent_root, 448) == 1, "expected collision parent directory");
+    assert(cfs_mkdir(candidate0, 448) == 1, "expected pre-existing transaction candidate");
     assert(write_file(sentinel, "untouched") != null, "expected collision sentinel");
 
     let diags = diag_create();
@@ -472,7 +473,7 @@ func test_transaction_collision_skips_existing_candidate() {
 
     assert(delete_file(sentinel) != null, "test cleanup should delete collision sentinel");
     cdt_remove_stale_transaction(candidate0);
-    assert(cd_remove_empty_dir(parent_root) == 1,
+    assert(cfs_remove_empty_dir(parent_root) == 1,
         "test cleanup should remove collision parent");
     diag_free(diags);
 }

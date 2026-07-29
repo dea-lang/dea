@@ -19,6 +19,7 @@ import util.log;
 import build_driver;
 import cli_args;
 import compile_driver;
+import compiler_filesystem;
 import diag_print;
 import object_reader;
 import object_reader_types;
@@ -673,7 +674,7 @@ func ld_create_transaction_for_identity(
                 int_to_string(attempt)
         );
         /* POSIX 0700; MinGW inherits access control from the trusted parent. */
-        let created = cd_mkdir(root, 448);
+        let created = cfs_mkdir(root, 448);
         if (created == 1) {
             return ld_transaction_create(root);
         }
@@ -717,6 +718,13 @@ func ld_create_transaction(
 }
 
 /**
+ * Delete one regular transaction child without following substitutions.
+ */
+func ld_delete_if_present(path: string) -> bool {
+    return cfs_remove_regular_file(path) >= 0;
+}
+
+/**
  * Remove known regular children and then the verified empty transaction.
  *
  * No recursive removal is performed. Unexpected or substituted contents make
@@ -725,17 +733,17 @@ func ld_create_transaction(
 func ld_cleanup_transaction(txn: LinkTransaction*) -> bool {
     let ok = true;
     for (let i = 0; i < sv_size(txn.input_snapshots); i = i + 1) {
-        if (!cd_delete_if_present(sv_get(txn.input_snapshots, i))) {
+        if (!ld_delete_if_present(sv_get(txn.input_snapshots, i))) {
             ok = false;
         }
     }
-    if (!cd_delete_if_present(txn.wrapper_c)) ok = false;
-    if (!cd_delete_if_present(txn.wrapper_object)) ok = false;
-    if (!cd_delete_if_present(txn.compile_stdout)) ok = false;
-    if (!cd_delete_if_present(txn.compile_stderr)) ok = false;
-    if (!cd_delete_if_present(txn.link_stdout)) ok = false;
-    if (!cd_delete_if_present(txn.link_stderr)) ok = false;
-    if (cd_remove_empty_dir(txn.root) != 1) ok = false;
+    if (!ld_delete_if_present(txn.wrapper_c)) ok = false;
+    if (!ld_delete_if_present(txn.wrapper_object)) ok = false;
+    if (!ld_delete_if_present(txn.compile_stdout)) ok = false;
+    if (!ld_delete_if_present(txn.compile_stderr)) ok = false;
+    if (!ld_delete_if_present(txn.link_stdout)) ok = false;
+    if (!ld_delete_if_present(txn.link_stderr)) ok = false;
+    if (cfs_remove_empty_dir(txn.root) != 1) ok = false;
     return ok;
 }
 
@@ -793,8 +801,8 @@ func ld_validate_output(output_path: string, diags: DiagCollector*) -> bool {
     }
 
     let output_parent = parent(output_path);
-    let parent_kind = cd_path_kind_follow(output_parent);
-    if (parent_kind != CD_PATH_DIRECTORY) {
+    let parent_kind = cfs_path_kind_follow(output_parent);
+    if (parent_kind != CFS_PATH_DIRECTORY) {
         if (parent_kind < 0) {
             ld_error(
                 diags,
@@ -814,8 +822,9 @@ func ld_validate_output(output_path: string, diags: DiagCollector*) -> bool {
         return false;
     }
 
-    let output_kind = cd_path_kind(output_path);
-    if (output_kind == CD_PATH_ABSENT || output_kind == CD_PATH_REGULAR) {
+    let output_kind = cfs_path_kind(output_path);
+    if (output_kind == CFS_PATH_ABSENT ||
+        output_kind == CFS_PATH_REGULAR) {
         return true;
     }
     if (output_kind < 0) {
@@ -849,13 +858,13 @@ func ld_validate_output_aliases(
     runtime_inputs: StringVector*,
     diags: DiagCollector*
 ) -> bool {
-    if (cd_path_kind(output_path) != CD_PATH_REGULAR) {
+    if (cfs_path_kind(output_path) != CFS_PATH_REGULAR) {
         return true;
     }
 
     for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
         let input = ld_plan_input_get(plan, i);
-        let same = cd_same_file(output_path, input.path);
+        let same = cfs_same_file(output_path, input.path);
         if (same < 0) {
             ld_error(
                 diags,
@@ -880,7 +889,7 @@ func ld_validate_output_aliases(
     for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
          runtime_i = runtime_i + 1) {
         let runtime_path = sv_get(runtime_inputs, runtime_i);
-        let same_runtime = cd_same_file(output_path, runtime_path);
+        let same_runtime = cfs_same_file(output_path, runtime_path);
         if (same_runtime < 0) {
             ld_error(
                 diags,
@@ -922,8 +931,8 @@ func ld_runtime_include(
     }
     let include_dir = include_opt as string;
     let header_path = join(include_dir, "dea_rt.h");
-    if (cd_path_kind_follow(include_dir) != CD_PATH_DIRECTORY ||
-        cd_path_kind_follow(header_path) != CD_PATH_REGULAR ||
+    if (cfs_path_kind_follow(include_dir) != CFS_PATH_DIRECTORY ||
+        cfs_path_kind_follow(header_path) != CFS_PATH_REGULAR ||
         read_file(header_path) == null) {
         ld_error(
             diags,
@@ -954,8 +963,8 @@ func ld_runtime_archive(
     }
     let library_dir = library_opt as string;
     let archive_path = join(library_dir, bd_runtime_archive_filename(opts));
-    if (cd_path_kind_follow(library_dir) != CD_PATH_DIRECTORY ||
-        cd_path_kind_follow(archive_path) != CD_PATH_REGULAR ||
+    if (cfs_path_kind_follow(library_dir) != CFS_PATH_DIRECTORY ||
+        cfs_path_kind_follow(archive_path) != CFS_PATH_REGULAR ||
         read_file(archive_path) == null) {
         ld_error(
             diags,
@@ -991,7 +1000,7 @@ func ld_runtime_link_inputs(
                  i = i + 1) {
                 let object_path = sv_get(
                     runtime_objects as StringVector*, i);
-                if (cd_path_kind_follow(object_path) != CD_PATH_REGULAR ||
+                if (cfs_path_kind_follow(object_path) != CFS_PATH_REGULAR ||
                     read_file(object_path) == null) {
                     ld_error(
                         diags,
@@ -1292,7 +1301,7 @@ func ld_validate_wrapper_object(
     wrapper_path: string,
     diags: DiagCollector*
 ) -> bool {
-    if (cd_path_kind(wrapper_path) != CD_PATH_REGULAR) {
+    if (cfs_path_kind(wrapper_path) != CFS_PATH_REGULAR) {
         ld_error(
             diags,
             "L1C-2108",
@@ -1421,7 +1430,7 @@ func ld_execute_plan(
         }
     }
 
-    if (cd_path_kind(output_path) != CD_PATH_REGULAR) {
+    if (cfs_path_kind(output_path) != CFS_PATH_REGULAR) {
         ld_error(
             diags,
             "L1C-2109",

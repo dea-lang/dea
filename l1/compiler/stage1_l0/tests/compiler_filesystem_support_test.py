@@ -116,9 +116,27 @@ int32_t l1c_fs_rename_absent(
     const uint8_t *destination,
     int32_t destination_len
 );
+int32_t l1c_fs_remove_regular_file(
+    const uint8_t *path,
+    int32_t path_len
+);
 int32_t l1c_fs_remove_empty_dir(
     const uint8_t *path,
     int32_t path_len
+);
+int32_t l1c_fs_join_child(
+    const uint8_t *parent,
+    int32_t parent_len,
+    const uint8_t *child,
+    int32_t child_len,
+    uint8_t *output,
+    int32_t output_capacity
+);
+int32_t l1c_fs_resolve_trusted_temp_parent(
+    const uint8_t *path,
+    int32_t path_len,
+    uint8_t *output,
+    int32_t output_capacity
 );
 
 static int32_t path_len(const char *path) {
@@ -168,6 +186,35 @@ static int write_marker(const char *path, const char *marker) {
     return fclose(stream) == 0;
 }
 
+static int joined_child_matches(
+    const char *parent,
+    const char *child,
+    const char *expected
+) {
+    uint8_t output[128];
+    int32_t required = l1c_fs_join_child(
+        (const uint8_t *)parent,
+        path_len(parent),
+        (const uint8_t *)child,
+        path_len(child),
+        NULL,
+        0
+    );
+    int32_t actual;
+    if (required <= 0 || required >= (int32_t)sizeof(output)) return 0;
+    actual = l1c_fs_join_child(
+        (const uint8_t *)parent,
+        path_len(parent),
+        (const uint8_t *)child,
+        path_len(child),
+        output,
+        (int32_t)sizeof(output) - 1
+    );
+    if (actual != required) return 0;
+    output[actual] = '\0';
+    return strcmp((const char *)output, expected) == 0;
+}
+
 static int marker_matches(const char *path, const char *marker) {
     char buffer[32];
     FILE *stream = fopen(path, "rb");
@@ -190,6 +237,10 @@ int main(int argc, char **argv) {
     char source[4096];
     char source_collision[4096];
     char destination[4096];
+    char removable[4096];
+    char notdir_parent[4096];
+    char notdir_child[4096];
+    uint8_t resolved[4096];
     static const uint8_t embedded_nul[] = { 'a', '\0', 'b' };
 
     if (argc < 2) return 1;
@@ -209,6 +260,24 @@ int main(int argc, char **argv) {
             workspace,
             "destination"
         )) return 7;
+    if (!make_path(
+            removable,
+            sizeof(removable),
+            workspace,
+            "removable"
+        )) return 8;
+    if (!make_path(
+            notdir_parent,
+            sizeof(notdir_parent),
+            workspace,
+            "notdir-parent"
+        )) return 9;
+    if (!make_path(
+            notdir_child,
+            sizeof(notdir_child),
+            notdir_parent,
+            "child"
+        )) return 91;
 
     if (l1c_fs_mkdir(
             (const uint8_t *)workspace,
@@ -232,6 +301,10 @@ int main(int argc, char **argv) {
         if ((info.st_mode & 0777) != 0700) return 17;
     }
 #endif
+
+    if (!write_marker(notdir_parent, "file")) return 18;
+    if (path_kind(notdir_child) != 0) return 19;
+    if (path_kind_follow(notdir_child) != 0) return 191;
 
     if (!write_marker(source, "source")) return 20;
     if (path_kind(source) != 1) return 21;
@@ -287,7 +360,7 @@ int main(int argc, char **argv) {
             path_len(workspace)
         ) != -1) return 38;
 
-    if (argc >= 5) {
+    if (argc >= 8 && strcmp(argv[2], "-") != 0) {
         if (path_kind(argv[2]) != 3) return 40;
         if (path_kind_follow(argv[2]) != 2) return 41;
         if (l1c_fs_mkdir(
@@ -298,6 +371,11 @@ int main(int argc, char **argv) {
 
         if (path_kind(argv[3]) != 3) return 43;
         if (path_kind_follow(argv[3]) != 1) return 44;
+        if (l1c_fs_remove_regular_file(
+                (const uint8_t *)argv[3],
+                path_len(argv[3])
+            ) != -1) return 441;
+        if (path_kind_follow(argv[3]) != 1) return 442;
 
         if (path_kind(argv[4]) != 3) return 45;
         if (path_kind_follow(argv[4]) != 0) return 46;
@@ -308,7 +386,7 @@ int main(int argc, char **argv) {
             ) != 0) return 47;
     }
 
-    if (argc >= 6) {
+    if (argc >= 8 && strcmp(argv[5], "-") != 0) {
         if (path_kind(argv[5]) != 3) return 48;
         if (path_kind_follow(argv[5]) != -1) return 49;
     }
@@ -324,8 +402,97 @@ int main(int argc, char **argv) {
     if (l1c_fs_path_kind_follow(embedded_nul, 3) != -1) return 54;
     if (l1c_fs_path_kind_follow(NULL, 0) != -1) return 55;
 
+    if (!joined_child_matches(
+            "parent/",
+            "child",
+            "parent/child"
+        )) return 551;
+#if defined(_WIN32)
+    if (!joined_child_matches(
+            "parent\\",
+            "child",
+            "parent\\child"
+        )) return 552;
+#else
+    if (!joined_child_matches(
+            "parent\\",
+            "child",
+            "parent\\/child"
+        )) return 552;
+#endif
+    if (l1c_fs_join_child(
+            embedded_nul,
+            3,
+            (const uint8_t *)"child",
+            5,
+            NULL,
+            0
+        ) != -1) return 553;
+
+    if (!write_marker(removable, "remove")) return 56;
+    if (l1c_fs_remove_regular_file(
+            (const uint8_t *)removable,
+            path_len(removable)
+        ) != 1) return 57;
+    if (l1c_fs_remove_regular_file(
+            (const uint8_t *)removable,
+            path_len(removable)
+        ) != 0) return 58;
+    if (l1c_fs_remove_regular_file(
+            (const uint8_t *)workspace,
+            path_len(workspace)
+        ) != -1) return 59;
+
+    if (argc >= 10) {
+        int32_t required = l1c_fs_resolve_trusted_temp_parent(
+            (const uint8_t *)argv[6],
+            path_len(argv[6]),
+            NULL,
+            0
+        );
+        int32_t actual;
+        if (required <= 0 || required >= (int32_t)sizeof(resolved)) return 61;
+        actual = l1c_fs_resolve_trusted_temp_parent(
+            (const uint8_t *)argv[6],
+            path_len(argv[6]),
+            resolved,
+            (int32_t)sizeof(resolved) - 1
+        );
+        if (actual != required) return 62;
+        resolved[actual] = '\0';
+        if (strcmp((const char *)resolved, argv[6]) != 0) return 63;
+#if defined(_WIN32)
+        if (l1c_fs_resolve_trusted_temp_parent(
+                (const uint8_t *)argv[7],
+                path_len(argv[7]),
+                NULL,
+                0
+            ) <= 0) return 64;
+#else
+        if (l1c_fs_resolve_trusted_temp_parent(
+                (const uint8_t *)argv[7],
+                path_len(argv[7]),
+                NULL,
+                0
+            ) != -1) return 64;
+        if (l1c_fs_resolve_trusted_temp_parent(
+                (const uint8_t *)argv[8],
+                path_len(argv[8]),
+                NULL,
+                0
+            ) <= 0) return 65;
+        if (l1c_fs_resolve_trusted_temp_parent(
+                (const uint8_t *)argv[9],
+                path_len(argv[9]),
+                NULL,
+                0
+            ) != -1) return 66;
+#endif
+    }
+
     remove(source_collision);
     remove(destination);
+    remove(notdir_parent);
     if (l1c_fs_remove_empty_dir(
             (const uint8_t *)workspace,
             path_len(workspace)
@@ -359,6 +526,24 @@ def main() -> int:
         loop_b = temp_dir / "loop-b"
         directory_target.mkdir()
         file_target.write_bytes(b"target")
+        trusted_parent = temp_dir / "trusted-parent"
+        unsafe_parent = temp_dir / "unsafe-parent"
+        trusted_parent.mkdir(mode=0o700)
+        unsafe_parent.mkdir(mode=0o700)
+        if os.name == "nt":
+            sticky_parent = trusted_parent
+            nested_parent = unsafe_parent
+        else:
+            unsafe_parent.chmod(0o777)
+            sticky_parent = temp_dir / "sticky-parent"
+            sticky_parent.mkdir()
+            sticky_parent.chmod(0o1777)
+
+            unsafe_ancestor = temp_dir / "unsafe-ancestor"
+            unsafe_ancestor.mkdir()
+            unsafe_ancestor.chmod(0o777)
+            nested_parent = unsafe_ancestor / "nested-parent"
+            nested_parent.mkdir(mode=0o700)
         try:
             directory_alias.symlink_to(
                 directory_target,
@@ -376,12 +561,13 @@ def main() -> int:
                 dangling_alias,
             ):
                 link.unlink(missing_ok=True)
-            link_arguments: list[str] = []
+            link_arguments = ["-", "-", "-", "-"]
         else:
             link_arguments = [
                 str(directory_alias),
                 str(file_alias),
                 str(dangling_alias),
+                "-",
             ]
             try:
                 loop_a.symlink_to(loop_b, target_is_directory=True)
@@ -390,14 +576,22 @@ def main() -> int:
                 loop_a.unlink(missing_ok=True)
                 loop_b.unlink(missing_ok=True)
             else:
-                link_arguments.append(str(loop_a))
+                link_arguments[3] = str(loop_a)
 
         previous_umask: int | None = None
         if os.name != "nt":
             previous_umask = os.umask(0o077)
         try:
             completed = subprocess.run(
-                [str(executable), str(temp_dir), *link_arguments],
+                [
+                    str(executable),
+                    str(temp_dir),
+                    *link_arguments,
+                    str(trusted_parent.resolve()),
+                    str(unsafe_parent.resolve()),
+                    str(sticky_parent.resolve()),
+                    str(nested_parent.resolve()),
+                ],
                 cwd=L1_ROOT,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

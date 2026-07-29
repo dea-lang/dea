@@ -1,7 +1,7 @@
 # ADR-0029: Output-Local Standalone Link Transaction
 
 - Decision date: 2026-07-27
-- Last edited: 2026-07-27
+- Last edited: 2026-07-29
 - Status: Accepted
 
 ## Context
@@ -58,14 +58,15 @@ ownership also permits safe reuse by the planned multi-CU build/run transaction.
 - Wrapper compile and final-link output are captured and replayed while their files remain transaction-owned.
 - A retained transaction is reported by exact path when bounded cleanup cannot prove it safe to remove.
 - A successful executable can remain visible when cleanup fails and the command returns nonzero.
-- Standalone link does not use `bd_temp_stem()` and does not claim transactional executable publication.
+- Standalone link remains independent of the command-owned native build/run workspace defined by
+  [ADR-0020][native-workspace-adr] and does not claim transactional executable publication.
 - Until native Windows host tools use direct process spawning, command words and redirection paths containing `%`, `!`,
   literal `"`, carriage return, or line feed are rejected; standalone values fail before transaction allocation.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
-- [work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-workspace]
+- [work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-workspace]
 - [l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md][link-hardening]
 
 ## Current Docs
@@ -78,5 +79,6 @@ ownership also permits safe reuse by the planned multi-CU build/run transaction.
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [link-hardening]: ../../work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
 [link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
-[native-workspace]: ../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-workspace]: ../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-workspace-adr]: ../../../docs/decisions/0020-native-compiler-private-temporary-workspaces.md
 [separate-compilation]: ../reference/separate-compilation.md

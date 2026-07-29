@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-07-28
+Version: 2026-07-29
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -64,7 +64,9 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
   +-- `--gen` / `--build` / `--run` --> backend_generate --> legacy whole-program C99 translation unit
                                           |
                                           v
-                                   build_driver.l0 --> host C compiler / executable launch
+                              build_driver.l0 + compiler_filesystem.l0
+                                --> private workspace
+                                --> host C compiler / executable launch
 ```
 
 The format-neutral object-inspection and standalone-link path is:
@@ -99,6 +101,17 @@ The driver closes over both interface dependency tiers. `require` providers are 
 their direct imports in declaration order, separately from sorted graph enumeration and interface manifests. The
 ordinary build/run CLI pipeline above is still source-based; compile-only instead requires verified interfaces for
 non-virtual imports.
+
+Ordinary `--build` and `--run` complete source and entry-point validation before reserving one command-owned temporary
+workspace. The driver registers generated C when it is not retained, compiler output captures, and the temporary run
+executable there, and keeps the workspace alive through child execution. Caller-selected executables and `--keep-c`
+outputs remain outside at their documented paths. Bounded no-follow cleanup removes only registered regular children and
+the empty real directory; unexpected or substituted contents retain the workspace and report `L1C-9514`.
+Temporary-parent inspection, setup, canonical trust, or exclusive-reservation failure reports `L1C-9513` and does not
+fall through to a later candidate. Cleanup changes success to status 1 but preserves an already nonzero compilation,
+launch, or child-program result. Workspace and fixed-child construction uses an actual-host filesystem primitive, so
+POSIX treats a trailing `\` in the canonical parent as a literal filename byte rather than as permission to allocate a
+sibling path.
 
 The internal module-generation branch selects one canonical source-backed target from the completed analysis result. It
 emits target definitions, external declarations for provider-owned source and interface values and functions consumed by
@@ -274,6 +287,8 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Exposes resolution-aware internal entry points with ordered interface roots, caller-selected source fallback, and an
   optional artifact root.
 - Implements CLI mode dispatch and host compiler execution.
+- Uses `compiler_filesystem.l0` as the internal filesystem boundary shared by native build/run workspace management,
+  compile-only transactions, and standalone-link transactions.
 - Implements compile-only interface resolution, object-only host compilation, and artifact publication with endpoint
   rollback.
 - Produces generated C, module artifacts, built executables, or direct runs depending on CLI mode.
@@ -319,9 +334,9 @@ Important analysis tables include:
     underline and the displayed line always agree, independent of terminal tab-stop behavior. Unicode display-width
     handling is out of scope for this contract.
 05. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
-06. Ordinary build/run CLI generation remains one legacy whole-program C99 translation unit; compile-only uses the
-    internal module API to emit one selected source-backed module translation unit, and standalone link consumes
-    explicit object paths without reopening source or interfaces.
+06. Ordinary build/run CLI generation remains one legacy whole-program C99 translation unit and owns one private
+    command-lifetime workspace; compile-only uses the internal module API to emit one selected source-backed module
+    translation unit, and standalone link consumes explicit object paths without reopening source or interfaces.
 07. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
     preserve declaration order and duplicates.
 08. An interface is registered or cached only after its declared identity and whole-module fingerprint are verified.
@@ -353,6 +368,7 @@ Main current compiler modules under `compiler/stage1_l0/src/`:
 - `build_info.l0`
 - `cli_args.l0`
 - `codegen_options.l0`
+- `compiler_filesystem.l0`
 - `dea_prelude.l0`
 - `diag_print.l0`
 - `driver.l0`
@@ -390,8 +406,10 @@ Main current compiler modules under `compiler/stage1_l0/src/`:
 
 Shared support modules live under `compiler/stage1_l0/src/util/`.
 
-The L1-owned Stage 1 support translation unit under `compiler/stage1_l0/support/` supplies the small allocation-free C
-ABIs used for interface fingerprinting, compile-only publication, and standalone-link transaction filesystem operations.
+The L1-owned Stage 1 support translation unit under `compiler/stage1_l0/support/` supplies the small compiler-private C
+ABIs used for interface fingerprinting, canonical native temporary-parent validation, build/run workspace operations,
+compile-only publication, and standalone-link transaction filesystem operations. `compiler_filesystem.l0` is the single
+compiler-facing wrapper for the filesystem primitives; none of them extends the public runtime or standard library.
 
 ## 6. Host and Toolchain Assumptions
 

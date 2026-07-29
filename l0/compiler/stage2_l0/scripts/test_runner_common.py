@@ -23,6 +23,9 @@ MONOREPO_ROOT = REPO_ROOT.parent
 TESTS_DIR = STAGE_DIR / "tests"
 DEA_BUILD_DIR_ENV = "DEA_BUILD_DIR"
 TRACE_EXCLUDED_L0_TESTS: set[str] = set()
+STAGE2_COMPILER_SUPPORT_SOURCE = (
+    "compiler/stage2_l0/support/compiler_filesystem.c"
+)
 
 
 def repo_venv_bin_dir() -> Path:
@@ -301,7 +304,15 @@ def build_normal_test_command(case: TestCase, python_path: Path) -> list[str]:
     """Return the subprocess command for one normal Stage 2 test."""
 
     if case.kind == "l0":
-        return [*source_tree_l0c_command(), "--project-root", "compiler/stage2_l0/src", "--run", str(case.path)]
+        return [
+            *source_tree_l0c_command(),
+            "--c-source",
+            STAGE2_COMPILER_SUPPORT_SOURCE,
+            "--project-root",
+            "compiler/stage2_l0/src",
+            "--run",
+            str(case.path),
+        ]
     if case.kind == "python":
         return [str(python_path), str(case.path)]
     raise ValueError(f"Unsupported test kind: {case.kind}")

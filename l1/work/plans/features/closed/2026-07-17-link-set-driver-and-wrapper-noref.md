@@ -39,8 +39,8 @@
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
   - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
-  - [`work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
-  - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-workspace]
+  - [`work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
+  - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-workspace]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
   `make -C l1 test-stage1 TESTS="build_driver_test cli_args_test wrapper_emitter_test link_driver_test l1c_stage1_link_set_test.py"`
@@ -92,8 +92,9 @@ module, fingerprint, lifecycle, dependency, or entry semantics.
    ordered input stream with libraries, rpaths, and raw host-driver arguments.
 7. This plan owns an atomically reserved output-local transaction for standalone wrapper artifacts. The common link
    executor accepts caller-supplied scratch paths and never allocates or cleans their owning workspace.
-8. The active [structured-input plan][structured-input] and [shared native-workspace plan][native-workspace] are
-   prerequisites for later build/run fan-out, not for standalone linking. This mode must not call `bd_temp_stem()`.
+8. The completed [structured-input plan][structured-input] and [shared native-workspace plan][native-workspace] supply
+   prerequisites for later build/run fan-out, not for standalone linking. This mode does not use the command-owned
+   native build/run workspace.
 
 ## CLI Contract
 
@@ -304,8 +305,8 @@ repeats the path with `extern "C"`.
     inputs remain untouched.
 10. Focused normal and trace tests pass, followed by `make -C l1 test` once implementation is complete.
 11. Concrete diagnostics are registered in the shared catalog before closure.
-12. Transaction allocation retries collisions, rejects an exhausted candidate set without fallback, and never calls
-    `bd_temp_stem()`.
+12. Transaction allocation retries collisions, rejects an exhausted candidate set without fallback, and remains
+    independent of the command-owned native build/run workspace.
 13. Wrapper write, compiler discovery, wrapper compile, final link, and cleanup failures remove known transaction files
     or retain and report the bounded transaction without touching caller inputs.
 14. POSIX tests cover mode `0700` and trusted output-parent aliases. MinGW tests cover inherited ACL behavior,
@@ -337,6 +338,6 @@ repeats the path with `extern "C"`.
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[native-workspace]: ../../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-workspace]: ../../../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
-[structured-input]: ../../../../../work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md
+[structured-input]: ../../../../../work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md

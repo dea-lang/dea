@@ -18,7 +18,7 @@
   - `l0/compiler/stage1_py/tests/cli/test_l0c_assumptions.py`
   - `l0/compiler/stage1_py/tests/diagnostics/test_diagnostic_codes.py`
 - Related:
-  - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-safety]
+  - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro: replace the path returned by Stage 1 `tempfile.mktemp()` with a dangling symlink before `Path.write_text()`;
   the generated-C write follows the link and creates or truncates the target
@@ -38,8 +38,9 @@ Anonymous-source cleanup is part of the build result. A removal failure reports 
 returns failure instead of being swallowed. If host compilation already produced a caller-visible build executable, that
 executable is retained. A setup or write failure followed by cleanup failure reports both `L0C-9511` and `L0C-9512`.
 
-The corresponding native L0 Stage 2 and L1 Stage 1 build/run defects are not part of this completed L0-local plan. They
-remain actively tracked by the shared [native temporary-workspace safety plan][native-safety].
+The corresponding native L0 Stage 2 and L1 Stage 1 build/run defects are not part of this completed L0-local plan. The
+completed shared [native temporary-workspace safety plan][native-safety] now owns their command-level private workspace
+lifecycle.
 
 ## Implemented Invariant
 
@@ -110,6 +111,17 @@ remain actively tracked by the shared [native temporary-workspace safety plan][n
    recursive deletion, crash recovery, or durability.
 5. Auditing Windows ACLs beyond the documented trusted-temporary-parent assumption.
 
+## ADR Impact
+
+- Decision: Reserve anonymous L0 Stage 1 generated C through `mkstemp()` in a validated temporary parent and make its
+  cleanup result-bearing while keeping it separate from native command-owned workspaces.
+  - Scope: N/A
+  - Disposition: ADR not warranted
+  - ADR: None
+  - Rationale: This is a bounded Stage 1 defect fix whose behavior is fully recorded in the Stage 1 compiler contract
+    and diagnostic catalog; it does not introduce a broader compiler or language architecture boundary. ADR-0020
+    separately records that native command-owned workspaces do not replace this Python Stage 1 lifecycle.
+
 ## Outcome
 
 Implemented 2026-07-26.
@@ -120,7 +132,7 @@ Implemented 2026-07-26.
   reports `L0C-9512` and the retained path instead of being swallowed.
 - The implementation-time catalog re-check on 2026-07-26 confirmed `L0C-9512` was unused before assignment.
 - Retained C and, apart from the trust check, the existing `--run` temporary-executable behavior are unchanged.
-- Native L0 Stage 2 and L1 Stage 1 hardening remain open under the shared follow-up plan.
+- Native L0 Stage 2 and L1 Stage 1 hardening is complete under the shared follow-up plan.
 
 Validation:
 
@@ -129,4 +141,4 @@ Validation:
 - `make test-stage1` from `l0/` (`1431 passed`)
 
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[native-safety]: ../../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-safety]: ../../../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md

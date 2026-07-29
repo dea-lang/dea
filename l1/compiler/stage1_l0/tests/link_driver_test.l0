@@ -17,6 +17,7 @@ import std.vector;
 import build_driver;
 import cli_args;
 import compile_driver;
+import compiler_filesystem;
 import link_driver;
 import object_reader;
 import object_reader_types;
@@ -597,7 +598,7 @@ func test_windows_system_command_transport() {
 
 /** Remove one transaction directory that contains only known children. */
 func ldt_remove_transaction(root: string) {
-    if (cd_path_kind(root) != CD_PATH_DIRECTORY) {
+    if (cfs_path_kind(root) != CFS_PATH_DIRECTORY) {
         return;
     }
     let txn = ld_transaction_create(root);
@@ -612,7 +613,7 @@ func test_link_transaction_lifecycle() {
     let root1 = join(parent_dir, ".l1c-link-4242-7-9-1");
     ldt_remove_transaction(root0);
     ldt_remove_transaction(root1);
-    assert(cd_mkdir(root0, 448) == 1, "expected occupied link candidate");
+    assert(cfs_mkdir(root0, 448) == 1, "expected occupied link candidate");
 
     with (let diags = diag_create() => diag_free(diags)) {
         let txn_opt = ld_create_transaction_for_identity(
@@ -624,7 +625,7 @@ func test_link_transaction_lifecycle() {
             "expected known transaction child");
         assert(ld_cleanup_transaction(txn),
             "known transaction children should clean");
-        assert(cd_path_kind(root1) == CD_PATH_ABSENT,
+        assert(cfs_path_kind(root1) == CFS_PATH_ABSENT,
             "clean transaction root should be removed");
         ld_transaction_free(txn);
     }
@@ -635,7 +636,7 @@ func test_link_transaction_lifecycle() {
         "expected unexpected transaction child");
     assert(!ld_cleanup_transaction(stale),
         "unexpected child must make bounded cleanup fail");
-    assert(cd_path_kind(root0) == CD_PATH_DIRECTORY,
+    assert(cfs_path_kind(root0) == CFS_PATH_DIRECTORY,
         "failed cleanup must retain transaction root");
     delete_file(unexpected);
     assert(ld_cleanup_transaction(stale),

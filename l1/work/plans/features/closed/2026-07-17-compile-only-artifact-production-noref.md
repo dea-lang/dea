@@ -47,7 +47,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-temp-safety]
-  - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
+  - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
   `make -C l1 test-stage1 TESTS="cli_args_test source_paths_test driver_test backend_test interface_test build_driver_test compile_driver_test l1c_lib_test compiler_filesystem_support_test.py l1c_stage1_compile_only_test.py l1c_stage1_help_output_test.py"`
@@ -76,9 +76,9 @@ returns with the prior selected set restored. This is not an atomic reader-visib
    publication failures.
 5. The [link-set plan][link-set] consumes the published object but does not reopen the `.l1m` during standalone linking.
 6. The completed [L0 Stage 1 temporary-C fix][stage1-temp-safety] closes the demonstrated bootstrap prerequisite. The
-   active shared [native temporary-workspace safety plan][native-temp-safety] owns global `--build` / `--run` hardening,
-   but does not block compile-only: this mode reserves its transaction directory beside the requested destinations and
-   does not reuse the native drivers' temporary-stem lifecycle.
+   completed shared [native temporary-workspace safety plan][native-temp-safety] owns global `--build` / `--run`
+   workspaces, but remains separate from compile-only: this mode reserves its transaction directory beside the requested
+   destinations and does not reuse the command-owned native build/run workspace.
 
 ## CLI and Artifact Contract
 
@@ -143,8 +143,8 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [--keep-c]
    aliases in the output-parent chain are followed for directory validation and recursive creation.
 3. The caller-selected destination parent and selected C compiler are trusted inputs. This plan does not claim
    containment from a same-account process that can mutate that parent, an administrator, or a malicious C compiler.
-4. Global compiler temporary-root selection and native `--build` / `--run` workspace cleanup remain with the active
-   shared [native temporary-workspace safety plan][native-temp-safety].
+4. Global compiler temporary-root selection and native `--build` / `--run` workspace cleanup are governed by the
+   completed shared [native temporary-workspace safety plan][native-temp-safety].
 
 ## Implementation Phases
 
@@ -257,6 +257,6 @@ Validation:
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[native-temp-safety]: ../../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-temp-safety]: ../../../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
 [stage1-temp-safety]: ../../../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

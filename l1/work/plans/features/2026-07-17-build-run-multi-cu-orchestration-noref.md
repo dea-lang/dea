@@ -41,7 +41,7 @@
   - [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c]
   - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
-  - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
+  - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
   `make -C l1 test-stage1 TESTS="cli_args_test source_paths_test driver_test analysis_test build_driver_test link_driver_test l1c_lib_test"`
@@ -66,9 +66,9 @@ modes.
    this plan mixes with source-built units.
 3. [Compile-only production][compile-only] establishes the reusable one-module analysis, C emission, object compilation,
    and interface-emission operations. Build/run may target a temporary artifact root instead of publishing the result.
-4. The shared [native temporary-workspace safety plan][native-temp-safety] owns atomic reservation and cleanup of the
-   build/run private workspace. This plan must consume that settled lifecycle rather than define another temporary-root
-   policy.
+4. The completed shared [native temporary-workspace safety plan][native-temp-safety] owns atomic reservation and cleanup
+   of the build/run private workspace. This plan consumes that settled lifecycle rather than defining another
+   temporary-root policy.
 5. The [generated-C plan][generated-c] owns byte identity for the shared per-module generator and final removal of the
    legacy whole-program generator. This plan owns retention of the complete build/run C tree.
 6. The [link-set plan][link-set] must land first. This plan passes verified Dea objects, foreign objects, and the source
@@ -304,5 +304,5 @@ architecture, C-backend, and separate-compilation references.
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[native-temp-safety]: ../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-temp-safety]: ../../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md

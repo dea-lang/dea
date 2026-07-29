@@ -1,7 +1,7 @@
 # ADR-0022: Compile-Only Artifact Endpoint Rollback
 
 - Decision date: 2026-07-24
-- Last edited: 2026-07-27
+- Last edited: 2026-07-29
 - Status: Accepted
 
 ## Context
@@ -58,8 +58,9 @@ During publication or rollback, selected paths may be temporarily absent or may 
 generations. Interface-last ordering constrains the writer's mutation order but does not create a snapshot for
 concurrent readers.
 
-Global native build/run temporary-workspace hardening is tracked by the active shared
-[native workspace safety plan][native-safety] and does not block this compile-only publication path.
+Native build/run now uses the command-owned private workspace defined by [ADR-0020][native-workspace-adr] and completed
+by the [native workspace safety plan][native-safety]. That lifecycle remains separate from and does not replace this
+compile-only publication path.
 
 ## Rationale
 
@@ -82,8 +83,8 @@ Global native build/run temporary-workspace hardening is tracked by the active s
 - Endpoint rollback relies on the trusted-parent assumption and does not promise crash durability.
 - Auxiliary files explicitly requested through raw host-C options are not recursively deleted; if one prevents cleanup,
   the compiler reports and retains the transaction directory for inspection.
-- `--build` and `--run` retain their existing workspace behavior until their separate hardening and multi-CU plans are
-  implemented.
+- `--build` and `--run` use command-owned private workspaces; later multi-CU orchestration must reuse that lifecycle
+  without routing compile-only publication through it.
 - Future Stage 2 support must preserve the same artifact validation, publication order, and rollback semantics.
 
 ## Related Plans
@@ -91,7 +92,7 @@ Global native build/run temporary-workspace hardening is tracked by the active s
 - [l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md][cross-platform-ci]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md][stage1-safety]
-- [work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-safety]
+- [work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-safety]
 
 ## Current Docs
 
@@ -105,6 +106,7 @@ Global native build/run temporary-workspace hardening is tracked by the active s
 [cli-contract]: ../../../docs/specs/compiler/cli-contract.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [cross-platform-ci]: ../../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
-[native-safety]: ../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-safety]: ../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-workspace-adr]: ../../../docs/decisions/0020-native-compiler-private-temporary-workspaces.md
 [project-status]: ../project-status.md
 [stage1-safety]: ../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

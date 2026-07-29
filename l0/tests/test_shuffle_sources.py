@@ -71,11 +71,13 @@ def expected_pools() -> dict[str, set[str]]:
         excluded_parts={"tests", "__pycache__"},
     )
     l0_stage2 = source_files("l0/compiler/stage2_l0/src", "*.l0")
+    l0_stage2 |= source_files("l0/compiler/stage2_l0/support", "*.c")
     l0_stage2.add("l0/compiler/stage2_l0/scripts/check_trace_log.py")
     l0_shared = source_files("l0/compiler/shared/l0/stdlib", "*.l0")
     l0_shared |= top_level_source_files("l0/compiler/shared/runtime", "*.h")
 
     l1_stage1 = source_files("l1/compiler/stage1_l0/src", "*.l0")
+    l1_stage1 |= source_files("l1/compiler/stage1_l0/support", "*.c")
     l1_stage2 = source_files("l1/compiler/stage2_l1/src", "*.l1")
     l1_shared = source_files("l1/compiler/shared/l1/stdlib", "*.l1")
     l1_shared |= source_files("l1/compiler/shared/runtime", "*.c")
@@ -203,15 +205,23 @@ def main() -> int:
     pools = expected_pools()
     l0_stage1_sentinel = "l0/compiler/stage1_py/l0_c_emitter.py"
     l0_stage2_sentinel = "l0/compiler/stage2_l0/src/analysis.l0"
+    l0_stage2_support_sentinel = (
+        "l0/compiler/stage2_l0/support/compiler_filesystem.c"
+    )
     l0_shared_sentinel = "l0/compiler/shared/l0/stdlib/std/io.l0"
     l1_stage1_sentinel = "l1/compiler/stage1_l0/src/analysis.l0"
+    l1_stage1_support_sentinel = (
+        "l1/compiler/stage1_l0/support/interface_fingerprint.c"
+    )
     l1_shared_sentinel = "l1/compiler/shared/l1/stdlib/std/io.l1"
 
     for sentinel in (
         l0_stage1_sentinel,
         l0_stage2_sentinel,
+        l0_stage2_support_sentinel,
         l0_shared_sentinel,
         l1_stage1_sentinel,
+        l1_stage1_support_sentinel,
         l1_shared_sentinel,
     ):
         if sentinel not in pools["all"]:
@@ -230,12 +240,20 @@ def main() -> int:
     assert_full_pool(
         ("L0", "S2"),
         pools["l0-s2"],
-        sentinels={l0_stage2_sentinel, l0_shared_sentinel},
+        sentinels={
+            l0_stage2_sentinel,
+            l0_stage2_support_sentinel,
+            l0_shared_sentinel,
+        },
     )
     assert_full_pool(
         ("l1", "s1"),
         pools["l1-s1"],
-        sentinels={l1_stage1_sentinel, l1_shared_sentinel},
+        sentinels={
+            l1_stage1_sentinel,
+            l1_stage1_support_sentinel,
+            l1_shared_sentinel,
+        },
     )
     assert_full_pool(("L1", "S2"), pools["l1-s2"], sentinels={l1_shared_sentinel})
 

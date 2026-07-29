@@ -12,8 +12,10 @@ import std.string;
 import std.system;
 import std.text;
 import std.vector;
+import util.diag;
 
 import build_driver;
+import compiler_filesystem;
 import object_metadata;
 import object_reader;
 import object_reader_types;
@@ -1344,13 +1346,19 @@ func test_native_compiler_smoke_object() {
         cb_append_s(source, "(void){return 0;}\n");
         cb_append_s(source, "int main(void){return 0;}\n");
 
-        let stem = bd_temp_stem("object-reader");
-        let c_path = stem + ".c";
+        let workspace_diags = diag_create();
+        let workspace_opt = cfs_workspace_create(
+            "object-reader-test", workspace_diags);
+        assert(workspace_opt != null,
+            "native object smoke test requires a temporary workspace");
+        let workspace = workspace_opt as CompilerWorkspace*;
+        let c_path = cfs_workspace_child(workspace, "input.c");
         let object_suffix = ".o";
         if (bd_is_windows()) {
             object_suffix = ".obj";
         }
-        let object_path = stem + object_suffix;
+        let object_path = cfs_workspace_child(
+            workspace, "output" + object_suffix);
         assert(write_file(c_path, cb_to_string(source)) != null,
             "native smoke C source should be writable");
         let family = bd_compiler_flag_family(compiler as string);
@@ -1389,8 +1397,10 @@ func test_native_compiler_smoke_object() {
             assert(object_inspection_defines_main(inspection),
                 "native object process main should normalize");
         }
-        delete_file(c_path);
-        delete_file(object_path);
+        assert(cfs_workspace_cleanup(workspace, workspace_diags),
+            "native object smoke workspace cleanup should succeed");
+        cfs_workspace_free(workspace);
+        diag_free(workspace_diags);
     }
 }
 

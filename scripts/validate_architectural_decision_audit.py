@@ -603,6 +603,17 @@ def validate_audit(
     else:
         manifest_text = ""
         errors.append("missing required audit manifest")
+
+    def declared_manifest_paths(label: str) -> set[str]:
+        """Read one-line or mdformat-wrapped path declarations."""
+
+        matches = re.findall(
+            rf"^- {re.escape(label)}:(?: `([^`]+)`|\n  `([^`]+)`)$",
+            manifest_text,
+            flags=re.MULTILINE,
+        )
+        return {single or wrapped for single, wrapped in matches}
+
     required_manifest_patterns = {
         "repository URL": (
             r"^- Repository: "
@@ -697,12 +708,8 @@ def validate_audit(
         for pattern in PLAN_PATTERNS
         for path in root.glob(pattern)
     }
-    declared_post_baseline_plans = set(
-        re.findall(
-            r"^- Post-baseline closed plan: `([^`]+)`$",
-            manifest_text,
-            flags=re.MULTILINE,
-        )
+    declared_post_baseline_plans = declared_manifest_paths(
+        "Post-baseline closed plan"
     )
     actual_post_baseline_plans = current_plan_paths - plan_paths
     undeclared_post_baseline_plans = sorted(
@@ -731,19 +738,11 @@ def validate_audit(
         )
 
     current_adr_paths = numbered_adr_paths(root)
-    declared_post_baseline_adrs = set(
-        re.findall(
-            r"^- Post-baseline ADR: `([^`]+)`$",
-            manifest_text,
-            flags=re.MULTILINE,
-        )
+    declared_post_baseline_adrs = declared_manifest_paths(
+        "Post-baseline ADR"
     )
-    declared_post_baseline_adr_amendments = set(
-        re.findall(
-            r"^- Post-baseline ADR amendment: `([^`]+)`$",
-            manifest_text,
-            flags=re.MULTILINE,
-        )
+    declared_post_baseline_adr_amendments = declared_manifest_paths(
+        "Post-baseline ADR amendment"
     )
     actual_post_baseline_adrs = current_adr_paths - baseline_adr_paths
     undeclared_post_baseline_adrs = sorted(

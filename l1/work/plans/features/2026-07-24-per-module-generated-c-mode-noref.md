@@ -45,7 +45,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-temp-safety]
-  - [`work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
+  - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
 - Repro:
   `make -C l1 test-stage1 TESTS="cli_args_test backend_test c_emitter_test driver_test module_graph_test interface_replay_test compile_driver_test build_driver_test l1c_lib_test l1c_stage1_help_output_test.py l1c_stage1_compile_only_test.py"`
 
@@ -73,8 +73,8 @@ After the [build/run fan-out plan][build-run] migrates the last whole-program ca
    workspace paths, compile-only object determinism, and retirement of the legacy generator.
 5. The [build/run fan-out plan][build-run] owns multi-CU orchestration and retained-C trees. Its migration must land
    before this plan removes the legacy generator, but it does not block the `--gen` migration.
-6. The completed [L0 Stage 1 temporary-C fix][stage1-temp-safety] is related historical work. The active shared
-   [native temporary-workspace safety plan][native-temp-safety] owns native build/run hardening but is not a
+6. The completed [L0 Stage 1 temporary-C fix][stage1-temp-safety] is related historical work. The completed shared
+   [native temporary-workspace safety plan][native-temp-safety] owns native build/run workspaces but is not a
    prerequisite; L1 compile-only remains self-contained through its output-local private transaction directory and
    endpoint-rollback publication path.
 
@@ -333,6 +333,6 @@ Then run staged whitespace, link, Markdown, and repository-root pre-commit check
 [compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[native-temp-safety]: ../../../../work/plans/bug-fixes/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[native-temp-safety]: ../../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [stage1-temp-safety]: ../../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

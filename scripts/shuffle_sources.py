@@ -37,6 +37,7 @@ SOURCE_GROUPS = (
         2,
         (
             "l0/compiler/stage2_l0/src/**/*.l0",
+            "l0/compiler/stage2_l0/support/**/*.c",
             "l0/compiler/stage2_l0/scripts/check_trace_log.py",
         ),
     ),
@@ -48,7 +49,14 @@ SOURCE_GROUPS = (
             "l0/compiler/shared/runtime/*.h",
         ),
     ),
-    SourceGroup("l1", 1, ("l1/compiler/stage1_l0/src/**/*.l0",)),
+    SourceGroup(
+        "l1",
+        1,
+        (
+            "l1/compiler/stage1_l0/src/**/*.l0",
+            "l1/compiler/stage1_l0/support/**/*.c",
+        ),
+    ),
     SourceGroup("l1", 2, ("l1/compiler/stage2_l1/src/**/*.l1",)),
     SourceGroup(
         "l1",
