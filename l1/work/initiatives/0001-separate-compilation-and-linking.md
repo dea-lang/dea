@@ -1,9 +1,10 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-07-27
+- Version: 2026-08-20
 - Status: Active
 - Kind: Initiative
 - Open plans:
+  - `l1/work/plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md`
   - `l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
@@ -102,6 +103,18 @@ Relevant facts that constrain the plan at the time of writing:
 - `compiler/stage1_l0/` is the only implemented L1 compiler today. `compiler/stage2_l1/` is a placeholder for the future
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
   behavior must be ported there with Stage 1 acting as the L1 behavioral oracle.
+
+### Planned `.l1m` authority transition
+
+The active
+[`l1/work/plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md`][l1m-authoritative-linking] plans to
+make each verified sibling `.l1m` the standalone linker's semantic, entry, and lifecycle authority while treating paired
+native objects and explicit foreign objects as caller-asserted opaque host inputs. Until that plan closes, the
+object-authoritative behavior in the current baseline remains implemented and normative.
+
+The transition will remove embedded object metadata, native-object readers, and input snapshots; add ordered lifecycle
+imports and entry presence to `.l1m`; and rebase the active generated-C, build/run, external-linking, and C-FFI work
+before those plans rely on the future boundary.
 
 ## Phase 0 - Anchor decisions before coding
 
@@ -788,6 +801,8 @@ implementation tranche proves that one decision area needs additional design wor
   [link set][link-set] and are recorded by [ADR-0028][link-set-adr] and [ADR-0029][link-transaction-adr].
 - Standalone-link input, traversal, lifecycle, and Windows transport hardening under
   [standalone-link hardening][standalone-link-hardening].
+- `.l1m`-authoritative standalone linking and opaque native-input handling under
+  [`l1/work/plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md`][l1m-authoritative-linking].
 - `--build` / `--run` graph fan-out through shared compile/link APIs under [build/run fan-out][build-run].
 - Phase 3: external-library linking CLI under
   [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][library-linking]
@@ -817,6 +832,7 @@ implementation tranche proves that one decision area needs additional design wor
 [fingerprint-adr]: ../../docs/decisions/0019-whole-module-interface-fingerprints.md
 [interface-emission]: ../plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[l1m-authoritative-linking]: ../plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [library-linking]: ../plans/features/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-adr]: ../../docs/decisions/0020-per-module-backend-and-lifecycle-abi.md
 [lifecycle-entrypoints]: ../plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

@@ -202,12 +202,12 @@ architecture, C-backend, and separate-compilation references.
 
 ## Diagnostics
 
-1. Provisionally reserve `L1C-2110` through `L1C-2129` for build/run graph expansion, interface/object association,
+1. Provisionally reserve `L1C-2130` through `L1C-2149` for build/run graph expansion, interface/object association,
    source fan-out, selected-target entry failures, retained-C output, temporary cleanup, execution, and mode-specific
    option diagnostics.
 2. Reuse graph, fingerprint, metadata, classification, wrapper, and host-link diagnostics from their owning plans when
    the meaning is unchanged. Do not mint a build/run duplicate for the same failed invariant.
-3. Re-check `L1C-2110` through `L1C-2129` against the live [diagnostic catalog][diagnostic-catalog] immediately before
+3. Re-check `L1C-2130` through `L1C-2149` against the live [diagnostic catalog][diagnostic-catalog] immediately before
    implementation and move the whole provisional block if any code has been assigned.
 
 ## ADR Impact
