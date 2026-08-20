@@ -183,20 +183,12 @@ func test_emitter_name_mangling() {
 
     assert(cem_mangle_let_name("main", "answer") == "__deaM4mainN6answer",
         "single-segment module path should encode as one M component");
-    assert(cem_mangle_module_lifecycle_name("a.b", "init") == "__deaM1a1bI4init",
-        "dotted module lifecycle name mismatch");
-    assert(cem_mangle_module_lifecycle_name("a_b", "init") == "__deaM3a_bI4init",
-        "underscore module lifecycle name mismatch");
     assert(cem_mangle_module_init_name("a.b") == "__deaM1a1bI4init",
         "module init name mismatch");
     assert(cem_mangle_module_fini_name("a.b") == "__deaM1a1bI4fini",
         "module fini name mismatch");
     assert(cem_mangle_module_entry_name("a.b") == "__deaM1a1bI5entry",
         "module entry name mismatch");
-    assert(cem_mangle_module_metadata_name("a.b") == "__deaM1a1bI8metadata",
-        "module metadata name mismatch");
-    assert(cem_mangle_module_imports_name("a.b") == "__deaM1a1bI7imports",
-        "module imports name mismatch");
     assert(cem_mangle_identifier("return") == "return__v", "identifier keyword mangling mismatch");
     assert(cem_mangle_identifier("l0_tmp") == "l0_tmp__v", "legacy local prefix should be mangled");
     assert(cem_mangle_identifier("_l0_hidden") == "_l0_hidden__v", "legacy private prefix should be mangled");
@@ -981,40 +973,21 @@ func test_emitter_unsafe_function_types_share_c_abi() {
     type_free(unsafe_ty);
 }
 
-/**
- * Tests module metadata arrays retain external linkage, bounded rows, and
- * volatile lifecycle anchors.
- */
-func test_emitter_module_object_metadata_arrays_and_anchors() {
+/** Tests module lifecycle output contains no retired metadata anchors. */
+func test_emitter_module_lifecycle_has_no_metadata_anchors() {
     let emitter = cem_create();
-    cem_emit_module_object_metadata(emitter, "a.b", "abcdefghijklmnopq", "xy");
     cem_emit_external_void_function_header(emitter, cem_mangle_module_init_name("a.b"));
-    cem_emit_module_metadata_anchors(emitter, "a.b");
     cem_emit_function_definition_footer(emitter);
 
     let generated = cem_get_output(emitter);
     assert(contains_s(generated,
-        "const uint8_t __deaM1a1bI8metadata[17] = {\n" +
-        "    97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112,\n" +
-        "    113\n" +
-        "};\n"),
-        "metadata array should use external const storage and sixteen-byte rows");
-    assert(contains_s(generated,
-        "const uint8_t __deaM1a1bI7imports[2] = {\n" +
-        "    120, 121\n" +
-        "};\n"),
-        "imports array should use the canonical external symbol");
-    assert(contains_s(generated,
         "void __deaM1a1bI4init(void)\n" +
         "{\n" +
-        "    (void)((volatile const uint8_t *)__deaM1a1bI8metadata)[0];\n" +
-        "    (void)((volatile const uint8_t *)__deaM1a1bI7imports)[0];\n" +
         "}\n"),
-        "module init should anchor both arrays with volatile byte reads");
-    assert(!contains_s(generated, "static const uint8_t __deaM1a1bI8metadata"),
-        "metadata array must not have internal linkage");
-    assert(!contains_s(generated, "static const uint8_t __deaM1a1bI7imports"),
-        "imports array must not have internal linkage");
+        "module init should retain external lifecycle spelling");
+    assert(!contains_s(generated, "I8metadata") && !contains_s(generated, "I7imports") &&
+        !contains_s(generated, "volatile const uint8_t"),
+        "module lifecycle output must not contain retired metadata arrays or anchors");
 
     cem_free(emitter);
 }
@@ -1047,6 +1020,6 @@ func main() {
     test_emitter_top_level_forms_match_stage1_shape();
     test_emitter_main_wrapper_normalizes_bool_result();
     test_emitter_unsafe_function_types_share_c_abi();
-    test_emitter_module_object_metadata_arrays_and_anchors();
+    test_emitter_module_lifecycle_has_no_metadata_anchors();
     printl_s("c_emitter_test: all tests passed");
 }

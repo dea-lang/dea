@@ -41,9 +41,9 @@ modules can link against host libraries without bespoke runtime-only flags. This
 - `-Rr=<dir>` / `--rpath=<dir>`
 - `-Cl=<flag>` / `--link-arg=<flag>`
 
-It extends the typed ordered input stream already established for verified Dea objects and explicit `--foreign-object` C
-relocatables. It also completes the cleanup that frees `-I` for interface-path lookup rather than raw
-linker/include-path behavior.
+It extends the typed ordered input stream already established for verified-interface/opaque-object Dea pairs and
+explicit caller-asserted `--foreign-object` C relocatables. It also completes the cleanup that frees `-I` for
+interface-path lookup rather than raw linker/include-path behavior.
 
 ## Current State
 
@@ -70,12 +70,13 @@ linker/include-path behavior.
    archive fallback.
 6. Existing legacy `extern func` binding modules are the workflow available when this plan lands. Initiative `0003`
    later adds `extern "C"`; package manifests and automatic dependency metadata stay out of scope.
-7. `--link-arg` cannot bypass object classification. A value that directly or through a supported host-driver
-   pass-through spelling introduces a relocatable object is rejected with guidance to use a positional verified Dea
-   object or `--foreign-object`. Opaque response-file indirection is rejected. Archive and shared-library operands
-   remain valid external-library inputs.
-8. Format-recognized linker controls embedded inside Dea or foreign relocatable objects remain rejected. Libraries,
-   search paths, rpaths, and raw arguments must enter through this plan's explicit typed CLI surface.
+7. `--link-arg` cannot substitute for the typed object surfaces. A direct relocatable-object operand is rejected with
+   guidance to use a positional Dea `.o` with its sibling `.l1m`, or `--foreign-object` for one caller-asserted foreign
+   relocatable. Opaque response-file indirection remains outside the supported contract. Archive and shared-library
+   operands remain valid external-library inputs.
+8. Dea does not inspect native object bytes for embedded linker controls. Libraries, search paths, rpaths, and raw
+   arguments must enter through this plan's explicit typed CLI surface for supported use, while any controls hidden in
+   caller-supplied native bytes are outside Dea validation and may be accepted or rejected by the host toolchain.
 
 ## Goal
 
@@ -104,8 +105,8 @@ Thread the accepted flags through `--link`, `--build`, and `--run` using the com
 user's order across Dea objects, `--foreign-object` operands, libraries, and raw host-driver arguments wherever order is
 semantically observable. Translate rpath values per supported compiler family and pass the validated runtime link inputs
 by exact path: one selected archive for normal families, or the complete variant-matched TinyCC raw-object set when
-available with archive fallback. Validate raw host-driver arguments before invocation so relocatable objects and
-response-file indirection cannot evade the Dea/foreign classification boundary.
+available with archive fallback. Validate raw host-driver arguments before invocation so direct relocatable-object
+operands retain their typed CLI role and response-file indirection remains outside the supported contract.
 
 ### Phase 3: Docs and smoke coverage
 
@@ -150,10 +151,9 @@ for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 2. Link-involving flows forward the requested flags to the host toolchain deterministically.
 3. Mixed Dea objects, explicit foreign objects, libraries, rpaths, and raw host-driver arguments retain the documented
    order, and user search paths cannot shadow the validated runtime link inputs.
-4. A relocatable object supplied directly or through a supported host-driver pass-through spelling in `--link-arg` fails
-   with classification guidance, and response-file indirection cannot hide object inputs. Archives and shared libraries
-   remain valid external inputs.
-5. A Dea or foreign object containing an embedded linker-control carrier remains rejected even when the equivalent
-   library or raw argument could be supplied explicitly.
+4. A direct relocatable object supplied through `--link-arg` fails with typed-operand guidance, and response-file
+   indirection remains outside the supported contract. Archives and shared libraries remain valid external inputs.
+5. Native object bytes are never inspected for linker-control carriers; explicitly typed options remain the supported
+   way to request libraries and raw host arguments, and hidden controls are left to host-tool behavior.
 6. The roadmap and user docs distinguish the currently usable `extern func` workflow from future `extern "C"` support.
 7. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.

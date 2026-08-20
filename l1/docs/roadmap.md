@@ -17,14 +17,15 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Ordinary `--gen`, `--build`, and `--run` still emit one legacy whole-program C99 translation unit.
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
   verified whole-module `.l1m` fingerprints, and target-aware per-module C generation with external `I4init` / `I4fini`
-  plus conditional `I5entry`. Per-module output also embeds portable identity and ordered-import records, and bounded
-  readers inspect ELF, Mach-O, and PE/COFF relocatables. Compile-only publishes one module's `.o` and `.l1m` artifacts
-  against verified interfaces with endpoint rollback and adds the exact generated `.c` only with `--keep-c`. Its
-  sequential renames are not a concurrent-reader snapshot. Standalone `--link` now classifies positional Dea and
-  explicit foreign objects, verifies graph closure and exact provider fingerprints, selects one entry, emits a
-  deterministic lifecycle wrapper, and links through a bounded output-local transaction. Normal compiler families
-  receive an exact runtime archive path; TinyCC retains the ADR-0027 variant-matched raw-object compatibility carve-out
-  when that set is available, with archive fallback otherwise. Multi-CU build/run remains non-operational.
+  plus conditional `I5entry`. Per-module output carries no embedded Dea metadata or retention anchors. Compile-only
+  publishes one module's `.o` and `.l1m` artifacts against verified interfaces with endpoint rollback and adds the exact
+  generated `.c` only with `--keep-c`; it does not bind or inspect native object bytes. Its sequential renames are not a
+  concurrent-reader snapshot. Standalone `--link` derives and verifies one sibling `.l1m` per positional `.o`, uses
+  interface entry/import/dependency manifests for graph, lifecycle, and provenance checks, emits a deterministic
+  wrapper, and passes original opaque Dea and caller-asserted foreign native paths through a bounded output-local
+  transaction without snapshots. Normal compiler families receive an exact regular runtime archive path; TinyCC retains
+  the ADR-0027 variant-matched raw-object compatibility carve-out when that set is available, with archive fallback
+  otherwise. Multi-CU build/run remains non-operational.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 - Exact generated-C golden-file parity and L1 triple-bootstrap are not part of the current Stage 1 contract.
@@ -138,15 +139,17 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-07-17-object-metadata-emission-and-readers-noref][object-metadata] added portable module identity and
   ordered-import records plus bounded ELF, Mach-O, and PE/COFF relocatable readers with valid, absent, and malformed Dea
   metadata classification, exact Darwin TinyCC ELF and ARM64EC aliases, aligned Mach-O command and symbol validation,
-  byte-bounded iterative LBI parsing, and standard ARMNT/ARM64EC COFF support.
+  byte-bounded iterative LBI parsing, and standard ARMNT/ARM64EC COFF support. That historical subsystem is now retired
+  from the current implementation in favor of authoritative sibling interfaces.
 - Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] made `-c` resolve one source module against
-  verified interfaces, compile a metadata-bearing object, and publish sibling `.o + .l1m` with endpoint rollback;
-  `--keep-c` adds the exact generated `.c`. Successful return leaves the complete new selected set, recoverable failure
-  restores the prior set, failed rollback retains recovery files, and concurrent readers or same-stem writers require
-  external serialization.
+  verified interfaces and publish sibling `.o + .l1m` with endpoint rollback; `--keep-c` adds the exact generated `.c`.
+  Successful return leaves the complete new selected set, recoverable failure restores the prior set, failed rollback
+  retains recovery files, and concurrent readers or same-stem writers require external serialization. Current
+  publication validates a regular opaque object plus the interface without proving a byte binding.
 - Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] added verified Dea-object linking, explicit foreign
   objects, complete graph and entry validation, deterministic lifecycle wrapper generation, compiler-family runtime
-  inputs, and bounded output-local scratch.
+  inputs, and bounded output-local scratch. The wrapper/lifecycle and scratch foundations remain, while the current
+  authority and foreign-input boundaries come from verified interfaces and caller assertions.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -193,7 +196,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   build/run fan-out.
 - Feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] makes verified sibling
   `.l1m` files authoritative for standalone semantics and lifecycle planning while treating native objects as opaque
-  host-link inputs.
+  host-link inputs. Its implementation and live documentation are present, but the plan remains open pending the
+  required supported-host CI evidence and ADR closure.
 - Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] converts `--build` and `--run` to the shared
   multi-CU compile/link APIs.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl`

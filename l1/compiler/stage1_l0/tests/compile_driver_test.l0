@@ -13,7 +13,11 @@ import std.vector;
 import cli_args;
 import compile_driver;
 import compiler_filesystem;
+import interface_emitter;
+import interface_fingerprint;
+import mi_utils;
 import module_graph;
+import module_interface;
 import util.diag;
 import util.log;
 
@@ -233,6 +237,67 @@ func test_staged_validation_reports_2034() {
         "staged validation failure should report L1C-2034");
 
     diag_free(diags);
+    cd_transaction_free(txn);
+    mg_artifacts_free(artifacts);
+}
+
+/** Construct one empty fingerprinted interface for staged validation. */
+func cdt_interface(module_name: string) -> ModuleInterface* {
+    let interface = new ModuleInterface(
+        module_name, "", false,
+        vec_create(sizeof(void*), 1), vec_create(sizeof(void*), 1),
+        vec_create(sizeof(void*), 1), vec_create(sizeof(void*), 1),
+        vec_create(sizeof(void*), 1), vec_create(sizeof(void*), 1),
+        vec_create(sizeof(void*), 1), vec_create(sizeof(void*), 1)
+    );
+    with (let diags = diag_create() => diag_free(diags)) {
+        assert(ifp_assign(interface, diags, "<compile-driver-test>"),
+            "fixture interface fingerprint assignment must succeed");
+    }
+    return interface;
+}
+
+/** Verify staged native bytes stay opaque while interface identity is checked. */
+func test_staged_validation_uses_interface_authority() {
+    let root = "compiler/stage1_l0/tests/.tmp-compile-driver-validation";
+    cdt_remove_stale_transaction(root);
+    assert(cfs_mkdir(root, 448) == 1, "expected validation transaction root");
+    let txn = cd_transaction_create(root);
+    let artifacts = new ModuleArtifactPaths(
+        "compiler/stage1_l0/tests/.tmp-validation.c",
+        "compiler/stage1_l0/tests/.tmp-validation.o",
+        "compiler/stage1_l0/tests/.tmp-validation.l1m"
+    );
+    let interface = cdt_interface("fixture.unit");
+    let interface_text = ie_emit(interface);
+    mi_free(interface);
+    assert(write_file(txn.staged_c, "generated C") != null,
+        "expected staged C fixture");
+    assert(write_file(txn.staged_object, "arbitrary regular native bytes") != null,
+        "expected opaque staged object fixture");
+    assert(write_file(txn.staged_interface, interface_text) != null,
+        "expected staged interface fixture");
+    with (let diags = diag_create() => diag_free(diags)) {
+        let valid = cd_validate_staged(
+            artifacts, txn, "fixture.unit", interface_text, diags);
+        assert(valid,
+            "regular object plus verified authoritative interface should validate");
+    }
+
+    let wrong = cdt_interface("fixture.other");
+    let wrong_text = ie_emit(wrong);
+    mi_free(wrong);
+    assert(write_file(txn.staged_interface, wrong_text) != null,
+        "expected wrong-identity interface fixture");
+    with (let wrong_diags = diag_create() => diag_free(wrong_diags)) {
+        assert(!cd_validate_staged(
+                artifacts, txn, "fixture.unit", wrong_text, wrong_diags),
+            "wrong authoritative interface identity must fail");
+        assert(cdt_has_code(wrong_diags, "L1C-2034"),
+            "wrong identity should report staged validation failure");
+    }
+
+    assert(cd_cleanup_transaction(txn), "validation transaction should clean");
     cd_transaction_free(txn);
     mg_artifacts_free(artifacts);
 }
@@ -483,6 +548,7 @@ func main() {
     test_object_compile_command_words();
     test_compile_artifact_resolution();
     test_staged_validation_reports_2034();
+    test_staged_validation_uses_interface_authority();
     test_publication_success_for_pair_and_triple();
     test_publication_failures_restore_previous_set();
     test_rollback_failure_retains_recovery_files();

@@ -271,6 +271,20 @@ func ie_emit_dep(sb: StringBuffer*, keyword: string, entry: InterfaceDepEntry*) 
 }
 
 /**
+ * Emit one ordered `import module` lifecycle record.
+ *
+ * @param sb String builder to append to.
+ * @param entry Ordered module import entry.
+ */
+func ie_emit_module_import(sb: StringBuffer*, entry: InterfaceModuleImport*) {
+    sb_append(sb, "import module ");
+    sb_append(sb, entry.provider_module);
+    sb_append(sb, " == \"");
+    sb_append(sb, entry.provider_fingerprint);
+    sb_append(sb, "\";");
+}
+
+/**
  * Render a dependency entry's canonical sort key: `<provider_module>::<symbol>`.
  *
  * @param entry Dependency entry to format.
@@ -348,14 +362,16 @@ func ie_collect_dep_keys_excluding(vec: VectorBase*, excluded: VectorBase*) -> S
  *
  * Canonical emission order:
  * 1. Header (`module interface <name>;` + `fingerprint "<hash>";`)
- * 2. `require` dependency lines (surface-tier, per used symbol, sorted/deduplicated)
- * 3. `link` dependency lines (implementation-tier, per used symbol, sorted/deduplicated)
- * 4. Structs (sorted by name)
- * 5. Enums (sorted by name)
- * 6. Type aliases (sorted by name)
- * 7. Funcs (sorted by name)
- * 8. Consts (sorted by name)
- * 9. Lets (sorted by name)
+ * 2. Optional `entry;` marker
+ * 3. Ordered direct-module imports
+ * 4. `require` dependency lines (surface-tier, per used symbol, sorted/deduplicated)
+ * 5. `link` dependency lines (implementation-tier, per used symbol, sorted/deduplicated)
+ * 6. Structs (sorted by name)
+ * 7. Enums (sorted by name)
+ * 8. Type aliases (sorted by name)
+ * 9. Funcs (sorted by name)
+ * 10. Consts (sorted by name)
+ * 11. Lets (sorted by name)
  *
  * @param mi Module interface to emit.
  * @return Deterministic `.l1m` text.
@@ -369,6 +385,21 @@ func ie_emit(mi: ModuleInterface*) -> string {
         sb_append(sb, "fingerprint \"");
         sb_append(sb, mi.fingerprint);
         sb_append(sb, "\";\n");
+
+        if (mi.has_entry) {
+            sb_append(sb, "\nentry;\n");
+        }
+
+        if (vec_size(mi.module_imports) > 0) {
+            sb_append(sb, "\n");
+            for (let import_i = 0; import_i < vec_size(mi.module_imports); import_i = import_i + 1) {
+                ie_emit_module_import(
+                    sb,
+                    ptr_vec_get(mi.module_imports, import_i) as InterfaceModuleImport*
+                );
+                sb_append(sb, "\n");
+            }
+        }
 
         if (vec_size(mi.require_entries) > 0) {
             sb_append(sb, "\n");

@@ -26,7 +26,6 @@ import interface_fingerprint;
 import mi_utils;
 import module_graph;
 import module_interface;
-import object_reader;
 import parser.interface;
 import sem_context;
 
@@ -511,7 +510,7 @@ func cd_staged_invalid(diags: DiagCollector*, path: string, reason: string) -> b
     return false;
 }
 
-/** Verify staged file kinds plus interface/object identity agreement. */
+/** Verify staged file kinds plus the authoritative interface identity. */
 func cd_validate_staged(
     artifacts: ModuleArtifactPaths*,
     txn: CompileTransaction*,
@@ -548,31 +547,7 @@ func cd_validate_staged(
         return cd_staged_invalid(diags, txn.staged_interface,
             "generated interface identity or fingerprint is invalid");
     }
-
-    let object_result = object_inspect_path(txn.staged_object);
-    if (object_result.error != null || object_result.inspection == null) {
-        object_inspection_result_free(object_result);
-        ipr_free(parsed);
-        return cd_staged_invalid(diags, txn.staged_object,
-            "host compiler did not produce a supported relocatable object");
-    }
-    let inspection = object_result.inspection as ObjectInspection*;
-    if (ord(inspection.metadata.kind) != ord(VALID_DEA_METADATA) ||
-        inspection.metadata.valid == null) {
-        object_inspection_result_free(object_result);
-        ipr_free(parsed);
-        return cd_staged_invalid(diags, txn.staged_object,
-            "object does not contain valid Dea module metadata");
-    }
-    let metadata = inspection.metadata.valid as ValidDeaMetadata*;
-    let agrees = metadata.module_name == entry_module &&
-        metadata.fingerprint == staged_interface.fingerprint;
-    object_inspection_result_free(object_result);
     ipr_free(parsed);
-    if (!agrees) {
-        return cd_staged_invalid(diags, txn.staged_object,
-            "object metadata disagrees with the generated interface");
-    }
     return true;
 }
 

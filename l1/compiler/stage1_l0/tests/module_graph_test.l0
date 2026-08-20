@@ -66,6 +66,26 @@ func test_explicit_object_companions() {
     }
 }
 
+/** Tests path-only sibling derivation and exact terminal suffix rules. */
+func test_interface_path_from_object_path() {
+    let renamed = mg_interface_path_from_object_path("custom/renamed.o");
+    assert(renamed != null && renamed as string == "custom/renamed.l1m",
+        "path-only sibling replacement mismatch");
+    let repeated = mg_interface_path_from_object_path("name.with.o.o");
+    assert(repeated != null && repeated as string == "name.with.o.l1m",
+        "only the terminal suffix must be replaced");
+    assert(mg_interface_path_from_object_path(".o") == null,
+        "empty basename stem must be rejected");
+    assert(mg_interface_path_from_object_path("dir/.o") == null,
+        "nested empty basename stem must be rejected");
+    assert(mg_interface_path_from_object_path("upper.O") == null,
+        "object suffix must be case-sensitive");
+    assert(mg_interface_path_from_object_path("object.obj") == null,
+        "non-.o suffix must be rejected");
+    assert(mg_interface_path_from_object_path("object.o/") == null,
+        "separator-terminated path must be rejected");
+}
+
 /**
  * Tests test_discovered_interface_companions.
  */
@@ -206,6 +226,14 @@ func test_graph_sorted_enumeration_and_exact_edges() {
         assert(mg_node_direct_import_get(alpha, 1) == "pkg.beta", "second direct import order mismatch");
         assert(mg_node_direct_import_get(alpha, 2) == "pkg.zeta", "third direct import order mismatch");
 
+        mg_node_add_interface_import(alpha, "pkg.iface-zeta");
+        mg_node_add_interface_import(alpha, "pkg.iface-beta");
+        assert(mg_node_interface_import_count(alpha) == 2,
+            "parsed interface imports must be retained separately");
+        assert(mg_node_interface_import_get(alpha, 0) == "pkg.iface-zeta" &&
+               mg_node_interface_import_get(alpha, 1) == "pkg.iface-beta",
+            "parsed interface imports must retain canonical stored order");
+
         mg_node_add_dependency(alpha, MDK_REQUIRE, "pkg.beta", "Widget", "sip13:1111111111111111");
         mg_node_add_dependency(alpha, MDK_LINK, "pkg.zeta", "helper", "sip13:2222222222222222");
         assert(mg_node_dependency_count(alpha) == 2, "dependency count mismatch");
@@ -266,6 +294,7 @@ func test_semantic_closure_excludes_link_edges() {
 func main() {
     test_artifacts_for_canonical_module();
     test_explicit_object_companions();
+    test_interface_path_from_object_path();
     test_discovered_interface_companions();
     test_invalid_artifact_associations_are_atomic();
     test_origin_artifact_associations();

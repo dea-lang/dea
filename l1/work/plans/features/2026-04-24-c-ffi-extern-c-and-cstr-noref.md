@@ -60,9 +60,9 @@ strings.
    (`sys.rt::rt_string_bytes_ptr`, the C-only `_rt_string_bytes`) already expose the underlying byte pointer, but there
    is no typed `string -> cstr` conversion surface that uses them.
 4. The analyzer does not enforce a closed FFI-safe type set for the broader C boundary.
-5. Initiative `0001` plans repeatable `--foreign-object` inputs for metadata-free C relocatable objects. This plan
-   consumes that mechanism rather than treating C objects as Dea modules or bypassing object verification through raw
-   positional inputs.
+5. Initiative `0001` provides repeatable `--foreign-object` inputs as caller assertions that each path is one
+   host-compatible C relocatable object. This plan consumes that mechanism rather than treating C objects as Dea
+   modules; Dea does not inspect or prove the object's format, symbols, or embedded controls.
 
 The draft [cheap string slices plan] would allow a logical `string` view whose end is not NUL-terminated. The
 [C-string guard proposal] records the resulting alternative to this plan's current zero-cost reinterpretation default.
@@ -89,9 +89,10 @@ Phase 3 must not implement the conversion contract until that proposal is accept
 09. Declarations inside `extern "C"` blocks support an optional per-symbol link-name override. The exact syntax
     (trailing `= "..."`, attribute-style, or prefix annotation) is settled in Phase 1 of this plan; the closed answer at
     the initiative level (Initiative 0003 §Resolved decisions) is that the override exists in v1.
-10. A raw C provider object is passed explicitly with `--foreign-object`; it has no Dea fingerprint, module identity,
-    lifecycle, or entry semantics. Libraries and their search/rpath requirements use Initiative `0001`'s external-link
-    options.
+10. A raw C provider object is passed explicitly with `--foreign-object` under the caller-asserted host-compatibility
+    contract; it has no Dea fingerprint, module identity, lifecycle, or entry semantics, and native-format or symbol
+    failures are reported through the host toolchain. Libraries and their search/rpath requirements use Initiative
+    `0001`'s external-link options.
 
 ## Goal
 
@@ -193,8 +194,9 @@ Update grammar/design-decision docs and add regression coverage for:
 3. `cstr` exists as a distinct boundary type; `string -> cstr` conversion is a zero-cost reinterpretation backed by the
    existing runtime string-bytes primitives and does not touch `std.string`.
 4. The roadmap and design-decision docs clearly distinguish this FFI surface from L1-defined variadic functions.
-5. A metadata-free C provider object links only through `--foreign-object` and satisfies the declared unmangled C symbol
-   without participating in Dea metadata, lifecycle, or entry selection.
+5. A caller-asserted C provider object links through `--foreign-object` and satisfies the declared unmangled C symbol
+   without participating in Dea interface manifests, lifecycle, or entry selection; Dea does not prove that the object
+   is metadata-free or inspect its other symbols.
 6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
 
 [c-string guard proposal]: ../../proposals/cstr-and-c-string-guards.md

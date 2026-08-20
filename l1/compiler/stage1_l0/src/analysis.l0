@@ -646,6 +646,91 @@ func mi_collect_param_names(sym: Symbol*) -> StringVector* {
 }
 
 /**
+ * Return the resolved source `main` type that owns a module's `I5entry`.
+ *
+ * A source entry is a non-extern function named `main` with no parameters.
+ * Visibility is intentionally irrelevant: private eligible `main` functions
+ * still own the compiler-generated entry bridge.
+ *
+ * @param result Completed semantic analysis result.
+ * @param module_name Canonical source module name.
+ * @return Borrowed entry function type, or `null` when no bridge is emitted.
+ */
+func analysis_module_entry_type(result: AnalysisResult*, module_name: string) -> Type*? {
+    if (result.signatures == null) {
+        return null;
+    }
+    let unit = driver_find_unit(result.driver_state, module_name);
+    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
+        return null;
+    }
+    let root = (unit as DriverUnit*).parse_result.root_module as Module*;
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) != ord(TD_FUNC)) {
+            continue;
+        }
+        let decl = top.data as FuncDecl*;
+        if (decl.name != "main" || decl.is_extern) {
+            continue;
+        }
+        let func_type = sig_lookup_func_type(
+            result.signatures as SignatureTables*, module_name, decl.name);
+        assert(func_type != null, "[ICE-1150] missing FuncType for " + module_name + "." + decl.name);
+        if (vec_size((func_type as Type*).params as VectorBase*) != 0) {
+            return null;
+        }
+        return func_type as Type*;
+    }
+    return null;
+}
+
+/**
+ * Project source direct imports into canonical interface lifecycle imports.
+ *
+ * The graph retains exact declaration order and duplicates. This helper owns
+ * the separate stable first-occurrence view, omits compiler-synthesized
+ * virtual providers, and leaves provider fingerprints empty for the later
+ * shared expectation-population phase.
+ *
+ * @param result Completed analysis result.
+ * @param module_name Canonical source consumer module.
+ * @return Owned `InterfaceModuleImport*` vector, or `null` on guard failure.
+ */
+func mi_project_module_imports(result: AnalysisResult*, module_name: string) -> VectorBase*? {
+    let graph = driver_graph(result.driver_state);
+    let node_opt = mg_find_node(graph, module_name);
+    if (node_opt == null) {
+        diag_error(result.diags, "SignatureResolver", "SIG-0283",
+            "cannot project direct imports for missing module '" + module_name + "'",
+            "<interface:" + module_name + ">", 0, 0, 0, 0);
+        return null;
+    }
+    let node = node_opt as ModuleGraphNode*;
+    let imports = ptr_vec_create(mg_node_direct_import_count(node));
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let i = 0; i < mg_node_direct_import_count(node); i = i + 1) {
+            let provider_name = mg_node_direct_import_get(node, i);
+            let provider_opt = mg_find_node(graph, provider_name);
+            if (provider_opt == null) {
+                mi_module_import_vec_free(imports);
+                diag_error(result.diags, "SignatureResolver", "SIG-0283",
+                    "cannot project missing direct-import provider '" + provider_name + "' for module '" +
+                        module_name + "'",
+                    "<interface:" + module_name + ">", 0, 0, 0, 0);
+                return null;
+            }
+            let provider = provider_opt as ModuleGraphNode*;
+            if (ord(provider.origin.kind) == ord(MOK_VIRTUAL) || !ss_add(seen, provider_name)) {
+                continue;
+            }
+            ptr_vec_push(imports, new InterfaceModuleImport(provider_name, "") as void*);
+        }
+    }
+    return imports;
+}
+
+/**
  * Project the exported surface of an analyzed module without assigning or
  * recursively populating fingerprints.
  *
@@ -672,6 +757,11 @@ func mi_project_surface(result: AnalysisResult*, module_name: string) -> ModuleI
     }
     let env = env_opt as ModuleEnv*;
 
+    let module_imports = mi_project_module_imports(result, module_name);
+    if (module_imports == null) {
+        return null;
+    }
+    let has_entry = analysis_module_entry_type(result, module_name) != null;
     let require_entries = ptr_vec_create(4);
     let link_entries = ptr_vec_create(4);
     let struct_infos = ptr_vec_create(4);
@@ -809,7 +899,8 @@ func mi_project_surface(result: AnalysisResult*, module_name: string) -> ModuleI
         mi_add_dep(result, module_name, ref.provider_module, ref.symbol_name, link_entries);
     }
 
-    return new ModuleInterface(module_name, "", require_entries, link_entries, struct_infos, enum_infos, alias_entries, func_entries, let_entries);
+    return new ModuleInterface(module_name, "", has_entry, module_imports as VectorBase*, require_entries,
+        link_entries, struct_infos, enum_infos, alias_entries, func_entries, let_entries);
 }
 
 /**
@@ -911,6 +1002,53 @@ func mi_populate_dependency_fingerprints(result: AnalysisResult*, entries: Vecto
 }
 
 /**
+ * Populate ordered module-import provider expectations through a shared cache.
+ *
+ * @param result Analysis result providing provider metadata.
+ * @param entries Ordered `InterfaceModuleImport*` entries to update.
+ * @param provider_names Shared provider-name cache.
+ * @param fingerprints Shared fingerprint cache.
+ * @return `true` when every provider fingerprint was available.
+ */
+func mi_populate_module_import_fingerprints(result: AnalysisResult*, entries: VectorBase*,
+                                            provider_names: StringVector*,
+                                            fingerprints: StringVector*) -> bool {
+    let ok = true;
+    for (let i = 0; i < vec_size(entries); i = i + 1) {
+        let entry = ptr_vec_get(entries, i) as InterfaceModuleImport*;
+        let fingerprint = mi_provider_fingerprint_cached(
+            result, provider_names, fingerprints, entry.provider_module);
+        if (fingerprint == "") {
+            ok = false;
+        } else {
+            entry.provider_fingerprint = fingerprint;
+        }
+    }
+    return ok;
+}
+
+/**
+ * Populate all operational provider expectations using one provider cache.
+ *
+ * @param result Analysis result providing selected provider metadata.
+ * @param mi Interface whose import, require, and link records are updated.
+ * @return `true` when every provider expectation was populated and coherent.
+ */
+func mi_populate_provider_fingerprints(result: AnalysisResult*, mi: ModuleInterface*) -> bool {
+    with (let provider_names = sv_create(4) => sv_free(provider_names),
+          let fingerprints = sv_create(4) => sv_free(fingerprints)) {
+        let imports_ok = mi_populate_module_import_fingerprints(
+            result, mi.module_imports, provider_names, fingerprints);
+        let require_ok = mi_populate_dependency_fingerprints(
+            result, mi.require_entries, provider_names, fingerprints);
+        let link_ok = mi_populate_dependency_fingerprints(
+            result, mi.link_entries, provider_names, fingerprints);
+        return imports_ok && require_ok && link_ok &&
+            ifp_validate_dependencies(mi, result.diags, "<interface:" + mi.module_name + ">");
+    }
+}
+
+/**
  * Project a complete operational interface with canonical fingerprints.
  *
  * @param result Analysis result to project from.
@@ -929,16 +1067,9 @@ func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface
         return null;
     }
 
-    with (let provider_names = sv_create(4) => sv_free(provider_names),
-          let fingerprints = sv_create(4) => sv_free(fingerprints)) {
-        let require_ok = mi_populate_dependency_fingerprints(
-            result, mi.require_entries, provider_names, fingerprints);
-        let link_ok = mi_populate_dependency_fingerprints(
-            result, mi.link_entries, provider_names, fingerprints);
-        if (!require_ok || !link_ok || !ifp_validate_dependencies(mi, result.diags, filename)) {
-            mi_free(mi);
-            return null;
-        }
+    if (!mi_populate_provider_fingerprints(result, mi)) {
+        mi_free(mi);
+        return null;
     }
     return mi;
 }

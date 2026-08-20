@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-07-29
+Version: 2026-08-20
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -217,12 +217,14 @@ diagnostic.
 | `PAR-0569` | L1+     | Expected ';' after let declaration in interface file                     |
 | `PAR-0570` | L1+     | Expected constant literal value after '=' in interface const declaration |
 | `PAR-0571` | L1+     | Expected ';' after const declaration in interface file                   |
-| `PAR-0572` | L1+     | Unsupported or unexpected token in interface file                        |
-| `PAR-0573` | L1+     | Expected identifier after keyword in interface declaration               |
-| `PAR-0574` | L1+     | Expected `==` after dependency symbol in interface file                  |
+| `PAR-0572` | L1+     | Malformed, unsupported, or trailing record or token in interface file    |
+| `PAR-0573` | L1+     | Expected exported-declaration name in interface file                     |
+| `PAR-0574` | L1+     | Expected `==` after interface dependency subject                         |
 | `PAR-0575` | L1+     | Expected provider fingerprint string after `==` in interface dependency  |
 | `PAR-0576` | L1+     | Expected ';' after dependency fingerprint in interface file              |
 | `PAR-0577` | L1+     | Duplicate module-level declaration name in interface file                |
+| `PAR-0578` | L1+     | Duplicate operational interface record                                   |
+| `PAR-0579` | L1+     | Operational interface record appears outside canonical region order      |
 | `PAR-0600` | L1+     | Expected `func` or `extern` after `unsafe` in top-level declaration      |
 | `PAR-0601` | L1+     | Expected `func` after `unsafe` in function type                          |
 | `PAR-0602` | L1+     | Expected `func` or `extern` after `unsafe` in interface file             |
@@ -313,20 +315,21 @@ diagnostic.
 |            | `L1C-2094` | L1 only | Standalone-link entry value is not a canonical dotted module name                                      |
 |            | `L1C-2095` | L1 only | Standalone link mode has no positional Dea object                                                      |
 |            | `L1C-2096` | L1 only | Standalone link mode does not have exactly one '-o' / '--output' path                                  |
-|            | `L1C-2097` | L1 only | A standalone-link input could not be read or inspected as a supported relocatable object               |
-|            | `L1C-2098` | L1 only | Link operand role conflicts with Dea metadata classification, or Dea metadata is malformed             |
-|            | `L1C-2099` | L1 only | An explicit foreign object defines process symbol 'main'                                               |
-|            | `L1C-2100` | L1 only | Two positional Dea objects carry the same canonical module identity                                    |
-|            | `L1C-2101` | L1 only | A Dea object's ordered import names a provider absent from the supplied link set                       |
-|            | `L1C-2102` | L1 only | A consumer's expected provider fingerprint differs from the supplied provider object's fingerprint     |
-|            | `L1C-2103` | L1 only | The supplied Dea-object dependency graph contains a cycle                                              |
-|            | `L1C-2104` | L1 only | Explicit or inferred standalone-link entry selection failed                                            |
-|            | `L1C-2105` | L1 only | Standalone-link output path or output parent is invalid                                                |
-|            | `L1C-2106` | L1 only | Standalone-link host compiler, runtime include, or runtime link input selection failed                 |
+|            | `L1C-2097` | L1 only | A positional or foreign native path is invalid, missing, or does not resolve to a regular file         |
+|            | `L1C-2098` | L1 only | Reserved; former link-operand metadata-classification diagnostic, no longer emitted                    |
+|            | `L1C-2099` | L1 only | Reserved; former explicit foreign-object `main` diagnostic, no longer emitted                          |
+|            | `L1C-2100` | L1 only | Two verified sibling interfaces declare the same canonical module identity                             |
+|            | `L1C-2101` | L1 only | A non-virtual manifest provider is absent from the explicitly supplied Dea set                         |
+|            | `L1C-2102` | L1 only | An interface expectation differs from the supplied verified provider-interface fingerprint             |
+|            | `L1C-2103` | L1 only | The supplied lifecycle-import graph contains a cycle                                                   |
+|            | `L1C-2104` | L1 only | Explicit or inferred standalone-link entry selection from verified interfaces failed                   |
+|            | `L1C-2105` | L1 only | Standalone-link output, parent, or protected-input alias validation failed                             |
+|            | `L1C-2106` | L1 only | Standalone-link host compiler, runtime input, or Windows preflight selection failed                    |
 |            | `L1C-2107` | L1 only | Standalone-link transaction setup or wrapper-source write failed                                       |
-|            | `L1C-2108` | L1 only | Wrapper compilation failed or did not produce a regular relocatable object                             |
+|            | `L1C-2108` | L1 only | Wrapper compilation failed or did not produce a no-follow regular object                               |
 |            | `L1C-2109` | L1 only | Final host link, executable validation, or standalone-link transaction cleanup failed                  |
-|            | `L1C-2110` | L1 only | A standalone-link object contains a format-recognized embedded linker-control carrier                  |
+|            | `L1C-2110` | L1 only | Reserved; former embedded linker-control carrier diagnostic, no longer emitted                         |
+|            | `L1C-2111` | L1 only | A present non-virtual `require` or `link` provider is unreachable through lifecycle imports            |
 | `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                    |
 | `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                            |
 | `L0C-9512` |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                            |
@@ -374,7 +377,8 @@ diagnostic.
 | `SIG-0281` | L1+   | Unsupported module-interface fingerprint algorithm                                |
 | `SIG-0282` | L1+   | Declared module-interface fingerprint does not match its canonical public surface |
 | `SIG-0283` | L1+   | Module-interface public model cannot be canonicalized consistently                |
-| `SIG-0284` | L1+   | Conflicting fingerprints for one dependency provider module                       |
+| `SIG-0284` | L1+   | Conflicting manifest fingerprints for one provider within a module interface      |
+| `SIG-0285` | L1+   | Invalid operational module-interface model                                        |
 | `SIG-9029` | All   | Internal error: a type-alias symbol does not reference a type-alias declaration   |
 
 ## Expression Type Checking, Type Inference, and Type-Related Semantic Analysis

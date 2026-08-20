@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-07-29
+Version: 2026-08-20
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -30,7 +30,7 @@ Canonical level-specific detail:
 | `--run`     | `-r`               | Build and run one source target                                 |
 | `--build`   |                    | Build one executable                                            |
 | `--compile` | `-c`               | Reserved in L0; compile one module without linking in L1        |
-| `--link`    | `-k`               | L1-only: link verified Dea objects and explicit foreign objects |
+| `--link`    | `-k`               | L1-only: link verified Dea interfaces with opaque native inputs |
 | `--gen`     | `-Gc`, `--codegen` | Emit generated C                                                |
 | `--check`   | `--analyze`        | Parse and analyze                                               |
 | `--tok`     | `--tokens`         | Dump lexer tokens                                               |
@@ -167,6 +167,9 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 - The compiler always stages one generated-C file, one relocatable object, and one verified textual interface. Ordinary
   `-c` publishes the reusable `.o` and `.l1m` pair; `--keep-c` also publishes the exact staged `.c`. The mode does not
   invoke the final host linker or compile imported modules.
+- Before publication, the staged object must be a regular file and the staged interface bytes must equal the selected
+  publication bytes, parse, pass interface verification, and carry the expected module identity and public fingerprint.
+  The compiler does not inspect native object contents or prove that the object and interface bytes agree.
 - The staged files and any backups of the selected destinations share an exclusively reserved sibling transaction
   directory. Existing selected destinations move to recovery names before publication, the object is published before
   the interface, and a recoverable publication failure restores the previous selected set.
@@ -194,30 +197,40 @@ l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
 
 - At least one positional Dea object and exactly one non-empty output path are required. Positional Dea objects and
   explicit foreign objects may be interleaved with options; the final host-link command retains their encounter order.
-- `--foreign-object` / `-Cf` is repeatable and accepts only a supported metadata-free relocatable object. A
-  metadata-free positional input is rejected with guidance to use this option. A valid or malformed Dea object is
-  rejected when supplied as foreign, and a foreign object that defines normalized process symbol `main` is rejected.
-  Neither Dea nor foreign objects may contain format-recognized embedded linker controls such as ELF dependent-library
-  sections, Mach-O linker-option commands, or PE/COFF directive sections. The generated wrapper object is inspected
-  under the same rule before it can enter the final host link.
-- `--entry` / `-e` may appear at most once and requires a canonical dotted module name. Without it, the link set must
-  contain exactly one verified Dea object whose metadata carries `HAS_ENTRY`. With it, the named supplied module must
-  carry `HAS_ENTRY` and the matching entry bridge.
-- The linker reads each object's embedded metadata without reopening source or `.l1m` files. Dea module identities must
-  be unique; every ordered direct import must have one supplied provider with the exact expected fingerprint; and the
-  dependency graph must be acyclic.
+- Each positional path must have a nonempty basename stem and the exact case-sensitive terminal suffix `.o`. Replacing
+  only that suffix with `.l1m` in the same directory selects the required sibling interface. Both paths must resolve to
+  regular files; `.o`, `dir/.o`, separator-terminated paths, and other suffixes are rejected. The verified sibling
+  header, not the pair's basename or native bytes, supplies the canonical module identity.
+- The driver reads, UTF-8 validates, parses, and verifies every sibling `.l1m` before registering any module identity.
+  Interfaces carry authoritative entry presence, ordered lifecycle imports, `require` / `link` expectations, and public
+  provider fingerprints. Native `.o` bytes are opaque and are passed by original caller-selected path to the host
+  toolchain without Dea format, symbol, metadata, or embedded-control inspection.
+- `--foreign-object` / `-Cf` is repeatable and asserts that its regular-file path names one host-compatible relocatable
+  native object. Dea does not prove the format, architecture, relocatability, symbols, absence of `main`, absence of
+  reserved names, or absence of embedded linker controls. Archives, shared libraries, linker scripts, response files,
+  and raw host-link arguments remain outside this option's supported contract even if a host accepts a mislabeled path.
+- `--entry` / `-e` may appear at most once and requires a canonical dotted module name. Without it, exactly one verified
+  interface must carry `entry;`. With it, the named supplied module's verified interface must carry `entry;`.
+- Module identities must be unique. Every non-virtual provider named by `import module`, `require`, or `link` must be in
+  the explicit supplied Dea set with the exact expected public fingerprint. Ordered `import module` records alone form
+  lifecycle edges and must be acyclic. Each non-virtual `require` / `link` provider must additionally be transitively
+  reachable from its consumer through one or more lifecycle-import edges; those semantic records never add objects or
+  lifecycle edges.
 - The generated wrapper owns process `main`, initializes runtime arguments, calls every Dea initializer in deterministic
   dependency-first order, calls the selected entry bridge, and calls every finalizer in the exact reverse order. Foreign
   objects receive no generated lifecycle or entry calls.
 - The output parent must already exist and resolve to a directory. The output itself must be absent or a regular file;
-  aliases and other non-regular final objects are rejected. Wrapper artifacts live in an exclusively created
-  `.l1c-link-...` transaction beside the output and are cleaned on success and failure. The host linker writes the
-  executable directly to `OUTPUT`, so final executable replacement is not transactional.
-- Normal compiler families receive the selected runtime archive as an exact path. Under the compatibility exception
-  defined for TinyCC, L1 uses the complete variant-matched raw runtime object set when available; otherwise it attempts
-  the same exact archive selection. `L1_CFLAGS` and `--c-options` configure wrapper compilation only; they cannot add
-  final-link inputs. External libraries, archives supplied as foreign objects, `-L`, `-l`, rpaths, and raw host-link
-  arguments remain outside this mode's current surface.
+  aliases and other non-regular final objects are rejected. Output aliases of a caller native input, consumed `.l1m`,
+  runtime native input, or the resolved `dea_rt.h` wrapper input are rejected. Wrapper and capture artifacts live in an
+  exclusively created `.l1c-link-...` transaction beside the output and are cleaned on success and failure; there are no
+  caller-input snapshots. The host linker writes the executable directly to `OUTPUT`, so final executable replacement is
+  not transactional.
+- Normal compiler families receive the selected regular runtime archive as an exact path. Under the compatibility
+  exception defined for TinyCC, L1 uses the complete variant-matched regular runtime object set when available;
+  otherwise it attempts the same exact archive selection. These native inputs are not byte-inspected. `L1_CFLAGS` and
+  `--c-options` configure wrapper compilation only; they cannot add final-link inputs. External libraries, archives
+  supplied as foreign objects, `-L`, `-l`, rpaths, and raw host-link arguments remain outside this mode's current
+  surface.
 - Until native Windows process spawning replaces `cmd.exe`, exact standalone-link command words and redirection paths
   containing `%`, `!`, `"`, carriage return, or line feed are rejected before scratch allocation.
 

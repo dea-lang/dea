@@ -10,6 +10,17 @@ import util.diag;
 import types;
 
 /**
+ * Represents one object-backed direct module import recorded in a `.l1m`.
+ *
+ * Entries retain canonical first-occurrence source order. The fingerprint is
+ * the expected public-interface fingerprint of the imported provider.
+ */
+struct InterfaceModuleImport {
+    provider_module: string;
+    provider_fingerprint: string;
+}
+
+/**
  * Represents one per-used-symbol dependency entry recorded in a `.l1m` file.
  *
  * The same shape is reused by both the `require` (surface-tier) group and the
@@ -59,6 +70,8 @@ struct InterfaceAliasEntry {
 struct ModuleInterface {
     module_name: string;
     fingerprint: string;
+    has_entry: bool;
+    module_imports: VectorBase*;   // InterfaceModuleImport* (ordered, unique providers)
     require_entries: VectorBase*;  // InterfaceDepEntry* (surface-tier, per used symbol)
     link_entries: VectorBase*;     // InterfaceDepEntry* (implementation-tier, per used symbol)
     struct_infos: VectorBase*;     // StructInfo* (cloned, owned)

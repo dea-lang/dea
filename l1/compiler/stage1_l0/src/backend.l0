@@ -21,7 +21,6 @@ import driver;
 import module_interface;
 import module_graph;
 import name_resolver;
-import object_metadata;
 import sem_context;
 import signatures;
 import scope_context;
@@ -2971,7 +2970,6 @@ func be_emit_module_lifecycle_functions(self: Backend*, root: Module*) {
     cem_emit_section_comment(self.emitter, "Module lifecycle functions");
     cem_emit_module_comment(self.emitter, root.name);
     cem_emit_external_void_function_header(self.emitter, cem_mangle_module_init_name(root.name));
-    cem_emit_module_metadata_anchors(self.emitter, root.name);
     for (let i = 0; i < vec_size(root.decls); i = i + 1) {
         let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
         if (ord(top.kind) != ord(TD_LET)) {
@@ -5768,47 +5766,11 @@ func be_emit_function_definitions(self: Backend*) {
 }
 
 /**
- * Return the resolved type of the source `main` definition that owns
- * `I5entry`, or `null` when this module has no entry bridge.
- *
- * This is the single predicate shared by metadata flags and bridge emission.
- *
- * @param self Backend state to inspect.
- * @param root Selected source module.
- * @return Borrowed zero-parameter source-main type, or `null`.
- */
-func be_module_entry_type(self: Backend*, root: Module*) -> Type*? {
-    if (self.result.signatures == null) {
-        return null;
-    }
-
-    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
-        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
-        if (ord(top.kind) != ord(TD_FUNC)) {
-            continue;
-        }
-        let decl = top.data as FuncDecl*;
-        if (decl.name != "main" || decl.is_extern) {
-            continue;
-        }
-        let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, root.name, decl.name);
-        if (func_type == null) {
-            be_ice("[ICE-1150] missing FuncType for " + root.name + "." + decl.name);
-        }
-        if (vec_size((func_type as Type*).params as VectorBase*) != 0) {
-            return null;
-        }
-        return func_type as Type*;
-    }
-    return null;
-}
-
-/**
  * Emit `I5entry` for the selected module's already-resolved entry type.
  *
  * @param self Backend state to update.
  * @param root Selected source module.
- * @param entry_type Borrowed entry type returned by `be_module_entry_type`.
+ * @param entry_type Borrowed entry type returned by `analysis_module_entry_type`.
  */
 func be_emit_module_entry_bridge_if_needed(self: Backend*, root: Module*, entry_type: Type*?) {
     if (entry_type == null) {
@@ -5816,74 +5778,6 @@ func be_emit_module_entry_bridge_if_needed(self: Backend*, root: Module*, entry_
     }
     cem_emit_section_comment(self.emitter, "Module entry bridge");
     cem_emit_module_entry_bridge(self.emitter, root.name, entry_type as Type*);
-}
-
-/**
- * Emit the selected module's identity and unique ordered direct-import records.
- *
- * Fingerprints come from the already selected graph providers. Virtual
- * compiler modules do not become standalone object dependencies.
- *
- * @param self Backend state to update.
- * @param root Selected source module.
- * @param has_entry Whether this exact output will define `I5entry`.
- */
-func be_emit_module_object_metadata(self: Backend*, root: Module*, has_entry: bool) {
-    let graph = driver_graph(self.result.driver_state);
-    let target_opt = mg_find_node(graph, root.name);
-    if (target_opt == null) {
-        be_ice("[ICE-1373] missing graph node for module metadata: " + root.name);
-    }
-    let target = target_opt as ModuleGraphNode*;
-    if (ord(target.origin.kind) != ord(MOK_SOURCE) ||
-        ord(mg_node_state(target)) != ord(MNS_RESOLVED)) {
-        be_ice("[ICE-1374] module metadata target is not a resolved source: " + root.name);
-    }
-
-    let fingerprint = mi_compute_provider_fingerprint(self.result, root.name);
-    if (!om_fingerprint_is_valid(fingerprint)) {
-        be_ice("[ICE-1375] invalid module metadata fingerprint for " + root.name);
-    }
-
-    with (let provider_names = sv_create(mg_node_direct_import_count(target)) => sv_free(provider_names),
-          let provider_fingerprints = sv_create(mg_node_direct_import_count(target)) => sv_free(provider_fingerprints),
-          let seen = ss_create() => ss_free(seen)) {
-        for (let i = 0; i < mg_node_direct_import_count(target); i = i + 1) {
-            let provider_name = mg_node_direct_import_get(target, i);
-            let provider_opt = mg_find_node(graph, provider_name);
-            if (provider_opt == null) {
-                be_ice("[ICE-1376] missing direct-import graph node for " + root.name + ": " + provider_name);
-            }
-            let provider = provider_opt as ModuleGraphNode*;
-            if (ord(provider.origin.kind) == ord(MOK_VIRTUAL)) {
-                continue;
-            }
-            if (ord(mg_node_state(provider)) != ord(MNS_RESOLVED)) {
-                be_ice("[ICE-1377] unresolved direct-import graph node for " + root.name + ": " + provider_name);
-            }
-            if (!ss_add(seen, provider_name)) {
-                continue;
-            }
-            let provider_fingerprint = mi_compute_provider_fingerprint(self.result, provider_name);
-            if (!om_fingerprint_is_valid(provider_fingerprint)) {
-                be_ice("[ICE-1378] invalid direct-import fingerprint for " + root.name + ": " + provider_name);
-            }
-            sv_push(provider_names, provider_name);
-            sv_push(provider_fingerprints, provider_fingerprint);
-        }
-
-        let identity_opt = om_encode_identity(root.name, fingerprint, has_entry);
-        let imports_opt = om_encode_imports(provider_names, provider_fingerprints);
-        if (identity_opt == null || imports_opt == null) {
-            be_ice("[ICE-1379] failed to encode module object metadata for " + root.name);
-        }
-        cem_emit_module_object_metadata(
-            self.emitter,
-            root.name,
-            identity_opt as string,
-            imports_opt as string
-        );
-    }
 }
 
 /**
@@ -5919,7 +5813,7 @@ func be_generate_output(self: Backend*) -> string {
         target_root = be_target_root(self);
         self.required_type_keys = be_collect_required_type_keys(self, target_root as Module*);
         cem_set_module_type_keys(self.emitter, self.required_type_keys as StringSet*);
-        target_entry_type = be_module_entry_type(self, target_root as Module*);
+        target_entry_type = analysis_module_entry_type(self.result, (target_root as Module*).name);
     }
 
     log_stage(self.cfg, "Generating C code", "");
@@ -5943,7 +5837,6 @@ func be_generate_output(self: Backend*) -> string {
     be_emit_let_declarations(self);
     be_emit_function_declarations(self);
     if (target_root != null) {
-        be_emit_module_object_metadata(self, target_root as Module*, target_entry_type != null);
         be_emit_module_lifecycle_functions(self, target_root as Module*);
         be_emit_function_definitions(self);
         be_emit_module_entry_bridge_if_needed(self, target_root as Module*, target_entry_type);

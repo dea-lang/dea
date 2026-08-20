@@ -672,9 +672,10 @@ func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResu
 }
 
 /**
- * Resolve and record every semantic and link dependency from one interface.
+ * Resolve and record every lifecycle, semantic, and link dependency from one
+ * interface.
  *
- * Both tiers are always traversed even after one provider fails, preserving
+ * All three views are traversed even after one provider fails, preserving
  * every manifest edge and allowing provider-level failure caching to suppress
  * duplicate diagnostics.
  *
@@ -687,6 +688,15 @@ func dr_parse_source(path: string, source: string, cfg: LogConfig*) -> ParseResu
 func dr_resolve_interface_dependencies(ctx: DriverResolutionContext*, node: ModuleGraphNode*,
                                        raw: ModuleInterface*, stack: StringVector*) -> bool {
     let ok = true;
+    for (let import_i = 0; import_i < vec_size(raw.module_imports);
+         import_i = import_i + 1) {
+        let imported = ptr_vec_get(
+            raw.module_imports, import_i) as InterfaceModuleImport*;
+        mg_node_add_interface_import(node, imported.provider_module);
+        if (!dr_resolve_module(ctx, stack, imported.provider_module)) {
+            ok = false;
+        }
+    }
     for (let req_i = 0; req_i < vec_size(raw.require_entries); req_i = req_i + 1) {
         let dep = ptr_vec_get(raw.require_entries, req_i) as InterfaceDepEntry*;
         mg_node_add_dependency(node, MDK_REQUIRE, dep.provider_module, dep.symbol_name,

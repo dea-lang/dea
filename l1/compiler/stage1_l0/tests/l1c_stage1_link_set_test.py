@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import re
@@ -39,6 +40,7 @@ STALE_V2_FIXTURES = FIXTURES / "stale" / "v2"
 TRACE_CHECKER = (
     L1_ROOT / "compiler" / "stage1_l0" / "scripts" / "check_trace_log.py"
 )
+RUNTIME_HEADER = L1_ROOT / "compiler" / "shared" / "runtime" / "include" / "dea_rt.h"
 ARC_LOCATION_RE = re.compile(r'\bloc="([^"]+)":(\d+)\s*$')
 
 
@@ -106,6 +108,28 @@ def module_object(artifact_root: Path, module_name: str) -> Path:
     return artifact_root.joinpath(*module_name.split(".")).with_suffix(".o")
 
 
+def sibling_interface(object_path: Path) -> Path:
+    """Return the exact terminal-`.o` sibling interface path."""
+
+    if object_path.name == ".o" or not object_path.name.endswith(".o"):
+        raise LinkSetFailure(
+            f"cannot derive sibling interface for noncanonical object: {object_path}"
+        )
+    return object_path.with_name(object_path.name[:-2] + ".l1m")
+
+
+def copy_dea_pair(source_object: Path, destination_object: Path) -> Path:
+    """Copy one caller-trusted object/interface pair to a new basename."""
+
+    destination_object.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_object, destination_object)
+    shutil.copy2(
+        sibling_interface(source_object),
+        sibling_interface(destination_object),
+    )
+    return destination_object
+
+
 def compile_module(
     compiler: Path,
     c_compiler: str,
@@ -115,7 +139,7 @@ def compile_module(
     *,
     trace_arc: bool = False,
 ) -> Path:
-    """Compile one fixture module and return its metadata-bearing object.
+    """Compile one fixture module and return its opaque paired object.
 
     Args:
         compiler: Repo-local L1 Stage 1 compiler.
@@ -203,7 +227,7 @@ def compile_foreign_object(
     source_path: Path,
     object_path: Path,
 ) -> Path:
-    """Compile one metadata-free C relocatable object.
+    """Compile one caller-asserted C relocatable object.
 
     Args:
         c_compiler: Host C compiler path.
@@ -310,6 +334,7 @@ def run_link(
     entry: str | None = None,
     foreign_equals: bool = False,
     c_options: str | None = None,
+    runtime_include: Path | None = None,
     trace_arc: bool = False,
     short_aliases: bool = False,
 ) -> subprocess.CompletedProcess[str]:
@@ -321,11 +346,12 @@ def run_link(
         cwd: Link invocation directory.
         dea_objects: Positional verified Dea objects.
         output: Final executable path.
-        foreign_objects: Explicit metadata-free C objects.
+        foreign_objects: Explicit caller-asserted native objects.
         entry: Optional canonical entry module.
         foreign_equals: Use the `--foreign-object=PATH` spelling for the first
             foreign object.
         c_options: Optional wrapper-compilation options.
+        runtime_include: Optional directory containing a test-owned `dea_rt.h`.
         trace_arc: Select the traced runtime and preserve ARC source locations.
         short_aliases: Use the public short spellings for link-specific options.
 
@@ -346,6 +372,8 @@ def run_link(
         args.extend(["-e" if short_aliases else "--entry", entry])
     if c_options is not None:
         args.extend(["--c-options", c_options])
+    if runtime_include is not None:
+        args.extend(["--runtime-include", str(runtime_include)])
     args.extend(["--c-compiler", c_compiler, "--output", str(output)])
     return run_compiler(compiler, cwd, *args)
 
@@ -563,14 +591,6 @@ def create_windows_junction(
         )
 
 
-def remove_interfaces(*roots: Path) -> None:
-    """Remove generated `.l1m` files to prove link-only metadata authority."""
-
-    for root in roots:
-        for interface_path in root.rglob("*.l1m"):
-            interface_path.unlink()
-
-
 def assert_no_link_transactions(root: Path) -> None:
     """Require that no standalone-link transaction remains below `root`.
 
@@ -589,18 +609,138 @@ def assert_no_link_transactions(root: Path) -> None:
         )
 
 
-def snapshot_inputs(paths: list[Path]) -> dict[Path, bytes]:
+def capture_input_bytes(paths: list[Path]) -> dict[Path, bytes]:
     """Return exact bytes for caller-owned link inputs."""
 
     return {path: path.read_bytes() for path in paths}
 
 
-def assert_inputs_unchanged(snapshot: dict[Path, bytes]) -> None:
+def capture_link_input_bytes(
+    dea_objects: list[Path],
+    foreign_objects: list[Path] | None = None,
+) -> dict[Path, bytes]:
+    """Capture every authoritative interface and opaque caller input."""
+
+    paths: list[Path] = []
+    for object_path in dea_objects:
+        paths.extend((object_path, sibling_interface(object_path)))
+    paths.extend(foreign_objects or [])
+    return capture_input_bytes(paths)
+
+
+def assert_inputs_unchanged(captured: dict[Path, bytes]) -> None:
     """Require caller-owned link inputs to remain byte-identical."""
 
-    for path, expected in snapshot.items():
+    for path, expected in captured.items():
         if not path.is_file() or path.read_bytes() != expected:
             raise LinkSetFailure(f"standalone linking changed caller input: {path}")
+
+
+def create_final_link_probe(
+    c_compiler: str,
+    probe_root: Path,
+    marker_path: Path,
+    sentinel: str,
+    *,
+    partial_output: bytes | None = None,
+) -> Path:
+    """Create a compiler proxy that delegates wrapper compilation only.
+
+    The proxy records final-link arguments as JSON, optionally writes a partial
+    direct output, emits `sentinel`, and deliberately fails the final command.
+    """
+
+    probe_root.mkdir(parents=True, exist_ok=True)
+    helper = probe_root / "compiler_probe.py"
+    helper.write_text(
+        "from pathlib import Path\n"
+        "import json\n"
+        "import subprocess\n"
+        "import sys\n"
+        "\n"
+        "real_compiler = sys.argv[1]\n"
+        "marker_path = Path(sys.argv[2])\n"
+        "sentinel = sys.argv[3]\n"
+        "partial_hex = sys.argv[4]\n"
+        "args = sys.argv[5:]\n"
+        "if '-c' in args:\n"
+        "    completed = subprocess.run([real_compiler, *args], check=False)\n"
+        "    raise SystemExit(completed.returncode)\n"
+        "marker_path.write_text(json.dumps(args), encoding='utf-8')\n"
+        "if partial_hex:\n"
+        "    output_index = len(args) - 1 - args[::-1].index('-o')\n"
+        "    Path(args[output_index + 1]).write_bytes(bytes.fromhex(partial_hex))\n"
+        "sys.stderr.write(sentinel + '\\n')\n"
+        "raise SystemExit(97)\n",
+        encoding="utf-8",
+    )
+
+    real_compiler = str(Path(c_compiler).resolve())
+    partial_hex = "" if partial_output is None else partial_output.hex()
+    if os.name == "nt":
+        proxy = probe_root / (Path(c_compiler).stem + ".cmd")
+        proxy.write_text(
+            "@echo off\r\n"
+            f'"{sys.executable}" "{helper}" "{real_compiler}" '
+            f'"{marker_path}" "{sentinel}" "{partial_hex}" %*\r\n'
+            "exit /b %ERRORLEVEL%\r\n",
+            encoding="utf-8",
+        )
+        return proxy
+
+    proxy = probe_root / Path(c_compiler).name
+    proxy.write_text(
+        "#!/bin/sh\n"
+        f"exec {shlex.quote(sys.executable)} {shlex.quote(str(helper))} "
+        f"{shlex.quote(real_compiler)} {shlex.quote(str(marker_path))} "
+        f"{shlex.quote(sentinel)} {shlex.quote(partial_hex)} \"$@\"\n",
+        encoding="utf-8",
+    )
+    proxy.chmod(0o755)
+    return proxy
+
+
+def recorded_final_args(marker_path: Path, context: str) -> list[str]:
+    """Load one compiler probe's final-link argument vector."""
+
+    if not marker_path.is_file():
+        raise LinkSetFailure(f"{context} did not reach the final host command")
+    value = json.loads(marker_path.read_text(encoding="utf-8"))
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise LinkSetFailure(f"{context} recorded malformed final arguments: {value!r}")
+    return value
+
+
+def normalized_host_path(raw: str | Path) -> str:
+    """Normalize one recorded host path for cross-platform comparison."""
+
+    return os.path.normcase(os.path.normpath(str(raw)))
+
+
+def expected_default_runtime_inputs(
+    compiler: Path,
+    c_compiler: str,
+) -> list[Path]:
+    """Return the expected default runtime-native input order."""
+
+    compiler_name = Path(c_compiler).stem.lower()
+    if "tcc" in compiler_name:
+        object_dir = compiler.parent.parent / "runtime" / "tcc" / "default"
+        object_names = (
+            "dea_rt_panic.o",
+            "dea_rt_sys.o",
+            "dea_rt_math.o",
+            "dea_rt_rand.o",
+            "dea_rt_string.o",
+            "dea_rt_alloc.o",
+            "dea_rt_io.o",
+            "dea_rt_hash.o",
+            "dea_rt_time.o",
+        )
+        object_paths = [object_dir / name for name in object_names]
+        if all(path.is_file() for path in object_paths):
+            return object_paths
+    return [compiler.parent.parent / "lib" / "libdea_rt.a"]
 
 
 def build_primary_objects(
@@ -630,24 +770,38 @@ def build_primary_objects(
     }
 
 
-def test_dea_objects_link_without_interfaces(
+def test_missing_sibling_interface(
     compiler: Path,
     c_compiler: str,
     root: Path,
     objects: dict[str, Path],
 ) -> None:
-    """Verified Dea objects link and run after all sidecar interfaces vanish."""
+    """A positional Dea object cannot link without its sibling interface."""
 
     inputs = [
         objects["linkset.main"],
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
-    output = executable_path(root, "dea graph")
-    completed = run_link(compiler, c_compiler, root, inputs, output)
-    require_link_success(completed, output, "metadata-only Dea graph link")
-    require_program_status(output, 7, "metadata-only Dea graph executable")
+    before = capture_link_input_bytes(inputs)
+    missing_interface = sibling_interface(objects["linkset.main"])
+    interface_bytes = missing_interface.read_bytes()
+    missing_interface.unlink()
+    output = executable_path(root, "missing sibling interface")
+    try:
+        completed = run_link(compiler, c_compiler, root, inputs, output)
+        require_link_failure(
+            completed,
+            "missing sibling interface",
+            "drv-0074",
+            str(missing_interface),
+        )
+        if output.exists():
+            raise LinkSetFailure(
+                "missing-sibling failure published an executable"
+            )
+    finally:
+        missing_interface.write_bytes(interface_bytes)
     assert_inputs_unchanged(before)
     assert_no_link_transactions(root)
 
@@ -681,8 +835,6 @@ def test_lifecycle_order_and_arc_cleanup(
         FIXTURES / "lifecycle_observer.c",
         artifact_root / "lifecycle observer.o",
     )
-    remove_interfaces(artifact_root)
-
     inputs = [
         lifecycle_objects["lifecycle.main"],
         lifecycle_objects["lifecycle.side_effect"],
@@ -690,7 +842,7 @@ def test_lifecycle_order_and_arc_cleanup(
         lifecycle_objects["lifecycle.provider"],
         observer,
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs[:-1], [observer])
     output = executable_path(root, "lifecycle graph")
     linked = run_link(
         compiler,
@@ -790,7 +942,7 @@ def test_link_transaction_mode(
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs)
     output = executable_path(root, "transaction mode")
     previous_umask = os.umask(0)
     try:
@@ -844,7 +996,7 @@ def test_trusted_output_parent_alias(
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs)
     output = executable_path(alias_parent, "through trusted alias")
     completed = run_link(
         compiler,
@@ -864,92 +1016,132 @@ def test_trusted_output_parent_alias(
     assert_no_link_transactions(root)
 
 
-def test_inspected_bytes_are_snapshotted(
+def test_opaque_inputs_use_original_final_paths(
     compiler: Path,
     c_compiler: str,
     root: Path,
     objects: dict[str, Path],
+    foreign_main: Path,
 ) -> None:
-    """Final linking uses bytes inspected before a caller-object mutation."""
+    """Opaque positional and foreign bytes reach the final host command."""
 
-    if os.name == "nt":
-        return
-
-    probe_root = root / "input snapshot probe"
-    probe_root.mkdir()
-    mutable_provider = probe_root / "caller provider.o"
-    shutil.copy2(objects["linkset.provider"], mutable_provider)
-    original_provider = mutable_provider.read_bytes()
-    replacement_bytes = b"not an object: replaced after inspection\n"
-    mutation_marker = probe_root / "mutation observed.txt"
-    mutation_helper = probe_root / "replace_input.py"
-    mutation_helper.write_text(
-        "from pathlib import Path\n"
-        "import os\n"
-        "import sys\n"
-        "\n"
-        "target_path = Path(sys.argv[1])\n"
-        "marker_path = Path(sys.argv[2])\n"
-        'replacement_path = target_path.with_name(target_path.name + ".new")\n'
-        "replacement_path.write_bytes("
-        f"{replacement_bytes!r}"
-        ")\n"
-        "os.replace(replacement_path, target_path)\n"
-        'marker_path.write_text("replaced\\n", encoding="ascii")\n',
-        encoding="utf-8",
+    probe_root = root / "opaque original-path probe"
+    opaque_main = probe_root / "renamed malformed main.o"
+    opaque_main.parent.mkdir(parents=True)
+    opaque_main.write_bytes(b"regular bytes that are not a native object\n")
+    shutil.copy2(
+        sibling_interface(objects["linkset.main"]),
+        sibling_interface(opaque_main),
     )
 
-    compiler_probe = probe_root / Path(c_compiler).name
-    compiler_probe.write_text(
-        "#!/bin/sh\n"
-        "for dea_arg do\n"
-        '    if [ "${dea_arg##*/}" = "wrapper.c" ]; then\n'
-        f"        {shlex.quote(sys.executable)} "
-        f"{shlex.quote(str(mutation_helper))} "
-        f"{shlex.quote(str(mutable_provider))} "
-        f"{shlex.quote(str(mutation_marker))} || exit $?\n"
-        "    fi\n"
-        "done\n"
-        f"exec {shlex.quote(str(Path(c_compiler).resolve()))} \"$@\"\n",
-        encoding="utf-8",
-    )
-    compiler_probe.chmod(0o755)
+    if sys.platform == "darwin":
+        control_source = FIXTURES / "foreign_linker_option_darwin.s"
+    elif os.name == "nt":
+        control_source = FIXTURES / "foreign_directive_windows.s"
+    elif sys.platform.startswith("linux"):
+        control_source = FIXTURES / "foreign_dependent_libraries_elf.s"
+    else:
+        control_source = None
+    control_object = probe_root / "opaque linker-control foreign.o"
+    if control_source is None:
+        control_object.write_bytes(b"caller-asserted opaque foreign bytes\n")
+    else:
+        compile_foreign_assembly(c_compiler, control_source, control_object)
 
-    inputs = [
-        objects["linkset.main"],
-        mutable_provider,
+    marker = probe_root / "final args.json"
+    sentinel = "DEA_OPAQUE_FINAL_SENTINEL"
+    partial_output = b"partial direct host output\n"
+    compiler_probe = create_final_link_probe(
+        c_compiler,
+        probe_root / "compiler proxy",
+        marker,
+        sentinel,
+        partial_output=partial_output,
+    )
+
+    dea_inputs = [
+        opaque_main,
+        objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
-    output = executable_path(root, "inspected byte snapshot")
-    try:
-        completed = run_link(
-            compiler,
-            str(compiler_probe),
-            root,
-            inputs,
-            output,
-        )
-        if not mutation_marker.is_file():
+    foreign_inputs = [foreign_main, control_object]
+    before = capture_link_input_bytes(dea_inputs, foreign_inputs)
+    output = executable_path(root, "opaque direct output")
+    completed = run_compiler(
+        compiler,
+        root,
+        "--link",
+        str(opaque_main),
+        "--foreign-object",
+        str(foreign_main),
+        str(objects["linkset.provider"]),
+        "-Cf",
+        str(control_object),
+        str(objects["linkset.leaf"]),
+        "--c-compiler",
+        str(compiler_probe),
+        "--output",
+        str(output),
+    )
+    require_link_failure(
+        completed,
+        "opaque original-path final link",
+        "l1c-2109",
+        sentinel,
+    )
+    failure_text = combined_output(completed)
+    for retired_code in ("l1c-2097", "l1c-2098", "l1c-2110"):
+        if retired_code in failure_text:
             raise LinkSetFailure(
-                "compiler probe did not replace the caller object"
+                "opaque input failed through retired preflight diagnostic "
+                f"{retired_code}:\n{completed.stderr}"
             )
-        if mutable_provider.read_bytes() != replacement_bytes:
-            raise LinkSetFailure(
-                "compiler probe did not leave the expected replacement bytes"
-            )
-        require_link_success(
-            completed,
-            output,
-            "exact inspected-byte snapshot link",
+
+    final_args = recorded_final_args(marker, "opaque original-path probe")
+    expected_callers = [
+        opaque_main,
+        foreign_main,
+        objects["linkset.provider"],
+        control_object,
+        objects["linkset.leaf"],
+    ]
+    if not final_args or Path(final_args[0]).name != "wrapper.o":
+        raise LinkSetFailure(
+            f"final host command was not wrapper-first: {final_args!r}"
         )
-        require_program_status(
-            output,
-            7,
-            "exact inspected-byte snapshot executable",
+    actual_callers = final_args[1 : 1 + len(expected_callers)]
+    if [normalized_host_path(path) for path in actual_callers] != [
+        normalized_host_path(path) for path in expected_callers
+    ]:
+        raise LinkSetFailure(
+            "final caller input order/path mismatch:\n"
+            f"expected={expected_callers!r}\nactual={actual_callers!r}"
         )
-    finally:
-        mutable_provider.write_bytes(original_provider)
+    if any(Path(path).name.startswith("input-") for path in final_args):
+        raise LinkSetFailure(
+            "final host command contains a retired transaction-owned input copy: "
+            f"{final_args!r}"
+        )
+
+    tail = final_args[1 + len(expected_callers) :]
+    runtime_inputs = expected_default_runtime_inputs(compiler, c_compiler)
+    expected_tail = [
+        *(str(path) for path in runtime_inputs),
+        "-lm",
+        "-o",
+        str(output),
+    ]
+    if [normalized_host_path(path) for path in tail] != [
+        normalized_host_path(path) for path in expected_tail
+    ]:
+        raise LinkSetFailure(
+            "runtime/math/output final argument order mismatch:\n"
+            f"expected={expected_tail!r}\nactual={tail!r}"
+        )
+    if not output.is_file() or output.read_bytes() != partial_output:
+        raise LinkSetFailure(
+            "failed final host command did not retain its direct partial output"
+        )
 
     assert_inputs_unchanged(before)
     assert_no_link_transactions(root)
@@ -975,18 +1167,151 @@ def test_default_host_runtime_inputs(
             "linkset.main",
         )
     }
-    remove_interfaces(artifact_root)
     inputs = [
         objects["linkset.main"],
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs)
     output = executable_path(root, "default_host")
     completed = run_link_with_default_host(compiler, root, inputs, output)
     require_link_success(completed, output, "default-host standalone link")
     require_program_status(output, 7, "default-host standalone executable")
     assert_inputs_unchanged(before)
+    assert_no_link_transactions(root)
+
+
+def test_sibling_interface_validation(
+    compiler: Path,
+    c_compiler: str,
+    root: Path,
+    objects: dict[str, Path],
+) -> None:
+    """Nonregular, non-UTF-8, malformed, and corrupt siblings fail early."""
+
+    case_root = root / "invalid sibling interfaces"
+    source_object = objects["linkset.no_entry"]
+
+    nonregular_object = case_root / "nonregular" / "module.o"
+    nonregular_object.parent.mkdir(parents=True)
+    shutil.copy2(source_object, nonregular_object)
+    sibling_interface(nonregular_object).mkdir()
+
+    utf8_object = case_root / "invalid utf8" / "module.o"
+    utf8_object.parent.mkdir(parents=True)
+    shutil.copy2(source_object, utf8_object)
+    sibling_interface(utf8_object).write_bytes(b"\xff\xfe\x00")
+
+    malformed_object = case_root / "malformed" / "module.o"
+    malformed_object.parent.mkdir(parents=True)
+    shutil.copy2(source_object, malformed_object)
+    sibling_interface(malformed_object).write_text(
+        "module interface\n",
+        encoding="utf-8",
+    )
+
+    corrupt_object = copy_dea_pair(
+        source_object,
+        case_root / "bad fingerprint" / "module.o",
+    )
+    corrupt_interface = sibling_interface(corrupt_object)
+    corrupt_text = corrupt_interface.read_text(encoding="utf-8")
+    fingerprint_match = re.search(
+        r'fingerprint "sip13:([0-9a-f]{16})";',
+        corrupt_text,
+    )
+    if fingerprint_match is None:
+        raise LinkSetFailure(
+            f"cannot locate test interface fingerprint: {corrupt_interface}"
+        )
+    digest = fingerprint_match.group(1)
+    replacement = ("0" if digest[0] != "0" else "1") + digest[1:]
+    corrupt_interface.write_text(
+        corrupt_text[: fingerprint_match.start(1)]
+        + replacement
+        + corrupt_text[fingerprint_match.end(1) :],
+        encoding="utf-8",
+    )
+
+    cases = (
+        (nonregular_object, "nonregular sibling", "drv-0075"),
+        (utf8_object, "invalid UTF-8 sibling", "drv-0076"),
+        (malformed_object, "malformed sibling", "par-0562"),
+        (corrupt_object, "bad-fingerprint sibling", "sig-0282"),
+    )
+    for index, (object_path, context, diagnostic) in enumerate(cases):
+        output = executable_path(case_root, f"invalid sibling {index}")
+        completed = run_link(
+            compiler,
+            c_compiler,
+            root,
+            [object_path],
+            output,
+        )
+        require_link_failure(completed, context, diagnostic)
+        if output.exists():
+            raise LinkSetFailure(f"{context} published an executable")
+        assert_no_link_transactions(root)
+
+
+def test_positional_suffix_and_arbitrary_basename(
+    compiler: Path,
+    c_compiler: str,
+    root: Path,
+    objects: dict[str, Path],
+) -> None:
+    """Path-only sibling derivation accepts arbitrary valid basenames."""
+
+    case_root = root / "positional suffix contract"
+    renamed_main = copy_dea_pair(
+        objects["linkset.main"],
+        case_root / "arbitrary caller basename.o",
+    )
+    inputs = [
+        renamed_main,
+        objects["linkset.provider"],
+        objects["linkset.leaf"],
+    ]
+    before = capture_link_input_bytes(inputs)
+    output = executable_path(case_root, "arbitrary basename executable")
+    completed = run_link(compiler, c_compiler, root, inputs, output)
+    require_link_success(completed, output, "arbitrary-basename pair link")
+    require_program_status(output, 7, "arbitrary-basename pair executable")
+    assert_inputs_unchanged(before)
+
+    invalid_suffix = case_root / "invalid suffix.obj"
+    shutil.copy2(objects["linkset.main"], invalid_suffix)
+    invalid_output = executable_path(case_root, "invalid suffix output")
+    invalid = run_link(
+        compiler,
+        c_compiler,
+        root,
+        [invalid_suffix],
+        invalid_output,
+    )
+    require_link_failure(
+        invalid,
+        "non-.o positional suffix",
+        "l1c-2097",
+        "terminal '.o' suffix",
+    )
+
+    empty_stem = case_root / ".o"
+    shutil.copy2(objects["linkset.main"], empty_stem)
+    empty_output = executable_path(case_root, "empty stem output")
+    empty = run_link(
+        compiler,
+        c_compiler,
+        root,
+        [empty_stem],
+        empty_output,
+    )
+    require_link_failure(
+        empty,
+        "empty-stem positional suffix",
+        "l1c-2097",
+        "nonempty basename stem",
+    )
     assert_no_link_transactions(root)
 
 
@@ -1044,11 +1369,14 @@ def test_explicit_foreign_object(
     objects: dict[str, Path],
     foreign_answer: Path,
 ) -> None:
-    """A metadata-free provider satisfies an unmangled extern only explicitly."""
+    """A caller-asserted provider satisfies an unmangled extern explicitly."""
 
     output = executable_path(root, "foreign provider")
     inputs = [objects["linkset.foreign_entry"], foreign_answer]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(
+        [objects["linkset.foreign_entry"]],
+        [foreign_answer],
+    )
     completed = run_link(
         compiler,
         c_compiler,
@@ -1065,16 +1393,15 @@ def test_explicit_foreign_object(
     assert_no_link_transactions(root)
 
 
-def test_classification_failures(
+def test_typed_operand_failures(
     compiler: Path,
     c_compiler: str,
     root: Path,
     objects: dict[str, Path],
     foreign_answer: Path,
-    foreign_main: Path,
     option_shaped_foreign: Path,
 ) -> None:
-    """Operand spelling cannot bypass Dea/foreign classification."""
+    """Typed native operands retain their distinct CLI roles."""
 
     positional_output = executable_path(root, "implicit foreign")
     positional = run_link(
@@ -1086,53 +1413,12 @@ def test_classification_failures(
     )
     require_link_failure(
         positional,
-        "metadata-free positional object",
-        "l1c-2098",
-        "--foreign-object",
+        "foreign object used as a positional Dea object",
+        "drv-0074",
+        str(sibling_interface(foreign_answer)),
     )
     if positional_output.exists():
-        raise LinkSetFailure("metadata-free positional failure published output")
-
-    disguised_output = executable_path(root, "disguised dea")
-    disguised = run_link(
-        compiler,
-        c_compiler,
-        root,
-        [objects["linkset.main"], objects["linkset.provider"]],
-        disguised_output,
-        foreign_objects=[objects["linkset.leaf"]],
-    )
-    require_link_failure(
-        disguised,
-        "Dea object passed as foreign",
-        "l1c-2098",
-        "foreign",
-        "dea",
-    )
-    if disguised_output.exists():
-        raise LinkSetFailure("Dea-as-foreign failure published output")
-
-    foreign_main_output = executable_path(root, "foreign main")
-    foreign_main_result = run_link(
-        compiler,
-        c_compiler,
-        root,
-        [
-            objects["linkset.main"],
-            objects["linkset.provider"],
-            objects["linkset.leaf"],
-        ],
-        foreign_main_output,
-        foreign_objects=[foreign_main],
-    )
-    require_link_failure(
-        foreign_main_result,
-        "foreign process main",
-        "l1c-2099",
-        "defines process symbol 'main'",
-    )
-    if foreign_main_output.exists():
-        raise LinkSetFailure("foreign-main failure published output")
+        raise LinkSetFailure("missing-sibling positional failure published output")
 
     smuggled_output = executable_path(root, "smuggled foreign")
     smuggled = run_link(
@@ -1189,91 +1475,12 @@ def test_classification_failures(
     assert_no_link_transactions(root)
 
 
-def test_embedded_linker_control_rejection(
-    compiler: Path,
-    c_compiler: str,
-    root: Path,
-    objects: dict[str, Path],
-) -> None:
-    """Native object linker controls fail before any host command executes."""
-
-    if sys.platform == "darwin":
-        source = FIXTURES / "foreign_linker_option_darwin.s"
-        control_name = "Mach-O LC_LINKER_OPTION"
-    elif os.name == "nt":
-        source = FIXTURES / "foreign_directive_windows.s"
-        control_name = "PE/COFF .drectve"
-    elif sys.platform.startswith("linux"):
-        source = FIXTURES / "foreign_dependent_libraries_elf.s"
-        control_name = "ELF dependent-library section"
-    else:
-        return
-
-    probe_root = root / "embedded linker control probe"
-    probe_root.mkdir()
-    control_object = compile_foreign_assembly(
-        c_compiler,
-        source,
-        probe_root / "linker control.o",
-    )
-    compiler_sentinel = probe_root / "host compiler invoked.txt"
-    if os.name == "nt":
-        compiler_probe = probe_root / "gcc.cmd"
-        compiler_probe.write_text(
-            "@echo off\r\n"
-            f'> "{compiler_sentinel}" echo invoked\r\n'
-            "exit /b 99\r\n",
-            encoding="utf-8",
-        )
-    else:
-        compiler_probe = probe_root / Path(c_compiler).name
-        compiler_probe.write_text(
-            "#!/bin/sh\n"
-            f"printf invoked > {shlex.quote(str(compiler_sentinel))}\n"
-            "exit 99\n",
-            encoding="utf-8",
-        )
-        compiler_probe.chmod(0o755)
-
-    inputs = [
-        objects["linkset.main"],
-        objects["linkset.provider"],
-        objects["linkset.leaf"],
-    ]
-    before = snapshot_inputs([*inputs, control_object])
-    output = executable_path(root, "embedded linker control")
-    completed = run_link(
-        compiler,
-        str(compiler_probe),
-        root,
-        inputs,
-        output,
-        foreign_objects=[control_object],
-    )
-    require_link_failure(
-        completed,
-        control_name,
-        "l1c-2110",
-        "linker control",
-    )
-    if compiler_sentinel.exists():
-        raise LinkSetFailure(
-            f"{control_name} rejection executed the host compiler"
-        )
-    if output.exists():
-        raise LinkSetFailure(
-            f"{control_name} rejection published an executable"
-        )
-    assert_inputs_unchanged(before)
-    assert_no_link_transactions(root)
-
-
-def test_wrapper_embedded_linker_control_rejection(
+def test_wrapper_embedded_linker_control_reaches_final_host(
     compiler: Path,
     root: Path,
     objects: dict[str, Path],
 ) -> None:
-    """A linker control emitted into the generated wrapper stops final linking."""
+    """A wrapper linker control is left to the final host command."""
 
     if sys.platform != "darwin":
         return
@@ -1286,31 +1493,21 @@ def test_wrapper_embedded_linker_control_rejection(
 
     probe_root = root / "wrapper linker control probe"
     probe_root.mkdir()
-    final_link_sentinel = probe_root / "final host link invoked.txt"
-    compiler_probe = probe_root / "clang"
-    compiler_probe.write_text(
-        "#!/bin/sh\n"
-        "dea_compile_only=0\n"
-        "for dea_arg do\n"
-        '    if [ "$dea_arg" = "-c" ]; then\n'
-        "        dea_compile_only=1\n"
-        "    fi\n"
-        "done\n"
-        'if [ "$dea_compile_only" = "1" ]; then\n'
-        f"    exec {shlex.quote(clang)} \"$@\"\n"
-        "fi\n"
-        f"printf invoked > {shlex.quote(str(final_link_sentinel))}\n"
-        "exit 99\n",
-        encoding="utf-8",
+    final_link_marker = probe_root / "final args.json"
+    sentinel = "DEA_WRAPPER_CONTROL_FINAL_SENTINEL"
+    compiler_probe = create_final_link_probe(
+        clang,
+        probe_root / "compiler proxy",
+        final_link_marker,
+        sentinel,
     )
-    compiler_probe.chmod(0o755)
 
     inputs = [
         objects["linkset.main"],
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs)
     output = executable_path(root, "wrapper embedded linker control")
     completed = run_link(
         compiler,
@@ -1323,16 +1520,20 @@ def test_wrapper_embedded_linker_control_rejection(
     require_link_failure(
         completed,
         "wrapper-embedded Mach-O linker control",
-        "l1c-2110",
-        "lc_linker_option",
+        "l1c-2109",
+        sentinel,
     )
-    if final_link_sentinel.exists():
+    if "l1c-2110" in combined_output(completed):
         raise LinkSetFailure(
-            "wrapper linker-control rejection executed the final host link"
+            "wrapper linker control triggered the retired preflight diagnostic"
         )
+    recorded_final_args(
+        final_link_marker,
+        "wrapper linker-control final-host probe",
+    )
     if output.exists():
         raise LinkSetFailure(
-            "wrapper linker-control rejection published an executable"
+            "deliberately failed wrapper-control final link published output"
         )
     assert_inputs_unchanged(before)
     assert_no_link_transactions(root)
@@ -1354,7 +1555,7 @@ def test_windows_command_value_rejection(
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs)
     sentinel = root / "windows-command-injection-sentinel.txt"
     malicious_option = (
         '-DDEA_LINK_TEST=x"&echo.injected>'
@@ -1410,7 +1611,7 @@ def test_windows_spaced_compiler_path(
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs)
     output = executable_path(root, "spaced compiler executable")
     spaced_compiler = compiler_alias / Path(c_compiler).name
     try:
@@ -1539,32 +1740,37 @@ def test_output_input_alias_rejection(
     root: Path,
     objects: dict[str, Path],
 ) -> None:
-    """An executable destination cannot replace a caller-owned input."""
+    """An output cannot alias a native input or consumed interface."""
 
-    inputs = [
+    case_root = root / "output input aliases"
+    copied_main = copy_dea_pair(
         objects["linkset.main"],
+        case_root / "copied main.o",
+    )
+    inputs = [
+        copied_main,
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs)
     exact = run_link(
         compiler,
         c_compiler,
         root,
         inputs,
-        objects["linkset.main"],
+        copied_main,
     )
     require_link_failure(
         exact,
         "output equal to caller input",
         "l1c-2105",
-        "aliases caller input",
+        "aliases caller native input",
     )
     assert_inputs_unchanged(before)
 
-    hard_link_output = root / "hard-linked output.o"
+    hard_link_output = case_root / "hard-linked native output.o"
     try:
-        os.link(objects["linkset.main"], hard_link_output)
+        os.link(copied_main, hard_link_output)
     except OSError as exc:
         raise LinkSetFailure(
             f"cannot create output/input hard-link fixture: {exc}"
@@ -1580,7 +1786,108 @@ def test_output_input_alias_rejection(
         hard_link,
         "output hard-linked to caller input",
         "l1c-2105",
-        "aliases caller input",
+        "aliases caller native input",
+    )
+    assert_inputs_unchanged(before)
+
+    consumed_interface = sibling_interface(copied_main)
+    exact_interface = run_link(
+        compiler,
+        c_compiler,
+        root,
+        inputs,
+        consumed_interface,
+    )
+    require_link_failure(
+        exact_interface,
+        "output equal to consumed sibling interface",
+        "l1c-2105",
+        "aliases consumed sibling interface",
+    )
+    assert_inputs_unchanged(before)
+
+    hard_link_interface_output = case_root / "hard-linked interface output"
+    try:
+        os.link(consumed_interface, hard_link_interface_output)
+    except OSError as exc:
+        raise LinkSetFailure(
+            f"cannot create output/interface hard-link fixture: {exc}"
+        ) from exc
+    hard_link_interface = run_link(
+        compiler,
+        c_compiler,
+        root,
+        inputs,
+        hard_link_interface_output,
+    )
+    require_link_failure(
+        hard_link_interface,
+        "output hard-linked to consumed sibling interface",
+        "l1c-2105",
+        "aliases consumed sibling interface",
+    )
+    assert_inputs_unchanged(before)
+    assert_no_link_transactions(root)
+
+
+def test_runtime_header_alias_rejection(
+    compiler: Path,
+    c_compiler: str,
+    root: Path,
+    objects: dict[str, Path],
+) -> None:
+    """Output identity checks protect a test-owned resolved runtime header."""
+
+    case_root = root / "runtime header aliases"
+    include_dir = case_root / "include"
+    include_dir.mkdir(parents=True)
+    runtime_header = include_dir / "dea_rt.h"
+    shutil.copy2(RUNTIME_HEADER, runtime_header)
+
+    inputs = [
+        objects["linkset.main"],
+        objects["linkset.provider"],
+        objects["linkset.leaf"],
+    ]
+    before = capture_link_input_bytes(inputs)
+    before[runtime_header] = runtime_header.read_bytes()
+
+    exact = run_link(
+        compiler,
+        c_compiler,
+        root,
+        inputs,
+        runtime_header,
+        runtime_include=include_dir,
+    )
+    require_link_failure(
+        exact,
+        "output equal to resolved runtime header",
+        "l1c-2105",
+        "aliases resolved runtime header",
+    )
+    assert_inputs_unchanged(before)
+
+    hard_link_output = case_root / "hard-linked runtime header output"
+    try:
+        os.link(runtime_header, hard_link_output)
+    except OSError as exc:
+        raise LinkSetFailure(
+            f"cannot create output/runtime-header hard-link fixture: {exc}"
+        ) from exc
+    hard_link = run_link(
+        compiler,
+        c_compiler,
+        root,
+        inputs,
+        hard_link_output,
+        runtime_include=include_dir,
+    )
+    require_link_failure(
+        hard_link,
+        "output hard-linked to resolved runtime header",
+        "l1c-2105",
+        "aliases resolved runtime header",
     )
     assert_inputs_unchanged(before)
     assert_no_link_transactions(root)
@@ -1600,7 +1907,7 @@ def test_output_symlink_rejection(
             objects["linkset.provider"],
             objects["linkset.leaf"],
         ]
-        before = snapshot_inputs(inputs)
+        before = capture_link_input_bytes(inputs)
         target = root / "output junction target"
         target.mkdir()
         target_marker = target / "caller-owned.txt"
@@ -1677,7 +1984,7 @@ def test_output_symlink_rejection(
         objects["linkset.provider"],
         objects["linkset.leaf"],
     ]
-    before = snapshot_inputs(inputs)
+    before = capture_link_input_bytes(inputs)
     target = root / "output symlink target"
     target_bytes = b"caller-owned output target\n"
     target.write_bytes(target_bytes)
@@ -1716,12 +2023,20 @@ def test_stale_provider_fingerprint(
     c_compiler: str,
     root: Path,
     consumer: Path,
-    stale_provider: Path,
+    matching_provider: Path,
+    stale_interface_provider: Path,
 ) -> None:
-    """A provider object with a different public surface fails pre-link."""
+    """A mismatched sibling interface, not object bytes, fails pre-link."""
 
-    inputs = [consumer, stale_provider]
-    before = snapshot_inputs(inputs)
+    mixed_provider = root / "stale sibling" / "mixed provider.o"
+    mixed_provider.parent.mkdir(parents=True)
+    shutil.copy2(matching_provider, mixed_provider)
+    shutil.copy2(
+        sibling_interface(stale_interface_provider),
+        sibling_interface(mixed_provider),
+    )
+    inputs = [consumer, mixed_provider]
+    before = capture_link_input_bytes(inputs)
     output = executable_path(root, "stale provider")
     completed = run_link(compiler, c_compiler, root, inputs, output)
     require_link_failure(
@@ -1801,8 +2116,7 @@ def main() -> int:
             foreign_root / "-Wl,foreign_actual.o",
         )
 
-        remove_interfaces(artifact_root, stale_v1_root, stale_v2_root)
-        test_dea_objects_link_without_interfaces(
+        test_missing_sibling_interface(
             compiler,
             c_compiler,
             workspace,
@@ -1825,13 +2139,26 @@ def main() -> int:
             workspace,
             objects,
         )
-        test_inspected_bytes_are_snapshotted(
+        test_opaque_inputs_use_original_final_paths(
+            compiler,
+            c_compiler,
+            workspace,
+            objects,
+            foreign_main,
+        )
+        test_default_host_runtime_inputs(compiler, root)
+        test_sibling_interface_validation(
             compiler,
             c_compiler,
             workspace,
             objects,
         )
-        test_default_host_runtime_inputs(compiler, root)
+        test_positional_suffix_and_arbitrary_basename(
+            compiler,
+            c_compiler,
+            workspace,
+            objects,
+        )
         test_entry_selection(compiler, c_compiler, workspace, objects)
         test_explicit_foreign_object(
             compiler,
@@ -1840,22 +2167,15 @@ def main() -> int:
             objects,
             foreign_answer,
         )
-        test_classification_failures(
+        test_typed_operand_failures(
             compiler,
             c_compiler,
             workspace,
             objects,
             foreign_answer,
-            foreign_main,
             option_shaped_foreign,
         )
-        test_embedded_linker_control_rejection(
-            compiler,
-            c_compiler,
-            workspace,
-            objects,
-        )
-        test_wrapper_embedded_linker_control_rejection(
+        test_wrapper_embedded_linker_control_reaches_final_host(
             compiler,
             workspace,
             objects,
@@ -1884,6 +2204,12 @@ def main() -> int:
             workspace,
             objects,
         )
+        test_runtime_header_alias_rejection(
+            compiler,
+            c_compiler,
+            workspace,
+            objects,
+        )
         test_output_symlink_rejection(
             compiler,
             c_compiler,
@@ -1895,6 +2221,7 @@ def main() -> int:
             c_compiler,
             workspace,
             stale_consumer,
+            stale_v1_provider,
             stale_v2_provider,
         )
 

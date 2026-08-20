@@ -210,6 +210,59 @@ func test_analysis_interface_enum_from_source_fallback() {
     sp_free(sp);
 }
 
+/** Tests shared entry detection and canonical lifecycle-import projection. */
+func test_analysis_entry_and_module_import_projection() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "ok_main", cfg);
+        assert(!analysis_has_errors(result), "entry/import projection fixture should analyze");
+        assert(analysis_module_entry_type(result, "ok_main") != null,
+            "private zero-parameter source main should own an entry bridge");
+        assert(analysis_module_entry_type(result, "shared_types") == null,
+            "module without source main should not own an entry bridge");
+
+        let projected = mi_project(result, "ok_main");
+        assert(projected != null, "entry module should project a complete interface");
+        let mi = projected as ModuleInterface*;
+        assert(mi.has_entry, "projected interface should share backend entry semantics");
+        assert(vec_size(mi.module_imports) == 2,
+            "source imports should project independently of symbol manifests");
+        let first = ptr_vec_get(mi.module_imports, 0) as InterfaceModuleImport*;
+        let second = ptr_vec_get(mi.module_imports, 1) as InterfaceModuleImport*;
+        assert(first.provider_module == "shared_types" && second.provider_module == "shared_more",
+            "projected imports should preserve first source occurrence order");
+        assert(second.provider_fingerprint != "",
+            "side-effect-only imports should retain populated provider expectations");
+        mi_free(mi);
+        analysis_result_free(result);
+
+        let duplicate = analysis_analyze_entry(sp, "export_duplicate_import_main", cfg);
+        assert(!analysis_has_errors(duplicate), "duplicate source-import fixture should analyze");
+        let graph_node = mg_find_node(
+            driver_graph(duplicate.driver_state), "export_duplicate_import_main") as ModuleGraphNode*;
+        assert(mg_node_direct_import_count(graph_node) == 2,
+            "source graph should preserve exact duplicate import declarations");
+        let duplicate_mi = mi_project(duplicate, "export_duplicate_import_main");
+        assert(duplicate_mi != null &&
+            vec_size((duplicate_mi as ModuleInterface*).module_imports) == 1,
+            "interface projection should stable-deduplicate duplicate providers");
+        mi_free(duplicate_mi as ModuleInterface*);
+        analysis_result_free(duplicate);
+
+        let virtual = analysis_analyze_entry(sp, "prelude_shadow_main", cfg);
+        assert(!analysis_has_errors(virtual), "explicit virtual-import fixture should analyze");
+        let virtual_mi = mi_project(virtual, "prelude_shadow_main");
+        assert(virtual_mi != null && vec_size((virtual_mi as ModuleInterface*).module_imports) == 1,
+            "interface projection should omit compiler-synthesized virtual providers");
+        assert((ptr_vec_get((virtual_mi as ModuleInterface*).module_imports, 0)
+            as InterfaceModuleImport*).provider_module == "prelude_shadow_helper",
+            "object-backed provider should remain after virtual filtering");
+        mi_free(virtual_mi as ModuleInterface*);
+        analysis_result_free(virtual);
+    }
+    sp_free(sp);
+}
+
 /**
  * Tests test_analysis_semantic_failure.
  */
@@ -343,6 +396,7 @@ func main() {
     test_analysis_resolution_entrypoint();
     test_analysis_emits_verified_source_provider_fingerprints();
     test_analysis_interface_enum_from_source_fallback();
+    test_analysis_entry_and_module_import_projection();
     test_analysis_semantic_failure();
     test_analysis_alias_imports();
     test_analysis_opaque_export_surfaces();

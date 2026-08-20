@@ -78,6 +78,16 @@ func miu_clone_dep_entry(entry: InterfaceDepEntry*) -> InterfaceDepEntry* {
 }
 
 /**
+ * Clone an ordered direct-module import entry.
+ *
+ * @param entry Source module import entry.
+ * @return New module import entry.
+ */
+func miu_clone_module_import(entry: InterfaceModuleImport*) -> InterfaceModuleImport* {
+    return new InterfaceModuleImport(entry.provider_module, entry.provider_fingerprint);
+}
+
+/**
  * Clone an interface function entry.
  *
  * @param entry Source function entry.
@@ -114,6 +124,12 @@ func miu_clone_alias_entry(entry: InterfaceAliasEntry*) -> InterfaceAliasEntry* 
  * @return New module interface owning cloned metadata.
  */
 func miu_clone_interface(mi: ModuleInterface*) -> ModuleInterface* {
+    let module_imports = ptr_vec_create(vec_size(mi.module_imports));
+    for (let import_i = 0; import_i < vec_size(mi.module_imports); import_i = import_i + 1) {
+        ptr_vec_push(module_imports,
+            miu_clone_module_import(ptr_vec_get(mi.module_imports, import_i) as InterfaceModuleImport*) as void*);
+    }
+
     let require_entries = ptr_vec_create(vec_size(mi.require_entries));
     for (let req_i = 0; req_i < vec_size(mi.require_entries); req_i = req_i + 1) {
         ptr_vec_push(require_entries, miu_clone_dep_entry(ptr_vec_get(mi.require_entries, req_i) as InterfaceDepEntry*) as void*);
@@ -149,8 +165,8 @@ func miu_clone_interface(mi: ModuleInterface*) -> ModuleInterface* {
         ptr_vec_push(let_entries, miu_clone_let_entry(ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*) as void*);
     }
 
-    return new ModuleInterface(mi.module_name, mi.fingerprint, require_entries, link_entries, struct_infos,
-        enum_infos, alias_entries, func_entries, let_entries);
+    return new ModuleInterface(mi.module_name, mi.fingerprint, mi.has_entry, module_imports, require_entries,
+        link_entries, struct_infos, enum_infos, alias_entries, func_entries, let_entries);
 }
 
 /**
@@ -343,11 +359,38 @@ func mi_dep_entry_free(self: InterfaceDepEntry*) {
 }
 
 /**
+ * Free one ordered direct-module import entry.
+ *
+ * @param self Entry to free.
+ */
+func mi_module_import_free(self: InterfaceModuleImport*) {
+    drop self;
+}
+
+/**
+ * Free an optional vector of owned direct-module import entries.
+ *
+ * @param entries Optional `InterfaceModuleImport*` vector.
+ */
+func mi_module_import_vec_free(entries: VectorBase*?) {
+    if (entries == null) {
+        return;
+    }
+    let vec = entries as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        mi_module_import_free(ptr_vec_get(vec, i) as InterfaceModuleImport*);
+    }
+    vec_free(vec);
+}
+
+/**
  * Free a module interface and all owned entries.
  *
  * @param self Module interface to free.
  */
 func mi_free(self: ModuleInterface*) {
+    mi_module_import_vec_free(self.module_imports);
+
     for (let req_i = 0; req_i < vec_size(self.require_entries); req_i = req_i + 1) {
         mi_dep_entry_free(ptr_vec_get(self.require_entries, req_i) as InterfaceDepEntry*);
     }

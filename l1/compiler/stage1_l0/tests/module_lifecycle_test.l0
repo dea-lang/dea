@@ -1,0 +1,32 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module module_lifecycle_test;
+
+import std.assert;
+import std.io;
+
+import module_lifecycle;
+
+/** Tests canonical lifecycle and entry symbol spelling. */
+func test_module_lifecycle_symbol_names() {
+    assert(ml_init_symbol_name("a.b") == "__deaM1a1bI4init",
+        "dotted module init name mismatch");
+    assert(ml_init_symbol_name("a_b") == "__deaM3a_bI4init",
+        "underscore module init name mismatch");
+    assert(ml_fini_symbol_name("a.b") == "__deaM1a1bI4fini",
+        "dotted module fini name mismatch");
+    assert(ml_entry_symbol_name("a.b") == "__deaM1a1bI5entry",
+        "dotted module entry name mismatch");
+    assert(ml_entry_symbol_name("std.collections.list") ==
+        "__deaM3std11collections4listI5entry",
+        "multi-segment module entry name mismatch");
+}
+
+/** Run module lifecycle helper tests. */
+func main() {
+    test_module_lifecycle_symbol_names();
+    printl_s("module_lifecycle_test: all tests passed");
+}

@@ -66,7 +66,8 @@ After the [build/run fan-out plan][build-run] migrates the last whole-program ca
 ## Dependencies and Ownership
 
 1. The closed [lifecycle plan][lifecycle] owns the one-module C boundary and lifecycle symbols.
-2. The closed [object metadata plan][object-metadata] owns the metadata embedded in each generated module.
+2. The historical [object metadata plan][object-metadata] is superseded by the authoritative `.l1m` standalone-link
+   contract. Generated modules retain lifecycle and optional entry symbols but contain no embedded Dea metadata.
 3. The closed [compile-only plan][compile-only] owns source-module analysis, host object compilation, the default
    `.o + .l1m` publication pair, and optional C retention through `--keep-c`.
 4. This plan owns `--gen` resolution and output semantics, cross-mode generated-C identity, stable compiler-visible
@@ -103,11 +104,12 @@ No complete-C-tree generation mode is introduced.
     - a selected interface is authoritative;
     - source fallback is allowed only when no interface is selected.
 03. A selected valid `.l1m` is sufficient for generation. `--gen` does not require or inspect the canonical sibling
-    `.o`; an absent, stale, malformed, or metadata-free sibling object does not affect generation.
+    `.o`; an absent, stale, malformed, or non-native sibling object does not affect generation.
 04. A malformed selected interface fails without source fallback. Normal graph, fingerprint, and replay validation still
     applies before emission.
 05. The generated translation unit contains definitions owned by the requested module, required imported declarations
-    and transparent type declarations, `I4init`, `I4fini`, conditional `I5entry`, and finalized Dea object metadata.
+    and transparent type declarations, `I4init`, `I4fini`, and conditional `I5entry`. It contains no `I8metadata`,
+    `I7imports`, metadata byte arrays, or retention reads.
 06. The translation unit contains no imported value definitions, dependency lifecycle calls, legacy whole-program
     initialization chain, generated process-level C `main`, executable wrapper, or embedded `.l1m` text.
 07. A utility module without a valid source `main` is a valid target and emits no `I5entry`.
@@ -281,8 +283,8 @@ implementation; reuse nearby established codes if an unforeseen case needs separ
 02. A utility module emits lifecycle symbols but no `I5entry` or process-level `main`; an entry module emits `I5entry`
     but no process-level `main`.
 03. Interface-first precedence and authoritative-interface failures match `AllowSourceFallback`.
-04. A selected valid `.l1m` succeeds when its canonical `.o` and `.c` are absent. A present stale, malformed, or
-    metadata-free sibling object is ignored; a malformed selected `.l1m` fails without source fallback.
+04. A selected valid `.l1m` succeeds when its canonical `.o` and `.c` are absent. Any present sibling object is ignored
+    regardless of contents; a malformed selected `.l1m` fails without source fallback.
 05. Source fallback works only when no interface is selected.
 06. `--gen` writes stdout by default and exactly one requested file with `-o`, with no object, interface, wrapper, or
     companion output.

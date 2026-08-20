@@ -166,6 +166,40 @@ def require_kept_c_set(
     return c_bytes, object_bytes, interface_bytes
 
 
+def global_object_symbols(object_path: Path) -> set[str]:
+    """Return global symbols using the repository's cross-platform `nm` lane."""
+
+    nm = shutil.which("nm")
+    if nm is None:
+        raise CompileOnlyFailure(
+            "compile-only object-symbol coverage requires host tool 'nm'"
+        )
+    completed = subprocess.run(
+        [nm, "-g", str(object_path)],
+        cwd=L1_ROOT,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise CompileOnlyFailure(
+            f"nm failed for compile-only object {object_path}:\n"
+            f"stdout:\n{completed.stdout}\n"
+            f"stderr:\n{completed.stderr}"
+        )
+
+    symbols: set[str] = set()
+    for line in completed.stdout.splitlines():
+        fields = line.split()
+        if fields and not line.rstrip().endswith(":"):
+            symbols.add(fields[-1])
+    return symbols
+
+
 def assert_no_transactions(root: Path) -> None:
     """Assert no compile transaction directory remains below a test root.
 
@@ -301,6 +335,46 @@ def test_interface_only_graph(compiler: Path, root: Path) -> None:
             raise CompileOnlyFailure(
                 f"interface provider definitions leaked into generated C: {provider}"
             )
+    assert_no_transactions(root)
+
+
+def test_retired_metadata_symbols_absent(compiler: Path, root: Path) -> None:
+    """Published objects retain lifecycle symbols but no metadata arrays."""
+
+    object_path = root / "retired metadata symbols" / "no-main.o"
+    completed = run_compiler(
+        compiler,
+        root,
+        "-c",
+        "-Rp",
+        str(DRIVER_FIXTURES),
+        "-o",
+        str(object_path),
+        "no_main",
+    )
+    if completed.returncode != 0:
+        raise CompileOnlyFailure(
+            "metadata-symbol negative fixture failed to compile:\n"
+            + completed.stderr
+        )
+    require_reusable_set(object_path, "no_main")
+
+    symbols = global_object_symbols(object_path)
+    for required_suffix in ("I4init", "I4fini"):
+        if not any(symbol.endswith(required_suffix) for symbol in symbols):
+            raise CompileOnlyFailure(
+                "object-symbol probe did not find required lifecycle symbol "
+                f"{required_suffix}: {sorted(symbols)!r}"
+            )
+    retired = sorted(
+        symbol
+        for symbol in symbols
+        if symbol.endswith("I8metadata") or symbol.endswith("I7imports")
+    )
+    if retired:
+        raise CompileOnlyFailure(
+            f"compile-only object retains retired metadata symbols: {retired!r}"
+        )
     assert_no_transactions(root)
 
 
@@ -733,6 +807,7 @@ def main() -> int:
     try:
         test_default_nested_artifacts(compiler, root)
         test_interface_only_graph(compiler, root)
+        test_retired_metadata_symbols_absent(compiler, root)
         test_failed_analysis_preserves_set(compiler, root)
         test_failed_analysis_does_not_create_output_parent(compiler, root)
         test_failed_compiler_preserves_set(compiler, root)

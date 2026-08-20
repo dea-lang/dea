@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-07-27
+Version: 2026-08-20
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -73,6 +73,34 @@ user/source identifiers so generated C cannot collide with backend/runtime-owned
 
 The internal SipHash include now uses the level-local, future-neutral name `dea_siphash.h`, so L1 no longer carries a
 legacy-prefixed include exception there.
+
+## 4.1 Standalone Interface Authority
+
+Standalone linking treats each verified sibling `.l1m` as the sole Dea semantic, entry, dependency, and lifecycle
+authority. Its paired `.o` is an opaque native implementation payload passed by original path to the host toolchain.
+This avoids a second semantic metadata format, format-specific object readers, generated retention anchors, and
+exact-byte caller snapshots.
+
+The reusable artifact remains a caller-trusted pair. No checksum or native symbol binds the files, so build systems must
+create, copy, invalidate, replace, and keep them stable together. The accepted risk is that a mixed-generation pair may
+fail interface validation, fail at the native link, or link successfully with incorrect behavior. All Stage 1 artifacts
+must be rebuilt after the authority change; there is no interface-format discriminator that makes old import-free,
+non-entry interfaces reliably distinguishable.
+
+The interface keeps three dependency views separate:
+
+- `import module` records lifecycle-bearing direct source imports after stable first-occurrence canonicalization;
+- `require` records providers exposed through the public surface;
+- `link` records implementation-only provider symbols not already in `require`.
+
+Only `import module` forms lifecycle edges. Every non-virtual semantic provider must be present in the explicit set and
+transitively reachable through existing lifecycle edges, but that validation never invents an edge or object. The public
+fingerprint remains a hash of exported declarations only; entry and every operational manifest stay outside it.
+
+`--foreign-object` is a caller assertion that one regular-file path names a host-compatible relocatable input. Dea does
+not inspect native bytes to prove format, architecture, symbols, absence of `main`, reserved-name cleanliness, or lack
+of embedded linker controls. Those failures belong to captured host diagnostics, and archives, libraries, scripts,
+response files, and raw link arguments remain outside this typed option.
 
 ## 5. Future Evolution
 

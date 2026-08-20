@@ -1,12 +1,12 @@
 # Dea/L1 Module Visibility and Imports
 
-Version: 2026-07-23
+Version: 2026-08-20
 
 Status: Finalized
 
 This document specifies the Dea/L1 module visibility model and the import forms used by separate compilation. It is the
-source of truth for export manifests, alias imports, selective imports, and the public surface projected into textual
-`.l1m` module interfaces.
+source of truth for export manifests, alias imports, selective imports, the fingerprinted public surface projected into
+textual `.l1m` module interfaces, and the separate ordered lifecycle-import projection.
 
 The link-symbol spelling and C storage-class consequences are specified separately in
 [`l1/docs/specs/compiler/abi.md`][abi]. The broader rollout is tracked by
@@ -175,8 +175,12 @@ An interface file begins with:
 
 ```dea
 module interface std.integer;
-fingerprint "";
+fingerprint "sip13:0123456789abcdef";
 ```
+
+The public declaration surface follows non-fingerprinted operational regions for optional `entry;`, ordered
+`import module` records, and `require` / `link` provider expectations. Entry and provider manifests can change interface
+bytes and executable lifecycle behavior without changing the public fingerprint.
 
 The remaining declarations are the exported surface needed by importers:
 
@@ -189,6 +193,15 @@ The remaining declarations are the exported surface needed by importers:
 
 Interface emission is deterministic. Declaration order in source does not affect the canonical `.l1m` order or the
 fingerprint computed over that public surface.
+
+Every resolved non-virtual source import is lifecycle-bearing, including an import used only for side effects. The
+module graph retains direct imports in exact source declaration order, including duplicates. Interface projection walks
+that vector without mutating it, omits compiler-synthesized virtual providers, retains only the first occurrence of each
+remaining provider, and emits that stable canonical order as `import module` records. `require` and `link` remain
+separate symbol-dependency views and never create lifecycle edges.
+
+The interface fingerprint covers only canonical exported declarations. It excludes module identity, `entry`, ordered
+module imports, `require`, `link`, all source-level import spelling and order, and native-object contents.
 
 ## Import Forms
 
@@ -281,8 +294,8 @@ grouped imports from multiple modules.
 Name resolution follows these rules:
 
 1. A provider module is first resolved by its canonical dotted module path.
-2. The provider's exported surface is loaded from source analysis today and from `.l1m` interfaces in separate
-   compilation.
+2. The provider's exported surface is loaded from source analysis or from a verified `.l1m` interface according to the
+   active resolution policy.
 3. Open imports contribute all exported names to the consumer's unqualified imported scope and permit
    `<module.path>::name` qualified lookup.
 4. Alias imports contribute exactly one local module namespace, addressable as `<alias>::name`.
@@ -307,6 +320,9 @@ as `__deaM3std7integerN3absF1ii`. The local alias `m` is not encoded into genera
 Struct and enum type definitions have no C storage class. A type's visibility state determines its presence and form in
 the public interface: unexported types are absent, opaque types appear as name-only forward declarations, and
 transparent types appear with full layout. LBI naming gives generated C type spellings deterministic module identity.
+
+Standalone link consumes only verified sibling interfaces for Dea identity and lifecycle semantics. The paired native
+object remains opaque; it is not inspected to reconstruct visibility, imports, fingerprints, or entry presence.
 
 ## Non-Goals
 

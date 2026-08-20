@@ -89,6 +89,8 @@ func provider_interface_text() -> string {
         "  y: int;\n" +
         "}\n" +
         "\n" +
+        "opaque struct Handle;\n" +
+        "\n" +
         "enum Shade {\n" +
         "  Red;\n" +
         "  Rgb(red: int, green: int, blue: int);\n" +
@@ -99,7 +101,6 @@ func provider_interface_text() -> string {
         "  Text(value: string);\n" +
         "}\n" +
         "\n" +
-        "opaque struct Handle;\n" +
         "opaque enum Token;\n" +
         "\n" +
         "type PointAlias = Point;\n" +

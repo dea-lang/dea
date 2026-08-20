@@ -73,7 +73,7 @@ def main() -> int:
         "  -Rp, --project-root PROJECT_ROOT",
         "  -Rs, --sys-root SYS_ROOT",
         "  -c, --compile         Compile one module to sibling .o and .l1m artifacts",
-        "  -k, --link            Link verified Dea objects into an executable",
+        "  -k, --link            Link Dea .o files through verified sibling .l1m files",
         "  -Gi, --emit-interface Emit the module interface",
         "  --gen, -Gc, --codegen Generate C code",
         "  --c-compiler, -Cc C_COMPILER",

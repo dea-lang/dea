@@ -271,6 +271,9 @@ func test_interface_first_transitive_graph_contract() {
         assert(provider.artifacts != null, "filesystem interface must derive sibling artifacts");
         assert((provider.artifacts as ModuleArtifactPaths*).c_path == join(first, "graph/provider.c"),
             "interface sibling C path mismatch");
+        assert(mg_node_interface_import_count(provider) == 1 &&
+               mg_node_interface_import_get(provider, 0) == "graph.linked",
+            "parsed lifecycle imports must be retained apart from source imports");
         assert(mg_node_dependency_count(provider) == 2, "provider manifest edge count mismatch");
         let require_dep = mg_node_dependency_get(provider, 0);
         let link_dep = mg_node_dependency_get(provider, 1);

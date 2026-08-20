@@ -7,6 +7,7 @@ module link_driver;
 
 import std.fs;
 import std.hashmap;
+import std.hashset;
 import std.path;
 import std.string;
 import std.system;
@@ -15,24 +16,28 @@ import std.time;
 import std.vector;
 import util.diag;
 import util.log;
+import util.strings;
 
 import build_driver;
 import cli_args;
 import compile_driver;
 import compiler_filesystem;
+import dea_prelude;
 import diag_print;
-import object_reader;
-import object_reader_types;
+import interface_fingerprint;
+import mi_utils;
+import module_graph;
+import module_interface;
+import parser.interface;
 import wrapper_emitter;
 
-/** One inspected, typed standalone-link input. */
+/** One typed standalone-link input with optional verified Dea authority. */
 struct LinkInput {
     kind: LinkOperandKind;
-    path: string;
-    inspection: ObjectInspection*;
+    object_path: string;
+    interface_path: string?;
+    interface: ModuleInterface*?;
     visit_state: int;
-    object_bytes: string?;
-    link_path: string?;
 }
 
 /** Verified standalone link set and its deterministic lifecycle order. */
@@ -58,7 +63,12 @@ struct LinkTransaction {
     compile_stderr: string;
     link_stdout: string;
     link_stderr: string;
-    input_snapshots: StringVector*;
+}
+
+/** Resolved wrapper include directory and exact public runtime header. */
+struct LinkRuntimeInclude {
+    directory: string;
+    header_path: string;
 }
 
 /** Create one pointer-element vector. */
@@ -98,26 +108,35 @@ func ld_error(diags: DiagCollector*, code: string, message: string, path: string
     diag_error(diags, "l1c", code, message, path, 0, 0, 0, 0);
 }
 
-/**
- * Create one inspected link input.
- *
- * Ownership of `inspection` transfers to the returned input.
- */
+/** Create one typed link input, taking ownership of its optional interface. */
 func ld_input_create(
     kind: LinkOperandKind,
-    path: string,
-    inspection: ObjectInspection*
+    object_path: string,
+    interface_path: string?,
+    interface: ModuleInterface*?
 ) -> LinkInput* {
-    return new LinkInput(kind, path, inspection, 0, null, null);
+    return new LinkInput(kind, object_path, interface_path, interface, 0);
 }
 
-/** Free one inspected link input. */
+/** Create one opaque foreign input. */
+func ld_foreign_input_create(object_path: string) -> LinkInput* {
+    return ld_input_create(LOK_FOREIGN_OBJECT, object_path, null, null);
+}
+
+/** Return the verified interface owned by one Dea input. */
+func ld_input_interface(input: LinkInput*) -> ModuleInterface* {
+    return input.interface as ModuleInterface*;
+}
+
+/** Free one typed link input. */
 func ld_input_free(input: LinkInput*) {
-    object_inspection_free(input.inspection);
+    if (input.interface != null) {
+        mi_free(input.interface as ModuleInterface*);
+    }
     drop input;
 }
 
-/** Free an owned vector of inspected link inputs. */
+/** Free an owned vector of typed link inputs. */
 func ld_inputs_free(inputs: VectorBase*) {
     for (let i = 0; i < vec_size(inputs); i = i + 1) {
         ld_input_free(ld_ptr_vec_get(inputs, i) as LinkInput*);
@@ -125,12 +144,7 @@ func ld_inputs_free(inputs: VectorBase*) {
     vec_free(inputs);
 }
 
-/** Return the valid Dea metadata carried by one verified Dea input. */
-func ld_input_metadata(input: LinkInput*) -> ValidDeaMetadata* {
-    return input.inspection.metadata.valid as ValidDeaMetadata*;
-}
-
-/** Free a verified link plan and every inspected input it owns. */
+/** Free a verified link plan and every typed input it owns. */
 func ld_plan_free(plan: LinkPlan*) {
     ld_inputs_free(plan.inputs);
     spm_free(plan.modules_by_name);
@@ -143,12 +157,14 @@ func ld_plan_input_get(plan: LinkPlan*, index: int) -> LinkInput* {
     return ld_ptr_vec_get(plan.inputs, index) as LinkInput*;
 }
 
-/** Return the owned snapshot path when present, otherwise the caller path. */
+/** Return the original caller-selected native path used by the host linker. */
 func ld_input_link_path(input: LinkInput*) -> string {
-    if (input.link_path != null) {
-        return input.link_path as string;
-    }
-    return input.path;
+    return input.object_path;
+}
+
+/** Free a resolved runtime include bundle. */
+func ld_runtime_include_free(runtime_include: LinkRuntimeInclude*) {
+    drop runtime_include;
 }
 
 /** Join canonical module names for deterministic diagnostics. */
@@ -189,194 +205,157 @@ func ld_format_cycle(stack: StringVector*, module_name: string) -> string {
     }
 }
 
-/** Stable diagnostic label for one object-embedded linker-control carrier. */
-func ld_linker_control_label(kind: ObjectLinkerControlKind) -> string {
-    if (ord(kind) ==
-        ord(OBJECT_LINKER_CONTROL_ELF_DEPENDENT_LIBRARIES)) {
-        return "ELF dependent-library section";
-    }
-    if (ord(kind) == ord(OBJECT_LINKER_CONTROL_MACHO_LINKER_OPTION)) {
-        return "Mach-O LC_LINKER_OPTION command";
-    }
-    return "PE/COFF .drectve section";
-}
-
-/**
- * Reject one object-embedded linker control at a standalone-link boundary.
- */
-func ld_validate_linker_control(
-    path: string,
-    inspection: ObjectInspection*,
-    diags: DiagCollector*
-) -> bool {
-    let kind = object_inspection_linker_control_kind(inspection);
-    if (ord(kind) == ord(OBJECT_LINKER_CONTROL_NONE)) {
-        return true;
-    }
-    let label = ld_linker_control_label(kind);
-    ld_error(
-        diags,
-        "L1C-2110",
-        "standalone-link object '" + path +
-            "' contains an embedded " + label +
-            "; object-embedded linker controls cannot bypass the typed " +
-            "link-input boundary",
-        path
-    );
-    return false;
-}
-
-/**
- * Reject every object-embedded linker control before registering any module.
- */
-func ld_validate_linker_controls(
-    plan: LinkPlan*,
-    diags: DiagCollector*
-) -> bool {
+/** Validate every owned Dea interface before any identity is registered. */
+func ld_verify_interfaces(plan: LinkPlan*, diags: DiagCollector*) -> bool {
     let ok = true;
     for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
         let input = ld_plan_input_get(plan, i);
-        if (!ld_validate_linker_control(
-                input.path, input.inspection, diags)) {
+        if (ord(input.kind) == ord(LOK_FOREIGN_OBJECT)) {
+            if (input.interface_path != null || input.interface != null) {
+                ld_error(
+                    diags,
+                    "L1C-2097",
+                    "foreign link input unexpectedly carries a Dea interface: " +
+                        input.object_path,
+                    input.object_path
+                );
+                ok = false;
+            }
+            continue;
+        }
+        if (input.interface_path == null || input.interface == null) {
+            ld_error(
+                diags,
+                "DRV-0074",
+                "required sibling module interface was not provided for object: " +
+                    input.object_path,
+                input.object_path
+            );
+            ok = false;
+            continue;
+        }
+        if (!ifp_verify(
+                input.interface as ModuleInterface*,
+                diags,
+                input.interface_path as string)) {
             ok = false;
         }
     }
     return ok;
 }
 
-/** Validate one CLI-declared operand classification and register Dea modules. */
-func ld_classify_inputs(plan: LinkPlan*, diags: DiagCollector*) -> bool {
-    if (!ld_validate_linker_controls(plan, diags)) {
+/** Register identities from the complete already-verified interface set. */
+func ld_register_modules(plan: LinkPlan*, diags: DiagCollector*) -> bool {
+    let ok = true;
+    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+        let input = ld_plan_input_get(plan, i);
+        if (ord(input.kind) != ord(LOK_DEA_OBJECT)) {
+            continue;
+        }
+        let interface = ld_input_interface(input);
+        if (spm_has(plan.modules_by_name, interface.module_name)) {
+            let previous = spm_get(
+                plan.modules_by_name, interface.module_name) as LinkInput*;
+            ld_error(
+                diags,
+                "L1C-2100",
+                "duplicate Dea module identity '" + interface.module_name +
+                    "' in sibling interfaces for '" + previous.object_path +
+                    "' and '" + input.object_path + "'",
+                input.interface_path as string
+            );
+            ok = false;
+            continue;
+        }
+        spm_put(plan.modules_by_name, interface.module_name, input as void*);
+    }
+    return ok;
+}
+
+/** Validate one unique provider expectation against the explicit Dea set. */
+func ld_validate_provider_expectation(
+    plan: LinkPlan*,
+    consumer: LinkInput*,
+    provider_name: string,
+    expected: string,
+    seen: StringSet*,
+    diags: DiagCollector*
+) -> bool {
+    if (dea_is_virtual_module_name(provider_name) || ss_has(seen, provider_name)) {
+        return true;
+    }
+    ss_add(seen, provider_name);
+
+    let provider_value = spm_get(plan.modules_by_name, provider_name);
+    let consumer_interface = ld_input_interface(consumer);
+    if (provider_value == null) {
+        ld_error(
+            diags,
+            "L1C-2101",
+            "Dea module '" + consumer_interface.module_name +
+                "' names missing provider module '" + provider_name + "'",
+            consumer.interface_path as string
+        );
         return false;
     }
 
-    let ok = true;
-    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
-        let input = ld_plan_input_get(plan, i);
-        let classification = input.inspection.metadata;
-        let is_dea = ord(input.kind) == ord(LOK_DEA_OBJECT);
-
-        if (is_dea) {
-            if (ord(classification.kind) == ord(NO_DEA_METADATA)) {
-                ld_error(
-                    diags,
-                    "L1C-2098",
-                    "positional link input '" + input.path +
-                        "' has no Dea metadata; pass it with '--foreign-object'",
-                    input.path
-                );
-                ok = false;
-                continue;
-            }
-            if (ord(classification.kind) == ord(MALFORMED_DEA_METADATA)) {
-                ld_error(
-                    diags,
-                    "L1C-2098",
-                    "positional link input '" + input.path +
-                        "' has malformed Dea metadata: " + classification.reason,
-                    input.path
-                );
-                ok = false;
-                continue;
-            }
-
-            let metadata = classification.valid as ValidDeaMetadata*;
-            if (spm_has(plan.modules_by_name, metadata.module_name)) {
-                let previous = spm_get(
-                    plan.modules_by_name, metadata.module_name) as LinkInput*;
-                ld_error(
-                    diags,
-                    "L1C-2100",
-                    "duplicate Dea module identity '" + metadata.module_name +
-                        "' in '" + previous.path + "' and '" + input.path + "'",
-                    input.path
-                );
-                ok = false;
-                continue;
-            }
-            spm_put(plan.modules_by_name, metadata.module_name, input as void*);
-            continue;
-        }
-
-        if (ord(classification.kind) == ord(VALID_DEA_METADATA)) {
-            let metadata2 = classification.valid as ValidDeaMetadata*;
-            ld_error(
-                diags,
-                "L1C-2098",
-                "foreign object '" + input.path + "' contains verified Dea module '" +
-                    metadata2.module_name +
-                    "'; pass Dea objects positionally so link verification cannot be bypassed",
-                input.path
-            );
-            ok = false;
-            continue;
-        }
-        if (ord(classification.kind) == ord(MALFORMED_DEA_METADATA)) {
-            ld_error(
-                diags,
-                "L1C-2098",
-                "foreign object '" + input.path +
-                    "' contains malformed Dea metadata: " + classification.reason,
-                input.path
-            );
-            ok = false;
-            continue;
-        }
-        if (object_inspection_defines_main(input.inspection)) {
-            ld_error(
-                diags,
-                "L1C-2099",
-                "foreign object '" + input.path +
-                    "' defines process symbol 'main'; the generated Dea wrapper owns process entry",
-                input.path
-            );
-            ok = false;
-        }
+    let provider = provider_value as LinkInput*;
+    let supplied = ld_input_interface(provider).fingerprint;
+    if (expected != supplied) {
+        ld_error(
+            diags,
+            "L1C-2102",
+            "Dea module '" + consumer_interface.module_name + "' expects provider '" +
+                provider_name + "' fingerprint '" + expected +
+                "', but supplied interface '" + provider.interface_path as string +
+                "' carries '" + supplied + "'",
+            consumer.interface_path as string
+        );
+        return false;
     }
-
-    return ok;
+    return true;
 }
 
-/** Validate dependency closure and exact provider fingerprints. */
+/** Validate provider presence and supplied fingerprints across all manifests. */
 func ld_validate_dependencies(plan: LinkPlan*, diags: DiagCollector*) -> bool {
     let ok = true;
 
     for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
         let consumer = ld_plan_input_get(plan, i);
-        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT) ||
-            ord(consumer.inspection.metadata.kind) != ord(VALID_DEA_METADATA)) {
+        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT)) {
             continue;
         }
-        let metadata = ld_input_metadata(consumer);
-        for (let dep_i = 0; dep_i < sv_size(metadata.ordered_imports);
-             dep_i = dep_i + 1) {
-            let provider_name = sv_get(metadata.ordered_imports, dep_i);
-            let provider_value = spm_get(plan.modules_by_name, provider_name);
-            if (provider_value == null) {
-                ld_error(
-                    diags,
-                    "L1C-2101",
-                    "Dea module '" + metadata.module_name +
-                        "' requires missing provider module '" + provider_name + "'",
-                    consumer.path
-                );
-                ok = false;
-                continue;
+        let interface = ld_input_interface(consumer);
+        with (let seen = ss_create() => ss_free(seen)) {
+            for (let import_i = 0; import_i < vec_size(interface.module_imports);
+                 import_i = import_i + 1) {
+                let imported = ld_ptr_vec_get(
+                    interface.module_imports, import_i) as InterfaceModuleImport*;
+                if (!ld_validate_provider_expectation(
+                        plan, consumer, imported.provider_module,
+                        imported.provider_fingerprint, seen, diags)) {
+                    ok = false;
+                }
             }
-            let provider = provider_value as LinkInput*;
-            let provider_metadata = ld_input_metadata(provider);
-            let expected = sv_get(metadata.import_fingerprints, dep_i);
-            if (expected != provider_metadata.fingerprint) {
-                ld_error(
-                    diags,
-                    "L1C-2102",
-                    "Dea module '" + metadata.module_name + "' expects provider '" +
-                        provider_name + "' fingerprint '" + expected +
-                        "', but supplied object '" + provider.path + "' carries '" +
-                        provider_metadata.fingerprint + "'",
-                    consumer.path
-                );
-                ok = false;
+            for (let req_i = 0; req_i < vec_size(interface.require_entries);
+                 req_i = req_i + 1) {
+                let required = ld_ptr_vec_get(
+                    interface.require_entries, req_i) as InterfaceDepEntry*;
+                if (!ld_validate_provider_expectation(
+                        plan, consumer, required.provider_module,
+                        required.provider_fingerprint, seen, diags)) {
+                    ok = false;
+                }
+            }
+            for (let link_i = 0; link_i < vec_size(interface.link_entries);
+                 link_i = link_i + 1) {
+                let linked = ld_ptr_vec_get(
+                    interface.link_entries, link_i) as InterfaceDepEntry*;
+                if (!ld_validate_provider_expectation(
+                        plan, consumer, linked.provider_module,
+                        linked.provider_fingerprint, seen, diags)) {
+                    ok = false;
+                }
             }
         }
     }
@@ -403,12 +382,13 @@ func ld_select_entry(
             return null;
         }
         let input = input_value as LinkInput*;
-        if (!ld_input_metadata(input).has_entry) {
+        if (!ld_input_interface(input).has_entry) {
             ld_error(
                 diags,
                 "L1C-2104",
-                "explicit entry module '" + requested + "' does not define a Dea entry bridge",
-                input.path
+                "explicit entry module '" + requested +
+                    "' does not carry 'entry;' in its interface",
+                input.interface_path as string
             );
             return null;
         }
@@ -419,9 +399,8 @@ func ld_select_entry(
         for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
             let input2 = ld_plan_input_get(plan, i);
             if (ord(input2.kind) == ord(LOK_DEA_OBJECT) &&
-                ord(input2.inspection.metadata.kind) == ord(VALID_DEA_METADATA) &&
-                ld_input_metadata(input2).has_entry) {
-                sv_push(candidates, ld_input_metadata(input2).module_name);
+                ld_input_interface(input2).has_entry) {
+                sv_push(candidates, ld_input_interface(input2).module_name);
             }
         }
         sv_sort(candidates);
@@ -430,7 +409,7 @@ func ld_select_entry(
             ld_error(
                 diags,
                 "L1C-2104",
-                "Dea link set has no entry module; pass an object whose metadata carries HAS_ENTRY",
+                "Dea link set has no entry module; supply an interface carrying 'entry;'",
                 ""
             );
             return null;
@@ -462,14 +441,14 @@ func ld_visit_module(
         return true;
     }
 
-    let metadata = ld_input_metadata(input);
+    let interface = ld_input_interface(input);
     if (input.visit_state == 1) {
         ld_error(
             diags,
             "L1C-2103",
-            "Dea object dependency cycle: " +
-                ld_format_cycle(stack, metadata.module_name),
-            input.path
+            "Dea lifecycle import cycle: " +
+                ld_format_cycle(stack, interface.module_name),
+            input.interface_path as string
         );
         return false;
     }
@@ -477,7 +456,7 @@ func ld_visit_module(
     with (let frames = ld_ptr_vec_create(8) =>
               ld_visit_frames_free(frames)) {
         input.visit_state = 1;
-        sv_push(stack, metadata.module_name);
+        sv_push(stack, interface.module_name);
         ld_ptr_vec_push(
             frames, new LinkVisitFrame(input, 0) as void*);
 
@@ -485,37 +464,38 @@ func ld_visit_module(
             let frame_i = vec_size(frames) - 1;
             let frame = ld_ptr_vec_get(
                 frames, frame_i) as LinkVisitFrame*;
-            let frame_metadata = ld_input_metadata(frame.input);
+            let frame_interface = ld_input_interface(frame.input);
 
             if (frame.next_import <
-                sv_size(frame_metadata.ordered_imports)) {
+                vec_size(frame_interface.module_imports)) {
+                let imported = ld_ptr_vec_get(
+                    frame_interface.module_imports,
+                    frame.next_import
+                ) as InterfaceModuleImport*;
                 let provider = spm_get(
                     plan.modules_by_name,
-                    sv_get(
-                        frame_metadata.ordered_imports,
-                        frame.next_import
-                    )
+                    imported.provider_module
                 ) as LinkInput*;
                 frame.next_import = frame.next_import + 1;
 
                 if (provider.visit_state == 2) {
                     continue;
                 }
-                let provider_metadata = ld_input_metadata(provider);
+                let provider_interface = ld_input_interface(provider);
                 if (provider.visit_state == 1) {
                     ld_error(
                         diags,
                         "L1C-2103",
-                        "Dea object dependency cycle: " +
+                        "Dea lifecycle import cycle: " +
                             ld_format_cycle(
-                                stack, provider_metadata.module_name),
-                        provider.path
+                                stack, provider_interface.module_name),
+                        provider.interface_path as string
                     );
                     return false;
                 }
 
                 provider.visit_state = 1;
-                sv_push(stack, provider_metadata.module_name);
+                sv_push(stack, provider_interface.module_name);
                 ld_ptr_vec_push(
                     frames, new LinkVisitFrame(provider, 0) as void*);
                 continue;
@@ -525,7 +505,7 @@ func ld_visit_module(
             frame.input.visit_state = 2;
             sv_push(
                 plan.lifecycle_order,
-                frame_metadata.module_name
+                frame_interface.module_name
             );
             frames.length = frame_i;
             drop frame;
@@ -555,12 +535,119 @@ func ld_compute_lifecycle_order(plan: LinkPlan*, diags: DiagCollector*) -> bool 
     return true;
 }
 
+/** Collect one unique non-virtual semantic provider name. */
+func ld_collect_provenance_provider(
+    providers: StringVector*,
+    seen: StringSet*,
+    provider_name: string
+) {
+    if (dea_is_virtual_module_name(provider_name) || ss_has(seen, provider_name)) {
+        return;
+    }
+    ss_add(seen, provider_name);
+    sv_push(providers, provider_name);
+}
+
+/** Validate `require`/`link` provenance through existing lifecycle imports. */
+func ld_validate_transitive_provenance(
+    plan: LinkPlan*,
+    diags: DiagCollector*
+) -> bool {
+    let ok = true;
+
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let consumer = ld_plan_input_get(plan, input_i);
+        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT)) {
+            continue;
+        }
+        let interface = ld_input_interface(consumer);
+        with (
+            let providers = sv_create(4) => sv_free(providers),
+            let provider_seen = ss_create() => ss_free(provider_seen)
+        ) {
+            for (let req_i = 0; req_i < vec_size(interface.require_entries);
+                 req_i = req_i + 1) {
+                let required = ld_ptr_vec_get(
+                    interface.require_entries, req_i) as InterfaceDepEntry*;
+                ld_collect_provenance_provider(
+                    providers, provider_seen, required.provider_module);
+            }
+            for (let link_i = 0; link_i < vec_size(interface.link_entries);
+                 link_i = link_i + 1) {
+                let linked = ld_ptr_vec_get(
+                    interface.link_entries, link_i) as InterfaceDepEntry*;
+                ld_collect_provenance_provider(
+                    providers, provider_seen, linked.provider_module);
+            }
+            if (sv_size(providers) == 0) {
+                continue;
+            }
+
+            with (
+                let reachable = ss_create() => ss_free(reachable),
+                let stack = sv_create(vec_size(interface.module_imports) + 4) =>
+                    sv_free(stack)
+            ) {
+                for (let import_i = 0; import_i < vec_size(interface.module_imports);
+                     import_i = import_i + 1) {
+                    let imported = ld_ptr_vec_get(
+                        interface.module_imports, import_i) as InterfaceModuleImport*;
+                    sv_push(stack, imported.provider_module);
+                }
+
+                while (sv_size(stack) > 0) {
+                    let last = sv_size(stack) - 1;
+                    let module_name = sv_get(stack, last);
+                    ld_string_vector_pop(stack);
+                    if (ss_has(reachable, module_name)) {
+                        continue;
+                    }
+                    ss_add(reachable, module_name);
+                    let reached = spm_get(
+                        plan.modules_by_name, module_name) as LinkInput*;
+                    let reached_interface = ld_input_interface(reached);
+                    for (let import_i2 = 0;
+                         import_i2 < vec_size(reached_interface.module_imports);
+                         import_i2 = import_i2 + 1) {
+                        let imported2 = ld_ptr_vec_get(
+                            reached_interface.module_imports,
+                            import_i2
+                        ) as InterfaceModuleImport*;
+                        if (!ss_has(reachable, imported2.provider_module)) {
+                            sv_push(stack, imported2.provider_module);
+                        }
+                    }
+                }
+
+                for (let provider_i = 0; provider_i < sv_size(providers);
+                     provider_i = provider_i + 1) {
+                    let provider_name = sv_get(providers, provider_i);
+                    if (!ss_has(reachable, provider_name)) {
+                        ld_error(
+                            diags,
+                            "L1C-2111",
+                            "Dea module '" + interface.module_name +
+                                "' names semantic provider '" + provider_name +
+                                "' that is not transitively reachable through " +
+                                "'import module' records",
+                            consumer.interface_path as string
+                        );
+                        ok = false;
+                    }
+                }
+            }
+        }
+    }
+    return ok;
+}
+
 /**
- * Validate already inspected inputs and build one link plan.
+ * Validate already constructed inputs and build one link plan.
  *
  * Ownership of `inputs` transfers to this function whether it succeeds or
- * fails. Tests may use this boundary to construct format-neutral inspections
- * without writing temporary object files.
+ * fails. Tests may use this boundary to construct verified interfaces without
+ * writing temporary native object files.
  */
 func ld_prepare_inputs(
     inputs: VectorBase*,
@@ -569,7 +656,8 @@ func ld_prepare_inputs(
 ) -> LinkPlan*? {
     let plan = new LinkPlan(inputs, spm_create(), sv_create(vec_size(inputs)), "");
 
-    if (!ld_classify_inputs(plan, diags) ||
+    if (!ld_verify_interfaces(plan, diags) ||
+        !ld_register_modules(plan, diags) ||
         !ld_validate_dependencies(plan, diags)) {
         ld_plan_free(plan);
         return null;
@@ -586,53 +674,173 @@ func ld_prepare_inputs(
         ld_plan_free(plan);
         return null;
     }
+    if (!ld_validate_transitive_provenance(plan, diags)) {
+        ld_plan_free(plan);
+        return null;
+    }
     return plan;
 }
 
-/** Inspect every typed CLI operand exactly once and prepare a verified plan. */
+/** Copy parser diagnostics into the link-driver collector. */
+func ld_copy_interface_diags(
+    diags: DiagCollector*,
+    parsed: InterfaceParseResult*
+) {
+    for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
+        diag_copy(diags, diag_get(parsed.diags, i));
+    }
+}
+
+/** Read, decode, parse, and verify one authoritative sibling interface. */
+func ld_load_sibling_interface(
+    object_path: string,
+    interface_path: string,
+    diags: DiagCollector*
+) -> ModuleInterface*? {
+    let sibling_kind = cfs_path_kind_follow(interface_path);
+    if (sibling_kind == CFS_PATH_ABSENT) {
+        ld_error(
+            diags,
+            "DRV-0074",
+            "required sibling module interface was not found for object '" +
+                object_path + "': " + interface_path,
+            interface_path
+        );
+        return null;
+    }
+    if (sibling_kind != CFS_PATH_REGULAR) {
+        ld_error(
+            diags,
+            "DRV-0075",
+            "selected sibling module interface is not a readable regular file: " +
+                interface_path,
+            interface_path
+        );
+        return null;
+    }
+
+    let raw_opt = read_file(interface_path);
+    if (raw_opt == null) {
+        ld_error(
+            diags,
+            "DRV-0075",
+            "cannot read selected sibling module interface: " + interface_path,
+            interface_path
+        );
+        return null;
+    }
+    let raw = raw_opt as string;
+    if (!us_is_valid_utf8(raw)) {
+        ld_error(
+            diags,
+            "DRV-0076",
+            "selected sibling module interface is not valid UTF-8",
+            interface_path
+        );
+        return null;
+    }
+
+    let parsed = pi_parse_interface(us_strip_utf8_bom(raw), interface_path);
+    ld_copy_interface_diags(diags, parsed);
+    if (ipr_has_errors(parsed) || parsed.interface == null) {
+        ipr_free(parsed);
+        return null;
+    }
+    let interface = parsed.interface as ModuleInterface*;
+    parsed.interface = null;
+    ipr_free(parsed);
+    if (!ifp_verify(interface, diags, interface_path)) {
+        mi_free(interface);
+        return null;
+    }
+    return interface;
+}
+
+/** Validate original native paths and prepare their verified interface set. */
 func ld_prepare_cli_inputs(
     operands: VectorBase*,
     explicit_entry: string?,
     diags: DiagCollector*
 ) -> LinkPlan*? {
-    let inputs = ld_ptr_vec_create(cli_link_operands_count(operands));
-
+    /* Path-only role validation must complete before any filesystem access. */
+    let ok = true;
     for (let i = 0; i < cli_link_operands_count(operands); i = i + 1) {
         let operand = cli_link_operands_get(operands, i);
-        let bytes = read_file(operand.path);
-        if (bytes == null) {
+        if (ord(operand.kind) == ord(LOK_DEA_OBJECT)) {
+            let interface_path = mg_interface_path_from_object_path(operand.path);
+            if (interface_path == null) {
+                ld_error(
+                    diags,
+                    "L1C-2097",
+                    "positional Dea native input must have a nonempty basename stem " +
+                        "and exact terminal '.o' suffix: " + operand.path,
+                    operand.path
+                );
+                ok = false;
+            }
+        }
+    }
+    if (!ok) {
+        return null;
+    }
+
+    /* Validate every native endpoint before reading any sibling interface. */
+    let inputs = ld_ptr_vec_create(cli_link_operands_count(operands));
+    ok = true;
+    for (let i2 = 0; i2 < cli_link_operands_count(operands); i2 = i2 + 1) {
+        let operand2 = cli_link_operands_get(operands, i2);
+        if (cfs_path_kind_follow(operand2.path) != CFS_PATH_REGULAR) {
             ld_error(
                 diags,
                 "L1C-2097",
-                "cannot inspect link input '" + operand.path +
-                    "': failed to read object file '" + operand.path + "'",
-                operand.path
+                "standalone-link native input is missing or is not a regular file: " +
+                    operand2.path,
+                operand2.path
             );
-            ld_inputs_free(inputs);
-            return null;
+            ok = false;
+            continue;
         }
 
-        let read_result = object_inspect_bytes(bytes as string);
-        if (read_result.error != null) {
-            let read_error = read_result.error as ObjectReadError*;
-            ld_error(
-                diags,
-                "L1C-2097",
-                "cannot inspect link input '" + operand.path + "': " +
-                    read_error.message,
-                operand.path
-            );
-            object_inspection_result_free(read_result);
-            ld_inputs_free(inputs);
-            return null;
+        if (ord(operand2.kind) == ord(LOK_FOREIGN_OBJECT)) {
+            ld_ptr_vec_push(
+                inputs, ld_foreign_input_create(operand2.path) as void*);
+            continue;
         }
 
-        let inspection = read_result.inspection as ObjectInspection*;
-        read_result.inspection = null;
-        object_inspection_result_free(read_result);
-        let input = ld_input_create(operand.kind, operand.path, inspection);
-        input.object_bytes = bytes as string;
-        ld_ptr_vec_push(inputs, input as void*);
+        let interface_path2 = mg_interface_path_from_object_path(operand2.path);
+        ld_ptr_vec_push(
+            inputs,
+            ld_input_create(
+                operand2.kind,
+                operand2.path,
+                interface_path2 as string,
+                null
+            ) as void*
+        );
+    }
+    if (!ok) {
+        ld_inputs_free(inputs);
+        return null;
+    }
+
+    /* Parse and verify the complete sibling set before graph registration. */
+    ok = true;
+    for (let input_i = 0; input_i < vec_size(inputs); input_i = input_i + 1) {
+        let input = ld_ptr_vec_get(inputs, input_i) as LinkInput*;
+        if (ord(input.kind) == ord(LOK_FOREIGN_OBJECT)) {
+            continue;
+        }
+        let interface = ld_load_sibling_interface(
+            input.object_path, input.interface_path as string, diags);
+        if (interface == null) {
+            ok = false;
+            continue;
+        }
+        input.interface = interface as ModuleInterface*;
+    }
+    if (!ok) {
+        ld_inputs_free(inputs);
+        return null;
     }
 
     return ld_prepare_inputs(inputs, explicit_entry, diags);
@@ -647,14 +855,12 @@ func ld_transaction_create(root: string) -> LinkTransaction* {
         join(root, "compile.stdout"),
         join(root, "compile.stderr"),
         join(root, "link.stdout"),
-        join(root, "link.stderr"),
-        sv_create(4)
+        join(root, "link.stderr")
     );
 }
 
 /** Free a transaction-path bundle without removing filesystem state. */
 func ld_transaction_free(txn: LinkTransaction*) {
-    sv_free(txn.input_snapshots);
     drop txn;
 }
 
@@ -732,11 +938,6 @@ func ld_delete_if_present(path: string) -> bool {
  */
 func ld_cleanup_transaction(txn: LinkTransaction*) -> bool {
     let ok = true;
-    for (let i = 0; i < sv_size(txn.input_snapshots); i = i + 1) {
-        if (!ld_delete_if_present(sv_get(txn.input_snapshots, i))) {
-            ok = false;
-        }
-    }
     if (!ld_delete_if_present(txn.wrapper_c)) ok = false;
     if (!ld_delete_if_present(txn.wrapper_object)) ok = false;
     if (!ld_delete_if_present(txn.compile_stdout)) ok = false;
@@ -745,47 +946,6 @@ func ld_cleanup_transaction(txn: LinkTransaction*) -> bool {
     if (!ld_delete_if_present(txn.link_stderr)) ok = false;
     if (cfs_remove_empty_dir(txn.root) != 1) ok = false;
     return ok;
-}
-
-/**
- * Publish the exact inspected input bytes into transaction-owned snapshots.
- *
- * The final host linker consumes these copies, so concurrent replacement of a
- * caller path cannot change the verified bytes after inspection.
- */
-func ld_snapshot_inputs(
-    plan: LinkPlan*,
-    txn: LinkTransaction*,
-    diags: DiagCollector*
-) -> bool {
-    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
-        let input = ld_plan_input_get(plan, i);
-        if (input.object_bytes == null) {
-            ld_error(
-                diags,
-                "L1C-2107",
-                "standalone-link input has no inspected byte snapshot: " +
-                    input.path,
-                input.path
-            );
-            return false;
-        }
-        let snapshot_path = join(
-            txn.root, "input-" + int_to_string(i) + ".o");
-        sv_push(txn.input_snapshots, snapshot_path);
-        if (write_file(snapshot_path, input.object_bytes as string) == null) {
-            ld_error(
-                diags,
-                "L1C-2107",
-                "cannot write standalone-link input snapshot: " +
-                    snapshot_path,
-                snapshot_path
-            );
-            return false;
-        }
-        input.link_path = snapshot_path;
-    }
-    return true;
 }
 
 /** Validate the caller-selected executable destination without creating it. */
@@ -846,16 +1006,43 @@ func ld_validate_output(output_path: string, diags: DiagCollector*) -> bool {
     return false;
 }
 
-/**
- * Reject an existing output that aliases a caller or runtime link input.
- *
- * Filesystem identity, rather than path spelling, catches hard links and
- * trusted-parent aliases before the host linker can replace an input.
- */
+/** Reject an existing output alias of one validated compiler input. */
+func ld_validate_output_alias(
+    output_path: string,
+    input_path: string,
+    input_kind: string,
+    diags: DiagCollector*
+) -> bool {
+    let same = cfs_same_file(output_path, input_path);
+    if (same < 0) {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "cannot compare standalone-link output identity with " +
+                input_kind + ": " + input_path,
+            output_path
+        );
+        return false;
+    }
+    if (same == 1) {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "standalone-link output aliases " + input_kind + ": " +
+                input_path,
+            output_path
+        );
+        return false;
+    }
+    return true;
+}
+
+/** Reject output aliases of native, interface, runtime, or header inputs. */
 func ld_validate_output_aliases(
     output_path: string,
     plan: LinkPlan*,
     runtime_inputs: StringVector*,
+    runtime_header: string,
     diags: DiagCollector*
 ) -> bool {
     if (cfs_path_kind(output_path) != CFS_PATH_REGULAR) {
@@ -864,61 +1051,37 @@ func ld_validate_output_aliases(
 
     for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
         let input = ld_plan_input_get(plan, i);
-        let same = cfs_same_file(output_path, input.path);
-        if (same < 0) {
-            ld_error(
-                diags,
-                "L1C-2105",
-                "cannot compare standalone-link output identity with input: " +
-                    input.path,
-                output_path
-            );
+        if (!ld_validate_output_alias(
+                output_path, input.object_path, "caller native input", diags)) {
             return false;
         }
-        if (same == 1) {
-            ld_error(
-                diags,
-                "L1C-2105",
-                "standalone-link output aliases caller input: " + input.path,
-                output_path
-            );
+        if (input.interface_path != null &&
+            !ld_validate_output_alias(
+                output_path,
+                input.interface_path as string,
+                "consumed sibling interface",
+                diags)) {
             return false;
         }
     }
 
     for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
-         runtime_i = runtime_i + 1) {
+        runtime_i = runtime_i + 1) {
         let runtime_path = sv_get(runtime_inputs, runtime_i);
-        let same_runtime = cfs_same_file(output_path, runtime_path);
-        if (same_runtime < 0) {
-            ld_error(
-                diags,
-                "L1C-2105",
-                "cannot compare standalone-link output identity with runtime input: " +
-                    runtime_path,
-                output_path
-            );
-            return false;
-        }
-        if (same_runtime == 1) {
-            ld_error(
-                diags,
-                "L1C-2105",
-                "standalone-link output aliases runtime input: " +
-                    runtime_path,
-                output_path
-            );
+        if (!ld_validate_output_alias(
+                output_path, runtime_path, "runtime native input", diags)) {
             return false;
         }
     }
-    return true;
+    return ld_validate_output_alias(
+        output_path, runtime_header, "resolved runtime header", diags);
 }
 
 /** Resolve and validate the runtime include directory and public header. */
 func ld_runtime_include(
     opts: CliOptions*,
     diags: DiagCollector*
-) -> string? {
+) -> LinkRuntimeInclude*? {
     let include_opt = bd_runtime_include_dir(opts);
     if (include_opt == null) {
         ld_error(
@@ -943,7 +1106,7 @@ func ld_runtime_include(
         );
         return null;
     }
-    return include_dir;
+    return new LinkRuntimeInclude(include_dir, header_path);
 }
 
 /** Resolve and validate the selected runtime archive by exact path. */
@@ -964,12 +1127,11 @@ func ld_runtime_archive(
     let library_dir = library_opt as string;
     let archive_path = join(library_dir, bd_runtime_archive_filename(opts));
     if (cfs_path_kind_follow(library_dir) != CFS_PATH_DIRECTORY ||
-        cfs_path_kind_follow(archive_path) != CFS_PATH_REGULAR ||
-        read_file(archive_path) == null) {
+        cfs_path_kind_follow(archive_path) != CFS_PATH_REGULAR) {
         ld_error(
             diags,
             "L1C-2106",
-            "selected runtime archive is not a readable regular file: " +
+            "selected runtime archive is not a regular file: " +
                 archive_path,
             archive_path
         );
@@ -1000,12 +1162,11 @@ func ld_runtime_link_inputs(
                  i = i + 1) {
                 let object_path = sv_get(
                     runtime_objects as StringVector*, i);
-                if (cfs_path_kind_follow(object_path) != CFS_PATH_REGULAR ||
-                    read_file(object_path) == null) {
+                if (cfs_path_kind_follow(object_path) != CFS_PATH_REGULAR) {
                     ld_error(
                         diags,
                         "L1C-2106",
-                        "selected TinyCC runtime object is not a readable regular file: " +
+                        "selected TinyCC runtime object is not a regular file: " +
                             object_path,
                         object_path
                     );
@@ -1128,10 +1289,12 @@ func ld_validate_windows_shell_values(
     runtime_include: string,
     runtime_inputs: StringVector*,
     output_path: string,
+    plan: LinkPlan*,
     diags: DiagCollector*
 ) -> bool {
     with (let values = sv_create(
-              8 + sv_size(extra_opts) + sv_size(runtime_inputs)) =>
+              8 + sv_size(extra_opts) + sv_size(runtime_inputs) +
+                  vec_size(plan.inputs)) =>
               sv_free(values)) {
         sv_push(values, compiler);
         sv_push(values, runtime_include);
@@ -1142,6 +1305,10 @@ func ld_validate_windows_shell_values(
         }
         for (let i = 0; i < sv_size(runtime_inputs); i = i + 1) {
             sv_push(values, sv_get(runtime_inputs, i));
+        }
+        for (let input_i = 0; input_i < vec_size(plan.inputs);
+             input_i = input_i + 1) {
+            sv_push(values, ld_plan_input_get(plan, input_i).object_path);
         }
         return ld_validate_windows_shell_words(
             values,
@@ -1229,9 +1396,9 @@ func ld_push_final_link_words_with_runtime_inputs(
     }
     if (family != "msvc") {
         /*
-         * Object metadata does not encode `sys.real` use. Supplying the host
-         * math library unconditionally keeps separately compiled real-number
-         * users linkable without reopening source or interface artifacts.
+         * The authoritative sibling interface intentionally excludes private
+         * implementation use of `sys.real`. Supplying the host math library
+         * unconditionally keeps such separately compiled modules linkable.
          */
         sv_push(words, "-lm");
     }
@@ -1296,7 +1463,7 @@ func ld_run_host_command(
     return !failed;
 }
 
-/** Validate that wrapper compilation produced the expected foreign object. */
+/** Validate the no-follow wrapper object endpoint before final linking. */
 func ld_validate_wrapper_object(
     wrapper_path: string,
     diags: DiagCollector*
@@ -1305,45 +1472,13 @@ func ld_validate_wrapper_object(
         ld_error(
             diags,
             "L1C-2108",
-            "wrapper compiler did not produce a regular relocatable object: " +
+            "wrapper compiler did not produce a no-follow regular object: " +
                 wrapper_path,
             wrapper_path
         );
         return false;
     }
-
-    let inspected = object_inspect_path(wrapper_path);
-    if (inspected.error != null) {
-        let error = inspected.error as ObjectReadError*;
-        ld_error(
-            diags,
-            "L1C-2108",
-            "wrapper compiler did not produce a supported relocatable object: " +
-                error.message,
-            wrapper_path
-        );
-        object_inspection_result_free(inspected);
-        return false;
-    }
-
-    let inspection = inspected.inspection as ObjectInspection*;
-    if (!ld_validate_linker_control(wrapper_path, inspection, diags)) {
-        object_inspection_result_free(inspected);
-        return false;
-    }
-    let valid = ord(inspection.metadata.kind) == ord(NO_DEA_METADATA) &&
-        object_inspection_defines_main(inspection);
-    if (!valid) {
-        ld_error(
-            diags,
-            "L1C-2108",
-            "wrapper object must be metadata-free and define process symbol 'main': " +
-                wrapper_path,
-            wrapper_path
-        );
-    }
-    object_inspection_result_free(inspected);
-    return valid;
+    return true;
 }
 
 /**
@@ -1465,11 +1600,13 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
         }
         let valid_aliases = true;
         let valid_windows_values = true;
-        if (valid_output && runtime_inputs != null) {
+        if (valid_output && runtime_inputs != null && runtime_include != null) {
+            let resolved_include = runtime_include as LinkRuntimeInclude*;
             valid_aliases = ld_validate_output_aliases(
                 output_path,
                 verified,
                 runtime_inputs as StringVector*,
+                resolved_include.header_path,
                 diags
             );
         }
@@ -1479,9 +1616,10 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
             valid_windows_values = ld_validate_windows_shell_values(
                 compiler as string,
                 extra_opts,
-                runtime_include as string,
+                (runtime_include as LinkRuntimeInclude*).directory,
                 runtime_inputs as StringVector*,
                 output_path,
+                verified,
                 diags
             );
         }
@@ -1491,6 +1629,10 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
             dp_print_collector(diags);
             if (runtime_inputs != null) {
                 sv_free(runtime_inputs as StringVector*);
+            }
+            if (runtime_include != null) {
+                ld_runtime_include_free(
+                    runtime_include as LinkRuntimeInclude*);
             }
             sv_free(extra_opts);
             ld_plan_free(verified);
@@ -1502,27 +1644,25 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
         if (txn == null) {
             dp_print_collector(diags);
             sv_free(runtime_inputs as StringVector*);
+            ld_runtime_include_free(
+                runtime_include as LinkRuntimeInclude*);
             sv_free(extra_opts);
             ld_plan_free(verified);
             return 1;
         }
         let scratch = txn as LinkTransaction*;
 
-        let snapshotted = ld_snapshot_inputs(verified, scratch, diags);
-        let succeeded = false;
-        if (snapshotted) {
-            succeeded = ld_execute_plan(
-                verified,
-                compiler as string,
-                extra_opts,
-                runtime_include as string,
-                runtime_inputs as StringVector*,
-                output_path,
-                scratch,
-                cfg,
-                diags
-            );
-        }
+        let succeeded = ld_execute_plan(
+            verified,
+            compiler as string,
+            extra_opts,
+            (runtime_include as LinkRuntimeInclude*).directory,
+            runtime_inputs as StringVector*,
+            output_path,
+            scratch,
+            cfg,
+            diags
+        );
         let cleaned = ld_cleanup_transaction(scratch);
         if (!cleaned) {
             ld_error(
@@ -1539,6 +1679,8 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
         }
         ld_transaction_free(scratch);
         sv_free(runtime_inputs as StringVector*);
+        ld_runtime_include_free(
+            runtime_include as LinkRuntimeInclude*);
         sv_free(extra_opts);
         ld_plan_free(verified);
 

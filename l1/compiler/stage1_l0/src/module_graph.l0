@@ -95,6 +95,7 @@ struct ModuleGraphNode {
     state: ModuleNodeState;
     dependencies: VectorBase*; // ModuleDependency*
     direct_imports: StringVector*; // exact source declaration order
+    interface_imports: StringVector*; // canonical parsed `.l1m` lifecycle order
 }
 
 /**
@@ -199,6 +200,26 @@ func _mg_artifacts_from_stem(artifact_stem: string) -> ModuleArtifactPaths* {
 }
 
 /**
+ * Derive the canonical sibling interface path for one native object path.
+ *
+ * This transformation is deliberately independent of module identity. The
+ * caller-selected final component must have a nonempty stem and the exact,
+ * case-sensitive terminal suffix `.o`; directory-terminated paths are
+ * rejected.
+ *
+ * @param object_path Native object path to transform.
+ * @return Owned sibling `.l1m` path, or `null` for a nonconforming path.
+ */
+func mg_interface_path_from_object_path(object_path: string) -> string? {
+    if (!_mg_has_regular_extension(object_path, ".o")) {
+        return null;
+    }
+    let artifact_stem = slice_s(
+        object_path, 0, len_s(object_path) - len_s(".o"));
+    return artifact_stem + ".l1m";
+}
+
+/**
  * Construct canonical artifacts beneath a caller-selected artifact root.
  *
  * @param artifact_root Root beneath which the dotted module stem is placed.
@@ -238,7 +259,8 @@ func mg_artifacts_from_object(
     if (!_mg_validate_artifact_module(module_name, diags)) {
         return null;
     }
-    if (!_mg_has_regular_extension(object_path, ".o")) {
+    let interface_path = mg_interface_path_from_object_path(object_path);
+    if (interface_path == null) {
         _mg_artifact_error(
             diags,
             "explicit object path '" + object_path + "' must name a regular '.o' file",
@@ -247,7 +269,8 @@ func mg_artifacts_from_object(
         return null;
     }
 
-    let artifact_stem = slice_s(object_path, 0, len_s(object_path) - len_s(".o"));
+    let sibling = interface_path as string;
+    let artifact_stem = slice_s(sibling, 0, len_s(sibling) - len_s(".l1m"));
     return _mg_artifacts_from_stem(artifact_stem);
 }
 
@@ -322,6 +345,7 @@ func _mg_node_create(
         artifacts,
         MNS_UNRESOLVED,
         _mg_ptr_vec_create(2),
+        sv_create(2),
         sv_create(2)
     );
 }
@@ -403,6 +427,7 @@ func mg_node_free(node: ModuleGraphNode*) {
     }
     vec_free(node.dependencies);
     sv_free(node.direct_imports);
+    sv_free(node.interface_imports);
     mg_artifacts_free(node.artifacts);
     let origin = node.origin;
     drop origin;
@@ -484,6 +509,35 @@ func mg_node_direct_import_count(node: ModuleGraphNode*) -> int {
  */
 func mg_node_direct_import_get(node: ModuleGraphNode*, index: int) -> string {
     return sv_get(node.direct_imports, index);
+}
+
+/**
+ * Append one canonical parsed interface lifecycle import.
+ *
+ * This vector is intentionally distinct from exact source imports. Parsed
+ * `.l1m` entries are already stable-deduplicated by the interface producer.
+ *
+ * @param node Interface-backed graph node to update.
+ * @param module_name Imported canonical provider module.
+ */
+func mg_node_add_interface_import(
+    node: ModuleGraphNode*,
+    module_name: string
+) {
+    sv_push(node.interface_imports, module_name);
+}
+
+/** Return the number of canonical parsed interface imports. */
+func mg_node_interface_import_count(node: ModuleGraphNode*) -> int {
+    return sv_size(node.interface_imports);
+}
+
+/** Return one canonical parsed interface import by stored order. */
+func mg_node_interface_import_get(
+    node: ModuleGraphNode*,
+    index: int
+) -> string {
+    return sv_get(node.interface_imports, index);
 }
 
 /**

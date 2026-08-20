@@ -1,6 +1,7 @@
 module interface graph.provider;
 fingerprint "sip13:db0a81b8f7df0516";
 
+import module graph.linked == "sip13:e5d98f527b631531";
 require graph.required::Thing == "sip13:8abfe6a8eaf1bb84";
 link graph.linked::helper == "sip13:e5d98f527b631531";
 

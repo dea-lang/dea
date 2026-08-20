@@ -1,16 +1,19 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-07-26
+Version: 2026-08-20
 
-Status: Draft artifact contract
+Status: Finalized
 
 This document specifies the textual `.l1m` module interface artifact for the current Dea/L1 bootstrap compiler tranche.
 It defines the on-disk file shape, canonical declaration and fingerprint inputs, type/literal formatting rules,
-dependency manifests, verification, discovery, and transitive closure.
+operational manifests, verification, discovery, standalone-link authority, and transitive closure.
 
 `.l1m` files are normal verified dependency inputs for L1 `-c` / `--compile`, which produces one source module's sibling
 `.o` and `.l1m` artifacts and optionally retains `.c` with `--keep-c`. Ordinary `--build` and `--run` flows remain
 source-based under [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative].
+
+Standalone `--link` also requires one verified sibling `.l1m` for every positional Dea `.o`. The interface is the sole
+Dea semantic, entry, dependency, and lifecycle authority; the paired native object is an opaque host-link payload.
 
 ## Scope
 
@@ -19,8 +22,11 @@ The current `.l1m` format serializes one module's exported public surface in det
 - the emitter projects analyzed source into canonical text and assigns a whole-module fingerprint
 - the constrained parser reconstructs the interface model from that text
 - every operational consumer validates and recomputes the fingerprint before graph registration or semantic replay
+- the interface carries non-fingerprinted entry, ordered lifecycle-import, `require`, and `link` records
 - internal analysis entry points discover interfaces from ordered roots and recursively load dependency closure
 - programmatic supplied-interface registries use the same verification and graph contract
+- standalone link derives each sibling path from the caller's positional `.o` and verifies the complete interface set
+  before registering any module identity
 - the internal `--emit-interface` mode writes artifacts for developer and testing use
 
 The version 1 fingerprint is mandatory and has the exact spelling `sip13:<16 lowercase hexadecimal digits>`. There is no
@@ -34,6 +40,10 @@ Each interface file describes exactly one module:
 module interface demo.main;
 fingerprint "sip13:0123456789abcdef";
 
+entry;
+
+import module iface_dep == "sip13:62649b8c7d5e4f3a";
+
 require iface_dep::RemotePoint == "sip13:62649b8c7d5e4f3a";
 link std.io::printl_s == "sip13:40d3cb93d387f3c1";
 
@@ -46,15 +56,23 @@ struct Point {
 The digest values above illustrate the required spelling; a consumable file must contain the values computed from its
 actual declarations and providers.
 
-The file has four regions in fixed order:
+The file has eight regions in fixed order:
 
 1. `module interface <dotted-module-name>;`
 2. `fingerprint "<tagged-whole-module-fingerprint>";`
-3. zero or more dependency lines, with `require` lines first and then `link` lines
-4. zero or more exported declarations in canonical declaration-group order
+3. zero or one `entry;` marker
+4. zero or more `import module <provider> == "<fingerprint>";` records in lifecycle order
+5. zero or more `require` records
+6. zero or more `link` records
+7. zero or more exported declarations in canonical declaration-group order
+8. end of file
 
 The header uses the module's canonical dotted source path. Module identity and filesystem discovery paths do not
 participate in the module's fingerprint.
+
+The operational regions are strict. Duplicate `entry;`, duplicate import providers, records that return to an earlier
+region, and trailing unknown records are rejected. When a record is both duplicate and misplaced, the duplicate
+diagnostic wins. Whitespace and emitter-inserted blank lines are not semantically significant.
 
 ## Whole-Module Fingerprint
 
@@ -137,15 +155,29 @@ The fingerprint includes only the effective exported declarations listed above. 
 
 - source export-manifest spelling
 - the module header, filesystem location, and fingerprint declaration
-- `require` and `link` dependency manifests
+- `entry`, `import module`, `require`, and `link` operational manifests
 - private declarations, bodies, implementation-only imports, and other implementation details
-- object metadata, compiler version strings, timestamps, and host-platform data
+- native-object contents, compiler version strings, timestamps, and host-platform data
 
 Changing any exported name, transparent layout, enum variant or payload label, opacity state, alias target, signature
 including parameter names and flags, const type/value, or let type changes the fingerprint. Source declaration order,
-private implementation changes, dependency-manifest changes, and equivalent export-manifest spelling do not.
+private implementation changes, entry/import/dependency-manifest changes, and equivalent export-manifest spelling do
+not.
 
-## Dependency Manifest
+## Operational Manifests
+
+The non-fingerprinted operational regions have distinct roles:
+
+- **`entry;`**: the module emits `I5entry`. The producer derives this from the same resolved source-entry predicate used
+  by backend generation.
+- **`import module P`**: source directly imports the object-backed provider `P`, including for side effects. These
+  records are the only standalone lifecycle edges and retain first source occurrence order.
+- **`require P::S`**: `P::S` is exposed through the consumer's public surface. This creates no lifecycle edge by itself.
+- **`link P::S`**: `P::S` is used by implementation and is not already in `require`. This creates no lifecycle edge by
+  itself.
+
+Compiler-synthesized virtual providers are omitted from all three provider manifests because they have no sibling native
+artifact or independent lifecycle.
 
 The manifest records, per used provider symbol, the provider module fingerprint against which the consumer was
 projected:
@@ -167,12 +199,22 @@ The `require` group is emitted before `link`. Lines within each group are sorted
 Every entry for one provider module must carry the same valid fingerprint. Dependency values are excluded from the
 consumer's own fingerprint.
 
+`import module` records are projected independently from resolved direct source imports. Projection walks the graph's
+exact source-order vector, omits virtual providers, retains the first occurrence of each remaining provider, and keeps
+side-effect-only imports. It does not mutate or deduplicate `ModuleGraphNode.direct_imports`. A provider may occur in a
+symbol manifest without being a direct interface import when a public type names a transitive provider.
+
 Projection uses an already verified provider fingerprint for interface-backed providers. For source-backed providers, it
 independently projects and hashes the provider's public surface, without recursively adding its dependencies to that
 hash, and copies the result to each corresponding entry.
 
-The current consumer validates dependency spelling and same-provider consistency. Comparing those expectations with
-fingerprints embedded in provider objects remains future link-set work.
+Operational verification validates fingerprint spelling, import-provider uniqueness, virtual-provider exclusion, and
+same-provider fingerprint agreement across `import module`, `require`, and `link`. Standalone link then compares every
+expectation with the supplied provider's verified interface fingerprint.
+
+After lifecycle ordering succeeds, every non-virtual provider named by `require` or `link` must be transitively
+reachable from the consumer through a nonempty path of existing `import module` edges. This proves source-import
+provenance without converting semantic records into lifecycle edges or discovering implicit objects.
 
 ## Interface Discovery and Verification
 
@@ -191,10 +233,11 @@ Operational consumers use this order:
 
 1. constrained parse
 2. declared module-identity check
-3. tagged module and dependency fingerprint validation
-4. canonical recomputation and exact declared/recomputed comparison
-5. graph registration and caching
-6. graph normalization, activation, and semantic replay
+3. tagged public and operational provider fingerprint validation
+4. operational uniqueness, virtual-provider exclusion, and same-provider consistency validation
+5. canonical public-surface recomputation and exact declared/recomputed comparison
+6. graph registration and caching
+7. graph normalization, activation, and semantic replay
 
 Programmatically supplied interfaces are verified when selected for graph registration; an unused supplied entry remains
 inert. Success is cached only after verification. Identity checking precedes fingerprint checking so a header-mismatched
@@ -207,6 +250,12 @@ imports from source-backed providers, but never follows `link`.
 
 Semantic interface copies may materialize nominal kinds and expand transparent aliases. Graph and projection interfaces
 retain the parsed spelling for deterministic clone and re-emission behavior.
+
+Standalone link uses a path-only association. Each positional operand must have a nonempty basename stem followed by the
+exact case-sensitive terminal suffix `.o`; replacing only that suffix with `.l1m` in the same directory selects the
+sibling. Both paths must resolve to regular files. The verified sibling header is authoritative regardless of basename,
+and all Dea objects remain explicit CLI operands. An interface record validates the supplied set but never searches for
+or adds an object.
 
 ## Export Surface and Declaration Forms
 
@@ -288,21 +337,23 @@ parser-only test may preserve a noncanonical token without making it valid compa
 Declaration names must be unique across all groups. Enum variants share the module-level namespace with declarations.
 Function bodies and implicit opaque declarations are rejected.
 
-Parser shape failures use `PAR-0560` through `PAR-0577`, plus shared `PAR-0520` for invalid variadic placement and
-`PAR-0602` for malformed unsafe declarations. `PAR-0574` through `PAR-0576` specifically describe a dependency's missing
-`==`, fingerprint string, or terminating semicolon. Whole-module fingerprint validation uses `SIG-0280` through
-`SIG-0284`. Discovery and graph failures use the applicable `DRV-*` diagnostics.
+Parser shape failures use `PAR-0560` through `PAR-0579`, plus shared `PAR-0520` for invalid variadic placement and
+`PAR-0602` for malformed unsafe declarations. `PAR-0572` covers malformed operational shapes not assigned a more
+specific code, `PAR-0574` through `PAR-0576` describe the common provider-expectation tail, `PAR-0578` covers duplicate
+operational records, and `PAR-0579` covers nonduplicate canonical-region regressions. Public and provider fingerprint
+validation uses `SIG-0280` through `SIG-0285`; `SIG-0284` is within-interface provider disagreement and `SIG-0285`
+rejects invalid operational models such as programmatic duplicate imports or persisted virtual providers. Discovery and
+graph failures use the applicable `DRV-*` diagnostics.
 
 All concrete codes are registered in [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog].
 
 ## Non-goals
 
-This tranche does not define or implement:
+This contract does not define:
 
-- object-metadata fingerprint embedding or readers
-- comparison of consumer expectations with provider-object records at link time
-- compile-only output-path publication or endpoint-rollback mechanics
-- provider-object linking, standalone linking, or build/run fan-out
+- authentication or cryptographic binding between sibling `.o` and `.l1m` bytes
+- implicit object discovery from interface records or search roots
+- build/run source fan-out
 - package or library distribution layout
 
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md

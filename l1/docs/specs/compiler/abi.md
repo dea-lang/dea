@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-07-27
+Version: 2026-08-20
 
 Status: Finalized
 
@@ -59,8 +59,6 @@ produces a link error if a value is called as a function or vice-versa across mo
 | module lifecycle `demo.main::init`         | `__deaM4demo4mainI4init`      |
 | module lifecycle `demo.main::fini`         | `__deaM4demo4mainI4fini`      |
 | module entry bridge `demo.main::entry`     | `__deaM4demo4mainI5entry`     |
-| module identity record `demo.main`         | `__deaM4demo4mainI8metadata`  |
-| module import record `demo.main`           | `__deaM4demo4mainI7imports`   |
 
 ### Compiler-Generated Module Symbols
 
@@ -71,8 +69,6 @@ Each independently emitted Dea module reserves these identifiers under the `I` t
 | `init`     | `void __deaM<module>I4init(void)` | Every module translation unit                                                 | Initialize deferred top-level `let` values owned by the module, in their established within-module order. |
 | `fini`     | `void __deaM<module>I4fini(void)` | Every module translation unit                                                 | Clean ARC-managed top-level `let` values owned by the module.                                             |
 | `entry`    | `int __deaM<module>I5entry(void)` | A module with a resolved, zero-parameter, non-extern source `main` definition | Call the owning module's source `main` and normalize its result to a C process status.                    |
-| `metadata` | `const uint8_t ...I8metadata[]`   | Every module translation unit                                                 | Record module identity, fingerprint, and entry presence.                                                  |
-| `imports`  | `const uint8_t ...I7imports[]`    | Every module translation unit                                                 | Record ordered direct object-backed providers and their expected fingerprints.                            |
 
 In per-module output, these symbols are compiler infrastructure rather than source exports and always have external
 linkage, independent of the module export manifest. `I4init` and `I4fini` remain present as callable empty functions
@@ -87,15 +83,14 @@ It does not initialize runtime arguments, call module lifecycle functions, or pe
 A module lifecycle function acts only on storage owned by its translation unit. It never calls an imported module's
 lifecycle function or cleans imported storage.
 
-`I8metadata` and `I7imports` are externally linked C99 byte arrays. `I4init` performs one volatile byte read from each
-array so a linker dead-strip pass retains the records without custom sections or compiler-specific attributes. These
-reads do not change lifecycle ordering or make initialization conditional.
+There are no `I8metadata`, `I7imports`, replacement metadata anchors, or retention reads. Module identity, entry
+presence, ordered lifecycle imports, and provider expectations live only in the verified sibling `.l1m`.
 
 The standalone link driver supplies the process wrapper that composes these symbols. It computes one dependency-first
-module order from verified object metadata, calls `_rt_init_args`, calls each `I4init` once in that order, calls only
-the selected `I5entry`, and calls each `I4fini` once in the exact reverse order. The wrapper defines the only
-process-level C `main`; compiler-emitted module objects do not define it, and an explicit foreign object is rejected if
-it does.
+module order from verified interface imports, calls `_rt_init_args`, calls each `I4init` once in that order, calls only
+the selected `I5entry`, and calls each `I4fini` once in the exact reverse order. The wrapper defines the intended
+process-level C `main`; compiler-emitted Dea module objects do not define it. Dea does not inspect foreign native bytes
+for competing symbols, so any collision is a host-link failure.
 
 ## Type Components
 
@@ -203,8 +198,8 @@ Linkage is driven by the module's export manifest:
 - **Exported symbols** have external linkage (no `static` in C).
 - **Non-exported symbols** have internal linkage (`static` in C).
 - **Constants** follow the same rules, using `const` and optionally `static`.
-- **Per-module compiler-generated `I4init`, `I4fini`, `I5entry`, `I8metadata`, and `I7imports` symbols** have external
-  linkage independent of the export manifest. Legacy whole-program-only helpers retain their existing internal linkage.
+- **Per-module compiler-generated `I4init`, `I4fini`, and `I5entry` symbols** have external linkage independent of the
+  export manifest. Legacy whole-program-only helpers retain their existing internal linkage.
 
 ## C FFI and Externs
 
@@ -239,8 +234,8 @@ type payloads use the same length framing. Counts have no leading zeroes, flags 
 names are sorted, and layout/signature members retain semantic source order.
 
 The digest covers exported structs, enums, aliases, functions, const values, and top-level let types. It excludes module
-identity, filesystem location, the fingerprint itself, dependency manifests, private implementation, tool metadata, and
-object metadata. The exact record and type shapes are normative in
+identity, filesystem location, the fingerprint itself, entry presence, ordered lifecycle imports, `require`, `link`,
+private implementation, tool metadata, and native-object contents. The exact record and type shapes are normative in
 [l1/docs/specs/compiler/module-interface-format.md][module-interface-format].
 
 Every `require` and `link` record stores the provider module's tagged whole-module fingerprint, repeated for each used
@@ -257,73 +252,29 @@ The bridge writes exactly 16 lowercase digest bytes to caller-owned storage, wit
 available in each L1 runtime variant for bootstrap/compiler parity but adds no L1 source-language or standard-library
 API.
 
-## Object Metadata Records
+## Standalone Link Authority and Native Payloads
 
-Every separately emitted Dea module defines one `I8metadata` identity record and one `I7imports` direct-import record.
-Both records begin with this 16-byte header:
+Every positional Dea `.o` has one required sibling `.l1m` selected by replacing only the exact terminal `.o` suffix in
+the same directory. The verified interface header supplies module identity; `entry;` supplies entry eligibility; ordered
+`import module` records supply lifecycle edges; and `require` / `link` records supply semantic provider expectations.
+These operational records are outside the public fingerprint domain.
 
-| Offset | Field          | Encoding                                                |
-| ------ | -------------- | ------------------------------------------------------- |
-| 0      | Magic          | Eight ASCII bytes `DEAL1OBJ`                            |
-| 8      | Format version | Little-endian `u16`; version 1 is the supported version |
-| 10     | Record kind    | Little-endian `u16`; `1` is identity and `2` is imports |
-| 12     | Payload length | Little-endian `u32`, excluding the common header        |
+The native `.o` is an opaque implementation payload. L1 checks that the caller path resolves to a regular file and
+passes that original path to the host toolchain, but does not read or classify its bytes. No checksum, native symbol,
+metadata section, or other mechanism binds the `.o` to the `.l1m`. Callers and build systems must create, copy,
+invalidate, replace, and keep the pair stable together. Mixed-generation pairs may fail during interface validation,
+fail at the host link, or link successfully with incorrect native behavior.
 
-### Identity payload
+`--foreign-object` is likewise a caller assertion that one regular-file path names a host-compatible relocatable native
+object. Dea does not prove its format, architecture, symbols, absence of `main`, absence of reserved names, or absence
+of embedded linker controls. Foreign inputs never acquire module identity, fingerprint, dependency, lifecycle, or entry
+semantics. Native-format errors, duplicate symbols, entry collisions, architecture mismatches, and injected controls are
+host-tool concerns reported through captured host diagnostics.
 
-The `I8metadata` payload contains:
-
-1. a little-endian `u32` flags field; bit 0 is `HAS_ENTRY`, and every other bit is zero in version 1;
-2. a little-endian `u32` byte length for the canonical dotted module name;
-3. the module's whole-interface SipHash-1-3 fingerprint as eight little-endian bytes; and
-4. the non-NUL-terminated ASCII module-name bytes.
-
-`HAS_ENTRY` is set exactly when the same object defines the module's external `I5entry`. A valid metadata-bearing object
-also defines that module's external `I4init` and `I4fini`.
-
-### Import payload
-
-The `I7imports` payload begins with a little-endian `u32` record count. Each record then contains:
-
-1. a little-endian `u32` canonical dotted module-name length;
-2. the expected provider fingerprint as eight little-endian bytes; and
-3. the non-NUL-terminated ASCII provider module-name bytes.
-
-The records contain every unique direct object-backed provider exactly once in first source-import order. Equivalently,
-virtual compiler-provided modules are omitted because they do not contribute standalone provider objects.
-Side-effect-only imports of object-backed providers remain present, and duplicate source edges are coalesced at their
-first occurrence before encoding. Version 1 fixes the fingerprint algorithm to SipHash-1-3, so the textual `sip13:` tag
-is not embedded; changing the algorithm requires a new metadata format version.
-
-### Validation boundary
-
-Record magic, version, kind, flags, lengths, canonical names, exact payload extent, and import uniqueness are all
-validated. Unknown flags, duplicate provider records, trailing bytes, truncation, or inconsistency between the symbol
-module and payload module make the metadata malformed.
-
-A supported relocatable object is classified as metadata-free only when it defines neither metadata symbol nor any
-external symbol whose normalized name starts with `__dea`. The entire normalized `__dea` prefix is reserved for Dea:
-every such definition is Dea evidence even when the rest of the name is not a valid LBI production. A reserved-prefix
-definition with absent or invalid records is malformed, not a foreign-compatible object. Container read failures and
-unsupported or corrupt object formats remain object-read errors outside this metadata classification.
-
-### Standalone link-set validation
-
-`l1c --link` treats embedded object metadata as the link-time authority and does not reopen source or textual `.l1m`
-interfaces. A positional operand must classify as valid Dea metadata. An explicit `--foreign-object` must classify as
-metadata-free and must not define normalized process symbol `main`. Malformed Dea evidence and object-read failures are
-errors under either spelling.
-
-Metadata classification is independent of embedded linker-control inspection. ELF dependent-library sections, Mach-O
-linker-option commands, and PE/COFF directive sections reject either operand role before graph or host-link work; their
-payloads never become implicit libraries or raw linker arguments. The generated wrapper object is subject to the same
-inspection before the final host link.
-
-The driver requires one supplied object per canonical Dea module identity, complete ordered-import closure, exact
-consumer/provider fingerprint agreement, and an acyclic dependency graph. Entry inference requires exactly one object
-whose identity record carries `HAS_ENTRY`; explicit selection requires the named supplied object to carry that flag.
-Valid metadata already guarantees agreement between `HAS_ENTRY` and the exact module-owned `I5entry` definition. Foreign
-objects have no module identity, fingerprint, dependency, lifecycle, or entry semantics.
+The driver requires one verified interface per canonical Dea module identity, complete provider presence, exact
+expected-versus-supplied interface fingerprints, an acyclic lifecycle-import graph, and transitive lifecycle provenance
+for every non-virtual `require` / `link` provider. Entry inference requires exactly one verified interface carrying
+`entry;`; explicit selection requires the named interface to carry it.
 
 The full CLI, lifecycle-ordering, output-transaction, and host-link contracts are specified in
 [l1/docs/reference/separate-compilation.md][separate-compilation].
@@ -333,19 +284,9 @@ The full CLI, lifecycle-ordering, output-transaction, and host-link contracts ar
 The LBI uses only ISO C99 identifier characters `[A-Za-z0-9_]`. Generated C is expected to compile under
 `cc -std=c99 -pedantic-errors`.
 
-Object readers normalize only these exact C external-name decorations before matching LBI names and process-level
-`main`:
-
-- ELF names remain unchanged except for the Darwin TinyCC-compatible aliases `___dea...` to `__dea...` and `_main` to
-  `main`.
-- Mach-O names lose exactly one leading underscore.
-- COFF I386 names lose exactly one leading underscore, and ARM64EC function symbols lose exactly one leading `#`;
-  ARM64EC data names and other supported COFF machine names remain unchanged.
-
-No reader performs fuzzy suffix matching or general leading-character stripping. The standard little-endian COFF
-relocatable reader accepts I386 (`0x014c`), ARM (`0x01c0`), ARMNT (`0x01c4`), AMD64 (`0x8664`), ARM64EC (`0xa641`), and
-ARM64 (`0xaa64`). PE images, COFF bigobj and import-object encodings, and other machines including ARM64X (`0xa64e`) are
-unsupported.
+Standalone link intentionally has no ELF, Mach-O, or PE/COFF parser and performs no external-symbol normalization.
+Native payload compatibility is delegated to the selected host compiler/linker. The LBI's generated symbol spelling
+remains portable C99 input, while any host object decoration is the host toolchain's responsibility.
 
 [module-interface-format]: module-interface-format.md
 [separate-compilation]: ../../reference/separate-compilation.md

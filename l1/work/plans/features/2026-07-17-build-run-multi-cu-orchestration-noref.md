@@ -50,20 +50,22 @@
 
 Convert `--build` and `--run` from one generated C translation unit into dependency-aware orchestration over multiple
 Dea compilation units. The source target remains the user-facing root and becomes the selected entry module. Imported
-providers may come from authoritative `.l1m` plus sibling `.o` artifacts or from source fallback, according to the
-module graph's build/run policy. Joint interface/object reads require a stable-input precondition: callers must
-serialize externally against compile-only publication and other same-stem writers.
+providers may come from an authoritative `.l1m` plus its opaque sibling `.o`, or from source fallback, according to the
+module graph's build/run policy. The pair is caller-trusted rather than byte-bound: callers must create, copy, replace,
+invalidate, and keep both files stable together, and serialize externally against compile-only publication and other
+same-stem writers.
 
 This plan reuses the compile and standalone-link APIs instead of creating a second graph verifier, lifecycle scheduler,
-or wrapper path. It also admits explicit metadata-free relocatable objects through repeatable `--foreign-object`, so
-today's unmangled `extern func` bindings and future C FFI can use the same raw-object boundary in build, run, and link
-modes.
+or wrapper path. It also admits caller-asserted host-compatible relocatable objects through repeatable
+`--foreign-object`, so today's unmangled `extern func` bindings and future C FFI can use the same raw-object boundary in
+build, run, and link modes without Dea inspecting their bytes.
 
 ## Dependencies and Ownership
 
 1. The [module graph][module-graph] owns canonical artifact association, ordered edges, and `MRP_ALLOW_SOURCE_FALLBACK`.
-2. [Fingerprints], [lifecycle emission][lifecycle], and [object metadata][object-metadata] define the Dea artifacts that
-   this plan mixes with source-built units.
+2. [Fingerprints] and [lifecycle emission][lifecycle] define the verified interface manifests and native lifecycle ABI
+   that this plan mixes with source-built units. The historical [object metadata plan][object-metadata] is superseded by
+   the authoritative-interface contract: native objects carry no Dea metadata.
 3. [Compile-only production][compile-only] establishes the reusable one-module analysis, C emission, object compilation,
    and interface-emission operations. Build/run may target a temporary artifact root instead of publishing the result.
 4. The completed shared [native temporary-workspace safety plan][native-temp-safety] owns atomic reservation and cleanup
@@ -71,8 +73,8 @@ modes.
    temporary-root policy.
 5. The [generated-C plan][generated-c] owns byte identity for the shared per-module generator and final removal of the
    legacy whole-program generator. This plan owns retention of the complete build/run C tree.
-6. The [link-set plan][link-set] must land first. This plan passes verified Dea objects, foreign objects, and the source
-   target's canonical module name to its common link API.
+6. The [link-set plan][link-set] must land first. This plan passes verified-interface/opaque-object Dea pairs, foreign
+   objects, and the source target's canonical module name to its common link API.
 7. This plan owns graph fan-out for `--build` and `--run`, temporary artifact lifetime, source-target entry selection,
    multi-unit `--keep-c`, executable execution, and runtime argument/status forwarding.
 8. [External linking][external-linking] later appends libraries, rpaths, and raw host-driver arguments to the same typed
@@ -108,18 +110,20 @@ modes.
 1. Begin with the requested source target and expand its full ordered module closure using `MRP_ALLOW_SOURCE_FALLBACK`.
 2. For every non-virtual import, an interface found through explicit `-I` roots remains authoritative. The driver does
    not replace it with source merely because a source implementation is also available.
-3. An interface-backed node resolves its sibling `.o` through the canonical artifact association. The object must exist,
-   produce valid Dea metadata, name the expected module, and match the interface's whole-module fingerprint.
+3. An interface-backed node resolves its sibling `.o` through the canonical artifact association. The interface must
+   parse, verify, name the expected module, and supply authoritative entry, ordered lifecycle-import, and provider
+   expectations. The sibling object must resolve to a regular file, but its bytes are opaque and are not checked against
+   the interface.
 4. A provider with no selected interface may fall back to source when the graph policy permits it. Missing both forms,
-   malformed authoritative interfaces, source/interface identity mismatches, or an interface without a usable sibling
+   malformed authoritative interfaces, source/interface identity mismatches, or an interface without a regular sibling
    object fail before the final link.
 5. Virtual modules participate in analysis according to their existing built-in rules but do not produce user Dea object
    inputs or lifecycle calls unless their owning implementation already requires one.
 6. Ordered side-effect imports remain graph edges even when no declaration is referenced. They affect source build
    order, object verification, initialization, and finalization.
-7. An authoritative interface and its sibling object must remain unchanged from interface selection through object
-   verification and submission to the common link API. Compile-only publication provides endpoint rollback, not an
-   atomic reader-visible snapshot; build/run callers must serialize externally against same-stem publication or
+7. An authoritative interface and its opaque sibling object must remain unchanged from interface selection through
+   submission to the common link API. Compile-only publication provides endpoint rollback, not an atomic reader-visible
+   snapshot or an object/interface binding; build/run callers must serialize externally against same-stem publication or
    mutation.
 
 ## Source Compilation Fan-Out
@@ -128,15 +132,17 @@ modes.
    tie-breaker. Compile each canonical module once.
 2. Reuse the internal one-module compile path from [compile-only production][compile-only] and the exact shared
    per-module generator governed by the [generated-C plan][generated-c]. Each source unit emits only its definitions,
-   imported declarations, lifecycle symbols, optional entry bridge, metadata, and fingerprinted interface.
+   imported declarations, lifecycle symbols, optional entry bridge, and fingerprinted interface with authoritative
+   operational manifests.
 3. Build/run stage generated `.c`, `.o`, and `.l1m` companions beneath the atomically reserved invocation-private
    workspace supplied by the [native temporary-workspace safety plan][native-temp-safety]. They do not publish over a
    user's compile-only artifacts.
 4. Downstream source units analyze against the staged interfaces of already compiled source providers while continuing
    to honor authoritative `-I` providers chosen during graph expansion.
-5. Interface-backed provider objects are caller-owned inputs. Build/run inspect and forward them unchanged and never
-   replace, rename, or delete them. The caller-owned interface/object pair remains stable for the complete joint-read
-   interval described above.
+5. Interface-backed provider objects are caller-owned opaque inputs. Build/run verifies the interfaces, checks the
+   objects only as regular files, and forwards the original object paths without reading, replacing, renaming, or
+   deleting them. The caller-owned interface/object pair remains stable for the complete validation-and-link interval
+   described above.
 6. Any analysis, emission, object compilation, interface verification, or graph-consistency failure aborts the fan-out,
    removes invocation-owned temporaries, and does not invoke the final host linker.
 
@@ -144,18 +150,20 @@ modes.
 
 1. Supply every source-built and interface-backed Dea object to the common link API together with the source target's
    canonical module name as the explicit entry selection.
-2. The target must define a resolved, zero-parameter, non-extern source `main` and therefore carry `HAS_ENTRY` plus
-   `I5entry`. Another module's `I5entry` never substitutes for a target without an eligible bridge.
+2. The target must define a resolved, zero-parameter, non-extern source `main`; its emitted interface therefore carries
+   `entry;` and its native module defines `I5entry` through the shared entry predicate. Another module's `I5entry` never
+   substitutes for a target without an eligible bridge.
 3. Multiple entry-eligible modules are allowed because the target selects exactly one. Only the target bridge is
    invoked; all Dea modules still receive dependency-ordered initialization and reverse-order finalization.
-4. Forward foreign objects through the common classification path. They may satisfy ordinary unmangled external symbols
-   but never become graph providers, entry candidates, or lifecycle participants.
+4. Forward foreign objects as caller assertions through the common typed input path. Dea checks their regular-file and
+   command-word properties but does not inspect their format, symbols, or embedded controls. They may satisfy ordinary
+   unmangled external symbols but never become graph providers, entry candidates, or lifecycle participants.
 5. Preserve the common link API's typed input order. Source-built and interface-backed Dea operands occupy their
    deterministic graph positions; user-declared foreign objects keep their relative declaration order.
-6. The wrapper, exact runtime link inputs, object classification, fingerprint checks, and final host compiler invocation
-   remain owned by the [link-set plan][link-set]. Normal families receive one selected archive; TinyCC receives the
-   complete variant-matched raw-object set when available, with archive fallback. Build/run surface the common link
-   API's structured failures without rewriting them.
+6. The wrapper, exact runtime link inputs, verified-interface checks, lifecycle planning, and final host compiler
+   invocation remain owned by the [link-set plan][link-set]. Normal families receive one selected archive; TinyCC
+   receives the complete variant-matched raw-object set when available, with archive fallback. Build/run surface the
+   common link API's structured failures without rewriting them.
 7. The common link executor accepts explicit wrapper and capture paths and never allocates or cleans a workspace.
    Build/run derives those paths beneath its atomically reserved invocation-private workspace and retains ownership of
    whole-workspace cleanup. The standalone link adapter's output-local transaction is not reused here.
@@ -205,8 +213,8 @@ architecture, C-backend, and separate-compilation references.
 1. Provisionally reserve `L1C-2130` through `L1C-2149` for build/run graph expansion, interface/object association,
    source fan-out, selected-target entry failures, retained-C output, temporary cleanup, execution, and mode-specific
    option diagnostics.
-2. Reuse graph, fingerprint, metadata, classification, wrapper, and host-link diagnostics from their owning plans when
-   the meaning is unchanged. Do not mint a build/run duplicate for the same failed invariant.
+2. Reuse graph, interface-fingerprint, lifecycle-provenance, wrapper, native-input, and host-link diagnostics from their
+   owning plans when the meaning is unchanged. Do not mint a build/run duplicate for the same failed invariant.
 3. Re-check `L1C-2130` through `L1C-2149` against the live [diagnostic catalog][diagnostic-catalog] immediately before
    implementation and move the whole provisional block if any code has been assigned.
 
@@ -238,13 +246,13 @@ architecture, C-backend, and separate-compilation references.
   - Disposition: Amend ADR
   - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
   - Rationale: ADR-0020 must record how its module-local ABI participates in whole-graph build and execution.
-- Decision: Keep each authoritative `.l1m` and sibling `.o` pair stable through selection, verification, and link
-  submission.
+- Decision: Keep each authoritative `.l1m` and opaque sibling `.o` pair stable through selection, validation, and link
+  submission as a caller trust obligation.
   - Scope: L1
   - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
-  - Rationale: ADR-0022 provides endpoint rollback rather than a reader snapshot, so build/run must serialize
-    externally.
+  - Rationale: ADR-0022 provides endpoint rollback rather than a reader snapshot or byte binding, so build/run must
+    serialize externally and invalidate the pair together.
 - Decision: Retain module C that is byte-identical to corresponding `--gen` and `-c --keep-c` output.
   - Scope: L1
   - Disposition: New ADR
@@ -258,7 +266,7 @@ architecture, C-backend, and separate-compilation references.
 
 ## Non-Goals
 
-1. Reimplementing link graph verification, wrapper generation, lifecycle order, or object classification.
+1. Reimplementing link graph verification, wrapper generation, lifecycle order, or native-object inspection.
 2. Publishing every source fallback as a persistent compile-only artifact set.
 3. Allowing `--entry` to override the requested build/run source target.
 4. Treating foreign objects as Dea modules or allowing a foreign C `main` to replace the wrapper.
@@ -269,19 +277,20 @@ architecture, C-backend, and separate-compilation references.
 ## Verification Criteria
 
 01. A source target and multiple source-backed dependencies compile as distinct translation units, link, and run.
-02. Mixed source-backed and authoritative interface/object providers use the documented precedence and verify matching
-    module identities and whole-module fingerprints. A provider's `.o + .l1m` pair remains usable when its canonical
-    `.c` is absent.
-03. Missing sibling objects, mismatched interfaces and objects, malformed metadata, cycles, and missing providers fail
-    before the host linker and clean invocation-owned artifacts.
+02. Mixed source-backed and authoritative interface/object providers use the documented precedence and verify module
+    identities, public fingerprints, operational manifests, and transitive lifecycle provenance from `.l1m`. A
+    provider's `.o + .l1m` pair remains usable when its canonical `.c` is absent.
+03. Missing sibling objects, malformed or inconsistent interfaces, lifecycle cycles, unreachable manifest providers, and
+    missing providers fail before the host linker and clean invocation-owned artifacts. Native object content failures
+    remain host-tool failures.
 04. Two or more modules may define an entry-eligible `main`; build/run select the requested source target, invoke only
     its `I5entry`, and do not issue the standalone link mode's ambiguous-entry diagnostic.
 05. A target without an entry-eligible bridge fails even when another linked module supplies `I5entry`.
 06. Init calls are dependency-first, fini calls are their exact reverse, and side-effect-only imports remain ordered.
-07. A tiny metadata-free C provider satisfies today's unmangled `extern func` through repeatable `--foreign-object` in
+07. A tiny caller-asserted C provider satisfies today's unmangled `extern func` through repeatable `--foreign-object` in
     both `--build` and `--run`; it receives no entry or lifecycle calls.
-08. A valid or malformed Dea object cannot bypass verification through `--foreign-object`, and a foreign C `main` is
-    rejected through the common classification path.
+08. `--foreign-object` inputs are not inspected for Dea metadata, format, reserved symbols, `main`, or embedded linker
+    controls; invalid or colliding inputs reach the host toolchain and surface through captured host diagnostics.
 09. Run-mode arguments and the selected entry status round-trip unchanged; launch and host-link failures remain
     distinguishable.
 10. `--keep-c` retains the documented mirrored C tree plus `__dea_wrapper.c`, while objects, staged interfaces, and run

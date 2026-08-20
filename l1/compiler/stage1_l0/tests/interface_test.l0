@@ -887,6 +887,9 @@ func test_emit_interface_semantic_dependencies() {
         let text = text_opt as string;
 
         assert(contains_s(text,
+            "import module iface_dependency_provider == \"" + provider_fingerprint + "\";"),
+            "direct object-backed provider should enter the ordered lifecycle-import region");
+        assert(contains_s(text,
             "require iface_dependency_provider::RemoteAlias == \"" + provider_fingerprint + "\";"),
             "public TypeRef walk must preserve the imported alias identity");
         assert(contains_s(text,
@@ -1082,6 +1085,73 @@ func test_interface_dependency_fingerprint_diagnostics() {
         "PAR-0576", "<missing-dependency-semi>");
 }
 
+/** Tests strict operational regions and targeted parser diagnostics. */
+func test_interface_operational_regions_and_diagnostics() {
+    let text = "module interface m;\n" +
+        "fingerprint \"sip13:0123456789abcdef\";\n" +
+        "\n" +
+        "entry;\n" +
+        "\n" +
+        "import module z.provider == \"sip13:1111111111111111\";\n" +
+        "import module a.provider == \"sip13:2222222222222222\";\n" +
+        "\n" +
+        "require z.provider::Thing == \"sip13:1111111111111111\";\n" +
+        "\n" +
+        "link a.provider::work == \"sip13:2222222222222222\";\n" +
+        "\n" +
+        "func ping() -> void;\n";
+    let parsed = pi_parse_interface(text, "<operational-round-trip>");
+    assert(!ipr_has_errors(parsed) && parsed.interface != null,
+        "canonical operational interface should parse");
+    let mi = parsed.interface as ModuleInterface*;
+    assert(mi.has_entry, "entry marker should populate the interface model");
+    assert(vec_size(mi.module_imports) == 2, "two module imports should be retained");
+    assert((ptr_vec_get(mi.module_imports, 0) as InterfaceModuleImport*).provider_module ==
+        "z.provider", "first module import order mismatch");
+    assert((ptr_vec_get(mi.module_imports, 1) as InterfaceModuleImport*).provider_module ==
+        "a.provider", "second module import order mismatch");
+    assert(ie_emit(mi) == text, "entry and module-import order should round-trip byte-for-byte");
+    ipr_free(parsed);
+
+    let header = "module interface m;\nfingerprint \"sip13:0123456789abcdef\";\n";
+    assert_parse_rejected(header + "entry\n", "PAR-0572", "<entry-missing-semi>");
+    assert_parse_rejected(header + "import p == \"sip13:1111111111111111\";\n",
+        "PAR-0572", "<import-missing-module>");
+    assert_parse_rejected(header + "import module == \"sip13:1111111111111111\";\n",
+        "PAR-0572", "<import-missing-provider>");
+    assert_parse_rejected(header + "import module p \"sip13:1111111111111111\";\n",
+        "PAR-0574", "<import-missing-eqeq>");
+    assert_parse_rejected(header + "import module p == ;\n",
+        "PAR-0575", "<import-missing-fingerprint>");
+    assert_parse_rejected(header + "import module p == \"sip13:1111111111111111\"\n",
+        "PAR-0576", "<import-missing-semi>");
+    assert_parse_rejected(header + "entry;\nentry;\n",
+        "PAR-0578", "<duplicate-entry>");
+    assert_parse_rejected(header +
+        "import module p == \"sip13:1111111111111111\";\n" +
+        "import module p == \"sip13:1111111111111111\";\n",
+        "PAR-0578", "<duplicate-import>");
+    assert_parse_rejected(header +
+        "require p::item == \"sip13:1111111111111111\";\n" +
+        "import module q == \"sip13:2222222222222222\";\n",
+        "PAR-0579", "<import-region-regression>");
+    assert_parse_rejected(header +
+        "link p::item == \"sip13:1111111111111111\";\n" +
+        "require q::item == \"sip13:2222222222222222\";\n",
+        "PAR-0579", "<require-region-regression>");
+    assert_parse_rejected(header + "func ping() -> void;\nentry;\n",
+        "PAR-0579", "<entry-after-declaration>");
+    assert_parse_rejected(header + "let value: int;\nfunc ping() -> void;\n",
+        "PAR-0579", "<declaration-group-regression>");
+    assert_parse_rejected(header +
+        "import module p == \"sip13:1111111111111111\";\n" +
+        "require p::item == \"sip13:1111111111111111\";\n" +
+        "import module p == \"sip13:1111111111111111\";\n",
+        "PAR-0578", "<duplicate-import-precedes-order>");
+    assert_parse_rejected(header + "unknown record;\n",
+        "PAR-0572", "<trailing-unknown-record>");
+}
+
 /**
  * Main entry point for the module.
  */
@@ -1128,5 +1198,6 @@ func main() {
     test_interface_noncanonical_fingerprint_token_round_trip();
     test_interface_obsolete_declaration_suffixes_rejected();
     test_interface_dependency_fingerprint_diagnostics();
+    test_interface_operational_regions_and_diagnostics();
     printl_s("interface_test: all tests passed");
 }

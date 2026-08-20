@@ -7,20 +7,21 @@ module link_driver_test;
 
 import std.assert;
 import std.fs;
-import std.hashmap;
 import std.io;
 import std.path;
 import std.string;
 import std.text;
 import std.vector;
+import sys.rt;
 
 import build_driver;
 import cli_args;
-import compile_driver;
 import compiler_filesystem;
+import interface_emitter;
+import interface_fingerprint;
 import link_driver;
-import object_reader;
-import object_reader_types;
+import mi_utils;
+import module_interface;
 import util.diag;
 
 /** Return whether one diagnostic collector contains a requested code. */
@@ -43,123 +44,81 @@ func ldt_has_word(words: StringVector*, expected: string) -> bool {
     return false;
 }
 
-/** Construct one empty format-neutral container for synthetic inspections. */
-func ldt_container() -> ObjectContainer* {
-    return new ObjectContainer(
-        OBJECT_FORMAT_ELF,
-        "",
-        vec_create(sizeof(void*), 1),
-        OBJECT_LINKER_CONTROL_NONE
+/** Construct one empty verified interface model. */
+func ldt_interface(module_name: string, has_entry: bool) -> ModuleInterface* {
+    let interface = new ModuleInterface(
+        module_name, "", has_entry,
+        ld_ptr_vec_create(2), ld_ptr_vec_create(2), ld_ptr_vec_create(2),
+        ld_ptr_vec_create(1), ld_ptr_vec_create(1), ld_ptr_vec_create(1),
+        ld_ptr_vec_create(1), ld_ptr_vec_create(1)
     );
+    with (let diags = diag_create() => diag_free(diags)) {
+        assert(ifp_assign(interface, diags, "<link-driver-test>"),
+            "empty interface fingerprint assignment must succeed");
+    }
+    return interface;
 }
 
-/** Construct one valid synthetic Dea-object inspection. */
-func ldt_dea_inspection(
-    module_name: string,
-    fingerprint: string,
-    imports: StringVector*,
-    import_fingerprints: StringVector*,
-    has_entry: bool
-) -> ObjectInspection* {
-    let valid = new ValidDeaMetadata(
-        module_name,
-        fingerprint,
-        imports,
-        import_fingerprints,
-        has_entry
-    );
-    return new ObjectInspection(
-        OBJECT_FORMAT_ELF,
-        false,
-        new ObjectMetadataClassification(
-            VALID_DEA_METADATA, valid, ""),
-        ldt_container()
-    );
-}
-
-/** Construct one metadata-free synthetic foreign-object inspection. */
-func ldt_foreign_inspection(defines_main: bool) -> ObjectInspection* {
-    return new ObjectInspection(
-        OBJECT_FORMAT_ELF,
-        defines_main,
-        new ObjectMetadataClassification(
-            NO_DEA_METADATA, null, ""),
-        ldt_container()
-    );
-}
-
-/** Construct one malformed-metadata synthetic inspection. */
-func ldt_malformed_inspection(reason: string) -> ObjectInspection* {
-    return new ObjectInspection(
-        OBJECT_FORMAT_ELF,
-        false,
-        new ObjectMetadataClassification(
-            MALFORMED_DEA_METADATA, null, reason),
-        ldt_container()
-    );
-}
-
-/** Construct one dependency-free synthetic Dea link input. */
-func ldt_dea_input(
-    module_name: string,
-    fingerprint: string,
-    has_entry: bool
-) -> LinkInput* {
-    return ld_input_create(
-        LOK_DEA_OBJECT,
-        module_name + ".o",
-        ldt_dea_inspection(
-            module_name,
-            fingerprint,
-            sv_create(1),
-            sv_create(1),
-            has_entry
-        )
-    );
-}
-
-/** Construct one synthetic Dea link input with one direct provider. */
-func ldt_dea_input_with_import(
-    module_name: string,
-    fingerprint: string,
-    has_entry: bool,
+/** Append one lifecycle import to a synthetic interface. */
+func ldt_add_import(
+    interface: ModuleInterface*,
     provider_name: string,
     provider_fingerprint: string
-) -> LinkInput* {
-    let imports = sv_create(1);
-    let fingerprints = sv_create(1);
-    sv_push(imports, provider_name);
-    sv_push(fingerprints, provider_fingerprint);
-    return ld_input_create(
-        LOK_DEA_OBJECT,
-        module_name + ".o",
-        ldt_dea_inspection(
-            module_name,
-            fingerprint,
-            imports,
-            fingerprints,
-            has_entry
-        )
-    );
+) {
+    ld_ptr_vec_push(interface.module_imports,
+        new InterfaceModuleImport(provider_name, provider_fingerprint) as void*);
 }
 
-/** Build a mixed valid plan with an entry component and a disconnected CU. */
+/** Append one public-surface provider expectation. */
+func ldt_add_require(
+    interface: ModuleInterface*,
+    provider_name: string,
+    provider_fingerprint: string
+) {
+    ld_ptr_vec_push(interface.require_entries,
+        new InterfaceDepEntry(provider_name, "Visible", provider_fingerprint) as void*);
+}
+
+/** Append one implementation-only provider expectation. */
+func ldt_add_link(
+    interface: ModuleInterface*,
+    provider_name: string,
+    provider_fingerprint: string
+) {
+    ld_ptr_vec_push(interface.link_entries,
+        new InterfaceDepEntry(provider_name, "helper", provider_fingerprint) as void*);
+}
+
+/** Wrap one owned interface in a synthetic Dea input. */
+func ldt_dea_input(interface: ModuleInterface*) -> LinkInput* {
+    let object_path = interface.module_name + ".o";
+    let interface_path = interface.module_name + ".l1m";
+    let input = ld_input_create(
+        LOK_DEA_OBJECT,
+        object_path,
+        interface_path,
+        interface
+    );
+    return input;
+}
+
+/** Build a mixed valid plan with an entry component and disconnected root. */
 func ldt_valid_mixed_plan(diags: DiagCollector*) -> LinkPlan*? {
+    let leaf = ldt_interface("app.leaf", false);
+    let fingerprint = leaf.fingerprint;
+    let dep = ldt_interface("app.dep", false);
+    ldt_add_import(dep, "app.leaf", fingerprint);
+    let entry = ldt_interface("app.main", true);
+    ldt_add_import(entry, "app.dep", fingerprint);
+    let side = ldt_interface("side.effect", false);
+    ldt_add_import(side, "app.leaf", fingerprint);
+
     let inputs = ld_ptr_vec_create(5);
-    ld_ptr_vec_push(inputs, ldt_dea_input_with_import(
-        "app.main", "sip13:aaaaaaaaaaaaaaaa", true,
-        "app.dep", "sip13:bbbbbbbbbbbbbbbb") as void*);
-    ld_ptr_vec_push(inputs, ld_input_create(
-        LOK_FOREIGN_OBJECT, "foreign.o",
-        ldt_foreign_inspection(false)) as void*);
-    ld_ptr_vec_push(inputs, ldt_dea_input_with_import(
-        "side.effect", "sip13:dddddddddddddddd", false,
-        "app.leaf", "sip13:cccccccccccccccc") as void*);
-    ld_ptr_vec_push(inputs, ldt_dea_input_with_import(
-        "app.dep", "sip13:bbbbbbbbbbbbbbbb", false,
-        "app.leaf", "sip13:cccccccccccccccc") as void*);
-    ld_ptr_vec_push(inputs, ldt_dea_input(
-        "app.leaf", "sip13:cccccccccccccccc", false) as void*);
+    ld_ptr_vec_push(inputs, ldt_dea_input(entry) as void*);
+    ld_ptr_vec_push(inputs, ld_foreign_input_create("foreign.o") as void*);
+    ld_ptr_vec_push(inputs, ldt_dea_input(side) as void*);
+    ld_ptr_vec_push(inputs, ldt_dea_input(dep) as void*);
+    ld_ptr_vec_push(inputs, ldt_dea_input(leaf) as void*);
     return ld_prepare_inputs(inputs, null, diags);
 }
 
@@ -169,7 +128,6 @@ func test_valid_mixed_plan_ordering() {
         let plan_opt = ldt_valid_mixed_plan(diags);
         assert(plan_opt != null, "complete mixed link set should validate");
         let plan = plan_opt as LinkPlan*;
-
         assert(plan.entry_module == "app.main", "entry inference mismatch");
         assert(sv_size(plan.lifecycle_order) == 4,
             "foreign object must not enter lifecycle order");
@@ -180,22 +138,22 @@ func test_valid_mixed_plan_ordering() {
         assert(sv_get(plan.lifecycle_order, 2) == "app.main",
             "entry must follow its dependency closure");
         assert(sv_get(plan.lifecycle_order, 3) == "side.effect",
-            "disconnected explicit CU must follow the entry component");
-        assert(vec_size(plan.inputs) == 5, "every typed input must remain present");
-        assert(ld_plan_input_get(plan, 1).path == "foreign.o",
+            "disconnected explicit root must follow the entry component");
+        assert(ld_plan_input_get(plan, 1).object_path == "foreign.o",
             "foreign input encounter order must be retained");
+        assert(ld_plan_input_get(plan, 1).interface == null &&
+               ld_plan_input_get(plan, 1).interface_path == null,
+            "foreign inputs must not own interface state");
         ld_plan_free(plan);
     }
 }
 
-/** Verify duplicate, missing-provider, fingerprint, and cycle rejection. */
+/** Verify identity, closure, fingerprint, and cycle failures. */
 func test_graph_failures() {
     with (let duplicate_diags = diag_create() => diag_free(duplicate_diags)) {
         let duplicate = ld_ptr_vec_create(2);
-        ld_ptr_vec_push(duplicate, ldt_dea_input(
-            "dup", "sip13:1111111111111111", true) as void*);
-        ld_ptr_vec_push(duplicate, ldt_dea_input(
-            "dup", "sip13:2222222222222222", false) as void*);
+        ld_ptr_vec_push(duplicate, ldt_dea_input(ldt_interface("dup", true)) as void*);
+        ld_ptr_vec_push(duplicate, ldt_dea_input(ldt_interface("dup", false)) as void*);
         assert(ld_prepare_inputs(duplicate, null, duplicate_diags) == null,
             "duplicate module identities must fail");
         assert(ldt_has_code(duplicate_diags, "L1C-2100"),
@@ -203,23 +161,38 @@ func test_graph_failures() {
     }
 
     with (let missing_diags = diag_create() => diag_free(missing_diags)) {
+        let missing_interface = ldt_interface("app", true);
+        ldt_add_import(missing_interface, "missing", "sip13:2222222222222222");
         let missing = ld_ptr_vec_create(1);
-        ld_ptr_vec_push(missing, ldt_dea_input_with_import(
-            "app", "sip13:1111111111111111", true,
-            "missing", "sip13:2222222222222222") as void*);
+        ld_ptr_vec_push(missing, ldt_dea_input(missing_interface) as void*);
         assert(ld_prepare_inputs(missing, null, missing_diags) == null,
             "missing provider must fail");
         assert(ldt_has_code(missing_diags, "L1C-2101"),
             "missing provider diagnostic mismatch");
     }
 
+    with (let missing_require_diags = diag_create() =>
+              diag_free(missing_require_diags)) {
+        let missing_require_interface = ldt_interface("require.app", true);
+        ldt_add_require(missing_require_interface, "require.missing",
+            "sip13:2222222222222222");
+        let missing_require = ld_ptr_vec_create(1);
+        ld_ptr_vec_push(missing_require,
+            ldt_dea_input(missing_require_interface) as void*);
+        assert(ld_prepare_inputs(
+                missing_require, null, missing_require_diags) == null,
+            "missing require provider must fail before provenance traversal");
+        assert(ldt_has_code(missing_require_diags, "L1C-2101"),
+            "missing require-provider diagnostic mismatch");
+    }
+
     with (let stale_diags = diag_create() => diag_free(stale_diags)) {
+        let provider = ldt_interface("dep", false);
+        let consumer = ldt_interface("app", true);
+        ldt_add_import(consumer, "dep", "sip13:2222222222222222");
         let stale = ld_ptr_vec_create(2);
-        ld_ptr_vec_push(stale, ldt_dea_input_with_import(
-            "app", "sip13:1111111111111111", true,
-            "dep", "sip13:2222222222222222") as void*);
-        ld_ptr_vec_push(stale, ldt_dea_input(
-            "dep", "sip13:3333333333333333", false) as void*);
+        ld_ptr_vec_push(stale, ldt_dea_input(consumer) as void*);
+        ld_ptr_vec_push(stale, ldt_dea_input(provider) as void*);
         assert(ld_prepare_inputs(stale, null, stale_diags) == null,
             "provider fingerprint mismatch must fail");
         assert(ldt_has_code(stale_diags, "L1C-2102"),
@@ -227,69 +200,160 @@ func test_graph_failures() {
     }
 
     with (let cycle_diags = diag_create() => diag_free(cycle_diags)) {
+        let a = ldt_interface("cycle.a", true);
+        let b = ldt_interface("cycle.b", false);
+        let fingerprint = a.fingerprint;
+        ldt_add_import(a, "cycle.b", fingerprint);
+        ldt_add_import(b, "cycle.a", fingerprint);
         let cycle = ld_ptr_vec_create(2);
-        ld_ptr_vec_push(cycle, ldt_dea_input_with_import(
-            "cycle.a", "sip13:1111111111111111", true,
-            "cycle.b", "sip13:2222222222222222") as void*);
-        ld_ptr_vec_push(cycle, ldt_dea_input_with_import(
-            "cycle.b", "sip13:2222222222222222", false,
-            "cycle.a", "sip13:1111111111111111") as void*);
+        ld_ptr_vec_push(cycle, ldt_dea_input(a) as void*);
+        ld_ptr_vec_push(cycle, ldt_dea_input(b) as void*);
         assert(ld_prepare_inputs(cycle, null, cycle_diags) == null,
-            "dependency cycle must fail");
+            "lifecycle import cycle must fail");
         assert(ldt_has_code(cycle_diags, "L1C-2103"),
             "cycle diagnostic mismatch");
-        assert(contains_s(
-            diag_get(cycle_diags, 0).message,
+        assert(contains_s(diag_get(cycle_diags, 0).message,
             "cycle.a -> cycle.b -> cycle.a"),
             "cycle diagnostic must use canonical module chain");
+    }
+
+    with (let precedence_diags = diag_create() => diag_free(precedence_diags)) {
+        let a2 = ldt_interface("precedence.a", false);
+        let b2 = ldt_interface("precedence.b", false);
+        let fingerprint2 = a2.fingerprint;
+        ldt_add_import(a2, "precedence.b", fingerprint2);
+        ldt_add_import(b2, "precedence.a", fingerprint2);
+        let cycle2 = ld_ptr_vec_create(2);
+        ld_ptr_vec_push(cycle2, ldt_dea_input(a2) as void*);
+        ld_ptr_vec_push(cycle2, ldt_dea_input(b2) as void*);
+        assert(ld_prepare_inputs(cycle2, null, precedence_diags) == null,
+            "invalid entry plus cycle must fail");
+        assert(ldt_has_code(precedence_diags, "L1C-2104") &&
+               !ldt_has_code(precedence_diags, "L1C-2103"),
+            "entry selection must precede cycle traversal");
+    }
+}
+
+/** Verify transitive semantic provenance without synthesizing lifecycle edges. */
+func test_transitive_provenance() {
+    with (let valid_diags = diag_create() => diag_free(valid_diags)) {
+        let model = ldt_interface("model", false);
+        let fingerprint = model.fingerprint;
+        let factory = ldt_interface("factory", false);
+        ldt_add_import(factory, "model", fingerprint);
+        let app = ldt_interface("app", true);
+        ldt_add_import(app, "factory", fingerprint);
+        ldt_add_require(app, "model", fingerprint);
+        let inputs = ld_ptr_vec_create(3);
+        ld_ptr_vec_push(inputs, ldt_dea_input(app) as void*);
+        ld_ptr_vec_push(inputs, ldt_dea_input(factory) as void*);
+        ld_ptr_vec_push(inputs, ldt_dea_input(model) as void*);
+        let plan = ld_prepare_inputs(inputs, null, valid_diags);
+        assert(plan != null,
+            "transitively import-reachable nominal provider should validate");
+        assert(sv_get((plan as LinkPlan*).lifecycle_order, 0) == "model",
+            "semantic requirement must not disturb import-derived order");
+        ld_plan_free(plan as LinkPlan*);
+    }
+
+    with (let unreachable_diags = diag_create() => diag_free(unreachable_diags)) {
+        let model2 = ldt_interface("model2", false);
+        let fingerprint2 = model2.fingerprint;
+        let factory2 = ldt_interface("factory2", false);
+        let app2 = ldt_interface("app2", true);
+        ldt_add_import(app2, "factory2", fingerprint2);
+        ldt_add_link(app2, "model2", fingerprint2);
+        let inputs2 = ld_ptr_vec_create(3);
+        ld_ptr_vec_push(inputs2, ldt_dea_input(app2) as void*);
+        ld_ptr_vec_push(inputs2, ldt_dea_input(factory2) as void*);
+        ld_ptr_vec_push(inputs2, ldt_dea_input(model2) as void*);
+        assert(ld_prepare_inputs(inputs2, null, unreachable_diags) == null,
+            "present but import-unreachable provider must fail");
+        assert(ldt_has_code(unreachable_diags, "L1C-2111"),
+            "transitive provenance diagnostic mismatch");
+    }
+}
+
+/** Verify invalid interfaces never contribute identity registration. */
+func test_interface_verification_precedes_registration() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let invalid = ldt_interface("same", true);
+        invalid.fingerprint = "sip13:0000000000000000";
+        let inputs = ld_ptr_vec_create(2);
+        ld_ptr_vec_push(inputs, ldt_dea_input(invalid) as void*);
+        ld_ptr_vec_push(inputs,
+            ldt_dea_input(ldt_interface("same", false)) as void*);
+        assert(ld_prepare_inputs(inputs, null, diags) == null,
+            "invalid interface set must fail");
+        assert(ldt_has_code(diags, "SIG-0282"),
+            "invalid interface fingerprint must be diagnosed");
+        assert(!ldt_has_code(diags, "L1C-2100"),
+            "unverified interface identities must not be registered");
     }
 }
 
 /** Verify a deep valid graph does not consume the native call stack. */
 func test_deep_graph_uses_iterative_traversal() {
     let module_count = 10000;
-    let fingerprint = "sip13:1111111111111111";
+    let seed = ldt_interface("seed", false);
+    let fingerprint = seed.fingerprint;
+    mi_free(seed);
     with (let diags = diag_create() => diag_free(diags)) {
         let inputs = ld_ptr_vec_create(module_count);
         for (let i = 0; i < module_count; i = i + 1) {
-            let module_name = "deep." + int_to_string(i);
+            let interface = ldt_interface("deep.m" + int_to_string(i), i == 0);
             if (i + 1 < module_count) {
-                ld_ptr_vec_push(inputs, ldt_dea_input_with_import(
-                    module_name,
-                    fingerprint,
-                    i == 0,
-                    "deep." + int_to_string(i + 1),
-                    fingerprint
-                ) as void*);
-            } else {
-                ld_ptr_vec_push(inputs, ldt_dea_input(
-                    module_name,
-                    fingerprint,
-                    false
-                ) as void*);
+                ldt_add_import(interface,
+                    "deep.m" + int_to_string(i + 1), fingerprint);
             }
+            ld_ptr_vec_push(inputs, ldt_dea_input(interface) as void*);
         }
-
         let plan_opt = ld_prepare_inputs(inputs, null, diags);
         assert(plan_opt != null,
             "10,000-module dependency chain should validate");
         let plan = plan_opt as LinkPlan*;
-        assert(sv_size(plan.lifecycle_order) == module_count,
-            "deep dependency chain lifecycle size mismatch");
-        assert(sv_get(plan.lifecycle_order, 0) == "deep.9999",
+        assert(sv_get(plan.lifecycle_order, 0) == "deep.m9999",
             "deepest dependency must initialize first");
-        assert(sv_get(plan.lifecycle_order, module_count - 1) == "deep.0",
+        assert(sv_get(plan.lifecycle_order, module_count - 1) == "deep.m0",
             "entry must initialize after its deep dependency closure");
         ld_plan_free(plan);
     }
 }
 
-/** Verify inferred and explicit entry selection. */
-func test_entry_selection() {
+/** Verify stored sibling order, diamond deduplication, and entry selection. */
+func test_lifecycle_diamond_and_entry_selection() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let leaf = ldt_interface("diamond.leaf", false);
+        let fingerprint = leaf.fingerprint;
+        let left = ldt_interface("diamond.left", false);
+        ldt_add_import(left, "diamond.leaf", fingerprint);
+        let right = ldt_interface("diamond.right", false);
+        ldt_add_import(right, "diamond.leaf", fingerprint);
+        let entry = ldt_interface("diamond.entry", true);
+        ldt_add_import(entry, "diamond.left", fingerprint);
+        ldt_add_import(entry, "diamond.right", fingerprint);
+        let inputs = ld_ptr_vec_create(4);
+        ld_ptr_vec_push(inputs, ldt_dea_input(right) as void*);
+        ld_ptr_vec_push(inputs, ldt_dea_input(entry) as void*);
+        ld_ptr_vec_push(inputs, ldt_dea_input(leaf) as void*);
+        ld_ptr_vec_push(inputs, ldt_dea_input(left) as void*);
+        let plan_opt = ld_prepare_inputs(inputs, null, diags);
+        assert(plan_opt != null, "valid lifecycle diamond should prepare");
+        let plan = plan_opt as LinkPlan*;
+        assert(sv_size(plan.lifecycle_order) == 4,
+            "diamond provider must initialize exactly once");
+        assert(sv_get(plan.lifecycle_order, 0) == "diamond.leaf" &&
+               sv_get(plan.lifecycle_order, 1) == "diamond.left" &&
+               sv_get(plan.lifecycle_order, 2) == "diamond.right" &&
+               sv_get(plan.lifecycle_order, 3) == "diamond.entry",
+            "stored import order must control selected-entry lifecycle order");
+        ld_plan_free(plan);
+    }
+
     with (let zero_diags = diag_create() => diag_free(zero_diags)) {
         let zero = ld_ptr_vec_create(1);
-        ld_ptr_vec_push(zero, ldt_dea_input(
-            "library", "sip13:1111111111111111", false) as void*);
+        ld_ptr_vec_push(zero,
+            ldt_dea_input(ldt_interface("library", false)) as void*);
         assert(ld_prepare_inputs(zero, null, zero_diags) == null,
             "zero entry candidates must fail");
         assert(ldt_has_code(zero_diags, "L1C-2104"),
@@ -298,142 +362,57 @@ func test_entry_selection() {
 
     with (let multiple_diags = diag_create() => diag_free(multiple_diags)) {
         let multiple = ld_ptr_vec_create(2);
-        ld_ptr_vec_push(multiple, ldt_dea_input(
-            "z.entry", "sip13:1111111111111111", true) as void*);
-        ld_ptr_vec_push(multiple, ldt_dea_input(
-            "a.entry", "sip13:2222222222222222", true) as void*);
+        ld_ptr_vec_push(multiple,
+            ldt_dea_input(ldt_interface("z.entry", true)) as void*);
+        ld_ptr_vec_push(multiple,
+            ldt_dea_input(ldt_interface("a.entry", true)) as void*);
         assert(ld_prepare_inputs(multiple, null, multiple_diags) == null,
             "multiple inferred entries must fail");
-        assert(contains_s(
-            diag_get(multiple_diags, 0).message,
-            "a.entry, z.entry"),
+        assert(contains_s(diag_get(multiple_diags, 0).message,
+                "a.entry, z.entry"),
             "multiple entry candidates must be listed deterministically");
     }
 
     with (let explicit_diags = diag_create() => diag_free(explicit_diags)) {
         let explicit = ld_ptr_vec_create(2);
-        ld_ptr_vec_push(explicit, ldt_dea_input(
-            "z.entry", "sip13:1111111111111111", true) as void*);
-        ld_ptr_vec_push(explicit, ldt_dea_input(
-            "a.entry", "sip13:2222222222222222", true) as void*);
-        let plan = ld_prepare_inputs(explicit, "z.entry", explicit_diags);
-        assert(plan != null, "explicit entry should select one valid candidate");
-        assert((plan as LinkPlan*).entry_module == "z.entry",
-            "explicit entry mismatch");
-        ld_plan_free(plan as LinkPlan*);
+        ld_ptr_vec_push(explicit,
+            ldt_dea_input(ldt_interface("z.entry", true)) as void*);
+        ld_ptr_vec_push(explicit,
+            ldt_dea_input(ldt_interface("a.entry", true)) as void*);
+        let selected = ld_prepare_inputs(explicit, "z.entry", explicit_diags);
+        assert(selected != null &&
+               (selected as LinkPlan*).entry_module == "z.entry",
+            "explicit entry should select one marked candidate");
+        ld_plan_free(selected as LinkPlan*);
+    }
+
+    with (let unmarked_diags = diag_create() => diag_free(unmarked_diags)) {
+        let unmarked = ld_ptr_vec_create(1);
+        ld_ptr_vec_push(unmarked,
+            ldt_dea_input(ldt_interface("not.entry", false)) as void*);
+        assert(ld_prepare_inputs(unmarked, "not.entry", unmarked_diags) == null,
+            "explicit entry must carry the interface marker");
+        assert(ldt_has_code(unmarked_diags, "L1C-2104"),
+            "unmarked explicit entry diagnostic mismatch");
     }
 }
 
-/** Verify strict Dea/foreign classification boundaries. */
-func test_classification_failures() {
-    with (let positional_diags = diag_create() => diag_free(positional_diags)) {
-        let positional = ld_ptr_vec_create(1);
-        ld_ptr_vec_push(positional, ld_input_create(
-            LOK_DEA_OBJECT, "plain.o",
-            ldt_foreign_inspection(false)) as void*);
-        assert(ld_prepare_inputs(positional, null, positional_diags) == null,
-            "metadata-free positional input must fail");
-        assert(ldt_has_code(positional_diags, "L1C-2098"),
-            "positional classification diagnostic mismatch");
-        assert(contains_s(
-            diag_get(positional_diags, 0).message, "--foreign-object"),
-            "positional metadata-free guidance mismatch");
-    }
-
-    with (let foreign_dea_diags = diag_create() => diag_free(foreign_dea_diags)) {
-        let foreign_dea = ld_ptr_vec_create(1);
-        let dea = ldt_dea_input(
-            "app", "sip13:1111111111111111", true);
-        dea.kind = LOK_FOREIGN_OBJECT;
-        ld_ptr_vec_push(foreign_dea, dea as void*);
-        assert(ld_prepare_inputs(foreign_dea, null, foreign_dea_diags) == null,
-            "verified Dea object must not pass as foreign");
-        assert(ldt_has_code(foreign_dea_diags, "L1C-2098"),
-            "foreign Dea classification diagnostic mismatch");
-    }
-
-    with (let malformed_diags = diag_create() => diag_free(malformed_diags)) {
-        let malformed = ld_ptr_vec_create(1);
-        ld_ptr_vec_push(malformed, ld_input_create(
-            LOK_FOREIGN_OBJECT, "malformed.o",
-            ldt_malformed_inspection("bad record")) as void*);
-        assert(ld_prepare_inputs(malformed, null, malformed_diags) == null,
-            "malformed Dea evidence must not pass as foreign");
-        assert(contains_s(
-            diag_get(malformed_diags, 0).message, "bad record"),
-            "malformed metadata reason must be retained");
-    }
-
-    with (let main_diags = diag_create() => diag_free(main_diags)) {
-        let foreign_main = ld_ptr_vec_create(2);
-        ld_ptr_vec_push(foreign_main, ldt_dea_input(
-            "app", "sip13:1111111111111111", true) as void*);
-        ld_ptr_vec_push(foreign_main, ld_input_create(
-            LOK_FOREIGN_OBJECT, "main.o",
-            ldt_foreign_inspection(true)) as void*);
-        assert(ld_prepare_inputs(foreign_main, null, main_diags) == null,
-            "foreign process main must fail");
-        assert(ldt_has_code(main_diags, "L1C-2099"),
-            "foreign main diagnostic mismatch");
-    }
-}
-
-/** Verify embedded linker controls fail before any module registration. */
-func test_embedded_linker_control_failures() {
-    with (let diags = diag_create() => diag_free(diags)) {
-        let inputs = ld_ptr_vec_create(2);
-        let dea = ldt_dea_input(
-            "app", "sip13:1111111111111111", true);
-        let foreign_inspection = ldt_foreign_inspection(false);
-        foreign_inspection.container.linker_control =
-            OBJECT_LINKER_CONTROL_PECOFF_DRECTVE;
-        ld_ptr_vec_push(inputs, dea as void*);
-        ld_ptr_vec_push(inputs, ld_input_create(
-            LOK_FOREIGN_OBJECT, "directives.obj",
-            foreign_inspection) as void*);
-
-        let plan = new LinkPlan(
-            inputs, spm_create(), sv_create(2), "");
-        assert(!ld_classify_inputs(plan, diags),
-            "object-embedded linker controls must fail classification");
-        assert(ldt_has_code(diags, "L1C-2110"),
-            "embedded linker-control diagnostic mismatch");
-        assert(contains_s(
-                diag_get(diags, 0).message, "PE/COFF .drectve"),
-            "embedded linker-control carrier must be identified");
-        assert(!spm_has(plan.modules_by_name, "app"),
-            "linker-control preflight must precede module registration");
-        ld_plan_free(plan);
-    }
-
-    with (let dea_diags = diag_create() => diag_free(dea_diags)) {
-        let dea_inputs = ld_ptr_vec_create(1);
-        let controlled_dea = ldt_dea_input(
-            "controlled", "sip13:2222222222222222", true);
-        controlled_dea.inspection.container.linker_control =
-            OBJECT_LINKER_CONTROL_MACHO_LINKER_OPTION;
-        ld_ptr_vec_push(dea_inputs, controlled_dea as void*);
-        assert(ld_prepare_inputs(dea_inputs, null, dea_diags) == null,
-            "directive-bearing Dea objects must fail verification");
-        assert(ldt_has_code(dea_diags, "L1C-2110"),
-            "directive-bearing Dea diagnostic mismatch");
-    }
-}
-
-/** Verify GCC-family and MSVC wrapper/final-link word construction. */
-func test_host_command_words() {
+/** Verify original native paths reach host command construction unchanged. */
+func test_host_command_words_and_windows_preflight() {
     with (
         let diags = diag_create() => diag_free(diags),
         let extra = sv_create(1) => sv_free(extra),
         let compile_words = sv_create(16) => sv_free(compile_words),
         let msvc_compile = sv_create(16) => sv_free(msvc_compile),
         let link_words = sv_create(16) => sv_free(link_words),
-        let msvc_link = sv_create(16) => sv_free(msvc_link)
+        let msvc_link = sv_create(16) => sv_free(msvc_link),
+        let runtime_inputs = sv_create(1) => sv_free(runtime_inputs)
     ) {
         let plan_opt = ldt_valid_mixed_plan(diags);
         assert(plan_opt != null, "command fixture plan should validate");
         let plan = plan_opt as LinkPlan*;
         sv_push(extra, "-DVALUE=1");
+        sv_push(runtime_inputs, "/exact/libdea_rt.a");
 
         ld_push_wrapper_compile_words(
             compile_words, "gcc", "gcc", extra, "-O1",
@@ -446,65 +425,67 @@ func test_host_command_words() {
         ld_push_wrapper_compile_words(
             msvc_compile, "cl.exe", "msvc", extra, null,
             "runtime include", "scratch/wrapper.c", "scratch/wrapper.o");
-        assert(sv_get(msvc_compile, sv_size(msvc_compile) - 3) == "/c",
-            "MSVC wrapper command must use /c");
-        assert(sv_get(msvc_compile, sv_size(msvc_compile) - 1) ==
-            "/Fo:scratch/wrapper.o", "MSVC wrapper /Fo mismatch");
+        assert(sv_get(msvc_compile, sv_size(msvc_compile) - 3) == "/c" &&
+               sv_get(msvc_compile, sv_size(msvc_compile) - 1) ==
+                   "/Fo:scratch/wrapper.o",
+            "MSVC wrapper command must compile to the requested object");
 
-        ld_push_final_link_words(
+        ld_push_final_link_words_with_runtime_inputs(
             link_words, "gcc", "gcc", "scratch/wrapper.o",
-            plan, "/exact/libdea_rt.a", "out/app");
+            plan, runtime_inputs, "out/app");
         assert(sv_get(link_words, 1) == "scratch/wrapper.o",
-            "wrapper object must precede user inputs");
-        assert(sv_get(link_words, 2) == "app.main.o",
-            "first typed input order mismatch");
-        assert(sv_get(link_words, 3) == "foreign.o",
-            "foreign typed input order mismatch");
+            "wrapper object must precede caller inputs");
+        assert(sv_get(link_words, 2) == "app.main.o" &&
+               sv_get(link_words, 3) == "foreign.o",
+            "original interleaved caller input order mismatch");
         assert(sv_get(link_words, 7) == "/exact/libdea_rt.a",
-            "runtime archive must be passed by exact path");
+            "runtime input must follow every caller native input");
         assert(!ldt_has_word(link_words, "-DVALUE=1"),
             "raw C options must not bypass the typed final-link boundary");
         assert(sv_get(link_words, sv_size(link_words) - 2) == "-o",
             "GCC final output flag mismatch");
 
-        ld_push_final_link_words(
+        ld_push_final_link_words_with_runtime_inputs(
             msvc_link, "cl.exe", "msvc", "scratch/wrapper.o",
-            plan, "C:\\runtime\\dea_rt.lib", "out\\app.exe");
+            plan, runtime_inputs, "out\\app.exe");
         assert(sv_get(msvc_link, sv_size(msvc_link) - 1) ==
-            "/Fe:out\\app.exe", "MSVC final /Fe mismatch");
+                "/Fe:out\\app.exe",
+            "MSVC final output flag mismatch");
+
+        assert(ld_validate_windows_shell_values(
+                "C:\\compiler path\\clang.exe", extra,
+                "C:\\runtime include", runtime_inputs,
+                "C:\\output path\\app.exe", plan, diags),
+            "ordinary original paths should pass Windows preflight");
+        ld_plan_input_get(plan, 1).object_path = "%TEMP%\\foreign.o";
+        assert(!ld_validate_windows_shell_values(
+                "clang.exe", extra, "runtime", runtime_inputs,
+                "app.exe", plan, diags),
+            "unsafe original object path must fail before scratch allocation");
 
         assert(ld_host_input_path("-Wl,other.o", "gcc") ==
-            "./-Wl,other.o",
-            "option-shaped relative input must become an explicit path");
+            "./-Wl,other.o", "option-shaped input must become an explicit path");
         assert(ld_host_input_path("@response", "gcc") ==
-            "./@response",
-            "response-shaped relative input must become an explicit path");
+            "./@response", "response-shaped input must become an explicit path");
         assert(ld_host_input_path("/tmp/object.o", "gcc") ==
-            "/tmp/object.o",
-            "GCC-family absolute input path must be retained");
+            "/tmp/object.o", "GCC absolute input path must be retained");
         assert(ld_host_input_path("/root/object.obj", "msvc") ==
-            "\\root\\object.obj",
-            "MSVC rooted input path must not retain an option-shaped slash");
-        assert(ld_windows_shell_word_safe("C:\\safe path\\object.obj"),
-            "ordinary Windows paths should remain shell-stable");
-        assert(!ld_windows_shell_word_safe("%TEMP%\\object.obj"),
-            "percent expansion must be rejected");
-        assert(!ld_windows_shell_word_safe("bang!object.obj"),
-            "delayed-expansion markers must be rejected");
-        assert(!ld_windows_shell_word_safe("quote\"object.obj"),
-            "literal double quotes must be rejected");
-        assert(!ld_windows_shell_word_safe("line\rbreak.obj"),
-            "carriage returns must be rejected");
-        assert(!ld_windows_shell_word_safe("line\nbreak.obj"),
-            "line feeds must be rejected");
-
+            "\\root\\object.obj", "MSVC rooted path normalization mismatch");
+        assert(ld_windows_shell_word_safe("C:\\safe path\\object.obj") &&
+               !ld_windows_shell_word_safe("%TEMP%\\object.obj") &&
+               !ld_windows_shell_word_safe("bang!object.obj") &&
+               !ld_windows_shell_word_safe("quote\"object.obj") &&
+               !ld_windows_shell_word_safe("line\rbreak.obj") &&
+               !ld_windows_shell_word_safe("line\nbreak.obj"),
+            "Windows shell-word validation mismatch");
         ld_plan_free(plan);
     }
 }
 
-/** Verify pre-scratch validation consumes parsed option words exactly. */
+/** Verify pre-scratch and post-allocation Windows word validation. */
 func test_windows_shell_option_word_validation() {
     with (
+        let plan_diags = diag_create() => diag_free(plan_diags),
         let diags = diag_create() => diag_free(diags),
         let runtime_inputs = sv_create(1) => sv_free(runtime_inputs),
         let parsed = bd_merge_c_option_words(
@@ -512,37 +493,19 @@ func test_windows_shell_option_word_validation() {
             "-DCLI_SAFE=1 -DCLI=\"bad&echo injected\""
         ) => sv_free(parsed)
     ) {
+        let plan_opt = ldt_valid_mixed_plan(plan_diags);
+        assert(plan_opt != null, "Windows option fixture plan should validate");
+        let plan = plan_opt as LinkPlan*;
         sv_push(runtime_inputs, "C:\\runtime path\\dea_rt.lib");
         assert(!ld_validate_windows_shell_values(
-                "C:\\compiler path\\clang.exe",
-                parsed,
-                "C:\\runtime include",
-                runtime_inputs,
-                "C:\\output path\\app.exe",
-                diags),
+                "C:\\compiler path\\clang.exe", parsed,
+                "C:\\runtime include", runtime_inputs,
+                "C:\\output path\\app.exe", plan, diags),
             "quote-bearing parsed option word must fail before scratch work");
-        assert(ldt_has_code(diags, "L1C-2106"),
-            "unsafe parsed option diagnostic mismatch");
-        assert(diag_get(diags, 0).filename ==
-            "-DCLI=\"bad&echo",
-            "diagnostic path must identify the exact parsed option word");
-    }
-
-    with (
-        let safe_diags = diag_create() => diag_free(safe_diags),
-        let safe_runtime = sv_create(1) => sv_free(safe_runtime),
-        let safe_options = bd_merge_c_option_words(
-            "-DENV_SAFE=1", "-DCLI_SAFE=1") => sv_free(safe_options)
-    ) {
-        sv_push(safe_runtime, "C:\\runtime path\\dea_rt.lib");
-        assert(ld_validate_windows_shell_values(
-                "C:\\compiler path\\clang.exe",
-                safe_options,
-                "C:\\runtime include",
-                safe_runtime,
-                "C:\\output path\\app.exe",
-                safe_diags),
-            "spaces and ordinary Windows paths must remain accepted");
+        assert(ldt_has_code(diags, "L1C-2106") &&
+               diag_get(diags, 0).filename == "-DCLI=\"bad&echo",
+            "unsafe parsed-option diagnostic mismatch");
+        ld_plan_free(plan);
     }
 
     with (
@@ -557,10 +520,10 @@ func test_windows_shell_option_word_validation() {
                 "L1C-2108",
                 "unsafe captured-output path",
                 redirect_diags),
-            "unsafe redirection paths must use the exact-word guard");
+            "unsafe generated or redirected path must fail exact-word validation");
         assert(diag_get(redirect_diags, 0).filename ==
-            "scratch\\stdout%TEMP%",
-            "redirection diagnostic must identify the unsafe path");
+                "scratch\\stdout%TEMP%",
+            "post-allocation diagnostic must identify the exact unsafe path");
     }
 
     with (
@@ -569,17 +532,13 @@ func test_windows_shell_option_word_validation() {
     ) {
         sv_push(newline_values, "-DVALUE=line\nspoof");
         assert(!ld_validate_windows_shell_words(
-                newline_values,
-                "L1C-2106",
-                "unsafe command value",
+                newline_values, "L1C-2106", "unsafe command value",
                 newline_diags),
             "line-breaking command values must fail validation");
-        assert(contains_s(
-                diag_get(newline_diags, 0).message, "\\x0aspoof"),
-            "unsafe command-value diagnostics must escape line feeds");
-        assert(!contains_s(diag_get(newline_diags, 0).message, "\n") &&
+        assert(contains_s(diag_get(newline_diags, 0).message, "\\x0aspoof") &&
+               !contains_s(diag_get(newline_diags, 0).message, "\n") &&
                !contains_s(diag_get(newline_diags, 0).filename, "\n"),
-            "unsafe command-value diagnostics must remain single-line");
+            "unsafe command-value diagnostics must be escaped and single-line");
     }
 }
 
@@ -596,6 +555,30 @@ func test_windows_system_command_transport() {
         "POSIX system transport must remain unchanged");
 }
 
+/** Verify output validation requires an existing parent and safe final kind. */
+func test_output_validation() {
+    let regular = "compiler/stage1_l0/tests/.tmp-link-output";
+    delete_file(regular);
+    with (let diags = diag_create() => diag_free(diags)) {
+        assert(ld_validate_output(regular, diags),
+            "absent output in an existing parent should validate");
+        assert(write_file(regular, "old") != null,
+            "expected regular output fixture");
+        assert(ld_validate_output(regular, diags),
+            "existing regular output should validate");
+        delete_file(regular);
+    }
+
+    with (let missing_diags = diag_create() => diag_free(missing_diags)) {
+        assert(!ld_validate_output(
+            "compiler/stage1_l0/tests/.missing-link-parent/out",
+            missing_diags),
+            "missing output parent must fail");
+        assert(ldt_has_code(missing_diags, "L1C-2105"),
+            "invalid output diagnostic mismatch");
+    }
+}
+
 /** Remove one transaction directory that contains only known children. */
 func ldt_remove_transaction(root: string) {
     if (cfs_path_kind(root) != CFS_PATH_DIRECTORY) {
@@ -606,7 +589,7 @@ func ldt_remove_transaction(root: string) {
     ld_transaction_free(txn);
 }
 
-/** Verify collision retry and bounded non-recursive cleanup. */
+/** Verify collision retry and bounded nonrecursive cleanup. */
 func test_link_transaction_lifecycle() {
     let parent_dir = "compiler/stage1_l0/tests";
     let root0 = join(parent_dir, ".l1c-link-4242-7-9-0");
@@ -637,77 +620,194 @@ func test_link_transaction_lifecycle() {
     assert(!ld_cleanup_transaction(stale),
         "unexpected child must make bounded cleanup fail");
     assert(cfs_path_kind(root0) == CFS_PATH_DIRECTORY,
-        "failed cleanup must retain transaction root");
+        "failed cleanup must retain the transaction root");
     delete_file(unexpected);
     assert(ld_cleanup_transaction(stale),
         "cleanup should succeed after unexpected child removal");
     ld_transaction_free(stale);
 }
 
-/** Verify output validation requires an existing parent and safe final kind. */
-func test_output_validation() {
-    let regular = "compiler/stage1_l0/tests/.tmp-link-output";
-    delete_file(regular);
+/** Verify CLI preparation reads only the sibling semantic artifact. */
+func test_cli_pair_loading_and_native_opacity() {
+    let object_path = "compiler/stage1_l0/tests/.tmp-arbitrary-pair.o";
+    let interface_path = "compiler/stage1_l0/tests/.tmp-arbitrary-pair.l1m";
+    delete_file(object_path);
+    delete_file(interface_path);
+    let interface = ldt_interface("header.identity", true);
+    assert(write_file(object_path, "not a native object") != null,
+        "expected opaque native fixture");
+    assert(write_file(interface_path, ie_emit(interface)) != null,
+        "expected authoritative sibling fixture");
+    mi_free(interface);
+
     with (let diags = diag_create() => diag_free(diags)) {
-        assert(ld_validate_output(regular, diags),
-            "absent output in an existing parent should validate");
-        assert(write_file(regular, "old") != null,
-            "expected regular output fixture");
-        assert(ld_validate_output(regular, diags),
-            "existing regular output should validate");
-        delete_file(regular);
+        let operands = cli_link_operands_create();
+        cli_link_operands_push(operands, LOK_DEA_OBJECT, object_path);
+        let plan = ld_prepare_cli_inputs(operands, null, diags);
+        assert(plan != null,
+            "regular opaque bytes plus a verified sibling must prepare");
+        assert((plan as LinkPlan*).entry_module == "header.identity",
+            "sibling header must be authoritative over basename spelling");
+        assert(ld_plan_input_get(plan as LinkPlan*, 0).object_path == object_path,
+            "prepared input must preserve the original native path");
+        with (let runtime_inputs = sv_create(0) => sv_free(runtime_inputs)) {
+            assert(!ld_validate_output_aliases(
+                    interface_path,
+                    plan as LinkPlan*,
+                    runtime_inputs,
+                    object_path,
+                    diags),
+                "output must not alias a consumed authoritative interface");
+            assert(ldt_has_code(diags, "L1C-2105"),
+                "interface output-alias diagnostic mismatch");
+        }
+        ld_plan_free(plan as LinkPlan*);
+        cli_link_operands_free(operands);
     }
+    delete_file(interface_path);
 
     with (let missing_diags = diag_create() => diag_free(missing_diags)) {
-        assert(!ld_validate_output(
-            "compiler/stage1_l0/tests/.missing-link-parent/out",
-            missing_diags),
-            "missing output parent must fail");
-        assert(ldt_has_code(missing_diags, "L1C-2105"),
-            "invalid output diagnostic mismatch");
+        let operands2 = cli_link_operands_create();
+        cli_link_operands_push(operands2, LOK_DEA_OBJECT, object_path);
+        assert(ld_prepare_cli_inputs(operands2, null, missing_diags) == null,
+            "missing sibling must fail");
+        assert(ldt_has_code(missing_diags, "DRV-0074"),
+            "missing sibling diagnostic mismatch");
+        cli_link_operands_free(operands2);
     }
+
+    assert(cfs_mkdir(interface_path, 448) == 1,
+        "expected nonregular sibling fixture");
+    with (let nonregular_diags = diag_create() => diag_free(nonregular_diags)) {
+        let operands3 = cli_link_operands_create();
+        cli_link_operands_push(operands3, LOK_DEA_OBJECT, object_path);
+        assert(ld_prepare_cli_inputs(
+                operands3, null, nonregular_diags) == null,
+            "nonregular sibling must fail");
+        assert(ldt_has_code(nonregular_diags, "DRV-0075"),
+            "nonregular sibling diagnostic mismatch");
+        cli_link_operands_free(operands3);
+    }
+    assert(cfs_remove_empty_dir(interface_path) == 1,
+        "nonregular sibling fixture should clean");
+    delete_file(object_path);
 }
 
-/** Verify wrapper validation rejects a regular non-object artifact. */
-func test_wrapper_object_validation() {
-    let path = "compiler/stage1_l0/tests/.tmp-link-wrapper-object";
-    delete_file(path);
-    assert(write_file(path, "not an object") != null,
-        "expected fake wrapper artifact");
-    with (let diags = diag_create() => diag_free(diags)) {
-        assert(!ld_validate_wrapper_object(path, diags),
-            "regular non-object wrapper output must fail");
-        assert(ldt_has_code(diags, "L1C-2108"),
-            "invalid wrapper object diagnostic mismatch");
-    }
-    delete_file(path);
+/** Verify global operand preflight finishes before any sibling is read. */
+func test_cli_operand_preflight_precedes_sibling_reads() {
+    let first_object = "compiler/stage1_l0/tests/.tmp-pass-first.o";
+    let first_interface = "compiler/stage1_l0/tests/.tmp-pass-first.l1m";
+    let bad_suffix = "compiler/stage1_l0/tests/.tmp-pass-later.obj";
+    let missing_native = "compiler/stage1_l0/tests/.tmp-pass-later.o";
+    delete_file(first_object);
+    delete_file(first_interface);
+    delete_file(bad_suffix);
+    delete_file(missing_native);
+    assert(write_file(first_object, "opaque") != null,
+        "expected first native preflight fixture");
+    assert(write_file(first_interface, byte_to_s(255 as byte)) != null,
+        "expected sibling whose premature read would diagnose UTF-8");
+    assert(write_file(bad_suffix, "opaque") != null,
+        "expected later invalid-suffix fixture");
 
-    with (let control_diags = diag_create() => diag_free(control_diags)) {
-        let inspection = ldt_foreign_inspection(true);
-        inspection.container.linker_control =
-            OBJECT_LINKER_CONTROL_ELF_DEPENDENT_LIBRARIES;
-        assert(!ld_validate_linker_control(
-                "wrapper.o", inspection, control_diags),
-            "directive-bearing wrapper objects must fail validation");
-        assert(ldt_has_code(control_diags, "L1C-2110"),
-            "directive-bearing wrapper diagnostic mismatch");
-        object_inspection_free(inspection);
+    with (let suffix_diags = diag_create() => diag_free(suffix_diags)) {
+        let suffix_operands = cli_link_operands_create();
+        cli_link_operands_push(
+            suffix_operands, LOK_DEA_OBJECT, first_object);
+        cli_link_operands_push(
+            suffix_operands, LOK_DEA_OBJECT, bad_suffix);
+        assert(ld_prepare_cli_inputs(
+                suffix_operands, null, suffix_diags) == null,
+            "later invalid suffix must reject the complete operand set");
+        assert(ldt_has_code(suffix_diags, "L1C-2097") &&
+               !ldt_has_code(suffix_diags, "DRV-0076"),
+            "path-only role failure must precede every sibling read");
+        cli_link_operands_free(suffix_operands);
     }
+
+    with (let native_diags = diag_create() => diag_free(native_diags)) {
+        let native_operands = cli_link_operands_create();
+        cli_link_operands_push(
+            native_operands, LOK_DEA_OBJECT, first_object);
+        cli_link_operands_push(
+            native_operands, LOK_DEA_OBJECT, missing_native);
+        assert(ld_prepare_cli_inputs(
+                native_operands, null, native_diags) == null,
+            "later missing native input must reject the complete operand set");
+        assert(ldt_has_code(native_diags, "L1C-2097") &&
+               !ldt_has_code(native_diags, "DRV-0076"),
+            "native endpoint failure must precede every sibling read");
+        cli_link_operands_free(native_operands);
+    }
+
+    delete_file(first_object);
+    delete_file(first_interface);
+    delete_file(bad_suffix);
+}
+
+/** Verify UTF-8 and no-follow wrapper endpoint validation. */
+func test_interface_decode_and_wrapper_endpoint_validation() {
+    let object_path = "compiler/stage1_l0/tests/.tmp-invalid-interface.o";
+    let interface_path = "compiler/stage1_l0/tests/.tmp-invalid-interface.l1m";
+    delete_file(object_path);
+    delete_file(interface_path);
+    assert(write_file(object_path, "opaque") != null, "expected object fixture");
+    assert(write_file(interface_path, byte_to_s(255 as byte)) != null,
+        "expected invalid UTF-8 sibling");
+    with (let diags = diag_create() => diag_free(diags)) {
+        let operands = cli_link_operands_create();
+        cli_link_operands_push(operands, LOK_DEA_OBJECT, object_path);
+        assert(ld_prepare_cli_inputs(operands, null, diags) == null,
+            "invalid UTF-8 sibling must fail");
+        assert(ldt_has_code(diags, "DRV-0076"),
+            "invalid UTF-8 sibling diagnostic mismatch");
+        cli_link_operands_free(operands);
+    }
+    delete_file(object_path);
+    delete_file(interface_path);
+
+    let wrapper = "compiler/stage1_l0/tests/.tmp-link-wrapper-object";
+    delete_file(wrapper);
+    with (let missing_diags = diag_create() => diag_free(missing_diags)) {
+        assert(!ld_validate_wrapper_object(wrapper, missing_diags),
+            "missing wrapper endpoint must fail");
+        assert(ldt_has_code(missing_diags, "L1C-2108"),
+            "missing wrapper diagnostic mismatch");
+    }
+    assert(write_file(wrapper, "opaque wrapper bytes") != null,
+        "expected regular wrapper endpoint");
+    with (let regular_diags = diag_create() => diag_free(regular_diags)) {
+        assert(ld_validate_wrapper_object(wrapper, regular_diags),
+            "regular wrapper bytes must remain opaque to Dea");
+    }
+    delete_file(wrapper);
+    assert(cfs_mkdir(wrapper, 448) == 1,
+        "expected no-follow nonregular wrapper substitution fixture");
+    with (let substituted_diags = diag_create() => diag_free(substituted_diags)) {
+        assert(!ld_validate_wrapper_object(wrapper, substituted_diags),
+            "nonregular wrapper substitution must fail no-follow validation");
+        assert(ldt_has_code(substituted_diags, "L1C-2108"),
+            "wrapper substitution diagnostic mismatch");
+    }
+    assert(cfs_remove_empty_dir(wrapper) == 1,
+        "wrapper substitution fixture should clean");
 }
 
 /** Main entry point. */
 func main() {
     test_valid_mixed_plan_ordering();
     test_graph_failures();
+    test_transitive_provenance();
+    test_interface_verification_precedes_registration();
     test_deep_graph_uses_iterative_traversal();
-    test_entry_selection();
-    test_classification_failures();
-    test_embedded_linker_control_failures();
-    test_host_command_words();
+    test_lifecycle_diamond_and_entry_selection();
+    test_host_command_words_and_windows_preflight();
     test_windows_shell_option_word_validation();
     test_windows_system_command_transport();
-    test_link_transaction_lifecycle();
     test_output_validation();
-    test_wrapper_object_validation();
+    test_link_transaction_lifecycle();
+    test_cli_pair_loading_and_native_opacity();
+    test_cli_operand_preflight_precedes_sibling_reads();
+    test_interface_decode_and_wrapper_endpoint_validation();
     printl_s("link_driver_test: all tests passed");
 }

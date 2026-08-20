@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-07-28
+Version: 2026-08-20
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -39,8 +39,8 @@ The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 ### Compiler
 
 `compiler/stage1_l0/` is the only implemented L1 compiler today. It provides the bootstrap frontend, semantic analysis,
-C generation, compile-only artifact production, verified standalone object linking, and host build/run integration for
-`.l1` inputs.
+C generation, compile-only artifact production, interface-authoritative standalone linking, and host build/run
+integration for `.l1` inputs.
 
 The implementation sources remain `.l0`, while user-facing L1 source inputs, examples, and stdlib modules use `.l1`.
 
@@ -59,8 +59,9 @@ external linkage independently of source exports.
 The bootstrap compiler can emit deterministic textual `.l1m` module interface artifacts through the internal `-Gi` /
 `--emit-interface` mode and round-trip them through a constrained interface parser. Emission computes a canonical
 SipHash-1-3 fingerprint over the effective exported surface, writes the mandatory
-`sip13:<16 lowercase hexadecimal digits>` value, and fills every dependency entry with its provider module's
-whole-module fingerprint.
+`sip13:<16 lowercase hexadecimal digits>` value, records optional entry presence and stable first-occurrence ordered
+non-virtual lifecycle imports, and fills every dependency entry with its provider module's whole-module fingerprint.
+Entry, imports, `require`, and `link` are operational manifests outside the public fingerprint domain.
 
 Resolution-aware internal entry points discover imported interfaces from ordered roots, select the first matching
 `.l1m`, recursively close over `require` and `link` dependencies, and replay activated `require` providers without
@@ -73,26 +74,20 @@ edges and source direct imports but excludes `link` edges. References outside th
 
 The deterministic module graph records one source, interface, registry, or virtual origin per canonical module. It
 provides sorted node enumeration, canonical sibling `.c`, `.o`, and `.l1m` path associations, dependency-tier edges, and
-direct source imports in exact declaration order. Interface projection classifies resolved cross-module public surface
-references as `require` and remaining implementation references as `link`.
+direct source imports in exact declaration order with duplicates. Interface projection independently emits a
+virtual-filtered, first-occurrence lifecycle-import view, classifies resolved cross-module public surface references as
+`require`, and records remaining implementation references as `link`.
 
 The backend now exposes an internal `backend_generate_module(...)` entry point that emits definitions for one selected
 source-backed module. It emits external declarations for provider-owned source and interface values and functions
-consumed by that target, external `I8metadata` and `I7imports` byte arrays, always-present external `I4init` and
-`I4fini`, and conditional external `I5entry` for a resolved, zero-parameter, non-extern source `main`. The arrays record
-the module's verified whole-interface fingerprint, entry presence, and unique direct object-backed (non-virtual)
-providers in first source-import order. Volatile reads from `I4init` retain both records through linker dead-strip.
-Module output contains no process `main`, global init chain, or dependency lifecycle calls. Compile-only consumes this
-module boundary; the legacy `backend_generate(...)` path remains the ordinary generation, build, and run path.
+consumed by that target, always-present external `I4init` and `I4fini`, and conditional external `I5entry` for a
+resolved, zero-parameter, non-extern source `main`. Module output contains no process `main`, global init chain,
+dependency lifecycle calls, embedded Dea metadata arrays, or retention reads. Compile-only consumes this module
+boundary; the legacy `backend_generate(...)` path remains the ordinary generation, build, and run path.
 
-The compiler includes bounded readers for ELF, Mach-O, and standard COFF relocatable objects. Exact normalization covers
-Darwin TinyCC ELF aliases, Mach-O and COFF I386 leading underscores, and the leading `#` on ARM64EC function symbols;
-supported COFF machines are I386, ARM, ARMNT, AMD64, ARM64EC, and ARM64. The format-neutral inspection API reports
-container information, exact defined symbols, process-level C `main` presence, one normalized embedded-linker-control
-kind, and one of valid Dea metadata, no Dea metadata, or malformed Dea metadata. Every external definition under the
-normalized, reserved `__dea` prefix without a complete consistent metadata pair is malformed rather than
-foreign-compatible, even when its suffix is not valid LBI. File access failures and unsupported or corrupt containers
-remain separate object-read errors.
+The compiler no longer carries ELF, Mach-O, or PE/COFF object readers. Standalone link performs no Dea-side reads of
+caller Dea or foreign object bytes, compiled wrapper bytes, runtime archive bytes, or TinyCC runtime-object bytes.
+Native-format, architecture, symbol, and embedded-control validation belongs to the selected host compiler/linker.
 
 Ordinary build/run CLI imports remain source-based today. Compile-only instead requires verified `.l1m` interfaces for
 non-virtual imports and never falls back to provider source.
@@ -113,20 +108,26 @@ for logging and tracing. `-V` prints version information. The conventional `-g`,
 reserved but not implemented.
 
 The CLI implements `l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT`, with long aliases `--link`,
-`--foreign-object`, and `--entry`. Positional inputs must carry valid Dea metadata; metadata-free relocatables require
-the explicit foreign spelling; malformed Dea evidence, foreign objects defining process `main`, and either role's ELF,
-Mach-O, or PE/COFF embedded linker controls are rejected. The generated wrapper object receives the same control
-inspection before final linking. The driver verifies unique module identities, complete ordered-import closure, exact
-provider fingerprints, an acyclic graph, and one explicit or inferred entry without reopening source or `.l1m` files.
+`--foreign-object`, and `--entry`. Every positional path must have the exact terminal `.o` suffix and a verified regular
+sibling `.l1m`; the interface header supplies identity, `entry;` supplies entry eligibility, and ordered `import module`
+records supply lifecycle edges. The paired `.o` remains an opaque original-path host input. `--foreign-object` asserts
+one regular host-compatible relocatable input without Dea inspecting its format, symbols, `main`, reserved names, or
+embedded controls.
+
+The driver verifies all interfaces before identity registration, then checks unique modules, provider presence, exact
+provider-interface fingerprints, explicit or inferred entry, lifecycle-import cycles, and transitive lifecycle
+provenance for every non-virtual `require` / `link` provider. Semantic dependency records never create lifecycle edges
+or implicit objects.
 
 An explicit depth-first frame stack computes deterministic dependency-first lifecycle order without native recursion.
 The generated wrapper calls only the selected entry bridge and finalizes modules in exact reverse order. Normal compiler
 families receive the selected runtime archive by exact path. TinyCC may instead receive the complete variant-matched
 repo-local raw object set under the ADR-0027 compatibility carve-out when that set is available, with exact archive
-fallback otherwise. Wrapper artifacts live in an exclusive output-local `.l1c-link-...` transaction with bounded,
-non-recursive cleanup; the host linker writes the final executable directly to the caller-selected path. Native Windows
-rejects expansion-, quote-, or line-break-bearing standalone command words and redirection paths while the transport
-still passes through `cmd.exe`.
+fallback otherwise. Runtime native inputs are checked as regular files but not read. Wrapper and capture artifacts live
+in an exclusive output-local `.l1c-link-...` transaction with bounded, non-recursive cleanup; caller inputs are not
+snapshotted, and the host linker receives their original safe-rendered paths and writes directly to the caller-selected
+output. Native Windows rejects expansion-, quote-, or line-break-bearing standalone command words and redirection paths
+while the transport still passes through `cmd.exe`.
 
 Ordinary `--build` / `--run` remain source-based single-CU operations.
 
@@ -266,8 +267,8 @@ These remain true today:
 1. There is no implemented `stage2_l1` compiler yet.
 2. Ordinary build/run CLI backend output is one legacy whole-program C translation unit; compile-only uses the internal
    module generator, but multi-CU build/run orchestration is not operational.
-3. Standalone linking consumes explicit object paths and does not discover objects, compile sources, or accept external
-   libraries, rpaths, or raw host-link arguments.
+3. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit
+   objects, compile sources, or accept external libraries, rpaths, or raw host-link arguments.
 4. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
 5. Address-of (`&`) and generics are not part of the current active language surface.

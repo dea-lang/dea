@@ -491,7 +491,7 @@ func cli_print_help() {
     cli_print_line(false, "  --run, -r             Build and run a module");
     cli_print_line(false, "  --build               Build an executable (default mode)");
     cli_print_line(false, "  -c, --compile         Compile one module to sibling .o and .l1m artifacts");
-    cli_print_line(false, "  -k, --link            Link verified Dea objects into an executable");
+    cli_print_line(false, "  -k, --link            Link Dea .o files through verified sibling .l1m files");
     cli_print_line(false, "  -Gi, --emit-interface Emit the module interface (.l1m) text for the target module");
     cli_print_line(false, "  --gen, -Gc, --codegen Generate C code");
     cli_print_line(false, "  --check, --analyze    Parse and analyze a module");
@@ -501,8 +501,8 @@ func cli_print_help() {
     cli_print_line(false, "  --type, --types       Dump resolved types");
     cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--compile', '--emit-interface', '--gen', '--link', '--run')");
     cli_print_line(false, "  -Cf, --foreign-object C_OBJECT");
-    cli_print_line(false, "                        Add an explicit metadata-free relocatable C object");
-    cli_print_line(false, "                        in encounter order (repeatable; valid in: '--link')");
+    cli_print_line(false, "                        Assert one host-compatible relocatable native object");
+    cli_print_line(false, "                        and add it in encounter order (repeatable; valid in: '--link')");
     cli_print_line(false, "  -e, --entry MODULE    Select one canonical dotted Dea entry module");
     cli_print_line(false, "                        (at most once; valid in: '--link')");
     cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");

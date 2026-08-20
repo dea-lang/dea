@@ -148,6 +148,9 @@ func test_interface_fingerprint_leading_zero_digest() {
 func test_interface_fingerprint_order_and_exclusions() {
     let first_text = "module interface first;\n" +
         "fingerprint \"opaque:first\";\n" +
+        "entry;\n" +
+        "import module z.dep == \"opaque:import-z\";\n" +
+        "import module a.dep == \"opaque:import-a\";\n" +
         "require dep::item == \"opaque:dependency\";\n" +
         "func zed() -> int;\n" +
         "func alpha() -> int;\n";
@@ -163,7 +166,7 @@ func test_interface_fingerprint_order_and_exclusions() {
     let b = ifp_canonicalize(second.interface as ModuleInterface*, second_diags, "<order-second>");
     assert(a != null && b != null, "order fixtures should canonicalize");
     assert(ifpt_optionals_equal(a, b),
-        "module identity, fingerprint, dependencies, and declaration order must be excluded");
+        "module identity, fingerprint, entry, imports, dependencies, and declaration order must be excluded");
     diag_free(first_diags);
     diag_free(second_diags);
     ipr_free(first);
@@ -562,6 +565,97 @@ func test_interface_fingerprint_dependency_validation() {
     ifpt_assert_first_code(diags, "SIG-0284", "dependency consistency");
     diag_free(diags);
     ipr_free(parsed);
+
+    let agreeing = ifpt_parse(
+        "module interface deps;\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
+        "import module provider == \"sip13:1111111111111111\";\n" +
+        "require provider::One == \"sip13:1111111111111111\";\n" +
+        "link provider::Two == \"sip13:1111111111111111\";\n",
+        "<dependency-agreement>"
+    );
+    let agreeing_diags = diag_create();
+    assert(ifp_validate_dependencies(agreeing.interface as ModuleInterface*, agreeing_diags,
+        "<dependency-agreement>"), "same-provider expectations should agree across every manifest");
+    assert(!diag_has_errors(agreeing_diags), "agreeing provider expectations should not diagnose");
+    diag_free(agreeing_diags);
+    ipr_free(agreeing);
+
+    let import_conflict = ifpt_parse(
+        "module interface deps;\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
+        "import module provider == \"sip13:1111111111111111\";\n" +
+        "require provider::One == \"sip13:2222222222222222\";\n",
+        "<import-dependency-conflict>"
+    );
+    let conflict_diags = diag_create();
+    assert(!ifp_validate_dependencies(import_conflict.interface as ModuleInterface*, conflict_diags,
+        "<import-dependency-conflict>"), "import/dependency provider conflict should fail");
+    ifpt_assert_first_code(conflict_diags, "SIG-0284", "import/dependency consistency");
+    diag_free(conflict_diags);
+    ipr_free(import_conflict);
+
+    let malformed_import = ifpt_parse(
+        "module interface deps;\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
+        "import module provider == \"not-tagged\";\n",
+        "<malformed-import-fingerprint>"
+    );
+    let malformed_diags = diag_create();
+    assert(!ifp_validate_dependencies(malformed_import.interface as ModuleInterface*, malformed_diags,
+        "<malformed-import-fingerprint>"), "malformed import fingerprint should fail");
+    ifpt_assert_first_code(malformed_diags, "SIG-0280", "malformed import fingerprint");
+    diag_free(malformed_diags);
+    ipr_free(malformed_import);
+
+    let unsupported_import = ifpt_parse(
+        "module interface deps;\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
+        "import module provider == \"sha2:1111111111111111\";\n",
+        "<unsupported-import-fingerprint>"
+    );
+    let unsupported_diags = diag_create();
+    assert(!ifp_validate_dependencies(unsupported_import.interface as ModuleInterface*, unsupported_diags,
+        "<unsupported-import-fingerprint>"), "unsupported import fingerprint should fail");
+    ifpt_assert_first_code(unsupported_diags, "SIG-0281", "unsupported import fingerprint");
+    diag_free(unsupported_diags);
+    ipr_free(unsupported_import);
+
+    let duplicate = ifpt_parse(
+        "module interface duplicate;\nfingerprint \"\";\n",
+        "<programmatic-duplicate-import>"
+    );
+    let duplicate_mi = duplicate.interface as ModuleInterface*;
+    let duplicate_assign_diags = diag_create();
+    assert(ifp_assign(duplicate_mi, duplicate_assign_diags, "<programmatic-duplicate-import>"),
+        "empty interface should fingerprint before operational mutation");
+    ptr_vec_push(duplicate_mi.module_imports,
+        new InterfaceModuleImport("provider", "sip13:1111111111111111") as void*);
+    ptr_vec_push(duplicate_mi.module_imports,
+        new InterfaceModuleImport("provider", "sip13:1111111111111111") as void*);
+    let duplicate_diags = diag_create();
+    assert(!ifp_verify(duplicate_mi, duplicate_diags, "<programmatic-duplicate-import>"),
+        "programmatic duplicate imports should fail verification");
+    ifpt_assert_first_code(duplicate_diags, "SIG-0285", "programmatic duplicate import");
+    diag_free(duplicate_assign_diags);
+    diag_free(duplicate_diags);
+    ipr_free(duplicate);
+
+    let virtual = ifpt_parse(
+        "module interface virtual;\nfingerprint \"\";\n" +
+        "import module dea == \"sip13:1111111111111111\";\n",
+        "<persisted-virtual-import>"
+    );
+    let virtual_assign_diags = diag_create();
+    assert(ifp_assign(virtual.interface as ModuleInterface*, virtual_assign_diags,
+        "<persisted-virtual-import>"), "virtual fixture should fingerprint before verification");
+    let virtual_diags = diag_create();
+    assert(!ifp_verify(virtual.interface as ModuleInterface*, virtual_diags,
+        "<persisted-virtual-import>"), "persisted virtual provider should fail verification");
+    ifpt_assert_first_code(virtual_diags, "SIG-0285", "persisted virtual provider");
+    diag_free(virtual_assign_diags);
+    diag_free(virtual_diags);
+    ipr_free(virtual);
 }
 
 /** Test mismatches and inconsistent canonical models diagnose distinctly. */
@@ -719,7 +813,10 @@ func test_interface_fingerprint_model_guards() {
 /** Test cloning and suffix-free emission retain canonical identity. */
 func test_interface_fingerprint_clone_reemit() {
     let parsed = ifpt_parse(
-        "module interface cloneable;\nfingerprint \"\";\nopaque struct Handle;\nfunc make() -> Handle*;\n",
+        "module interface cloneable;\nfingerprint \"\";\n" +
+        "entry;\n" +
+        "import module provider == \"sip13:1111111111111111\";\n" +
+        "opaque struct Handle;\nfunc make() -> Handle*;\n",
         "<clone>"
     );
     let original_diags = diag_create();
@@ -733,6 +830,9 @@ func test_interface_fingerprint_clone_reemit() {
         "clone/re-emitted interface should verify");
     assert((reparsed.interface as ModuleInterface*).fingerprint ==
         (parsed.interface as ModuleInterface*).fingerprint, "clone/re-emission must preserve fingerprint");
+    assert((reparsed.interface as ModuleInterface*).has_entry &&
+        vec_size((reparsed.interface as ModuleInterface*).module_imports) == 1,
+        "clone/re-emission must preserve entry and ordered import metadata");
     diag_free(original_diags);
     diag_free(reparsed_diags);
     mi_free(clone);

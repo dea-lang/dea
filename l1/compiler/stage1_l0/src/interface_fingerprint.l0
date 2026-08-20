@@ -16,9 +16,11 @@ import util.diag;
 import util.numbers;
 
 import ast;
+import dea_prelude;
 import interface_order;
 import interface_literal;
 import module_interface;
+import source_paths;
 import types;
 
 /**
@@ -951,72 +953,117 @@ func ifp_validate_value(value: string, context: string, diags: DiagCollector*, f
 }
 
 /**
- * Return a previously seen fingerprint for one provider, or `null`.
+ * Find one provider in a parallel operational-expectation cache.
  *
- * @param mi Module interface whose dependency tiers should be searched.
- * @param before_tier Current tier index.
- * @param before_index Current entry index within its tier.
- * @param provider_module Provider module to find.
- * @return Borrowed prior fingerprint, or `null` when none precedes the entry.
+ * @param provider_names Provider names already validated.
+ * @param provider_module Provider to find.
+ * @return Cache index, or `-1` when absent.
  */
-func ifp_previous_provider_value(mi: ModuleInterface*, before_tier: int, before_index: int,
-                                 provider_module: string) -> string? {
-    if (before_tier >= 0) {
-        let req_limit = vec_size(mi.require_entries);
-        if (before_tier == 0) {
-            req_limit = before_index;
-        }
-        for (let i = 0; i < req_limit; i = i + 1) {
-            let entry = ptr_vec_get(mi.require_entries, i) as InterfaceDepEntry*;
-            if (entry.provider_module == provider_module) return entry.provider_fingerprint;
+func ifp_provider_index(provider_names: StringVector*, provider_module: string) -> int {
+    for (let i = 0; i < sv_size(provider_names); i = i + 1) {
+        if (sv_get(provider_names, i) == provider_module) {
+            return i;
         }
     }
-    if (before_tier == 1) {
-        for (let j = 0; j < before_index; j = j + 1) {
-            let entry2 = ptr_vec_get(mi.link_entries, j) as InterfaceDepEntry*;
-            if (entry2.provider_module == provider_module) return entry2.provider_fingerprint;
-        }
-    }
-    return null;
+    return -1;
 }
 
 /**
- * Compare one borrowed previous provider value with the current entry.
+ * Validate one provider expectation and record cross-manifest consistency.
  *
- * @param previous Previously observed provider fingerprint.
- * @param current Current provider fingerprint.
- * @return `true` when both values match.
- */
-func ifp_provider_value_matches(previous: string, current: string) -> bool {
-    return previous == current;
-}
-
-/**
- * Validate dependency tags and per-provider consistency across both tiers.
- *
- * @param mi Module interface whose dependencies should be validated.
+ * @param provider_module Provider module name.
+ * @param provider_fingerprint Tagged expected fingerprint.
+ * @param context Human-readable fingerprint context.
+ * @param provider_names Shared provider-name cache.
+ * @param provider_fingerprints Parallel shared fingerprint cache.
  * @param diags Diagnostic collector.
  * @param filename Interface filename.
- * @return `true` when every dependency fingerprint is valid and consistent.
+ * @return `true` when the expectation is valid and consistent.
+ */
+func ifp_validate_provider_expectation(provider_module: string, provider_fingerprint: string,
+                                       context: string, provider_names: StringVector*,
+                                       provider_fingerprints: StringVector*, diags: DiagCollector*,
+                                       filename: string) -> bool {
+    if (!sp_is_valid_module_name(provider_module) || dea_is_virtual_module_name(provider_module)) {
+        ifp_error(diags, "SIG-0285", "invalid operational provider module '" + provider_module + "'",
+            filename);
+        return false;
+    }
+    if (!ifp_validate_value(provider_fingerprint, context, diags, filename)) {
+        return false;
+    }
+    let provider_index = ifp_provider_index(provider_names, provider_module);
+    if (provider_index >= 0) {
+        if (sv_get(provider_fingerprints, provider_index) != provider_fingerprint) {
+            ifp_error(diags, "SIG-0284", "conflicting fingerprints for provider module '" +
+                provider_module + "'", filename);
+            return false;
+        }
+        return true;
+    }
+    sv_push(provider_names, provider_module);
+    sv_push(provider_fingerprints, provider_fingerprint);
+    return true;
+}
+
+/**
+ * Validate operational manifests and per-provider consistency across all views.
+ *
+ * Module imports additionally require provider uniqueness. Compiler-synthesized
+ * virtual providers are invalid in every persisted operational manifest.
+ *
+ * @param mi Module interface whose operational records should be validated.
+ * @param diags Diagnostic collector.
+ * @param filename Interface filename.
+ * @return `true` when every operational record is valid and coherent.
  */
 func ifp_validate_dependencies(mi: ModuleInterface*, diags: DiagCollector*, filename: string) -> bool {
-    for (let tier = 0; tier < 2; tier = tier + 1) {
-        let entries = mi.require_entries;
-        if (tier == 1) {
-            entries = mi.link_entries;
-        }
-        for (let i = 0; i < vec_size(entries); i = i + 1) {
-            let entry = ptr_vec_get(entries, i) as InterfaceDepEntry*;
-            let context = "provider fingerprint for '" + entry.provider_module + "::" + entry.symbol_name + "'";
-            if (!ifp_validate_value(entry.provider_fingerprint, context, diags, filename)) {
-                return false;
-            }
-            let previous = ifp_previous_provider_value(mi, tier, i, entry.provider_module);
-            if (previous != null &&
-                !ifp_provider_value_matches(previous as string, entry.provider_fingerprint)) {
-                ifp_error(diags, "SIG-0284", "conflicting fingerprints for provider module '" +
+    with (let provider_names = sv_create(4) => sv_free(provider_names),
+          let provider_fingerprints = sv_create(4) => sv_free(provider_fingerprints),
+          let import_providers = ss_create() => ss_free(import_providers)) {
+        for (let import_i = 0; import_i < vec_size(mi.module_imports); import_i = import_i + 1) {
+            let entry = ptr_vec_get(mi.module_imports, import_i) as InterfaceModuleImport*;
+            if (!ss_add(import_providers, entry.provider_module)) {
+                ifp_error(diags, "SIG-0285", "duplicate module import provider '" +
                     entry.provider_module + "'", filename);
                 return false;
+            }
+            if (!ifp_validate_provider_expectation(
+                    entry.provider_module,
+                    entry.provider_fingerprint,
+                    "provider fingerprint for imported module '" + entry.provider_module + "'",
+                    provider_names,
+                    provider_fingerprints,
+                    diags,
+                    filename)) {
+                return false;
+            }
+        }
+
+        for (let tier = 0; tier < 2; tier = tier + 1) {
+            let entries = mi.require_entries;
+            if (tier == 1) {
+                entries = mi.link_entries;
+            }
+            for (let i = 0; i < vec_size(entries); i = i + 1) {
+                let entry2 = ptr_vec_get(entries, i) as InterfaceDepEntry*;
+                if (!sp_is_valid_ident_component(entry2.symbol_name)) {
+                    ifp_error(diags, "SIG-0285", "invalid operational provider symbol '" +
+                        entry2.provider_module + "::" + entry2.symbol_name + "'", filename);
+                    return false;
+                }
+                let context = "provider fingerprint for '" + entry2.provider_module + "::" +
+                    entry2.symbol_name + "'";
+                if (!ifp_validate_provider_expectation(
+                        entry2.provider_module,
+                        entry2.provider_fingerprint,
+                        context,
+                        provider_names,
+                        provider_fingerprints,
+                        diags,
+                        filename)) {
+                    return false;
+                }
             }
         }
     }

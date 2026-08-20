@@ -6,13 +6,10 @@
 module backend_test;
 
 import std.assert;
-import std.fs;
 import std.hashmap;
 import std.hashset;
 import std.io;
-import std.path;
 import std.string;
-import std.system;
 import std.text;
 import std.vector;
 import util.diag;
@@ -20,9 +17,7 @@ import util.diag;
 import analysis;
 import ast;
 import backend;
-import build_driver;
 import codegen_options;
-import compiler_filesystem;
 import driver;
 import expr_types;
 import interface_fingerprint;
@@ -31,7 +26,6 @@ import mi_utils;
 import module_interface;
 import module_graph;
 import name_resolver;
-import object_reader;
 import parser;
 import parser.interface;
 import scope_context;
@@ -553,30 +547,9 @@ func test_backend_generate_module_isolates_definitions_and_lifecycle() {
         assert(!analysis_has_errors(result), "analysis should succeed for per-module backend fixture");
 
         let main_generated = backend_generate_module(result, "demo.main", opts, cfg);
-        assert(contains_s(main_generated,
-            "\nconst uint8_t __deaM4demo4mainI8metadata[41] = {\n"),
-            "module output should define one external identity record");
-        assert(contains_s(main_generated,
-            "\nconst uint8_t __deaM4demo4mainI7imports[63] = {\n"),
-            "module output should define unique non-virtual direct imports, including side-effect-only imports");
-        assert(!contains_s(main_generated, "static const uint8_t __deaM4demo4mainI8metadata"),
-            "identity metadata must retain external linkage");
-        assert(!contains_s(main_generated, "static const uint8_t __deaM4demo4mainI7imports"),
-            "imports metadata must retain external linkage");
-        assert(contains_s(main_generated,
-            "68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 1, 0, 25, 0, 0, 0,\n" +
-            "    1, 0, 0, 0, 9, 0, 0, 0,"),
-            "identity record should carry the version, kind, payload length, and HAS_ENTRY flag");
-        assert(contains_s(main_generated,
-            "68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 2, 0, 47, 0, 0, 0,\n" +
-            "    2, 0, 0, 0, 8, 0, 0, 0,"),
-            "imports record should contain two coalesced providers");
-        let dep_record_pos = find_s(main_generated,
-            "100, 101, 109, 111, 46, 100, 101, 112");
-        let unused_record_pos = find_s(main_generated,
-            "100, 101, 109, 111, 46, 117, 110, 117, 115, 101, 100");
-        assert(dep_record_pos >= 0 && unused_record_pos > dep_record_pos,
-            "direct providers should remain in first source-import order");
+        assert(!contains_s(main_generated, "I8metadata") && !contains_s(main_generated, "I7imports") &&
+            !contains_s(main_generated, "volatile const uint8_t"),
+            "module output must not contain retired native metadata or retention anchors");
         assert(contains_s(main_generated, "\nextern dea_int __deaM4demo3depN4BASE;\n"),
             "module output should declare a consumed imported binding");
         assert(!contains_s(main_generated, "static extern dea_int __deaM4demo3depN4BASE;"),
@@ -620,10 +593,8 @@ func test_backend_generate_module_isolates_definitions_and_lifecycle() {
         assert(contains_s(main_generated,
             "void __deaM4demo4mainI4init(void)\n" +
             "{\n" +
-            "    (void)((volatile const uint8_t *)__deaM4demo4mainI8metadata)[0];\n" +
-            "    (void)((volatile const uint8_t *)__deaM4demo4mainI7imports)[0];\n" +
             "    __deaM4demo4mainN6ANSWER = __deaM4demo3depN8get_baseF0i();"),
-            "module init should anchor both records before deferred initialization");
+            "module init should begin directly with owned deferred initialization");
         assert(contains_s(main_generated,
             "__deaM4demo4mainN6ANSWER = __deaM4demo3depN8get_baseF0i();"),
             "module init should initialize its owned call-backed binding");
@@ -652,20 +623,9 @@ func test_backend_generate_module_isolates_definitions_and_lifecycle() {
             "module output must not contain a process-level C main");
 
         let dep_generated = backend_generate_module(result, "demo.dep", opts, cfg);
-        assert(contains_s(dep_generated,
-            "\nconst uint8_t __deaM4demo3depI8metadata[40] = {\n"),
-            "provider output should define its own identity record");
-        assert(contains_s(dep_generated,
-            "\nconst uint8_t __deaM4demo3depI7imports[20] = {\n"),
-            "provider output should define an empty ordered-import record");
-        assert(contains_s(dep_generated,
-            "68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 1, 0, 24, 0, 0, 0,\n" +
-            "    0, 0, 0, 0, 8, 0, 0, 0,"),
-            "provider identity should clear HAS_ENTRY");
-        assert(contains_s(dep_generated,
-            "68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 2, 0, 4, 0, 0, 0,\n" +
-            "    0, 0, 0, 0\n"),
-            "provider imports metadata should encode zero records");
+        assert(!contains_s(dep_generated, "I8metadata") && !contains_s(dep_generated, "I7imports") &&
+            !contains_s(dep_generated, "volatile const uint8_t"),
+            "provider output must not contain retired native metadata or retention anchors");
         assert(contains_s(dep_generated, "\ndea_int __deaM4demo3depN4BASE = 0;\n"),
             "provider output should define its exported binding");
         assert(!contains_s(dep_generated, "static dea_int __deaM4demo3depN4BASE = 0;"),
@@ -693,10 +653,8 @@ func test_backend_generate_module_isolates_definitions_and_lifecycle() {
         assert(contains_s(dep_generated,
             "void __deaM4demo3depI4init(void)\n" +
             "{\n" +
-            "    (void)((volatile const uint8_t *)__deaM4demo3depI8metadata)[0];\n" +
-            "    (void)((volatile const uint8_t *)__deaM4demo3depI7imports)[0];\n" +
             "    __deaM4demo3depN4BASE = __deaM4demo3depN4seedF0i();"),
-            "provider init should anchor its metadata before owned initialization");
+            "provider init should begin directly with owned initialization");
         assert(contains_s(dep_generated,
             "__deaM4demo3depN4BASE = __deaM4demo3depN4seedF0i();"),
             "provider init should initialize only provider-owned storage");
@@ -738,19 +696,10 @@ func test_backend_generate_module_noop_lifecycle_without_entry() {
         assert(contains_s(generated, "dea_int (main)(void);"),
             "extern-only main declaration should remain in module output");
         assert(contains_s(generated,
-            "\nconst uint8_t __deaM4demo5emptyI8metadata[42] = {\n"),
-            "no-op module should still define its identity record");
-        assert(contains_s(generated,
-            "68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 1, 0, 26, 0, 0, 0,\n" +
-            "    0, 0, 0, 0, 10, 0, 0, 0,"),
-            "extern-only main must not set the metadata entry flag");
-        assert(contains_s(generated,
             "\nvoid __deaM4demo5emptyI4init(void)\n" +
             "{\n" +
-            "    (void)((volatile const uint8_t *)__deaM4demo5emptyI8metadata)[0];\n" +
-            "    (void)((volatile const uint8_t *)__deaM4demo5emptyI7imports)[0];\n" +
             "}\n"),
-            "module without deferred work should emit an anchored external init");
+            "module without deferred work should emit an empty external init");
         assert(!contains_s(generated, "static void __deaM4demo5emptyI4init(void)"),
             "empty module init must not become static");
         assert(contains_s(generated, "\nvoid __deaM4demo5emptyI4fini(void)\n{\n}\n"),
@@ -763,6 +712,9 @@ func test_backend_generate_module_noop_lifecycle_without_entry() {
             "no-op module output should define exactly one fini function");
         assert(!contains_s(generated, "__deaM4demo5emptyI5entry"),
             "extern-only main must not make the module an entry candidate");
+        assert(!contains_s(generated, "I8metadata") && !contains_s(generated, "I7imports") &&
+            !contains_s(generated, "volatile const uint8_t"),
+            "no-op lifecycle output must not contain retired metadata or anchors");
         assert(!contains_s(generated, "_rt_init_args("),
             "no-op module output must not initialize process arguments");
         assert(!contains_s(generated, "_dea_init_modules"),
@@ -1112,11 +1064,6 @@ func test_backend_generate_module_entry_result_normalization() {
 
         let int_generated = backend_generate_module(result, "entry.i", opts, cfg);
         assert(contains_s(int_generated,
-            "const uint8_t __deaM5entry1iI8metadata[39] = {\n" +
-            "    68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 1, 0, 23, 0, 0, 0,\n" +
-            "    1, 0, 0, 0, 7, 0, 0, 0,"),
-            "entry identity flag should match emitted int bridge");
-        assert(contains_s(int_generated,
             "int __deaM5entry1iI5entry(void)\n{\n    int dea_exit_code = (int) __deaM5entry1iN4mainF0i();\n    return dea_exit_code;\n}\n"),
             "int module entry bridge normalization mismatch");
         assert(!contains_s(int_generated, "_rt_init_args("),
@@ -1127,11 +1074,6 @@ func test_backend_generate_module_entry_result_normalization() {
             "int module output must not emit a process wrapper");
 
         let bool_generated = backend_generate_module(result, "entry.b", opts, cfg);
-        assert(contains_s(bool_generated,
-            "const uint8_t __deaM5entry1bI8metadata[39] = {\n" +
-            "    68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 1, 0, 23, 0, 0, 0,\n" +
-            "    1, 0, 0, 0, 7, 0, 0, 0,"),
-            "entry identity flag should match emitted bool bridge");
         assert(contains_s(bool_generated,
             "int __deaM5entry1bI5entry(void)\n{\n    dea_bool result = __deaM5entry1bN4mainF0z();\n    int dea_exit_code = result ? 0 : 1;\n    return dea_exit_code;\n}\n"),
             "bool module entry bridge normalization mismatch");
@@ -1144,11 +1086,6 @@ func test_backend_generate_module_entry_result_normalization() {
 
         let byte_generated = backend_generate_module(result, "entry.h", opts, cfg);
         assert(contains_s(byte_generated,
-            "const uint8_t __deaM5entry1hI8metadata[39] = {\n" +
-            "    68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 1, 0, 23, 0, 0, 0,\n" +
-            "    1, 0, 0, 0, 7, 0, 0, 0,"),
-            "entry identity flag should match emitted other-result bridge");
-        assert(contains_s(byte_generated,
             "int __deaM5entry1hI5entry(void)\n{\n    __deaM5entry1hN4mainF0h();\n    int dea_exit_code = 0;\n    return dea_exit_code;\n}\n"),
             "other-result module entry bridge normalization mismatch");
         assert(!contains_s(byte_generated, "_rt_init_args("),
@@ -1159,13 +1096,13 @@ func test_backend_generate_module_entry_result_normalization() {
             "other-result module output must not emit a process wrapper");
 
         let param_generated = backend_generate_module(result, "entry.p", opts, cfg);
-        assert(contains_s(param_generated,
-            "const uint8_t __deaM5entry1pI8metadata[39] = {\n" +
-            "    68, 69, 65, 76, 49, 79, 66, 74, 1, 0, 1, 0, 23, 0, 0, 0,\n" +
-            "    0, 0, 0, 0, 7, 0, 0, 0,"),
-            "parameterized source main must leave HAS_ENTRY clear");
         assert(!contains_s(param_generated, "__deaM5entry1pI5entry"),
             "parameterized source main must not receive a zero-argument entry bridge");
+        assert(!contains_s(int_generated, "I8metadata") && !contains_s(int_generated, "I7imports") &&
+            !contains_s(bool_generated, "I8metadata") && !contains_s(bool_generated, "I7imports") &&
+            !contains_s(byte_generated, "I8metadata") && !contains_s(byte_generated, "I7imports") &&
+            !contains_s(param_generated, "I8metadata") && !contains_s(param_generated, "I7imports"),
+            "entry variants must not emit retired native metadata records");
 
         analysis_result_free(result);
     }
@@ -2628,150 +2565,6 @@ func test_backend_nullable_identity() {
 }
 
 /**
- * Compile actual per-module backend output and read its metadata back from the
- * host object.  This locks the emitter/reader boundary, not only each half's
- * synthetic fixtures.
- */
-func test_backend_module_native_metadata_round_trip() {
-    with (let filenames = sv_create(2) => sv_free(filenames),
-          let sources = sv_create(2) => sv_free(sources),
-          let provider_lines = sv_create(3) => sv_free(provider_lines),
-          let main_lines = sv_create(4) => sv_free(main_lines),
-          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
-          let opts = cg_options_create() => cg_options_free(opts)) {
-        opts.emit_line_directives = false;
-        sv_push(filenames, "smoke/dep.l1");
-        sv_push(provider_lines, "module smoke.dep;");
-        sv_push(provider_lines, "export ping;");
-        sv_push(provider_lines, "func ping() -> int { return 3; }");
-        sv_push(sources, bt_source(provider_lines));
-
-        sv_push(filenames, "smoke/main.l1");
-        sv_push(main_lines, "module smoke.main;");
-        sv_push(main_lines, "export main;");
-        sv_push(main_lines, "import smoke.dep;");
-        sv_push(main_lines, "func main() -> int { return 7; }");
-        sv_push(sources, bt_source(main_lines));
-
-        let result = bt_analyze_sources("smoke.main", filenames, sources);
-        assert(!analysis_has_errors(result),
-            "native metadata round-trip source should analyze");
-        let expected_fingerprint =
-            mi_compute_provider_fingerprint(result, "smoke.main");
-        let expected_provider_fingerprint =
-            mi_compute_provider_fingerprint(result, "smoke.dep");
-        let generated =
-            backend_generate_module(result, "smoke.main", opts, cfg);
-
-        let compiler: string? = env_get("L1_CC");
-        if (compiler == null) {
-            compiler = env_get("CC");
-        }
-        if (compiler == null) {
-            if (bd_is_windows()) {
-                compiler = bd_find_c_compiler();
-            } else {
-                compiler = "cc";
-            }
-        }
-        assert(compiler != null,
-            "backend metadata round-trip requires a host C compiler");
-
-        let include_dir: string? = env_get("L1_RUNTIME_INCLUDE");
-        if (include_dir == null) {
-            let build_dir = env_get("L1_BUILD_DIR");
-            if (build_dir != null &&
-                is_file(join(build_dir as string, "include/dea_rt.h"))) {
-                include_dir = join(build_dir as string, "include");
-            } else if (is_file("compiler/shared/runtime/include/dea_rt.h")) {
-                include_dir = "compiler/shared/runtime/include";
-            } else if (is_file("l1/compiler/shared/runtime/include/dea_rt.h")) {
-                include_dir = "l1/compiler/shared/runtime/include";
-            }
-        }
-        assert(include_dir != null,
-            "backend metadata round-trip requires the runtime header");
-
-        let workspace_diags = diag_create();
-        let workspace_opt = cfs_workspace_create(
-            "backend-object-metadata-test", workspace_diags);
-        assert(workspace_opt != null,
-            "backend metadata round-trip requires a temporary workspace");
-        let workspace = workspace_opt as CompilerWorkspace*;
-        let c_path = cfs_workspace_child(workspace, "input.c");
-        let object_suffix = ".o";
-        if (bd_is_windows()) {
-            object_suffix = ".obj";
-        }
-        let object_path = cfs_workspace_child(
-            workspace, "output" + object_suffix);
-        assert(write_file(c_path, generated) != null,
-            "generated module C should be writable");
-
-        let family = bd_compiler_flag_family(compiler as string);
-        with (let command_words = sv_create(8) => sv_free(command_words)) {
-            sv_push(command_words, compiler as string);
-            if (family == "msvc") {
-                sv_push(command_words, "/nologo");
-                sv_push(command_words, "/std:c11");
-                sv_push(command_words, "/TC");
-                sv_push(command_words, "/c");
-                sv_push(command_words, c_path);
-                sv_push(command_words, "/I" + (include_dir as string));
-                sv_push(command_words, "/Fo:" + object_path);
-            } else {
-                sv_push(command_words, "-std=c99");
-                sv_push(command_words, "-I");
-                sv_push(command_words, include_dir as string);
-                sv_push(command_words, "-c");
-                sv_push(command_words, c_path);
-                sv_push(command_words, "-o");
-                sv_push(command_words, object_path);
-            }
-            assert(system(bd_join_shell_words(command_words)) == 0,
-                "generated module C should compile to a relocatable object");
-        }
-
-        with (let inspected = object_inspect_path(object_path) =>
-                  object_inspection_result_free(inspected)) {
-            assert(inspected.error == null,
-                "backend-emitted native object should be readable");
-            let inspection = inspected.inspection as ObjectInspection*;
-            assert(ord(inspection.metadata.kind) == ord(VALID_DEA_METADATA),
-                "backend-emitted native object should classify as valid");
-            let metadata = inspection.metadata.valid as ValidDeaMetadata*;
-            assert(metadata.module_name == "smoke.main",
-                "round-trip module identity mismatch");
-            assert(metadata.fingerprint == expected_fingerprint,
-                "round-trip module fingerprint mismatch");
-            assert(sv_size(metadata.ordered_imports) == 1,
-                "round-trip import list should contain the direct provider");
-            assert(sv_get(metadata.ordered_imports, 0) == "smoke.dep",
-                "round-trip provider order mismatch");
-            assert(sv_get(metadata.import_fingerprints, 0) ==
-                       expected_provider_fingerprint,
-                "round-trip provider fingerprint mismatch");
-            assert(metadata.has_entry,
-                "round-trip entry flag should match the emitted bridge");
-            assert(object_inspection_defines_symbol(
-                       inspection, "__deaM5smoke4mainI4init"),
-                "round-trip init symbol should be defined");
-            assert(object_inspection_defines_symbol(
-                       inspection, "__deaM5smoke4mainI4fini"),
-                "round-trip fini symbol should be defined");
-            assert(object_inspection_defines_symbol(
-                       inspection, "__deaM5smoke4mainI5entry"),
-                "round-trip entry symbol should be defined");
-        }
-        assert(cfs_workspace_cleanup(workspace, workspace_diags),
-            "backend metadata workspace cleanup should succeed");
-        cfs_workspace_free(workspace);
-        diag_free(workspace_diags);
-        analysis_result_free(result);
-    }
-}
-
-/**
  * Main entry point for the module.
  */
 func main() {
@@ -2822,6 +2615,5 @@ func main() {
     test_backend_generate_float_zero_division_plain_c();
     test_backend_pointer_identity();
     test_backend_nullable_identity();
-    test_backend_module_native_metadata_round_trip();
     printl_s("backend_test: all tests passed");
 }

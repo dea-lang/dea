@@ -179,6 +179,59 @@ func pi_parse_dep_line(self: ParserState*) -> InterfaceDepEntry*? {
 }
 
 /**
+ * Parse the exact `entry;` operational marker.
+ *
+ * @param self Parser state.
+ * @return `true` when the complete marker was consumed.
+ */
+func pi_parse_entry_line(self: ParserState*) -> bool {
+    ps_advance(self); // consume identifier `entry`
+    return ps_expect(self, ord(TT_SEMI), "PAR-0572",
+        "Expected ';' after entry marker in interface file") != null;
+}
+
+/**
+ * Parse one ordered lifecycle import line:
+ * `import module <provider> == "<provider-fingerprint>";`.
+ *
+ * @param self Parser state.
+ * @return Constructed import entry, or `null` on parse failure.
+ */
+func pi_parse_module_import_line(self: ParserState*) -> InterfaceModuleImport*? {
+    ps_advance(self); // consume `import`
+    ps_expect(self, ord(TT_MODULE), "PAR-0572",
+        "Expected 'module' after 'import' in interface file")?;
+
+    let first_tok = ps_expect_ident(self, "PAR-0572",
+        "Expected provider module name after 'import module'")?;
+    let first = token_ident_text(first_tok) as string;
+    let provider_module = parse_dotted_name_rest(self, first)?;
+
+    ps_expect(self, ord(TT_EQEQ), "PAR-0574",
+        "Expected '==' after interface dependency provider")?;
+    let fingerprint_tok = pi_expect_string(self, "PAR-0575",
+        "Expected provider fingerprint string literal after '==' in interface dependency")?;
+    ps_expect(self, ord(TT_SEMI), "PAR-0576",
+        "Expected ';' after dependency fingerprint in interface file")?;
+
+    return new InterfaceModuleImport(
+        provider_module,
+        token_string_text(fingerprint_tok) as string
+    );
+}
+
+/**
+ * Emit a strict operational-region diagnostic.
+ *
+ * @param self Parser state.
+ * @param code `PAR-0578` for duplicates or `PAR-0579` for region regression.
+ * @param message Diagnostic message.
+ */
+func pi_operational_error(self: ParserState*, code: string, message: string) {
+    ps_emit_error(self, code, message, ps_peek(self));
+}
+
+/**
  * Parse the module interface header.
  *
  * Expects: `module interface <name>;` followed by `fingerprint "...";`
@@ -1123,6 +1176,52 @@ func pi_parse_one_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet
 }
 
 /**
+ * Return the canonical exported-declaration group for the lookahead token.
+ *
+ * Groups follow the wire order: structs, enums, aliases, functions, consts,
+ * then lets. A negative result leaves malformed or unknown starts to the
+ * declaration parser's existing shape diagnostics.
+ *
+ * @param self Parser state to inspect.
+ * @return Group index, or `-1` when the token is not a valid group start.
+ */
+func pi_decl_group(self: ParserState*) -> int {
+    if (ps_check(self, ord(TT_OPAQUE))) {
+        if (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_STRUCT))) {
+            return 0;
+        }
+        if (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_ENUM))) {
+            return 1;
+        }
+        return -1;
+    }
+    if (ps_check(self, ord(TT_STRUCT))) {
+        return 0;
+    }
+    if (ps_check(self, ord(TT_ENUM))) {
+        return 1;
+    }
+    if (ps_check(self, ord(TT_TYPE))) {
+        return 2;
+    }
+    if (ps_check(self, ord(TT_FUNC)) || ps_check(self, ord(TT_EXTERN))) {
+        return 3;
+    }
+    if (ps_check(self, ord(TT_UNSAFE)) &&
+        (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_FUNC)) ||
+         tok_is(ps_peek_logical_ahead(self, 1), ord(TT_EXTERN)))) {
+        return 3;
+    }
+    if (ps_check(self, ord(TT_CONST))) {
+        return 4;
+    }
+    if (ps_check(self, ord(TT_LET))) {
+        return 5;
+    }
+    return -1;
+}
+
+/**
  * Return `true` if the interface defines a struct with the given name.
  *
  * @param mi Module interface to inspect.
@@ -1426,6 +1525,8 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
     let mi = new ModuleInterface(
         header.module_name,
         header.fingerprint,
+        false,
+        ptr_vec_create(4),
         ptr_vec_create(4),
         ptr_vec_create(4),
         ptr_vec_create(4),
@@ -1436,21 +1537,99 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
     );
     drop header;
 
-    while (pi_check_ident_text(p, "require") || pi_check_ident_text(p, "link")) {
-        let is_require = pi_check_ident_text(p, "require");
-        let dep = pi_parse_dep_line(p);
-        if (dep == null) {
-            break;
-        }
-        if (is_require) {
-            ptr_vec_push(mi.require_entries, dep as void*);
-        } else {
-            ptr_vec_push(mi.link_entries, dep as void*);
-        }
-    }
+    // Operational regions are strict and monotonic:
+    // entry, imports, requires, links, then declarations.
+    let region = 0;
+    let decl_group = -1;
+    let seen_entry = false;
+    with (let seen_imports = ss_create() => ss_free(seen_imports),
+          let seen_decls = ss_create() => ss_free(seen_decls)) {
+        while (!ps_check(p, ord(TT_EOF))) {
+            if (pi_check_ident_text(p, "entry")) {
+                let duplicate = seen_entry;
+                if (duplicate) {
+                    pi_operational_error(p, "PAR-0578", "Duplicate entry marker in interface file");
+                } else if (region > 0) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Entry marker appears outside its canonical interface region");
+                }
+                seen_entry = true;
+                if (!pi_parse_entry_line(p)) {
+                    break;
+                }
+                if (!duplicate && region == 0) {
+                    mi.has_entry = true;
+                }
+                continue;
+            }
 
-    with (let seen = ss_create() => ss_free(seen)) {
-        while (pi_parse_one_decl(p, mi, seen)) {
+            if (ps_check(p, ord(TT_IMPORT))) {
+                let import_entry = pi_parse_module_import_line(p);
+                if (import_entry == null) {
+                    break;
+                }
+                let imported = import_entry as InterfaceModuleImport*;
+                let duplicate2 = !ss_add(seen_imports, imported.provider_module);
+                if (duplicate2) {
+                    pi_operational_error(p, "PAR-0578",
+                        "Duplicate import provider '" + imported.provider_module + "' in interface file");
+                    mi_module_import_free(imported);
+                } else if (region > 1) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Module import appears outside its canonical interface region");
+                    mi_module_import_free(imported);
+                } else {
+                    region = 1;
+                    ptr_vec_push(mi.module_imports, imported as void*);
+                }
+                continue;
+            }
+
+            if (pi_check_ident_text(p, "require")) {
+                let dep = pi_parse_dep_line(p);
+                if (dep == null) {
+                    break;
+                }
+                if (region > 2) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Require record appears outside its canonical interface region");
+                    mi_dep_entry_free(dep as InterfaceDepEntry*);
+                } else {
+                    region = 2;
+                    ptr_vec_push(mi.require_entries, dep as void*);
+                }
+                continue;
+            }
+
+            if (pi_check_ident_text(p, "link")) {
+                let dep2 = pi_parse_dep_line(p);
+                if (dep2 == null) {
+                    break;
+                }
+                if (region > 3) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Link record appears outside its canonical interface region");
+                    mi_dep_entry_free(dep2 as InterfaceDepEntry*);
+                } else {
+                    region = 3;
+                    ptr_vec_push(mi.link_entries, dep2 as void*);
+                }
+                continue;
+            }
+
+            region = 4;
+            let next_decl_group = pi_decl_group(p);
+            if (next_decl_group >= 0) {
+                if (next_decl_group < decl_group) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Exported declaration appears outside canonical declaration-group order");
+                } else {
+                    decl_group = next_decl_group;
+                }
+            }
+            if (!pi_parse_one_decl(p, mi, seen_decls)) {
+                break;
+            }
         }
     }
 

@@ -8,7 +8,7 @@ module wrapper_emitter;
 import std.text;
 import std.vector;
 
-import object_metadata;
+import module_lifecycle;
 
 /**
  * Append one complete source line.
@@ -41,10 +41,10 @@ func we_emit_wrapper(lifecycle_order: StringVector*, entry_module: string) -> st
 
         for (let i = 0; i < sv_size(lifecycle_order); i = i + 1) {
             let module_name = sv_get(lifecycle_order, i);
-            we_append_line(out, "extern void " + om_init_symbol_name(module_name) + "(void);");
-            we_append_line(out, "extern void " + om_fini_symbol_name(module_name) + "(void);");
+            we_append_line(out, "extern void " + ml_init_symbol_name(module_name) + "(void);");
+            we_append_line(out, "extern void " + ml_fini_symbol_name(module_name) + "(void);");
         }
-        we_append_line(out, "extern int " + om_entry_symbol_name(entry_module) + "(void);");
+        we_append_line(out, "extern int " + ml_entry_symbol_name(entry_module) + "(void);");
         we_append_line(out, "");
 
         we_append_line(out, "int main(int argc, char **argv)");
@@ -53,11 +53,11 @@ func we_emit_wrapper(lifecycle_order: StringVector*, entry_module: string) -> st
         we_append_line(out, "");
         we_append_line(out, "    _rt_init_args(argc, argv);");
         for (let i = 0; i < sv_size(lifecycle_order); i = i + 1) {
-            we_append_line(out, "    " + om_init_symbol_name(sv_get(lifecycle_order, i)) + "();");
+            we_append_line(out, "    " + ml_init_symbol_name(sv_get(lifecycle_order, i)) + "();");
         }
-        we_append_line(out, "    dea_exit_code = " + om_entry_symbol_name(entry_module) + "();");
+        we_append_line(out, "    dea_exit_code = " + ml_entry_symbol_name(entry_module) + "();");
         for (let i = sv_size(lifecycle_order); i > 0; i = i - 1) {
-            we_append_line(out, "    " + om_fini_symbol_name(sv_get(lifecycle_order, i - 1)) + "();");
+            we_append_line(out, "    " + ml_fini_symbol_name(sv_get(lifecycle_order, i - 1)) + "();");
         }
         we_append_line(out, "    return dea_exit_code;");
         we_append_line(out, "}");
