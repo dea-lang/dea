@@ -827,8 +827,77 @@ class GitModeTests(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn("index entry already exists in the base tree", stderr)
 
+    def test_push_range_does_not_apply_a_later_policy_to_an_earlier_closure(
+        self,
+    ) -> None:
+        legacy_active = "work/plans/tools/legacy.md"
+        legacy_closed = "work/plans/tools/closed/legacy.md"
+        self.write(legacy_active, "# Legacy plan without ADR impact\n")
+        base = self.commit("base before ADR policy")
+
+        closed = self.root / legacy_closed
+        closed.parent.mkdir(parents=True, exist_ok=True)
+        (self.root / legacy_active).rename(closed)
+        self.commit("close legacy plan")
+
+        self.write(checker.CHECKER_PATH, "# ADR checker introduced here\n")
+        head = self.commit("introduce ADR policy")
+
+        aggregate_code, _, aggregate_stderr = self.run_main(
+            ["--base", base, "--head", head]
+        )
+        self.assertEqual(1, aggregate_code)
+        self.assertIn("missing required", aggregate_stderr)
+
+        code, _, stderr = self.run_main(
+            ["--push-base", base, "--head", head]
+        )
+        self.assertEqual(0, code, stderr)
+
+    def test_push_range_preserves_an_adr_added_before_a_covered_closure(
+        self,
+    ) -> None:
+        self.write(checker.CHECKER_PATH, "# Existing ADR checker\n")
+        self.write(
+            L1_PLAN,
+            impact(scope="L1", disposition="New ADR", adr="l1/docs/decisions/"),
+        )
+        base = self.commit("active plan before ADR")
+
+        self.write(
+            "l1/docs/decisions/INDEX.md", adr_index("0022-feature.md")
+        )
+        self.write(
+            L1_ADR,
+            "# ADR\n\n## Related Plans\n\n- None yet.\n",
+        )
+        self.commit("add ADR")
+
+        closed = self.root / L1_CLOSED
+        closed.parent.mkdir(parents=True, exist_ok=True)
+        (self.root / L1_PLAN).rename(closed)
+        self.write(
+            L1_CLOSED,
+            impact(scope="L1", disposition="Covered by ADR", adr=L1_ADR),
+        )
+        self.write(L1_ADR, adr_with_plan(L1_ADR, L1_CLOSED))
+        head = self.commit("close plan covered by existing ADR")
+
+        aggregate_code, _, aggregate_stderr = self.run_main(
+            ["--base", base, "--head", head]
+        )
+        self.assertEqual(1, aggregate_code)
+        self.assertIn("target is absent from the base tree", aggregate_stderr)
+
+        code, _, stderr = self.run_main(
+            ["--push-base", base, "--head", head]
+        )
+        self.assertEqual(0, code, stderr)
+
     def test_invocation_and_repository_failures_return_two(self) -> None:
         code, _, _ = self.run_main(["--base", "HEAD"])
+        self.assertEqual(2, code)
+        code, _, _ = self.run_main(["--push-base", "HEAD"])
         self.assertEqual(2, code)
         code, _, stderr = self.run_main(
             ["--base", "not-a-commit", "--head", "also-not-a-commit"]

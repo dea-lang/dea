@@ -132,9 +132,10 @@ jobs:
               exit 2
             fi
             base_sha="$merge_base_sha"
+            python3 scripts/check_adr_impact.py --base "$base_sha" --head "$head_sha"
+          else
+            python3 scripts/check_adr_impact.py --push-base "$base_sha" --head "$head_sha"
           fi
-
-          python3 scripts/check_adr_impact.py --base "$base_sha" --head "$head_sha"
 
   route-levels:
     runs-on: ubuntu-latest

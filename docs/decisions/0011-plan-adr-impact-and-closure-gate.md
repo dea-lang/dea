@@ -1,7 +1,7 @@
 # ADR-0011: Plan ADR Impact and Closure Gate
 
 - Decision date: 2026-07-26
-- Last edited: 2026-07-26
+- Last edited: 2026-08-21
 - Status: Accepted
 
 ## Context
@@ -72,6 +72,7 @@ Untouched closed history is grandfathered; changing a historical document opts i
 ## Related Plans
 
 - [work/plans/tools/closed/2026-07-26-shared-adr-impact-closure-gate-noref.md](../../work/plans/tools/closed/2026-07-26-shared-adr-impact-closure-gate-noref.md)
+- [work/plans/bug-fixes/closed/2026-08-21-shared-adr-impact-push-range-chronology-noref.md](../../work/plans/bug-fixes/closed/2026-08-21-shared-adr-impact-push-range-chronology-noref.md)
 
 ## Current Docs
 

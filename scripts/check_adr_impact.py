@@ -18,6 +18,7 @@ from typing import Iterable, Protocol
 
 
 ADR_HEADING = "## ADR Impact"
+CHECKER_PATH = "scripts/check_adr_impact.py"
 DISPOSITIONS = {
     "Pending",
     "New ADR",
@@ -290,6 +291,31 @@ def changed_paths(
     if base is None or head is None:
         raise RepositoryError("both base and head are required")
     return parse_name_status(run_git(root, *common, base, head))
+
+
+def pushed_commits(root: Path, base: str, head: str) -> list[str]:
+    """Return commits in ``base..head`` in chronological topological order."""
+
+    output = run_git(root, "rev-list", "--reverse", "--topo-order", f"{base}..{head}")
+    return output.splitlines()
+
+
+def validate_push_range(root: Path, base: str, head: str) -> list[Diagnostic]:
+    """Validate each checker-aware pushed commit, then the head inventory."""
+
+    for commit in pushed_commits(root, base, head):
+        tree = GitTree(root, commit)
+        if CHECKER_PATH not in tree.paths():
+            continue
+        parent = run_git(root, "rev-parse", f"{commit}^1").strip()
+        diagnostics = validate_selected_tree(
+            tree,
+            changed_paths(root, base=parent, head=commit),
+            base_tree=GitTree(root, parent),
+        )
+        if diagnostics:
+            return diagnostics
+    return validate_selected_tree(GitTree(root, head))
 
 
 def parse_impact(path: str, text: str) -> tuple[list[ImpactRecord], list[Diagnostic]]:
@@ -985,7 +1011,12 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument(
         "--base",
         metavar="SHA",
-        help="base commit for CI comparison (requires --head)",
+        help="base commit for one CI comparison (requires --head)",
+    )
+    mode.add_argument(
+        "--push-base",
+        metavar="SHA",
+        help="base commit for chronological push validation (requires --head)",
     )
     parser.add_argument("--head", metavar="SHA", help="head commit for CI comparison")
     return parser
@@ -999,34 +1030,45 @@ def main(argv: list[str] | None = None, *, root: Path | None = None) -> int:
         arguments = parser.parse_args(argv)
     except SystemExit as error:
         return int(error.code)
-    if arguments.base is not None and arguments.head is None:
+    selected_base = arguments.base or arguments.push_base
+    if selected_base is not None and arguments.head is None:
         parser.print_usage(sys.stderr)
-        print("check_adr_impact.py: error: --base requires --head", file=sys.stderr)
+        option = "--base" if arguments.base is not None else "--push-base"
+        print(
+            f"check_adr_impact.py: error: {option} requires --head",
+            file=sys.stderr,
+        )
         return 2
-    if arguments.head is not None and arguments.base is None:
+    if arguments.head is not None and selected_base is None:
         parser.print_usage(sys.stderr)
-        print("check_adr_impact.py: error: --head requires --base", file=sys.stderr)
+        print(
+            "check_adr_impact.py: error: --head requires --base or --push-base",
+            file=sys.stderr,
+        )
         return 2
 
     repo = (root or repository_root()).resolve()
     try:
         if arguments.all_active:
-            tree: Tree = Worktree(repo)
-            changes: list[ChangedPath] = []
-            base_tree: Tree | None = None
+            diagnostics = validate_selected_tree(Worktree(repo))
         elif arguments.staged:
-            tree = GitTree(repo, None)
-            changes = changed_paths(repo, staged=True)
-            base_tree = GitTree(repo, "HEAD")
-        else:
-            tree = GitTree(repo, arguments.head)
-            changes = changed_paths(
-                repo, base=arguments.base, head=arguments.head
+            diagnostics = validate_selected_tree(
+                GitTree(repo, None),
+                changed_paths(repo, staged=True),
+                base_tree=GitTree(repo, "HEAD"),
             )
-            base_tree = GitTree(repo, arguments.base)
-        diagnostics = validate_selected_tree(
-            tree, changes, base_tree=base_tree
-        )
+        elif arguments.base is not None:
+            diagnostics = validate_selected_tree(
+                GitTree(repo, arguments.head),
+                changed_paths(
+                    repo, base=arguments.base, head=arguments.head
+                ),
+                base_tree=GitTree(repo, arguments.base),
+            )
+        else:
+            diagnostics = validate_push_range(
+                repo, arguments.push_base, arguments.head
+            )
     except RepositoryError as error:
         print(f"check_adr_impact.py: repository error: {error}", file=sys.stderr)
         return 2
