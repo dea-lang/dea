@@ -91,6 +91,30 @@ func assert_parse_rejected(source: string, expected_code: string, filename: stri
     ipr_free(parsed);
 }
 
+/**
+ * Assert that an interface diagnostic is anchored to an expected source line.
+ *
+ * @param source Interface text to parse.
+ * @param expected_code Diagnostic code to locate.
+ * @param expected_line Expected one-based source line.
+ * @param filename Synthetic filename for diagnostics.
+ */
+func assert_parse_rejected_at(source: string, expected_code: string, expected_line: int, filename: string) {
+    let parsed = pi_parse_interface(source, filename);
+    assert(ipr_has_errors(parsed), "expected interface parse failure for " + filename);
+    let found = false;
+    for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
+        let diag = diag_get(parsed.diags, i);
+        if (diag.code == expected_code) {
+            assert(diag.line == expected_line, "unexpected diagnostic line for " + filename);
+            found = true;
+            break;
+        }
+    }
+    assert(found, "expected diagnostic code for " + filename + ": " + expected_code);
+    ipr_free(parsed);
+}
+
 /** Assert obsolete declaration suffix syntax never uses dependency diagnostics. */
 func assert_decl_suffix_rejected(source: string, expected_code: string, filename: string) {
     let parsed = pi_parse_interface(source, filename);
@@ -1131,6 +1155,10 @@ func test_interface_operational_regions_and_diagnostics() {
         "import module p == \"sip13:1111111111111111\";\n" +
         "import module p == \"sip13:1111111111111111\";\n",
         "PAR-0578", "<duplicate-import>");
+    assert_parse_rejected_at(header +
+        "import module p == \"sip13:1111111111111111\";\n" +
+        "import module p == \"sip13:1111111111111111\";\n",
+        "PAR-0578", 4, "<duplicate-import-location>");
     assert_parse_rejected(header +
         "require p::item == \"sip13:1111111111111111\";\n" +
         "import module q == \"sip13:2222222222222222\";\n",
@@ -1150,6 +1178,15 @@ func test_interface_operational_regions_and_diagnostics() {
         "PAR-0578", "<duplicate-import-precedes-order>");
     assert_parse_rejected(header + "unknown record;\n",
         "PAR-0572", "<trailing-unknown-record>");
+
+    let recovered = pi_parse_interface(header +
+        "unknown\n" +
+        "import module p == \"sip13:1111111111111111\";\n",
+        "<unknown-before-import>");
+    assert(ipr_has_errors(recovered), "unknown record should remain rejected");
+    assert(diag_count(recovered.diags) == 1 && diag_get(recovered.diags, 0).code == "PAR-0572",
+        "unknown record must not move the parser into declaration-region recovery");
+    ipr_free(recovered);
 }
 
 /**

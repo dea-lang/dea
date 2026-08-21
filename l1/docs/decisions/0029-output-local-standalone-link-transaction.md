@@ -1,7 +1,7 @@
 # ADR-0029: Output-Local Standalone Link Transaction
 
 - Decision date: 2026-07-27
-- Last edited: 2026-07-29
+- Last edited: 2026-08-21
 - Status: Accepted
 
 ## Context
@@ -27,9 +27,8 @@ control bytes are rendered as hexadecimal escapes rather than copied into diagno
 It then exclusively creates a sibling directory named `.l1c-link-<pid>-<seconds>-<nanoseconds>-<attempt>` beneath the
 existing output parent, trying attempts 0 through 99 without an unchecked fallback. POSIX creation requests mode `0700`;
 MinGW inherits access control from the trusted parent. The transaction owns fixed `wrapper.c`, `wrapper.o`,
-compiler/link stdout, and compiler/link stderr paths plus one bounded `input-N.o` snapshot for every caller operand.
-Each snapshot contains the exact bytes that were read once and accepted by object classification, graph validation, and
-entry selection.
+compiler/link stdout, and compiler/link stderr paths. Caller native operands remain outside the transaction and are
+passed to the host through their original rendered paths after sibling-interface and graph validation.
 
 The common link executor receives those paths explicitly. It neither allocates nor cleans the enclosing workspace, so a
 later build/run caller can supply paths under its own invocation transaction.
@@ -53,8 +52,7 @@ ownership also permits safe reuse by the planned multi-CU build/run transaction.
 ## Consequences
 
 - Invalid link sets and missing toolchain/runtime inputs do not create `.l1c-link-*` state.
-- Caller-owned original objects are never children of the transaction and are never cleanup targets; the adapter owns
-  and cleans only its exact-byte snapshots.
+- Caller-owned original objects are never children of the transaction, never cleanup targets, and never snapshotted.
 - Wrapper compile and final-link output are captured and replayed while their files remain transaction-owned.
 - A retained transaction is reported by exact path when bounded cleanup cannot prove it safe to remove.
 - A successful executable can remain visible when cleanup fails and the command returns nonzero.
@@ -65,6 +63,7 @@ ownership also permits safe reuse by the planned multi-CU build/run transaction.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 - [work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-workspace]
 - [l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md][link-hardening]
@@ -77,6 +76,7 @@ ownership also permits safe reuse by the planned multi-CU build/run transaction.
 
 [architecture]: ../reference/architecture.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [link-hardening]: ../../work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
 [link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [native-workspace]: ../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md

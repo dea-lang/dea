@@ -1,7 +1,7 @@
 # ADR-0014: Module Interface Artifact
 
 - Decision date: 2026-06-13
-- Last edited: 2026-07-23
+- Last edited: 2026-08-21
 - Status: Accepted
 
 ## Context
@@ -21,13 +21,16 @@ L1 uses a textual `.l1m` module interface artifact with a constrained source-lik
 - Exported declarations carry no per-symbol compatibility suffix.
 - Surface-tier dependency lines use `require <module>::<symbol> == "<provider-whole-module-fingerprint>";`.
 - Implementation-tier dependency lines use `link <module>::<symbol> == "<provider-whole-module-fingerprint>";`.
+- Operational records use `entry;` for entry presence and ordered
+  `import module <provider> == "<provider-whole-module-fingerprint>";` lines for direct lifecycle imports.
 - Interface projection classifies resolved public-surface provider uses as `require` and remaining implementation uses
   as `link`; a symbol present in both appears only in `require`.
 - The source `export` manifest is not emitted; its effect is represented by which declarations appear in the interface.
 
 The Stage 1 compiler can emit the artifact through the internal `--emit-interface` mode and can parse it back through a
-dedicated constrained parser. Resolution-aware internal entry points can discover interfaces from ordered roots and load
-transitive `require` / `link` closure through the canonical module graph. Ordinary `--build`, `--run`, and CLI source
+dedicated constrained parser. Resolution-aware internal entry points discover interfaces from ordered roots and load
+transitive lifecycle-import, `require`, and `link` closure through the canonical module graph. Standalone link requires
+and verifies the canonical sibling interface for each positional Dea object. Ordinary `--build`, `--run`, and CLI source
 import analysis remain source-based in this tranche.
 
 The emitter fingerprints the canonical effective public surface. Operational consumers validate the tagged module and
@@ -41,19 +44,20 @@ dependency values and recompute the module fingerprint before graph registration
 - One module fingerprint plus repeated provider-module expectations avoids conflicting per-symbol compatibility values.
 - Separating `require` from `link` lets later tranches distinguish public-surface typechecking dependencies from
   implementation-only link dependencies.
-- Keeping graph-backed interface discovery behind internal APIs prevents a half-complete CLI surface from producing
-  artifacts without provider objects, lifecycle records, or fingerprint verification.
+- Keeping public declarations separate from operational records preserves one inspectable artifact without making
+  lifecycle and entry changes part of public compatibility.
 
 ## Consequences
 
 - Signature metadata must preserve enum variant field names so interfaces can round-trip named payload fields.
 - Interface parsing has its own diagnostics for malformed `.l1m` syntax.
 - Graph-backed transitive replay and interface fingerprint verification are available through internal analysis entry
-  points. Later tranches must add compile-only artifact publication, provider-object metadata and linking, and multi-CU
-  build/run orchestration before `.l1m` files become a complete user-facing separate-compilation workflow.
+  points. Compile-only publishes the artifact with its caller-trusted opaque object sibling, and standalone linking uses
+  verified interfaces as its sole Dea semantic and lifecycle authority.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md][interface-plan]
 - [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md][driver-plan]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
@@ -77,6 +81,7 @@ dependency values and recompute the module fingerprint before graph registration
 [format-spec]: ../specs/compiler/module-interface-format.md
 [graph-plan]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [initiative]: ../../work/initiatives/0001-separate-compilation-and-linking.md
+[interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [interface-plan]: ../../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [metadata-plan]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [visibility-spec]: ../specs/compiler/module-visibility-and-imports.md

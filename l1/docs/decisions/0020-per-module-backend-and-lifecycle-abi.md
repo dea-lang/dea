@@ -1,17 +1,15 @@
 # ADR-0020: Per-Module Backend and Lifecycle ABI
 
 - Decision date: 2026-07-22
-- Last edited: 2026-07-27
+- Last edited: 2026-08-21
 - Status: Accepted
 
 ## Context
 
 The bootstrap backend originally emitted the complete source closure and process-level C `main` in one translation unit.
 Separate compilation needs an independently compilable C unit for one source module, but the existing `--build` /
-`--run` workflow must remain usable until compile-only artifact production, object metadata, standalone linking, and
-graph fan-out land.
+`--run` workflow must remain usable until compile-only artifact production, standalone linking, and graph fan-out land.
 
-Later object metadata also needs one always-present symbol that anchors compiler-generated records against dead-strip.
 The executable wrapper needs stable entry points for module initialization, finalization, and selection of a possibly
 non-exported source `main` without giving imported modules permission to orchestrate one another.
 
@@ -53,8 +51,7 @@ order. Foreign objects do not participate in this lifecycle sequence.
   flags.
 - Provider-owned declarations let one target compile against source-backed and interface-backed imports without
   duplicating provider definitions.
-- Always-present init and fini symbols give every Dea object a uniform lifecycle surface and give object metadata a
-  stable future retention anchor.
+- Always-present init and fini symbols give every Dea object a uniform lifecycle surface.
 - Keeping lifecycle operations module-local preserves ownership boundaries; the final executable wrapper has the graph
   context needed to order modules correctly.
 - An in-module entry bridge reaches a private source `main` without turning it into a source export or placing a process
@@ -67,13 +64,14 @@ order. Foreign objects do not participate in this lifecycle sequence.
 - Ordinary `--gen`, `--build`, and `--run` remain legacy whole-program single-CU operations for now.
 - The internal module generator produces the lifecycle-bearing staged C used by operational compile-only mode.
   Compile-only always publishes the object and interface, while `--keep-c` also publishes that exact generated C.
-- Object metadata may anchor its portable records from `I4init` without introducing a conditional symbol.
+- Per-module objects contain no embedded Dea metadata; verified sibling interfaces carry entry and lifecycle manifests.
 - The standalone linker selects exactly one `I5entry`, calls `I4init` in dependency order, calls `I4fini` in reverse
   order, and keeps foreign objects outside Dea lifecycle orchestration.
 - Future Stage 2 implementation must preserve the same module-output and LBI behavior.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md][lifecycle]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]
 - [l1/work/plans/features/closed/2026-04-24-multi-cu-initialization-and-link-order-noref.md][superseded-init]
@@ -92,6 +90,7 @@ order. Foreign objects do not participate in this lifecycle sequence.
 [architecture]: ../reference/architecture.md
 [backend]: ../reference/c-backend-design.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [lifecycle]: ../../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md

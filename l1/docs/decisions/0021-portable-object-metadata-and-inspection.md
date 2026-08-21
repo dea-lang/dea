@@ -1,8 +1,8 @@
 # ADR-0021: Portable Object Metadata and Inspection
 
 - Decision date: 2026-07-23
-- Last edited: 2026-07-27
-- Status: Accepted
+- Last edited: 2026-08-21
+- Status: Superseded by [ADR-0030](0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md) (2026-08-21)
 
 ## Context
 
@@ -88,6 +88,7 @@ so a definition under it remains Dea evidence even when its suffix is not a vali
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md][lifecycle]
@@ -106,6 +107,7 @@ so a definition under it remains Dea evidence even when its suffix is not a vali
 [architecture]: ../reference/architecture.md
 [backend]: ../reference/c-backend-design.md
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [lifecycle]: ../../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-hardening]: ../../work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
 [link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md

@@ -227,9 +227,10 @@ func pi_parse_module_import_line(self: ParserState*) -> InterfaceModuleImport*? 
  * @param self Parser state.
  * @param code `PAR-0578` for duplicates or `PAR-0579` for region regression.
  * @param message Diagnostic message.
+ * @param tok Token whose span should be highlighted.
  */
-func pi_operational_error(self: ParserState*, code: string, message: string) {
-    ps_emit_error(self, code, message, ps_peek(self));
+func pi_operational_error(self: ParserState*, code: string, message: string, tok: Token) {
+    ps_emit_error(self, code, message, tok);
 }
 
 /**
@@ -1547,12 +1548,13 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
           let seen_decls = ss_create() => ss_free(seen_decls)) {
         while (!ps_check(p, ord(TT_EOF))) {
             if (pi_check_ident_text(p, "entry")) {
+                let entry_tok = ps_peek(p);
                 let duplicate = seen_entry;
                 if (duplicate) {
-                    pi_operational_error(p, "PAR-0578", "Duplicate entry marker in interface file");
+                    pi_operational_error(p, "PAR-0578", "Duplicate entry marker in interface file", entry_tok);
                 } else if (region > 0) {
                     pi_operational_error(p, "PAR-0579",
-                        "Entry marker appears outside its canonical interface region");
+                        "Entry marker appears outside its canonical interface region", entry_tok);
                 }
                 seen_entry = true;
                 if (!pi_parse_entry_line(p)) {
@@ -1565,6 +1567,7 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
             }
 
             if (ps_check(p, ord(TT_IMPORT))) {
+                let import_tok = ps_peek(p);
                 let import_entry = pi_parse_module_import_line(p);
                 if (import_entry == null) {
                     break;
@@ -1573,11 +1576,11 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
                 let duplicate2 = !ss_add(seen_imports, imported.provider_module);
                 if (duplicate2) {
                     pi_operational_error(p, "PAR-0578",
-                        "Duplicate import provider '" + imported.provider_module + "' in interface file");
+                        "Duplicate import provider '" + imported.provider_module + "' in interface file", import_tok);
                     mi_module_import_free(imported);
                 } else if (region > 1) {
                     pi_operational_error(p, "PAR-0579",
-                        "Module import appears outside its canonical interface region");
+                        "Module import appears outside its canonical interface region", import_tok);
                     mi_module_import_free(imported);
                 } else {
                     region = 1;
@@ -1587,13 +1590,14 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
             }
 
             if (pi_check_ident_text(p, "require")) {
+                let require_tok = ps_peek(p);
                 let dep = pi_parse_dep_line(p);
                 if (dep == null) {
                     break;
                 }
                 if (region > 2) {
                     pi_operational_error(p, "PAR-0579",
-                        "Require record appears outside its canonical interface region");
+                        "Require record appears outside its canonical interface region", require_tok);
                     mi_dep_entry_free(dep as InterfaceDepEntry*);
                 } else {
                     region = 2;
@@ -1603,13 +1607,14 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
             }
 
             if (pi_check_ident_text(p, "link")) {
+                let link_tok = ps_peek(p);
                 let dep2 = pi_parse_dep_line(p);
                 if (dep2 == null) {
                     break;
                 }
                 if (region > 3) {
                     pi_operational_error(p, "PAR-0579",
-                        "Link record appears outside its canonical interface region");
+                        "Link record appears outside its canonical interface region", link_tok);
                     mi_dep_entry_free(dep2 as InterfaceDepEntry*);
                 } else {
                     region = 3;
@@ -1618,12 +1623,12 @@ func pi_parse_interface_with_peers(text: string, filename: string, peers: Vector
                 continue;
             }
 
-            region = 4;
             let next_decl_group = pi_decl_group(p);
             if (next_decl_group >= 0) {
+                region = 4;
                 if (next_decl_group < decl_group) {
                     pi_operational_error(p, "PAR-0579",
-                        "Exported declaration appears outside canonical declaration-group order");
+                        "Exported declaration appears outside canonical declaration-group order", ps_peek(p));
                 } else {
                     decl_group = next_decl_group;
                 }

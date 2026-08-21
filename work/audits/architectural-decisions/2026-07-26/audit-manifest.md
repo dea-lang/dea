@@ -38,6 +38,7 @@ ADR coverage was checked from each index and then against every numbered ADR fil
 - Post-baseline closed plan: `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
 - Post-baseline closed plan: `l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`
 - Post-baseline closed plan: `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
+- Post-baseline closed plan: `l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`
 - Post-baseline closed plan: `work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md`
 - Post-baseline closed plan:
   `work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`
@@ -72,6 +73,7 @@ ADR coverage was checked from each index and then against every numbered ADR fil
 - Post-baseline ADR: `l1/docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md`
 - Post-baseline ADR: `l1/docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md`
 - Post-baseline ADR: `l1/docs/decisions/0029-output-local-standalone-link-transaction.md`
+- Post-baseline ADR: `l1/docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md`
 - Post-baseline ADR amendment: `l0/docs/decisions/0014-bootstrap-self-hosting-strategy.md`
 
 The closed plans and new ADRs above were created after the audited commit; the listed amendment was made after the

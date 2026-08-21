@@ -107,6 +107,9 @@ func lpb_populate_shape(plan: LinkPlan*, shape: string, module_count: int) {
 
     assert(shape == "layered-dag", "unknown provenance benchmark shape: " + shape);
     let width = 8;
+    if (module_count <= width) {
+        width = module_count / 2;
+    }
     for (let i2 = 0; i2 < module_count; i2 = i2 + 1) {
         let first = i2 + width;
         let second = first + 1;

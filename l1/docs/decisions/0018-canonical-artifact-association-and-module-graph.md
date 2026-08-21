@@ -1,7 +1,7 @@
 # ADR-0018: Canonical Artifact Association and Module Graph
 
 - Decision date: 2026-07-19
-- Last edited: 2026-07-24
+- Last edited: 2026-08-21
 - Status: Accepted
 
 ## Context
@@ -38,10 +38,11 @@ interface fails instead of falling back to source. If no interface exists, the c
 `MRP_REQUIRE_INTERFACE` or `MRP_ALLOW_SOURCE_FALLBACK`; source fallback retains the existing
 system-roots-before-project-roots precedence.
 
-The graph closes over both `.l1m` dependency tiers. `require` activates provider interfaces for semantic replay; `link`
-retains an implementation dependency obligation without opening provider names into the consumer's semantic environment.
-Source nodes also keep ordered direct-import edges because the sorted symbol manifest cannot reconstruct
-side-effect-only imports or source order.
+The graph closes over every `.l1m` operational provider view. `require` activates provider interfaces for semantic
+replay; `link` retains an implementation dependency obligation without opening provider names into the consumer's
+semantic environment. Ordered lifecycle imports preserve direct source-import order and side-effect-only providers.
+Standalone linking requires each non-virtual semantic provider to be transitively reachable through those lifecycle
+imports without deriving lifecycle edges from `require` or `link`.
 
 ## Rationale
 
@@ -57,17 +58,16 @@ side-effect-only imports or source order.
 
 ## Consequences
 
-- The graph and artifact association are available to internal analysis/library entry points, but artifact publication,
-  object metadata, lifecycle entry points, standalone linking, and multi-CU orchestration remain separate work.
-- This graph decision did not activate `-c` / `--compile`; the later compile-only plan made it operational. Standalone
-  link mode is absent, and ordinary `--build` and `--run` remain source-based single-CU operations.
+- The graph and artifact association are shared by internal analysis, compile-only publication, and standalone linking;
+  ordinary `--build` and `--run` remain source-based single-CU operations.
 - Interface cycles and source cycles share one canonical module-chain policy; cached nodes are not cycles, and failed
   nodes are not committed as resolved.
-- Whole-module fingerprints are validated and recomputed before an interface enters the graph. The graph carries
-  verified dependency strings, while provider-object comparison remains later link-set work.
+- Whole-module fingerprints and operational provider expectations are validated before an interface enters the graph.
+  The verified sibling interface, rather than native object metadata, is authoritative during standalone linking.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
@@ -87,6 +87,7 @@ side-effect-only imports or source order.
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [graph-plan]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [module-format]: ../specs/compiler/module-interface-format.md
 [object-metadata]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [project-status]: ../project-status.md

@@ -1,14 +1,14 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-08-20
+- Version: 2026-08-21
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md`
   - `l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md`
@@ -105,18 +105,17 @@ Relevant facts that constrain the plan at the time of writing:
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
   behavior must be ported there with Stage 1 acting as the L1 behavioral oracle.
 
-### Implemented `.l1m` authority transition pending lifecycle closure
+### Completed `.l1m` authority transition
 
-The active
-[`l1/work/plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md`][l1m-authoritative-linking] has
-landed the implementation and live-document transition that makes each verified sibling `.l1m` the standalone linker's
-semantic, entry, and lifecycle authority while treating paired native objects and explicit foreign objects as
-caller-asserted opaque host inputs.
+The completed
+[`l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`][l1m-authoritative-linking]
+makes each verified sibling `.l1m` the standalone linker's semantic, entry, and lifecycle authority while treating
+paired native objects and explicit foreign objects as caller-asserted opaque host inputs.
 
 Embedded object metadata, native-object readers, and input snapshots are removed. Interfaces now carry ordered lifecycle
 imports and entry presence. The generated-C, build/run, external-linking, and C-FFI active work has been rebased onto
-the new boundary. The plan remains open because closure requires the supported-host CI matrix and the same-change ADR
-lifecycle work; those remote and publication-adjacent gates are not satisfied by local implementation.
+the new boundary. [ADR-0030][l1m-authority-adr] supersedes the former object-metadata and verified-native-input
+authority records; Linux, Windows UCRT64, macOS Intel, and macOS ARM64 validation completed the plan's host matrix.
 
 ## Phase 0 - Anchor decisions before coding
 
@@ -245,8 +244,7 @@ not authenticated or byte-bound. Callers must update both files together, and a 
 
 The completed [interface fingerprint plan][interface-fingerprints] and [ADR-0019][fingerprint-adr] fix the key and
 public-surface canonicalization. The historical [object metadata plan][object-metadata] and [ADR-0021][metadata-adr]
-record the superseded authority model; the active `.l1m` authority plan remains open until supported-host CI and ADR
-closure can supersede that record formally.
+record the superseded authority model; [ADR-0030][l1m-authority-adr] records the authoritative-interface replacement.
 
 ## Phase 1 - Runtime as a static library
 
@@ -520,8 +518,8 @@ structured --c-source --> shared native workspace ------------------------------
 ```
 
 - Initiative 0002 is complete and supplies the runtime-archive model consumed by the link plans.
-- Artifact-graph, fingerprint, lifecycle, and compile-only work are complete. The `.l1m`-authority implementation has
-  removed the historical object-metadata subsystem; its plan remains open for supported-host CI and ADR closure.
+- Artifact-graph, fingerprint, lifecycle, compile-only, and `.l1m`-authority work are complete. The authority transition
+  removed the historical object-metadata subsystem and is recorded by [ADR-0030][l1m-authority-adr].
 - Compile-only artifacts are operational with verified operational interface records and opaque paired objects.
 - Per-module `--gen` may migrate after compile-only; legacy generator removal waits for build/run fan-out.
 - Standalone link owns verified-interface planning, opaque native input forwarding, and wrapper construction; build/run
@@ -553,7 +551,7 @@ Recorded near-term tranche checkpoints:
 - [ ] Migrate `--gen` to per-module output and lock cross-mode generated-C identity.
 - [x] Implement `.l1m`-authoritative Dea linking, caller-asserted foreign inputs, entry selection, lifecycle order, and
   transitive provenance.
-- [ ] Complete supported-host CI and ADR lifecycle closure for the `.l1m` authority plan.
+- [x] Complete supported-host CI and ADR lifecycle closure for the `.l1m` authority plan.
 - [ ] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
 - [ ] Add ordered external-library and raw host-driver inputs.
 
@@ -644,13 +642,13 @@ the chosen answer and points at the owning section.
 5. **Foreign relocatable objects:** repeatable `--foreign-object` is a caller assertion that one regular path names a
    host-compatible relocatable. It may satisfy unmangled C symbols but has no Dea graph, fingerprint, lifecycle, or
    entry role. Dea does not inspect its format, symbols, `main`, reserved names, or embedded controls. Archives and
-   shared libraries remain under external-library options. Anchored in §0.6 and §2a; accepted ADR replacement is pending
-   the active authority plan's closure.
+   shared libraries remain under external-library options. Anchored in §0.6 and §2a and recorded by
+   [ADR-0030][l1m-authority-adr].
 6. **Compile-only artifact publication:** compile-only publishes `.o + .l1m` by default and adds the exact `.c` only
    with `--keep-c`. Successful return leaves the complete new selected set; recoverable failure restores the exact prior
    set; failed rollback retains recovery files. Publication is sequential, does not byte-bind the pair, and requires
-   external serialization for concurrent readers or same-stem writers. Anchored in §2a; the corresponding ADR amendment
-   is pending the active authority plan's closure.
+   external serialization for concurrent readers or same-stem writers. Anchored in §2a and recorded by the amended
+   [ADR-0022][compile-only-adr].
 7. **Per-module generated C:** `--gen` treats a selected `.l1m` as sufficient without inspecting its sibling object,
    shares generated-C bytes with retained compile/build/run output, uses stable module-relative compiler-visible paths,
    and retires whole-closure generation only after all production callers migrate. Owned by the active
@@ -658,7 +656,7 @@ the chosen answer and points at the owning section.
 8. **Standalone link workspace:** validate the complete link set and toolchain/runtime inputs before atomically
    reserving a bounded output-local `.l1c-link-*` transaction. The common executor receives explicit scratch paths and
    does not own workspace allocation or cleanup. The transaction owns wrapper and capture files only; original native
-   paths replace the retired exact-byte snapshots. The corresponding ADR amendment is pending plan closure.
+   paths replace the retired exact-byte snapshots. Recorded by the amended [ADR-0029][link-transaction-adr].
 
 FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery open questions live in
 [Initiative 0002][runtime-library].
@@ -696,13 +694,13 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
   - Rationale: ADR-0020 records module-local emission and the initialization, finalization, and entry hooks used at link
     time.
-- Decision: Historically embed and inspect portable object metadata to distinguish verified Dea objects from foreign
-  objects pending formal supersession by the `.l1m` authority decision.
+- Decision: Make verified sibling interfaces authoritative for standalone Dea semantics and lifecycle while treating
+  native inputs as caller-trusted opaque host payloads.
   - Scope: L1
   - Disposition: Covered by ADR
-  - ADR: `l1/docs/decisions/0021-portable-object-metadata-and-inspection.md`
-  - Rationale: ADR-0021 records the retired metadata authority, representation, and classification and remains Accepted
-    until the active authority plan completes its atomic ADR lifecycle.
+  - ADR: `l1/docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md`
+  - Rationale: ADR-0030 supersedes the object-metadata and verified-native-input records while preserving graph, entry,
+    lifecycle, wrapper, and host-link behavior.
 - Decision: Publish compile-only object and interface artifacts with endpoint rollback from one output-local
   transaction.
   - Scope: L1
@@ -710,13 +708,6 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
   - Rationale: ADR-0022 records the implemented artifact set, staging boundary, validation, publication order, rollback,
     and recovery behavior used by the remaining initiative plans.
-- Decision: Historically link object-verified Dea inputs and explicitly classified foreign objects through a generated
-  executable wrapper pending formal supersession by the `.l1m` authority decision.
-  - Scope: L1
-  - Disposition: Covered by ADR
-  - ADR: `l1/docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md`
-  - Rationale: ADR-0028 records the retired object-classification boundary plus retained graph, entry, and wrapper
-    orchestration and remains Accepted until the active authority plan completes its atomic ADR lifecycle.
 - Decision: Isolate standalone link wrapper artifacts in an atomically reserved output-local transaction supplied
   explicitly to the common link executor.
   - Scope: L1
@@ -802,20 +793,19 @@ implementation tranche proves that one decision area needs additional design wor
 - Per-module definitions plus `I4init`, `I4fini`, and `I5entry` completed under
   [lifecycle entrypoints][lifecycle-entrypoints] and recorded by [ADR-0020][lifecycle-adr].
 - Provider/consumer metadata and bounded object readers historically completed under [object metadata][object-metadata]
-  and were recorded by [ADR-0021][metadata-adr]. The subsystem is now retired; that ADR remains accepted until the
-  active authority plan completes its required ADR lifecycle.
+  and were recorded by [ADR-0021][metadata-adr]. The subsystem is retired, and [ADR-0030][l1m-authority-adr] supersedes
+  that authority model.
 - Single-module artifact production with endpoint rollback completed under [compile only][compile-only] and is recorded
   by [ADR-0022][compile-only-adr].
 - Per-module `--gen`, cross-mode generated-C identity, and legacy-generator retirement under
   [per-module generated C][per-module-generated-c].
 - The original standalone Dea/foreign-object link boundary, entry selection, wrapper construction, and output-local
-  scratch completed under [link set][link-set] and are recorded by [ADR-0028][link-set-adr] and
-  [ADR-0029][link-transaction-adr]. The implementation is now rebased onto authoritative interfaces and opaque native
-  inputs; those accepted ADRs remain unchanged until the active authority plan's closure work.
+  scratch completed under [link set][link-set]. [ADR-0030][l1m-authority-adr] supersedes the former verified-input
+  boundary in [ADR-0028][link-set-adr], while [ADR-0029][link-transaction-adr] retains output-local scratch ownership.
 - Standalone-link input, traversal, lifecycle, and Windows transport hardening under
   [standalone-link hardening][standalone-link-hardening].
 - `.l1m`-authoritative standalone linking and opaque native-input handling under
-  [`l1/work/plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md`][l1m-authoritative-linking].
+  [`l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`][l1m-authoritative-linking].
 - `--build` / `--run` graph fan-out through shared compile/link APIs under [build/run fan-out][build-run].
 - Phase 3: external-library linking CLI under
   [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][library-linking]
@@ -847,7 +837,8 @@ implementation tranche proves that one decision area needs additional design wor
 [fingerprint-adr]: ../../docs/decisions/0019-whole-module-interface-fingerprints.md
 [interface-emission]: ../plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[l1m-authoritative-linking]: ../plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md
+[l1m-authoritative-linking]: ../plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
+[l1m-authority-adr]: ../../docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md
 [library-linking]: ../plans/features/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-adr]: ../../docs/decisions/0020-per-module-backend-and-lifecycle-abi.md
 [lifecycle-entrypoints]: ../plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

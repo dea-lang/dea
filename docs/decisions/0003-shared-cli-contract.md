@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-07-28
+- Last edited: 2026-08-21
 - Status: Accepted
 
 ## Context
@@ -76,6 +76,8 @@ short-option cluster.
   L1 compile-only mode and semantic option reservations
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md](../../l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md):
   L1 standalone link operands and option scope
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md](../../l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md):
+  retained typed foreign-object operand under the opaque native-input boundary
 - [work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md](../../work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md):
   coordinated current aliases and deferred semantic reservations
 - [work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md](../../work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md):

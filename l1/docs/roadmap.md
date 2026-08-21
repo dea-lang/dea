@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-08-20
+Version: 2026-08-21
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -194,10 +194,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] migrates `--gen` from whole-closure
   output to one source-backed module, locks cross-mode generated-C identity, and retires the legacy generator after
   build/run fan-out.
-- Feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] makes verified sibling
-  `.l1m` files authoritative for standalone semantics and lifecycle planning while treating native objects as opaque
-  host-link inputs. Its implementation and live documentation are present, but the plan remains open pending the
-  required supported-host CI evidence and ADR closure.
+- Completed feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] makes verified
+  sibling `.l1m` files authoritative for standalone semantics and lifecycle planning while treating native objects as
+  opaque host-link inputs.
 - Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] converts `--build` and `--run` to the shared
   multi-CU compile/link APIs.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl`
@@ -318,7 +317,7 @@ update to be promoted to an initiative or plan:
 [interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
-[l1m-authoritative-linking]: ../work/plans/features/2026-08-20-l1m-authoritative-standalone-linking-noref.md
+[l1m-authoritative-linking]: ../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

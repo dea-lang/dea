@@ -5,6 +5,7 @@
 
 module interface_fingerprint;
 
+import std.hashmap;
 import std.hashset;
 import std.integer;
 import std.string;
@@ -953,35 +954,19 @@ func ifp_validate_value(value: string, context: string, diags: DiagCollector*, f
 }
 
 /**
- * Find one provider in a parallel operational-expectation cache.
- *
- * @param provider_names Provider names already validated.
- * @param provider_module Provider to find.
- * @return Cache index, or `-1` when absent.
- */
-func ifp_provider_index(provider_names: StringVector*, provider_module: string) -> int {
-    for (let i = 0; i < sv_size(provider_names); i = i + 1) {
-        if (sv_get(provider_names, i) == provider_module) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-/**
  * Validate one provider expectation and record cross-manifest consistency.
  *
  * @param provider_module Provider module name.
  * @param provider_fingerprint Tagged expected fingerprint.
  * @param context Human-readable fingerprint context.
- * @param provider_names Shared provider-name cache.
+ * @param provider_indices Shared provider-name-to-index cache.
  * @param provider_fingerprints Parallel shared fingerprint cache.
  * @param diags Diagnostic collector.
  * @param filename Interface filename.
  * @return `true` when the expectation is valid and consistent.
  */
 func ifp_validate_provider_expectation(provider_module: string, provider_fingerprint: string,
-                                       context: string, provider_names: StringVector*,
+                                       context: string, provider_indices: StringIntMap*,
                                        provider_fingerprints: StringVector*, diags: DiagCollector*,
                                        filename: string) -> bool {
     if (!sp_is_valid_module_name(provider_module) || dea_is_virtual_module_name(provider_module)) {
@@ -992,16 +977,16 @@ func ifp_validate_provider_expectation(provider_module: string, provider_fingerp
     if (!ifp_validate_value(provider_fingerprint, context, diags, filename)) {
         return false;
     }
-    let provider_index = ifp_provider_index(provider_names, provider_module);
-    if (provider_index >= 0) {
-        if (sv_get(provider_fingerprints, provider_index) != provider_fingerprint) {
+    let provider_index = sim_get(provider_indices, provider_module);
+    if (provider_index != null) {
+        if (sv_get(provider_fingerprints, provider_index as int) != provider_fingerprint) {
             ifp_error(diags, "SIG-0284", "conflicting fingerprints for provider module '" +
                 provider_module + "'", filename);
             return false;
         }
         return true;
     }
-    sv_push(provider_names, provider_module);
+    sim_put(provider_indices, provider_module, sv_size(provider_fingerprints));
     sv_push(provider_fingerprints, provider_fingerprint);
     return true;
 }
@@ -1018,7 +1003,7 @@ func ifp_validate_provider_expectation(provider_module: string, provider_fingerp
  * @return `true` when every operational record is valid and coherent.
  */
 func ifp_validate_dependencies(mi: ModuleInterface*, diags: DiagCollector*, filename: string) -> bool {
-    with (let provider_names = sv_create(4) => sv_free(provider_names),
+    with (let provider_indices = sim_create() => sim_free(provider_indices),
           let provider_fingerprints = sv_create(4) => sv_free(provider_fingerprints),
           let import_providers = ss_create() => ss_free(import_providers)) {
         for (let import_i = 0; import_i < vec_size(mi.module_imports); import_i = import_i + 1) {
@@ -1032,7 +1017,7 @@ func ifp_validate_dependencies(mi: ModuleInterface*, diags: DiagCollector*, file
                     entry.provider_module,
                     entry.provider_fingerprint,
                     "provider fingerprint for imported module '" + entry.provider_module + "'",
-                    provider_names,
+                    provider_indices,
                     provider_fingerprints,
                     diags,
                     filename)) {
@@ -1058,7 +1043,7 @@ func ifp_validate_dependencies(mi: ModuleInterface*, diags: DiagCollector*, file
                         entry2.provider_module,
                         entry2.provider_fingerprint,
                         context,
-                        provider_names,
+                        provider_indices,
                         provider_fingerprints,
                         diags,
                         filename)) {

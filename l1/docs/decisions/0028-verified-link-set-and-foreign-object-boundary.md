@@ -1,8 +1,8 @@
 # ADR-0028: Verified Link Set and Foreign-Object Boundary
 
 - Decision date: 2026-07-27
-- Last edited: 2026-07-27
-- Status: Accepted
+- Last edited: 2026-08-21
+- Status: Superseded by [ADR-0030](0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md) (2026-08-21)
 
 ## Context
 
@@ -72,6 +72,7 @@ process entry and cross-module lifecycle composition out of independently compil
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 - [l1/work/plans/features/closed/2026-04-24-interface-fingerprints-and-object-metadata-noref.md][superseded-metadata]
 - [l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md][link-hardening]
@@ -86,6 +87,7 @@ process entry and cross-module lifecycle composition out of independently compil
 [abi]: ../specs/compiler/abi.md
 [architecture]: ../reference/architecture.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [link-hardening]: ../../work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
 [link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [runtime-boundary]: 0027-runtime-archive-and-trace-selection-boundary.md

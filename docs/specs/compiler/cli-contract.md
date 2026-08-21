@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-08-20
+Version: 2026-08-21
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -228,9 +228,10 @@ l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
 - Normal compiler families receive the selected regular runtime archive as an exact path. Under the compatibility
   exception defined for TinyCC, L1 uses the complete variant-matched regular runtime object set when available;
   otherwise it attempts the same exact archive selection. These native inputs are not byte-inspected. `L1_CFLAGS` and
-  `--c-options` configure wrapper compilation only; they cannot add final-link inputs. External libraries, archives
-  supplied as foreign objects, `-L`, `-l`, rpaths, and raw host-link arguments remain outside this mode's current
-  surface.
+  `--c-options` configure wrapper compilation and are not appended as final-link command words. Because the resulting
+  wrapper object is opaque, compiler options may still cause the host compiler to encode toolchain-specific linker
+  controls that the final linker honors; those effects are caller-trusted. External libraries, archives supplied as
+  foreign objects, `-L`, `-l`, rpaths, and raw host-link arguments remain outside this mode's direct CLI surface.
 - Until native Windows process spawning replaces `cmd.exe`, exact standalone-link command words and redirection paths
   containing `%`, `!`, `"`, carriage return, or line feed are rejected before scratch allocation.
 

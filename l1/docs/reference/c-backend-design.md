@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-08-20
+Version: 2026-08-21
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -131,9 +131,9 @@ The wrapper has no foreign-object-specific declarations or lifecycle calls. It i
 object before the final host link. The final command places the wrapper object first, retains all user-supplied Dea and
 foreign objects in CLI encounter order, appends the selected runtime inputs, and adds `-lm` for non-MSVC compiler
 families because interface manifests do not encode `sys.real` use. `L1_CFLAGS` and `--c-options` configure wrapper
-compilation only and are deliberately absent from the final link command, so raw compiler options cannot bypass the
-typed `--foreign-object` boundary. The wrapper object must be a no-follow regular file; Dea does not inspect its native
-format or embedded controls.
+compilation and are deliberately absent from the final-link command words. The wrapper object must be a no-follow
+regular file, but Dea does not inspect its native format or embedded controls; caller-selected compiler options may
+therefore encode toolchain-specific linker controls that the final linker honors outside the typed native-operand model.
 
 ## Type Lowering
 

@@ -904,21 +904,20 @@ func mi_project_surface(result: AnalysisResult*, module_name: string) -> ModuleI
 }
 
 /**
- * Find one provider fingerprint in a parallel-vector cache.
+ * Find one provider fingerprint in an indexed cache.
  *
- * @param provider_names Cached provider module names.
- * @param fingerprints Cached tagged fingerprints, parallel to `provider_names`.
+ * @param provider_indices Cached provider-name-to-index map.
+ * @param fingerprints Cached tagged fingerprints indexed by `provider_indices`.
  * @param provider_module Provider module to find.
  * @return Cached fingerprint, or `null` when absent.
  */
-func mi_cached_provider_fingerprint(provider_names: StringVector*, fingerprints: StringVector*,
+func mi_cached_provider_fingerprint(provider_indices: StringIntMap*, fingerprints: StringVector*,
                                     provider_module: string) -> string? {
-    for (let i = 0; i < sv_size(provider_names); i = i + 1) {
-        if (sv_get(provider_names, i) == provider_module) {
-            return sv_get(fingerprints, i);
-        }
+    let provider_index = sim_get(provider_indices, provider_module);
+    if (provider_index == null) {
+        return null;
     }
-    return null;
+    return sv_get(fingerprints, provider_index as int);
 }
 
 /**
@@ -959,19 +958,19 @@ func mi_compute_provider_fingerprint(result: AnalysisResult*, provider_module: s
  * Return and cache one provider fingerprint for dependency population.
  *
  * @param result Analysis result providing provider metadata.
- * @param provider_names Cached provider names.
+ * @param provider_indices Cached provider-name-to-index map.
  * @param fingerprints Cached provider fingerprints.
  * @param provider_module Provider module to resolve.
  * @return Tagged provider fingerprint, or `""` after a diagnosed failure.
  */
-func mi_provider_fingerprint_cached(result: AnalysisResult*, provider_names: StringVector*,
+func mi_provider_fingerprint_cached(result: AnalysisResult*, provider_indices: StringIntMap*,
                                     fingerprints: StringVector*, provider_module: string) -> string {
-    let cached = mi_cached_provider_fingerprint(provider_names, fingerprints, provider_module);
+    let cached = mi_cached_provider_fingerprint(provider_indices, fingerprints, provider_module);
     if (cached != null) {
         return cached as string;
     }
     let fingerprint = mi_compute_provider_fingerprint(result, provider_module);
-    sv_push(provider_names, provider_module);
+    sim_put(provider_indices, provider_module, sv_size(fingerprints));
     sv_push(fingerprints, fingerprint);
     return fingerprint;
 }
@@ -981,17 +980,17 @@ func mi_provider_fingerprint_cached(result: AnalysisResult*, provider_names: Str
  *
  * @param result Analysis result providing provider metadata.
  * @param entries Dependency entries to update.
- * @param provider_names Shared provider-name cache.
+ * @param provider_indices Shared provider-name-to-index cache.
  * @param fingerprints Shared fingerprint cache.
  * @return `true` when every provider fingerprint was available.
  */
 func mi_populate_dependency_fingerprints(result: AnalysisResult*, entries: VectorBase*,
-                                         provider_names: StringVector*, fingerprints: StringVector*) -> bool {
+                                         provider_indices: StringIntMap*, fingerprints: StringVector*) -> bool {
     let ok = true;
     for (let i = 0; i < vec_size(entries); i = i + 1) {
         let entry = ptr_vec_get(entries, i) as InterfaceDepEntry*;
         let fingerprint = mi_provider_fingerprint_cached(
-            result, provider_names, fingerprints, entry.provider_module);
+            result, provider_indices, fingerprints, entry.provider_module);
         if (fingerprint == "") {
             ok = false;
         } else {
@@ -1006,18 +1005,18 @@ func mi_populate_dependency_fingerprints(result: AnalysisResult*, entries: Vecto
  *
  * @param result Analysis result providing provider metadata.
  * @param entries Ordered `InterfaceModuleImport*` entries to update.
- * @param provider_names Shared provider-name cache.
+ * @param provider_indices Shared provider-name-to-index cache.
  * @param fingerprints Shared fingerprint cache.
  * @return `true` when every provider fingerprint was available.
  */
 func mi_populate_module_import_fingerprints(result: AnalysisResult*, entries: VectorBase*,
-                                            provider_names: StringVector*,
+                                            provider_indices: StringIntMap*,
                                             fingerprints: StringVector*) -> bool {
     let ok = true;
     for (let i = 0; i < vec_size(entries); i = i + 1) {
         let entry = ptr_vec_get(entries, i) as InterfaceModuleImport*;
         let fingerprint = mi_provider_fingerprint_cached(
-            result, provider_names, fingerprints, entry.provider_module);
+            result, provider_indices, fingerprints, entry.provider_module);
         if (fingerprint == "") {
             ok = false;
         } else {
@@ -1035,14 +1034,14 @@ func mi_populate_module_import_fingerprints(result: AnalysisResult*, entries: Ve
  * @return `true` when every provider expectation was populated and coherent.
  */
 func mi_populate_provider_fingerprints(result: AnalysisResult*, mi: ModuleInterface*) -> bool {
-    with (let provider_names = sv_create(4) => sv_free(provider_names),
+    with (let provider_indices = sim_create() => sim_free(provider_indices),
           let fingerprints = sv_create(4) => sv_free(fingerprints)) {
         let imports_ok = mi_populate_module_import_fingerprints(
-            result, mi.module_imports, provider_names, fingerprints);
+            result, mi.module_imports, provider_indices, fingerprints);
         let require_ok = mi_populate_dependency_fingerprints(
-            result, mi.require_entries, provider_names, fingerprints);
+            result, mi.require_entries, provider_indices, fingerprints);
         let link_ok = mi_populate_dependency_fingerprints(
-            result, mi.link_entries, provider_names, fingerprints);
+            result, mi.link_entries, provider_indices, fingerprints);
         return imports_ok && require_ok && link_ok &&
             ifp_validate_dependencies(mi, result.diags, "<interface:" + mi.module_name + ">");
     }

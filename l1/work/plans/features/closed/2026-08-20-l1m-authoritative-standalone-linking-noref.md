@@ -2,8 +2,8 @@
 
 ## Make `.l1m` Authoritative for Standalone Linking
 
-- Date: 2026-08-20
-- Status: Draft
+- Date: 2026-08-21
+- Status: Completed
 - Title: Make `.l1m` Authoritative and Native Objects Opaque in Standalone Link Mode
 - Kind: Feature
 - Severity: High
@@ -799,6 +799,22 @@ evidence additionally requires green L1 CI for Linux x86-64, macOS Intel, macOS 
 12. Clean local and Linux-container suites pass, and the Linux, macOS Intel, macOS ARM64, and Windows UCRT64 L1 CI lanes
     are green.
 
+## Validation
+
+- Focused Stage 1 regression tests passed for interface parsing, interface fingerprints, and analysis.
+- The layered-DAG provenance benchmark completed for size 2, covering the corrected small-input shape.
+- A clean native `make test-all` passed 65 normal tests, environment stackability, four examples, and 44 trace tests.
+- A clean Linux-container `make test-all` passed the same suites using the cached baseline image with the five modified
+  implementation and test files mounted from the working tree. The normal `make test-docker` entrypoint could not
+  refresh that image because Docker Hub was unreachable.
+- Unified CI for the reviewed implementation passed the Linux x86-64, macOS Intel, macOS ARM64, and Windows UCRT64 L1
+  lanes. Its only failure was the known ADR-verification bug that misclassified the stacked push; that workflow failure
+  was unrelated to this feature's implementation or lifecycle closure.
+- The architectural-decision audit validator passed with ADR-0030 and this closed plan declared as post-baseline
+  records.
+- Staged and active-plan ADR-impact checks, copyright-header validation, repository-pinned Markdown formatting, and
+  staged diff whitespace checks passed.
+
 ## ADR Impact
 
 - Decision: Make verified sibling `.l1m` files the sole Dea semantic and lifecycle authority for standalone linking,
@@ -806,7 +822,7 @@ evidence additionally requires green L1 CI for Linux x86-64, macOS Intel, macOS 
 
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md`
   - Rationale: This reverses the durable object-authority and verified-native-input boundaries in ADR-0021 and ADR-0028.
     The closing change must allocate the next available L1 ADR, supersede both records, and restate retained graph,
     entry, lifecycle, wrapper, and host-link behavior.
@@ -880,27 +896,27 @@ evidence additionally requires green L1 CI for Linux x86-64, macOS Intel, macOS 
 6. The implementation and maintenance surface becomes materially smaller, and Stage 2 does not need native object
    readers or a duplicate semantic metadata format.
 
-[abi]: ../../../docs/specs/compiler/abi.md
-[architecture]: ../../../docs/reference/architecture.md
-[backend-design]: ../../../docs/reference/c-backend-design.md
-[build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
-[c-ffi-initiative]: ../../initiatives/0003-c-ffi.md
-[c-ffi-plan]: 2026-04-24-c-ffi-extern-c-and-cstr-noref.md
-[cli-contract]: ../../../../docs/specs/compiler/cli-contract.md
-[compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
-[design-decisions]: ../../../docs/reference/design-decisions.md
-[diagnostics]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[external-linking]: 2026-04-24-external-library-linking-cli-noref.md
-[generated-c]: 2026-07-24-per-module-generated-c-mode-noref.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[interface-emission]: closed/2026-04-24-module-interface-emission-noref.md
-[interface-fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[interface-format]: ../../../docs/specs/compiler/module-interface-format.md
-[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-hardening]: ../bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
-[link-set]: closed/2026-07-17-link-set-driver-and-wrapper-noref.md
-[module-visibility]: ../../../docs/specs/compiler/module-visibility-and-imports.md
-[object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md
-[project-status]: ../../../docs/project-status.md
-[roadmap]: ../../../docs/roadmap.md
-[separate-compilation]: ../../../docs/reference/separate-compilation.md
+[abi]: ../../../../docs/specs/compiler/abi.md
+[architecture]: ../../../../docs/reference/architecture.md
+[backend-design]: ../../../../docs/reference/c-backend-design.md
+[build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
+[c-ffi-initiative]: ../../../initiatives/0003-c-ffi.md
+[c-ffi-plan]: ../2026-04-24-c-ffi-extern-c-and-cstr-noref.md
+[cli-contract]: ../../../../../docs/specs/compiler/cli-contract.md
+[compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
+[design-decisions]: ../../../../docs/reference/design-decisions.md
+[diagnostics]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[external-linking]: ../2026-04-24-external-library-linking-cli-noref.md
+[generated-c]: ../2026-07-24-per-module-generated-c-mode-noref.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[interface-emission]: 2026-04-24-module-interface-emission-noref.md
+[interface-fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[interface-format]: ../../../../docs/specs/compiler/module-interface-format.md
+[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[link-hardening]: ../../bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
+[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
+[module-visibility]: ../../../../docs/specs/compiler/module-visibility-and-imports.md
+[object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
+[project-status]: ../../../../docs/project-status.md
+[roadmap]: ../../../../docs/roadmap.md
+[separate-compilation]: ../../../../docs/reference/separate-compilation.md

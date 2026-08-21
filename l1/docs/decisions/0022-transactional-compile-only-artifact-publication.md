@@ -1,7 +1,7 @@
 # ADR-0022: Compile-Only Artifact Endpoint Rollback
 
 - Decision date: 2026-07-24
-- Last edited: 2026-07-29
+- Last edited: 2026-08-21
 - Status: Accepted
 
 ## Context
@@ -41,12 +41,12 @@ creation, follow and no-follow path classification, same-filesystem movement to 
 directory removal. MinGW uses the same native narrow path encoding as the existing Stage 1 runtime filesystem and
 process operations. This ABI is not part of `std.fs`, `sys.rt`, the public runtime, or the Dea language.
 
-Before publication, the driver verifies that all three staged paths are regular files, parses and fingerprints the
-staged interface, and confirms that the staged object metadata names the target module and carries the same fingerprint.
-It then moves existing selected destinations to backups, publishes generated C only when requested, publishes the
-object, and publishes the interface last. A failure rolls selected changes back in reverse order. Successful rollback
-removes the transaction directory and reports `L1C-2035`; failed rollback retains recovery files, reports their
-directory, and uses `L1C-2036`.
+Before publication, the driver verifies that every selected staged path is a regular file, parses and fingerprints the
+staged interface, and confirms that the interface names the target module. The staged object remains an opaque,
+caller-trusted native sibling and is not structurally bound to the interface. The driver then moves existing selected
+destinations to backups, publishes generated C only when requested, publishes the object, and publishes the interface
+last. A failure rolls selected changes back in reverse order. Successful rollback removes the transaction directory and
+reports `L1C-2035`; failed rollback retains recovery files, reports their directory, and uses `L1C-2036`.
 
 The externally observable guarantee is defined at operation endpoints:
 
@@ -67,7 +67,8 @@ compile-only publication path.
 - A sibling transaction directory guarantees same-filesystem movement without a process-wide temporary-directory policy.
 - Publishing the interface last ensures the writer places the new object before the new interface in the sequential
   publication order.
-- Validating both interface and object metadata makes the set self-consistent before any destination changes.
+- Validating the interface and regular staged outputs rejects malformed publication endpoints without claiming an
+  authenticated or reader-atomic object/interface pair.
 - A narrow compiler-private ABI keeps bootstrap filesystem mechanics out of the minimal public language and runtime
   surface.
 - Retaining recovery files only when restoration fails preserves evidence needed for manual recovery.
@@ -89,6 +90,7 @@ compile-only publication path.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md][cross-platform-ci]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md][stage1-safety]
@@ -98,7 +100,7 @@ compile-only publication path.
 
 - [docs/specs/compiler/cli-contract.md][cli-contract]: compile-mode inputs, outputs, and failure behavior
 - [l1/docs/reference/architecture.md][architecture]: compile-only analysis and publication flow
-- [l1/docs/reference/c-backend-design.md][backend]: per-module C and metadata production
+- [l1/docs/reference/c-backend-design.md][backend]: per-module C and native artifact production
 - [l1/docs/project-status.md][project-status]: implemented Stage 1 scope
 
 [architecture]: ../reference/architecture.md
@@ -106,6 +108,7 @@ compile-only publication path.
 [cli-contract]: ../../../docs/specs/compiler/cli-contract.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [cross-platform-ci]: ../../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
+[interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [native-safety]: ../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [native-workspace-adr]: ../../../docs/decisions/0020-native-compiler-private-temporary-workspaces.md
 [project-status]: ../project-status.md

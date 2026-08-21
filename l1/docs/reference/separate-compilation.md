@@ -1,6 +1,6 @@
 # L1 Separate Compilation and Standalone Linking
 
-Version: 2026-08-20
+Version: 2026-08-21
 
 This document describes the implemented Dea/L1 Stage 1 path from one-module compilation to an interface-authoritative
 standalone executable. It is the current behavioral reference for `l1c --compile` and `l1c --link`.
@@ -43,8 +43,10 @@ name, and may appear at most once.
 Source roots, system roots, interface roots, `--keep-c`, `--all-modules`, `--include-eof`, runtime arguments after `--`,
 and analysis-only options are not valid link inputs. Host compiler/options, runtime include/library paths, trace flags,
 `--unchecked`, and `--check-basic` remain valid because the wrapper must be compiled and the matching runtime variant
-must be linked. `L1_CFLAGS` and `--c-options` configure wrapper compilation only; they are never forwarded to the final
-host-link command. External `-L`, `-l`, rpath, and raw host-link argument surfaces remain reserved.
+must be linked. `L1_CFLAGS` and `--c-options` configure wrapper compilation and are never forwarded as final-link
+command words. The wrapper object is opaque, however, so caller-selected compiler options may encode toolchain-specific
+linker controls that the final linker honors. External `-L`, `-l`, rpath, and raw host-link argument surfaces remain
+reserved; effects carried through the caller-controlled wrapper compilation are trusted rather than inspected.
 
 ## 2. Artifact Authority and Trusted Pair
 

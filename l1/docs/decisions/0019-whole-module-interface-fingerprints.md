@@ -1,7 +1,7 @@
 # ADR-0019: Whole-Module Interface Fingerprints
 
 - Decision date: 2026-07-21
-- Last edited: 2026-07-27
+- Last edited: 2026-08-21
 - Status: Accepted
 
 ## Context
@@ -28,18 +28,18 @@ L1 uses one tagged whole-module fingerprint for each `.l1m` public surface:
   non-negative values by `ulong`.
 - The fingerprint includes effective exported structs, enums, aliases, function signatures, const values, and top-level
   let types.
-- Module identity, the fingerprint itself, dependency manifests, private implementation, compiler metadata, and object
-  metadata are excluded.
+- Module identity, the fingerprint itself, `entry`, lifecycle imports, `require`, `link`, private implementation, and
+  compiler metadata are excluded.
 - Nominal type records contain module and name but not struct/enum kind, allowing verification before semantic
   materialization. Local declaration records retain the actual nominal kind.
 - Per-declaration hash suffixes and storage are removed.
-- Every `require` and `link` entry repeats the provider module's tagged whole-module fingerprint. Dependency values do
-  not contribute to the consumer's digest.
+- Every lifecycle import, `require`, and `link` entry repeats the provider module's tagged whole-module fingerprint.
+  Operational values do not contribute to the consumer's digest.
 
-Operational consumers check declared module identity, validate the module and dependency tags, require one consistent
-value per provider, recompute the public-surface fingerprint, and compare it before graph registration, caching,
-normalization, activation, or replay. A selected authoritative interface never falls back to source after fingerprint
-failure.
+Operational consumers check declared module identity, validate every operational provider tag, require one consistent
+value per provider across lifecycle imports, `require`, and `link`, recompute the public-surface fingerprint, and
+compare it before graph registration, caching, normalization, activation, or replay. A selected authoritative interface
+never falls back to source after fingerprint failure.
 
 ## Rationale
 
@@ -67,11 +67,12 @@ failure.
   records checked preorder payload sizes and then streams bytes from those cached sizes; overflow is a canonicalization
   failure.
 - The compiler uses a narrow allocation-free C bridge to obtain all 64 SipHash bits during Stage 1 bootstrap.
-- Object metadata embedding, provider-object readers, and standalone link comparison consume this fingerprint contract
-  rather than introducing a second public-surface hash.
+- Standalone linking verifies sibling interfaces under this fingerprint contract and does not introduce a native-object
+  metadata hash or second link-manifest fingerprint.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
@@ -88,6 +89,7 @@ failure.
 [architecture]: ../reference/architecture.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [module-format]: ../specs/compiler/module-interface-format.md
 [module-graph]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
