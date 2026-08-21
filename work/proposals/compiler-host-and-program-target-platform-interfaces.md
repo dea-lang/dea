@@ -489,6 +489,6 @@ This proposal is ready for acceptance when:
 [l1-design]: ../../l1/docs/reference/design-decisions.md
 [l1-status]: ../../l1/docs/project-status.md
 [link-wrapper]: ../../l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
-[per-module-gen]: ../../l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md
+[per-module-gen]: ../../l1/work/plans/features/2026-08-21-per-module-generated-c-foundation-noref.md
 [stage2]: ../plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [stdlib-boundaries]: ../../l0/docs/decisions/0015-stdlib-module-boundaries.md

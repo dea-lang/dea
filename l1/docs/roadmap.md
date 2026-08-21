@@ -191,14 +191,16 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] migrates `--gen` from whole-closure
-  output to one source-backed module, locks cross-mode generated-C identity, and retires the legacy generator after
-  build/run fan-out.
+- Feature [2026-08-21-per-module-generated-c-foundation-noref][generated-c-foundation] migrates `--gen` from
+  whole-closure output to one source-backed module, establishes the shared generation operation, and stabilizes
+  compile-only compiler-visible paths as a prerequisite for build/run fan-out.
 - Completed feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] makes verified
   sibling `.l1m` files authoritative for standalone semantics and lifecycle planning while treating native objects as
   opaque host-link inputs.
 - Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] converts `--build` and `--run` to the shared
   multi-CU compile/link APIs.
+- Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] follows build/run fan-out to prove
+  four-mode generated-C identity and retire the legacy whole-closure generator.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl`
   / `--link-arg` as the external-library linking surface.
 - Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
@@ -314,6 +316,7 @@ update to be promoted to an initiative or plan:
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
+[generated-c-foundation]: ../work/plans/features/2026-08-21-per-module-generated-c-foundation-noref.md
 [interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md

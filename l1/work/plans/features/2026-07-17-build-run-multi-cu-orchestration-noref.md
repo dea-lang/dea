@@ -16,21 +16,36 @@
   - `l1/compiler/stage1_l0/src/driver.l0`
   - `l1/compiler/stage1_l0/src/analysis.l0`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
+  - `l1/compiler/stage1_l0/src/compile_driver.l0`
+  - `l1/compiler/stage1_l0/src/compiler_filesystem.l0`
   - `l1/compiler/stage1_l0/src/link_driver.l0`
+  - `l1/compiler/stage1_l0/src/module_graph.l0`
   - `l1/compiler/stage1_l0/src/l1c.l0`
   - `l1/compiler/stage1_l0/src/l1c_lib.l0`
   - `docs/specs/compiler/cli-contract.md`
+  - `docs/specs/compiler/diagnostic-code-catalog.md`
   - `l1/docs/reference/architecture.md`
   - `l1/docs/reference/c-backend-design.md`
   - `l1/docs/reference/separate-compilation.md`
+  - `l1/docs/project-status.md`
 - Test modules:
   - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
   - `l1/compiler/stage1_l0/tests/source_paths_test.l0`
   - `l1/compiler/stage1_l0/tests/driver_test.l0`
   - `l1/compiler/stage1_l0/tests/analysis_test.l0`
+  - `l1/compiler/stage1_l0/tests/module_graph_test.l0`
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/compile_driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/compiler_filesystem_test.l0`
   - `l1/compiler/stage1_l0/tests/link_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
+  - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py`
+  - `l1/compiler/stage1_l0/tests/diagnostic_code_parity_test.py`
+  - `l1/compiler/stage1_l0/tests/diagnostic_message_parity_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_workspace_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_cleanup_policy_ice_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_link_set_test.py`
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
@@ -38,13 +53,14 @@
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
-  - [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c]
+  - [`l1/work/plans/features/2026-08-21-per-module-generated-c-foundation-noref.md`][generated-c-foundation]
+  - [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c-completion]
   - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
   - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
-  `make -C l1 test-stage1 TESTS="cli_args_test source_paths_test driver_test analysis_test build_driver_test link_driver_test l1c_lib_test"`
+  `make -C l1 test-stage1 TESTS="cli_args_test source_paths_test driver_test analysis_test module_graph_test build_driver_test compile_driver_test compiler_filesystem_test link_driver_test l1c_lib_test compiler_filesystem_support_test.py diagnostic_code_parity_test.py diagnostic_message_parity_test.py l1c_stage1_build_run_workspace_test.py l1c_stage1_cleanup_policy_ice_test.py l1c_stage1_help_output_test.py l1c_stage1_link_set_test.py"`
 
 ## Summary
 
@@ -66,13 +82,16 @@ build, run, and link modes without Dea inspecting their bytes.
 2. [Fingerprints] and [lifecycle emission][lifecycle] define the verified interface manifests and native lifecycle ABI
    that this plan mixes with source-built units. The historical [object metadata plan][object-metadata] is superseded by
    the authoritative-interface contract: native objects carry no Dea metadata.
-3. [Compile-only production][compile-only] establishes the reusable one-module analysis, C emission, object compilation,
-   and interface-emission operations. Build/run may target a temporary artifact root instead of publishing the result.
+3. [Compile-only production][compile-only] establishes one-module analysis, object compilation, interface emission, and
+   publication. The [generated-C foundation][generated-c-foundation] must land first and extracts the publication-free
+   per-module generation operation plus stable compiler-visible staging that build/run consumes in its own workspace.
 4. The completed shared [native temporary-workspace safety plan][native-temp-safety] owns atomic reservation and cleanup
    of the build/run private workspace. This plan consumes that settled lifecycle rather than defining another
    temporary-root policy.
-5. The [generated-C plan][generated-c] owns byte identity for the shared per-module generator and final removal of the
-   legacy whole-program generator. This plan owns retention of the complete build/run C tree.
+5. The [generated-C foundation][generated-c-foundation] owns `--gen`, `--gen` versus compile-only identity, and the
+   reusable per-module generator. The [generated-C completion plan][generated-c-completion] follows this plan to prove
+   four-mode identity and remove the legacy whole-program generator. This plan owns retention of the complete build/run
+   C tree and its byte contribution to that later proof.
 6. The [link-set plan][link-set] must land first. This plan passes verified-interface/opaque-object Dea pairs, foreign
    objects, and the source target's canonical module name to its common link API.
 7. This plan owns graph fan-out for `--build` and `--run`, temporary artifact lifetime, source-target entry selection,
@@ -130,10 +149,10 @@ build, run, and link modes without Dea inspecting their bytes.
 
 1. Topologically order all source-backed nodes dependency-first, with ordered direct-import edges as the deterministic
    tie-breaker. Compile each canonical module once.
-2. Reuse the internal one-module compile path from [compile-only production][compile-only] and the exact shared
-   per-module generator governed by the [generated-C plan][generated-c]. Each source unit emits only its definitions,
-   imported declarations, lifecycle symbols, optional entry bridge, and fingerprinted interface with authoritative
-   operational manifests.
+2. Reuse the publication-free one-module operation from the [generated-C foundation][generated-c-foundation] together
+   with compile-only's host-object and interface-emission seams. Each source unit emits only its definitions, imported
+   declarations, lifecycle symbols, optional entry bridge, and fingerprinted interface with authoritative operational
+   manifests.
 3. Build/run stage generated `.c`, `.o`, and `.l1m` companions beneath the atomically reserved invocation-private
    workspace supplied by the [native temporary-workspace safety plan][native-temp-safety]. They do not publish over a
    user's compile-only artifacts.
@@ -179,9 +198,10 @@ changes it to retain the complete generated-C tree:
    module name, with an existing path handled by the same explicit replacement/error policy chosen for build output.
 3. Module C files mirror canonical dotted paths beneath the retained root, and the generated process wrapper is named
    `__dea_wrapper.c` at its root.
-4. Every retained module C file is the exact byte sequence passed to the host compiler and is byte-identical to `--gen`
-   and `-c --keep-c` for the same target module, resolved graph, fingerprints, code-generation settings, and compiler
-   version. Retention copies bytes; it does not regenerate or rewrite C.
+4. Every retained module C file is the exact byte sequence returned by the prerequisite shared generator and passed to
+   the host compiler. It is therefore byte-identical to `--gen` and `-c --keep-c` for the same target module, resolved
+   graph, fingerprints, code-generation settings, and compiler version. Retention copies bytes; it does not regenerate
+   or rewrite C. The [generated-C completion plan][generated-c-completion] owns the final four-mode proof.
 5. Only generated C is retained. Temporary objects, staged interfaces, wrapper objects, and the run executable are still
    removed unless another owning option explicitly documents their retention.
 6. CLI and backend references document the directory result and the migration from the legacy single-file behavior.
@@ -190,8 +210,9 @@ changes it to retain the complete generated-C tree:
 
 ### Phase 1: Shared orchestration interfaces
 
-Extract the reusable one-module compile operation and common link request/result types. Keep standalone `-c` and
-`--link` behavior unchanged while adding temporary artifact roots and explicit entry selection for callers.
+Build a non-publishing compile adapter around the prerequisite shared generator plus compile-only's object/interface
+seams, and expose common link request/result types. Keep standalone `-c` and `--link` behavior unchanged while adding
+temporary artifact roots and explicit entry selection for callers.
 
 ### Phase 2: Build/run graph fan-out
 
@@ -253,11 +274,12 @@ architecture, C-backend, and separate-compilation references.
   - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
   - Rationale: ADR-0022 provides endpoint rollback rather than a reader snapshot or byte binding, so build/run must
     serialize externally and invalidate the pair together.
-- Decision: Retain module C that is byte-identical to corresponding `--gen` and `-c --keep-c` output.
+- Decision: Retain the complete multi-unit C tree by copying the exact module and wrapper bytes used by the host tools.
   - Scope: L1
   - Disposition: New ADR
   - ADR: `l1/docs/decisions/`
-  - Rationale: This contributes the build/run portion of the generated-C child plan's cross-mode identity ADR.
+  - Rationale: Multi-unit retention layout and ownership are build/run decisions; the downstream generated-C completion
+    plan separately owns the four-mode byte-identity contract.
 - Decision: Stage build/run artifacts in the shared atomically reserved native workspace.
   - Scope: Shared
   - Disposition: New ADR
@@ -308,7 +330,8 @@ architecture, C-backend, and separate-compilation references.
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[generated-c]: 2026-07-24-per-module-generated-c-mode-noref.md
+[generated-c-completion]: 2026-07-24-per-module-generated-c-mode-noref.md
+[generated-c-foundation]: 2026-08-21-per-module-generated-c-foundation-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: closed/2026-07-17-link-set-driver-and-wrapper-noref.md
