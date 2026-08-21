@@ -15,6 +15,7 @@ import util.numbers;
 import util.strings;
 
 import ast;
+import interface_order;
 import lexer;
 import module_interface;
 import mi_utils;
@@ -1188,35 +1189,35 @@ func pi_parse_one_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet
 func pi_decl_group(self: ParserState*) -> int {
     if (ps_check(self, ord(TT_OPAQUE))) {
         if (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_STRUCT))) {
-            return 0;
+            return ord(IDK_STRUCT);
         }
         if (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_ENUM))) {
-            return 1;
+            return ord(IDK_ENUM);
         }
         return -1;
     }
     if (ps_check(self, ord(TT_STRUCT))) {
-        return 0;
+        return ord(IDK_STRUCT);
     }
     if (ps_check(self, ord(TT_ENUM))) {
-        return 1;
+        return ord(IDK_ENUM);
     }
     if (ps_check(self, ord(TT_TYPE))) {
-        return 2;
+        return ord(IDK_ALIAS);
     }
     if (ps_check(self, ord(TT_FUNC)) || ps_check(self, ord(TT_EXTERN))) {
-        return 3;
+        return ord(IDK_FUNC);
     }
     if (ps_check(self, ord(TT_UNSAFE)) &&
         (tok_is(ps_peek_logical_ahead(self, 1), ord(TT_FUNC)) ||
          tok_is(ps_peek_logical_ahead(self, 1), ord(TT_EXTERN)))) {
-        return 3;
+        return ord(IDK_FUNC);
     }
     if (ps_check(self, ord(TT_CONST))) {
-        return 4;
+        return ord(IDK_CONST);
     }
     if (ps_check(self, ord(TT_LET))) {
-        return 5;
+        return ord(IDK_LET);
     }
     return -1;
 }

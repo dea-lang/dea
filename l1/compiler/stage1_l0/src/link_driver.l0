@@ -5,6 +5,7 @@
 
 module link_driver;
 
+import std.assert;
 import std.fs;
 import std.hashmap;
 import std.hashset;
@@ -52,6 +53,13 @@ struct LinkPlan {
 struct LinkVisitFrame {
     input: LinkInput*;
     next_import: int;
+}
+
+/** One semantic provider and the consumers that require import reachability. */
+struct LinkProvenanceTarget {
+    provider_name: string;
+    consumers: StringVector*;
+    consumer_set: StringSet*;
 }
 
 /** Fixed paths owned by one standalone-link transaction. */
@@ -211,16 +219,8 @@ func ld_verify_interfaces(plan: LinkPlan*, diags: DiagCollector*) -> bool {
     for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
         let input = ld_plan_input_get(plan, i);
         if (ord(input.kind) == ord(LOK_FOREIGN_OBJECT)) {
-            if (input.interface_path != null || input.interface != null) {
-                ld_error(
-                    diags,
-                    "L1C-2097",
-                    "foreign link input unexpectedly carries a Dea interface: " +
-                        input.object_path,
-                    input.object_path
-                );
-                ok = false;
-            }
+            assert(input.interface_path == null && input.interface == null,
+                "[ICE-2112] foreign link input carries Dea interface state");
             continue;
         }
         if (input.interface_path == null || input.interface == null) {
@@ -242,6 +242,20 @@ func ld_verify_interfaces(plan: LinkPlan*, diags: DiagCollector*) -> bool {
         }
     }
     return ok;
+}
+
+/** Assert the ownership shape promised by an already-verified CLI input set. */
+func _ld_assert_verified_input_invariants(plan: LinkPlan*) {
+    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+        let input = ld_plan_input_get(plan, i);
+        if (ord(input.kind) == ord(LOK_FOREIGN_OBJECT)) {
+            assert(input.interface_path == null && input.interface == null,
+                "[ICE-2112] foreign link input carries Dea interface state");
+        } else {
+            assert(input.interface_path != null && input.interface != null,
+                "[ICE-2113] verified Dea link input is missing interface state");
+        }
+    }
 }
 
 /** Register identities from the complete already-verified interface set. */
@@ -548,13 +562,70 @@ func ld_collect_provenance_provider(
     sv_push(providers, provider_name);
 }
 
-/** Validate `require`/`link` provenance through existing lifecycle imports. */
-func ld_validate_transitive_provenance(
-    plan: LinkPlan*,
-    diags: DiagCollector*
-) -> bool {
-    let ok = true;
+/** Collect unique semantic providers from both interface dependency tiers. */
+func ld_collect_interface_provenance_providers(
+    interface: ModuleInterface*,
+    providers: StringVector*,
+    seen: StringSet*
+) {
+    for (let req_i = 0; req_i < vec_size(interface.require_entries);
+         req_i = req_i + 1) {
+        let required = ld_ptr_vec_get(
+            interface.require_entries, req_i) as InterfaceDepEntry*;
+        ld_collect_provenance_provider(
+            providers, seen, required.provider_module);
+    }
+    for (let link_i = 0; link_i < vec_size(interface.link_entries);
+         link_i = link_i + 1) {
+        let linked = ld_ptr_vec_get(
+            interface.link_entries, link_i) as InterfaceDepEntry*;
+        ld_collect_provenance_provider(
+            providers, seen, linked.provider_module);
+    }
+}
 
+/** Free one semantic-provider target. */
+func ld_provenance_target_free(target: LinkProvenanceTarget*) {
+    sv_free(target.consumers);
+    ss_free(target.consumer_set);
+    drop target;
+}
+
+/** Free an owned pointer vector of semantic-provider targets. */
+func ld_provenance_targets_free(targets: VectorBase*) {
+    for (let i = 0; i < vec_size(targets); i = i + 1) {
+        ld_provenance_target_free(
+            ld_ptr_vec_get(targets, i) as LinkProvenanceTarget*);
+    }
+    vec_free(targets);
+}
+
+/** Return or create the target bucket for one semantic provider. */
+func ld_provenance_target_get_or_create(
+    targets: VectorBase*,
+    targets_by_provider: StringPtrMap*,
+    provider_name: string
+) -> LinkProvenanceTarget* {
+    let existing = spm_get(targets_by_provider, provider_name);
+    if (existing != null) {
+        return existing as LinkProvenanceTarget*;
+    }
+    let target = new LinkProvenanceTarget(
+        provider_name,
+        sv_create(2),
+        ss_create()
+    );
+    ld_ptr_vec_push(targets, target as void*);
+    spm_put(targets_by_provider, provider_name, target as void*);
+    return target;
+}
+
+/** Collect provider-grouped provenance queries in deterministic encounter order. */
+func ld_collect_provenance_targets(
+    plan: LinkPlan*,
+    targets: VectorBase*,
+    targets_by_provider: StringPtrMap*
+) {
     for (let input_i = 0; input_i < vec_size(plan.inputs);
          input_i = input_i + 1) {
         let consumer = ld_plan_input_get(plan, input_i);
@@ -562,79 +633,176 @@ func ld_validate_transitive_provenance(
             continue;
         }
         let interface = ld_input_interface(consumer);
+        if (vec_size(interface.require_entries) == 0 &&
+            vec_size(interface.link_entries) == 0) {
+            continue;
+        }
         with (
             let providers = sv_create(4) => sv_free(providers),
             let provider_seen = ss_create() => ss_free(provider_seen)
         ) {
-            for (let req_i = 0; req_i < vec_size(interface.require_entries);
-                 req_i = req_i + 1) {
-                let required = ld_ptr_vec_get(
-                    interface.require_entries, req_i) as InterfaceDepEntry*;
-                ld_collect_provenance_provider(
-                    providers, provider_seen, required.provider_module);
-            }
-            for (let link_i = 0; link_i < vec_size(interface.link_entries);
-                 link_i = link_i + 1) {
-                let linked = ld_ptr_vec_get(
-                    interface.link_entries, link_i) as InterfaceDepEntry*;
-                ld_collect_provenance_provider(
-                    providers, provider_seen, linked.provider_module);
-            }
-            if (sv_size(providers) == 0) {
-                continue;
-            }
-
-            with (
-                let reachable = ss_create() => ss_free(reachable),
-                let stack = sv_create(vec_size(interface.module_imports) + 4) =>
-                    sv_free(stack)
-            ) {
-                for (let import_i = 0; import_i < vec_size(interface.module_imports);
-                     import_i = import_i + 1) {
-                    let imported = ld_ptr_vec_get(
-                        interface.module_imports, import_i) as InterfaceModuleImport*;
-                    sv_push(stack, imported.provider_module);
+            ld_collect_interface_provenance_providers(
+                interface, providers, provider_seen);
+            for (let provider_i = 0; provider_i < sv_size(providers);
+                 provider_i = provider_i + 1) {
+                let target = ld_provenance_target_get_or_create(
+                    targets,
+                    targets_by_provider,
+                    sv_get(providers, provider_i)
+                );
+                if (ss_add(target.consumer_set, interface.module_name)) {
+                    sv_push(target.consumers, interface.module_name);
                 }
+            }
+        }
+    }
+}
 
-                while (sv_size(stack) > 0) {
-                    let last = sv_size(stack) - 1;
-                    let module_name = sv_get(stack, last);
-                    ld_string_vector_pop(stack);
-                    if (ss_has(reachable, module_name)) {
-                        continue;
+/** Build reverse lifecycle-import adjacency for every registered Dea module. */
+func ld_build_reverse_imports(plan: LinkPlan*) -> StringPtrMap* {
+    let reverse = spm_create_with_capacity(vec_size(plan.inputs));
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let input = ld_plan_input_get(plan, input_i);
+        if (ord(input.kind) == ord(LOK_DEA_OBJECT)) {
+            let interface = ld_input_interface(input);
+            spm_put(reverse, interface.module_name, sv_create(2) as void*);
+        }
+    }
+
+    for (let input_i2 = 0; input_i2 < vec_size(plan.inputs);
+         input_i2 = input_i2 + 1) {
+        let consumer = ld_plan_input_get(plan, input_i2);
+        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT)) {
+            continue;
+        }
+        let interface2 = ld_input_interface(consumer);
+        for (let import_i = 0; import_i < vec_size(interface2.module_imports);
+             import_i = import_i + 1) {
+            let imported = ld_ptr_vec_get(
+                interface2.module_imports, import_i) as InterfaceModuleImport*;
+            let importers = spm_get(
+                reverse, imported.provider_module) as StringVector*;
+            sv_push(importers, interface2.module_name);
+        }
+    }
+    return reverse;
+}
+
+/** Free reverse adjacency vectors and their owning map. */
+func ld_reverse_imports_free(plan: LinkPlan*, reverse: StringPtrMap*) {
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let input = ld_plan_input_get(plan, input_i);
+        if (ord(input.kind) == ord(LOK_DEA_OBJECT)) {
+            let interface = ld_input_interface(input);
+            sv_free(spm_get(
+                reverse, interface.module_name) as StringVector*);
+        }
+    }
+    spm_free(reverse);
+}
+
+/** Return a collision-free key for one canonical consumer/provider query. */
+func ld_provenance_pair_key(consumer_name: string, provider_name: string) -> string {
+    return consumer_name + "\n" + provider_name;
+}
+
+/** Record every unreachable query for one provider through reverse imports. */
+func ld_collect_unreachable_target(
+    target: LinkProvenanceTarget*,
+    reverse: StringPtrMap*,
+    unreachable: StringSet*
+) {
+    with (
+        let visited = ss_create() => ss_free(visited),
+        let stack = sv_create(8) => sv_free(stack)
+    ) {
+        let remaining = sv_size(target.consumers);
+        let direct_importers = spm_get(
+            reverse, target.provider_name) as StringVector*;
+        for (let direct_i = 0; direct_i < sv_size(direct_importers);
+             direct_i = direct_i + 1) {
+            let direct_importer = sv_get(direct_importers, direct_i);
+            if (ss_add(visited, direct_importer)) {
+                if (ss_has(target.consumer_set, direct_importer)) {
+                    remaining = remaining - 1;
+                }
+                if (remaining > 0) {
+                    sv_push(stack, direct_importer);
+                }
+            }
+        }
+
+        while (sv_size(stack) > 0 && remaining > 0) {
+            let last = sv_size(stack) - 1;
+            let module_name = sv_get(stack, last);
+            ld_string_vector_pop(stack);
+            let importers = spm_get(reverse, module_name) as StringVector*;
+            for (let importer_i = 0; importer_i < sv_size(importers);
+                 importer_i = importer_i + 1) {
+                let importer = sv_get(importers, importer_i);
+                if (ss_add(visited, importer)) {
+                    if (ss_has(target.consumer_set, importer)) {
+                        remaining = remaining - 1;
                     }
-                    ss_add(reachable, module_name);
-                    let reached = spm_get(
-                        plan.modules_by_name, module_name) as LinkInput*;
-                    let reached_interface = ld_input_interface(reached);
-                    for (let import_i2 = 0;
-                         import_i2 < vec_size(reached_interface.module_imports);
-                         import_i2 = import_i2 + 1) {
-                        let imported2 = ld_ptr_vec_get(
-                            reached_interface.module_imports,
-                            import_i2
-                        ) as InterfaceModuleImport*;
-                        if (!ss_has(reachable, imported2.provider_module)) {
-                            sv_push(stack, imported2.provider_module);
-                        }
+                    if (remaining > 0) {
+                        sv_push(stack, importer);
                     }
                 }
+            }
+        }
 
-                for (let provider_i = 0; provider_i < sv_size(providers);
-                     provider_i = provider_i + 1) {
-                    let provider_name = sv_get(providers, provider_i);
-                    if (!ss_has(reachable, provider_name)) {
-                        ld_error(
-                            diags,
-                            "L1C-2111",
-                            "Dea module '" + interface.module_name +
-                                "' names semantic provider '" + provider_name +
-                                "' that is not transitively reachable through " +
-                                "'import module' records",
-                            consumer.interface_path as string
-                        );
-                        ok = false;
-                    }
+        for (let consumer_i = 0; consumer_i < sv_size(target.consumers);
+             consumer_i = consumer_i + 1) {
+            let consumer_name = sv_get(target.consumers, consumer_i);
+            if (!ss_has(visited, consumer_name)) {
+                ss_add(unreachable, ld_provenance_pair_key(
+                    consumer_name, target.provider_name));
+            }
+        }
+    }
+}
+
+/** Emit unreachable-provider diagnostics in the original consumer order. */
+func ld_emit_unreachable_provenance(
+    plan: LinkPlan*,
+    unreachable: StringSet*,
+    diags: DiagCollector*
+) -> bool {
+    let ok = true;
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let consumer = ld_plan_input_get(plan, input_i);
+        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT)) {
+            continue;
+        }
+        let interface = ld_input_interface(consumer);
+        if (vec_size(interface.require_entries) == 0 &&
+            vec_size(interface.link_entries) == 0) {
+            continue;
+        }
+        with (
+            let providers = sv_create(4) => sv_free(providers),
+            let provider_seen = ss_create() => ss_free(provider_seen)
+        ) {
+            ld_collect_interface_provenance_providers(
+                interface, providers, provider_seen);
+            for (let provider_i = 0; provider_i < sv_size(providers);
+                 provider_i = provider_i + 1) {
+                let provider_name = sv_get(providers, provider_i);
+                if (ss_has(unreachable, ld_provenance_pair_key(
+                        interface.module_name, provider_name))) {
+                    ld_error(
+                        diags,
+                        "L1C-2111",
+                        "Dea module '" + interface.module_name +
+                            "' names semantic provider '" + provider_name +
+                            "' that is not transitively reachable through " +
+                            "'import module' records",
+                        consumer.interface_path as string
+                    );
+                    ok = false;
                 }
             }
         }
@@ -643,21 +811,53 @@ func ld_validate_transitive_provenance(
 }
 
 /**
- * Validate already constructed inputs and build one link plan.
+ * Validate `require`/`link` provenance through existing lifecycle imports.
  *
- * Ownership of `inputs` transfers to this function whether it succeeds or
- * fails. Tests may use this boundary to construct verified interfaces without
- * writing temporary native object files.
+ * Queries are grouped by provider and walked over reverse import edges. Each
+ * walk stops after reaching every interested consumer, so shared terminal
+ * providers and direct-provider workloads avoid one full forward walk per
+ * consumer without materializing a quadratic transitive-closure cache.
  */
-func ld_prepare_inputs(
-    inputs: VectorBase*,
+func ld_validate_transitive_provenance(
+    plan: LinkPlan*,
+    diags: DiagCollector*
+) -> bool {
+    with (
+        let targets = ld_ptr_vec_create(8) => ld_provenance_targets_free(targets),
+        let targets_by_provider = spm_create() => spm_free(targets_by_provider)
+    ) {
+        ld_collect_provenance_targets(plan, targets, targets_by_provider);
+        if (vec_size(targets) == 0) {
+            return true;
+        }
+
+        with (
+            let reverse = ld_build_reverse_imports(plan) =>
+                ld_reverse_imports_free(plan, reverse),
+            let unreachable = ss_create() => ss_free(unreachable)
+        ) {
+            for (let target_i = 0; target_i < vec_size(targets);
+                 target_i = target_i + 1) {
+                ld_collect_unreachable_target(
+                    ld_ptr_vec_get(targets, target_i) as LinkProvenanceTarget*,
+                    reverse,
+                    unreachable
+                );
+            }
+            return ld_emit_unreachable_provenance(plan, unreachable, diags);
+        }
+    }
+}
+
+/** Complete planning from a set whose interfaces are already verified. */
+func _ld_prepare_verified_plan(
+    plan: LinkPlan*,
     explicit_entry: string?,
     diags: DiagCollector*
 ) -> LinkPlan*? {
-    let plan = new LinkPlan(inputs, spm_create(), sv_create(vec_size(inputs)), "");
+    _ld_assert_verified_input_invariants(plan);
 
-    if (!ld_verify_interfaces(plan, diags) ||
-        !ld_register_modules(plan, diags) ||
+    if (!ld_register_modules(plan, diags) ||
         !ld_validate_dependencies(plan, diags)) {
         ld_plan_free(plan);
         return null;
@@ -679,6 +879,26 @@ func ld_prepare_inputs(
         return null;
     }
     return plan;
+}
+
+/**
+ * Validate already constructed inputs and build one link plan.
+ *
+ * Ownership of `inputs` transfers to this function whether it succeeds or
+ * fails. Tests may use this boundary to construct interfaces without writing
+ * temporary native object files.
+ */
+func ld_prepare_inputs(
+    inputs: VectorBase*,
+    explicit_entry: string?,
+    diags: DiagCollector*
+) -> LinkPlan*? {
+    let plan = new LinkPlan(inputs, spm_create(), sv_create(vec_size(inputs)), "");
+    if (!ld_verify_interfaces(plan, diags)) {
+        ld_plan_free(plan);
+        return null;
+    }
+    return _ld_prepare_verified_plan(plan, explicit_entry, diags);
 }
 
 /** Copy parser diagnostics into the link-driver collector. */
@@ -843,7 +1063,8 @@ func ld_prepare_cli_inputs(
         return null;
     }
 
-    return ld_prepare_inputs(inputs, explicit_entry, diags);
+    let plan = new LinkPlan(inputs, spm_create(), sv_create(vec_size(inputs)), "");
+    return _ld_prepare_verified_plan(plan, explicit_entry, diags);
 }
 
 /** Construct the fixed paths inside one standalone-link transaction. */

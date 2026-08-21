@@ -58,7 +58,7 @@ RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples bench-runtime test-all test-docker print-l1-build-dir clean docker FORCE
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples bench-runtime bench-link-provenance test-all test-docker print-l1-build-dir clean docker FORCE
 
 help:
 	@printf '%s\n' \
@@ -79,6 +79,8 @@ help:
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
 		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 1 compiler; fail on warnings or errors.' \
 		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-all`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
+		'  bench-link-provenance' \
+		'                     Benchmark standalone-link provenance validation across chain and DAG shapes (informational; not part of `test-all`). Variables: `BENCH_PROVENANCE_SHAPES=<csv>`, `BENCH_PROVENANCE_SIZES=<csv>`, `BENCH_PROVENANCE_WARMUPS=<n>`, `BENCH_PROVENANCE_RUNS=<n>`, `BENCH_PROVENANCE_JSON=<path>`, `BENCH_PROVENANCE_COMPARE=<path>`.' \
 		'  clean              Remove repo-local build artifacts under `build/*`.' \
 		'  clean-runtime      Remove only repo-local runtime build products under `$(L1_BUILD_DIR)`.' \
 		'  clean-all          Run both `clean` and `clean-runtime`.' \
@@ -287,6 +289,9 @@ runtime: $(RUNTIME_DEFAULT_LIB) $(RUNTIME_TRACED_LIB) $(RUNTIME_UNCHECKED_LIB) $
 
 bench-runtime:
 	$(PYTHON) ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")
+
+bench-link-provenance: _ensure-bootstrap-l0-stage2
+	$(PYTHON) ./scripts/bench_link_provenance.py $(if $(strip $(BENCH_PROVENANCE_SHAPES)),--shapes "$(BENCH_PROVENANCE_SHAPES)") $(if $(strip $(BENCH_PROVENANCE_SIZES)),--sizes "$(BENCH_PROVENANCE_SIZES)") $(if $(strip $(BENCH_PROVENANCE_WARMUPS)),--warmups "$(BENCH_PROVENANCE_WARMUPS)") $(if $(strip $(BENCH_PROVENANCE_RUNS)),--runs "$(BENCH_PROVENANCE_RUNS)") $(if $(strip $(BENCH_PROVENANCE_JSON)),--json "$(BENCH_PROVENANCE_JSON)") $(if $(strip $(BENCH_PROVENANCE_COMPARE)),--compare "$(BENCH_PROVENANCE_COMPARE)")
 
 clean-runtime:
 	rm -rf "$(RUNTIME_BUILD_DIR)" "$(RUNTIME_LIB_DIR)"

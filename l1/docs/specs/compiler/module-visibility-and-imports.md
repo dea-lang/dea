@@ -165,11 +165,14 @@ cast, not to the opacity. See [`l1/docs/decisions/0010-unsafe-marker-and-raw-poi
 
 ## Interface Projection
 
-The effective export set defines the public `.l1m` interface surface. The export manifest itself is not emitted into the
-interface file as an `export ...;` statement. Instead, the `.l1m` contains only exported declarations in canonical form.
+The effective export set defines the public-declaration portion of the textual `.l1m`. The export manifest itself is not
+emitted into the interface file as an `export ...;` statement; only the resulting exported declarations are projected
+into that portion in canonical form.
 
-Two modules with the same effective public declarations produce the same interface text regardless of whether the source
-used `export *;`, an explicit allowlist, or the implicit default.
+Equivalent export-manifest spellings that yield the same effective public declarations yield the same canonical
+declaration projection and public fingerprint. Equal public declarations alone do not guarantee byte-identical `.l1m`
+text because module identity and the operational `entry`, ordered `import module`, `require`, and `link` regions are
+also serialized.
 
 An interface file begins with:
 

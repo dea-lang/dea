@@ -272,6 +272,42 @@ func test_transitive_provenance() {
         assert(ldt_has_code(unreachable_diags, "L1C-2111"),
             "transitive provenance diagnostic mismatch");
     }
+
+    with (let self_diags = diag_create() => diag_free(self_diags)) {
+        let self = ldt_interface("self", true);
+        let self_fingerprint = self.fingerprint;
+        ldt_add_require(self, "self", self_fingerprint);
+        let self_inputs = ld_ptr_vec_create(1);
+        ld_ptr_vec_push(self_inputs, ldt_dea_input(self) as void*);
+        assert(ld_prepare_inputs(self_inputs, null, self_diags) == null,
+            "a module must not satisfy provenance without an import path");
+        assert(ldt_has_code(self_diags, "L1C-2111"),
+            "self-provider provenance diagnostic mismatch");
+    }
+
+    with (let order_diags = diag_create() => diag_free(order_diags)) {
+        let first_provider = ldt_interface("provider.first", false);
+        let fingerprint3 = first_provider.fingerprint;
+        let second_provider = ldt_interface("provider.second", false);
+        let ordered_consumer = ldt_interface("ordered.consumer", true);
+        ldt_add_require(ordered_consumer, "provider.first", fingerprint3);
+        ldt_add_link(ordered_consumer, "provider.second", fingerprint3);
+        let ordered_inputs = ld_ptr_vec_create(3);
+        ld_ptr_vec_push(ordered_inputs,
+            ldt_dea_input(ordered_consumer) as void*);
+        ld_ptr_vec_push(ordered_inputs,
+            ldt_dea_input(second_provider) as void*);
+        ld_ptr_vec_push(ordered_inputs,
+            ldt_dea_input(first_provider) as void*);
+        assert(ld_prepare_inputs(ordered_inputs, null, order_diags) == null,
+            "multiple import-unreachable providers must fail");
+        assert(diag_count(order_diags) == 2 &&
+               contains_s(diag_get(order_diags, 0).message,
+                   "provider.first") &&
+               contains_s(diag_get(order_diags, 1).message,
+                   "provider.second"),
+            "provenance diagnostics must retain require-before-link order");
+    }
 }
 
 /** Verify invalid interfaces never contribute identity registration. */

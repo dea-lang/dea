@@ -27,6 +27,12 @@ l1c --version
 `make docker CMD=test-all` runs the explicit Linux container validation path while preserving that same default
 repo-local `../../l0` bootstrap layout.
 
+Use `make bench-link-provenance` for the informational standalone-link provenance matrix. It measures warmed validation
+over control, direct-provider, terminal-provider, and layered-DAG graphs without including graph construction. Override
+the matrix with `BENCH_PROVENANCE_SHAPES`, `BENCH_PROVENANCE_SIZES`, `BENCH_PROVENANCE_WARMUPS`, and
+`BENCH_PROVENANCE_RUNS`; save or compare machine-readable results with `BENCH_PROVENANCE_JSON` and
+`BENCH_PROVENANCE_COMPARE`. The benchmark has no CI timing threshold and is not part of `test-all`.
+
 For a non-default upstream bootstrap compiler, set `L1_BOOTSTRAP_L0C=/path/to/l0c-stage2` when running
 `make build-stage1`.
 

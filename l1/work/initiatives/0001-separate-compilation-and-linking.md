@@ -167,10 +167,13 @@ Phase 0.2 is completed by
 Separate compilation uses a textual `.l1m` interface file. The format stays human-readable and L1-source-like so the
 bootstrap remains inspectable and the existing parser can be reused with a constrained accept set.
 
-Each `.l1m` records the public surface of one module in canonical form:
+Each `.l1m` records one module's identity, operational manifests, and public surface in canonical form:
 
 - `module interface <name>;` as the file header.
 - `fingerprint "<hash>";` immediately after the header.
+- optional `entry;` presence for standalone executable selection.
+- ordered `import module` records for lifecycle reachability.
+- `require` and `link` provider expectations for public and implementation semantic dependencies.
 - transparent `struct` and `enum` definitions with full layout so importers can recompute size and offset information.
 - opaque `struct` and `enum` declarations as explicit name-only interface forms that expose the nominal name without
   exposing fields or variants.
@@ -178,10 +181,10 @@ Each `.l1m` records the public surface of one module in canonical form:
 - `const` declarations with literal values inlined so importers can still constant-fold and pattern-match.
 - `let` declarations with type only.
 
-The export manifest itself is not emitted as a literal `export ...;` line in the `.l1m`. The file contains only the
-exported declarations, so the manifest is reflected indirectly through which declarations are present. Modules with the
-same effective public surface produce byte-identical `.l1m` content regardless of whether they used `export *;`, an
-explicit allowlist, or the implicit default.
+The export manifest itself is not emitted as a literal `export ...;` line in the `.l1m`; only its resulting declarations
+are projected into the canonical public-declaration region. Equivalent export spellings with the same effective public
+surface produce the same declaration projection and public fingerprint. Whole-file byte identity additionally requires
+the same module identity and identical operational `entry`, ordered `import module`, `require`, and `link` regions.
 
 Symbols are emitted in sorted, deterministic order so the fingerprint is stable regardless of source ordering. A binary
 encoding remains out of scope unless profiling later proves interface parsing is a material bottleneck.
@@ -693,11 +696,13 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
   - Rationale: ADR-0020 records module-local emission and the initialization, finalization, and entry hooks used at link
     time.
-- Decision: Embed and inspect portable object metadata to distinguish verified Dea objects from foreign objects.
+- Decision: Historically embed and inspect portable object metadata to distinguish verified Dea objects from foreign
+  objects pending formal supersession by the `.l1m` authority decision.
   - Scope: L1
   - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0021-portable-object-metadata-and-inspection.md`
-  - Rationale: ADR-0021 records metadata authority, representation, and classification.
+  - Rationale: ADR-0021 records the retired metadata authority, representation, and classification and remains Accepted
+    until the active authority plan completes its atomic ADR lifecycle.
 - Decision: Publish compile-only object and interface artifacts with endpoint rollback from one output-local
   transaction.
   - Scope: L1
@@ -705,12 +710,13 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
   - Rationale: ADR-0022 records the implemented artifact set, staging boundary, validation, publication order, rollback,
     and recovery behavior used by the remaining initiative plans.
-- Decision: Link verified Dea objects and explicitly classified foreign objects through a generated executable wrapper.
+- Decision: Historically link object-verified Dea inputs and explicitly classified foreign objects through a generated
+  executable wrapper pending formal supersession by the `.l1m` authority decision.
   - Scope: L1
   - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md`
-  - Rationale: ADR-0028 records object classification, complete graph and entry verification, and deterministic wrapper
-    orchestration.
+  - Rationale: ADR-0028 records the retired object-classification boundary plus retained graph, entry, and wrapper
+    orchestration and remains Accepted until the active authority plan completes its atomic ADR lifecycle.
 - Decision: Isolate standalone link wrapper artifacts in an atomically reserved output-local transaction supplied
   explicitly to the common link executor.
   - Scope: L1
