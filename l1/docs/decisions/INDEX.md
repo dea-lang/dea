@@ -32,3 +32,5 @@
 | [0028](0028-verified-link-set-and-foreign-object-boundary.md)                 | Verified Link Set and Foreign-Object Boundary                 | Superseded |
 | [0029](0029-output-local-standalone-link-transaction.md)                      | Output-Local Standalone Link Transaction                      | Accepted   |
 | [0030](0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md) | Authoritative Module Interfaces and Opaque Native Link Inputs | Accepted   |
+| [0031](0031-per-module-generated-c-cli-boundary.md)                           | Per-Module Generated-C CLI Boundary                           | Accepted   |
+| [0032](0032-deterministic-compile-only-staging-paths.md)                      | Deterministic Compile-Only Staging Paths                      | Accepted   |

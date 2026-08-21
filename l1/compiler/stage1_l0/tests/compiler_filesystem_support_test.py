@@ -138,6 +138,31 @@ int32_t l1c_fs_resolve_trusted_temp_parent(
     uint8_t *output,
     int32_t output_capacity
 );
+int32_t l1c_fs_absolute_path(
+    const uint8_t *path,
+    int32_t path_len,
+    uint8_t *output,
+    int32_t output_capacity
+);
+int32_t l1c_fs_canonical_existing_path(
+    const uint8_t *path,
+    int32_t path_len,
+    uint8_t *output,
+    int32_t output_capacity
+);
+int32_t l1c_fs_resolve_executable(
+    const uint8_t *name,
+    int32_t name_len,
+    uint8_t *output,
+    int32_t output_capacity
+);
+int32_t l1c_fs_host_is_darwin(void);
+int32_t l1c_fs_same_file(
+    const uint8_t *left,
+    int32_t left_len,
+    const uint8_t *right,
+    int32_t right_len
+);
 
 static int32_t path_len(const char *path) {
     size_t len = strlen(path);
@@ -242,6 +267,12 @@ int main(int argc, char **argv) {
     char notdir_child[4096];
     uint8_t resolved[4096];
     static const uint8_t embedded_nul[] = { 'a', '\0', 'b' };
+
+#if defined(__APPLE__)
+    if (l1c_fs_host_is_darwin() != 1) return 567;
+#else
+    if (l1c_fs_host_is_darwin() != 0) return 567;
+#endif
 
     if (argc < 2) return 1;
     if (!make_path(workspace, sizeof(workspace), argv[1], "workspace")) return 2;
@@ -429,6 +460,102 @@ int main(int argc, char **argv) {
             0
         ) != -1) return 553;
 
+    {
+        static const char relative[] = "compiler-probe";
+        int32_t required = l1c_fs_absolute_path(
+            (const uint8_t *)relative,
+            path_len(relative),
+            NULL,
+            0
+        );
+        int32_t actual;
+        size_t suffix_len = strlen(relative);
+        if (required <= (int32_t)suffix_len ||
+            required >= (int32_t)sizeof(resolved)) return 554;
+        actual = l1c_fs_absolute_path(
+            (const uint8_t *)relative,
+            path_len(relative),
+            resolved,
+            (int32_t)sizeof(resolved) - 1
+        );
+        if (actual != required) return 555;
+        resolved[actual] = '\0';
+        if (strcmp(
+                (const char *)resolved + actual - suffix_len,
+                relative
+            ) != 0) return 556;
+        if (l1c_fs_absolute_path(embedded_nul, 3, NULL, 0) != -1)
+            return 557;
+    }
+
+    if (argc >= 12) {
+        int32_t required = l1c_fs_resolve_executable(
+            (const uint8_t *)argv[10],
+            path_len(argv[10]),
+            NULL,
+            0
+        );
+        int32_t actual;
+        if (required <= 0 || required >= (int32_t)sizeof(resolved)) return 558;
+        actual = l1c_fs_resolve_executable(
+            (const uint8_t *)argv[10],
+            path_len(argv[10]),
+            resolved,
+            (int32_t)sizeof(resolved) - 1
+        );
+        if (actual != required) return 559;
+        resolved[actual] = '\0';
+        if (l1c_fs_same_file(
+                resolved,
+                actual,
+                (const uint8_t *)argv[11],
+                path_len(argv[11])
+            ) != 1) return 560;
+#if !defined(_WIN32)
+        if (actual <= path_len(argv[10]) ||
+            strcmp(
+                (const char *)resolved + actual - path_len(argv[10]),
+                argv[10]
+            ) != 0) return 5601;
+#endif
+        if (l1c_fs_resolve_executable(
+                (const uint8_t *)"missing-compiler-probe",
+                22,
+                NULL,
+                0
+            ) != -1) return 561;
+        if (l1c_fs_resolve_executable(embedded_nul, 3, NULL, 0) != -1)
+            return 562;
+
+        required = l1c_fs_canonical_existing_path(
+            resolved,
+            actual,
+            NULL,
+            0
+        );
+        if (required <= 0 || required >= (int32_t)sizeof(resolved)) return 563;
+        actual = l1c_fs_canonical_existing_path(
+            resolved,
+            actual,
+            resolved,
+            (int32_t)sizeof(resolved) - 1
+        );
+        if (actual != required) return 564;
+        resolved[actual] = '\0';
+        if (l1c_fs_same_file(
+                resolved,
+                actual,
+                (const uint8_t *)argv[11],
+                path_len(argv[11])
+            ) != 1) return 565;
+        if (l1c_fs_canonical_existing_path(
+                embedded_nul,
+                3,
+                NULL,
+                0
+            ) != -1) return 566;
+    }
+
     if (!write_marker(removable, "remove")) return 56;
     if (l1c_fs_remove_regular_file(
             (const uint8_t *)removable,
@@ -516,6 +643,12 @@ def main() -> int:
             "filesystem_harness.exe" if os.name == "nt" else "filesystem_harness"
         )
         compile_harness(compiler, harness, executable)
+        resolver_name = executable.name
+        resolver_expected = executable.resolve()
+        if os.name != "nt":
+            resolver_alias = temp_dir / "filesystem-harness-alias"
+            resolver_alias.symlink_to(executable.name)
+            resolver_name = resolver_alias.name
 
         directory_target = temp_dir / "directory-target"
         directory_alias = temp_dir / "directory-alias"
@@ -582,6 +715,8 @@ def main() -> int:
         if os.name != "nt":
             previous_umask = os.umask(0o077)
         try:
+            runtime_env = os.environ.copy()
+            runtime_env["PATH"] = os.pathsep + runtime_env.get("PATH", "")
             completed = subprocess.run(
                 [
                     str(executable),
@@ -591,12 +726,15 @@ def main() -> int:
                     str(unsafe_parent.resolve()),
                     str(sticky_parent.resolve()),
                     str(nested_parent.resolve()),
+                    resolver_name,
+                    str(resolver_expected),
                 ],
-                cwd=L1_ROOT,
+                cwd=temp_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
+                env=runtime_env,
                 check=False,
             )
         finally:

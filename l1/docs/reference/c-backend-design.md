@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-08-21
+Version: 2026-08-22
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -30,10 +30,13 @@ The separate-compilation boundary adds:
 
 Input is a fully typed analysis result. The backend exposes two supported output boundaries:
 
-- `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit used by the current `--gen`,
-  `--build`, and `--run` flows.
+- `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit used by the current
+  `--build` and `--run` flows.
 - `backend_generate_module(result, target_module, opts, cfg)` emits one source-backed module translation unit for
-  `--compile`; the resulting objects feed standalone `--link`. Build and run do not use this boundary yet.
+  `--gen` and `--compile`; the resulting objects feed standalone `--link`. Build and run do not use this boundary yet.
+
+`cg_options_from_cli(...)` is the single projection from CLI controls to byte-affecting code-generation settings, so
+pure generation and compile-only retention call the same module operation with the same settings.
 
 `compiler/stage2_l1/` does not currently provide a second backend implementation.
 
@@ -103,8 +106,17 @@ external regardless of the source export manifest.
 Module output contains no process-level C `main`, legacy global init chain, or calls to dependency lifecycle functions.
 Standalone link owns the executable wrapper and cross-module ordering.
 
-Compile-only writes this per-module C output, the host-compiled relocatable object, and the corresponding fingerprinted
-interface into one sibling transaction directory. The driver publishes the object before the interface; `--keep-c` also
+`--gen` resolves the selected target from source, resolves imports interface-first under `MRP_ALLOW_SOURCE_FALLBACK`,
+and writes this per-module output to stdout or one exact requested file. A selected valid interface is sufficient
+without native siblings; generation neither discovers objects nor invokes host tools.
+
+Compile-only writes the same per-module C bytes, the host-compiled relocatable object, and the corresponding
+fingerprinted interface into one sibling transaction directory. Canonical module-relative C and object paths are the
+host compiler's visible inputs within that transaction. Bare compiler names are frozen to their invocation-time command
+search result before the working-directory change. Debug-producing GNU-style options receive a stable `.` compilation
+directory when the configured name, canonical filesystem target, or recognized Darwin system-alias identity identifies
+Clang or GCC; compiler invocation retains the selected alias. This is a driver-controlled path-neutrality guarantee, not
+a byte-identity guarantee for native objects. The driver publishes the object before the interface; `--keep-c` also
 selects the exact staged C for publication. Sequential renames provide successful/new and recoverable-failure/prior
 endpoints, not an atomic reader-visible snapshot: paths may be absent or from different generations during publication
 or rollback, concurrent access requires external serialization, and failed rollback retains recovery files. The backend
@@ -315,8 +327,8 @@ result form before returning `0`. It does not initialize runtime arguments or ca
 
 ## Current Constraints
 
-1. Ordinary `--gen`, `--build`, and `--run` output remains one legacy whole-program `.c` file; the internal module
-   generator emits one selected module without changing those flows.
+1. Ordinary `--build` and `--run` output remains one legacy whole-program `.c` file; `--gen` and compile-only use the
+   internal module generator for one selected source-backed module.
 2. The only implemented backend is the bootstrap backend in `stage1_l0`.
 3. The runtime and ABI surface assume a C99-compatible host toolchain.
 4. Optimization is delegated to the host C compiler; backend priority is correctness and explicit lowering.

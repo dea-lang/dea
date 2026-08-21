@@ -53,7 +53,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
-  - [`l1/work/plans/features/2026-08-21-per-module-generated-c-foundation-noref.md`][generated-c-foundation]
+  - [`l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`][generated-c-foundation]
   - [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c-completion]
   - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
   - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
@@ -78,13 +78,15 @@ build, run, and link modes without Dea inspecting their bytes.
 
 ## Dependencies and Ownership
 
+All hard prerequisites are complete. This plan is the next implementation step in the separate-compilation sequence.
+
 1. The [module graph][module-graph] owns canonical artifact association, ordered edges, and `MRP_ALLOW_SOURCE_FALLBACK`.
 2. [Fingerprints] and [lifecycle emission][lifecycle] define the verified interface manifests and native lifecycle ABI
    that this plan mixes with source-built units. The historical [object metadata plan][object-metadata] is superseded by
    the authoritative-interface contract: native objects carry no Dea metadata.
 3. [Compile-only production][compile-only] establishes one-module analysis, object compilation, interface emission, and
-   publication. The [generated-C foundation][generated-c-foundation] must land first and extracts the publication-free
-   per-module generation operation plus stable compiler-visible staging that build/run consumes in its own workspace.
+   publication. The completed [generated-C foundation][generated-c-foundation] supplies the publication-free per-module
+   generation operation plus stable compiler-visible staging that build/run consumes in its own workspace.
 4. The completed shared [native temporary-workspace safety plan][native-temp-safety] owns atomic reservation and cleanup
    of the build/run private workspace. This plan consumes that settled lifecycle rather than defining another
    temporary-root policy.
@@ -92,8 +94,8 @@ build, run, and link modes without Dea inspecting their bytes.
    reusable per-module generator. The [generated-C completion plan][generated-c-completion] follows this plan to prove
    four-mode identity and remove the legacy whole-program generator. This plan owns retention of the complete build/run
    C tree and its byte contribution to that later proof.
-6. The [link-set plan][link-set] must land first. This plan passes verified-interface/opaque-object Dea pairs, foreign
-   objects, and the source target's canonical module name to its common link API.
+6. The completed [link-set plan][link-set] supplies the common link API. This plan passes
+   verified-interface/opaque-object Dea pairs, foreign objects, and the source target's canonical module name to it.
 7. This plan owns graph fan-out for `--build` and `--run`, temporary artifact lifetime, source-target entry selection,
    multi-unit `--keep-c`, executable execution, and runtime argument/status forwarding.
 8. [External linking][external-linking] later appends libraries, rpaths, and raw host-driver arguments to the same typed
@@ -331,7 +333,7 @@ architecture, C-backend, and separate-compilation references.
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [generated-c-completion]: 2026-07-24-per-module-generated-c-mode-noref.md
-[generated-c-foundation]: 2026-08-21-per-module-generated-c-foundation-noref.md
+[generated-c-foundation]: closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: closed/2026-07-17-link-set-driver-and-wrapper-noref.md

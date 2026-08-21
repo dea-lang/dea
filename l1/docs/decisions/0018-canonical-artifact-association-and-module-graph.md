@@ -67,6 +67,7 @@ imports without deriving lifecycle edges from `require` or `link`.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][generated-c-foundation]
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
@@ -86,6 +87,7 @@ imports without deriving lifecycle edges from `require` or `link`.
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[generated-c-foundation]: ../../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [graph-plan]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [module-format]: ../specs/compiler/module-interface-format.md

@@ -33,6 +33,18 @@ func cfst_remove_empty_if_present(path: string) {
     }
 }
 
+/** Prove relative host-tool paths can retain their invocation-cwd meaning. */
+func test_absolute_path_transport() {
+    let absolute = cfs_absolute_path("compiler-probe");
+    assert(absolute != null, "relative compiler path should become absolute");
+    let path = absolute as string;
+    assert(is_absolute(path), "compiler transport path should be absolute");
+    assert(basename(path) == "compiler-probe",
+        "compiler transport path should preserve the final component");
+    assert(cfs_absolute_path("") == null,
+        "empty compiler transport path should be rejected");
+}
+
 /** Prove the production selection seam preserves precedence and failures. */
 func test_temp_parent_selection_values() {
     with (let diags = diag_create() => diag_free(diags)) {
@@ -317,6 +329,7 @@ func test_cleanup_status_precedence() {
 
 /** Run focused compiler-filesystem workspace coverage. */
 func main() {
+    test_absolute_path_transport();
     test_temp_parent_selection_values();
     test_workspace_parent_ending_literal_backslash();
     test_workspace_reservation_skips_collision();

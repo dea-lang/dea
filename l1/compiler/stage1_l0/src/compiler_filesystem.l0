@@ -50,6 +50,25 @@ extern func l1c_fs_resolve_trusted_temp_parent(
     output: byte*?,
     output_capacity: int
 ) -> int;
+extern func l1c_fs_absolute_path(
+    path: byte*,
+    path_len: int,
+    output: byte*?,
+    output_capacity: int
+) -> int;
+extern func l1c_fs_canonical_existing_path(
+    path: byte*,
+    path_len: int,
+    output: byte*?,
+    output_capacity: int
+) -> int;
+extern func l1c_fs_resolve_executable(
+    name: byte*,
+    name_len: int,
+    output: byte*?,
+    output_capacity: int
+) -> int;
+extern func l1c_fs_host_is_darwin() -> int;
 
 /** No filesystem object exists at the path. */
 let CFS_PATH_ABSENT: int = 0;
@@ -126,6 +145,11 @@ func cfs_remove_regular_file(path: string) -> int {
 func cfs_remove_empty_dir(path: string) -> int {
     return l1c_fs_remove_empty_dir(
         rt_string_bytes_ptr(path), len_s(path));
+}
+
+/** Return whether the compiler support ABI was built for a Darwin host. */
+func cfs_host_is_darwin() -> bool {
+    return l1c_fs_host_is_darwin() == 1;
 }
 
 /**
@@ -206,6 +230,105 @@ func cfs_resolve_trusted_temp_parent(path: string) -> string? {
         required = actual;
     }
     return null;
+}
+
+/**
+ * Resolve one path against the process current working directory.
+ *
+ * This is a compiler-internal transport helper, not a trust or existence
+ * check. It preserves the original invocation-directory meaning of known
+ * host-tool paths when a driver executes that tool from private staging.
+ *
+ * @param path Path to make absolute.
+ * @return Absolute host path, or `null` on invalid input or failure.
+ */
+func cfs_absolute_path(path: string) -> string? {
+    let required = l1c_fs_absolute_path(
+        rt_string_bytes_ptr(path), len_s(path), null, 0);
+    if (required <= 0) {
+        return null;
+    }
+
+    let buffer = ba_create(required);
+    let actual = l1c_fs_absolute_path(
+        rt_string_bytes_ptr(path),
+        len_s(path),
+        buffer.storage.data as byte*,
+        required
+    );
+    if (actual != required) {
+        ba_free(buffer);
+        return null;
+    }
+    let absolute = bytes_to_s(buffer.storage.data as byte*, actual);
+    ba_free(buffer);
+    return absolute;
+}
+
+/**
+ * Resolve one existing path through filesystem aliases.
+ *
+ * This transport helper supports compiler identity classification. Callers
+ * must retain the original executable spelling for invocation.
+ *
+ * @param path Existing path to canonicalize.
+ * @return Canonical host path, or `null` on invalid input or failure.
+ */
+func cfs_canonical_existing_path(path: string) -> string? {
+    let required = l1c_fs_canonical_existing_path(
+        rt_string_bytes_ptr(path), len_s(path), null, 0);
+    if (required <= 0) {
+        return null;
+    }
+
+    let buffer = ba_create(required);
+    let actual = l1c_fs_canonical_existing_path(
+        rt_string_bytes_ptr(path),
+        len_s(path),
+        buffer.storage.data as byte*,
+        required
+    );
+    if (actual != required) {
+        ba_free(buffer);
+        return null;
+    }
+    let canonical = bytes_to_s(buffer.storage.data as byte*, actual);
+    ba_free(buffer);
+    return canonical;
+}
+
+/**
+ * Resolve one bare executable name through the invocation-time `PATH`.
+ *
+ * The native support layer preserves empty and relative search components and
+ * returns an absolute executable path before a driver changes working
+ * directory. Executable-alias spelling is retained so symlink-selected driver
+ * behavior does not change.
+ *
+ * @param name Bare executable name to resolve.
+ * @return Absolute executable path, or `null` when no executable is found.
+ */
+func cfs_resolve_executable(name: string) -> string? {
+    let required = l1c_fs_resolve_executable(
+        rt_string_bytes_ptr(name), len_s(name), null, 0);
+    if (required <= 0) {
+        return null;
+    }
+
+    let buffer = ba_create(required);
+    let actual = l1c_fs_resolve_executable(
+        rt_string_bytes_ptr(name),
+        len_s(name),
+        buffer.storage.data as byte*,
+        required
+    );
+    if (actual != required) {
+        ba_free(buffer);
+        return null;
+    }
+    let resolved = bytes_to_s(buffer.storage.data as byte*, actual);
+    ba_free(buffer);
+    return resolved;
 }
 
 /** Return an environment value, treating absence as an empty candidate. */

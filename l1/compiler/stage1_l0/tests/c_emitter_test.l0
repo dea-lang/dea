@@ -7,6 +7,7 @@ module c_emitter_test;
 
 import std.assert;
 import std.hashmap;
+import std.hashset;
 import std.io;
 import std.string;
 import std.text;
@@ -992,6 +993,34 @@ func test_emitter_module_lifecycle_has_no_metadata_anchors() {
     cem_free(emitter);
 }
 
+/** Tests module filtering safely composes and checks heap-backed keys. */
+func test_emitter_module_filters_handle_composed_keys() {
+    let emitter = cem_create();
+    let type_keys = ss_create();
+    let module_name = slice_s("xdemo.main", 1, 10);
+    ss_add(type_keys, "demo.main::Point");
+    cem_set_module_target(emitter, module_name);
+    cem_set_module_type_keys(emitter, type_keys);
+
+    assert(cem_module_target_includes_value_key(emitter, "demo.main::answer"),
+        "selected module value should be included");
+    assert(cem_module_target_includes_analysis_key(emitter, "demo.main::expr:1"),
+        "selected module analysis key should be included");
+    assert(!cem_module_target_includes_analysis_key(emitter, "demo.dep::expr:1"),
+        "other module analysis key should be excluded");
+    assert(cem_module_target_matches(emitter, "demo.main"),
+        "selected module should match its output boundary");
+    assert(!cem_module_target_matches(emitter, "demo.dep"),
+        "other module should not match the output boundary");
+    assert(cem_module_target_includes_type(emitter, "demo.main", "Point"),
+        "selected nominal type should be included");
+    assert(!cem_module_target_includes_type(emitter, "demo.main", "Other"),
+        "unselected nominal type should be excluded");
+
+    cem_free(emitter);
+    ss_free(type_keys);
+}
+
 /**
  * Main entry point for the module.
  */
@@ -1021,5 +1050,6 @@ func main() {
     test_emitter_main_wrapper_normalizes_bool_result();
     test_emitter_unsafe_function_types_share_c_abi();
     test_emitter_module_lifecycle_has_no_metadata_anchors();
+    test_emitter_module_filters_handle_composed_keys();
     printl_s("c_emitter_test: all tests passed");
 }

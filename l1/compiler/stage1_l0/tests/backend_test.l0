@@ -17,6 +17,7 @@ import util.diag;
 import analysis;
 import ast;
 import backend;
+import cli_args;
 import codegen_options;
 import driver;
 import expr_types;
@@ -225,6 +226,24 @@ func test_codegen_options_defaults() {
     assert(!opts.trace_arc, "trace_arc should default to false");
     assert(!opts.trace_memory, "trace_memory should default to false");
     cg_options_free(opts);
+}
+
+/** Tests every generated-C caller shares one CLI option projection. */
+func test_codegen_options_from_cli() {
+    with (let cli = cli_options_create() => cli_options_free(cli)) {
+        cli.no_line_directives = true;
+        cli.trace_arc = true;
+        cli.trace_memory = true;
+        cli.unchecked = true;
+        cli.check_basic = true;
+        let projected = cg_options_from_cli(cli);
+        assert(!projected.emit_line_directives, "line-directive projection mismatch");
+        assert(projected.trace_arc, "trace-ARC projection mismatch");
+        assert(projected.trace_memory, "trace-memory projection mismatch");
+        assert(projected.rt_unchecked, "unchecked-runtime projection mismatch");
+        assert(projected.rt_check_basic, "basic-check projection mismatch");
+        cg_options_free(projected);
+    }
 }
 
 /**
@@ -2569,6 +2588,7 @@ func test_backend_nullable_identity() {
  */
 func main() {
     test_codegen_options_defaults();
+    test_codegen_options_from_cli();
     test_scope_context_tracks_declared_and_owned_variables();
     test_scope_context_inline_cleanup_tracking();
     test_backend_scope_helpers_manage_cleanup_state();

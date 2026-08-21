@@ -4,11 +4,11 @@
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-08-21-per-module-generated-c-foundation-noref.md`
   - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`
   - `l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
@@ -76,9 +76,9 @@ This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
 
 Relevant facts that constrain the plan at the time of writing:
 
-- Ordinary build/run still emits **one generated C99 compilation unit per program** through the legacy backend.
-  Compile-only uses the internal module backend to emit and publish exactly one selected source-backed module with
-  endpoint rollback; multi-CU orchestration is not operational yet.
+- Ordinary build/run still emits **one generated C99 compilation unit per program** through the legacy backend. `--gen`
+  and compile-only use the same internal module backend to emit exactly one selected source-backed module; compile-only
+  adds host compilation and endpoint-rollback publication. Multi-CU orchestration is not operational yet.
 - The L1 backend reference ([`l1/docs/reference/c-backend-design.md`][backend-design]) is the current source of truth
   for L1 generated C behavior.
 - Modules support explicit export manifests plus alias and selective import forms. Exported top-level declarations keep
@@ -102,6 +102,10 @@ Relevant facts that constrain the plan at the time of writing:
   `-k` / `--link` accepts positional Dea `.o` paths with required verified sibling `.l1m` files, repeatable explicit
   `-Cf` / `--foreign-object` operands, optional `-e` / `--entry`, and one mandatory output; it emits the lifecycle
   wrapper and invokes the host linker with original opaque native paths.
+- The shared driver CLI also implements per-module `--gen` with ordered interface roots and source fallback only when no
+  interface is selected. Pure generation creates one exact C output without host-tool or native-sibling access.
+  Compile-only stages canonical module-relative compiler inputs and retains C bytes identical to `--gen` for the same
+  resolved inputs and options.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today. `compiler/stage2_l1/` is a placeholder for the future
   self-hosted L1 compiler, so every change in this initiative lands first in Stage 1. Once Stage 2 exists, equivalent
   behavior must be ported there with Stage 1 acting as the L1 behavioral oracle.
@@ -304,8 +308,8 @@ work is split by dependency, not by the former whole-plan labels:
     this subsystem in favor of verified sibling interfaces.
 05. **Compile-only artifacts (complete):** `-c` publishes `.o + .l1m` with endpoint rollback; `--keep-c` adds the exact
     generated C. Publication verifies the interface and regular native output without byte-binding the pair.
-06. **Per-module generated-C foundation:** migrate `--gen` to the shared one-module backend and stabilize
-    compiler-visible compile-only paths before build/run fan-out.
+06. **Per-module generated-C foundation (complete):** `--gen` uses the shared one-module backend and compile-only uses
+    stable compiler-visible module-relative paths before build/run fan-out.
 07. **Standalone link set (complete):** verify authoritative sibling interfaces, resolve the entry and lifecycle graph,
     validate transitive semantic provenance, generate the executable wrapper, and invoke the host linker with opaque
     original native paths.
@@ -319,7 +323,7 @@ The driver ultimately exposes these contracts:
 
 - `-c <module> [-o <canonical-object-path>] [--keep-c]` compiles one module without linking and publishes sibling
   `.o + .l1m` with endpoint rollback; `--keep-c` adds the exact generated `.c`.
-- `--gen <module> [-I <dir>]... [-o <file>]` will emit exactly one per-module C translation unit. A selected imported
+- `--gen <module> [-I <dir>]... [-o <file>]` emits exactly one per-module C translation unit. A selected imported
   interface is authoritative and sufficient without a sibling object; source fallback is allowed only when no interface
   is selected.
 - `-I <dir>` adds an interface-search root. Explicit interfaces take precedence for imports; compile-only requires an
@@ -523,8 +527,8 @@ structured --c-source --> shared native workspace ------------------------------
 - Artifact-graph, fingerprint, lifecycle, compile-only, and `.l1m`-authority work are complete. The authority transition
   removed the historical object-metadata subsystem and is recorded by [ADR-0030][l1m-authority-adr].
 - Compile-only artifacts are operational with verified operational interface records and opaque paired objects.
-- The generated-C foundation must migrate `--gen` and stabilize compile-only compiler paths before build/run fan-out;
-  four-mode identity verification and legacy-generator removal wait for fan-out.
+- The generated-C foundation has migrated `--gen` and stabilized compile-only compiler paths; four-mode identity
+  verification and legacy-generator removal wait for build/run fan-out.
 - Standalone link owns verified-interface planning, opaque native input forwarding, and wrapper construction; build/run
   will reuse that API rather than creating a second link path.
 - Standalone link uses an atomically reserved transaction beside its mandatory output and supplies explicit scratch
@@ -551,7 +555,7 @@ Recorded near-term tranche checkpoints:
 - [x] Emit one module per CU with external `I4init`, `I4fini`, and conditional `I5entry`.
 - [x] Retire provider/consumer object metadata and readers after moving authority into verified `.l1m` manifests.
 - [x] Make compile-only artifact production operational.
-- [ ] Migrate `--gen` to per-module output and stabilize compile-only staging under the generated-C foundation plan.
+- [x] Migrate `--gen` to per-module output and stabilize compile-only staging under the generated-C foundation plan.
 - [x] Implement `.l1m`-authoritative Dea linking, caller-asserted foreign inputs, entry selection, lifecycle order, and
   transitive provenance.
 - [x] Complete supported-host CI and ADR lifecycle closure for the `.l1m` authority plan.
@@ -654,10 +658,10 @@ the chosen answer and points at the owning section.
    external serialization for concurrent readers or same-stem writers. Anchored in §2a and recorded by the amended
    [ADR-0022][compile-only-adr].
 7. **Per-module generated C:** `--gen` treats a selected `.l1m` as sufficient without inspecting its sibling object and
-   uses stable module-relative compiler-visible paths under the active
-   [generated-C foundation plan][generated-c-foundation]. The downstream
-   [generated-C completion plan][per-module-generated-c] owns four-mode byte identity and retires whole-closure
-   generation only after all production callers migrate.
+   uses stable module-relative compiler-visible paths under the completed
+   [generated-C foundation plan][generated-c-foundation], recorded by [ADR-0031][generated-c-adr] and
+   [ADR-0032][compile-staging-adr]. The downstream [generated-C completion plan][per-module-generated-c] owns four-mode
+   byte identity and retires whole-closure generation only after all production callers migrate.
 8. **Standalone link workspace:** validate the complete link set and toolchain/runtime inputs before atomically
    reserving a bounded output-local `.l1c-link-*` transaction. The common executor receives explicit scratch paths and
    does not own workspace allocation or cleanup. The transaction owns wrapper and capture files only; original native
@@ -734,8 +738,8 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
     cleanup policy consumed by build/run fan-out.
 - Decision: Make `--gen` produce one module rather than a whole source closure.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0031-per-module-generated-c-cli-boundary.md`
   - Rationale: The generated-C foundation child plan owns this public compiler-artifact contract.
 - Decision: Preserve generated-C bytes across generation, compile-only retention, and retained build/run output.
   - Scope: L1
@@ -745,8 +749,8 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
 - Decision: Use stable module-relative host-compiler paths for deterministic compile-only objects where the toolchain
   permits.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0032-deterministic-compile-only-staging-paths.md`
   - Rationale: The generated-C foundation child plan owns deterministic compiler-visible staging.
 - Decision: Remove the transitional legacy whole-closure generator after all production callers migrate.
   - Scope: L1
@@ -839,10 +843,12 @@ implementation tranche proves that one decision area needs additional design wor
 [compile-foundation]: ../plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [compile-only]: ../plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [compile-only-adr]: ../../docs/decisions/0022-transactional-compile-only-artifact-publication.md
+[compile-staging-adr]: ../../docs/decisions/0032-deterministic-compile-only-staging-paths.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [export-imports]: ../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [fingerprint-adr]: ../../docs/decisions/0019-whole-module-interface-fingerprints.md
-[generated-c-foundation]: ../plans/features/2026-08-21-per-module-generated-c-foundation-noref.md
+[generated-c-adr]: ../../docs/decisions/0031-per-module-generated-c-cli-boundary.md
+[generated-c-foundation]: ../plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [interface-emission]: ../plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [l1m-authoritative-linking]: ../plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md

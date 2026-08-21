@@ -335,7 +335,11 @@ func be_emits_module_definitions(self: Backend*, module_name: string) -> bool {
     if (!be_is_module_output(self)) {
         return true;
     }
-    return self.target_module != null && (self.target_module as string) == module_name;
+    if (self.target_module == null) {
+        return false;
+    }
+    let target = self.target_module as string;
+    return target == module_name;
 }
 
 /**
@@ -350,10 +354,11 @@ func be_target_consumes_symbol(self: Backend*, provider_module: string, symbol_n
     if (!be_is_module_output(self) || self.target_module == null || self.result.names == null) {
         return false;
     }
+    let target = self.target_module as string;
     let names = self.result.names as NameResolution*;
     for (let i = 0; i < nr_resolved_symbol_count(names); i = i + 1) {
         let resolved = nr_resolved_symbol_get(names, i);
-        if (resolved.consumer_module == (self.target_module as string) &&
+        if (resolved.consumer_module == target &&
             resolved.provider_module == provider_module && resolved.symbol_name == symbol_name) {
             return true;
         }
@@ -373,7 +378,8 @@ func be_target_includes_value_key(self: Backend*, key: string) -> bool {
         return true;
     }
     let target = self.target_module as string;
-    if (starts_with_s(key, target + "::") || starts_with_s(key, "dea::")) {
+    let target_prefix = target + "::";
+    if (starts_with_s(key, target_prefix) || starts_with_s(key, "dea::")) {
         return true;
     }
     if (self.result.names == null) {
@@ -382,8 +388,9 @@ func be_target_includes_value_key(self: Backend*, key: string) -> bool {
     let names = self.result.names as NameResolution*;
     for (let i = 0; i < nr_resolved_symbol_count(names); i = i + 1) {
         let resolved = nr_resolved_symbol_get(names, i);
-        if (resolved.consumer_module == target &&
-            key == resolved.provider_module + "::" + resolved.symbol_name) {
+        let provider_prefix = resolved.provider_module + "::";
+        let resolved_key = provider_prefix + resolved.symbol_name;
+        if (resolved.consumer_module == target && key == resolved_key) {
             return true;
         }
     }
@@ -1836,7 +1843,7 @@ func type_free_opt(ty: Type*?) {
  */
 func be_collect_referenced_type_keys(self: Backend*, ty: Type*, out: StringSet*) {
     if (ord(ty.kind) == ord(TY_STRUCT) || ord(ty.kind) == ord(TY_ENUM)) {
-        if (self.target_module == null || ty.module_name == (self.target_module as string) ||
+        if (be_emits_module_definitions(self, ty.module_name) ||
             be_is_symbol_exported(self, ty.module_name, ty.name)) {
             ss_add(out, be_type_key(ty.module_name, ty.name));
         }

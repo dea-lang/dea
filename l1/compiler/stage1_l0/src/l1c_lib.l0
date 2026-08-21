@@ -28,6 +28,7 @@ import cli_args;
 import codegen_options;
 import diag_print;
 import lexer;
+import module_graph;
 import tokens;
 import util.log;
 import name_resolver;
@@ -312,7 +313,15 @@ func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
             return 1;
         }
         let prep = prepared as PreparedInput*;
-        let result = analysis_analyze_entry(prep.search_paths, prep.entry_module, cfg);
+        let entry_module = prep.entry_module;
+        let result = analysis_analyze_entry_with_resolution(
+            prep.search_paths,
+            entry_module,
+            opts.interface_paths,
+            MRP_ALLOW_SOURCE_FALLBACK,
+            null,
+            cfg
+        );
         prepared_input_free(prep);
         prepared = null;
 
@@ -322,14 +331,8 @@ func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
             return 1;
         }
 
-        with (let cg_opts = cg_options_create() => cg_options_free(cg_opts)) {
-            cg_opts.emit_line_directives = !opts.no_line_directives;
-            cg_opts.trace_arc = opts.trace_arc;
-            cg_opts.trace_memory = opts.trace_memory;
-            cg_opts.rt_unchecked = opts.unchecked;
-            cg_opts.rt_check_basic = opts.check_basic;
-
-            let c_code = backend_generate(result, cg_opts, cfg);
+        with (let cg_opts = cg_options_from_cli(opts) => cg_options_free(cg_opts)) {
+            let c_code = backend_generate_module(result, entry_module, cg_opts, cfg);
             if (opts.output != null) {
                 if (write_file(opts.output as string, c_code) == null) {
                     diag_error(diags, "l1c", "L1C-9511", "cannot write output file: " + (opts.output as string),

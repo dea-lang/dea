@@ -79,7 +79,7 @@ def main() -> int:
         "  --c-compiler, -Cc C_COMPILER",
         "  --c-options, -Co C_OPTIONS",
         "  -I, --interface-path INTERFACE_PATH",
-        "'--compile'; searched in declaration order)",
+        "'--compile', '--gen'; searched in declaration order)",
         "  --runtime-include, -Ri RUNTIME_INCLUDE",
         "  --runtime-lib, -Rl RUNTIME_LIB",
         "  -Cf, --foreign-object C_OBJECT",

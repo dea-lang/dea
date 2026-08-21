@@ -3,7 +3,7 @@
 ## Establish the per-module generated-C foundation
 
 - Date: 2026-08-21
-- Status: Draft
+- Status: Completed
 - Title: Migrate generated-C mode to one module and stabilize compile-only staging
 - Kind: Feature
 - Severity: High
@@ -14,6 +14,7 @@
   - `l1/compiler/stage1_l0/src/cli_args.l0`
   - `l1/compiler/stage1_l0/src/l1c_lib.l0`
   - `l1/compiler/stage1_l0/src/backend.l0`
+  - `l1/compiler/stage1_l0/src/c_emitter.l0`
   - `l1/compiler/stage1_l0/src/codegen_options.l0`
   - `l1/compiler/stage1_l0/src/compile_driver.l0`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
@@ -21,6 +22,7 @@
   - `l1/compiler/stage1_l0/src/driver.l0`
   - `l1/compiler/stage1_l0/src/module_graph.l0`
   - `l1/compiler/stage1_l0/src/source_paths.l0`
+  - `l1/compiler/stage1_l0/support/interface_fingerprint.c`
   - `docs/specs/compiler/cli-contract.md`
   - `l1/docs/reference/architecture.md`
   - `l1/docs/reference/c-backend-design.md`
@@ -35,9 +37,11 @@
   - `l1/compiler/stage1_l0/tests/interface_replay_test.l0`
   - `l1/compiler/stage1_l0/tests/compile_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/compiler_filesystem_test.l0`
+  - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_compile_only_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_toplet_test.py`
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
@@ -46,7 +50,7 @@
   - [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c-completion]
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-temp-safety]
 - Repro:
-  `make -C l1 test-stage1 TESTS="cli_args_test backend_test c_emitter_test driver_test module_graph_test interface_replay_test compile_driver_test compiler_filesystem_test l1c_lib_test l1c_stage1_help_output_test.py l1c_stage1_compile_only_test.py"`
+  `make -C l1 test-stage1 TESTS="cli_args_test backend_test c_emitter_test driver_test module_graph_test interface_replay_test compile_driver_test compiler_filesystem_test l1c_lib_test l1c_stage1_help_output_test.py l1c_stage1_compile_only_test.py l1c_stage1_toplet_test.py compiler_filesystem_support_test.py"`
 
 ## Summary
 
@@ -157,12 +161,32 @@ diagnostics from their owning subsystems. Pure generation must not emit provider
 it neither discovers objects nor invokes a compiler. Re-check every referenced live code before implementation and use
 the nearest unused code in the established driver range if an unforeseen distinct failure needs one.
 
+## Completion Notes
+
+1. `--gen` now resolves a source-backed target with ordered interface-first imports under `MRP_ALLOW_SOURCE_FALLBACK`
+   and emits through `backend_generate_module(...)`.
+2. `cg_options_from_cli(...)` is the shared byte-affecting settings projection used by `--gen` and compile-only; focused
+   integration coverage proves their generated C is byte-identical.
+3. Compile-only stages canonical module-relative C, object, and interface paths inside its existing sibling transaction
+   and invokes the host compiler from that root. Known relative compiler and runtime-include paths preserve their
+   invocation-directory meaning.
+4. Host-tool sentinel coverage proves pure generation does not compile or link and compile-only exposes no transaction
+   or destination prefixes in C/object arguments. Supported non-TinyCC object identity is exercised explicitly, with
+   TinyCC and Windows/PE-COFF retained as documented exceptions.
+5. Existing selected-set publication, rollback, recovery retention, absent-C behavior, and build/run behavior remain
+   unchanged.
+6. Module-boundary filters bind optional target strings to retained locals before comparison, avoiding the bootstrap
+   compiler's ownership-unsafe lowering of direct optional-string unwraps. Heap-backed emitter coverage and the
+   warning-bearing generated-C integration case exercise the repaired teardown path.
+7. Focused Stage 1 validation passed after the ownership repair, followed by a clean `make -C l1 clean test-all`: 65
+   normal tests, all four examples, environment stackability, and 44 broad trace tests passed.
+
 ## ADR Impact
 
 - Decision: Make L1 `--gen` emit one per-module C translation unit rather than a complete source closure.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0031-per-module-generated-c-cli-boundary.md`
   - Rationale: This changes the public meaning of generated-C mode and establishes the reusable compiler-artifact
     boundary consumed by compile-only and build/run.
 - Decision: Resolve `--gen` imports interface-first while treating a selected `.l1m` as sufficient without requiring its
@@ -175,7 +199,7 @@ the nearest unused code in the established driver range if an unforeseen distinc
   permits.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0032-deterministic-compile-only-staging-paths.md`
   - Rationale: Compiler-visible staging paths are a durable artifact-determinism boundary with explicit host exceptions.
 - Decision: Preserve compile-only selected-set publication and endpoint rollback while changing its internal staging
   paths.
@@ -216,11 +240,11 @@ the nearest unused code in the established driver range if an unforeseen distinc
     exceptions.
 10. Existing compile-only publication, rollback, recovery, and absent-C behavior remain covered.
 11. No build/run behavior changes in this prerequisite tranche.
-12. Focused normal and trace tests pass, followed by `make -C l1 test` before closure.
+12. Focused tests pass, followed by `make -C l1 clean test-all` before closure.
 
-[build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
-[compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
-[generated-c-completion]: 2026-07-24-per-module-generated-c-mode-noref.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[stage1-temp-safety]: ../../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md
+[build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
+[compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
+[generated-c-completion]: ../2026-07-24-per-module-generated-c-mode-noref.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[stage1-temp-safety]: ../../../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

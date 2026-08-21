@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-08-21
+Version: 2026-08-22
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -44,6 +44,19 @@ implements the endpoint-rollback compile-only artifact set in section 7 and addi
 `-Gi`, which emits the target module's textual `.l1m` interface. L1 Stage 1 also implements the standalone `--link` /
 `-k` mode in section 8.
 
+### L1 generated-C mode
+
+L1 `l1c --gen MODULE [-I ROOT]... [-o FILE]` resolves `MODULE` from source and emits exactly that module's C translation
+unit. Imported modules prefer the first selected verified interface in ordered `-I` roots and fall back to source only
+when no interface is selected. A selected valid `.l1m` is sufficient without a sibling `.o` or `.c`; a malformed
+selected interface is authoritative and fails without source fallback.
+
+The output contains the selected module's definitions, imported declarations and required transparent types,
+always-present `I4init` and `I4fini`, and conditional `I5entry`. It contains no imported definitions, dependency
+lifecycle calls, process `main`, executable wrapper, embedded interface text, or native metadata. Without `-o`, output
+goes to stdout. With `-o`, the value is the exact output file; generation creates no companion artifacts and never
+invokes the host compiler or linker. `--keep-c` and host-tool-only controls remain invalid with `--gen`.
+
 ## 3. Shared Options
 
 The current shared option surface is:
@@ -51,8 +64,8 @@ The current shared option surface is:
 - `--help` / `-h`, `--version` / `-V`, counted `--verbose` / `-v`, and `--log` / `-Vl`
 - repeatable project and system roots through `--project-root` / `-Rp` and `--sys-root` / `-Rs`; L1 `--link` rejects
   both because it consumes objects without resolving source
-- repeatable compile-mode interface paths through `--interface-path` / `-I`; L1 consumes them in declaration order,
-  while L0 retains the syntax for its reserved compile mode
+- repeatable compile/generated-C interface paths through `--interface-path` / `-I`; L1 consumes them in declaration
+  order, while L0 retains the syntax for its reserved compile mode
 - `--output` / `-o` for artifact-producing modes; L1 also accepts it with `--compile`, `--emit-interface`, and `--link`
 - `--c-compiler` / `-Cc`, `--c-options` / `-Co`, and `--runtime-include` / `-Ri` for build/run, L1 compile-only, and L1
   standalone linking; in standalone link mode, C options apply only while compiling the generated wrapper and are not
@@ -68,8 +81,9 @@ The current shared option surface is:
 - repeatable L1 `--foreign-object PATH` / `--foreign-object=PATH` / `-Cf PATH` / `-Cf=PATH` and optional
   `--entry MODULE` / `--entry=MODULE` / `-e MODULE` for standalone linking
 
-Using a mode-scoped option with an incompatible mode is a CLI argument error. In particular, interface paths are valid
-only with `--compile` and produce `L0C-2031` or `L1C-2031` elsewhere.
+Using a mode-scoped option with an incompatible mode is a CLI argument error. In L1, interface paths are valid with
+`--compile` and `--gen`; in L0 they remain valid only with the reserved `--compile` mode. Incompatible uses produce
+`L0C-2031` or `L1C-2031`.
 
 The conventional driver spellings `-g`, `-S`, `-L`, and `-l` are reserved for debug information, assembly output,
 external-library search, and external-library selection respectively. Those capabilities are not implemented yet;
@@ -173,6 +187,26 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 - The staged files and any backups of the selected destinations share an exclusively reserved sibling transaction
   directory. Existing selected destinations move to recovery names before publication, the object is published before
   the interface, and a recoverable publication failure restores the previous selected set.
+- Within the transaction, generated C, object, and interface staging uses the canonical dotted module path. The host
+  compiler runs from the transaction root and receives stable module-relative C and object paths, so random transaction
+  identities and caller-selected destination prefixes do not enter those compiler input/output arguments. Compiler paths
+  with relative directory components and relative runtime-include paths are first resolved against the invocation
+  directory. Bare compiler names are frozen to an absolute invocation-time command-search result; POSIX preserves empty
+  and relative `PATH` components, while Windows preserves `PATHEXT` ordering and the current-directory policy selected
+  by `NoDefaultCurrentDirectoryInExePath`, including any explicit empty or relative `PATH` component. An unresolved bare
+  name fails before transaction allocation. Arbitrary relative path-bearing `L1_CFLAGS` / `--c-options` values instead
+  resolve from the private transaction; callers that need invocation-relative raw host options must pass absolute paths.
+  For debug-producing GNU-style options such as `-g`, `-g3`, and `-ggdb`, a compiler identified as Clang or GCC by its
+  configured name or canonical filesystem target records the private debug compilation directory as stable `.` metadata.
+  Conventional target-prefixed, numeric-version-suffixed, and MinGW `-posix` / `-win32` driver names are included in
+  that recognition. On Darwin, the standard `gcc` and `cc` hard links to `/usr/bin/clang` are classified as Clang by
+  filesystem identity. The driver still invokes the originally selected executable spelling. Opaque compiler wrappers
+  whose canonical target is not recognizably Clang or GCC receive no debug path remapping guarantee.
+- This staging contract excludes random transaction identities and caller-selected destination prefixes from the
+  compiler paths controlled by the driver. It does not guarantee byte-identical native objects: a host toolchain may
+  encode timestamps, environment details, absolute paths from raw options or headers, toolchain configuration, or other
+  data outside the driver's control. Generated-C modes retain exact C-byte identity for the same resolved inputs and
+  code-generation options.
 - Publication guarantees operation endpoints, not an atomic reader-visible snapshot. Successful return leaves the
   complete new selected set; recoverable failure returns with the exact prior selected set restored; rollback failure
   retains recovery files. During sequential backup, publication, or rollback, paths may be temporarily absent or may

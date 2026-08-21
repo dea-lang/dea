@@ -51,6 +51,15 @@ void l1c_interface_fingerprint_sip13_hex(
     _dea_l1_interface_fingerprint_sip13_hex(data, len, out_hex);
 }
 
+/* Return actual-host Darwin identity without consulting CLI test overrides. */
+int32_t l1c_fs_host_is_darwin(void) {
+#if defined(__APPLE__)
+    return 1;
+#else
+    return 0;
+#endif
+}
+
 /*
  * Filesystem result conventions
  *
@@ -191,7 +200,10 @@ static int32_t l1c_fs_same_file_native(
     return result;
 }
 
-static char *l1c_fs_resolve_temp_parent_native(const char *path) {
+static char *l1c_fs_canonical_existing_windows(
+    const char *path,
+    int require_directory
+) {
     DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
     HANDLE handle = CreateFileA(
         path,
@@ -202,16 +214,17 @@ static char *l1c_fs_resolve_temp_parent_native(const char *path) {
         FILE_FLAG_BACKUP_SEMANTICS,
         NULL
     );
-    BY_HANDLE_FILE_INFORMATION info;
     DWORD capacity = MAX_PATH;
+    BY_HANDLE_FILE_INFORMATION info;
     char *resolved = NULL;
     DWORD length;
     int attempt;
     if (handle == INVALID_HANDLE_VALUE) {
         return NULL;
     }
-    if (!GetFileInformationByHandle(handle, &info) ||
-        (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+    if (require_directory &&
+        (!GetFileInformationByHandle(handle, &info) ||
+         (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)) {
         CloseHandle(handle);
         return NULL;
     }
@@ -250,6 +263,14 @@ static char *l1c_fs_resolve_temp_parent_native(const char *path) {
         memmove(resolved, resolved + 4, (size_t)length - 3);
     }
     return resolved;
+}
+
+static char *l1c_fs_canonical_existing_native(const char *path) {
+    return l1c_fs_canonical_existing_windows(path, 0);
+}
+
+static char *l1c_fs_resolve_temp_parent_native(const char *path) {
+    return l1c_fs_canonical_existing_windows(path, 1);
 }
 
 #else
@@ -332,8 +353,12 @@ static int l1c_fs_temp_hierarchy_is_trusted(char *resolved) {
     return 1;
 }
 
+static char *l1c_fs_canonical_existing_native(const char *path) {
+    return realpath(path, NULL);
+}
+
 static char *l1c_fs_resolve_temp_parent_native(const char *path) {
-    char *resolved = realpath(path, NULL);
+    char *resolved = l1c_fs_canonical_existing_native(path);
     if (resolved == NULL) {
         return NULL;
     }
@@ -342,6 +367,257 @@ static char *l1c_fs_resolve_temp_parent_native(const char *path) {
         return NULL;
     }
     return resolved;
+}
+
+#endif
+
+static char *l1c_fs_join_search_component(
+    const char *component,
+    size_t component_len,
+    const char *name,
+    char separator
+) {
+    size_t name_len = strlen(name);
+    int needs_separator =
+        component_len > 0 &&
+        component[component_len - 1] != separator &&
+        (separator != '\\' || component[component_len - 1] != '/');
+    size_t total;
+    char *joined;
+    if (component_len > SIZE_MAX - name_len - (size_t)needs_separator - 1) {
+        return NULL;
+    }
+    total = component_len + (size_t)needs_separator + name_len;
+    joined = (char *)malloc(total + 1);
+    if (joined == NULL) {
+        return NULL;
+    }
+    memcpy(joined, component, component_len);
+    if (needs_separator) {
+        joined[component_len] = separator;
+    }
+    memcpy(
+        joined + component_len + (size_t)needs_separator,
+        name,
+        name_len + 1
+    );
+    return joined;
+}
+
+#if defined(_WIN32)
+
+static char *l1c_fs_windows_absolute_regular(const char *candidate) {
+    DWORD required;
+    DWORD actual;
+    char *absolute;
+    if (l1c_fs_path_kind_native(candidate, 1) != L1C_FS_REGULAR) {
+        return NULL;
+    }
+    required = GetFullPathNameA(candidate, 0, NULL, NULL);
+    if (required == 0) {
+        return NULL;
+    }
+    absolute = (char *)malloc((size_t)required);
+    if (absolute == NULL) {
+        return NULL;
+    }
+    actual = GetFullPathNameA(candidate, required, absolute, NULL);
+    if (actual == 0 || actual >= required) {
+        free(absolute);
+        return NULL;
+    }
+    return absolute;
+}
+
+static char *l1c_fs_windows_append_extension(
+    const char *candidate,
+    const char *extension,
+    size_t extension_len
+) {
+    size_t candidate_len = strlen(candidate);
+    char *extended;
+    if (candidate_len > SIZE_MAX - extension_len - 1) {
+        return NULL;
+    }
+    extended = (char *)malloc(candidate_len + extension_len + 1);
+    if (extended == NULL) {
+        return NULL;
+    }
+    memcpy(extended, candidate, candidate_len);
+    memcpy(extended + candidate_len, extension, extension_len);
+    extended[candidate_len + extension_len] = '\0';
+    return extended;
+}
+
+static int l1c_fs_windows_basename_has_extension(const char *candidate) {
+    const char *base = candidate;
+    const char *slash = strrchr(candidate, '/');
+    const char *backslash = strrchr(candidate, '\\');
+    if (slash != NULL) {
+        base = slash + 1;
+    }
+    if (backslash != NULL && backslash + 1 > base) {
+        base = backslash + 1;
+    }
+    return strrchr(base, '.') != NULL;
+}
+
+static char *l1c_fs_windows_try_executable(const char *candidate) {
+    const char *pathext;
+    const char *cursor;
+    char *resolved;
+    if (l1c_fs_windows_basename_has_extension(candidate)) {
+        return l1c_fs_windows_absolute_regular(candidate);
+    }
+
+    pathext = getenv("PATHEXT");
+    if (pathext == NULL) {
+        pathext = ".COM;.EXE;.BAT;.CMD";
+    }
+    cursor = pathext;
+    for (;;) {
+        const char *delimiter = strchr(cursor, ';');
+        size_t extension_len = delimiter == NULL
+            ? strlen(cursor)
+            : (size_t)(delimiter - cursor);
+        if (extension_len > 0) {
+            char *extended = l1c_fs_windows_append_extension(
+                candidate, cursor, extension_len);
+            if (extended == NULL) {
+                return NULL;
+            }
+            resolved = l1c_fs_windows_absolute_regular(extended);
+            free(extended);
+            if (resolved != NULL) {
+                return resolved;
+            }
+        }
+        if (delimiter == NULL) {
+            break;
+        }
+        cursor = delimiter + 1;
+    }
+    return NULL;
+}
+
+static char *l1c_fs_resolve_executable_native(const char *name) {
+    const char *path;
+    const char *cursor;
+    char *resolved;
+    if (strchr(name, '/') != NULL || strchr(name, '\\') != NULL) {
+        return NULL;
+    }
+
+    if (NeedCurrentDirectoryForExePathA(name)) {
+        resolved = l1c_fs_windows_try_executable(name);
+        if (resolved != NULL) {
+            return resolved;
+        }
+    }
+    path = getenv("PATH");
+    if (path == NULL) {
+        return NULL;
+    }
+    cursor = path;
+    for (;;) {
+        const char *delimiter = strchr(cursor, ';');
+        size_t component_len = delimiter == NULL
+            ? strlen(cursor)
+            : (size_t)(delimiter - cursor);
+        char *candidate = l1c_fs_join_search_component(
+            cursor, component_len, name, '\\');
+        if (candidate == NULL) {
+            return NULL;
+        }
+        resolved = l1c_fs_windows_try_executable(candidate);
+        free(candidate);
+        if (resolved != NULL) {
+            return resolved;
+        }
+        if (delimiter == NULL) {
+            break;
+        }
+        cursor = delimiter + 1;
+    }
+    return NULL;
+}
+
+#else
+
+static char *l1c_fs_default_exec_path(void) {
+    size_t required = confstr(_CS_PATH, NULL, 0);
+    char *path;
+    if (required == 0) {
+        return NULL;
+    }
+    path = (char *)malloc(required);
+    if (path == NULL || confstr(_CS_PATH, path, required) == 0) {
+        free(path);
+        return NULL;
+    }
+    return path;
+}
+
+static char *l1c_fs_posix_absolute_spelling(const char *path) {
+    char *cwd;
+    char *absolute;
+    if (path[0] == '/') {
+        return strdup(path);
+    }
+    cwd = getcwd(NULL, 0);
+    if (cwd == NULL) {
+        return NULL;
+    }
+    absolute = l1c_fs_join_search_component(
+        cwd, strlen(cwd), path, '/');
+    free(cwd);
+    return absolute;
+}
+
+static char *l1c_fs_resolve_executable_native(const char *name) {
+    const char *configured_path;
+    const char *cursor;
+    char *default_path = NULL;
+    if (strchr(name, '/') != NULL) {
+        return NULL;
+    }
+
+    configured_path = getenv("PATH");
+    if (configured_path == NULL) {
+        default_path = l1c_fs_default_exec_path();
+        configured_path = default_path;
+    }
+    if (configured_path == NULL) {
+        return NULL;
+    }
+
+    cursor = configured_path;
+    for (;;) {
+        const char *delimiter = strchr(cursor, ':');
+        size_t component_len = delimiter == NULL
+            ? strlen(cursor)
+            : (size_t)(delimiter - cursor);
+        char *candidate = l1c_fs_join_search_component(
+            cursor, component_len, name, '/');
+        if (candidate == NULL) {
+            free(default_path);
+            return NULL;
+        }
+        if (l1c_fs_path_kind_native(candidate, 1) == L1C_FS_REGULAR &&
+            access(candidate, X_OK) == 0) {
+            char *resolved = l1c_fs_posix_absolute_spelling(candidate);
+            free(candidate);
+            free(default_path);
+            return resolved;
+        }
+        free(candidate);
+        if (delimiter == NULL) {
+            break;
+        }
+        cursor = delimiter + 1;
+    }
+    free(default_path);
+    return NULL;
 }
 
 #endif
@@ -545,6 +821,167 @@ int32_t l1c_fs_resolve_trusted_temp_parent(
         return L1C_FS_ERROR;
     }
     resolved = l1c_fs_resolve_temp_parent_native(native);
+    free(native);
+    if (resolved == NULL) {
+        return L1C_FS_ERROR;
+    }
+    length = strlen(resolved);
+    if (length == 0 || length > (size_t)INT32_MAX) {
+        free(resolved);
+        return L1C_FS_ERROR;
+    }
+    result = (int32_t)length;
+    if (output != NULL && output_capacity >= result) {
+        memcpy(output, resolved, length);
+    }
+    free(resolved);
+    return result;
+}
+
+/**
+ * Resolve one path against the process current working directory.
+ *
+ * The path need not exist. The result is intended only to preserve the
+ * invocation-directory meaning of a compiler or include path while a driver
+ * runs the host compiler from private staging.
+ *
+ * @return Positive absolute byte length, or -1 on validation/error.
+ */
+int32_t l1c_fs_absolute_path(
+    const uint8_t *path,
+    int32_t path_len,
+    uint8_t *output,
+    int32_t output_capacity
+) {
+    char *native = l1c_fs_native_path(path, path_len);
+    char *absolute = NULL;
+    size_t length;
+    int32_t result;
+    if (native == NULL || output_capacity < 0 ||
+        (output == NULL && output_capacity != 0)) {
+        free(native);
+        return L1C_FS_ERROR;
+    }
+
+#if defined(_WIN32)
+    {
+        DWORD required = GetFullPathNameA(native, 0, NULL, NULL);
+        if (required > 0) {
+            absolute = (char *)malloc((size_t)required);
+            if (absolute != NULL &&
+                (GetFullPathNameA(native, required, absolute, NULL) == 0 ||
+                 strlen(absolute) >= (size_t)required)) {
+                free(absolute);
+                absolute = NULL;
+            }
+        }
+    }
+#else
+    if (native[0] == '/') {
+        absolute = strdup(native);
+    } else {
+        char *cwd = getcwd(NULL, 0);
+        if (cwd != NULL) {
+            size_t cwd_len = strlen(cwd);
+            size_t native_len = strlen(native);
+            if (cwd_len <= SIZE_MAX - native_len - 2) {
+                absolute = (char *)malloc(cwd_len + native_len + 2);
+                if (absolute != NULL) {
+                    memcpy(absolute, cwd, cwd_len);
+                    absolute[cwd_len] = '/';
+                    memcpy(absolute + cwd_len + 1, native, native_len + 1);
+                }
+            }
+            free(cwd);
+        }
+    }
+#endif
+
+    free(native);
+    if (absolute == NULL) {
+        return L1C_FS_ERROR;
+    }
+    length = strlen(absolute);
+    if (length == 0 || length > (size_t)INT32_MAX) {
+        free(absolute);
+        return L1C_FS_ERROR;
+    }
+    result = (int32_t)length;
+    if (output != NULL && output_capacity >= result) {
+        memcpy(output, absolute, length);
+    }
+    free(absolute);
+    return result;
+}
+
+/**
+ * Resolve one existing path through filesystem aliases.
+ *
+ * This canonical spelling is used only to classify a selected compiler. The
+ * driver still invokes the executable through its originally selected alias
+ * so argv[0]-sensitive compiler behavior is preserved.
+ *
+ * @return Positive canonical byte length, or -1 on validation/error.
+ */
+int32_t l1c_fs_canonical_existing_path(
+    const uint8_t *path,
+    int32_t path_len,
+    uint8_t *output,
+    int32_t output_capacity
+) {
+    char *native = l1c_fs_native_path(path, path_len);
+    char *resolved = NULL;
+    size_t length;
+    int32_t result;
+    if (native == NULL || output_capacity < 0 ||
+        (output == NULL && output_capacity != 0)) {
+        free(native);
+        return L1C_FS_ERROR;
+    }
+    resolved = l1c_fs_canonical_existing_native(native);
+    free(native);
+    if (resolved == NULL) {
+        return L1C_FS_ERROR;
+    }
+    length = strlen(resolved);
+    if (length == 0 || length > (size_t)INT32_MAX) {
+        free(resolved);
+        return L1C_FS_ERROR;
+    }
+    result = (int32_t)length;
+    if (output != NULL && output_capacity >= result) {
+        memcpy(output, resolved, length);
+    }
+    free(resolved);
+    return result;
+}
+
+/**
+ * Resolve one bare executable name through the process PATH.
+ *
+ * Empty and relative PATH components retain their meaning in the current
+ * invocation directory. The returned path is absolute so a later working-
+ * directory change cannot select a different executable, but the selected
+ * executable's alias spelling is retained for argv[0]-sensitive drivers.
+ *
+ * @return Positive absolute byte length, or -1 when no executable is found.
+ */
+int32_t l1c_fs_resolve_executable(
+    const uint8_t *name,
+    int32_t name_len,
+    uint8_t *output,
+    int32_t output_capacity
+) {
+    char *native = l1c_fs_native_path(name, name_len);
+    char *resolved = NULL;
+    size_t length;
+    int32_t result;
+    if (native == NULL || output_capacity < 0 ||
+        (output == NULL && output_capacity != 0)) {
+        free(native);
+        return L1C_FS_ERROR;
+    }
+    resolved = l1c_fs_resolve_executable_native(native);
     free(native);
     if (resolved == NULL) {
         return L1C_FS_ERROR;

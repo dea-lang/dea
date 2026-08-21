@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-08-20
+Version: 2026-08-22
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -53,15 +53,21 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
   |
   +-- `--emit-interface` --> interface projection + canonical fingerprint --> textual `.l1m`
   |
-  +-- internal module API --> backend_generate_module --> one selected module C99 translation unit
+  +-- `--gen` --> source target + interface-first/source-fallback imports
+  |                  |
+  |                  v
+  |          backend_generate_module --> stdout or one exact C file
   |
   +-- `--compile` --> one source-backed module + interface-backed imports
+  |                         |
+  |                         v
+  |          backend_generate_module --> module-relative host compilation
   |                         |
   |                         v
   |                  `.o` / `.l1m` publication with endpoint rollback
   |                  (`--keep-c` also publishes `.c`)
   |
-  +-- `--gen` / `--build` / `--run` --> backend_generate --> legacy whole-program C99 translation unit
+  +-- `--build` / `--run` --> backend_generate --> legacy whole-program C99 translation unit
                                           |
                                           v
                               build_driver.l0 + compiler_filesystem.l0
@@ -125,9 +131,11 @@ the corresponding provider module fingerprint; dependency records do not feed ba
 
 Current CLI entry point: `compiler/stage1_l0/src/l1c.l0`.
 
-The CLI implements `-c` / `--compile` with repeatable `-I` / `--interface-path` roots. It resolves one source-backed
-target, requires verified interfaces for non-virtual imports, and publishes the sibling `.o` and `.l1m` pair without
-linking. `--keep-c` adds the exact generated `.c` used for host compilation. L1 follows the shared exact-token short
+The CLI implements `--gen` and `-c` / `--compile` with repeatable `-I` / `--interface-path` roots. Generated-C resolves
+one source-backed target, prefers selected interfaces for imports, falls back to source only when no interface is
+selected, and emits one module to stdout or an exact output file without host compilation. Compile-only requires
+verified interfaces for non-virtual imports and publishes the sibling `.o` and `.l1m` pair without linking. `--keep-c`
+adds C bytes identical to `--gen` under the same resolved inputs and options. L1 follows the shared exact-token short
 namespaces for roots, host-C controls, runtime paths, generated C, and log presentation; reserved canonical
 debug/assembly/external-library flags report `L1C-2032` rather than acquiring L1-specific meanings.
 
@@ -137,10 +145,18 @@ validation, and cleanup paths retain no-follow classification, so artifact symli
 
 The driver reserves one exclusive transaction directory beside the requested destinations. Generated C, the object, the
 interface, and any backups of selected destinations remain on the same filesystem so publication and rollback use
-sequential renames. Successful return leaves the complete new selected set, and a recoverable publication failure
-returns with the exact prior set restored. During publication or rollback, paths may be absent or from different
-generations; this is not a reader-visible snapshot, and concurrent readers or same-stem writers require external
-serialization.
+sequential renames. Staged artifact names follow the canonical module-relative path, and the host compiler runs from the
+transaction root with those stable relative C/object arguments, after freezing a bare compiler to its absolute
+invocation-time command-search result. For debug-producing GNU-style options, the driver classifies Clang or GCC from
+the configured name or canonical filesystem target while retaining the selected alias for invocation. Conventional
+target, version, and MinGW thread-model suffixes are recognized; Darwin's standard Clang-backed `gcc` and `cc` hard
+links are recognized by filesystem identity. Clang receives a stable debug compilation directory; GCC receives a
+private-root prefix mapping and, on Darwin, forwards the stable compilation directory to Apple's external assembler so
+relative `.file` entries are not expanded against the transaction root. These controls exclude driver-owned transaction
+and destination paths but do not guarantee byte-identical host objects. Successful return leaves the complete new
+selected set, and a recoverable publication failure returns with the exact prior set restored. During publication or
+rollback, paths may be absent or from different generations; this is not a reader-visible snapshot, and concurrent
+readers or same-stem writers require external serialization.
 
 Without `--keep-c`, destination validation and publication never inspect or modify the canonical `.c` path. A successful
 rollback reports a publication failure; if rollback itself fails, the compiler retains recovery files and reports
@@ -327,8 +343,9 @@ Important analysis tables include:
     handling is out of scope for this contract.
 05. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
 06. Ordinary build/run CLI generation remains one legacy whole-program C99 translation unit and owns one private
-    command-lifetime workspace; compile-only uses the internal module API to emit one selected source-backed module
-    translation unit, and standalone link consumes explicit objects plus their required sibling interfaces.
+    command-lifetime workspace; `--gen` and compile-only use the same internal module API to emit one selected
+    source-backed module translation unit, and standalone link consumes explicit objects plus their required sibling
+    interfaces.
 07. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
     preserve declaration order and duplicates.
 08. An interface is registered or cached only after its declared identity and whole-module fingerprint are verified.

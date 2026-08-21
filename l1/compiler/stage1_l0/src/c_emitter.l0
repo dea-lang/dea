@@ -393,7 +393,8 @@ func cem_module_target_includes_value_key(self: CEmitter*, key: string) -> bool 
         return true;
     }
     let target = self.module_target as string;
-    if (starts_with_s(key, target + "::") || starts_with_s(key, "dea::")) {
+    let target_prefix = target + "::";
+    if (starts_with_s(key, target_prefix) || starts_with_s(key, "dea::")) {
         return true;
     }
     let analysis = cem_analysis(self);
@@ -403,8 +404,9 @@ func cem_module_target_includes_value_key(self: CEmitter*, key: string) -> bool 
     let names = analysis.names as NameResolution*;
     for (let i = 0; i < nr_resolved_symbol_count(names); i = i + 1) {
         let resolved = nr_resolved_symbol_get(names, i);
-        if (resolved.consumer_module == target &&
-            key == resolved.provider_module + "::" + resolved.symbol_name) {
+        let provider_prefix = resolved.provider_module + "::";
+        let resolved_key = provider_prefix + resolved.symbol_name;
+        if (resolved.consumer_module == target && key == resolved_key) {
             return true;
         }
     }
@@ -419,7 +421,21 @@ func cem_module_target_includes_value_key(self: CEmitter*, key: string) -> bool 
  * @return `true` for whole-program output or the selected module.
  */
 func cem_module_target_includes_analysis_key(self: CEmitter*, key: string) -> bool {
-    return self.module_target == null || starts_with_s(key, (self.module_target as string) + "::");
+    if (self.module_target == null) {
+        return true;
+    }
+    let target = self.module_target as string;
+    let prefix = target + "::";
+    return starts_with_s(key, prefix);
+}
+
+/** Return whether one module belongs to the selected output boundary. */
+func cem_module_target_matches(self: CEmitter*, module_name: string) -> bool {
+    if (self.module_target == null) {
+        return true;
+    }
+    let target = self.module_target as string;
+    return target == module_name;
 }
 
 /**
@@ -431,9 +447,14 @@ func cem_module_target_includes_analysis_key(self: CEmitter*, key: string) -> bo
  * @return `true` for whole-program output or a selected module-output type.
  */
 func cem_module_target_includes_type(self: CEmitter*, module_name: string, type_name: string) -> bool {
-    return self.module_target == null ||
-        (self.module_type_keys != null &&
-         ss_has(self.module_type_keys as StringSet*, module_name + "::" + type_name));
+    if (self.module_target == null) {
+        return true;
+    }
+    if (self.module_type_keys == null) {
+        return false;
+    }
+    let key = module_name + "::" + type_name;
+    return ss_has(self.module_type_keys as StringSet*, key);
 }
 
 /**
@@ -2185,7 +2206,7 @@ func cem_collect_wrappers_from_ast_type_refs(self: CEmitter*) {
             continue;
         }
         let module_name = (unit as DriverUnit*).module_name;
-        if (self.module_target != null && module_name != (self.module_target as string)) {
+        if (!cem_module_target_matches(self, module_name)) {
             continue;
         }
         let root = (unit as DriverUnit*).parse_result.root_module as Module*;
@@ -2386,7 +2407,7 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
         }
         let info = spm_slot_value(tables.struct_infos, struct_info_i) as StructInfo*;
         if (!cem_module_target_includes_type(self, info.module_name, info.name) ||
-            (self.module_target != null && info.module_name != (self.module_target as string) && info.is_opaque)) {
+            (!cem_module_target_matches(self, info.module_name) && info.is_opaque)) {
             continue;
         }
         for (let j = 0; j < vec_size(info.fields); j = j + 1) {
@@ -2403,8 +2424,7 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
         }
         let enum_info = spm_slot_value(tables.enum_infos, enum_info_i) as EnumInfo*;
         if (!cem_module_target_includes_type(self, enum_info.module_name, enum_info.name) ||
-            (self.module_target != null && enum_info.module_name != (self.module_target as string) &&
-             enum_info.is_opaque)) {
+            (!cem_module_target_matches(self, enum_info.module_name) && enum_info.is_opaque)) {
             continue;
         }
         for (let j = 0; j < vec_size(enum_info.variants); j = j + 1) {

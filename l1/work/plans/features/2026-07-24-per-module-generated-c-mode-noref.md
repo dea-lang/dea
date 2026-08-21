@@ -32,7 +32,7 @@
   - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
-  - [`l1/work/plans/features/2026-08-21-per-module-generated-c-foundation-noref.md`][generated-c-foundation]
+  - [`l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`][generated-c-foundation]
   - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
@@ -52,9 +52,9 @@ itself blocked by build/run.
 
 ## Dependencies and Ownership
 
-1. The [generated-C foundation plan][generated-c-foundation] must land first. It owns per-module `--gen`, the shared
-   generation operation, `--gen` versus compile-only byte identity, stable compile-only staging, and supported-toolchain
-   object determinism.
+1. The completed [generated-C foundation plan][generated-c-foundation] owns per-module `--gen`, the shared generation
+   operation, `--gen` versus compile-only byte identity, stable compile-only staging, and supported-toolchain object
+   determinism.
 2. The [build/run plan][build-run] must land before this plan begins. It owns multi-CU orchestration and the retained
    module/wrapper C tree whose bytes this plan verifies.
 3. The closed [lifecycle plan][lifecycle] owns target-only module emission and the transitional retention of the legacy
@@ -146,6 +146,6 @@ rg -n 'backend_generate\(' l1/compiler/stage1_l0
 
 [build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
-[generated-c-foundation]: 2026-08-21-per-module-generated-c-foundation-noref.md
+[generated-c-foundation]: closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

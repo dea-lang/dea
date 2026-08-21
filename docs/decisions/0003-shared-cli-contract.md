@@ -78,6 +78,8 @@ short-option cluster.
   L1 standalone link operands and option scope
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md](../../l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md):
   retained typed foreign-object operand under the opaque native-input boundary
+- [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md](../../l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md):
+  preserved exact generated-C output semantics while making L1 generation per-module
 - [work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md](../../work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md):
   coordinated current aliases and deferred semantic reservations
 - [work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md](../../work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md):

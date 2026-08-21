@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-08-20
+Version: 2026-08-22
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -78,34 +78,42 @@ direct source imports in exact declaration order with duplicates. Interface proj
 virtual-filtered, first-occurrence lifecycle-import view, classifies resolved cross-module public surface references as
 `require`, and records remaining implementation references as `link`.
 
-The backend now exposes an internal `backend_generate_module(...)` entry point that emits definitions for one selected
-source-backed module. It emits external declarations for provider-owned source and interface values and functions
-consumed by that target, always-present external `I4init` and `I4fini`, and conditional external `I5entry` for a
-resolved, zero-parameter, non-extern source `main`. Module output contains no process `main`, global init chain,
-dependency lifecycle calls, embedded Dea metadata arrays, or retention reads. Compile-only consumes this module
-boundary; the legacy `backend_generate(...)` path remains the ordinary generation, build, and run path.
+The backend exposes `backend_generate_module(...)` as the shared byte-producing operation for `--gen` and compile-only.
+It emits definitions for one selected source-backed module, external declarations for provider-owned source and
+interface values and functions consumed by that target, always-present external `I4init` and `I4fini`, and conditional
+external `I5entry` for a resolved, zero-parameter, non-extern source `main`. Module output contains no process `main`,
+global init chain, dependency lifecycle calls, embedded Dea metadata arrays, or retention reads. The legacy
+`backend_generate(...)` path remains only for ordinary build and run.
 
 The compiler no longer carries ELF, Mach-O, or PE/COFF object readers. Standalone link performs no Dea-side reads of
 caller Dea or foreign object bytes, compiled wrapper bytes, runtime archive bytes, or TinyCC runtime-object bytes.
 Native-format, architecture, symbol, and embedded-control validation belongs to the selected host compiler/linker.
 
-Ordinary build/run CLI imports remain source-based today. Compile-only instead requires verified `.l1m` interfaces for
-non-virtual imports and never falls back to provider source.
+Ordinary build/run CLI imports remain source-based today. Generated-C resolves imports interface-first and falls back to
+source only when no interface is selected. Compile-only requires verified `.l1m` interfaces for non-virtual imports and
+never falls back to provider source.
 
-The CLI implements `-c` / `--compile` and accepts repeatable `-I` / `--interface-path` values with that mode. One
-invocation publishes the sibling per-module `.o` and `.l1m` pair without invoking the final linker; `--keep-c` also
-publishes the exact staged `.c` used for host compilation. Ordinary `-c` never inspects or modifies the canonical `.c`
-path. Output-parent creation follows trusted directory aliases, while final artifacts and internal publication paths use
-no-follow classification.
+The CLI implements per-module `--gen` plus `-c` / `--compile` and accepts repeatable `-I` / `--interface-path` values
+with either mode. `--gen` writes stdout or exactly one requested file, accepts verified imported interfaces without
+native siblings, and never invokes a host tool. Compile-only publishes the sibling per-module `.o` and `.l1m` pair
+without invoking the final linker; `--keep-c` also publishes C bytes identical to `--gen` for the same resolved inputs
+and options. Ordinary `-c` never inspects or modifies the canonical `.c` path. Output-parent creation follows trusted
+directory aliases, while final artifacts and internal publication paths use no-follow classification.
 
-The driver stages generated C, the object, and the interface beside the selected destinations. Successful return leaves
-the complete new selected set; recoverable publication failure restores the exact prior set; failed rollback retains
-recovery files. Publication and rollback use sequential renames, so concurrent readers may observe missing paths or
-mixed generations and same-stem access requires external serialization. The shared semantic aliases include `-Gc` /
-`-Gi` / `-Gk` for generated artifacts, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` / `-Cf` for host-C controls and
-explicit foreign objects, `-Ri` / `-Rl` for runtime paths, `-Sb` / `-Su` for runtime safety, and `-Vl` / `-Va` / `-Vm`
-for logging and tracing. `-V` prints version information. The conventional `-g`, `-S`, `-L`, and `-l` meanings are
-reserved but not implemented.
+The driver stages generated C, the object, and the interface beside the selected destinations under canonical
+module-relative paths. The host compiler runs from the private transaction, while its C/object operands contain only
+those stable paths rather than transaction or destination prefixes. Bare compiler names are frozen to the
+invocation-time command-search result before that working-directory change. Debug-producing GNU-style options record
+stable `.` debug compilation-directory metadata when the configured compiler name, canonical filesystem target, or
+recognized Darwin system-alias identity identifies Clang or GCC; the selected alias spelling is retained for invocation.
+This neutralizes driver-controlled transaction and destination paths but does not promise byte-identical native objects,
+whose remaining contents belong to the host toolchain. Successful return leaves the complete new selected set;
+recoverable publication failure restores the exact prior set; failed rollback retains recovery files. Publication and
+rollback use sequential renames, so concurrent readers may observe missing paths or mixed generations and same-stem
+access requires external serialization. The shared semantic aliases include `-Gc` / `-Gi` / `-Gk` for generated
+artifacts, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` / `-Cf` for host-C controls and explicit foreign objects, `-Ri`
+/ `-Rl` for runtime paths, `-Sb` / `-Su` for runtime safety, and `-Vl` / `-Va` / `-Vm` for logging and tracing. `-V`
+prints version information. The conventional `-g`, `-S`, `-L`, and `-l` meanings are reserved but not implemented.
 
 The CLI implements `l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT`, with long aliases `--link`,
 `--foreign-object`, and `--entry`. Every positional path must have the exact terminal `.o` suffix and a verified regular
@@ -248,7 +256,8 @@ Validation is currently centered on:
 
 - keeping the stdlib/runtime tree usable by the bootstrap compiler
 
-Current Stage 1 validation does not include an end-to-end exact generated-C golden-file diff suite.
+Current Stage 1 validation covers exact generated-C identity between `--gen` and compile-only retention, but does not
+yet include the downstream four-mode build/run retained-C identity suite.
 
 ## Platform Support
 

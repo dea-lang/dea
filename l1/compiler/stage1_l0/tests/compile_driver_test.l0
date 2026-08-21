@@ -8,6 +8,7 @@ module compile_driver_test;
 import std.assert;
 import std.fs;
 import std.io;
+import std.string;
 import std.vector;
 
 import cli_args;
@@ -123,9 +124,11 @@ func test_object_compile_command_words() {
             words,
             "custom-cc",
             "unknown",
+            "unknown",
             extra,
             "-O2",
             "runtime/include",
+            "",
             "module.c",
             "module.o"
         );
@@ -147,11 +150,105 @@ func test_object_compile_command_words() {
         let msvc = sv_create(8) => sv_free(msvc)
     ) {
         cd_push_object_compile_words(
-            msvc, "cl.exe", "msvc", empty, null, null, "module.c", "module.o");
+            msvc, "cl.exe", "msvc", "unknown", empty, null, null, "",
+            "module.c", "module.o");
         assert(sv_get(msvc, sv_size(msvc) - 3) == "/c", "MSVC object-only flag mismatch");
         assert(sv_get(msvc, sv_size(msvc) - 2) == "module.c", "MSVC object input mismatch");
         assert(sv_get(msvc, sv_size(msvc) - 1) == "/Fo:module.o", "MSVC object output mismatch");
     }
+
+    with (
+        let clang_debug_opts = sv_create(1) => sv_free(clang_debug_opts),
+        let gcc_debug_opts = sv_create(1) => sv_free(gcc_debug_opts),
+        let clang_words = sv_create(16) => sv_free(clang_words),
+        let gcc_words = sv_create(16) => sv_free(gcc_words)
+    ) {
+        sv_push(clang_debug_opts, "-g3");
+        cd_push_object_compile_words(
+            clang_words, "clang", "gcc", "clang", clang_debug_opts, null, null,
+            "/private/transaction", "module.c", "module.o");
+        assert(sv_get(clang_words, 8) == "-fdebug-compilation-dir=.",
+            "Clang debug compilation directory remap mismatch");
+
+        sv_push(gcc_debug_opts, "-ggdb");
+        cd_push_object_compile_words(
+            gcc_words, "gcc", "gcc", "gcc", gcc_debug_opts, null, null,
+            "/private/transaction=with-equals", "module.c", "module.o");
+        assert(sv_get(gcc_words, 8) ==
+               "-fdebug-prefix-map=/private/transaction=with-equals=.",
+            "GCC debug prefix remap mismatch");
+        if (cfs_host_is_darwin()) {
+            assert(sv_get(gcc_words, 9) ==
+                   "-Wa,-fdebug-compilation-dir=.",
+                "Darwin GCC assembler compilation directory mismatch");
+        } else {
+            assert(sv_get(gcc_words, 9) == "-c",
+                "non-Darwin GCC must not receive the Darwin assembler option");
+        }
+    }
+}
+
+/** Verify canonical compiler classification without an installed tool path. */
+func test_debug_compiler_alias_classification() {
+    let root = "compiler/stage1_l0/tests/.tmp-compile-driver-debug-family";
+    let fixture = cfs_join_child(root, "x86_64-linux-gnu-gcc-12.exe");
+    if (cfs_path_kind(fixture) == CFS_PATH_REGULAR) {
+        assert(cfs_remove_regular_file(fixture) == 1,
+            "test setup should remove the stale compiler fixture");
+    }
+    if (cfs_path_kind(root) == CFS_PATH_DIRECTORY) {
+        assert(cfs_remove_empty_dir(root) == 1,
+            "test setup should remove the stale compiler-fixture directory");
+    }
+    assert(cfs_mkdir(root, 448) == 1,
+        "expected compiler-family fixture directory");
+    assert(write_file(fixture, "fixture") != null,
+        "expected compiler-family fixture file");
+
+    assert(cd_debug_compiler_family("specialcc", fixture) == "gcc",
+        "canonical target-prefixed GCC alias classification mismatch");
+
+    assert(cfs_remove_regular_file(fixture) == 1,
+        "test cleanup should remove the compiler fixture");
+    assert(cfs_remove_empty_dir(root) == 1,
+        "test cleanup should remove the compiler-fixture directory");
+}
+
+/** Verify production staging uses canonical module-relative compiler paths. */
+func test_module_relative_transaction_staging() {
+    let root = "compiler/stage1_l0/tests/.tmp-compile-driver-module-staging";
+    cdt_remove_stale_transaction(root);
+    assert(cfs_mkdir(root, 448) == 1, "expected module-staging transaction root");
+    let txn = cd_transaction_create(root);
+    with (let diags = diag_create() => diag_free(diags),
+          let extra = sv_create(0) => sv_free(extra),
+          let words = sv_create(8) => sv_free(words)) {
+        assert(cd_configure_module_staging(txn, "pkg.sub", diags),
+            "expected canonical module staging setup");
+        assert(txn.compiler_c_input == "pkg/sub.c",
+            "compiler C input should be module-relative");
+        assert(txn.compiler_object_output == "pkg/sub.o",
+            "compiler object output should be module-relative");
+        assert(txn.staged_c == root + "/pkg/sub.c",
+            "private staged C path mismatch");
+        assert(txn.staged_object == root + "/pkg/sub.o",
+            "private staged object path mismatch");
+        assert(txn.staged_interface == root + "/pkg/sub.l1m",
+            "private staged interface path mismatch");
+
+        cd_push_object_compile_words(
+            words, "cc", "unknown", "unknown", extra, null, null, "",
+            txn.compiler_c_input, txn.compiler_object_output);
+        let command = cd_compile_shell_command(txn, words);
+        assert(contains_s(command, "pkg/sub.c") && contains_s(command, "pkg/sub.o"),
+            "compile command should expose stable module-relative paths");
+        assert(!contains_s(command, root + "/pkg/sub.c") &&
+               !contains_s(command, root + "/pkg/sub.o"),
+            "compile arguments must not expose the transaction prefix");
+    }
+    assert(cd_cleanup_transaction(txn),
+        "module-relative transaction should clean nested staging directories");
+    cd_transaction_free(txn);
 }
 
 /** Verify explicit and default compile artifact resolution. */
@@ -546,6 +643,8 @@ func test_transaction_collision_skips_existing_candidate() {
 /** Run focused compile-driver unit and filesystem transaction coverage. */
 func main() {
     test_object_compile_command_words();
+    test_debug_compiler_alias_classification();
+    test_module_relative_transaction_staging();
     test_compile_artifact_resolution();
     test_staged_validation_reports_2034();
     test_staged_validation_uses_interface_authority();

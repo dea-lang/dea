@@ -37,7 +37,7 @@
   - `work/plans/bug-fixes/closed/2026-04-20-shared-casted-place-null-propagation-arc-noref.md`
   - `work/plans/bug-fixes/closed/2026-04-22-shared-unwrapped-string-value-arc-copy-noref.md`
   - `l0/work/plans/bug-fixes/closed/2026-02-25-arc-opt-as-string-unwrap-ownership-noref.md`
-  - `l1/work/plans/features/2026-08-21-per-module-generated-c-foundation-noref.md`
+  - `l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`
   - `l0/docs/reference/ownership.md`
   - `l1/docs/reference/ownership.md`
   - `l1/docs/roadmap.md`

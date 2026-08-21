@@ -1556,9 +1556,11 @@ func ld_push_wrapper_compile_words(
         words,
         compiler,
         family,
+        "unknown",
         extra_opts,
         optimize,
         runtime_include,
+        "",
         ld_host_input_path(wrapper_c, family),
         ld_host_input_path(wrapper_object, family)
     );

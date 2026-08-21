@@ -90,6 +90,7 @@ compile-only publication path.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][generated-c-foundation]
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md][cross-platform-ci]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
@@ -108,6 +109,7 @@ compile-only publication path.
 [cli-contract]: ../../../docs/specs/compiler/cli-contract.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [cross-platform-ci]: ../../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
+[generated-c-foundation]: ../../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [native-safety]: ../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
 [native-workspace-adr]: ../../../docs/decisions/0020-native-compiler-private-temporary-workspaces.md

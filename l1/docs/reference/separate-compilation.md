@@ -1,12 +1,14 @@
 # L1 Separate Compilation and Standalone Linking
 
-Version: 2026-08-21
+Version: 2026-08-22
 
-This document describes the implemented Dea/L1 Stage 1 path from one-module compilation to an interface-authoritative
-standalone executable. It is the current behavioral reference for `l1c --compile` and `l1c --link`.
+This document describes the implemented Dea/L1 Stage 1 path from per-module generated C and one-module compilation to an
+interface-authoritative standalone executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
+and `l1c --link`.
 
-Ordinary `--gen`, `--build`, and `--run` remain source-based, legacy single-translation-unit flows. They do not yet
-reuse the separate-compilation graph or standalone-link executor.
+`--gen` now emits one selected source-backed module through the same backend operation as compile-only. Ordinary
+`--build` and `--run` remain source-based, legacy single-translation-unit flows and do not yet reuse the
+separate-compilation graph or standalone-link executor.
 
 Related canonical documents:
 
@@ -18,6 +20,16 @@ Related canonical documents:
 - shared diagnostic meanings: [docs/specs/compiler/diagnostic-code-catalog.md][diagnostics]
 
 ## 1. Implemented Workflow
+
+Generate one source-backed module, with interface-first imports and source fallback only when no interface is selected:
+
+```text
+l1c --gen MODULE [-I INTERFACE_ROOT]... [-o EXACT_C_PATH]
+```
+
+The target itself must resolve from source. A selected valid imported `.l1m` is sufficient without native siblings.
+Generation writes only stdout or the exact requested file, creates no companions, and never invokes a host compiler or
+linker.
 
 Compile each source-backed module against verified textual interfaces:
 
@@ -59,6 +71,19 @@ Before publication the staged object must be a regular file. The staged interfac
 publication bytes, parse, pass full verification, and carry the expected identity and public fingerprint. Compile-only
 does not inspect the staged object's bytes or prove object/interface agreement. Endpoint rollback remains sequential,
 not reader-atomic or crash-safe.
+
+Generated C and the object use their canonical module-relative names inside the private compile transaction. The host
+compiler runs from that transaction root and receives paths such as `pkg/sub.c` and `pkg/sub.o`, independently of the
+random transaction identity and caller destination. Known relative compiler and runtime-include paths retain their
+invocation-directory meaning. Bare compiler names are frozen to the invocation-time command-search result, including
+explicit empty and relative search components, before the working-directory change. For debug-producing GNU-style
+options such as `-g`, `-g3`, and `-ggdb`, a configured name, canonical filesystem target, or recognized Darwin system
+alias identity that identifies Clang or GCC records the private debug compilation directory as stable `.` metadata;
+invocation retains the selected compiler alias. Opaque wrappers are outside this recognition boundary. These measures
+prevent driver-controlled transaction and destination paths from entering native metadata, but they do not guarantee
+byte-identical objects because the host toolchain controls all other native contents. Byte comparisons under an
+available recognized toolchain serve as regression evidence for this path neutrality. Every generated-C mode retains
+exact C-byte identity for the same resolved inputs and code-generation options.
 
 For standalone link, every positional operand must have a nonempty basename stem followed by the exact case-sensitive
 terminal suffix `.o`. Replacing only that suffix with `.l1m` in the same directory selects the required sibling. `.o`,
@@ -193,9 +218,10 @@ final executable are not transactionally wrapped.
 
 ## 8. Current Boundary
 
-Standalone linking is implemented; source fan-out for ordinary `--build` and `--run` is not. Those modes still generate
-one legacy whole-program C translation unit. The later build/run orchestration can reuse the verified link planner and
-executor while supplying scratch paths under its own invocation workspace.
+Per-module `--gen`, compile-only, and standalone linking are implemented; source fan-out for ordinary `--build` and
+`--run` is not. Those modes still generate one legacy whole-program C translation unit. The later build/run
+orchestration can reuse the per-module generation operation plus the verified link planner and executor while supplying
+scratch paths under its own invocation workspace.
 
 External libraries, library search paths, rpaths, raw host-driver arguments, static/shared-library production, C++
 interoperation, and object discovery remain outside the implemented standalone-link surface.

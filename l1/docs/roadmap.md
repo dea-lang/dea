@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-08-21
+Version: 2026-08-22
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -14,21 +14,25 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today.
 - `compiler/stage2_l1/` is a placeholder for a future self-hosted L1 compiler.
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
-- Ordinary `--gen`, `--build`, and `--run` still emit one legacy whole-program C99 translation unit.
+- `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` still
+  emit one legacy whole-program C99 translation unit.
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
   verified whole-module `.l1m` fingerprints, and target-aware per-module C generation with external `I4init` / `I4fini`
-  plus conditional `I5entry`. Per-module output carries no embedded Dea metadata or retention anchors. Compile-only
-  publishes one module's `.o` and `.l1m` artifacts against verified interfaces with endpoint rollback and adds the exact
-  generated `.c` only with `--keep-c`; it does not bind or inspect native object bytes. Its sequential renames are not a
-  concurrent-reader snapshot. Standalone `--link` derives and verifies one sibling `.l1m` per positional `.o`, uses
-  interface entry/import/dependency manifests for graph, lifecycle, and provenance checks, emits a deterministic
-  wrapper, and passes original opaque Dea and caller-asserted foreign native paths through a bounded output-local
-  transaction without snapshots. Normal compiler families receive an exact regular runtime archive path; TinyCC retains
-  the ADR-0027 variant-matched raw-object compatibility carve-out when that set is available, with archive fallback
-  otherwise. Multi-CU build/run remains non-operational.
+  plus conditional `I5entry`. Per-module output carries no embedded Dea metadata or retention anchors. `--gen` resolves
+  imports interface-first with source fallback and emits one exact output without native siblings or host tools.
+  Compile-only publishes one module's `.o` and `.l1m` artifacts against verified interfaces with endpoint rollback and
+  adds generated C byte-identical to `--gen` only with `--keep-c`; its host compiler sees stable module-relative paths.
+  It does not bind or inspect native object bytes, and its sequential renames are not a concurrent-reader snapshot.
+  Standalone `--link` derives and verifies one sibling `.l1m` per positional `.o`, uses interface
+  entry/import/dependency manifests for graph, lifecycle, and provenance checks, emits a deterministic wrapper, and
+  passes original opaque Dea and caller-asserted foreign native paths through a bounded output-local transaction without
+  snapshots. Normal compiler families receive an exact regular runtime archive path; TinyCC retains the ADR-0027
+  variant-matched raw-object compatibility carve-out when that set is available, with archive fallback otherwise.
+  Multi-CU build/run remains non-operational.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
-- Exact generated-C golden-file parity and L1 triple-bootstrap are not part of the current Stage 1 contract.
+- Four-mode generated-C identity including build/run retention and L1 triple-bootstrap are not part of the current Stage
+  1 contract.
 
 ## Roadmap assumptions
 
@@ -146,6 +150,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   Successful return leaves the complete new selected set, recoverable failure restores the prior set, failed rollback
   retains recovery files, and concurrent readers or same-stem writers require external serialization. Current
   publication validates a regular opaque object plus the interface without proving a byte binding.
+- Feature [2026-08-21-per-module-generated-c-foundation-noref][generated-c-foundation] moved `--gen` to the shared
+  one-module backend with interface-first/source-fallback resolution, established `--gen` versus compile-retention
+  C-byte identity, and gave compile-only stable module-relative host-compiler paths plus recognized GCC/Clang debug-path
+  neutralization without promising byte-identical native objects.
 - Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] added verified Dea-object linking, explicit foreign
   objects, complete graph and entry validation, deterministic lifecycle wrapper generation, compiler-family runtime
   inputs, and bounded output-local scratch. The wrapper/lifecycle and scratch foundations remain, while the current
@@ -194,9 +202,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-08-21-per-module-generated-c-foundation-noref][generated-c-foundation] migrates `--gen` from
-  whole-closure output to one source-backed module, establishes the shared generation operation, and stabilizes
-  compile-only compiler-visible paths as a prerequisite for build/run fan-out.
 - Completed feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] makes verified
   sibling `.l1m` files authoritative for standalone semantics and lifecycle planning while treating native objects as
   opaque host-link inputs.
@@ -319,7 +324,7 @@ update to be promoted to an initiative or plan:
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
-[generated-c-foundation]: ../work/plans/features/2026-08-21-per-module-generated-c-foundation-noref.md
+[generated-c-foundation]: ../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md

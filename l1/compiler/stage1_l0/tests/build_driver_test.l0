@@ -104,9 +104,41 @@ func test_format_word_list_matches_stage1_logging() {
 func test_compiler_flag_family_detection() {
     assert(bd_compiler_flag_family("gcc") == "gcc", "gcc family mismatch");
     assert(bd_compiler_flag_family("/usr/bin/clang-18") == "gcc", "clang family mismatch");
+    assert(bd_compiler_flag_family(
+            "/opt/cross/bin/x86_64-linux-gnu-gcc-12.2.0") == "gcc",
+        "target-prefixed GCC flag family mismatch");
+    assert(bd_compiler_flag_family(
+            "C:\\toolchain\\AARCH64-LINUX-GNU-CLANG-18.EXE") == "gcc",
+        "target-prefixed Clang flag family mismatch");
     assert(bd_compiler_flag_family("cc") == "cc", "cc family mismatch");
     assert(bd_compiler_flag_family("cl.exe") == "msvc", "msvc family mismatch");
     assert(bd_compiler_flag_family("custom-cc") == "unknown", "unknown family mismatch");
+
+    assert(bd_compiler_debug_family("x86_64-linux-gnu-gcc-12") == "gcc",
+        "target-prefixed GCC debug family mismatch");
+    assert(bd_compiler_debug_family("aarch64-linux-gnu-clang-18.exe") == "clang",
+        "target-prefixed Clang debug family mismatch");
+    assert(bd_compiler_debug_family(
+            "x86_64-w64-mingw32-gcc-posix.exe") == "gcc",
+        "MinGW POSIX GCC debug family mismatch");
+    assert(bd_compiler_debug_family(
+            "x86_64-w64-mingw32-gcc-15-win32.exe") == "gcc",
+        "versioned MinGW GCC debug family mismatch");
+    assert(bd_compiler_debug_family("gcc-ar") == "unknown",
+        "GCC binutil must not classify as the GCC driver");
+    assert(bd_compiler_debug_family(
+            "x86_64-w64-mingw32-gcc-ar-posix.exe") == "unknown",
+        "MinGW GCC binutil must not classify as the GCC driver");
+    assert(bd_compiler_debug_family("x86_64-linux-gnu-gcc-nm") == "unknown",
+        "target GCC binutil must not classify as the GCC driver");
+    assert(bd_compiler_debug_family("clang-cl") == "unknown",
+        "clang-cl must not classify as the Clang driver");
+    assert(bd_compiler_debug_family("clang-format") == "unknown",
+        "clang-format must not classify as the Clang driver");
+    assert(bd_compiler_debug_family("gccgo") == "unknown",
+        "gccgo must not classify as the GCC driver");
+    assert(bd_compiler_debug_family("mygcc-12") == "unknown",
+        "embedded GCC text must not classify as the GCC driver");
 }
 
 /**
@@ -126,6 +158,14 @@ func test_get_optimize_flag_defaults_and_overrides() {
         sv_push(debug_words, "-g");
         let gcc_debug = bd_get_optimize_flag("gcc", debug_words);
         assert(gcc_debug != null && gcc_debug as string == "-Og", "gcc debug optimize flag mismatch");
+    }
+
+    with (let debug_variant_words = sv_create(2) => sv_free(debug_variant_words)) {
+        sv_push(debug_variant_words, "-g3");
+        sv_push(debug_variant_words, "-ggdb");
+        let gcc_debug_variant = bd_get_optimize_flag("gcc", debug_variant_words);
+        assert(gcc_debug_variant != null && gcc_debug_variant as string == "-Og",
+            "GCC debug variants should select the debug optimization default");
     }
 
     with (let msvc_debug_words = sv_create(1) => sv_free(msvc_debug_words)) {

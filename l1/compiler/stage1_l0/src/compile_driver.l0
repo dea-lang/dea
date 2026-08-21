@@ -35,6 +35,8 @@ struct CompileTransaction {
     staged_c: string;
     staged_object: string;
     staged_interface: string;
+    compiler_c_input: string;
+    compiler_object_output: string;
     backup_c: string;
     backup_object: string;
     backup_interface: string;
@@ -179,12 +181,46 @@ func cd_transaction_create(root: string) -> CompileTransaction* {
         join(root, "staged.c"),
         join(root, "staged.o"),
         join(root, "staged.l1m"),
+        "staged.c",
+        "staged.o",
         join(root, "previous.c"),
         join(root, "previous.o"),
         join(root, "previous.l1m"),
         join(root, "compiler.stdout"),
         join(root, "compiler.stderr")
     );
+}
+
+/**
+ * Select canonical module-relative staging paths for one transaction.
+ *
+ * The full paths remain private publication inputs. The relative C and object
+ * paths are passed to a host compiler whose working directory is the
+ * transaction root, so neither the random transaction identity nor the final
+ * destination appears in compiler-visible input paths.
+ *
+ * @param txn Transaction to configure.
+ * @param module_name Canonical source module name.
+ * @param diags Diagnostic collector for path and directory failures.
+ * @return `true` when the module-relative staging directory is ready.
+ */
+func cd_configure_module_staging(
+    txn: CompileTransaction*,
+    module_name: string,
+    diags: DiagCollector*
+) -> bool {
+    let relative_opt = mg_artifacts_for_module("", module_name, diags);
+    if (relative_opt == null) {
+        return false;
+    }
+    let relative = relative_opt as ModuleArtifactPaths*;
+    txn.compiler_c_input = relative.c_path;
+    txn.compiler_object_output = relative.object_path;
+    txn.staged_c = join(txn.root, relative.c_path);
+    txn.staged_object = join(txn.root, relative.object_path);
+    txn.staged_interface = join(txn.root, relative.interface_path);
+    mg_artifacts_free(relative);
+    return cd_ensure_directory(parent(txn.staged_c), diags);
 }
 
 /**
@@ -258,6 +294,11 @@ func cd_cleanup_transaction(txn: CompileTransaction*) -> bool {
     if (!cd_delete_if_present(txn.backup_interface)) ok = false;
     if (!cd_delete_if_present(txn.compiler_stdout)) ok = false;
     if (!cd_delete_if_present(txn.compiler_stderr)) ok = false;
+    let staging_dir = parent(txn.staged_c);
+    while (staging_dir != txn.root) {
+        if (cfs_remove_empty_dir(staging_dir) < 0) ok = false;
+        staging_dir = parent(staging_dir);
+    }
     if (cfs_remove_empty_dir(txn.root) != 1) ok = false;
     return ok;
 }
@@ -468,14 +509,79 @@ func cd_publish_artifacts(
     return true;
 }
 
+/** Return whether one compiler spelling is the generic `cc` driver name. */
+func cd_is_generic_cc_name(compiler: string) -> bool {
+    let base = to_lower_s(basename(compiler));
+    return base == "cc" || base == "cc.exe";
+}
+
+/** Return whether a Darwin compiler is one of Apple's Clang hard links. */
+func cd_is_darwin_system_clang_alias(
+    compiler_command: string,
+    configured_family: string,
+    canonical_family: string,
+    configured_compiler: string,
+    canonical_compiler: string
+) -> bool {
+    if (!cfs_host_is_darwin()) {
+        return false;
+    }
+    let recognizable =
+        configured_family != "unknown" ||
+        canonical_family != "unknown" ||
+        cd_is_generic_cc_name(configured_compiler) ||
+        cd_is_generic_cc_name(canonical_compiler);
+    if (!recognizable) {
+        return false;
+    }
+    return cfs_same_file(compiler_command, "/usr/bin/clang") == 1;
+}
+
+/**
+ * Classify debug-path behavior without changing compiler invocation spelling.
+ */
+func cd_debug_compiler_family(
+    configured_compiler: string,
+    compiler_command: string
+) -> string {
+    let configured_family = bd_compiler_debug_family(configured_compiler);
+    let canonical_opt = cfs_canonical_existing_path(compiler_command);
+    if (canonical_opt == null) {
+        return configured_family;
+    }
+    let canonical = canonical_opt as string;
+    canonical_opt = null;
+    let canonical_family = bd_compiler_debug_family(canonical);
+
+    /* A recognized symlink target is stronger evidence than alias spelling. */
+    if (canonical_family == "clang") {
+        return canonical_family;
+    }
+    /* macOS ships `cc`, `gcc`, and `clang` as hard links to one Clang image. */
+    if (cd_is_darwin_system_clang_alias(
+            compiler_command,
+            configured_family,
+            canonical_family,
+            configured_compiler,
+            canonical)) {
+        return "clang";
+    }
+    if (canonical_family != "unknown") {
+        return canonical_family;
+    }
+    return configured_family;
+}
+
 /** Add compile-only host-compiler words without any link inputs or flags. */
 func cd_push_object_compile_words(
     words: StringVector*,
     compiler: string,
     family: string,
+    debug_family: string,
     extra_opts: StringVector*,
     optimize: string?,
     runtime_include: string?,
+    debug_working_directory: string,
     c_path: string,
     object_path: string
 ) {
@@ -491,6 +597,23 @@ func cd_push_object_compile_words(
         sv_push(words, "-I");
         sv_push(words, runtime_include as string);
     }
+    if (debug_working_directory != "" &&
+        bd_has_debug_flag(extra_opts)) {
+        if (debug_family == "clang") {
+            sv_push(words, "-fdebug-compilation-dir=.");
+        } else if (debug_family == "gcc") {
+            sv_push(words, "-fdebug-prefix-map=" +
+                debug_working_directory + "=.");
+            /*
+             * Darwin GCC delegates assembly to Apple's assembler, which
+             * otherwise expands relative `.file` entries against the private
+             * transaction cwd after GCC has applied its prefix mapping.
+             */
+            if (cfs_host_is_darwin()) {
+                sv_push(words, "-Wa,-fdebug-compilation-dir=.");
+            }
+        }
+    }
 
     if (family == "msvc") {
         sv_push(words, "/c");
@@ -502,6 +625,48 @@ func cd_push_object_compile_words(
     sv_push(words, c_path);
     sv_push(words, "-o");
     sv_push(words, object_path);
+}
+
+/** Return a compiler executable that remains addressable after changing cwd. */
+func cd_compiler_for_transaction(compiler: string) -> string? {
+    if (is_absolute(compiler)) {
+        return compiler;
+    }
+    if (!has_parent(compiler)) {
+        return cfs_resolve_executable(compiler);
+    }
+    let absolute = cfs_absolute_path(compiler);
+    if (absolute == null) {
+        return compiler;
+    }
+    return absolute as string;
+}
+
+/** Return a path that preserves its original-cwd meaning after changing cwd. */
+func cd_path_for_transaction(path: string) -> string {
+    if (is_absolute(path)) {
+        return path;
+    }
+    let absolute = cfs_absolute_path(path);
+    if (absolute == null) {
+        return path;
+    }
+    return absolute as string;
+}
+
+/** Build the shell command that runs the compiler inside its transaction. */
+func cd_compile_shell_command(
+    txn: CompileTransaction*,
+    command_words: StringVector*
+) -> string {
+    let change_dir = "cd ";
+    if (bd_is_windows()) {
+        change_dir = "cd /d ";
+    }
+    return change_dir + bd_shell_quote(txn.root) + " && " +
+        bd_join_shell_words(command_words) + " > " +
+        bd_shell_quote(basename(txn.compiler_stdout)) + " 2> " +
+        bd_shell_quote(basename(txn.compiler_stderr));
 }
 
 /** Report a staged validation failure and return `false`. */
@@ -575,7 +740,7 @@ func cd_compile_analyzed(
     let interface_text = interface_text_opt as string;
 
     with (
-        let cg_opts = cg_options_create() => cg_options_free(cg_opts),
+        let cg_opts = cg_options_from_cli(opts) => cg_options_free(cg_opts),
         let env_opts = sv_create(4) => sv_free(env_opts),
         let cli_opts = sv_create(4) => sv_free(cli_opts),
         let extra_opts = sv_create(4) => sv_free(extra_opts),
@@ -594,11 +759,6 @@ func cd_compile_analyzed(
             return 1;
         }
 
-        cg_opts.emit_line_directives = !opts.no_line_directives;
-        cg_opts.trace_arc = opts.trace_arc;
-        cg_opts.trace_memory = opts.trace_memory;
-        cg_opts.rt_unchecked = opts.unchecked;
-        cg_opts.rt_check_basic = opts.check_basic;
         let c_code = backend_generate_module(result, entry_module, cg_opts, cfg);
 
         let compiler_opt = bd_take_c_compiler(opts);
@@ -612,10 +772,27 @@ func cd_compile_analyzed(
         let compiler = compiler_opt as string;
         compiler_opt = null;
         let family = bd_compiler_flag_family(compiler);
+        let compiler_command_opt = cd_compiler_for_transaction(compiler);
+        if (compiler_command_opt == null) {
+            cd_error(diags, "L1C-0010",
+                "C compilation failed: compiler was not found in the invocation environment",
+                compiler);
+            dp_print_collector(diags);
+            return 1;
+        }
+        let compiler_command = compiler_command_opt as string;
+        let debug_family = cd_debug_compiler_family(
+            compiler, compiler_command);
         let optimize = bd_get_optimize_flag(family, extra_opts);
+        let runtime_include = bd_runtime_include_dir(opts);
+        let compiler_runtime_include: string? = null;
+        if (runtime_include != null) {
+            compiler_runtime_include = cd_path_for_transaction(runtime_include as string);
+        }
 
         log_info(cfg, "Using C compiler: " + compiler);
         log_info(cfg, "Detected compiler flag family: " + family);
+        log_info(cfg, "Detected compiler debug family: " + debug_family);
         if (sv_size(env_opts) > 0) {
             log_info(cfg, "C compiler options from $L1_CFLAGS: " + bd_format_word_list(env_opts));
         }
@@ -639,6 +816,12 @@ func cd_compile_analyzed(
             return 1;
         }
         let txn = txn_opt as CompileTransaction*;
+        if (!cd_configure_module_staging(txn, entry_module, diags)) {
+            dp_print_collector(diags);
+            cd_cleanup_transaction_checked(txn, cfg);
+            cd_transaction_free(txn);
+            return 1;
+        }
 
         if (write_file(txn.staged_c, c_code) == null) {
             cd_error(diags, "L1C-9511", "cannot write output file: " + txn.staged_c, txn.staged_c);
@@ -656,21 +839,22 @@ func cd_compile_analyzed(
             return 1;
         }
 
+        let debug_working_directory = cd_path_for_transaction(txn.root);
         cd_push_object_compile_words(
             command_words,
-            compiler,
+            compiler_command,
             family,
+            debug_family,
             extra_opts,
             optimize,
-            bd_runtime_include_dir(opts),
-            txn.staged_c,
-            txn.staged_object
+            compiler_runtime_include,
+            debug_working_directory,
+            txn.compiler_c_input,
+            txn.compiler_object_output
         );
         log_info(cfg, "Compiling module object:");
         log_info(cfg, bd_join_display_words(command_words));
-        let compile_cmd = bd_join_shell_words(command_words) + " > " +
-            bd_shell_quote(txn.compiler_stdout) + " 2> " +
-            bd_shell_quote(txn.compiler_stderr);
+        let compile_cmd = cd_compile_shell_command(txn, command_words);
         let compile_rc = system(compile_cmd);
         let compile_failed = compile_rc != 0;
         if (compile_failed) {

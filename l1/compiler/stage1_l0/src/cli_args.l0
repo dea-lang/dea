@@ -517,7 +517,7 @@ func cli_print_help() {
     cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\")");
     cli_print_line(false, "  -I, --interface-path INTERFACE_PATH");
     cli_print_line(false, "                        Add an interface search path (repeatable; valid in:");
-    cli_print_line(false, "                        '--compile'; searched in declaration order)");
+    cli_print_line(false, "                        '--compile', '--gen'; searched in declaration order)");
     cli_print_line(false, "  --runtime-include, -Ri RUNTIME_INCLUDE");
     cli_print_line(false, "                        Path to Dea runtime headers such as `dea_rt.h`");
     cli_print_line(false, "                        (default: $L1_RUNTIME_INCLUDE or");
@@ -663,8 +663,10 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         );
     }
 
-    if (sv_size(opts.interface_paths) > 0 && ord(mode) != ord(CM_COMPILE)) {
-        cli_emit_error(diags, "L1C-2031", "option '--interface-path' is valid only with mode: --compile");
+    if (sv_size(opts.interface_paths) > 0 && ord(mode) != ord(CM_COMPILE) &&
+        ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L1C-2031",
+            "option '--interface-path' is valid only with modes: --compile, --gen");
     }
 
     if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&

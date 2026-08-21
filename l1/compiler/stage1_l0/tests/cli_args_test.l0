@@ -154,7 +154,7 @@ func test_multiple_targets_rejected() {
 }
 
 /**
- * Tests both compile-mode aliases and ordered interface paths.
+ * Tests compile-mode aliases and ordered interface paths for compile/gen.
  */
 func test_compile_mode_and_interface_paths_parsed() {
     with (let argv = sv_create(12) => sv_free(argv)) {
@@ -188,6 +188,24 @@ func test_compile_mode_and_interface_paths_parsed() {
         assert(!diag_has_errors(parsed2.diags), "expected --compile parse success");
         assert(ord((parsed2.options as CliOptions*).mode) == ord(CM_COMPILE), "expected long compile alias");
         cli_parse_result_free(parsed2);
+    }
+
+    with (let argv3 = sv_create(8) => sv_free(argv3)) {
+        sv_push(argv3, "--gen");
+        sv_push(argv3, "-Iinterfaces/first");
+        sv_push(argv3, "--interface-path");
+        sv_push(argv3, "interfaces/second");
+        sv_push(argv3, "app.main");
+        let parsed3 = cli_parse(argv3);
+        assert(!diag_has_errors(parsed3.diags), "expected generated-C interface-path success");
+        let opts3 = parsed3.options as CliOptions*;
+        assert(sv_size(opts3.interface_paths) == 2,
+            "generated-C should retain ordered interface paths");
+        assert(sv_get(opts3.interface_paths, 0) == "interfaces/first",
+            "generated-C first interface path mismatch");
+        assert(sv_get(opts3.interface_paths, 1) == "interfaces/second",
+            "generated-C second interface path mismatch");
+        cli_parse_result_free(parsed3);
     }
 }
 
@@ -547,7 +565,7 @@ func test_link_mode_option_matrix() {
 }
 
 /**
- * Tests interface paths are gated to compile mode and require values.
+ * Tests interface paths are gated to compile/gen modes and require values.
  */
 func test_interface_path_scope_and_value_validation() {
     with (let missing = sv_create(3) => sv_free(missing)) {
