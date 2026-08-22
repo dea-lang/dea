@@ -813,6 +813,151 @@ func test_backend_generate_identity_cast_string_copy_retains() {
 }
 
 /**
+ * Tests parenthesized cast-from-place expressions preserve ARC ownership classification.
+ */
+func test_backend_generate_parenthesized_unwrap_from_place_stays_borrowed() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Box {");
+        sv_push(lines, "    value: string?;");
+        sv_push(lines, "}");
+        sv_push(lines, "func accepts(value: string) -> bool {");
+        sv_push(lines, "    return value != \"\";");
+        sv_push(lines, "}");
+        sv_push(lines, "func local_matches(value: string?, expected: string) -> bool {");
+        sv_push(lines, "    return value != null && (value as string) == expected;");
+        sv_push(lines, "}");
+        sv_push(lines, "func repeated_call(value: string?) -> bool {");
+        sv_push(lines, "    return value != null && accepts((((value as string))));");
+        sv_push(lines, "}");
+        sv_push(lines, "func field_matches(box: Box*, expected: string) -> bool {");
+        sv_push(lines, "    return box.value != null && (((box.value as string))) == expected;");
+        sv_push(lines, "}");
+        sv_push(lines, "func owner_copy(value: string?) -> string {");
+        sv_push(lines, "    return ((value as string));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for parenthesized unwrap fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(!contains_s(generated, "l0_string l0_arc_"),
+            "parenthesized cast from a place should not materialize an ARC alias temp");
+        assert(!contains_s(generated, "rt_string_release(l0_arc_"),
+            "parenthesized cast from a place should not schedule ARC alias cleanup");
+        assert(contains_s(generated, "rt_string_retain(l0_copy_"),
+            "returning a parenthesized unwrap should retain the new owner");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests a parenthesized cast from an ARC rvalue still receives temporary cleanup.
+ */
+func test_backend_generate_parenthesized_rvalue_cast_materializes_arc_temp() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func accepts(value: string) -> bool {");
+        sv_push(lines, "    return value != \"\";");
+        sv_push(lines, "}");
+        sv_push(lines, "func rvalue_call(module_name: string, type_name: string) -> bool {");
+        sv_push(lines, "    return accepts((((module_name + \"::\" + type_name) as string)));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for parenthesized ARC rvalue fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "l0_string l0_arc_"),
+            "parenthesized cast from an ARC rvalue should materialize a cleanup temp");
+        assert(contains_s(generated, "rt_string_release(l0_arc_"),
+            "parenthesized cast from an ARC rvalue should schedule temp cleanup");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests parenthesized nullable wrapping balances borrowed temps and transfers owned retains.
+ */
+func test_backend_generate_parenthesized_wrap_from_place_owner_boundaries() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func is_present(value: string?) -> bool {");
+        sv_push(lines, "    return value != null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func borrowed_wrap(value: string) -> bool {");
+        sv_push(lines, "    return is_present(((value as string?)));");
+        sv_push(lines, "}");
+        sv_push(lines, "func owner_wrap(value: string) -> string? {");
+        sv_push(lines, "    return ((value as string?));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for parenthesized nullable-wrap fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        let borrowed_start = find_last_s(generated, "l0_bool l0_demo_main_borrowed_wrap(");
+        let owner_start = find_last_s(generated, "l0_opt_string l0_demo_main_owner_wrap(");
+        let main_start = find_last_s(generated, "l0_int l0_demo_main_main(");
+        assert(borrowed_start >= 0 && borrowed_start < owner_start && owner_start < main_start,
+            "nullable-wrap function definition ordering mismatch");
+
+        let borrowed_body = slice_s(generated, borrowed_start, owner_start);
+        let owner_body = slice_s(generated, owner_start, main_start);
+        let borrowed_retain = find_s(borrowed_body, "rt_string_retain(");
+        let borrowed_retain2 = find_from_s(borrowed_body, "rt_string_retain(", borrowed_retain + 1);
+        let borrowed_release = find_s(borrowed_body, "rt_string_release(");
+        let borrowed_release2 = find_from_s(borrowed_body, "rt_string_release(", borrowed_release + 1);
+        assert(borrowed_retain >= 0 && borrowed_retain2 < 0,
+            "borrowed wrapped place should retain exactly once");
+        assert(borrowed_release >= 0 && borrowed_release2 < 0,
+            "borrowed wrapped-place temp should release exactly once after the call");
+        assert(contains_s(borrowed_body, "l0_opt_string l0_arc_"),
+            "borrowed wrapped place should materialize one owned optional temp");
+        let owner_retain = find_s(owner_body, "rt_string_retain(");
+        let owner_retain2 = find_from_s(owner_body, "rt_string_retain(", owner_retain + 1);
+        assert(owner_retain >= 0 && owner_retain2 < 0,
+            "returning a wrapped place should transfer exactly one eager retain");
+        assert(!contains_s(owner_body, "l0_opt_string l0_arc_"),
+            "returning a wrapped place should not create a second owner temp");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests string equality and inequality lowering through the runtime helper.
  */
 func test_backend_generate_string_equality_ops() {
@@ -939,6 +1084,9 @@ func main() {
     test_backend_generate_intrinsics_use_analyzed_target_types();
     test_backend_generate_string_copy_retains();
     test_backend_generate_identity_cast_string_copy_retains();
+    test_backend_generate_parenthesized_unwrap_from_place_stays_borrowed();
+    test_backend_generate_parenthesized_rvalue_cast_materializes_arc_temp();
+    test_backend_generate_parenthesized_wrap_from_place_owner_boundaries();
     test_backend_generate_string_equality_ops();
     test_backend_generate_string_relational_ops();
     test_backend_generate_string_concat_ops();

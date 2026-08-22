@@ -948,6 +948,135 @@ def test_codegen_discarded_arc_call_released(codegen_single):
     assert "rt_string_release(" in main_body
 
 
+def test_codegen_parenthesized_unwrap_from_place_stays_borrowed(codegen_single):
+    c_code, diagnostics = codegen_single(
+        "main",
+        """
+        module main;
+
+        import std.string;
+
+        struct Box {
+            value: string?;
+        }
+
+        func accepts(value: string) -> bool {
+            return len_s(value) > 0;
+        }
+
+        func local_matches(value: string?, expected: string) -> bool {
+            return value != null && (value as string) == expected;
+        }
+
+        func repeated_call(value: string?) -> bool {
+            return value != null && accepts((((value as string))));
+        }
+
+        func field_matches(box: Box*, expected: string) -> bool {
+            return box.value != null && (((box.value as string))) == expected;
+        }
+
+        func rvalue_call(module_name: string, type_name: string) -> bool {
+            return accepts((((module_name + "::" + type_name) as string)));
+        }
+
+        func owner_copy(value: string?) -> string {
+            return ((value as string));
+        }
+
+        func main() -> int {
+            return 0;
+        }
+        """,
+    )
+    assert c_code is not None, diagnostics
+
+    local_start = c_code.rfind("l0_bool l0_main_local_matches(")
+    repeated_start = c_code.rfind("l0_bool l0_main_repeated_call(")
+    field_start = c_code.rfind("l0_bool l0_main_field_matches(")
+    rvalue_start = c_code.rfind("l0_bool l0_main_rvalue_call(")
+    owner_start = c_code.rfind("l0_string l0_main_owner_copy(")
+    main_start = c_code.rfind("l0_int l0_main_main(")
+    assert -1 not in (
+        local_start,
+        repeated_start,
+        field_start,
+        rvalue_start,
+        owner_start,
+        main_start,
+    )
+    assert (
+        local_start
+        < repeated_start
+        < field_start
+        < rvalue_start
+        < owner_start
+        < main_start
+    )
+
+    borrowed_bodies = {
+        "local comparison": c_code[local_start:repeated_start],
+        "repeated-parentheses call": c_code[repeated_start:field_start],
+        "field comparison": c_code[field_start:rvalue_start],
+    }
+    for label, body in borrowed_bodies.items():
+        assert "l0_string l0_arc_" not in body, (
+            f"{label} created a synthetic owned alias"
+        )
+        assert "rt_string_release(l0_arc_" not in body, (
+            f"{label} scheduled synthetic alias cleanup"
+        )
+
+    rvalue_body = c_code[rvalue_start:owner_start]
+    assert "l0_string l0_arc_" in rvalue_body
+    assert "rt_string_release(l0_arc_" in rvalue_body
+
+    owner_body = c_code[owner_start:main_start]
+    assert "rt_string_retain(" in owner_body
+    assert "l0_string l0_arc_" not in owner_body
+
+
+def test_codegen_parenthesized_wrap_from_place_balances_ownership(codegen_single):
+    c_code, diagnostics = codegen_single(
+        "main",
+        """
+        module main;
+
+        func accepts(value: string?) -> bool {
+            return value != null;
+        }
+
+        func borrowed(value: string) -> bool {
+            return accepts(((value as string?)));
+        }
+
+        func owned(value: string) -> string? {
+            return ((value as string?));
+        }
+
+        func main() -> int {
+            return 0;
+        }
+        """,
+    )
+    assert c_code is not None, diagnostics
+
+    borrowed_start = c_code.rfind("l0_bool l0_main_borrowed(")
+    owned_start = c_code.rfind("l0_opt_string l0_main_owned(")
+    main_start = c_code.rfind("l0_int l0_main_main(")
+    assert -1 not in (borrowed_start, owned_start, main_start)
+    assert borrowed_start < owned_start < main_start
+
+    borrowed_body = c_code[borrowed_start:owned_start]
+    assert borrowed_body.count("rt_string_retain(") == 1
+    assert "l0_opt_string l0_arc_" in borrowed_body
+    assert "rt_string_release((l0_arc_" in borrowed_body
+
+    owned_body = c_code[owned_start:main_start]
+    assert owned_body.count("rt_string_retain(") == 1
+    assert "l0_opt_string l0_arc_" not in owned_body
+
+
 def test_codegen_try_stmt_with_arc_payload_compiles(codegen_single, compile_and_run, tmp_path):
     c_code, _ = codegen_single(
         "main",

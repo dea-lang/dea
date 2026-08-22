@@ -200,17 +200,32 @@ class Backend:
         return False
 
     def _is_unwrap_cast_from_place(self, expr: Expr) -> bool:
-        """Check if a cast expression still refers to an existing owner.
+        """Check if a cast expression still borrows from an existing owner.
+
+        Outer parentheses are ownership-transparent. Owner-producing ARC
+        value-optional wraps are excluded.
 
         Args:
             expr: The expression to check.
 
         Returns:
-            True for casts whose source is a place.
+            True for non-owner-producing casts whose source is a place.
         """
-        if not isinstance(expr, CastExpr):
+        while isinstance(expr, ParenExpr):
+            expr = expr.inner
+        if not isinstance(expr, CastExpr) or not self._is_place_expr(expr.expr):
             return False
-        return self._is_place_expr(expr.expr)
+
+        src_ty = self.analysis.expr_types.get(id(expr.expr))
+        dst_ty = self.analysis.expr_types.get(id(expr))
+        if (
+            isinstance(dst_ty, NullableType)
+            and self._types_equal(src_ty, dst_ty.inner)
+            and not self.emitter.is_niche_nullable(dst_ty)
+            and self.analysis.has_arc_data(dst_ty.inner)
+        ):
+            return False
+        return True
 
     def _needs_arc_temp(self, expr: Expr) -> bool:
         """Check if a non-place rvalue with ARC data needs temp materialization.

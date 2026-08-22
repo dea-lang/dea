@@ -963,16 +963,32 @@ func be_emit_checked_pointer_expr(self: Backend*, c_ptr_expr: string, ptr_ty: Ty
 }
 
 /**
- * Report whether an expression is a cast from a place.
+ * Report whether an expression is a borrowed cast from a place.
+ *
+ * Outer parentheses are ignored; owner-producing ARC value-optional wraps are excluded.
  *
  * @param self Backend state to inspect.
  * @param expr_id Expression to classify.
- * @return `true` when the expression is a cast whose source is a place expression.
+ * @return `true` for a non-owner-producing cast whose source is a place expression.
  */
 func be_is_unwrap_cast_from_place(self: Backend*, expr_id: ExprId) -> bool {
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    while (ord(expr.kind) == ord(EX_PAREN)) {
+        expr_id = expr.expr_a;
+        expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    }
     if (ord(expr.kind) != ord(EX_CAST)) {
         return false;
+    }
+    with (let src_ty = be_expr_type(self, expr.expr_a) => type_free_opt(src_ty),
+          let dst_ty = be_expr_type(self, expr_id) => type_free_opt(dst_ty)) {
+        if (src_ty != null && dst_ty != null && ord((dst_ty as Type*).kind) == ord(TY_NULLABLE) &&
+            (dst_ty as Type*).inner != null &&
+            type_equals(src_ty as Type*, (dst_ty as Type*).inner as Type*) &&
+            !cem_is_niche_nullable(dst_ty as Type*) &&
+            analysis_has_arc_data(self.result, (dst_ty as Type*).inner as Type*)) {
+            return false;
+        }
     }
     return be_is_place_expr(self, expr.expr_a);
 }
@@ -4434,6 +4450,10 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                     if (src_ty != null && type_equals(dst_inner, src_ty as Type*)) {
                         if (cem_is_niche_nullable(dst_ty as Type*)) {
                             return cem_emit_cast(c_dst, c_inner);
+                        }
+                        if (be_is_place_expr(self, expr.expr_a) &&
+                            analysis_has_arc_data(self.result, dst_inner)) {
+                            c_inner = be_emit_copy_expr_with_retains(self, c_inner, dst_inner);
                         }
                         return cem_emit_some_value_for_nullable(dst_ty as Type*, c_inner);
                     }

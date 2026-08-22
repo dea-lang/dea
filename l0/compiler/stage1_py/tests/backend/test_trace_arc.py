@@ -601,6 +601,270 @@ def test_trace_arc_optional_unwrap_into_vector_stabilized(
     assert len(frees) >= 1, f"expected at least one heap free: {arc}"
 
 
+def test_trace_arc_parenthesized_unwrap_local_stays_borrowed(
+    analyze_single, compile_and_run, tmp_path
+):
+    """A parenthesized local unwrap must not become an unretained ARC owner."""
+    ok, _stdout, stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        func matches(value: string?, expected: string) -> bool {
+            return value != null && (value as string) == expected;
+        }
+
+        func main() -> int {
+            let value: string? = concat_s("m", "") as string?;
+            if (!matches(value, "m")) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+    )
+    assert ok, stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("release", "free", "1", "0"),
+    ], f"unexpected parenthesized local unwrap ARC sequence: {heap!r}"
+
+
+def test_trace_arc_repeated_parenthesized_unwrap_local_stays_borrowed(
+    analyze_single, compile_and_run, tmp_path
+):
+    """Repeated parentheses around a local unwrap remain ownership-transparent."""
+    ok, _stdout, stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        func accepts(value: string) -> bool {
+            return len_s(value) > 0;
+        }
+
+        func matches(value: string?) -> bool {
+            return value != null && accepts((((value as string))));
+        }
+
+        func main() -> int {
+            let value: string? = concat_s("n", "") as string?;
+            if (!matches(value)) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+    )
+    assert ok, stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("release", "free", "1", "0"),
+    ], f"unexpected repeated parenthesized unwrap ARC sequence: {heap!r}"
+
+
+def test_trace_arc_parenthesized_unwrap_field_stays_borrowed(
+    analyze_single, compile_and_run, tmp_path
+):
+    """A parenthesized optional-field unwrap must remain borrowed until drop."""
+    ok, _stdout, stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        struct Box {
+            value: string?;
+        }
+
+        func matches(box: Box*, expected: string) -> bool {
+            return box.value != null && ((box.value as string)) == expected;
+        }
+
+        func main() -> int {
+            let box = new Box(concat_s("f", "") as string?);
+            if (!matches(box, "f")) {
+                drop box;
+                return 1;
+            }
+            drop box;
+            return 0;
+        }
+        """,
+    )
+    assert ok, stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("release", "free", "1", "0"),
+    ], f"unexpected parenthesized field unwrap ARC sequence: {heap!r}"
+
+
+def test_trace_arc_parenthesized_unwrap_owner_copy_retains(
+    analyze_single, compile_and_run, tmp_path
+):
+    """Returning a parenthesized unwrap must retain the new owner."""
+    ok, _stdout, stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        func copy(value: string?) -> string {
+            return ((value as string));
+        }
+
+        func main() -> int {
+            let value: string? = concat_s("o", "") as string?;
+            let owned = copy(value);
+            if (owned != "o") {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+    )
+    assert ok, stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("retain", "retain", "1", "2"),
+        ("release", "keep", "2", "1"),
+        ("release", "free", "1", "0"),
+    ], f"unexpected parenthesized unwrap owner-copy ARC sequence: {heap!r}"
+
+
+def test_trace_arc_parenthesized_wrap_from_place_balances_ownership(
+    analyze_single, compile_and_run, tmp_path
+):
+    """A parenthesized ARC wrap owns one retained payload in every context."""
+    ok, _stdout, stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        func accepts(value: string?) -> bool {
+            return value != null;
+        }
+
+        func wrap(value: string) -> string? {
+            return ((value as string?));
+        }
+
+        func main() -> int {
+            let value = concat_s("w", "");
+            if (!accepts(((value as string?)))) {
+                return 1;
+            }
+            let owned = wrap(value);
+            if (owned == null || (owned as string) != "w") {
+                return 2;
+            }
+            return 0;
+        }
+        """,
+    )
+    assert ok, stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("retain", "retain", "1", "2"),
+        ("release", "keep", "2", "1"),
+        ("retain", "retain", "1", "2"),
+        ("release", "keep", "2", "1"),
+        ("release", "free", "1", "0"),
+    ], f"unexpected parenthesized wrap-from-place ARC sequence: {heap!r}"
+
+
+def test_trace_arc_parenthesized_unwrap_nested_concat_control(
+    analyze_single, compile_and_run, tmp_path
+):
+    """Structured logical lowering must free both genuine concat results once."""
+    ok, _stdout, stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        func accepts(value: string) -> bool {
+            return len_s(value) > 0;
+        }
+
+        func nested_concat(module_name: string, type_name: string) -> bool {
+            return false || (true && accepts(module_name + "::" + type_name));
+        }
+
+        func main() -> int {
+            if (!nested_concat("main", "Value")) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+    )
+    assert ok, stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("release", "free", "1", "0"),
+        ("release", "free", "1", "0"),
+    ], f"unexpected nested-concat control ARC sequence: {heap!r}"
+
+
+def test_trace_arc_parenthesized_unwrap_classifier_keeps_rvalue_cleanup(
+    analyze_single, compile_and_run, tmp_path
+):
+    """A parenthesized cast of a genuine rvalue must keep owned-temp cleanup."""
+    ok, _stdout, stderr, arc = _compile_with_trace_arc(
+        analyze_single,
+        compile_and_run,
+        tmp_path,
+        """
+        module main;
+        import std.string;
+
+        func accepts(value: string) -> bool {
+            return len_s(value) > 0;
+        }
+
+        func casted_concat(module_name: string, type_name: string) -> bool {
+            return accepts((((module_name + "::" + type_name) as string)));
+        }
+
+        func main() -> int {
+            if (!casted_concat("main", "Value")) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+    )
+    assert ok, stderr
+
+    heap = [e for e in arc if e["kind"] == "heap"]
+    assert [(e["op"], e["action"], e["rc_before"], e["rc_after"]) for e in heap] == [
+        ("release", "free", "1", "0"),
+        ("release", "free", "1", "0"),
+    ], f"unexpected parenthesized cast-rvalue ARC sequence: {heap!r}"
+
+
 # ---------------------------------------------------------------------------
 # J – Nested concat: intermediary freed
 # ---------------------------------------------------------------------------

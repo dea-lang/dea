@@ -2,8 +2,8 @@
 
 ## Preserve casted-place ARC classification through parentheses
 
-- Date: 2026-08-21
-- Status: Draft
+- Date: 2026-08-23
+- Status: Completed
 - Title: Preserve casted-place ARC classification through parenthesized expressions across shared backends
 - Kind: Bug Fix
 - Scope: Shared
@@ -18,9 +18,9 @@
 - Porting rule: Fix and trace-test the parenthesis-transparent cast-from-place classification in L0 Python Stage 1, then
   port the same rule and regression shape mechanically to the two self-hosted backends.
 - Target status:
-  - L0 Python Stage 1: Pending
-  - L0 Stage 2: Pending
-  - L1 Stage 1: Pending
+  - L0 Python Stage 1: Implemented
+  - L0 Stage 2: Implemented
+  - L1 Stage 1: Implemented
 - Subsystem: Backend ARC ownership / expression temporary classification / condition lowering
 - Modules:
   - `l0/compiler/stage1_py/l0_backend.py`
@@ -116,12 +116,17 @@ The existing 2026-04-20 shared casted-place fix established the right ownership 
 wrappers around the cast. Existing optional-unwrap trace tests use the direct `opt as string` form, so they do not
 exercise this AST topology.
 
+ARC value-optional wrapping is the type-sensitive exception to that rule. A cast from an ARC place from `T` to `T?`
+produces an owned optional value by retaining its payload; it must not be reclassified as a borrowed alias merely
+because parentheses surround the cast. L0 Python Stage 1 already implemented that eager retain, while the two
+self-hosted backends require the same behavior for parity.
+
 ## Scope of This Fix
 
 1. Make cast-from-place ownership classification transparent through one or more parenthesized wrappers in all three
    backends.
-2. Preserve the existing rule that a cast from an existing place remains borrowed unless a real ownership boundary
-   explicitly copies and retains the value.
+2. Preserve the existing rule that a cast from an existing place remains borrowed unless the cast itself is an
+   owner-producing ARC value-optional wrap or a later ownership boundary explicitly copies and retains the value.
 3. Add generated-C and trace regressions for local and field-backed optional strings in comparison, logical-condition,
    call-argument, and owner-taking contexts.
 4. Retain a nested string-concatenation control so the original discovery shape remains distinguished from the actual
@@ -143,26 +148,30 @@ exercise this AST topology.
 
 1. Make `_is_unwrap_cast_from_place` ignore any number of `ParenExpr` wrappers before deciding whether the expression is
    a cast whose operand is a place.
-2. Keep `_is_place_expr` and `_should_materialize_arc_temp` responsibilities otherwise unchanged.
-3. Assert that the generated C no longer creates an owned `l0_arc_*` alias for a parenthesized unwrap used as a borrowed
+2. Exclude owner-producing, non-niche ARC `T -> T?` wraps from borrowed cast-from-place classification, mirroring the
+   eager-retain path that constructs the optional value.
+3. Keep `_is_place_expr` and `_should_materialize_arc_temp` responsibilities otherwise unchanged.
+4. Assert that the generated C no longer creates an owned `l0_arc_*` alias for a parenthesized unwrap used as a borrowed
    comparison or call operand.
-4. Assert that owner-taking boundaries still retain a copied unwrap result and that genuine string-producing rvalues
-   still receive temporary cleanup.
+5. Assert that owner-taking boundaries still retain a copied unwrap result, ARC value-optional wraps retain exactly
+   once, and genuine string-producing rvalues still receive temporary cleanup.
 
 ### Phase 3: Port the rule to L0 Stage 2
 
 1. Port the same parenthesis-transparent classification into `be_is_unwrap_cast_from_place` in the Stage 2 backend.
-2. Keep the emitted ownership shape aligned with the Python oracle.
+2. Port the Python oracle's eager retain for owner-producing ARC value-optional wraps and keep the emitted ownership
+   shape aligned across stages.
 3. Build a fresh Stage 2 compiler before running the focused runtime and trace regressions so a stale repo-local
    artifact cannot mask or preserve the defect.
 
 ### Phase 4: Port the rule to L1 Stage 1
 
 1. Port the same helper change into the homologous L1 backend.
-2. Add backend and trace regressions using L1 source, including a parenthesized optional field unwrap inside a
+2. Port the same eager-retain behavior for owner-producing ARC value-optional wraps.
+3. Add backend and trace regressions using L1 source, including a parenthesized optional field unwrap inside a
    short-circuit string comparison.
-3. Confirm the L1 compiler can compile and run the fixture without a synthetic alias release or double free.
-4. Re-run the per-module generated-C integration surface that originally exposed the upstream compiler defect.
+4. Confirm the L1 compiler can compile and run the fixture without a synthetic alias release or double free.
+5. Re-run the per-module generated-C integration surface that originally exposed the upstream compiler defect.
 
 ### Phase 5: Close the shared regression gap
 
@@ -201,10 +210,15 @@ ownership behavior changes.
 Focused checks:
 
 ```bash
-cd l0 && ../.venv/bin/python -m pytest compiler/stage1_py/tests/backend/test_codegen_semantics.py compiler/stage1_py/tests/backend/test_trace_arc.py -q -k "parenthesized_unwrap"
+cd l0 && ../.venv/bin/python -m pytest compiler/stage1_py/tests/backend/test_codegen_semantics.py compiler/stage1_py/tests/backend/test_trace_arc.py -q -k "parenthesized_unwrap or parenthesized_wrap"
 cd l0 && make test-stage2 TESTS="backend_test"
 cd l0 && ../.venv/bin/python compiler/stage2_l0/tests/l0c_stage2_arc_trace_regression_test.py
-cd l1 && make test-stage1 TESTS="backend_test"
+cd l1 && make test-stage1 \
+  TESTS="cli_args_test backend_test c_emitter_test driver_test module_graph_test \
+  interface_replay_test compile_driver_test compiler_filesystem_test l1c_lib_test \
+  l1c_stage1_help_output_test.py l1c_stage1_compile_only_test.py l1c_stage1_toplet_test.py \
+  compiler_filesystem_support_test.py" \
+  L1_BOOTSTRAP_L0C=../l0/build/dea/bin/l0c-stage2
 cd l1 && ../.venv/bin/python compiler/stage1_l0/tests/l1c_stage1_arc_trace_regression_test.py
 ```
 
@@ -213,8 +227,9 @@ Final shared validation:
 ```bash
 make clean test-all
 make -C l0 triple-test
-make -C l1 test-all
 ```
+
+The root `test-all` target already runs the complete L1 `test-all` tier, so it is not repeated separately.
 
 ## Verification Criteria
 
@@ -222,16 +237,41 @@ make -C l1 test-all
    aliases in generated C.
 2. No trace contains a release of the unwrapped borrowed payload before the source owner leaves scope.
 3. Owner-taking copies of parenthesized unwraps still retain exactly as required by the existing ownership contract.
-4. Nested string concatenation inside a logical call operand remains trace-clean, with every fresh result released
+4. Parenthesized ARC value-optional wraps retain their place payload exactly once and balance temporary or destination
+   cleanup without leaks or double retains.
+5. Nested string concatenation inside a logical call operand remains trace-clean, with every fresh result released
    exactly once.
-5. The focused Stage 1, Stage 2, and L1 tests pass against freshly built subject compilers.
-6. Full trace triage reports no leaks, invalid refcount transitions, use-after-free events, or double releases.
-7. L0 triple bootstrap and the complete L1 per-module generated-C integration surface remain green.
+6. The focused Stage 1, Stage 2, and L1 tests pass against freshly built subject compilers.
+7. Full trace triage reports no leaks, invalid refcount transitions, use-after-free events, or double releases.
+8. L0 triple bootstrap and the complete L1 per-module generated-C integration surface remain green.
+
+## Outcome
+
+- Made cast-from-place classification ignore repeated outer parentheses in L0 Python Stage 1, L0 Stage 2, and L1 Stage
+  1, preventing borrowed identity and unwrap casts from becoming unretained synthetic ARC owners.
+- Kept non-niche ARC `T -> T?` casts as explicit owner-producing boundaries and aligned both self-hosted backends with
+  the Python oracle's single eager payload retain.
+- Added generated-C and exact ARC trace regressions for local and field unwraps, repeated-parentheses call arguments,
+  owner returns, borrowed and owned optional wraps, genuine casted rvalues, and the nested-concatenation control.
+
+## Validation Run
+
+Completed on 2026-08-23:
+
+- The two affected L0 Python backend test files passed all 81 tests.
+- The focused L0 Stage 2 backend test and complete Stage 2 ARC regression harness passed against the fresh
+  `l0/build/dea/bin/l0c-stage2` artifact.
+- The focused L1 compiler and per-module generated-C integration surface passed 13/13 tests against that exact Stage 2
+  bootstrap artifact, and the complete L1 Stage 1 ARC regression harness passed.
+- `make clean test-all` passed: L0 Python 1456/1456, L0 Stage 2 55/55, L0 broad trace 33/33, L1 Stage 1 65/65, and L1
+  broad trace 44/44, together with all examples and workflow checks.
+- `make -C l0 triple-test` produced matching retained C from the second and third self-hosted compilers and passed the
+  final smoke test.
 
 ## Assumptions
 
 1. Parentheses are semantically transparent for ownership classification just as they are for type and place
    classification.
-2. A cast whose underlying operand is a place does not create a new owner unless the destination context explicitly
-   performs retain-on-copy.
+2. A cast whose underlying operand is a place remains borrowed except for an owner-producing, non-niche ARC `T -> T?`
+   wrap; that cast retains its payload as part of constructing the optional owner.
 3. The shared helper topology remains close enough for the L0 Stage 2 and L1 Stage 1 ports to be mechanical.

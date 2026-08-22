@@ -923,6 +923,282 @@ def test_optional_unwrap_into_vector_retains(artifact_dir: Path) -> None:
     assert_true(len(heap_frees(arc)) >= 1, f"expected at least one heap free, got {heap_frees(arc)!r}", artifact_dir)
 
 
+def test_parenthesized_unwrap_local_stays_borrowed(artifact_dir: Path) -> None:
+    """A parenthesized local unwrap must not become an unretained ARC owner."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "parenthesized_unwrap_local_stays_borrowed",
+        """
+        module main;
+        import std.string;
+
+        func matches(value: string?, expected: string) -> bool {
+            return value != null && (value as string) == expected;
+        }
+
+        func main() -> int {
+            let value: string? = concat_s("m", "") as string?;
+            if (!matches(value, "m")) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [("release", "free", "1", "0")],
+        "parenthesized local unwrap ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_repeated_parenthesized_unwrap_local_stays_borrowed(artifact_dir: Path) -> None:
+    """Repeated parentheses around a local unwrap remain ownership-transparent."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "repeated_parenthesized_unwrap_local_stays_borrowed",
+        """
+        module main;
+        import std.string;
+
+        func accepts(value: string) -> bool {
+            return len_s(value) > 0;
+        }
+
+        func matches(value: string?) -> bool {
+            return value != null && accepts((((value as string))));
+        }
+
+        func main() -> int {
+            let value: string? = concat_s("n", "") as string?;
+            if (!matches(value)) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [("release", "free", "1", "0")],
+        "repeated parenthesized unwrap ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_parenthesized_unwrap_field_stays_borrowed(artifact_dir: Path) -> None:
+    """A parenthesized optional-field unwrap must remain borrowed until drop."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "parenthesized_unwrap_field_stays_borrowed",
+        """
+        module main;
+        import std.string;
+
+        struct Box {
+            value: string?;
+        }
+
+        func matches(box: Box*, expected: string) -> bool {
+            return box.value != null && ((box.value as string)) == expected;
+        }
+
+        func main() -> int {
+            let box = new Box(concat_s("f", "") as string?);
+            if (!matches(box, "f")) {
+                drop box;
+                return 1;
+            }
+            drop box;
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [("release", "free", "1", "0")],
+        "parenthesized field unwrap ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_parenthesized_unwrap_owner_copy_retains(artifact_dir: Path) -> None:
+    """Returning a parenthesized unwrap must retain the new owner."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "parenthesized_unwrap_owner_copy_retains",
+        """
+        module main;
+        import std.string;
+
+        func copy(value: string?) -> string {
+            return ((value as string));
+        }
+
+        func main() -> int {
+            let value: string? = concat_s("o", "") as string?;
+            let owned = copy(value);
+            if (owned != "o") {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [
+            ("retain", "retain", "1", "2"),
+            ("release", "keep", "2", "1"),
+            ("release", "free", "1", "0"),
+        ],
+        "parenthesized unwrap owner-copy ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_parenthesized_wrap_from_place_owner_boundaries(artifact_dir: Path) -> None:
+    """A wrapped place balances a borrowed temp and transfers one retain to an owner."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "parenthesized_wrap_from_place_owner_boundaries",
+        """
+        module main;
+        import std.string;
+
+        func is_present(value: string?) -> bool {
+            return value != null;
+        }
+
+        func borrowed_wrap(value: string) -> bool {
+            return is_present(((value as string?)));
+        }
+
+        func owner_wrap(value: string) -> string? {
+            return ((value as string?));
+        }
+
+        func main() -> int {
+            let source = concat_s("w", "");
+            if (!borrowed_wrap(source)) {
+                return 1;
+            }
+            let owned = owner_wrap(source);
+            if (owned == null) {
+                return 2;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [
+            ("retain", "retain", "1", "2"),
+            ("release", "keep", "2", "1"),
+            ("retain", "retain", "1", "2"),
+            ("release", "keep", "2", "1"),
+            ("release", "free", "1", "0"),
+        ],
+        "parenthesized nullable-wrap ownership sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_parenthesized_unwrap_nested_concat_control(artifact_dir: Path) -> None:
+    """Structured logical lowering must free both genuine concat results once."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "parenthesized_unwrap_nested_concat_control",
+        """
+        module main;
+        import std.string;
+
+        func accepts(value: string) -> bool {
+            return len_s(value) > 0;
+        }
+
+        func nested_concat(module_name: string, type_name: string) -> bool {
+            return false || (true && accepts(module_name + "::" + type_name));
+        }
+
+        func main() -> int {
+            if (!nested_concat("main", "Value")) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "nested-concat control ARC sequence mismatch",
+        artifact_dir,
+    )
+
+
+def test_parenthesized_rvalue_cast_temp_cleanup(artifact_dir: Path) -> None:
+    """A parenthesized cast of a genuine ARC rvalue must still receive cleanup."""
+
+    _stdout, _stderr, _report, arc = run_case(
+        "parenthesized_rvalue_cast_temp_cleanup",
+        """
+        module main;
+        import std.string;
+
+        func accepts(value: string) -> bool {
+            return len_s(value) > 0;
+        }
+
+        func rvalue_call(module_name: string, type_name: string) -> bool {
+            return accepts((((module_name + "::" + type_name) as string)));
+        }
+
+        func main() -> int {
+            if (!rvalue_call("main", "Value")) {
+                return 1;
+            }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+    heap = heap_events(arc)
+    assert_equal(
+        [(e.get("op"), e.get("action"), e.get("rc_before"), e.get("rc_after")) for e in heap],
+        [
+            ("release", "free", "1", "0"),
+            ("release", "free", "1", "0"),
+        ],
+        "parenthesized ARC rvalue cast cleanup sequence mismatch",
+        artifact_dir,
+    )
+
+
 def test_try_cleanup_on_early_return(artifact_dir: Path) -> None:
     """A failing `?` must clean up prior ARC locals before returning null."""
 
@@ -1672,6 +1948,13 @@ def main() -> int:
         test_loop_return_cleanup,
         test_optional_unwrap_return_retains,
         test_optional_unwrap_into_vector_retains,
+        test_parenthesized_unwrap_local_stays_borrowed,
+        test_repeated_parenthesized_unwrap_local_stays_borrowed,
+        test_parenthesized_unwrap_field_stays_borrowed,
+        test_parenthesized_unwrap_owner_copy_retains,
+        test_parenthesized_wrap_from_place_owner_boundaries,
+        test_parenthesized_unwrap_nested_concat_control,
+        test_parenthesized_rvalue_cast_temp_cleanup,
         test_try_cleanup_on_early_return,
         test_nested_temp_cleanup,
         test_nested_concat_intermediary_freed,

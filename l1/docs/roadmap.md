@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-08-22
+Version: 2026-08-23
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -174,6 +174,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   top-level `let` initializer expressions before backend lowering records runtime initializer metadata.
 - Bug Fix [2026-06-19-stage1-toplet-diagnostic-recovery-noref][toplet-diagnostic-recovery] preserved resolved top-level
   initializer diagnostics when signature resolution had already reported an error.
+- Bug Fix [2026-08-21-shared-parenthesized-casted-place-arc-classification-noref][parenthesized-casted-place-arc]
+  preserved borrowed identity and unwrap casts through repeated parentheses across all three backends while retaining
+  non-niche ARC `T -> T?` place payloads exactly once at their owner-producing cast boundary.
 
 </details>
 
@@ -193,9 +196,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
-- Bug Fix [2026-08-21-shared-parenthesized-casted-place-arc-classification-noref][parenthesized-casted-place-arc]
-  restores parenthesis-transparent cast-from-place ownership classification across L0 Python Stage 1, L0 Stage 2, and L1
-  Stage 1 after a traced double-release in the bootstrap compiler path.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
@@ -340,7 +340,7 @@ update to be promoted to an initiative or plan:
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
 [object-metadata]: ../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
-[parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md
+[parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/closed/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md
 [per-module-generated-c]: ../work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md

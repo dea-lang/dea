@@ -1812,6 +1812,165 @@ func test_backend_generate_identity_cast_string_copy_retains() {
 }
 
 /**
+ * Tests parenthesized cast-from-place expressions preserve ARC ownership classification.
+ */
+func test_backend_generate_parenthesized_unwrap_from_place_stays_borrowed() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Box {");
+        sv_push(lines, "    value: string?;");
+        sv_push(lines, "}");
+        sv_push(lines, "func accepts(value: string) -> bool {");
+        sv_push(lines, "    return value != \"\";");
+        sv_push(lines, "}");
+        sv_push(lines, "func local_matches(value: string?, expected: string) -> bool {");
+        sv_push(lines, "    return value != null && (value as string) == expected;");
+        sv_push(lines, "}");
+        sv_push(lines, "func repeated_call(value: string?) -> bool {");
+        sv_push(lines, "    return value != null && accepts((((value as string))));");
+        sv_push(lines, "}");
+        sv_push(lines, "func field_matches(box: Box*, expected: string) -> bool {");
+        sv_push(lines, "    return box.value != null && (((box.value as string))) == expected;");
+        sv_push(lines, "}");
+        sv_push(lines, "func owner_copy(value: string?) -> string {");
+        sv_push(lines, "    return ((value as string));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for parenthesized unwrap fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(!contains_s(generated, "dea_string dea_arc_"),
+            "parenthesized cast from a place should not materialize an ARC alias temp");
+        assert(!contains_s(generated, "rt_string_release(dea_arc_"),
+            "parenthesized cast from a place should not schedule ARC alias cleanup");
+        assert(contains_s(generated, "rt_string_retain(dea_copy_"),
+            "returning a parenthesized unwrap should retain the new owner");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests parenthesized nullable wraps own one retained payload in every context.
+ */
+func test_backend_generate_parenthesized_wrap_from_place_ownership_boundaries() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func accepts_optional(value: string?) -> bool {");
+        sv_push(lines, "    return value != null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func borrowed_wrap(value: string) -> bool {");
+        sv_push(lines, "    return accepts_optional(((value as string?)));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for borrowed parenthesized wrap fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        let borrowed_retain = find_s(generated, "rt_string_retain(");
+        let borrowed_second_retain = find_from_s(generated, "rt_string_retain(", borrowed_retain + 1);
+        let borrowed_release = find_s(generated, "rt_string_release(");
+        let borrowed_second_release = find_from_s(generated, "rt_string_release(", borrowed_release + 1);
+        assert(borrowed_retain >= 0 && borrowed_second_retain < 0,
+            "passing a parenthesized wrap to a borrowed parameter should retain exactly once");
+        assert(borrowed_release >= 0 && borrowed_second_release < 0,
+            "the borrowed wrapped-value temp should release exactly once after the call");
+        assert(contains_s(generated, "dea_opt_string dea_arc_") &&
+               contains_s(generated, "rt_string_release((dea_arc_"),
+            "a borrowed wrapped value should materialize and release its owned ARC temp");
+
+        analysis_result_free(result);
+    }
+
+    with (let filenames2 = sv_create(1) => sv_free(filenames2),
+          let sources2 = sv_create(1) => sv_free(sources2),
+          let lines2 = sv_create(12) => sv_free(lines2),
+          let cfg2 = log_config_create(LL_ERROR, false) => drop cfg2,
+          let opts2 = cg_options_create() => cg_options_free(opts2)) {
+        opts2.emit_line_directives = false;
+        sv_push(filenames2, "demo/main.l1");
+        sv_push(lines2, "module demo.main;");
+        sv_push(lines2, "func owner_wrap(value: string) -> string? {");
+        sv_push(lines2, "    return ((value as string?));");
+        sv_push(lines2, "}");
+        sv_push(lines2, "func main() -> int {");
+        sv_push(lines2, "    return 0;");
+        sv_push(lines2, "}");
+        sv_push(sources2, bt_source(lines2));
+
+        let result2 = bt_analyze_sources("demo.main", filenames2, sources2);
+        assert(!analysis_has_errors(result2), "analysis should succeed for owned parenthesized wrap fixture");
+
+        let generated2 = backend_generate(result2, opts2, cfg2);
+        let owner_retain = find_s(generated2, "rt_string_retain(");
+        let owner_second_retain = find_from_s(generated2, "rt_string_retain(", owner_retain + 1);
+        assert(owner_retain >= 0 && owner_second_retain < 0,
+            "returning a parenthesized wrap should transfer exactly one retained owner");
+        assert(!contains_s(generated2, "dea_arc_"),
+            "returning a parenthesized wrap should transfer ownership without a local ARC temp");
+
+        analysis_result_free(result2);
+    }
+}
+
+/**
+ * Tests a parenthesized cast from an ARC rvalue still receives temporary cleanup.
+ */
+func test_backend_generate_parenthesized_cast_rvalue_materializes_arc_temp() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func accepts(value: string) -> bool {");
+        sv_push(lines, "    return value != \"\";");
+        sv_push(lines, "}");
+        sv_push(lines, "func rvalue_call(module_name: string, type_name: string) -> bool {");
+        sv_push(lines, "    return accepts((((module_name + \"::\" + type_name) as string)));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for parenthesized cast rvalue fixture");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "dea_string dea_arc_"),
+            "parenthesized cast from an ARC rvalue should materialize a cleanup temp");
+        assert(contains_s(generated, "rt_string_release(dea_arc_"),
+            "parenthesized cast from an ARC rvalue should schedule temp cleanup");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests raw-pointer indexing lowering for reads, writes, and single evaluation of side-effectful operands.
  */
 func test_backend_generate_pointer_indexing_contract() {
@@ -2621,6 +2780,9 @@ func main() {
     test_backend_generate_is_with_call_expr_and_qualified_variant();
     test_backend_generate_string_copy_retains();
     test_backend_generate_identity_cast_string_copy_retains();
+    test_backend_generate_parenthesized_unwrap_from_place_stays_borrowed();
+    test_backend_generate_parenthesized_wrap_from_place_ownership_boundaries();
+    test_backend_generate_parenthesized_cast_rvalue_materializes_arc_temp();
     test_backend_generate_pointer_indexing_contract();
     test_backend_generate_deref_field_write_uses_write_mode();
     test_backend_generate_fixed_arrays();
