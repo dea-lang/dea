@@ -418,7 +418,7 @@ func cem_module_target_includes_value_key(self: CEmitter*, key: string) -> bool 
  *
  * @param self Emitter to inspect.
  * @param key Analysis key beginning with `module::`.
- * @return `true` for whole-program output or the selected module.
+ * @return `true` before target selection or for the selected module.
  */
 func cem_module_target_includes_analysis_key(self: CEmitter*, key: string) -> bool {
     if (self.module_target == null) {
@@ -444,7 +444,7 @@ func cem_module_target_matches(self: CEmitter*, module_name: string) -> bool {
  * @param self Emitter to inspect.
  * @param module_name Defining module name.
  * @param type_name Nominal type name.
- * @return `true` for whole-program output or a selected module-output type.
+ * @return `true` before target selection or for a required module-output type.
  */
 func cem_module_target_includes_type(self: CEmitter*, module_name: string, type_name: string) -> bool {
     if (self.module_target == null) {
@@ -771,15 +771,6 @@ func cem_mangle_module_fini_name(module_name: string) -> string {
  */
 func cem_mangle_module_entry_name(module_name: string) -> string {
     return ml_entry_symbol_name(module_name);
-}
-
-/**
- * Return the hidden global init-chain function name.
- *
- * @return Hidden C identifier.
- */
-func cem_global_init_name() -> string {
-    return "_dea_init_modules";
 }
 
 /**
@@ -1595,21 +1586,6 @@ func cem_emit_module_top_level_let_cleanup(self: CEmitter*, module_name: string)
 }
 
 /**
- * Emit final cleanup for every ARC-managed top-level let before process exit.
- *
- * @param self Emitter to update.
- */
-func cem_emit_top_level_let_cleanup(self: CEmitter*) {
-    let state = cem_analysis(self).driver_state;
-    for (let i = 0; i < vec_size(state.units); i = i + 1) {
-        let unit = ptr_vec_get(state.units, i) as DriverUnit*;
-        if (unit.parse_result.root_module != null) {
-            cem_emit_module_top_level_let_cleanup(self, (unit.parse_result.root_module as Module*).name);
-        }
-    }
-}
-
-/**
  * Build a function parameter list.
  *
  * @param decl Function declaration node.
@@ -1759,18 +1735,6 @@ func cem_emit_function_definition_header(self: CEmitter*, module_name: string, d
 }
 
 /**
- * Emit a hidden `static void name(void)` function header.
- *
- * @param self Emitter to update.
- * @param c_name Hidden function name.
- */
-func cem_emit_hidden_void_function_header(self: CEmitter*, c_name: string) {
-    ccb_emit(self.out, "static void " + c_name + "(void" + ")");
-    ccb_emit(self.out, "{");
-    ccb_indent(self.out);
-}
-
-/**
  * Emit an externally linked `void name(void)` function header.
  *
  * @param self Emitter to update.
@@ -1788,45 +1752,6 @@ func cem_emit_external_void_function_header(self: CEmitter*, c_name: string) {
  * @param self Emitter to update.
  */
 func cem_emit_function_definition_footer(self: CEmitter*) {
-    ccb_dedent(self.out);
-    ccb_emit(self.out, "}");
-    ccb_emit(self.out, "");
-}
-
-/**
- * Emit the C `main()` wrapper for the entry module.
- *
- * @param self Emitter to update.
- * @param entry_module Entry-module name.
- * @param func_type Resolved entry-function type.
- * @param call_global_init Whether to call the hidden init chain before user `main`.
- * @param global_init_name Hidden init-chain function name when `call_global_init` is true.
- */
-func cem_emit_main_wrapper(self: CEmitter*, entry_module: string, func_type: Type*, call_global_init: bool, global_init_name: string) {
-    let mangled_name = cem_mangle_function_name(entry_module, "main", func_type);
-    let c_return_type = cem_emit_type(func_type.result as Type*);
-
-    ccb_emit(self.out, "/* C entry point wrapper */");
-    ccb_emit(self.out, "int main(int argc, char **argv)");
-    ccb_emit(self.out, "{");
-    ccb_indent(self.out);
-    ccb_emit(self.out, "_rt_init_args(argc, argv);");
-    if (call_global_init) {
-        ccb_emit(self.out, global_init_name + "(" + ");");
-    }
-
-    if (type_is_builtin(func_type.result as Type*, "int")) {
-        ccb_emit(self.out, "int dea_exit_code = (int) " + mangled_name + "();");
-    } else if (type_is_builtin(func_type.result as Type*, "bool")) {
-        ccb_emit(self.out, c_return_type + " result = " + mangled_name + "(" + ");");
-        ccb_emit(self.out, "int dea_exit_code = result ? 0 : 1;");
-    } else {
-        ccb_emit(self.out, mangled_name + "(" + ");");
-        ccb_emit(self.out, "int dea_exit_code = 0;");
-    }
-
-    cem_emit_top_level_let_cleanup(self);
-    ccb_emit(self.out, "return dea_exit_code;");
     ccb_dedent(self.out);
     ccb_emit(self.out, "}");
     ccb_emit(self.out, "");

@@ -57,6 +57,12 @@ lifecycle calls, process `main`, executable wrapper, embedded interface text, or
 goes to stdout. With `-o`, the value is the exact output file; generation creates no companion artifacts and never
 invokes the host compiler or linker. `--keep-c` and host-tool-only controls remain invalid with `--gen`.
 
+For identical source, resolved graph, verified interfaces, fingerprints, compiler version, and byte-affecting settings,
+the selected module C is byte-identical across `--gen`, `--compile --keep-c`, `--build --keep-c`, and `--run --keep-c`.
+Output paths, caller mode, and invocation-private workspace names do not enter those bytes. Build/run retention copies
+the exact module bytes submitted to the host compiler; it does not regenerate or rewrite them. The separately compiled
+`__dea_wrapper.c` is link-orchestration output and has no generated-C or compile-only counterpart.
+
 ### L1 multi-compilation-unit build and run
 
 L1 `--build` and `--run` resolve the requested source target through the canonical module graph with interface-first

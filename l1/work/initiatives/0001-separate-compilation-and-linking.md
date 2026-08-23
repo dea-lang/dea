@@ -4,9 +4,9 @@
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`
   - `l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`
@@ -316,8 +316,8 @@ work is split by dependency, not by the former whole-plan labels:
     original native paths.
 08. **Build/run fan-out (complete):** preserve `--build` and `--run` as convenience commands by reusing the same compile
     and link APIs over the source/interface graph.
-09. **Generated-C completion:** verify byte identity across generation, compile-only retention, and build/run retention,
-    then retire the legacy whole-closure generator after fan-out removes its remaining callers.
+09. **Generated-C completion (complete):** verified byte identity across generation, compile-only retention, and
+    build/run retention, then retired the legacy whole-closure generator after fan-out removed its remaining callers.
 10. **External libraries:** extend the ordered link-input stream with libraries, rpaths, and raw host-driver arguments.
 
 The driver ultimately exposes these contracts:
@@ -350,8 +350,8 @@ the provider's link identity.
 
 ### 2b. Backend changes
 
-The legacy generator continues to walk every source unit in the closure. The internal module generator instead walks
-only the selected source-backed module; imported values are **declared** but not defined. Per-module C output contains:
+The production backend now exposes only the module generator, which walks the selected source-backed module; imported
+values are **declared** but not defined. Per-module C output contains:
 
 - forward declarations for every type reachable from the module's signatures (own + imported);
 - external declarations for imported functions and top-level lets; non-extern L1 symbols use their provider-owned
@@ -515,7 +515,7 @@ structured --c-source --> shared native workspace ------------------------------
                                                                                      build/run fan-out
                                                                                               |
                                                                                               v
-                                                               verify identity + retire whole-closure generator
+                                                               generated-C identity + legacy removal complete
                                                                                               |
                                                                                               v
                                                                                       external libraries
@@ -528,8 +528,8 @@ structured --c-source --> shared native workspace ------------------------------
 - Artifact-graph, fingerprint, lifecycle, compile-only, and `.l1m`-authority work are complete. The authority transition
   removed the historical object-metadata subsystem and is recorded by [ADR-0030][l1m-authority-adr].
 - Compile-only artifacts are operational with verified operational interface records and opaque paired objects.
-- The generated-C foundation migrated `--gen` and stabilized compile-only compiler paths; build/run retention now proves
-  matching module bytes, while the completion tranche still owns legacy-generator removal.
+- The generated-C foundation migrated `--gen` and stabilized compile-only compiler paths; the completion tranche proves
+  exact matching module bytes across all four modes and removed the legacy generator.
 - Standalone link owns verified-interface planning, opaque native input forwarding, and wrapper construction; build/run
   reuses that API rather than creating a second link path.
 - Standalone link uses an atomically reserved transaction beside its mandatory output and supplies explicit scratch
@@ -561,7 +561,7 @@ Recorded near-term tranche checkpoints:
   transitive provenance.
 - [x] Complete supported-host CI and ADR lifecycle closure for the `.l1m` authority plan.
 - [x] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
-- [ ] Verify four-mode generated-C identity and retire the legacy whole-closure generator after build/run fan-out.
+- [x] Verify four-mode generated-C identity and retire the legacy whole-closure generator after build/run fan-out.
 - [ ] Add ordered external-library and raw host-driver inputs.
 
 ## Cross-cutting concerns
@@ -661,8 +661,9 @@ the chosen answer and points at the owning section.
 7. **Per-module generated C:** `--gen` treats a selected `.l1m` as sufficient without inspecting its sibling object and
    uses stable module-relative compiler-visible paths under the completed
    [generated-C foundation plan][generated-c-foundation], recorded by [ADR-0031][generated-c-adr] and
-   [ADR-0032][compile-staging-adr]. The downstream [generated-C completion plan][per-module-generated-c] owns four-mode
-   byte identity and retires whole-closure generation only after all production callers migrate.
+   [ADR-0032][compile-staging-adr]. The completed [generated-C completion plan][per-module-generated-c] establishes
+   four-mode byte identity, exact compiler-input retention, and legacy whole-closure removal under
+   [ADR-0035][generated-c-identity-adr].
 8. **Standalone link workspace:** validate the complete link set and toolchain/runtime inputs before atomically
    reserving a bounded output-local `.l1c-link-*` transaction. The common executor receives explicit scratch paths and
    does not own workspace allocation or cleanup. The transaction owns wrapper and capture files only; original native
@@ -744,9 +745,9 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - Rationale: The generated-C foundation child plan owns this public compiler-artifact contract.
 - Decision: Preserve generated-C bytes across generation, compile-only retention, and retained build/run output.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
-  - Rationale: The generated-C completion child plan owns the cross-mode identity rule.
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0035-cross-mode-generated-c-byte-identity.md`
+  - Rationale: ADR-0035 records the cross-mode identity, exact compiler-input retention, and wrapper-exclusion rules.
 - Decision: Use stable module-relative host-compiler paths for deterministic compile-only objects where the toolchain
   permits.
   - Scope: L1
@@ -755,9 +756,9 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - Rationale: The generated-C foundation child plan owns deterministic compiler-visible staging.
 - Decision: Remove the transitional legacy whole-closure generator after all production callers migrate.
   - Scope: L1
-  - Disposition: Amend ADR
+  - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0020-per-module-backend-and-lifecycle-abi.md`
-  - Rationale: ADR-0020 explicitly preserved that generator only during the staged migration.
+  - Rationale: Amended ADR-0020 records completion of the staged migration and removal of the legacy generator.
 - Decision: Extend separate compilation and linking through the shared compiler CLI mode and option contract.
   - Scope: Shared
   - Disposition: Covered by ADR
@@ -817,7 +818,7 @@ implementation tranche proves that one decision area needs additional design wor
 - `.l1m`-authoritative standalone linking and opaque native-input handling under
   [`l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`][l1m-authoritative-linking].
 - `--build` / `--run` graph fan-out through shared compile/link APIs under [build/run fan-out][build-run].
-- Four-mode generated-C identity and legacy-generator retirement after build/run under
+- Four-mode generated-C identity and legacy-generator retirement completed after build/run under
   [generated-C completion][per-module-generated-c].
 - Phase 3: external-library linking CLI under
   [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][library-linking]
@@ -850,6 +851,7 @@ implementation tranche proves that one decision area needs additional design wor
 [fingerprint-adr]: ../../docs/decisions/0019-whole-module-interface-fingerprints.md
 [generated-c-adr]: ../../docs/decisions/0031-per-module-generated-c-cli-boundary.md
 [generated-c-foundation]: ../plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
+[generated-c-identity-adr]: ../../docs/decisions/0035-cross-mode-generated-c-byte-identity.md
 [interface-emission]: ../plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [l1m-authoritative-linking]: ../plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
@@ -867,7 +869,7 @@ implementation tranche proves that one decision area needs additional design wor
 [module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
 [object-metadata]: ../plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
-[per-module-generated-c]: ../plans/features/2026-07-24-per-module-generated-c-mode-noref.md
+[per-module-generated-c]: ../plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [roadmap]: ../../docs/roadmap.md
 [runtime-library]: closed/0002-runtime-static-library.md
 [separate-compilation]: ../../docs/reference/separate-compilation.md

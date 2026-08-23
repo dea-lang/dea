@@ -41,12 +41,13 @@ Build/run `--keep-c` retains one complete generated-C tree:
 
 - Existing callers expecting `OUTPUT.c` or a run-selected `-o.c` must consume the `.dea-c` directory instead.
 - Repeating the same keep-C command requires the caller to move or remove the prior tree explicitly.
-- The downstream generated-C completion work owns final four-mode identity coverage and legacy-generator removal; this
-  decision owns the build/run tree shape and copy semantics.
+- [ADR-0035][identity] records the completed four-mode identity proof and legacy-generator removal; this decision owns
+  the build/run tree shape and copy semantics.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
+- [l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md][completion]
 
 ## Current Docs
 
@@ -57,4 +58,6 @@ Build/run `--keep-c` retains one complete generated-C tree:
 [backend]: ../reference/c-backend-design.md
 [build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[completion]: ../../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
+[identity]: 0035-cross-mode-generated-c-byte-identity.md
 [separate-compilation]: ../reference/separate-compilation.md

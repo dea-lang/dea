@@ -283,12 +283,14 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 
 ### 2.8 Backend (`backend.l0`, `c_emitter.l0`, `string_escape.l0`)
 
-- Consumes typed analysis results through the target-aware `backend_generate_module` API for every public generated-C,
-  compile-only, build, and run path. The legacy `backend_generate` API remains internal pending removal.
+- Consumes typed analysis results exclusively through the target-aware `backend_generate_module` API for every public
+  generated-C, compile-only, build, and run path.
 - Keeps module definitions scoped to the selected source-backed target while declaring imported source and interface
   values and functions under provider-owned names.
 - Emits external per-module `I4init` / `I4fini` lifecycle functions and an optional external `I5entry` bridge without
   process-wrapper or cross-module orchestration.
+- Preserves identical module C bytes across all four producer modes for identical semantic and code-generation inputs;
+  build/run retain the exact staged compiler inputs while the standalone wrapper remains a separate artifact.
 - Delegates backend-specific behavior to [c-backend-design.md](c-backend-design.md).
 
 ### 2.9 Module Lifecycle and Standalone Link (`module_lifecycle.l0`, `link_driver.l0`, `wrapper_emitter.l0`)

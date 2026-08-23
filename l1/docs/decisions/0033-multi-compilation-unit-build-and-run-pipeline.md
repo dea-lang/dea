@@ -55,11 +55,12 @@ host link and flows through bounded command-workspace cleanup.
   against publication and replacement.
 - Parallel compilation, caching, package manifests, external libraries, and raw host-link arguments remain outside this
   pipeline.
-- The legacy whole-program generator has no ordinary CLI caller and can be removed by the generated-C completion work.
+- The generated-C completion work removed the legacy whole-program generator after proving cross-mode module identity.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
+- [l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md][completion]
 
 ## Current Docs
 
@@ -73,4 +74,5 @@ host link and flows through bounded command-workspace cleanup.
 [backend]: ../reference/c-backend-design.md
 [build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[completion]: ../../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

@@ -15,14 +15,6 @@ import build_driver;
 import cli_args;
 
 /**
- * Tests test_with_c_suffix_rewrites_existing_extension.
- */
-func test_with_c_suffix_rewrites_existing_extension() {
-    assert(bd_with_c_suffix("build/out.exe") == "build/out.c", "existing extension should be replaced");
-    assert(bd_with_c_suffix("plain-output") == "plain-output.c", "missing extension should add .c");
-}
-
-/**
  * Tests test_shell_quote_posix_handles_spaces_and_quotes.
  */
 func test_shell_quote_posix_handles_spaces_and_quotes() {
@@ -199,47 +191,6 @@ func test_output_flag_selection_matches_compiler_family() {
 }
 
 /**
- * Tests test_compile_command_order_places_source_after_compiler_flags.
- */
-func test_compile_command_order_places_source_after_compiler_flags() {
-    with (
-        let extra_opts = sv_create(1) => sv_free(extra_opts),
-        let words = sv_create(14) => sv_free(words)
-    ) {
-        sv_push(extra_opts, "-DVALUE=1");
-
-        let optimize = bd_get_optimize_flag("tcc", extra_opts);
-        assert(optimize != null && optimize as string == "-O1", "tcc default optimize flag mismatch");
-        assert(
-            bd_push_c_compile_command_words(
-                words,
-                "tcc",
-                "tcc",
-                extra_opts,
-                optimize,
-                "runtime/include",
-                "input.c",
-                "out.exe",
-                true
-            ),
-            "sys.real link flag should be appended for tcc"
-        );
-        sv_push(words, "-L");
-        sv_push(words, "runtime/lib");
-
-        assert(sv_get(words, 0) == "tcc", "compiler should be first");
-        assert(sv_get(words, 1) == "-DVALUE=1", "extra C option should precede source");
-        assert(sv_get(words, 2) == "-std=c99", "standard flag should precede source");
-        assert(sv_get(words, 5) == "-O1", "optimization flag should precede source");
-        assert(sv_get(words, 6) == "-I", "runtime include flag should precede source");
-        assert(sv_get(words, 8) == "input.c", "source path should follow compiler flags");
-        assert(sv_get(words, 9) == "-o", "output flag should follow source");
-        assert(sv_get(words, 11) == "-lm", "sys.real link flag should follow source");
-        assert(sv_get(words, 12) == "-L", "runtime library flag should follow source");
-    }
-}
-
-/**
  * Tests test_exe_name_helpers_are_consistent.
  */
 func test_exe_name_helpers_are_consistent() {
@@ -284,7 +235,6 @@ func test_runtime_archive_filename_selects_unchecked_when_unchecked_set() {
     with (let opts = cli_options_create() => cli_options_free(opts)) {
         opts.unchecked = true;
         assert(bd_runtime_archive_filename(opts) == "libdea_rt_unchecked.a", "unchecked archive filename mismatch");
-        assert(bd_runtime_archive_link_name(opts) == "dea_rt_unchecked", "unchecked archive link name mismatch");
 
         let unchecked_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
         let unchecked_dir = join(join(join("build-root", "runtime"), "tcc"), "unchecked");
@@ -300,35 +250,11 @@ func test_runtime_archive_filename_selects_check_basic_when_check_basic_set() {
     with (let opts = cli_options_create() => cli_options_free(opts)) {
         opts.check_basic = true;
         assert(bd_runtime_archive_filename(opts) == "libdea_rt_check_basic.a", "check-basic archive filename mismatch");
-        assert(bd_runtime_archive_link_name(opts) == "dea_rt_check_basic", "check-basic archive link name mismatch");
 
         let check_basic_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
         let check_basic_dir = join(join(join("build-root", "runtime"), "tcc"), "check_basic");
         assert(sv_get(check_basic_paths, 0) == join(check_basic_dir, "dea_rt_panic.o"), "check-basic tcc object dir mismatch");
         sv_free(check_basic_paths);
-    }
-}
-
-/**
- * Tests traced runtime archive linker-name selection.
- */
-func test_runtime_archive_link_name_selects_traced_when_either_trace_flag_set() {
-    with (let opts = cli_options_create() => cli_options_free(opts)) {
-        opts.trace_arc = false;
-        opts.trace_memory = false;
-        assert(bd_runtime_archive_link_name(opts) == "dea_rt", "untraced archive link name mismatch");
-
-        opts.trace_arc = true;
-        opts.trace_memory = false;
-        assert(bd_runtime_archive_link_name(opts) == "dea_rt_traced", "trace-arc archive link name mismatch");
-
-        opts.trace_arc = false;
-        opts.trace_memory = true;
-        assert(bd_runtime_archive_link_name(opts) == "dea_rt_traced", "trace-memory archive link name mismatch");
-
-        opts.trace_arc = true;
-        opts.trace_memory = true;
-        assert(bd_runtime_archive_link_name(opts) == "dea_rt_traced", "combined trace archive link name mismatch");
     }
 }
 
@@ -372,7 +298,6 @@ func test_runtime_object_paths_return_default_or_traced_dirs() {
  * Main entry point for the module.
  */
 func main() {
-    test_with_c_suffix_rewrites_existing_extension();
     test_shell_quote_posix_handles_spaces_and_quotes();
     test_shell_quote_windows_handles_spaces_and_quotes();
     test_join_shell_words_quotes_every_token();
@@ -382,12 +307,10 @@ func main() {
     test_compiler_flag_family_detection();
     test_get_optimize_flag_defaults_and_overrides();
     test_output_flag_selection_matches_compiler_family();
-    test_compile_command_order_places_source_after_compiler_flags();
     test_exe_name_helpers_are_consistent();
     test_runtime_archive_filename_selects_traced_when_either_trace_flag_set();
     test_runtime_archive_filename_selects_unchecked_when_unchecked_set();
     test_runtime_archive_filename_selects_check_basic_when_check_basic_set();
-    test_runtime_archive_link_name_selects_traced_when_either_trace_flag_set();
     test_runtime_object_paths_return_null_without_l1_build_dir();
     test_runtime_object_paths_return_default_or_traced_dirs();
     printl_s("build_driver_test: all tests passed");

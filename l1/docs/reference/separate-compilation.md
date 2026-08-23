@@ -246,8 +246,13 @@ Per-module `--gen`, compile-only, multi-CU build/run, and standalone linking are
 re-analyzes each source-backed graph node as a one-module entry against authoritative and already staged provider
 interfaces, compiles it into private `.c`, `.o`, and `.l1m` companions, combines those with authoritative
 interface/object providers and foreign objects through the verified link planner, and supplies all wrapper/capture paths
-from its command-owned native workspace. The legacy whole-program backend remains internal pending the downstream
-generated-C completion cleanup, but no ordinary CLI mode dispatches through it.
+from its command-owned native workspace. `backend_generate_module(...)` is the only production C-generation entrypoint;
+the legacy whole-program generator and backend-owned process wrapper have been removed.
+
+For identical source, resolved graph, verified interfaces, fingerprints, code-generation settings, and compiler version,
+`--gen`, compile-only keep-C, build keep-C, and run keep-C expose byte-identical module C. Build/run retention copies
+the exact compiler input after linking, interface/object providers require and produce no C, and `__dea_wrapper.c`
+remains outside module identity as a separate link-orchestration artifact.
 
 External libraries, library search paths, rpaths, raw host-driver arguments, static/shared-library production, C++
 interoperation, and object discovery remain outside the implemented standalone-link surface.

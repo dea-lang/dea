@@ -38,8 +38,7 @@ struct Backend {
     opts: CodegenOptions*;
     cfg: LogConfig*;
     emitter: CEmitter*;
-    output_kind: CodegenOutputKind;
-    target_module: string?;
+    target_module: string;
     required_type_keys: StringSet*?;
     current_module: string?;
     current_unit: DriverUnit*?;
@@ -95,47 +94,6 @@ func be_ice_string(message: string) -> string {
 }
 
 /**
- * Create a backend state for one supported output boundary.
- *
- * @param result Borrowed semantic analysis result.
- * @param opts Borrowed codegen options.
- * @param cfg Borrowed log configuration.
- * @param output_kind Output boundary to generate.
- * @param target_module Canonical module name for module output, otherwise `null`.
- * @return New backend state.
- */
-func be_create_for_output(
-    result: AnalysisResult*,
-    opts: CodegenOptions*,
-    cfg: LogConfig*,
-    output_kind: CodegenOutputKind,
-    target_module: string?
-) -> Backend* {
-    if ((ord(output_kind) == ord(CGK_MODULE)) != (target_module != null)) {
-        be_ice("[ICE-9304] module output kind and target must be selected together");
-    }
-    let emitter = cem_create();
-    cem_set_analysis(emitter, result);
-    if (target_module != null) {
-        cem_set_module_target(emitter, target_module as string);
-    }
-    return new Backend(result, opts, cfg, emitter, output_kind, target_module, null, null, null, null, null, null,
-        ptr_vec_create(8), null, null, 0, 0, false);
-}
-
-/**
- * Create a backend state for legacy whole-program generation.
- *
- * @param result Borrowed semantic analysis result.
- * @param opts Borrowed codegen options.
- * @param cfg Borrowed log configuration.
- * @return New backend state.
- */
-func be_create(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogConfig*) -> Backend* {
-    return be_create_for_output(result, opts, cfg, CGK_WHOLE_PROGRAM, null);
-}
-
-/**
  * Create a backend state for one source-backed module.
  *
  * @param result Borrowed semantic analysis result.
@@ -150,7 +108,11 @@ func be_create_module(
     opts: CodegenOptions*,
     cfg: LogConfig*
 ) -> Backend* {
-    return be_create_for_output(result, opts, cfg, CGK_MODULE, target_module);
+    let emitter = cem_create();
+    cem_set_analysis(emitter, result);
+    cem_set_module_target(emitter, target_module);
+    return new Backend(result, opts, cfg, emitter, target_module, null, null, null, null, null, null,
+        ptr_vec_create(8), null, null, 0, 0, false);
 }
 
 /**
@@ -297,26 +259,13 @@ func be_find_unit(self: Backend*, module_name: string) -> DriverUnit*? {
 }
 
 /**
- * Return whether this pass emits one module rather than a whole program.
- *
- * @param self Backend state to inspect.
- * @return `true` for module output.
- */
-func be_is_module_output(self: Backend*) -> bool {
-    return ord(self.output_kind) == ord(CGK_MODULE);
-}
-
-/**
  * Return the selected source-backed target module.
  *
  * @param self Backend state to inspect.
  * @return Borrowed parsed target module.
  */
 func be_target_root(self: Backend*) -> Module* {
-    if (!be_is_module_output(self) || self.target_module == null) {
-        be_ice("[ICE-9305] module target requested outside module output");
-    }
-    let target_name = self.target_module as string;
+    let target_name = self.target_module;
     let unit = be_find_unit(self, target_name);
     if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
         be_ice("[ICE-9306] module output target is not source-backed: " + target_name);
@@ -329,17 +278,10 @@ func be_target_root(self: Backend*) -> Module* {
  *
  * @param self Backend state to inspect.
  * @param module_name Source module name.
- * @return `true` for every module in legacy output or only the selected module in module output.
+ * @return `true` only for the selected module.
  */
 func be_emits_module_definitions(self: Backend*, module_name: string) -> bool {
-    if (!be_is_module_output(self)) {
-        return true;
-    }
-    if (self.target_module == null) {
-        return false;
-    }
-    let target = self.target_module as string;
-    return target == module_name;
+    return self.target_module == module_name;
 }
 
 /**
@@ -351,10 +293,10 @@ func be_emits_module_definitions(self: Backend*, module_name: string) -> bool {
  * @return `true` when name resolution recorded the cross-module use.
  */
 func be_target_consumes_symbol(self: Backend*, provider_module: string, symbol_name: string) -> bool {
-    if (!be_is_module_output(self) || self.target_module == null || self.result.names == null) {
+    if (self.result.names == null) {
         return false;
     }
-    let target = self.target_module as string;
+    let target = self.target_module;
     let names = self.result.names as NameResolution*;
     for (let i = 0; i < nr_resolved_symbol_count(names); i = i + 1) {
         let resolved = nr_resolved_symbol_get(names, i);
@@ -374,10 +316,7 @@ func be_target_consumes_symbol(self: Backend*, provider_module: string, symbol_n
  * @return `true` for target-owned, prelude, or consumed provider entries.
  */
 func be_target_includes_value_key(self: Backend*, key: string) -> bool {
-    if (!be_is_module_output(self) || self.target_module == null) {
-        return true;
-    }
-    let target = self.target_module as string;
+    let target = self.target_module;
     let target_prefix = target + "::";
     if (starts_with_s(key, target_prefix) || starts_with_s(key, "dea::")) {
         return true;
@@ -2083,12 +2022,11 @@ func be_collect_required_type_keys(self: Backend*, root: Module*) -> StringSet* 
  * @param self Backend state to inspect.
  * @param module_name Defining module name.
  * @param type_name Nominal type name.
- * @return `true` for whole-program output or a required module-output type.
+ * @return `true` for a type required by the selected module output.
  */
 func be_requires_type(self: Backend*, module_name: string, type_name: string) -> bool {
-    return !be_is_module_output(self) ||
-        (self.required_type_keys != null &&
-         ss_has(self.required_type_keys as StringSet*, be_type_key(module_name, type_name)));
+    return self.required_type_keys != null &&
+        ss_has(self.required_type_keys as StringSet*, be_type_key(module_name, type_name));
 }
 
 /**
@@ -2219,7 +2157,7 @@ func be_collect_type_keys(self: Backend*) -> StringVector* {
                     let decl = top.data as StructDecl*;
                     let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, root.name, decl.name);
                     if (!be_requires_type(self, root.name, decl.name) ||
-                        (be_is_module_output(self) && !be_emits_module_definitions(self, root.name) &&
+                        (!be_emits_module_definitions(self, root.name) &&
                          (!be_is_symbol_exported(self, root.name, decl.name) ||
                           (info != null && (info as StructInfo*).is_opaque)))) {
                         continue;
@@ -2252,7 +2190,7 @@ func be_collect_type_keys(self: Backend*) -> StringVector* {
                     let decl2 = top.data as EnumDecl*;
                     let info3 = sig_lookup_enum_info(self.result.signatures as SignatureTables*, root.name, decl2.name);
                     if (!be_requires_type(self, root.name, decl2.name) ||
-                        (be_is_module_output(self) && !be_emits_module_definitions(self, root.name) &&
+                        (!be_emits_module_definitions(self, root.name) &&
                          (!be_is_symbol_exported(self, root.name, decl2.name) ||
                           (info3 != null && (info3 as EnumInfo*).is_opaque)))) {
                         continue;
@@ -2679,7 +2617,7 @@ func be_emit_let_declarations(self: Backend*) {
         let mi = driver_interface_get(self.result.driver_state, iface_i);
         for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
             let entry = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
-            if (!be_is_module_output(self) || be_target_consumes_symbol(self, mi.module_name, entry.name)) {
+            if (be_target_consumes_symbol(self, mi.module_name, entry.name)) {
                 any_bindings = true;
                 break;
             }
@@ -2750,7 +2688,7 @@ func be_emit_let_declarations(self: Backend*) {
         let module_has_bindings2 = false;
         for (let let_i = 0; let_i < vec_size(mi2.let_entries); let_i = let_i + 1) {
             let entry2 = ptr_vec_get(mi2.let_entries, let_i) as InterfaceLetEntry*;
-            if (be_is_module_output(self) && !be_target_consumes_symbol(self, mi2.module_name, entry2.name)) {
+            if (!be_target_consumes_symbol(self, mi2.module_name, entry2.name)) {
                 continue;
             }
             if (!module_has_bindings2) {
@@ -2760,51 +2698,6 @@ func be_emit_let_declarations(self: Backend*) {
             cem_emit_interface_let_declaration(self.emitter, mi2.module_name, entry2);
         }
     }
-}
-
-/**
- * Return whether one module needs a deferred top-level init function.
- *
- * @param self Backend state to inspect.
- * @param root Parsed module to inspect.
- * @return `true` if at least one top-level `let` needs runtime initialization.
- */
-func be_module_has_deferred_let_initializers(self: Backend*, root: Module*) -> bool {
-    let prev_module = self.current_module;
-    let prev_unit = self.current_unit;
-    let prev_env = self.current_env;
-    self.current_module = root.name;
-    self.current_unit = be_find_unit(self, root.name);
-    self.current_env = be_find_env(self, root.name);
-    if (self.current_unit == null) {
-        be_ice("[ICE-1362] missing unit for deferred-init scan: " + root.name);
-    }
-
-    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
-        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
-        if (ord(top.kind) != ord(TD_LET)) {
-            continue;
-        }
-        let decl = top.data as LetDecl*;
-        if (decl.is_const) {
-            continue;
-        }
-        let let_type = sig_lookup_let_type(self.result.signatures as SignatureTables*, root.name, decl.name);
-        if (let_type == null) {
-            be_ice("[ICE-1151] missing Let type for " + root.name + "." + decl.name);
-        }
-        let c_init = be_try_emit_let_initializer(self, decl.value, let_type as Type*);
-        if (c_init == null) {
-            self.current_module = prev_module;
-            self.current_unit = prev_unit;
-            self.current_env = prev_env;
-            return true;
-        }
-    }
-    self.current_module = prev_module;
-    self.current_unit = prev_unit;
-    self.current_env = prev_env;
-    return false;
 }
 
 /**
@@ -2826,146 +2719,6 @@ func be_emit_deferred_top_level_let_assignment(self: Backend*, module_name: stri
         cem_emit_assignment(self.emitter, c_name, temp);
     } else {
         cem_emit_assignment(self.emitter, c_name, c_value);
-    }
-}
-
-/**
- * Emit a post-order dependency walk for module init sequencing.
- *
- * @param self Backend state to inspect.
- * @param module_name Module to visit.
- * @param visited Set of already visited module names.
- * @param ordered Destination vector in init-call order.
- */
-func be_collect_module_init_order_visit(self: Backend*, module_name: string, visited: StringVector*, ordered: StringVector*) {
-    if (dr_sv_has(visited, module_name)) {
-        return;
-    }
-    sv_push(visited, module_name);
-    let unit = be_find_unit(self, module_name);
-    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
-        return;
-    }
-    let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
-    for (let i = 0; i < vec_size(root.imports); i = i + 1) {
-        let imp = ptr_vec_get(root.imports, i) as Import*;
-        be_collect_module_init_order_visit(self, imp.name, visited, ordered);
-    }
-    sv_push(ordered, module_name);
-}
-
-/**
- * Collect module names in deterministic top-level init order.
- *
- * @param self Backend state to inspect.
- * @return New vector of module names in dependency/source order.
- */
-func be_collect_module_init_order(self: Backend*) -> StringVector* {
-    let ordered = sv_create(driver_unit_count(self.result.driver_state));
-    with (let visited = sv_create(driver_unit_count(self.result.driver_state)) => sv_free(visited)) {
-        if (!is_empty_s(self.result.driver_state.entry_module)) {
-            be_collect_module_init_order_visit(self, self.result.driver_state.entry_module, visited, ordered);
-        } else {
-            for (let i = 0; i < driver_unit_count(self.result.driver_state); i = i + 1) {
-                let unit = driver_unit_get(self.result.driver_state, i);
-                if (unit.parse_result.root_module == null) {
-                    continue;
-                }
-                be_collect_module_init_order_visit(self, (unit.parse_result.root_module as Module*).name, visited, ordered);
-            }
-        }
-    }
-    return ordered;
-}
-
-/**
- * Emit one hidden module init function when a module has deferred top-level lets.
- *
- * @param self Backend state to update.
- * @param root Parsed module to inspect.
- * @return `true` if a function was emitted.
- */
-func be_emit_module_init_function(self: Backend*, root: Module*) -> bool {
-    if (!be_module_has_deferred_let_initializers(self, root)) {
-        return false;
-    }
-
-    self.current_module = root.name;
-    self.current_unit = be_find_unit(self, root.name);
-    self.current_env = be_find_env(self, root.name);
-    cem_emit_module_comment(self.emitter, root.name);
-    cem_emit_hidden_void_function_header(self.emitter, cem_mangle_module_init_name(root.name));
-    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
-        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
-        if (ord(top.kind) != ord(TD_LET)) {
-            continue;
-        }
-        let decl = top.data as LetDecl*;
-        if (decl.is_const) {
-            continue;
-        }
-        let let_type = sig_lookup_let_type(self.result.signatures as SignatureTables*, root.name, decl.name);
-        if (let_type == null) {
-            be_ice("[ICE-1151] missing Let type for " + root.name + "." + decl.name);
-        }
-        let c_init = be_try_emit_let_initializer(self, decl.value, let_type as Type*);
-        if (c_init != null) {
-            continue;
-        }
-        be_emit_deferred_top_level_let_assignment(self, root.name, decl, let_type as Type*);
-    }
-    cem_emit_function_definition_footer(self.emitter);
-    return true;
-}
-
-/**
- * Emit hidden module/global init functions for deferred top-level `let` initializers.
- *
- * @param self Backend state to update.
- * @return `true` if a global init chain was emitted.
- */
-func be_emit_top_level_init_functions(self: Backend*) -> bool {
-    if (self.result.signatures == null) {
-        return false;
-    }
-
-    with (let ordered = be_collect_module_init_order(self) => sv_free(ordered),
-          let deferred = sv_create(sv_size(ordered)) => sv_free(deferred)) {
-        for (let i = 0; i < sv_size(ordered); i = i + 1) {
-            let module_name = sv_get(ordered, i);
-            let unit = be_find_unit(self, module_name);
-            if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
-                continue;
-            }
-            let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
-            if (be_module_has_deferred_let_initializers(self, root)) {
-                sv_push(deferred, module_name);
-            }
-        }
-
-        if (sv_size(deferred) == 0) {
-            return false;
-        }
-
-        cem_emit_section_comment(self.emitter, "Top-level init functions");
-        for (let deferred_i = 0; deferred_i < sv_size(deferred); deferred_i = deferred_i + 1) {
-            let module_name = sv_get(deferred, deferred_i);
-            let unit = be_find_unit(self, module_name);
-            if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
-                continue;
-            }
-            let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
-            if (!be_emit_module_init_function(self, root)) {
-                be_ice("[ICE-1361] deferred init module disappeared: " + module_name);
-            }
-        }
-
-        cem_emit_hidden_void_function_header(self.emitter, cem_global_init_name());
-        for (let call_i = 0; call_i < sv_size(deferred); call_i = call_i + 1) {
-            ccb_emit(self.emitter.out, cem_mangle_module_init_name(sv_get(deferred, call_i)) + "(" + ");");
-        }
-        cem_emit_function_definition_footer(self.emitter);
-        return true;
     }
 }
 
@@ -3038,10 +2791,6 @@ func be_emit_function_declarations(self: Backend*) {
         let root = unit.parse_result.root_module as Module*;
         let emit_definitions = be_emits_module_definitions(self, root.name);
         let module_has_functions = false;
-        if (!be_is_module_output(self)) {
-            cem_emit_module_comment(self.emitter, root.name);
-            module_has_functions = true;
-        }
         for (let j = 0; j < vec_size(root.decls); j = j + 1) {
             let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
             if (ord(top.kind) != ord(TD_FUNC)) {
@@ -3069,7 +2818,7 @@ func be_emit_function_declarations(self: Backend*) {
         let module_has_functions2 = false;
         for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
             let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
-            if (be_is_module_output(self) && !be_target_consumes_symbol(self, mi.module_name, entry.name)) {
+            if (!be_target_consumes_symbol(self, mi.module_name, entry.name)) {
                 continue;
             }
             if (!module_has_functions2) {
@@ -5808,40 +5557,16 @@ func be_emit_module_entry_bridge_if_needed(self: Backend*, root: Module*, entry_
 }
 
 /**
- * Emit the C `main()` wrapper when the entry module defines `main`.
- *
- * @param self Backend state to update.
- * @param has_global_init Whether to call the hidden init chain before user `main`.
- */
-func be_emit_main_wrapper_if_needed(self: Backend*, has_global_init: bool) {
-    if (is_empty_s(self.result.driver_state.entry_module) || self.result.signatures == null) {
-        return;
-    }
-
-    let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, self.result.driver_state.entry_module,
-        "main");
-    if (func_type == null) {
-        return;
-    }
-    cem_emit_main_wrapper(self.emitter, self.result.driver_state.entry_module, func_type as Type*, has_global_init,
-        cem_global_init_name());
-}
-
-/**
  * Run the shared C-generation pipeline for one selected output boundary.
  *
  * @param self Backend state to update.
  * @return Complete generated C translation unit.
  */
 func be_generate_output(self: Backend*) -> string {
-    let target_root: Module*? = null;
-    let target_entry_type: Type*? = null;
-    if (be_is_module_output(self)) {
-        target_root = be_target_root(self);
-        self.required_type_keys = be_collect_required_type_keys(self, target_root as Module*);
-        cem_set_module_type_keys(self.emitter, self.required_type_keys as StringSet*);
-        target_entry_type = analysis_module_entry_type(self.result, (target_root as Module*).name);
-    }
+    let target_root = be_target_root(self);
+    self.required_type_keys = be_collect_required_type_keys(self, target_root);
+    cem_set_module_type_keys(self.emitter, self.required_type_keys as StringSet*);
+    let target_entry_type = analysis_module_entry_type(self.result, target_root.name);
 
     log_stage(self.cfg, "Generating C code", "");
     log_debug(self.cfg, "Preparing optional wrapper types");
@@ -5863,34 +5588,10 @@ func be_generate_output(self: Backend*) -> string {
     cem_emit_func_ptr_typedefs(self.emitter);
     be_emit_let_declarations(self);
     be_emit_function_declarations(self);
-    if (target_root != null) {
-        be_emit_module_lifecycle_functions(self, target_root as Module*);
-        be_emit_function_definitions(self);
-        be_emit_module_entry_bridge_if_needed(self, target_root as Module*, target_entry_type);
-    } else {
-        let has_global_init = be_emit_top_level_init_functions(self);
-        be_emit_function_definitions(self);
-        be_emit_main_wrapper_if_needed(self, has_global_init);
-    }
+    be_emit_module_lifecycle_functions(self, target_root);
+    be_emit_function_definitions(self);
+    be_emit_module_entry_bridge_if_needed(self, target_root, target_entry_type);
     return cem_get_output(self.emitter);
-}
-
-/**
- * Generate legacy whole-program C source from a typed analysis result.
- *
- * @param result Typed analysis result to lower.
- * @param opts Codegen options to honor.
- * @param cfg Logging configuration to use.
- * @return Complete generated C translation unit.
- */
-func backend_generate(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogConfig*) -> string {
-    if (analysis_has_errors(result)) {
-        be_ice("[ICE-9303] backend_generate requires analysis without errors");
-    }
-
-    with (let self = be_create(result, opts, cfg) => be_free(self)) {
-        return be_generate_output(self);
-    }
 }
 
 /**

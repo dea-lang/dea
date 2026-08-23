@@ -13,7 +13,6 @@ import std.vector;
 import analysis;
 import ast;
 import backend;
-import build_driver;
 import codegen_options;
 import driver;
 import interface_fingerprint;
@@ -303,7 +302,8 @@ func test_direct_interface_replay_open_import_codegen() {
 
     with (let opts = cg_options_create() => cg_options_free(opts),
           let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
-        let generated = backend_generate(result, opts, cfg);
+        let generated = backend_generate_module(
+            result, result.driver_state.entry_module, opts, cfg);
         assert(contains_s(generated, "struct __deaM15replay_providerS5Point {"), "expected imported Point definition");
         assert(contains_s(generated, "dea_int x;"), "expected imported Point.x field");
         assert(contains_s(generated, "enum __deaM15replay_providerE5Shade_tag {"), "expected imported Shade tag enum");
@@ -313,7 +313,8 @@ func test_direct_interface_replay_open_import_codegen() {
         assert(contains_s(generated, "__deaM15replay_providerN10make_point"), "expected imported make_point prototype/call");
         assert(contains_s(generated, "(dea_int px, dea_int py);"), "expected interface function parameter names");
         assert(contains_s(generated, "dea_int (c_score)(dea_int value);"), "expected raw extern function prototype");
-        assert(contains_s(generated, "void (c_touch)("), "expected raw unsafe extern function prototype");
+        assert(!contains_s(generated, "void (c_touch)("),
+            "unused raw unsafe extern function must not reach module output");
         assert(contains_s(generated,
             "dea_int __deaM15replay_providerN7collectF2iVii(dea_int prefix, __deaWi values);"),
             "expected imported variadic function prototype");
@@ -487,7 +488,7 @@ func test_project_interface_backed_metadata() {
 }
 
 /**
- * Tests interface-backed `sys.real` enables runtime definitions and link flags.
+ * Tests interface-backed `sys.real` enables generated runtime definitions.
  */
 func test_direct_interface_replay_sys_real_runtime_support() {
     let result = analyze_with_sys_real_interface();
@@ -500,20 +501,12 @@ func test_direct_interface_replay_sys_real_runtime_support() {
 
     with (let opts = cg_options_create() => cg_options_free(opts),
           let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
-        let generated = backend_generate(result, opts, cfg);
+        let generated = backend_generate_module(
+            result, result.driver_state.entry_module, opts, cfg);
         assert(contains_s(generated, "#define DEA_USE_SYS_REAL 1"),
             "interface-backed sys.real should enable runtime helper definitions");
         assert(contains_s(generated, "rt_real_sqrt_d("),
             "interface-backed sys.real call should reach generated C");
-    }
-
-    with (let extra_opts = sv_create(0) => sv_free(extra_opts),
-          let words = sv_create(12) => sv_free(words)) {
-        assert(bd_push_c_compile_command_words(words, "cc", "gcc", extra_opts, null,
-            "runtime/include", "input.c", "out", analysis_uses_sys_real(result)),
-            "interface-backed sys.real should request host math linkage");
-        assert(sv_get(words, sv_size(words) - 1) == "-lm",
-            "interface-backed sys.real should append the host math library flag");
     }
 
     analysis_result_free(result);
@@ -1014,7 +1007,8 @@ func test_direct_interface_replay_ignores_unused_interfaces() {
 
     with (let opts = cg_options_create() => cg_options_free(opts),
           let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2) {
-        let generated = backend_generate(result, opts, cfg2);
+        let generated = backend_generate_module(
+            result, result.driver_state.entry_module, opts, cfg2);
         assert(!contains_s(generated, "replay_unused"), "unused interface must not reach generated C");
     }
 

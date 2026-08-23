@@ -83,8 +83,7 @@ build, and run. It emits definitions for one selected source-backed module, exte
 source and interface values and functions consumed by that target, always-present external `I4init` and `I4fini`, and
 conditional external `I5entry` for a resolved, zero-parameter, non-extern source `main`. Module output contains no
 process `main`, global init chain, dependency lifecycle calls, embedded Dea metadata arrays, or retention reads. The
-legacy `backend_generate(...)` path remains internal pending downstream removal; no ordinary CLI mode dispatches through
-it.
+legacy whole-program backend, combined initialization walk, and backend-owned process wrapper have been removed.
 
 The compiler no longer carries ELF, Mach-O, or PE/COFF object readers. Standalone link performs no Dea-side reads of
 caller Dea or foreign object bytes, compiled wrapper bytes, runtime archive bytes, or TinyCC runtime-object bytes.
@@ -97,8 +96,11 @@ The CLI implements per-module `--gen` plus `-c` / `--compile` and accepts repeat
 with either mode. `--gen` writes stdout or exactly one requested file, accepts verified imported interfaces without
 native siblings, and never invokes a host tool. Compile-only publishes the sibling per-module `.o` and `.l1m` pair
 without invoking the final linker; `--keep-c` also publishes C bytes identical to `--gen` for the same resolved inputs
-and options. Ordinary `-c` never inspects or modifies the canonical `.c` path. Output-parent creation follows trusted
-directory aliases, while final artifacts and internal publication paths use no-follow classification.
+and options. Build/run retention copies those same bytes from the exact files submitted to the host compiler into the
+canonical mirrored `.dea-c` tree; `__dea_wrapper.c` remains a separate link artifact. Identity is covered for
+source-only and mixed source/interface graphs across every supported byte-affecting setting. Ordinary `-c` never
+inspects or modifies the canonical `.c` path. Output-parent creation follows trusted directory aliases, while final
+artifacts and internal publication paths use no-follow classification.
 
 The driver stages generated C, the object, and the interface beside the selected destinations under canonical
 module-relative paths. The host compiler runs from the private transaction, while its C/object operands contain only
@@ -280,13 +282,11 @@ bootstrap path:
 These remain true today:
 
 1. There is no implemented `stage2_l1` compiler yet.
-2. The legacy whole-program backend remains internal until the generated-C completion tranche removes it; operational
-   build/run already uses per-module graph fan-out.
-3. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit
+2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit
    objects, compile sources, or accept external libraries, rpaths, or raw host-link arguments.
-4. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
+3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
-5. Address-of (`&`) and generics are not part of the current active language surface.
+4. Address-of (`&`) and generics are not part of the current active language surface.
 
 ## Near-Term Direction
 

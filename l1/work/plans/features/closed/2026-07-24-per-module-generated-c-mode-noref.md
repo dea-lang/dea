@@ -2,8 +2,8 @@
 
 ## Complete generated-C identity and retire whole-closure generation
 
-- Date: 2026-07-24
-- Status: Draft
+- Date: 2026-08-23
+- Status: Completed
 - Title: Verify generated-C identity across modes and retire whole-closure generation
 - Kind: Feature
 - Severity: High
@@ -13,9 +13,13 @@
 - Modules:
   - `l1/compiler/stage1_l0/src/backend.l0`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
+  - `l1/compiler/stage1_l0/src/c_emitter.l0`
+  - `l1/compiler/stage1_l0/src/codegen_options.l0`
   - `l1/compiler/stage1_l0/src/compile_driver.l0`
+  - `l1/compiler/stage1_l0/src/driver.l0`
   - `l1/compiler/stage1_l0/src/l1c_lib.l0`
   - `docs/specs/compiler/cli-contract.md`
+  - `l1/docs/specs/compiler/abi.md`
   - `l1/docs/reference/architecture.md`
   - `l1/docs/reference/c-backend-design.md`
   - `l1/docs/reference/separate-compilation.md`
@@ -26,9 +30,12 @@
   - `l1/compiler/stage1_l0/tests/interface_replay_test.l0`
   - `l1/compiler/stage1_l0/tests/compile_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/link_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_workspace_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_compile_only_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_generated_c_identity_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
@@ -37,7 +44,8 @@
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
 - Repro:
-  `make -C l1 test-stage1 TESTS="backend_test c_emitter_test interface_replay_test compile_driver_test build_driver_test l1c_lib_test l1c_stage1_build_run_workspace_test.py l1c_stage1_compile_only_test.py l1c_stage1_help_output_test.py"`
+  `make -C l1 test-stage1 TESTS="backend_test c_emitter_test interface_replay_test compile_driver_test build_driver_test driver_test link_driver_test l1c_lib_test l1c_stage1_build_run_workspace_test.py l1c_stage1_compile_only_test.py l1c_stage1_help_output_test.py l1c_stage1_generated_c_identity_test.py"`
+  followed by `make -C l1 clean test-all`.
 
 ## Summary
 
@@ -107,7 +115,7 @@ the owning generated-output, retained-tree, graph, compile, and link diagnostics
 - Decision: Preserve byte-identical per-module C across `--gen`, `-c --keep-c`, and retained build/run output.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0035-cross-mode-generated-c-byte-identity.md`
   - Rationale: Four-mode identity is a durable compiler-artifact contract that becomes fully testable only after
     build/run fan-out lands.
 - Decision: Retire the transitional legacy whole-closure generator after all production callers migrate.
@@ -124,6 +132,22 @@ the owning generated-output, retained-tree, graph, compile, and link diagnostics
 3. Changing compile-only publication, rollback, object determinism, or concurrency guarantees.
 4. Adding complete-tree generation, build caching, incremental invalidation, or package resolution.
 5. Changing L0 generated-C behavior.
+
+## Completion Notes
+
+- Added a six-setting source-only and mixed source/interface matrix that compares module C across `--gen`, compile-only,
+  build, and run, and captures the host compiler's exact C inputs for byte comparison.
+- Verified that an authoritative `.o + .l1m` provider is consumed without reading or regenerating provider C, while the
+  separately named retained wrapper exactly matches its host-compiler input and remains outside module identity.
+- Removed the legacy whole-closure backend entrypoint, combined initialization chain, backend-owned process wrapper,
+  obsolete output-kind state, and their superseded tests and build-driver helpers.
+- Refreshed the CLI contract and live L1 architecture/backend/separate-compilation/status/roadmap/initiative docs, added
+  ADR-0035, and amended ADR-0020 plus the intervening generated-C/build-run ADRs.
+- Validation passed on 2026-08-23: the 12-test focused regression set, `make -C l1 clean test-all` with 67 normal and 44
+  broad trace tests, environment stackability, and all four shipped examples.
+- Independent read-only review found and prompted removal of the remaining legacy-only helpers and corrected the
+  source-only identity case to use a genuinely source-backed single-module graph; the full validation tier was rerun
+  after both fixes.
 
 ## Verification Criteria
 
@@ -144,8 +168,8 @@ Before finalization, verify legacy removal with:
 rg -n 'backend_generate\(' l1/compiler/stage1_l0
 ```
 
-[build-run]: closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
-[compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
-[generated-c-foundation]: closed/2026-08-21-per-module-generated-c-foundation-noref.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
+[compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
+[generated-c-foundation]: 2026-08-21-per-module-generated-c-foundation-noref.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

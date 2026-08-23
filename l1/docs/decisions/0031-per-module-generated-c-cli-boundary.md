@@ -45,13 +45,14 @@ output and `-c --keep-c` output are byte-identical for identical resolved inputs
 - Generated utility modules contain lifecycle definitions but no `I5entry`; eligible entry modules additionally contain
   `I5entry`, while neither form contains process `main`.
 - `--build` and `--run` use the module generator once per source-backed graph node; their retained trees copy those
-  exact bytes, while the downstream completion plan owns legacy-generator removal and the final four-mode proof.
-- The downstream generated-C completion plan can remove the legacy generator only after build/run migrates.
+  exact bytes. [ADR-0035][identity] records the completed four-mode proof and wrapper exclusion.
+- The legacy whole-program generator is removed now that build/run uses the module boundary.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][foundation]
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
+- [l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md][completion]
 
 ## Current Docs
 
@@ -64,5 +65,7 @@ output and `-c --keep-c` output are byte-identical for identical resolved inputs
 [backend]: ../reference/c-backend-design.md
 [build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[completion]: ../../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [foundation]: ../../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
+[identity]: 0035-cross-mode-generated-c-byte-identity.md
 [separate-compilation]: ../reference/separate-compilation.md

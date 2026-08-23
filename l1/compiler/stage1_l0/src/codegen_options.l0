@@ -8,14 +8,6 @@ module codegen_options;
 import cli_args;
 
 /**
- * Selects one supported backend output boundary.
- */
-enum CodegenOutputKind {
-    CGK_WHOLE_PROGRAM;
-    CGK_MODULE;
-}
-
-/**
  * Represents backend and emitter options that affect generated C text.
  */
 struct CodegenOptions {

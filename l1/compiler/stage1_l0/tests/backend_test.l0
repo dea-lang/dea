@@ -106,6 +106,11 @@ func bt_analyze_sources(entry_module: string, filenames: StringVector*, sources:
     return result;
 }
 
+/** Generate C for the analyzed entry module. */
+func bt_generate_entry(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogConfig*) -> string {
+    return backend_generate_module(result, result.driver_state.entry_module, opts, cfg);
+}
+
 /**
  * Build a semantic result from in-memory sources plus one interface-only provider.
  *
@@ -286,7 +291,7 @@ func test_backend_scope_helpers_manage_cleanup_state() {
     with (let result = bt_empty_analysis_result() => analysis_result_free(result),
           let opts = cg_options_create() => cg_options_free(opts),
           let cfg = log_config_create(LL_ERROR, false) => drop cfg,
-          let self = be_create(result, opts, cfg) => be_free(self)) {
+          let self = be_create_module(result, "demo.main", opts, cfg) => be_free(self)) {
         let borrowed_ty = type_builtin_int();
         let owned_ty = type_builtin_string();
         let temp_ty = type_builtin_string();
@@ -404,7 +409,7 @@ func test_backend_generate_types_and_top_level_lets() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for type-order fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "/* Type definitions (dependency-ordered) */"),
             "type-definition section comment missing");
         assert(contains_s(generated,
@@ -453,7 +458,7 @@ func test_backend_generate_top_level_consts() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for top-level const fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "const struct __deaM4demo4mainS5Point __deaM4demo4mainN6origin = { .x = 0, .y = 0 };"),
             "top-level const alias-backed struct lowering mismatch");
         assert(contains_s(generated, "const dea_int __deaM4demo4mainN6answer = 42;"),
@@ -462,62 +467,6 @@ func test_backend_generate_top_level_consts() {
             "top-level folded const scalar lowering mismatch");
         assert(contains_s(generated, "const struct __deaM4demo4mainE5Color __deaM4demo4mainN5color = { .tag = __deaM4demo4mainE5Color_Red };"),
             "top-level const bare variant lowering mismatch");
-
-        analysis_result_free(result);
-    }
-}
-
-/**
- * Tests deferred top-level `let` initializers lower through hidden module init functions.
- */
-func test_backend_generate_nonconstant_top_level_lets() {
-    with (let filenames = sv_create(2) => sv_free(filenames),
-          let sources = sv_create(2) => sv_free(sources),
-          let dep_lines = sv_create(8) => sv_free(dep_lines),
-          let main_lines = sv_create(8) => sv_free(main_lines),
-          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
-          let opts = cg_options_create() => cg_options_free(opts)) {
-        opts.emit_line_directives = false;
-        sv_push(filenames, "demo/dep.l1");
-        sv_push(dep_lines, "module demo.dep;");
-        sv_push(dep_lines, "let base: int = seed();");
-        sv_push(dep_lines, "func seed() -> int { return 20; }");
-        sv_push(dep_lines, "func get_base() -> int { return base; }");
-        sv_push(sources, bt_source(dep_lines));
-
-        sv_push(filenames, "demo/main.l1");
-        sv_push(main_lines, "module demo.main;");
-        sv_push(main_lines, "import demo.dep;");
-        sv_push(main_lines, "let answer: int = bump(demo.dep::get_base());");
-        sv_push(main_lines, "func bump(x: int) -> int { return x + 3; }");
-        sv_push(main_lines, "func main() -> int { return answer; }");
-        sv_push(sources, bt_source(main_lines));
-
-        let result = bt_analyze_sources("demo.main", filenames, sources);
-        assert(!analysis_has_errors(result), "analysis should succeed for deferred top-level lets");
-
-        let generated = backend_generate(result, opts, cfg);
-        assert(contains_s(generated, "dea_int __deaM4demo3depN4base = 0;"),
-            "deferred dep binding should be zero-initialized");
-        assert(contains_s(generated, "dea_int __deaM4demo4mainN6answer = 0;"),
-            "deferred main binding should be zero-initialized");
-        assert(contains_s(generated, "static void __deaM4demo3depI4init(void)"),
-            "dep init function missing");
-        assert(contains_s(generated, "__deaM4demo3depN4base = __deaM4demo3depN4seedF0i();"),
-            "dep init assignment mismatch");
-        assert(contains_s(generated, "static void __deaM4demo4mainI4init(void)"),
-            "main init function missing");
-        assert(contains_s(generated, "__deaM4demo4mainN6answer = _rt_iadd(__deaM4demo4mainN4bumpF1ii(__deaM4demo3depN8get_baseF0i()), 0);") ||
-            contains_s(generated, "__deaM4demo4mainN6answer = __deaM4demo4mainN4bumpF1ii(__deaM4demo3depN8get_baseF0i());"),
-            "main init assignment mismatch");
-        assert(contains_s(generated,
-            "static void _dea_init_modules(void)\n{\n    __deaM4demo3depI4init();\n    __deaM4demo4mainI4init();\n}\n"),
-            "global init chain order mismatch");
-        assert(contains_s(generated,
-            "_rt_init_args(argc, argv);\n    _dea_init_modules();\n    int dea_exit_code = (int) __deaM4demo4mainN4mainF0i();\n    return dea_exit_code;"),
-            "main wrapper should call global init chain");
-        assert(!contains_s(generated, "I8metadata") && !contains_s(generated, "I7imports"),
-            "legacy whole-program output must not emit per-module object metadata");
 
         analysis_result_free(result);
     }
@@ -1159,7 +1108,7 @@ func test_backend_generate_basic_control_flow() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for control-flow fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "dea_int __deaM4demo4mainN3addF2iii(dea_int a, dea_int b);"),
             "function declaration mismatch");
         assert(contains_s(generated, "return (_rt_iadd(a, b));"), "checked integer add lowering mismatch");
@@ -1206,7 +1155,7 @@ func test_backend_generate_loop_exit_case_lowering() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for case/loop fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "switch (_scrutinee) {"), "case lowering should use switch for ints");
         assert(contains_s(generated, "goto __lcont_"), "continue should lower to loop label goto");
         assert(contains_s(generated, "goto __lbrk_"), "break should lower to loop label goto");
@@ -1239,7 +1188,7 @@ func test_backend_generate_case_if_else_lowering() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for case/float fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(!contains_s(generated, "switch"), "float case lowering should not use switch");
         assert(contains_s(generated, "if (_scrutinee == 1.0f)"), "expected float literal condition");
         if (!contains_s(generated, "if (_scrutinee == -2.5f)")) {
@@ -1291,7 +1240,7 @@ func test_backend_generate_match_and_with_cleanup_block() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for match/with fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "struct __deaM4demo4mainE8MaybeInt _scrutinee = __deaM4demo4mainN4makeF0M4demo4mainE8MaybeInt();"),
             "match scrutinee temp mismatch");
         assert(contains_s(generated, "switch ((_scrutinee).tag) {"), "match lowering should switch on enum tag");
@@ -1334,7 +1283,7 @@ func test_backend_generate_single_statement_loop_and_match_bodies() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for single-statement loop/match fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "while (1)"), "while lowering mismatch for single-statement body");
         assert(contains_s(generated, "total = (_rt_iadd(total, 1));"),
             "single-statement while body assignment lowering mismatch");
@@ -1386,7 +1335,7 @@ func test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_le
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for with-header try fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "struct __deaM4demo4mainE4Expr* left = NULL;"),
             "nullable cleanup-block header let should be predeclared to null");
         assert(contains_s(generated, "struct __deaM4demo4mainE4Expr* right = NULL;"),
@@ -1429,7 +1378,7 @@ func test_backend_generate_drop_statement() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for drop fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "_rt_drop_begin_impl((void*)(p), (dea_int)(sizeof(dea_int)), (dea_int)(_RT_ALIGNOF(dea_int)), __FILE__, __LINE__)"),
             "sized drop begin call mismatch");
         assert(contains_s(generated, "_rt_drop_finish_impl((void*)("), "drop finish call mismatch");
@@ -1464,7 +1413,7 @@ func test_backend_generate_drop_begin_before_array_cleanup() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for array drop begin fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         let begin_idx = find_s(generated, "_rt_drop_begin_impl((void*)(p), (dea_int)(sizeof(");
         let cleanup_idx = find_s(generated, "for (dea_int");
         let finish_idx = find_s(generated, "_rt_drop_finish_impl((void*)(");
@@ -1521,7 +1470,7 @@ func test_backend_generate_new_and_try_lowering() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for new/try fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "_rt_alloc_obj((dea_int)sizeof(struct __deaM4demo4mainS3Box));"),
             "new expression should allocate heap storage");
         assert(contains_s(generated, "(struct __deaM4demo4mainS3Box){ 0 }"),
@@ -1583,7 +1532,7 @@ func test_backend_generate_intrinsics_use_analyzed_target_types() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for sizeof/ord/is fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "((dea_int)sizeof(struct __deaM4demo4mainS4Pair))"),
             "sizeof should lower through the analyzed target type");
         assert(contains_s(generated, "((dea_int)((f).tag))"), "ord should lower to the enum tag");
@@ -1626,7 +1575,7 @@ func test_backend_generate_named_args_use_source_order_temporaries() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for named-argument lowering fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "dea_int dea_arg_"),
             "out-of-order named arguments should materialize source-order temporaries");
         assert(contains_s(generated, "__deaM4demo4mainN7combineF2iii(dea_arg_") &&
@@ -1682,7 +1631,7 @@ func test_backend_generate_dea_intrinsics_respect_symbol_origin() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for dea shadowing fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "__deaM4demo4mainN6sizeofF1ii(4)"),
             "local sizeof should lower as a normal function call");
         assert(contains_s(generated, "__deaM4demo4mainN3ordF1ii(5)"),
@@ -1737,7 +1686,7 @@ func test_backend_generate_is_with_call_expr_and_qualified_variant() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for qualified `is` fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "(((__deaM6config5typesN7get_keyF0M6config5typesE3Key()).tag) == __deaM6config5typesE3Key_String)"),
             "qualified `is` should lower call result and qualified variant to a direct tag comparison");
 
@@ -1767,7 +1716,7 @@ func test_backend_generate_string_copy_retains() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for ARC copy fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "rt_string_retain(dea_copy_"), "copying an owned string should retain");
         assert(contains_s(generated, "rt_string_release(t);"), "owned local cleanup should release copied string");
         assert(contains_s(generated, "rt_string_release(s);"), "owned local cleanup should release original string");
@@ -1799,7 +1748,7 @@ func test_backend_generate_identity_cast_string_copy_retains() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for identity-cast ARC copy fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "__deaM4demo4mainN4sinkF1cv(first);"),
             "identity cast should pass the borrowed place directly to the callee");
         assert(!contains_s(generated, "dea_string dea_arc_"),
@@ -1849,7 +1798,7 @@ func test_backend_generate_parenthesized_unwrap_from_place_stays_borrowed() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for parenthesized unwrap fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(!contains_s(generated, "dea_string dea_arc_"),
             "parenthesized cast from a place should not materialize an ARC alias temp");
         assert(!contains_s(generated, "rt_string_release(dea_arc_"),
@@ -1887,7 +1836,7 @@ func test_backend_generate_parenthesized_wrap_from_place_ownership_boundaries() 
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for borrowed parenthesized wrap fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         let borrowed_retain = find_s(generated, "rt_string_retain(");
         let borrowed_second_retain = find_from_s(generated, "rt_string_retain(", borrowed_retain + 1);
         let borrowed_release = find_s(generated, "rt_string_release(");
@@ -1922,7 +1871,7 @@ func test_backend_generate_parenthesized_wrap_from_place_ownership_boundaries() 
         let result2 = bt_analyze_sources("demo.main", filenames2, sources2);
         assert(!analysis_has_errors(result2), "analysis should succeed for owned parenthesized wrap fixture");
 
-        let generated2 = backend_generate(result2, opts2, cfg2);
+        let generated2 = bt_generate_entry(result2, opts2, cfg2);
         let owner_retain = find_s(generated2, "rt_string_retain(");
         let owner_second_retain = find_from_s(generated2, "rt_string_retain(", owner_retain + 1);
         assert(owner_retain >= 0 && owner_second_retain < 0,
@@ -1960,7 +1909,7 @@ func test_backend_generate_parenthesized_cast_rvalue_materializes_arc_temp() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for parenthesized cast rvalue fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "dea_string dea_arc_"),
             "parenthesized cast from an ARC rvalue should materialize a cleanup temp");
         assert(contains_s(generated, "rt_string_release(dea_arc_"),
@@ -2002,7 +1951,7 @@ func test_backend_generate_pointer_indexing_contract() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for pointer-indexing fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "_rt_check_index_ptr_site(&dea_site_") &&
                 contains_s(generated, ", (void*)(p), (dea_int)(i), (dea_int)(sizeof(dea_int)), (dea_int)(_RT_ALIGNOF(dea_int))"),
             "pointer-index read/write should lower through checked indexed pointer access");
@@ -2055,7 +2004,7 @@ func test_backend_generate_deref_field_write_uses_write_mode() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for deref field write fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "_RT_ACCESS_WRITE"),
             "field stores through dereferences should use write-mode pointer checks");
         assert(!contains_s(generated, "_RT_ACCESS_READ"),
@@ -2098,7 +2047,7 @@ func test_backend_generate_fixed_arrays() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "fixed array fixture should analyze without errors");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "typedef struct __deaA3_i { dea_int data[3]; } __deaA3_i;"),
             "expected int[3] wrapper typedef");
         assert(contains_s(generated, "typedef struct __deaA2_A3_i { dea_int data[2][3]; } __deaA2_A3_i;"),
@@ -2166,7 +2115,7 @@ func test_backend_generate_slices() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "slice fixture should analyze without errors");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "typedef struct __deaWi { dea_int len; dea_int *data; } __deaWi;"),
             "expected int[] slice descriptor typedef");
         assert(contains_s(generated, "((__deaWi){ .len = ((dea_int)3), .data = (a).data })"),
@@ -2235,7 +2184,7 @@ func test_backend_generate_fixed_array_arc_shapes() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "fixed array ARC shape fixture should analyze without errors");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "typedef struct __deaA2_M4demo4mainS9MyStruct1"),
             "expected MyStruct1[2] wrapper typedef");
         assert(contains_s(generated, "typedef struct __deaA10_A20_M4demo4mainS12NestedStruct"),
@@ -2281,7 +2230,7 @@ func test_backend_generate_string_equality_ops() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for string equality fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "rt_string_equals(lhs, same)"), "string equality should lower through runtime helper");
         assert(contains_s(generated, "(!rt_string_equals(lhs, different))"),
             "string inequality should lower through negated runtime helper");
@@ -2317,7 +2266,7 @@ func test_backend_generate_string_relational_ops() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for string relational fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "(rt_string_compare(lhs, longer) < 0)"),
             "string less-than should lower through runtime helper");
         assert(contains_s(generated, "(rt_string_compare(lhs, same) <= 0)"),
@@ -2354,7 +2303,7 @@ func test_backend_generate_string_concat_ops() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for string concat fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "rt_string_concat(a, b)"), "string concat should lower through runtime helper");
 
         analysis_result_free(result);
@@ -2388,7 +2337,7 @@ func test_backend_generate_small_integer_builtins() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for small integer fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "dea_tiny a = 1;"), "tiny let lowering mismatch");
         assert(contains_s(generated, "dea_byte c = 65;"), "byte contextual literal lowering mismatch");
         assert(contains_s(generated, "dea_short s = ((dea_short)(c));"), "byte-to-short widening lowering mismatch");
@@ -2443,7 +2392,7 @@ func test_backend_generate_large_integer_builtins() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for large integer fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "dea_uint __deaM4demo4mainN8max_uint = 0xffffffffU;"),
             "uint top-level hex bigint literal mismatch");
         assert(contains_s(generated, "dea_long __deaM4demo4mainN12min_long_hex = INT64_MIN;"),
@@ -2516,7 +2465,7 @@ func test_backend_generate_float_double_builtins() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for float/double fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "#include <float.h>"), "float fixture should emit float contract guards");
         assert(contains_s(generated, "#if FLT_RADIX != 2"), "float fixture should emit radix guard");
         assert(contains_s(generated, "__FAST_MATH__"), "float fixture should emit fast-math guard");
@@ -2563,7 +2512,7 @@ func test_backend_generate_condition_header_parens() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for condition-header fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "if (x == y)"), "equality condition lowering mismatch");
         assert(!contains_s(generated, "if ((x == y))"), "equality condition should avoid redundant parens");
         assert(contains_s(generated, "while (x < y)"), "while condition lowering mismatch");
@@ -2603,7 +2552,7 @@ func test_backend_generate_float_double_ops() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for floating operator fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "float diff = (lhs - rhs);"), "float subtraction should lower to direct C subtraction");
         assert(contains_s(generated, "float prod = (rhs * 4.0f);"), "float multiplication should lower to direct C multiplication");
         assert(contains_s(generated, "double quot = (9.0 / 2.0);"), "double division should lower to direct C division");
@@ -2640,7 +2589,7 @@ func test_backend_generate_float_zero_division_plain_c() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "analysis should succeed for floating zero-division fixture");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "double dz = (1.0 / 0.0);"), "double zero-division should lower to direct C division");
         assert(contains_s(generated, "float fz = (1.0f / 0.0f);"), "float zero-division should lower to direct C division");
         assert(!contains_s(generated, "_rt_idiv("), "floating zero-division should not use checked integer division");
@@ -2679,7 +2628,7 @@ func test_backend_pointer_identity() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "pointer identity test should analyze without errors");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
         assert(contains_s(generated, "(p1 == p1)"), "pointer self-identity equality lowering mismatch");
         assert(contains_s(generated, "(p1 != p2)"), "pointer non-identity inequality lowering mismatch");
         assert(contains_s(generated, "(p1 == p2)"), "pointer non-identity equality lowering mismatch");
@@ -2724,7 +2673,7 @@ func test_backend_nullable_identity() {
         let result = bt_analyze_sources("demo.main", filenames, sources);
         assert(!analysis_has_errors(result), "nullable identity test should analyze without errors");
 
-        let generated = backend_generate(result, opts, cfg);
+        let generated = bt_generate_entry(result, opts, cfg);
 
         // int? lowering
         assert(contains_s(generated, "((!a.has_value && !a.has_value) || (a.has_value && a.has_value && (a.value == a.value)))"), "int? equality lowering mismatch");
@@ -2755,7 +2704,6 @@ func main() {
     test_analysis_has_arc_data_for_struct_and_nullable_pointer();
     test_backend_generate_types_and_top_level_lets();
     test_backend_generate_top_level_consts();
-    test_backend_generate_nonconstant_top_level_lets();
     test_backend_generate_module_isolates_definitions_and_lifecycle();
     test_backend_generate_module_noop_lifecycle_without_entry();
     test_backend_generate_module_hides_imported_opaque_layouts();

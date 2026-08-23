@@ -47,7 +47,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
-  - [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c-completion]
+  - [`l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c-completion]
   - [`l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md`][stage1-temp-safety]
 - Repro:
   `make -C l1 test-stage1 TESTS="cli_args_test backend_test c_emitter_test driver_test module_graph_test interface_replay_test compile_driver_test compiler_filesystem_test l1c_lib_test l1c_stage1_help_output_test.py l1c_stage1_compile_only_test.py l1c_stage1_toplet_test.py compiler_filesystem_support_test.py"`
@@ -244,7 +244,7 @@ the nearest unused code in the established driver range if an unforeseen distinc
 
 [build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
-[generated-c-completion]: ../2026-07-24-per-module-generated-c-mode-noref.md
+[generated-c-completion]: 2026-07-24-per-module-generated-c-mode-noref.md
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [stage1-temp-safety]: ../../../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

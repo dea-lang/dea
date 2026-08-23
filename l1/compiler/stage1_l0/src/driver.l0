@@ -473,24 +473,6 @@ func dr_fail_without_node(state: DriverState*, module_name: string) -> bool {
 }
 
 /**
- * Check whether a string vector contains a module name.
- *
- * This shared helper is also used by backend closure walks.
- *
- * @param items Vector to search.
- * @param module_name Module name to look for.
- * @return `true` if `module_name` is present in `items`.
- */
-func dr_sv_has(items: StringVector*, module_name: string) -> bool {
-    for (let i = 0; i < sv_size(items); i = i + 1) {
-        if (sv_get(items, i) == module_name) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
  * Create an empty driver state.
  *
  * @param entry_module Entry module name.

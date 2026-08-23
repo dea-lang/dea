@@ -880,7 +880,6 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     cem_emit_function_definition_header(emitter, "demo.main", sum_decl, sum_type, false);
     ccb_emit(emitter.out, "return a + b;");
     cem_emit_function_definition_footer(emitter);
-    cem_emit_main_wrapper(emitter, "demo.main", sum_type, true, cem_global_init_name());
 
     let text = cem_get_output(emitter);
     assert(contains_s(text, "#ifndef DEA_DEFINED___deaM4demo4mainS5Point"), "struct guard missing");
@@ -898,10 +897,6 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     assert(contains_s(text, "void (puts)(void);"), "extern declaration mismatch");
     assert(contains_s(text, "static dea_int __deaM4demo4mainN3sumF2iii(dea_int a, dea_int b)\n{\n    return a + b;\n}\n"),
         "function definition mismatch");
-    assert(contains_s(text,
-        "/* C entry point wrapper */\nint main(int argc, char **argv)\n{\n    _rt_init_args(argc, argv);\n    _dea_init_modules();\n    int dea_exit_code = (int) __deaM4demo4mainN4mainF2iii();\n    return dea_exit_code;\n}\n"),
-        "main wrapper mismatch");
-
     analysis_result_free(result);
     type_free(let_type);
     type_free(sum_type);
@@ -933,26 +928,6 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     func_decl_free(sum_decl);
     func_decl_free(extern_decl);
 
-    cem_free(emitter);
-}
-
-/**
- * Tests the legacy process wrapper preserves bool result normalization.
- */
-func test_emitter_main_wrapper_normalizes_bool_result() {
-    let emitter = cem_create();
-    let result = cet_empty_analysis_result();
-    let bool_type = type_new_func(ptr_vec_create(0), type_builtin_bool(), false);
-    cem_set_analysis(emitter, result);
-
-    cem_emit_main_wrapper(emitter, "demo.main", bool_type, false, cem_global_init_name());
-
-    assert(contains_s(cem_get_output(emitter),
-        "int main(int argc, char **argv)\n{\n    _rt_init_args(argc, argv);\n    dea_bool result = __deaM4demo4mainN4mainF0z();\n    int dea_exit_code = result ? 0 : 1;\n    return dea_exit_code;\n}\n"),
-        "bool main wrapper normalization mismatch");
-
-    type_free(bool_type);
-    analysis_result_free(result);
     cem_free(emitter);
 }
 
@@ -1047,7 +1022,6 @@ func main() {
     test_emitter_slice_wrapper_spec_names();
     test_emitter_slice_descriptor_emission();
     test_emitter_top_level_forms_match_stage1_shape();
-    test_emitter_main_wrapper_normalizes_bool_result();
     test_emitter_unsafe_function_types_share_c_abi();
     test_emitter_module_lifecycle_has_no_metadata_anchors();
     test_emitter_module_filters_handle_composed_keys();

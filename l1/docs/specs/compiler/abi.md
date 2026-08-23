@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-08-20
+Version: 2026-08-23
 
 Status: Finalized
 
@@ -199,7 +199,8 @@ Linkage is driven by the module's export manifest:
 - **Non-exported symbols** have internal linkage (`static` in C).
 - **Constants** follow the same rules, using `const` and optionally `static`.
 - **Per-module compiler-generated `I4init`, `I4fini`, and `I5entry` symbols** have external linkage independent of the
-  export manifest. Legacy whole-program-only helpers retain their existing internal linkage.
+  export manifest. No legacy whole-program backend helpers remain; the process-level `main` wrapper is a separate
+  link-orchestration artifact rather than a module export.
 
 ## C FFI and Externs
 

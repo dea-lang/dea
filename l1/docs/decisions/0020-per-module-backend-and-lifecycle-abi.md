@@ -15,8 +15,9 @@ non-exported source `main` without giving imported modules permission to orchest
 
 ## Decision
 
-L1 retains `backend_generate(result, opts, cfg)` as the legacy whole-program generator and adds the distinct internal
-entry point `backend_generate_module(result, target_module, opts, cfg)`.
+L1 exposes `backend_generate_module(result, target_module, opts, cfg)` as its only production backend generation
+entrypoint. The transitional `backend_generate(result, opts, cfg)` whole-program path, combined initialization walk, and
+backend-owned process wrapper are removed now that every CLI producer uses the module boundary.
 
 The module generator selects one canonical source-backed target and applies these rules:
 
@@ -56,8 +57,8 @@ calls `I4fini` in exact reverse order. Foreign objects do not participate in thi
   context needed to order modules correctly.
 - An in-module entry bridge reaches a private source `main` without turning it into a source export or placing a process
   wrapper in every object.
-- Keeping the legacy generator internal during migration lets downstream cleanup remove it after every operational mode
-  has moved to the module boundary.
+- Removing the transitional generator after migration prevents a second definition, initialization, and process-wrapper
+  contract from drifting beside the operational module boundary.
 
 ## Consequences
 
@@ -69,6 +70,7 @@ calls `I4fini` in exact reverse order. Foreign objects do not participate in thi
 - The standalone linker selects exactly one `I5entry`, calls `I4init` in dependency order, calls `I4fini` in reverse
   order, and keeps foreign objects outside Dea lifecycle orchestration.
 - Future Stage 2 implementation must preserve the same module-output and LBI behavior.
+- No backend API emits a complete source closure or owns process-level wrapper orchestration.
 
 ## Related Plans
 
@@ -80,11 +82,12 @@ calls `I4fini` in exact reverse order. Foreign objects do not participate in thi
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
+- [l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md][generated-c-completion]
 
 ## Current Docs
 
 - [l1/docs/specs/compiler/abi.md][abi]: reserved module symbols, signatures, linkage, and normalization
-- [l1/docs/reference/c-backend-design.md][backend]: legacy and per-module emission contracts
+- [l1/docs/reference/c-backend-design.md][backend]: per-module emission and generated-C identity contract
 - [l1/docs/reference/architecture.md][architecture]: internal pipeline boundary and CLI separation
 - [l1/docs/project-status.md][project-status]: implemented Stage 1 scope and remaining orchestration work
 
@@ -93,6 +96,7 @@ calls `I4fini` in exact reverse order. Foreign objects do not participate in thi
 [backend]: ../reference/c-backend-design.md
 [build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[generated-c-completion]: ../../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [lifecycle]: ../../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md

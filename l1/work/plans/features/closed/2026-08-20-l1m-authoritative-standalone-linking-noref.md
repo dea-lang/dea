@@ -565,8 +565,8 @@ keeping implemented-current-state prose explicit:
 1. [`l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]: consume verified
    `module_imports`, remove object-metadata agreement and classification assumptions, keep pair stability as a caller
    trust obligation, and preserve source discovery versus standalone explicit closure.
-2. [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c]: remove embedded metadata
-   from the planned generated C identity while retaining lifecycle entry points and `.o + .l1m` publication.
+2. [`l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c]: remove embedded
+   metadata from the planned generated C identity while retaining lifecycle entry points and `.o + .l1m` publication.
 3. [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]: replace
    metadata-free-object and embedded-control enforcement assumptions with the caller-asserted foreign-object boundary;
    keep archives, libraries, scripts, and raw arguments on their typed future surface.
@@ -907,7 +907,7 @@ evidence additionally requires green L1 CI for Linux x86-64, macOS Intel, macOS 
 [design-decisions]: ../../../../docs/reference/design-decisions.md
 [diagnostics]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [external-linking]: ../2026-04-24-external-library-linking-cli-noref.md
-[generated-c]: ../2026-07-24-per-module-generated-c-mode-noref.md
+[generated-c]: 2026-07-24-per-module-generated-c-mode-noref.md
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [interface-emission]: 2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md

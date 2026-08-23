@@ -29,11 +29,12 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   snapshots. Normal compiler families receive an exact regular runtime archive path; TinyCC retains the ADR-0027
   variant-matched raw-object compatibility carve-out when that set is available, with archive fallback otherwise.
   Multi-CU build/run selects the source target entry, mixes source and authoritative interface/object providers, accepts
-  foreign objects, retains exact mirrored generated-C trees, and launches run executables directly.
+  foreign objects, retains exact mirrored generated-C trees, and launches run executables directly. Module C is
+  byte-identical across generation, compile-only retention, build retention, and run retention for identical inputs and
+  settings; the legacy whole-program generator and backend-owned process wrapper are removed.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
-- Final generated-C completion, including legacy-generator removal, and L1 triple-bootstrap are not part of the current
-  Stage 1 contract.
+- L1 triple-bootstrap is not part of the current Stage 1 contract.
 
 ## Roadmap assumptions
 
@@ -162,6 +163,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] moved build/run to graph-expanded per-module
   compilation, authoritative interface/object providers, the common verified linker, mirrored retained-C trees, and
   exact direct run-process execution.
+- Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] proved byte identity across all four
+  generated-C producer modes for source-only and mixed graphs, verified exact compiler-input retention, and removed the
+  legacy whole-closure backend and process wrapper.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -209,8 +213,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Completed feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] makes verified
   sibling `.l1m` files authoritative for standalone semantics and lifecycle planning while treating native objects as
   opaque host-link inputs.
-- Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] follows build/run fan-out to prove
-  four-mode generated-C identity and retire the legacy whole-closure generator.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl`
   / `--link-arg` as the external-library linking surface.
 - Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
@@ -343,7 +345,7 @@ update to be promoted to an initiative or plan:
 [object-metadata]: ../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/closed/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md
-[per-module-generated-c]: ../work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md
+[per-module-generated-c]: ../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md

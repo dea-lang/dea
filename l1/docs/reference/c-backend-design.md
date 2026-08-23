@@ -28,11 +28,8 @@ The separate-compilation boundary adds:
 - verified interface-graph preparation and opaque native host-link orchestration in `link_driver.l0`
 - process-wrapper C generation in `wrapper_emitter.l0`
 
-Input is a fully typed analysis result. The backend exposes one operational module boundary plus one retained legacy
-entry point:
+Input is a fully typed analysis result. The backend exposes one production boundary:
 
-- `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit. No ordinary CLI mode
-  dispatches through it; downstream generated-C cleanup owns removal.
 - `backend_generate_module(result, target_module, opts, cfg)` emits one source-backed module translation unit for
   `--gen`, `--compile`, `--build`, and `--run`; the resulting objects feed the common verified linker.
 
@@ -67,27 +64,6 @@ pure generation, compile-only retention, and build/run retention call the same m
 - keeps operational manifests outside the public-interface fingerprint
 
 ## Generated Unit Layout
-
-### Legacy whole-program output
-
-The legacy generated C file is organized in this order:
-
-1. file header and includes
-2. forward declarations
-3. builtin and wrapper typedefs
-4. function pointer typedefs plus struct and enum definitions in dependency order
-5. top-level `let` storage
-6. function declarations
-7. hidden module/global init functions for deferred top-level `let` initializers
-8. non-extern function definitions
-9. C `main` wrapper when the entry module defines `main`
-
-Top-level `const` and constant `let` initializers lower directly into C storage initializers; non-constant top-level
-`let` initializers lower as zero/default-initialized storage plus hidden per-module init assignments.
-
-The legacy unit remains useful only as transitional internal code. Operational `--build` / `--run` instead compile the
-per-module units below and link `libdea_rt.a`, `libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or
-`libdea_rt_unchecked.a` through the common link executor.
 
 ### Per-module output
 
@@ -138,6 +114,12 @@ copies the exact wrapper source used for compilation as `__dea_wrapper.c`. Objec
 The private wrapper compiles beneath hidden `.link/` scratch, so a valid source module named `__dea_wrapper` does not
 collide during ordinary build/run. Keep-C rejects that root module name and ASCII case variants because the public tree
 reserves the same filename and supported filesystems may compare it case-insensitively.
+
+For identical source, resolved graph, verified interfaces, fingerprints, code-generation settings, and compiler version,
+each module file is byte-identical across `--gen`, compile-only keep-C, build keep-C, and run keep-C. Output
+destinations, caller mode, and private workspace names do not affect the bytes. Interface/object providers contribute no
+C file and are never regenerated. The wrapper is excluded from module identity because it is a separate link artifact
+with no `--gen` or compile-only form.
 
 Generated module C contains no `I8metadata`, `I7imports`, metadata byte arrays, replacement anchors, or volatile
 retention reads. The sibling `.l1m` carries target identity, public fingerprint, entry presence, first-occurrence
@@ -344,8 +326,7 @@ result form before returning `0`. It does not initialize runtime arguments or ca
 
 ## Current Constraints
 
-1. Ordinary `--build` and `--run` compile one module C translation unit per source-backed graph node; the legacy
-   whole-program generator is internal transitional code only.
+1. Ordinary `--build` and `--run` compile one module C translation unit per source-backed graph node.
 2. The only implemented backend is the bootstrap backend in `stage1_l0`.
 3. The runtime and ABI surface assume a C99-compatible host toolchain.
 4. Optimization is delegated to the host C compiler; backend priority is correctness and explicit lowering.
@@ -366,6 +347,7 @@ Current backend validation is centered on the copied bootstrap test suite under 
 - `interface_replay_test.l0`
 - `link_driver_test.l0`
 - `wrapper_emitter_test.l0`
+- `l1c_stage1_generated_c_identity_test.py`
 - `l1c_stage1_link_set_test.py`
 
 Ownership and trace-oriented validation also uses:
