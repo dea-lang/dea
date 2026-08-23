@@ -3,7 +3,7 @@
  * Copyright (c) 2026 gwz
  */
 
-module aux;
+module support;
 
 export answer;
 

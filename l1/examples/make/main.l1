@@ -5,10 +5,10 @@
 
 module main;
 
-import aux;
+import support;
 import std.io;
 
 func main() -> int {
-    printl_i(aux::answer());
+    printl_i(support::answer());
     return 0;
 }
