@@ -33,14 +33,14 @@ static inline dea_float rt_real_get_inf_f(void) { return (dea_float)INFINITY; }
 static inline dea_double rt_real_get_inf_d(void) { return (dea_double)INFINITY; }
 
 /* Phase 1: Classification */
-static inline dea_bool rt_real_is_nan_f(dea_float x) { return isnan((float)x); }
-static inline dea_bool rt_real_is_nan_d(dea_double x) { return isnan((double)x); }
-static inline dea_bool rt_real_is_inf_f(dea_float x) { return isinf((float)x); }
-static inline dea_bool rt_real_is_inf_d(dea_double x) { return isinf((double)x); }
-static inline dea_bool rt_real_is_finite_f(dea_float x) { return isfinite((float)x); }
-static inline dea_bool rt_real_is_finite_d(dea_double x) { return isfinite((double)x); }
-static inline dea_bool rt_real_signbit_f(dea_float x) { return signbit((float)x); }
-static inline dea_bool rt_real_signbit_d(dea_double x) { return signbit((double)x); }
+static inline dea_bool rt_real_is_nan_f(dea_float x) { return isnan((float)x) != 0; }
+static inline dea_bool rt_real_is_nan_d(dea_double x) { return isnan((double)x) != 0; }
+static inline dea_bool rt_real_is_inf_f(dea_float x) { return isinf((float)x) != 0; }
+static inline dea_bool rt_real_is_inf_d(dea_double x) { return isinf((double)x) != 0; }
+static inline dea_bool rt_real_is_finite_f(dea_float x) { return isfinite((float)x) != 0; }
+static inline dea_bool rt_real_is_finite_d(dea_double x) { return isfinite((double)x) != 0; }
+static inline dea_bool rt_real_signbit_f(dea_float x) { return signbit((float)x) != 0; }
+static inline dea_bool rt_real_signbit_d(dea_double x) { return signbit((double)x) != 0; }
 
 /* Phase 1: Basic ops */
 static inline dea_float rt_real_abs_f(dea_float x) { return fabsf(x); }
