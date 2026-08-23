@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-08-22
+Version: 2026-08-23
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -78,20 +78,20 @@ direct source imports in exact declaration order with duplicates. Interface proj
 virtual-filtered, first-occurrence lifecycle-import view, classifies resolved cross-module public surface references as
 `require`, and records remaining implementation references as `link`.
 
-The backend exposes `backend_generate_module(...)` as the shared byte-producing operation for `--gen` and compile-only.
-It emits definitions for one selected source-backed module, external declarations for provider-owned source and
-interface values and functions consumed by that target, always-present external `I4init` and `I4fini`, and conditional
-external `I5entry` for a resolved, zero-parameter, non-extern source `main`. Module output contains no process `main`,
-global init chain, dependency lifecycle calls, embedded Dea metadata arrays, or retention reads. The legacy
-`backend_generate(...)` path remains only for ordinary build and run.
+The backend exposes `backend_generate_module(...)` as the shared byte-producing operation for `--gen`, compile-only,
+build, and run. It emits definitions for one selected source-backed module, external declarations for provider-owned
+source and interface values and functions consumed by that target, always-present external `I4init` and `I4fini`, and
+conditional external `I5entry` for a resolved, zero-parameter, non-extern source `main`. Module output contains no
+process `main`, global init chain, dependency lifecycle calls, embedded Dea metadata arrays, or retention reads. The
+legacy `backend_generate(...)` path remains internal pending downstream removal; no ordinary CLI mode dispatches through
+it.
 
 The compiler no longer carries ELF, Mach-O, or PE/COFF object readers. Standalone link performs no Dea-side reads of
 caller Dea or foreign object bytes, compiled wrapper bytes, runtime archive bytes, or TinyCC runtime-object bytes.
 Native-format, architecture, symbol, and embedded-control validation belongs to the selected host compiler/linker.
 
-Ordinary build/run CLI imports remain source-based today. Generated-C resolves imports interface-first and falls back to
-source only when no interface is selected. Compile-only requires verified `.l1m` interfaces for non-virtual imports and
-never falls back to provider source.
+Generated-C and build/run resolve imports interface-first and fall back to source only when no interface is selected.
+Compile-only requires verified `.l1m` interfaces for non-virtual imports and never falls back to provider source.
 
 The CLI implements per-module `--gen` plus `-c` / `--compile` and accepts repeatable `-I` / `--interface-path` values
 with either mode. `--gen` writes stdout or exactly one requested file, accepts verified imported interfaces without
@@ -137,7 +137,13 @@ snapshotted, and the host linker receives their original safe-rendered paths and
 output. Native Windows rejects expansion-, quote-, or line-break-bearing standalone command words and redirection paths
 while the transport still passes through `cmd.exe`.
 
-Ordinary `--build` / `--run` remain source-based single-CU operations.
+`--build` and `--run` expand the requested source target through the canonical graph, compile each source-backed node
+once into the private native workspace, and combine those objects with authoritative interface-backed objects and
+foreign objects through the common verified link executor. Each source node crosses the one-module boundary by
+re-analyzing against original authoritative and already staged provider interfaces before generation. The target is the
+explicit entry selection. Run launches the temporary executable directly with unchanged arguments and returns its
+status. `--keep-c` retains the complete mirrored `.dea-c` tree, including exact per-module C bytes and
+`__dea_wrapper.c`; other staged artifacts are cleaned.
 
 ### Runtime and Standard Library
 
@@ -256,8 +262,8 @@ Validation is currently centered on:
 
 - keeping the stdlib/runtime tree usable by the bootstrap compiler
 
-Current Stage 1 validation covers exact generated-C identity between `--gen` and compile-only retention, but does not
-yet include the downstream four-mode build/run retained-C identity suite.
+Current Stage 1 validation covers exact generated-C identity across `--gen`, compile-only retention, and build/run
+retained trees for identical resolved inputs and settings.
 
 ## Platform Support
 
@@ -274,8 +280,8 @@ bootstrap path:
 These remain true today:
 
 1. There is no implemented `stage2_l1` compiler yet.
-2. Ordinary build/run CLI backend output is one legacy whole-program C translation unit; compile-only uses the internal
-   module generator, but multi-CU build/run orchestration is not operational.
+2. The legacy whole-program backend remains internal until the generated-C completion tranche removes it; operational
+   build/run already uses per-module graph fan-out.
 3. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit
    objects, compile sources, or accept external libraries, rpaths, or raw host-link arguments.
 4. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,

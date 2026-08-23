@@ -10,11 +10,13 @@ import sys.rt;
 import std.assert;
 import std.fs;
 import std.io;
+import std.path;
 import std.string;
 import std.vector;
 
 import analysis;
 import ast;
+import compiler_filesystem;
 import l1c_lib;
 import sem_context;
 import signatures;
@@ -97,8 +99,11 @@ func build_output_path() -> string {
  *
  * @return Output C path for build tests.
  */
-func build_c_output_path() -> string {
-    return "compiler/stage1_l0/tests/.tmp-build-ok_main.c";
+func build_c_output_path(module_name: string) -> string {
+    return join(
+        build_output_path() + ".dea-c",
+        module_name + ".c"
+    );
 }
 
 /**
@@ -115,8 +120,8 @@ func run_keep_c_output_path() -> string {
  *
  * @return Output C path for run tests.
  */
-func run_keep_c_c_path() -> string {
-    return "compiler/stage1_l0/tests/.tmp-run-kept.c";
+func run_keep_c_c_path(module_name: string) -> string {
+    return join(module_name + ".dea-c", module_name + ".c");
 }
 
 /**
@@ -134,7 +139,28 @@ func named_args_output_path() -> string {
  * @return Output C path for the named-argument runtime test.
  */
 func named_args_c_output_path() -> string {
-    return "compiler/stage1_l0/tests/.tmp-named-args.c";
+    return join("named_args_main.dea-c", "named_args_main.c");
+}
+
+/** Remove one retained-C test tree using its deliberately bounded fixture set. */
+func cleanup_retained_c_test_tree(c_path: string) {
+    let root = parent(c_path);
+    cfs_remove_regular_file(c_path);
+    cfs_remove_regular_file(join(root, "ok_main.c"));
+    cfs_remove_regular_file(join(root, "ok_dep1.c"));
+    cfs_remove_regular_file(join(root, "ok_dep2.c"));
+    cfs_remove_regular_file(join(root, "ok_leaf.c"));
+    cfs_remove_regular_file(join(root, "toplet_init_dep.c"));
+    cfs_remove_regular_file(join(root, "init_collision.c"));
+    cfs_remove_regular_file(join(root, "init/collision.c"));
+    cfs_remove_regular_file(join(root, "std/assert.c"));
+    cfs_remove_regular_file(join(root, "std/string.c"));
+    cfs_remove_regular_file(join(root, "sys/rt.c"));
+    cfs_remove_regular_file(join(root, "__dea_wrapper.c"));
+    cfs_remove_empty_dir(join(root, "init"));
+    cfs_remove_empty_dir(join(root, "std"));
+    cfs_remove_empty_dir(join(root, "sys"));
+    cfs_remove_empty_dir(root);
 }
 
 /**
@@ -542,9 +568,9 @@ func test_parse_error_exit_code() {
  */
 func test_default_build_mode_succeeds() {
     let out_path = build_output_path();
-    let c_path = build_c_output_path();
+    let c_path = build_c_output_path("ok_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "-Rp");
@@ -562,7 +588,7 @@ func test_default_build_mode_succeeds() {
     assert(exists(c_path), "kept generated C should exist for build");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -585,9 +611,9 @@ func test_run_exit_code_passthrough() {
  */
 func test_run_keep_c_output_file() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("ok_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -605,7 +631,7 @@ func test_run_keep_c_output_file() {
     assert(exists(c_path), "--run --keep-c should retain the generated C file");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -660,7 +686,7 @@ func test_run_named_args_main() {
     let out_path = named_args_output_path();
     let c_path = named_args_c_output_path();
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -676,7 +702,7 @@ func test_run_named_args_main() {
     }
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -684,9 +710,9 @@ func test_run_named_args_main() {
  */
 func test_run_bitwise_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("bitwise_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -713,7 +739,7 @@ func test_run_bitwise_build_and_keep_c() {
         "bitwise_main right-shift widening mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -721,9 +747,9 @@ func test_run_bitwise_build_and_keep_c() {
  */
 func test_run_function_pointer_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("function_pointer_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -751,7 +777,7 @@ func test_run_function_pointer_build_and_keep_c() {
         "function pointer indirect call lowering mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -759,9 +785,9 @@ func test_run_function_pointer_build_and_keep_c() {
  */
 func test_run_variadic_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("variadic_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -796,7 +822,7 @@ func test_run_variadic_build_and_keep_c() {
         "callback variadic packs must not use the ambiguous fallback wrapper name");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -821,9 +847,9 @@ func test_run_variadic_trace() {
  */
 func test_run_string_equality_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("string_equality_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -848,7 +874,7 @@ func test_run_string_equality_build_and_keep_c() {
         "string_equality_main heap-string equality lowering mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -856,9 +882,9 @@ func test_run_string_equality_build_and_keep_c() {
  */
 func test_run_pointer_identity_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("pointer_identity_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -874,7 +900,7 @@ func test_run_pointer_identity_build_and_keep_c() {
     }
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -897,9 +923,9 @@ func test_run_opaque_handle_round_trip() {
  */
 func test_run_nullable_identity_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("nullable_identity_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -922,7 +948,7 @@ func test_run_nullable_identity_build_and_keep_c() {
         "nullable_identity_main string? equality lowering mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -945,9 +971,9 @@ func test_run_optional_struct_field_order_builds() {
  */
 func test_run_same_type_struct_cast_builds() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("same_type_struct_cast_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -970,7 +996,7 @@ func test_run_same_type_struct_cast_builds() {
         "same-type struct cast should not lower to a C struct cast");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -1008,9 +1034,9 @@ func test_run_single_statement_bodies() {
  */
 func test_run_string_relational_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("string_relational_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -1039,7 +1065,7 @@ func test_run_string_relational_build_and_keep_c() {
         "string_relational_main heap-string ordering lowering mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 
@@ -1048,9 +1074,9 @@ func test_run_string_relational_build_and_keep_c() {
  */
 func test_run_string_concat_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("string_concat_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -1071,7 +1097,7 @@ func test_run_string_concat_build_and_keep_c() {
         "string_concat_main concat lowering mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -1079,9 +1105,9 @@ func test_run_string_concat_build_and_keep_c() {
  */
 func test_run_const_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("const_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -1104,7 +1130,7 @@ func test_run_const_build_and_keep_c() {
         "const_main scalar const lowering mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -1112,9 +1138,9 @@ func test_run_const_build_and_keep_c() {
  */
 func test_run_nonconstant_top_level_let_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("toplet_init_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -1131,27 +1157,32 @@ func test_run_nonconstant_top_level_let_build_and_keep_c() {
 
     let c_text = read_file(c_path);
     assert(c_text != null, "toplet_init_main kept C file should exist");
-    assert(contains_s(c_text as string, "dea_int __deaM15toplet_init_depN4BASE = 0;"),
+    let root = parent(c_path);
+    let dep_text = read_file(join(root, "toplet_init_dep.c"));
+    let wrapper_text = read_file(join(root, "__dea_wrapper.c"));
+    assert(dep_text != null, "toplet_init_dep kept C file should exist");
+    assert(wrapper_text != null, "toplet_init_main wrapper C file should exist");
+    assert(contains_s(dep_text as string, "dea_int __deaM15toplet_init_depN4BASE = 0;"),
         "toplet_init_main dep zero-init mismatch");
     assert(contains_s(c_text as string, "dea_int __deaM16toplet_init_mainN6ANSWER = 0;"),
         "toplet_init_main main zero-init mismatch");
-    assert(contains_s(c_text as string, "static void __deaM15toplet_init_depI4init(void)"),
+    assert(contains_s(dep_text as string, "void __deaM15toplet_init_depI4init(void)"),
         "toplet_init_main dep init function missing");
-    assert(contains_s(c_text as string, "__deaM15toplet_init_depN4BASE = __deaM15toplet_init_depN4seedF0i();"),
+    assert(contains_s(dep_text as string, "__deaM15toplet_init_depN4BASE = __deaM15toplet_init_depN4seedF0i();"),
         "toplet_init_main dep init assignment mismatch");
-    assert(contains_s(c_text as string, "static void __deaM16toplet_init_mainI4init(void)"),
+    assert(contains_s(c_text as string, "void __deaM16toplet_init_mainI4init(void)"),
         "toplet_init_main main init function missing");
     assert(contains_s(c_text as string, "__deaM16toplet_init_mainN6ANSWER = __deaM16toplet_init_mainN4bumpF1ii(__deaM15toplet_init_depN8get_baseF0i());"),
         "toplet_init_main main init assignment mismatch");
-    assert(contains_s(c_text as string,
-        "static void _dea_init_modules(void)\n{\n    __deaM15toplet_init_depI4init();\n    __deaM16toplet_init_mainI4init();\n}\n"),
+    assert(contains_s(wrapper_text as string,
+        "__deaM15toplet_init_depI4init();\n    __deaM16toplet_init_mainI4init();"),
         "toplet_init_main global init order mismatch");
-    assert(contains_s(c_text as string,
-        "_rt_init_args(argc, argv);\n    _dea_init_modules();\n    int dea_exit_code = (int) __deaM16toplet_init_mainN4mainF0i();\n    return dea_exit_code;"),
+    assert(contains_s(wrapper_text as string,
+        "_rt_init_args(argc, argv);\n    __deaM15toplet_init_depI4init();\n    __deaM16toplet_init_mainI4init();\n    dea_exit_code = __deaM16toplet_init_mainI5entry();"),
         "toplet_init_main wrapper init call mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -1159,9 +1190,9 @@ func test_run_nonconstant_top_level_let_build_and_keep_c() {
  */
 func test_run_module_lifecycle_name_collision_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("init_collision_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -1178,16 +1209,23 @@ func test_run_module_lifecycle_name_collision_build_and_keep_c() {
 
     let c_text = read_file(c_path);
     assert(c_text != null, "init_collision_main kept C file should exist");
-    assert(contains_s(c_text as string, "static void __deaM4init9collisionI4init(void)"),
+    let root = parent(c_path);
+    let dotted_text = read_file(join(root, "init/collision.c"));
+    let underscored_text = read_file(join(root, "init_collision.c"));
+    let wrapper_text = read_file(join(root, "__dea_wrapper.c"));
+    assert(dotted_text != null, "dotted collision module kept C file should exist");
+    assert(underscored_text != null, "underscore collision module kept C file should exist");
+    assert(wrapper_text != null, "collision wrapper C file should exist");
+    assert(contains_s(dotted_text as string, "void __deaM4init9collisionI4init(void)"),
         "dotted module lifecycle init function missing");
-    assert(contains_s(c_text as string, "static void __deaM14init_collisionI4init(void)"),
+    assert(contains_s(underscored_text as string, "void __deaM14init_collisionI4init(void)"),
         "underscore module lifecycle init function missing");
-    assert(contains_s(c_text as string,
-        "static void _dea_init_modules(void)\n{\n    __deaM4init9collisionI4init();\n    __deaM14init_collisionI4init();\n}\n"),
+    assert(contains_s(wrapper_text as string,
+        "__deaM4init9collisionI4init();\n    __deaM14init_collisionI4init();"),
         "collision fixture global init order mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -1195,9 +1233,9 @@ func test_run_module_lifecycle_name_collision_build_and_keep_c() {
  */
 func test_run_float_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("float_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -1223,7 +1261,7 @@ func test_run_float_build_and_keep_c() {
         "float_main double arithmetic lowering mismatch");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -1231,9 +1269,9 @@ func test_run_float_build_and_keep_c() {
  */
 func test_run_float_ops_build_and_keep_c() {
     let out_path = run_keep_c_output_path();
-    let c_path = run_keep_c_c_path();
+    let c_path = run_keep_c_c_path("float_ops_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "--run");
@@ -1261,7 +1299,7 @@ func test_run_float_ops_build_and_keep_c() {
     assert(!contains_s(c_text as string, "_rt_idiv("), "float_ops_main division should not use checked integer division");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -1269,9 +1307,9 @@ func test_run_float_ops_build_and_keep_c() {
  */
 func test_build_float_zero_division_keep_c() {
     let out_path = build_output_path();
-    let c_path = build_c_output_path();
+    let c_path = build_c_output_path("float_zero_div_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(12) => sv_free(argv)) {
         sv_push(argv, "-Rp");
@@ -1292,7 +1330,7 @@ func test_build_float_zero_division_keep_c() {
     assert(!contains_s(c_text as string, "_rt_idiv("), "float_zero_div_main should not use checked integer division");
 
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 }
 
 /**
@@ -1300,9 +1338,9 @@ func test_build_float_zero_division_keep_c() {
  */
 func test_build_float_rejects_invalid_math_mode_option() {
     let out_path = build_output_path();
-    let c_path = build_c_output_path();
+    let c_path = build_c_output_path("float_main");
     rt_delete_file(out_path);
-    rt_delete_file(c_path);
+    cleanup_retained_c_test_tree(c_path);
 
     with (let argv = sv_create(14) => sv_free(argv)) {
         sv_push(argv, "-Rp");

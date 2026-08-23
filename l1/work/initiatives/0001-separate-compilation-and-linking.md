@@ -1,13 +1,13 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-08-21
+- Version: 2026-08-23
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`
   - `l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
@@ -76,9 +76,9 @@ This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
 
 Relevant facts that constrain the plan at the time of writing:
 
-- Ordinary build/run still emits **one generated C99 compilation unit per program** through the legacy backend. `--gen`
-  and compile-only use the same internal module backend to emit exactly one selected source-backed module; compile-only
-  adds host compilation and endpoint-rollback publication. Multi-CU orchestration is not operational yet.
+- Ordinary build/run expands the source/interface graph and emits one generated C99 compilation unit per source-backed
+  module through the shared module backend. Compile-only publishes one selected module with endpoint rollback; build/run
+  stages every source module privately and reuses the common verified linker.
 - The L1 backend reference ([`l1/docs/reference/c-backend-design.md`][backend-design]) is the current source of truth
   for L1 generated C behavior.
 - Modules support explicit export manifests plus alias and selective import forms. Exported top-level declarations keep
@@ -92,7 +92,8 @@ Relevant facts that constrain the plan at the time of writing:
   implemented through internal APIs. Interfaces carry authoritative entry presence, ordered first-occurrence lifecycle
   imports, and `require` / `link` expectations outside the public fingerprint. Per-module C output retains only
   lifecycle and optional entry infrastructure; it has no embedded Dea metadata. Standalone link verifies sibling
-  interfaces and treats all native inputs as opaque. Ordinary build/run imports remain source-based.
+  interfaces and treats all native inputs as opaque. Build/run uses the same interface authority with source fallback
+  only when no interface is selected.
 - The shared driver CLI implements L1 `-c` / `--compile` with ordered `-I` / `--interface-path` roots, interface-only
   import resolution, object-only host compilation, and endpoint-rollback `.o` / `.l1m` publication. `--keep-c` adds the
   exact generated `.c`; ordinary compile-only leaves that companion path untouched. Successful return leaves the
@@ -313,8 +314,8 @@ work is split by dependency, not by the former whole-plan labels:
 07. **Standalone link set (complete):** verify authoritative sibling interfaces, resolve the entry and lifecycle graph,
     validate transitive semantic provenance, generate the executable wrapper, and invoke the host linker with opaque
     original native paths.
-08. **Build/run fan-out:** preserve `--build` and `--run` as convenience commands by reusing the same compile and link
-    APIs over the source/interface graph.
+08. **Build/run fan-out (complete):** preserve `--build` and `--run` as convenience commands by reusing the same compile
+    and link APIs over the source/interface graph.
 09. **Generated-C completion:** verify byte identity across generation, compile-only retention, and build/run retention,
     then retire the legacy whole-closure generator after fan-out removes its remaining callers.
 10. **External libraries:** extend the ordered link-input stream with libraries, rpaths, and raw host-driver arguments.
@@ -367,8 +368,8 @@ Every compiled Dea module exposes external, no-op-capable `I4init` and `I4fini` 
 resolved, zero-parameter, non-extern source `main` also exposes `I5entry`, which can call a non-exported source function
 inside the owning CU and normalize `int`, `bool`, or other return forms to a C `int` status.
 
-The completed lifecycle contract is recorded by [ADR-0020][lifecycle-adr]. Ordinary build/run remains on the legacy
-whole-program generator until graph fan-out lands.
+The completed lifecycle contract is recorded by [ADR-0020][lifecycle-adr]. Ordinary build/run now composes that ABI
+across every graph-selected module.
 
 A new wrapper pseudo-module produces the process-level `main(int argc, char **argv)` shim when an executable is
 requested. The driver validates the interface-authoritative Dea graph, selects one `I5entry` through `entry;`, emits
@@ -527,14 +528,14 @@ structured --c-source --> shared native workspace ------------------------------
 - Artifact-graph, fingerprint, lifecycle, compile-only, and `.l1m`-authority work are complete. The authority transition
   removed the historical object-metadata subsystem and is recorded by [ADR-0030][l1m-authority-adr].
 - Compile-only artifacts are operational with verified operational interface records and opaque paired objects.
-- The generated-C foundation has migrated `--gen` and stabilized compile-only compiler paths; four-mode identity
-  verification and legacy-generator removal wait for build/run fan-out.
+- The generated-C foundation migrated `--gen` and stabilized compile-only compiler paths; build/run retention now proves
+  matching module bytes, while the completion tranche still owns legacy-generator removal.
 - Standalone link owns verified-interface planning, opaque native input forwarding, and wrapper construction; build/run
-  will reuse that API rather than creating a second link path.
+  reuses that API rather than creating a second link path.
 - Standalone link uses an atomically reserved transaction beside its mandatory output and supplies explicit scratch
   paths to the common link executor. It is not blocked by structured `--c-source` or the shared native workspace.
 - Structured `--c-source` enables the L0 Stage 2 support unit required by the shared native workspace. The link API,
-  shared workspace, and completed generated-C foundation converge at build/run fan-out.
+  shared workspace, and completed generated-C foundation converge in the completed build/run fan-out.
 - External-library options extend the finished ordered input model. Initiative 0003 consumes both external libraries and
   the caller-asserted `--foreign-object` boundary.
 
@@ -559,7 +560,7 @@ Recorded near-term tranche checkpoints:
 - [x] Implement `.l1m`-authoritative Dea linking, caller-asserted foreign inputs, entry selection, lifecycle order, and
   transitive provenance.
 - [x] Complete supported-host CI and ADR lifecycle closure for the `.l1m` authority plan.
-- [ ] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
+- [x] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
 - [ ] Verify four-mode generated-C identity and retire the legacy whole-closure generator after build/run fan-out.
 - [ ] Add ordered external-library and raw host-driver inputs.
 
@@ -732,8 +733,8 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
     path.
 - Decision: Stage multi-CU build/run artifacts and wrapper scratch paths in the shared native workspace.
   - Scope: Shared
-  - Disposition: New ADR
-  - ADR: `docs/decisions/`
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0020-native-compiler-private-temporary-workspaces.md`
   - Rationale: Structured C-source input and the shared workspace plan settle the cross-level reservation, trust, and
     cleanup policy consumed by build/run fan-out.
 - Decision: Make `--gen` produce one module rather than a whole source closure.
@@ -838,7 +839,7 @@ implementation tranche proves that one decision area needs additional design wor
 [abi]: ../../docs/specs/compiler/abi.md
 [artifact-graph]: ../plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [backend-design]: ../../docs/reference/c-backend-design.md
-[build-run]: ../plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
+[build-run]: ../plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: 0003-c-ffi.md
 [compile-foundation]: ../plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [compile-only]: ../plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md

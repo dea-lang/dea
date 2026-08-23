@@ -57,7 +57,7 @@
   - [`work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][standalone-link]
-  - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
+  - [`l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
   - [`l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`][publication-adr]
   - [`docs/decisions/0020-native-compiler-private-temporary-workspaces.md`][workspace-adr]
 - Repro: reserve or replace a path selected by `bd_temp_stem()` after its `exists()` checks but before the native
@@ -310,7 +310,7 @@ workspace lifecycle. No new diagnostic family or broad range is needed.
 6. The architectural-audit manifest declares this closed plan and ADR-0020. Its validator accepts the manifest's
    mdformat-wrapped long path declarations, preserving strict formatting and exact current-tree reconciliation.
 
-[build-run]: ../../../../l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
+[build-run]: ../../../../l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: ../../../../l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [publication-adr]: ../../../../l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md
 [stage1-fix]: ../../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

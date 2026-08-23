@@ -562,7 +562,7 @@ document set and run `python3 scripts/check_adr_impact.py --staged`.
 Before implementation code begins, rebase these active dependent work documents onto the planned future contract while
 keeping implemented-current-state prose explicit:
 
-1. [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]: consume verified
+1. [`l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]: consume verified
    `module_imports`, remove object-metadata agreement and classification assumptions, keep pair stability as a caller
    trust obligation, and preserve source discovery versus standalone explicit closure.
 2. [`l1/work/plans/features/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c]: remove embedded metadata
@@ -899,7 +899,7 @@ evidence additionally requires green L1 CI for Linux x86-64, macOS Intel, macOS 
 [abi]: ../../../../docs/specs/compiler/abi.md
 [architecture]: ../../../../docs/reference/architecture.md
 [backend-design]: ../../../../docs/reference/c-backend-design.md
-[build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
+[build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi-initiative]: ../../../initiatives/0003-c-ffi.md
 [c-ffi-plan]: ../2026-04-24-c-ffi-extern-c-and-cstr-noref.md
 [cli-contract]: ../../../../../docs/specs/compiler/cli-contract.md

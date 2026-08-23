@@ -317,6 +317,46 @@ func test_workspace_cleanup_rejects_nonregular_known_child() {
         "substitution test parent should become empty");
 }
 
+/** Prove cleanup removes explicitly registered nested artifacts bottom-up. */
+func test_workspace_cleanup_removes_registered_nested_tree() {
+    let parent_path = ".tmp-cfs-nested-" +
+        int_to_string(get_pid());
+    cfst_remove_empty_if_present(parent_path);
+    assert(cfs_mkdir(parent_path, 448) == 1,
+        "nested cleanup test parent should be created");
+
+    with (let diags = diag_create() => diag_free(diags)) {
+        let workspace_opt = cfs_workspace_create_for_identity(
+            parent_path, "nested", 12, 34, 56, diags);
+        assert(workspace_opt != null,
+            "nested cleanup workspace should be reserved");
+        let workspace = workspace_opt as CompilerWorkspace*;
+        let module_dir = join(workspace.root, "pkg");
+        let nested_dir = join(module_dir, "sub");
+        let artifact = join(nested_dir, "module.o");
+        assert(cfs_mkdir(module_dir, 448) == 1,
+            "module directory should be created");
+        assert(cfs_mkdir(nested_dir, 448) == 1,
+            "nested module directory should be created");
+        cfs_workspace_register_directory(workspace, module_dir);
+        cfs_workspace_register_directory(workspace, nested_dir);
+        /* A later sibling chain may encounter this ancestor again. */
+        cfs_workspace_register_directory(workspace, module_dir);
+        cfs_workspace_register_file(workspace, artifact);
+        assert(write_file(artifact, "object") != null,
+            "nested artifact should be writable");
+
+        assert(cfs_workspace_cleanup(workspace, diags),
+            "registered nested artifacts should clean successfully");
+        assert(cfs_workspace_cleanup(workspace, diags),
+            "nested cleanup should remain idempotent");
+        cfs_workspace_free(workspace);
+    }
+
+    assert(cfs_remove_empty_dir(parent_path) == 1,
+        "nested cleanup test parent should become empty");
+}
+
 /** Prove cleanup status changes only an otherwise successful command. */
 func test_cleanup_status_precedence() {
     assert(cfs_apply_cleanup_status(0, true) == 0,
@@ -335,6 +375,7 @@ func main() {
     test_workspace_reservation_skips_collision();
     test_workspace_cleanup_is_bounded_and_idempotent();
     test_workspace_cleanup_rejects_nonregular_known_child();
+    test_workspace_cleanup_removes_registered_nested_tree();
     test_cleanup_status_precedence();
     printl_s("compiler_filesystem_test: all tests passed");
 }

@@ -1,7 +1,7 @@
 # ADR-0020: Native Compiler Private Temporary Workspaces
 
 - Decision date: 2026-07-29
-- Last edited: 2026-07-29
+- Last edited: 2026-08-23
 - Status: Accepted
 
 ## Context
@@ -20,9 +20,10 @@ output-local compile-only and standalone-link transactions have separate lifecyc
 ## Decision
 
 Each native `--build` or `--run` command owns exactly one private temporary workspace for the complete operation. The
-command creates it after CLI, source, and entry-point validation, passes it to subordinate compile and link helpers,
-keeps it alive through child execution for `--run`, and releases it from one command epilogue. A subordinate helper does
-not create or clean an independent build/run workspace.
+command creates it after CLI and source-target validation, passes it to subordinate graph, compile, and link helpers,
+keeps it alive through child execution for `--run`, and releases it from one command epilogue. L0 completes entry
+validation before allocation; L1 validates its graph-selected target entry before final linking. A subordinate helper
+does not create or clean an independent build/run workspace.
 
 Temporary-parent selection preserves this precedence: `TMPDIR`, `TEMP`, `TMP`, `/tmp`, then `.`. An absent, nonexistent,
 or non-directory candidate falls through. A filesystem inspection error is fatal. The first existing directory commits
@@ -38,9 +39,11 @@ host, the compiler uses the native directory path and retains the trusted-ACL as
 
 The containment guarantee covers paths selected or explicitly supplied by the driver, including generated C, compiler
 output captures, temporary objects and interfaces, generated wrappers, and temporary run executables. Publicly retained
-`--keep-c` files and caller-selected outputs remain at their documented external paths. The driver does not change the
-host compiler's current directory, rewrite its temporary-directory environment, normalize arbitrary path-bearing C
-options, or claim containment of auxiliary files that the host compiler independently invents.
+`--keep-c` files and caller-selected outputs remain at their documented external paths. L0 does not change the host
+compiler's current directory. L1 per-module compilation runs from the workspace so canonical relative artifact names do
+not expose the random workspace path; wrapper compilation and final link retain their invocation context. Neither driver
+rewrites the host compiler's temporary-directory environment, normalizes arbitrary path-bearing C options, or claims
+containment of auxiliary files that the host compiler independently invents.
 
 Cleanup removes only registered regular children without following substitutions, then removes the verified empty
 workspace directory. It never recursively removes unexpected contents. Incomplete cleanup reports `L0C-9514` or
@@ -89,8 +92,8 @@ through the native build/run workspace.
   workspace cleanup fails.
 - The guarantee does not defend against another process with the same account or stronger authority, hostile mounts,
   unusual ACL grants, or independently created host-compiler artifacts.
-- Future L1 multi-translation-unit build/run orchestration uses the same workspace abstraction but remains responsible
-  for registering its own intermediate artifacts and selecting retained outputs.
+- L1 multi-translation-unit build/run orchestration uses the same workspace abstraction, registers nested module
+  artifacts and link scratch explicitly, and retains only caller-selected output plus the documented `.dea-c` tree.
 - L1 compile-only and standalone link keep their output-local transaction boundaries and do not acquire this global
   build/run workspace lifecycle.
 
@@ -98,6 +101,8 @@ through the native build/run workspace.
 
 - [work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md](../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md):
   introduced and implemented the shared native build/run workspace safety contract
+- [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md](../../l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md):
+  consumed the workspace for L1 graph fan-out, retained-C output, and direct execution
 
 ## Current Docs
 

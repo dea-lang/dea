@@ -33,8 +33,10 @@
 #endif
 #include <windows.h>
 #else
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #ifndef S_ISVTX
 #define S_ISVTX 01000
@@ -1180,4 +1182,267 @@ int32_t l1c_fs_remove_empty_dir(
     free(native);
     return result;
 #endif
+}
+
+static void l1c_process_free_words(char **words, int32_t count) {
+    int32_t i;
+    if (words == NULL) {
+        return;
+    }
+    for (i = 0; i < count; i += 1) {
+        free(words[i]);
+    }
+    free(words);
+}
+
+static char **l1c_process_copy_words(
+    const uint8_t *const *words,
+    const int32_t *lengths,
+    int32_t count
+) {
+    char **copied;
+    int32_t i;
+    if (words == NULL || lengths == NULL || count <= 0) {
+        return NULL;
+    }
+    copied = (char **)calloc((size_t)count + 1u, sizeof(char *));
+    if (copied == NULL) {
+        return NULL;
+    }
+    for (i = 0; i < count; i += 1) {
+        if (words[i] == NULL || lengths[i] < 0 ||
+            memchr(words[i], '\0', (size_t)lengths[i]) != NULL) {
+            l1c_process_free_words(copied, count);
+            return NULL;
+        }
+        copied[i] = (char *)malloc((size_t)lengths[i] + 1u);
+        if (copied[i] == NULL) {
+            l1c_process_free_words(copied, count);
+            return NULL;
+        }
+        memcpy(copied[i], words[i], (size_t)lengths[i]);
+        copied[i][lengths[i]] = '\0';
+    }
+    return copied;
+}
+
+#if defined(_WIN32)
+static int l1c_process_append_char(
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    char value
+) {
+    if (*length + 1u >= *capacity) {
+        size_t next = *capacity == 0u ? 64u : *capacity * 2u;
+        char *grown = (char *)realloc(*buffer, next);
+        if (grown == NULL) {
+            return 0;
+        }
+        *buffer = grown;
+        *capacity = next;
+    }
+    (*buffer)[*length] = value;
+    *length += 1u;
+    return 1;
+}
+
+static int l1c_process_append_quoted_word(
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    const char *word
+) {
+    size_t i;
+    size_t slashes = 0u;
+    if (!l1c_process_append_char(buffer, length, capacity, '"')) {
+        return 0;
+    }
+    for (i = 0u; word[i] != '\0'; i += 1u) {
+        size_t slash_i;
+        if (word[i] == '\\') {
+            slashes += 1u;
+            continue;
+        }
+        if (word[i] == '"') {
+            for (slash_i = 0u; slash_i < slashes * 2u + 1u;
+                 slash_i += 1u) {
+                if (!l1c_process_append_char(
+                        buffer, length, capacity, '\\')) {
+                    return 0;
+                }
+            }
+        } else {
+            for (slash_i = 0u; slash_i < slashes; slash_i += 1u) {
+                if (!l1c_process_append_char(
+                        buffer, length, capacity, '\\')) {
+                    return 0;
+                }
+            }
+        }
+        slashes = 0u;
+        if (!l1c_process_append_char(
+                buffer, length, capacity, word[i])) {
+            return 0;
+        }
+    }
+    for (i = 0u; i < slashes * 2u; i += 1u) {
+        if (!l1c_process_append_char(buffer, length, capacity, '\\')) {
+            return 0;
+        }
+    }
+    return l1c_process_append_char(buffer, length, capacity, '"');
+}
+
+static char *l1c_process_windows_command_line(
+    char **words,
+    int32_t count
+) {
+    char *buffer = NULL;
+    size_t length = 0u;
+    size_t capacity = 0u;
+    int32_t i;
+    for (i = 0; i < count; i += 1) {
+        if (i > 0 && !l1c_process_append_char(
+                &buffer, &length, &capacity, ' ')) {
+            free(buffer);
+            return NULL;
+        }
+        if (!l1c_process_append_quoted_word(
+                &buffer, &length, &capacity, words[i])) {
+            free(buffer);
+            return NULL;
+        }
+    }
+    if (!l1c_process_append_char(
+            &buffer, &length, &capacity, '\0')) {
+        free(buffer);
+        return NULL;
+    }
+    return buffer;
+}
+#endif
+
+/**
+ * Launch one exact executable/argument vector and wait for its status.
+ *
+ * @return 1 after launch and wait, 0 when the executable could not be
+ * launched, or -1 for invalid input and process-management failures.
+ */
+int32_t l1c_process_run(
+    const uint8_t *const *words,
+    const int32_t *lengths,
+    int32_t count,
+    int32_t *status_out
+) {
+    char **argv;
+    if (status_out == NULL) {
+        return -1;
+    }
+    argv = l1c_process_copy_words(words, lengths, count);
+    if (argv == NULL || argv[0][0] == '\0') {
+        l1c_process_free_words(argv, count);
+        return -1;
+    }
+
+#if defined(_WIN32)
+    {
+        STARTUPINFOA startup;
+        PROCESS_INFORMATION process;
+        DWORD child_status;
+        char *command_line = l1c_process_windows_command_line(argv, count);
+        BOOL created;
+        if (command_line == NULL) {
+            l1c_process_free_words(argv, count);
+            return -1;
+        }
+        memset(&startup, 0, sizeof(startup));
+        memset(&process, 0, sizeof(process));
+        startup.cb = sizeof(startup);
+        created = CreateProcessA(
+            argv[0], command_line, NULL, NULL, TRUE, 0, NULL, NULL,
+            &startup, &process);
+        free(command_line);
+        if (!created) {
+            l1c_process_free_words(argv, count);
+            return 0;
+        }
+        if (WaitForSingleObject(process.hProcess, INFINITE) != WAIT_OBJECT_0 ||
+            !GetExitCodeProcess(process.hProcess, &child_status)) {
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+            l1c_process_free_words(argv, count);
+            return -1;
+        }
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        *status_out = (int32_t)child_status;
+    }
+#else
+    {
+        int exec_pipe[2];
+        int child_status;
+        int exec_error = 0;
+        ssize_t read_count;
+        pid_t child;
+        pid_t waited;
+        if (pipe(exec_pipe) != 0) {
+            l1c_process_free_words(argv, count);
+            return -1;
+        }
+        if (fcntl(exec_pipe[1], F_SETFD, FD_CLOEXEC) == -1) {
+            close(exec_pipe[0]);
+            close(exec_pipe[1]);
+            l1c_process_free_words(argv, count);
+            return -1;
+        }
+        child = fork();
+        if (child < 0) {
+            close(exec_pipe[0]);
+            close(exec_pipe[1]);
+            l1c_process_free_words(argv, count);
+            return -1;
+        }
+        if (child == 0) {
+            close(exec_pipe[0]);
+            execv(argv[0], argv);
+            exec_error = errno;
+            while (write(exec_pipe[1], &exec_error,
+                         sizeof(exec_error)) < 0 && errno == EINTR) {
+            }
+            _exit(127);
+        }
+        close(exec_pipe[1]);
+        do {
+            read_count = read(exec_pipe[0], &exec_error,
+                              sizeof(exec_error));
+        } while (read_count < 0 && errno == EINTR);
+        close(exec_pipe[0]);
+        do {
+            waited = waitpid(child, &child_status, 0);
+        } while (waited < 0 && errno == EINTR);
+        if (waited < 0) {
+            l1c_process_free_words(argv, count);
+            return -1;
+        }
+        if (read_count > 0) {
+            l1c_process_free_words(argv, count);
+            return 0;
+        }
+        if (read_count < 0) {
+            l1c_process_free_words(argv, count);
+            return -1;
+        }
+        if (WIFEXITED(child_status)) {
+            *status_out = (int32_t)WEXITSTATUS(child_status);
+        } else if (WIFSIGNALED(child_status)) {
+            *status_out = (int32_t)(128 + WTERMSIG(child_status));
+        } else {
+            *status_out = (int32_t)child_status;
+        }
+    }
+#endif
+
+    l1c_process_free_words(argv, count);
+    return 1;
 }

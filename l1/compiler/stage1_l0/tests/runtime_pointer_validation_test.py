@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,39 @@ def compiler_path() -> Path:
     return resolve_tool(build_dir / "bin" / "l1c-stage1")
 
 
+def is_gnu_compatible_compiler(path: str) -> bool:
+    """Return whether one compiler basename accepts `-c ... -o ...`."""
+
+    name = Path(path).name.lower()
+    if name.endswith(".exe"):
+        name = name[:-4]
+    return (
+        "gcc" in name
+        or ("clang" in name and "clang-cl" not in name)
+        or name in {"cc", "tcc"}
+    )
+
+
+def foreign_c_compiler() -> str:
+    """Return a GNU-compatible compiler for a caller-owned foreign object."""
+
+    candidates = [
+        os.environ.get("L1_RUNTIME_CC", "").strip(),
+        os.environ.get("L1_CC", "").strip(),
+        "clang",
+        "gcc",
+        "cc",
+        os.environ.get("CC", "").strip(),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        resolved = shutil.which(candidate)
+        if resolved is not None and is_gnu_compatible_compiler(resolved):
+            return resolved
+    raise AssertionError("pointer validation test requires clang, gcc, or cc")
+
+
 def run_source(
     module_name: str,
     source: str,
@@ -54,7 +88,33 @@ def run_source(
         if support_c is not None:
             support_path = project_root / "support.c"
             support_path.write_text(support_c, encoding="utf-8")
-            flags.extend(["--c-options", str(support_path)])
+            support_object = project_root / "support.o"
+            host_cc = foreign_c_compiler()
+            compiled = subprocess.run(
+                [
+                    host_cc,
+                    "-c",
+                    str(support_path),
+                    "-o",
+                    str(support_object),
+                ],
+                cwd=L1_ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if compiled.returncode != 0:
+                sys.stderr.buffer.write(compiled.stdout)
+                sys.stderr.buffer.write(compiled.stderr)
+                raise AssertionError("foreign support C compilation failed")
+            flags.extend(
+                [
+                    "--c-compiler",
+                    host_cc,
+                    "--foreign-object",
+                    str(support_object),
+                ]
+            )
         return subprocess.run(
             [
                 str(compiler_path()),

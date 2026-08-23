@@ -1,14 +1,14 @@
 # ADR-0020: Per-Module Backend and Lifecycle ABI
 
 - Decision date: 2026-07-22
-- Last edited: 2026-08-21
+- Last edited: 2026-08-23
 - Status: Accepted
 
 ## Context
 
 The bootstrap backend originally emitted the complete source closure and process-level C `main` in one translation unit.
-Separate compilation needs an independently compilable C unit for one source module, but the existing `--build` /
-`--run` workflow must remain usable until compile-only artifact production, standalone linking, and graph fan-out land.
+Separate compilation needs an independently compilable C unit for one source module while build/run composes a complete
+source/interface graph through the same module boundary.
 
 The executable wrapper needs stable entry points for module initialization, finalization, and selection of a possibly
 non-exported source `main` without giving imported modules permission to orchestrate one another.
@@ -40,10 +40,10 @@ conditionally defines the following entry bridge:
   can call a non-exported source definition within the same translation unit and normalizes results to a C status: `int`
   directly, `bool` as `true` to `0` and `false` to `1`, and every other form to `0` after the call.
 
-`I5entry` does not initialize runtime argument state or call lifecycle functions. The standalone linker composes the
-per-module ABI through a separate process wrapper: it calls `_rt_init_args`, calls each selected Dea module's `I4init`
-in deterministic dependency-first order, invokes exactly one selected `I5entry`, and calls `I4fini` in exact reverse
-order. Foreign objects do not participate in this lifecycle sequence.
+`I5entry` does not initialize runtime argument state or call lifecycle functions. The common linker used by standalone
+link and build/run composes the per-module ABI through a separate process wrapper: it calls `_rt_init_args`, calls each
+selected Dea module's `I4init` in deterministic dependency-first order, invokes exactly one selected `I5entry`, and
+calls `I4fini` in exact reverse order. Foreign objects do not participate in this lifecycle sequence.
 
 ## Rationale
 
@@ -56,12 +56,13 @@ order. Foreign objects do not participate in this lifecycle sequence.
   context needed to order modules correctly.
 - An in-module entry bridge reaches a private source `main` without turning it into a source export or placing a process
   wrapper in every object.
-- Preserving the legacy generator avoids a partially migrated build/run workflow until graph fan-out reuses the
-  operational compile/link APIs.
+- Keeping the legacy generator internal during migration lets downstream cleanup remove it after every operational mode
+  has moved to the module boundary.
 
 ## Consequences
 
-- Ordinary `--gen`, `--build`, and `--run` remain legacy whole-program single-CU operations for now.
+- Ordinary `--gen` emits one selected module; build/run compiles each source-backed graph node through the same module
+  operation and links the complete source/interface set.
 - The internal module generator produces the lifecycle-bearing staged C used by operational compile-only mode.
   Compile-only always publishes the object and interface, while `--keep-c` also publishes that exact generated C.
 - Per-module objects contain no embedded Dea metadata; verified sibling interfaces carry entry and lifecycle manifests.
@@ -78,6 +79,7 @@ order. Foreign objects do not participate in this lifecycle sequence.
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
+- [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
 ## Current Docs
 
@@ -89,6 +91,7 @@ order. Foreign objects do not participate in this lifecycle sequence.
 [abi]: ../specs/compiler/abi.md
 [architecture]: ../reference/architecture.md
 [backend]: ../reference/c-backend-design.md
+[build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [lifecycle]: ../../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

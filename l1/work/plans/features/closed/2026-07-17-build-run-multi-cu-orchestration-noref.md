@@ -2,8 +2,8 @@
 
 ## Fan out build and run across compilation units
 
-- Date: 2026-07-17
-- Status: Draft
+- Date: 2026-08-23
+- Status: Completed
 - Title: Rebuild build and run on the multi-compilation-unit APIs
 - Kind: Feature
 - Severity: High
@@ -42,10 +42,14 @@
   - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py`
   - `l1/compiler/stage1_l0/tests/diagnostic_code_parity_test.py`
   - `l1/compiler/stage1_l0/tests/diagnostic_message_parity_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_multi_cu_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_workspace_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_cleanup_policy_ice_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_link_set_test.py`
+  - `l1/compiler/stage1_l0/tests/mul_runtime_test.l0`
+  - `l1/compiler/stage1_l0/tests/runtime_pointer_validation_test.py`
+  - `l1/compiler/stage1_l0/tests/slice_trace_test.l0`
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
   - [`l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md`][module-graph]
@@ -60,7 +64,8 @@
   - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
-  `make -C l1 test-stage1 TESTS="cli_args_test source_paths_test driver_test analysis_test module_graph_test build_driver_test compile_driver_test compiler_filesystem_test link_driver_test l1c_lib_test compiler_filesystem_support_test.py diagnostic_code_parity_test.py diagnostic_message_parity_test.py l1c_stage1_build_run_workspace_test.py l1c_stage1_cleanup_policy_ice_test.py l1c_stage1_help_output_test.py l1c_stage1_link_set_test.py"`
+  `make -C l1 test-stage1 TESTS="cli_args_test source_paths_test driver_test analysis_test module_graph_test build_driver_test compile_driver_test compiler_filesystem_test link_driver_test l1c_lib_test compiler_filesystem_support_test.py diagnostic_code_parity_test.py diagnostic_message_parity_test.py l1c_stage1_build_run_multi_cu_test.py l1c_stage1_build_run_workspace_test.py l1c_stage1_cleanup_policy_ice_test.py l1c_stage1_help_output_test.py l1c_stage1_link_set_test.py runtime_pointer_validation_test.py"`
+  `make -C l1 test-stage1-trace TESTS="l1c_lib_test mul_runtime_test slice_trace_test"`
 
 ## Summary
 
@@ -246,7 +251,7 @@ architecture, C-backend, and separate-compilation references.
 - Decision: Run `--build` and `--run` through one verified multi-compilation-unit orchestration pipeline.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0033-multi-compilation-unit-build-and-run-pipeline.md`
   - Rationale: Graph fan-out, provider selection, entry selection, and link ordering form the durable L1 multi-unit
     execution boundary.
 - Decision: Use the canonical module graph and provider rules for build/run graph expansion.
@@ -279,14 +284,20 @@ architecture, C-backend, and separate-compilation references.
 - Decision: Retain the complete multi-unit C tree by copying the exact module and wrapper bytes used by the host tools.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0034-multi-unit-generated-c-retention-tree.md`
   - Rationale: Multi-unit retention layout and ownership are build/run decisions; the downstream generated-C completion
     plan separately owns the four-mode byte-identity contract.
 - Decision: Stage build/run artifacts in the shared atomically reserved native workspace.
   - Scope: Shared
-  - Disposition: New ADR
-  - ADR: `docs/decisions/`
-  - Rationale: The shared native-workspace plan owns reservation, trust validation, and cleanup policy.
+  - Disposition: Amend ADR
+  - ADR: `docs/decisions/0020-native-compiler-private-temporary-workspaces.md`
+  - Rationale: ADR-0020 owns reservation, trust validation, cleanup policy, and now records L1 nested artifact and
+    module-compilation working-directory behavior.
+- Decision: Replace ADR-0031's deferred build/run statements with the implemented module-generator consumption.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0031-per-module-generated-c-cli-boundary.md`
+  - Rationale: Build/run now invokes the shared module generator and copies its exact bytes into retained trees.
 
 ## Non-Goals
 
@@ -328,15 +339,36 @@ architecture, C-backend, and separate-compilation references.
 15. The build/run contract records the stable-input precondition for every interface/object pair, and tests do not
     assume compile-only publication supplies a reader-visible snapshot.
 
-[compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
-[diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[external-linking]: 2026-04-24-external-library-linking-cli-noref.md
-[fingerprints]: closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[generated-c-completion]: 2026-07-24-per-module-generated-c-mode-noref.md
-[generated-c-foundation]: closed/2026-08-21-per-module-generated-c-foundation-noref.md
-[initiative]: ../../initiatives/0001-separate-compilation-and-linking.md
-[lifecycle]: closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: closed/2026-07-17-link-set-driver-and-wrapper-noref.md
-[module-graph]: closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[native-temp-safety]: ../../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
-[object-metadata]: closed/2026-07-17-object-metadata-emission-and-readers-noref.md
+## Completion Notes
+
+Completed on 2026-08-23.
+
+- Replaced legacy whole-program `--build` / `--run` dispatch with dependency-first multi-CU graph orchestration. Each
+  source unit is re-analyzed through the one-module boundary against authoritative or already staged `.l1m` providers,
+  compiled into private canonical `.c + .o + .l1m` companions, and submitted with interface-backed and foreign objects
+  to the common verified link path.
+- Added direct exact-argv execution, selected-target entry handling, complete mirrored keep-C trees, bounded nested
+  workspace cleanup, exact Windows compile/link preflight, and diagnostics `L1C-2130` through `L1C-2133`.
+- Added end-to-end coverage for source and mixed graphs, staged-interface reanalysis, lifecycle and operand order,
+  foreign objects, selected entry, exact argv/status, launch failures, retention byte identity, wrapper-name collisions,
+  cleanup, and support-process behavior. Runtime pointer fixtures now exercise the documented foreign-object boundary.
+- Independent read-only review found and drove fixes for wrapper scratch collisions, case-insensitive retained paths,
+  duplicate nested-directory cleanup, stale whole-graph semantic reuse, Windows preflight ordering, test routing, and a
+  traced optional-string readability-probe leak. The reviewer reported no remaining actionable findings after each fix.
+- Validation completed with the clean `test-all` normal phase (66 Stage 1 tests, environment stackability, and four
+  examples), the complete post-fix trace sweep (44 passed, 0 failed), and the final related normal regression set
+  (`link_driver_test`, `l1c_lib_test`, `mul_runtime_test`, `slice_trace_test`, and
+  `l1c_stage1_build_run_multi_cu_test.py`; 5 passed, 0 failed).
+
+[compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
+[diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[external-linking]: ../2026-04-24-external-library-linking-cli-noref.md
+[fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[generated-c-completion]: ../2026-07-24-per-module-generated-c-mode-noref.md
+[generated-c-foundation]: 2026-08-21-per-module-generated-c-foundation-noref.md
+[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
+[module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[native-temp-safety]: ../../../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md
+[object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

@@ -1,7 +1,7 @@
 # ADR-0031: Per-Module Generated-C CLI Boundary
 
 - Decision date: 2026-08-21
-- Last edited: 2026-08-21
+- Last edited: 2026-08-23
 - Status: Accepted
 
 ## Context
@@ -44,12 +44,14 @@ output and `-c --keep-c` output are byte-identical for identical resolved inputs
   separately and link them through the separate-compilation path.
 - Generated utility modules contain lifecycle definitions but no `I5entry`; eligible entry modules additionally contain
   `I5entry`, while neither form contains process `main`.
-- `--build` and `--run` continue to use the legacy whole-program backend until their multi-CU fan-out plan completes.
+- `--build` and `--run` use the module generator once per source-backed graph node; their retained trees copy those
+  exact bytes, while the downstream completion plan owns legacy-generator removal and the final four-mode proof.
 - The downstream generated-C completion plan can remove the legacy generator only after build/run migrates.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][foundation]
+- [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
 ## Current Docs
 
@@ -60,6 +62,7 @@ output and `-c --keep-c` output are byte-identical for identical resolved inputs
 
 [architecture]: ../reference/architecture.md
 [backend]: ../reference/c-backend-design.md
+[build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [foundation]: ../../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

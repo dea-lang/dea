@@ -33,7 +33,7 @@
   - `l1/compiler/stage1_l0/tests/fixtures/separate_compilation`
 - Related:
   - [`l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`][generated-c-foundation]
-  - [`l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
+  - [`l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
 - Repro:
@@ -144,7 +144,7 @@ Before finalization, verify legacy removal with:
 rg -n 'backend_generate\(' l1/compiler/stage1_l0
 ```
 
-[build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
+[build-run]: closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: closed/2026-07-17-compile-only-artifact-production-noref.md
 [generated-c-foundation]: closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [initiative]: ../../initiatives/0001-separate-compilation-and-linking.md

@@ -429,7 +429,7 @@ func test_link_mode_entry_validation() {
 }
 
 /**
- * Tests link-only options retain their scope and shared missing-value behavior.
+ * Tests linking options retain their mode scope and missing-value behavior.
  */
 func test_link_option_scope_and_missing_values() {
     with (let build_foreign = sv_create(6) => sv_free(build_foreign)) {
@@ -437,8 +437,22 @@ func test_link_option_scope_and_missing_values() {
         sv_push(build_foreign, "-Cf=provider.o");
         sv_push(build_foreign, "app.main");
         let parsed = cli_parse(build_foreign);
-        assert(cli_result_has_code(parsed, "L1C-2091"), "expected foreign-object scope diagnostic");
+        assert(!diag_has_errors(parsed.diags),
+            "build should accept explicit foreign objects");
+        assert(cli_link_operands_count(
+                (parsed.options as CliOptions*).link_operands) == 2,
+            "build should retain the foreign object and source target operands");
         cli_parse_result_free(parsed);
+    }
+
+    with (let check_foreign = sv_create(6) => sv_free(check_foreign)) {
+        sv_push(check_foreign, "--check");
+        sv_push(check_foreign, "-Cf=provider.o");
+        sv_push(check_foreign, "app.main");
+        let parsed_scope = cli_parse(check_foreign);
+        assert(cli_result_has_code(parsed_scope, "L1C-2091"),
+            "non-linking analysis should reject foreign objects");
+        cli_parse_result_free(parsed_scope);
     }
 
     with (let build_entry = sv_create(6) => sv_free(build_entry)) {
@@ -565,7 +579,7 @@ func test_link_mode_option_matrix() {
 }
 
 /**
- * Tests interface paths are gated to compile/gen modes and require values.
+ * Tests interface paths are gated to graph-aware modes and require values.
  */
 func test_interface_path_scope_and_value_validation() {
     with (let missing = sv_create(3) => sv_free(missing)) {
@@ -583,7 +597,8 @@ func test_interface_path_scope_and_value_validation() {
         sv_push(build, "interfaces");
         sv_push(build, "app.main");
         let parsed2 = cli_parse(build);
-        assert(cli_result_has_code(parsed2, "L1C-2031"), "expected build interface-path scope diagnostic");
+        assert(!diag_has_errors(parsed2.diags),
+            "build should accept ordered interface paths");
         cli_parse_result_free(parsed2);
     }
 
@@ -602,7 +617,8 @@ func test_interface_path_scope_and_value_validation() {
         sv_push(run, "--interface-path=interfaces");
         sv_push(run, "app.main");
         let parsed4 = cli_parse(run);
-        assert(cli_result_has_code(parsed4, "L1C-2031"), "expected run interface-path scope diagnostic");
+        assert(!diag_has_errors(parsed4.diags),
+            "run should accept ordered interface paths");
         cli_parse_result_free(parsed4);
     }
 }

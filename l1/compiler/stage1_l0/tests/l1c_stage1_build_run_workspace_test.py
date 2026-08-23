@@ -106,8 +106,13 @@ def write_fake_compiler(root: Path) -> Path:
                 "c_path": c_path,
                 "output": output,
             }
-            Path(os.environ["L1_WORKSPACE_FAKE_LOG"]).write_text(
-                json.dumps(record),
+            log_path = Path(os.environ["L1_WORKSPACE_FAKE_LOG"])
+            records = []
+            if log_path.is_file():
+                records = json.loads(log_path.read_text(encoding="utf-8"))
+            records.append(record)
+            log_path.write_text(
+                json.dumps(records),
                 encoding="utf-8",
             )
 
@@ -129,9 +134,7 @@ def write_fake_compiler(root: Path) -> Path:
                 env=compiler_env,
                 check=False,
             )
-            if completed.returncode == 0 and mode == "unexpected":
-                if workspace is None:
-                    raise SystemExit(24)
+            if completed.returncode == 0 and mode == "unexpected" and workspace is not None:
                 (workspace / "unexpected.side").write_text(
                     "retained",
                     encoding="utf-8",
@@ -209,10 +212,35 @@ def run_compiler(
     )
 
 
-def read_record(log_path: Path) -> dict[str, object]:
-    """Read one fake-compiler invocation record."""
+def read_records(log_path: Path) -> list[dict[str, object]]:
+    """Read all fake-compiler invocation records."""
 
     return json.loads(log_path.read_text(encoding="utf-8"))
+
+
+def source_record(log_path: Path) -> dict[str, object]:
+    """Return the first source-module compiler invocation record."""
+
+    for record in read_records(log_path):
+        c_path = str(record["c_path"])
+        if c_path and Path(c_path).name != "__dea_wrapper.c":
+            return record
+    raise WorkspaceFailure("fake compiler recorded no source-module compile")
+
+
+def workspace_from_log(log_path: Path) -> Path:
+    """Return the absolute private workspace recorded for wrapper compilation."""
+
+    for record in read_records(log_path):
+        c_path = str(record["c_path"])
+        if c_path and Path(c_path).name == "__dea_wrapper.c":
+            scratch = Path(c_path).parent
+            if scratch.name != ".link":
+                raise WorkspaceFailure(
+                    f"wrapper compiler scratch is not hidden .link: {scratch}"
+                )
+            return scratch.parent.resolve()
+    raise WorkspaceFailure("fake compiler recorded no wrapper compile")
 
 
 def workspaces(parent: Path) -> list[Path]:
@@ -266,16 +294,17 @@ def test_build_uses_canonical_workspace(
     if not output.is_file():
         raise WorkspaceFailure("canonical workspace build omitted output")
 
-    record = read_record(log_path)
+    record = source_record(log_path)
     c_path = Path(str(record["c_path"]))
-    if c_path.name != "generated.c":
+    if c_path.name != "ok_leaf.c":
         raise WorkspaceFailure(f"unexpected generated C child: {c_path}")
-    if c_path.parent.parent != safe_parent.resolve():
+    workspace = workspace_from_log(log_path)
+    if workspace.parent != safe_parent.resolve():
         raise WorkspaceFailure(
-            f"workspace did not use canonical parent: {c_path.parent}"
+            f"workspace did not use canonical parent: {workspace}"
         )
-    if not c_path.parent.name.startswith(".l1c-build-workspace-"):
-        raise WorkspaceFailure(f"unexpected build workspace name: {c_path.parent}")
+    if not workspace.name.startswith(".l1c-build-workspace-"):
+        raise WorkspaceFailure(f"unexpected build workspace name: {workspace}")
     require_no_workspaces(safe_parent, "successful build")
 
 
@@ -307,11 +336,11 @@ def test_posix_literal_backslash_parent_contains_workspace(
         raise WorkspaceFailure(
             "literal-backslash parent build failed:\n" + completed.stderr
         )
-    c_path = Path(str(read_record(log_path)["c_path"]))
-    if c_path.parent.parent != temp_parent.resolve():
+    workspace = workspace_from_log(log_path)
+    if workspace.parent != temp_parent.resolve():
         raise WorkspaceFailure(
             "workspace escaped literal-backslash parent: "
-            f"{c_path.parent}"
+            f"{workspace}"
         )
     require_no_workspaces(temp_parent, "literal-backslash parent build")
 
@@ -344,10 +373,10 @@ def test_non_directory_candidate_falls_through(
         raise WorkspaceFailure(
             "temporary-parent fallback build failed:\n" + completed.stderr
         )
-    c_path = Path(str(read_record(log_path)["c_path"]))
-    if c_path.parent.parent != fallback.resolve():
+    workspace = workspace_from_log(log_path)
+    if workspace.parent != fallback.resolve():
         raise WorkspaceFailure(
-            f"non-directory TMPDIR did not fall through to TEMP: {c_path}"
+            f"non-directory TMPDIR did not fall through to TEMP: {workspace}"
         )
     require_no_workspaces(fallback, "fallback build")
 
@@ -382,10 +411,10 @@ def test_empty_candidate_falls_through(
             "empty temporary-parent fallback build failed:\n"
             + completed.stderr
         )
-    c_path = Path(str(read_record(log_path)["c_path"]))
-    if c_path.parent.parent != fallback.resolve():
+    workspace = workspace_from_log(log_path)
+    if workspace.parent != fallback.resolve():
         raise WorkspaceFailure(
-            f"empty TMPDIR did not fall through to TEMP: {c_path}"
+            f"empty TMPDIR did not fall through to TEMP: {workspace}"
         )
     require_no_workspaces(fallback, "empty-value fallback build")
 
@@ -539,12 +568,21 @@ def test_cleanup_failure_changes_build_success(
             "cleanup failure removed the successful caller output"
         )
 
-    workspace = Path(str(read_record(log_path)["c_path"])).parent.resolve()
+    workspace = workspace_from_log(log_path)
     if workspaces(temp_parent) != [workspace]:
         raise WorkspaceFailure("cleanup failure did not retain exact workspace")
-    if sorted(path.name for path in workspace.iterdir()) != ["unexpected.side"]:
+    if sorted(path.name for path in workspace.iterdir()) != [
+        ".link",
+        "unexpected.side",
+    ]:
         raise WorkspaceFailure(
             "bounded cleanup did not remove only known children"
+        )
+    if sorted(path.name for path in (workspace / ".link").iterdir()) != [
+        "unexpected.side"
+    ]:
+        raise WorkspaceFailure(
+            "bounded cleanup removed unknown hidden-link contents"
         )
     shutil.rmtree(workspace)
 
@@ -576,7 +614,7 @@ def test_cleanup_failure_preserves_program_status(
             "cleanup failure did not preserve program status 7:\n"
             + completed.stderr
         )
-    workspace = Path(str(read_record(log_path)["c_path"])).parent.resolve()
+    workspace = workspace_from_log(log_path)
     if workspaces(temp_parent) != [workspace]:
         raise WorkspaceFailure("run cleanup failure did not retain workspace")
     shutil.rmtree(workspace)

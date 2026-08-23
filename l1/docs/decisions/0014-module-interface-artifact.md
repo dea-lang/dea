@@ -1,7 +1,7 @@
 # ADR-0014: Module Interface Artifact
 
 - Decision date: 2026-06-13
-- Last edited: 2026-08-21
+- Last edited: 2026-08-23
 - Status: Accepted
 
 ## Context
@@ -30,8 +30,9 @@ L1 uses a textual `.l1m` module interface artifact with a constrained source-lik
 The Stage 1 compiler can emit the artifact through the internal `--emit-interface` mode and can parse it back through a
 dedicated constrained parser. Resolution-aware internal entry points discover interfaces from ordered roots and load
 transitive lifecycle-import, `require`, and `link` closure through the canonical module graph. Standalone link requires
-and verifies the canonical sibling interface for each positional Dea object. Ordinary `--build`, `--run`, and CLI source
-import analysis remain source-based in this tranche.
+and verifies the canonical sibling interface for each positional Dea object. Build/run graph expansion also treats a
+selected imported interface as authoritative, verifies its operational manifests, and forwards its original opaque
+sibling object; source fallback occurs only when no interface is selected.
 
 The emitter fingerprints the canonical effective public surface. Operational consumers validate the tagged module and
 dependency values and recompute the module fingerprint before graph registration or semantic replay.
@@ -63,6 +64,7 @@ dependency values and recompute the module fingerprint before graph registration
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints-plan]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][metadata-plan]
+- [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
 ## Related Initiatives
 
@@ -75,6 +77,7 @@ dependency values and recompute the module fingerprint before graph registration
 - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]: registered `.l1m` parser, fingerprint, and
   discovery diagnostics
 
+[build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [driver-plan]: ../../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [fingerprints-plan]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md

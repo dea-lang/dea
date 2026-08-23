@@ -1,7 +1,7 @@
 # ADR-0032: Deterministic Compile-Only Staging Paths
 
 - Decision date: 2026-08-21
-- Last edited: 2026-08-22
+- Last edited: 2026-08-23
 - Status: Accepted
 
 ## Context
@@ -71,12 +71,13 @@ and code-generation settings.
 - Host-generated auxiliary files remain outside the selected artifact set and may intentionally cause bounded cleanup
   retention.
 - Diagnostics and verbose command display show stable module-relative C/object paths.
-- Future build/run fan-out can call the same module generator without adopting compile-only publication.
+- Build/run fan-out calls the same module generator in its command workspace without adopting compile-only publication.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][foundation]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
+- [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
 ## Current Docs
 
@@ -87,6 +88,7 @@ and code-generation settings.
 
 [architecture]: ../reference/architecture.md
 [backend]: ../reference/c-backend-design.md
+[build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [foundation]: ../../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md

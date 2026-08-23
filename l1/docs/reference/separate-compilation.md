@@ -1,14 +1,11 @@
-# L1 Separate Compilation and Standalone Linking
+# L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-08-22
+Version: 2026-08-23
 
 This document describes the implemented Dea/L1 Stage 1 path from per-module generated C and one-module compilation to an
-interface-authoritative standalone executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
-and `l1c --link`.
-
-`--gen` now emits one selected source-backed module through the same backend operation as compile-only. Ordinary
-`--build` and `--run` remain source-based, legacy single-translation-unit flows and do not yet reuse the
-separate-compilation graph or standalone-link executor.
+interface-authoritative executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
+`l1c --build`, `l1c --run`, and `l1c --link`. Generated-C, compile-only, build, and run all consume the same per-module
+backend operation; build/run add graph fan-out and reuse the verified link planner, lifecycle wrapper, and executor.
 
 Related canonical documents:
 
@@ -40,6 +37,26 @@ l1c --compile MODULE [-I INTERFACE_ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 Each successful invocation publishes a reusable `.o` plus `.l1m` pair. `--keep-c` additionally publishes the exact
 generated `.c`. Compile-only requires `.l1m` providers for every non-virtual import and does not fall back to provider
 source.
+
+Build or run a source-rooted graph:
+
+```text
+l1c --build MODULE [-I INTERFACE_ROOT]... [-Cf C_OBJECT]... [-o OUTPUT] [-Gk]
+l1c --run MODULE [-I INTERFACE_ROOT]... [-Cf C_OBJECT]... [-Gk] [-- PROGRAM_ARG...]
+```
+
+Both modes expand the requested source target under `MRP_ALLOW_SOURCE_FALLBACK`. The first selected interface is
+authoritative and contributes its original opaque sibling `.o`; otherwise a provider may fall back to source and is
+compiled once into the invocation workspace. Source nodes compile dependency-first with direct-import order as the
+deterministic tie-breaker. The requested target is the explicit link entry and must itself define an eligible bridge;
+`--entry` is invalid. Foreign objects are caller-asserted opaque inputs and retain their relative declaration order.
+
+Build writes the requested or default executable. Run writes a temporary executable, launches it directly with exact
+post-`--` arguments, returns its status, and cleans it. Build keep-C retains `OUTPUT.dea-c/`; run keep-C retains
+`<canonical-target>.dea-c/`. Both trees mirror dotted module paths and contain root `__dea_wrapper.c`; the destination
+must be absent and contains only exact generated C bytes. A root module named `__dea_wrapper` remains buildable and
+runnable without retention, but it and its ASCII case variants report `L1C-2132` with keep-C because both canonical
+outputs may claim the root wrapper path on case-insensitive filesystems.
 
 Link an explicitly supplied object set:
 
@@ -95,14 +112,15 @@ constrain module identity. All Dea objects remain explicit CLI operands: interfa
 supplied set but never search for or add native paths.
 
 The pair is caller-trusted. No checksum, native symbol, data anchor, metadata section, or other mechanism binds its two
-files. Build systems and callers must create, copy, replace, invalidate, and keep the pair stable together. Concurrent
-target replacement is outside the contract. Mixed-generation pairs may fail interface validation, fail at the host link,
-or link successfully with incorrect native behavior.
+files. Build systems and callers must create, copy, replace, invalidate, and keep the pair stable together from
+selection through link submission. Concurrent target replacement is outside the contract for standalone link, build, and
+run. Mixed-generation pairs may fail interface validation, fail at the host link, or link successfully with incorrect
+native behavior.
 
 ## 3. Opaque Native Input Boundary
 
 Dea performs no Dea-side reads of caller Dea or foreign object bytes, compiled wrapper bytes, runtime archive bytes, or
-TinyCC runtime-object bytes during standalone link.
+TinyCC runtime-object bytes during standalone link, build, or run.
 
 - A positional Dea `.o` is an opaque native payload paired with its verified interface.
 - `--foreign-object` asserts that one regular-file path names a host-compatible relocatable object. The foreign input
@@ -144,13 +162,18 @@ them.
 
 ## 5. Deterministic Lifecycle Order
 
-The driver retains one nonrecursive, three-state depth-first traversal:
+Standalone link retains one nonrecursive, three-state depth-first traversal:
 
 1. Visit the selected entry module's component first.
 2. Follow each module's `import module` records in stored order.
 3. Append each module after all of its providers, yielding dependency-first order.
 4. After the entry component, visit each still-unvisited positional Dea root in CLI encounter order.
 5. Include every Dea module exactly once. Foreign inputs never enter lifecycle order.
+
+Build/run derives the same dependency-first lifecycle relation from the canonical source/interface graph, following each
+node's ordered direct imports and compiling source-backed nodes in that order. Because its requested source target
+defines the complete graph root, it has no standalone-style extra positional Dea roots. Both paths pass the resulting
+order to the same wrapper emitter.
 
 The generated C wrapper defines process `main(int argc, char **argv)`. It calls:
 
@@ -184,9 +207,10 @@ There are no caller-input snapshots. "Original path" means the original caller-s
 the existing host-safe renderer still disambiguates option-shaped paths and normalizes MSVC paths.
 
 On native Windows the current shell transport rejects exact command words and redirection paths containing `%`, `!`,
-literal `"`, carriage return, or line feed. Pre-allocation validation covers every caller- or environment-controlled
-value already known. After allocation, the common executor validates each exact rendered wrapper-compile or final-link
-command together with its transaction-owned capture paths immediately before invocation.
+literal `"`, carriage return, or line feed. Each source-object transaction validates its resolved compiler, working
+directory, complete command, and capture names before invocation. Pre-allocation link validation covers every caller- or
+environment-controlled value already known; after allocation, the common executor validates each exact rendered
+wrapper-compile or final-link command together with its transaction-owned capture paths immediately before invocation.
 
 Runtime mode selects `libdea_rt.a`, `libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or `libdea_rt_unchecked.a`. Normal
 compiler families receive one exact archive path. Under ADR-0027, TinyCC receives the complete variant-matched raw
@@ -218,10 +242,12 @@ final executable are not transactionally wrapped.
 
 ## 8. Current Boundary
 
-Per-module `--gen`, compile-only, and standalone linking are implemented; source fan-out for ordinary `--build` and
-`--run` is not. Those modes still generate one legacy whole-program C translation unit. The later build/run
-orchestration can reuse the per-module generation operation plus the verified link planner and executor while supplying
-scratch paths under its own invocation workspace.
+Per-module `--gen`, compile-only, multi-CU build/run, and standalone linking are implemented. Build/run source fan-out
+re-analyzes each source-backed graph node as a one-module entry against authoritative and already staged provider
+interfaces, compiles it into private `.c`, `.o`, and `.l1m` companions, combines those with authoritative
+interface/object providers and foreign objects through the verified link planner, and supplies all wrapper/capture paths
+from its command-owned native workspace. The legacy whole-program backend remains internal pending the downstream
+generated-C completion cleanup, but no ordinary CLI mode dispatches through it.
 
 External libraries, library search paths, rpaths, raw host-driver arguments, static/shared-library production, C++
 interoperation, and object discovery remain outside the implemented standalone-link surface.

@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-08-22
+Version: 2026-08-23
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -57,6 +57,30 @@ lifecycle calls, process `main`, executable wrapper, embedded interface text, or
 goes to stdout. With `-o`, the value is the exact output file; generation creates no companion artifacts and never
 invokes the host compiler or linker. `--keep-c` and host-tool-only controls remain invalid with `--gen`.
 
+### L1 multi-compilation-unit build and run
+
+L1 `--build` and `--run` resolve the requested source target through the canonical module graph with interface-first
+imports and source fallback only when no interface is selected. Each source-backed node is generated and compiled once
+as its own module translation unit in deterministic dependency-first order. An interface-backed provider contributes its
+verified `.l1m` plus the original opaque sibling `.o`; the pair must remain stable from selection through final-link
+submission, and callers must serialize externally against same-stem publication or replacement.
+
+The requested source target is always the entry selection, so `--entry` remains standalone-link-only. The target must
+itself carry an eligible `I5entry`; another linked module's entry cannot substitute. Repeatable `--foreign-object` /
+`-Cf` inputs are valid in build and run and retain their relative declaration order around the graph-expanded Dea set.
+
+`--build -o PATH --keep-c` retains exact generated C beneath `PATH.dea-c/`; default output uses the same suffix on the
+default executable name. `--run --keep-c` retains beneath `<canonical-target>.dea-c/` in the invocation directory and
+continues to ignore `-o`. Module files mirror dotted module paths, and `__dea_wrapper.c` is stored at the root. The
+retained root must be absent; setup or copy failure reports `L1C-2132` and rolls back compiler-created entries. The
+otherwise legal root module name `__dea_wrapper`, including ASCII case variants, is rejected only when build/run keep-C
+is requested because its canonical C path may collide with the reserved wrapper filename on case-insensitive
+filesystems.
+
+Run mode launches the temporary executable without a shell, forwards every argument after `--` unchanged, returns the
+program status, and removes the executable with the rest of the private workspace. Failure to start the executable is
+reported separately as `L1C-2133`.
+
 ## 3. Shared Options
 
 The current shared option surface is:
@@ -65,7 +89,7 @@ The current shared option surface is:
 - repeatable project and system roots through `--project-root` / `-Rp` and `--sys-root` / `-Rs`; L1 `--link` rejects
   both because it consumes objects without resolving source
 - repeatable compile/generated-C interface paths through `--interface-path` / `-I`; L1 consumes them in declaration
-  order, while L0 retains the syntax for its reserved compile mode
+  order for build, run, compile-only, and generated-C modes, while L0 retains the syntax for its reserved compile mode
 - `--output` / `-o` for artifact-producing modes; L1 also accepts it with `--compile`, `--emit-interface`, and `--link`
 - `--c-compiler` / `-Cc`, `--c-options` / `-Co`, and `--runtime-include` / `-Ri` for build/run, L1 compile-only, and L1
   standalone linking; in standalone link mode, C options apply only while compiling the generated wrapper and are not
@@ -78,12 +102,12 @@ The current shared option surface is:
 - `--keep-c` / `-Gk` for build/run and L1 compile-only
 - `--all-modules` / `-a` for token, AST, symbol, and type dumps
 - `--include-eof` for token dumps
-- repeatable L1 `--foreign-object PATH` / `--foreign-object=PATH` / `-Cf PATH` / `-Cf=PATH` and optional
-  `--entry MODULE` / `--entry=MODULE` / `-e MODULE` for standalone linking
+- repeatable L1 `--foreign-object PATH` / `--foreign-object=PATH` / `-Cf PATH` / `-Cf=PATH` for build, run, and
+  standalone linking; optional `--entry MODULE` / `--entry=MODULE` / `-e MODULE` remains standalone-link-only
 
 Using a mode-scoped option with an incompatible mode is a CLI argument error. In L1, interface paths are valid with
-`--compile` and `--gen`; in L0 they remain valid only with the reserved `--compile` mode. Incompatible uses produce
-`L0C-2031` or `L1C-2031`.
+`--build`, `--run`, `--compile`, and `--gen`; in L0 they remain valid only with the reserved `--compile` mode.
+Incompatible uses produce `L0C-2031` or `L1C-2031`.
 
 The conventional driver spellings `-g`, `-S`, `-L`, and `-l` are reserved for debug information, assembly output,
 external-library search, and external-library selection respectively. Those capabilities are not implemented yet;
@@ -127,9 +151,11 @@ supplied through `--c-options`.
 ## 6. Native Build/Run Temporary Workspace
 
 Each L0 Stage 2 or L1 Stage 1 `--build` or `--run` command owns one private temporary workspace for the complete native
-operation. The command creates the workspace after CLI, source, and entry-point validation, passes it through its
-compile and link helpers, keeps it through child execution for `--run`, and releases it from one cleanup path.
-Subordinate helpers do not create or independently clean another build/run workspace.
+operation. The command creates the workspace after CLI and source-target validation, passes it through graph analysis,
+compilation, and linking, keeps it through child execution for `--run`, and releases it from one cleanup path. L0 also
+completes entry validation before allocation; L1 validates the graph-selected target entry before final linking. It
+passes the workspace through its compile and link helpers. Subordinate helpers do not create or independently clean
+another build/run workspace.
 
 - The temporary parent uses `TMPDIR`, `TEMP`, `TMP`, `/tmp`, then `.` in that order. An absent, nonexistent, or
   non-directory candidate falls through. A filesystem inspection error is fatal. Once an existing directory is selected,
@@ -144,9 +170,11 @@ Subordinate helpers do not create or independently clean another build/run works
 - The containment guarantee covers scratch paths selected or explicitly supplied by the driver: generated C, compiler
   stdout and stderr captures, temporary objects and interfaces, generated wrappers, and temporary run executables.
   `--keep-c` and caller-selected build outputs retain their documented external paths and behavior.
-- The driver does not change the host compiler's current directory, rewrite its temporary-directory environment,
-  normalize arbitrary path-bearing C options, or claim containment of auxiliary files independently created by the host
-  compiler.
+- The L0 driver does not change the host compiler's current directory. L1 source-module compilation runs the host
+  compiler from the workspace so canonical module-relative C/object names remain stable; wrapper compilation and final
+  link retain their existing invocation context. Neither driver rewrites the host temporary-directory environment,
+  normalizes arbitrary path-bearing C options, or claims containment of auxiliary files independently created by the
+  host compiler.
 - Cleanup is bounded and no-follow: it removes only registered regular children and then the empty owned directory. It
   does not recursively delete unexpected contents or follow a substituted symlink or reparse-point directory. An
   incompletely cleaned workspace is retained for inspection.

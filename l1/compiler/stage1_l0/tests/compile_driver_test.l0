@@ -188,6 +188,48 @@ func test_object_compile_command_words() {
     }
 }
 
+/** Verify exact Windows compile transport values fail before `system()`. */
+func test_windows_compile_value_validation() {
+    let txn = cd_transaction_create("C:\\safe workspace");
+    with (
+        let safe_diags = diag_create() => diag_free(safe_diags),
+        let root_diags = diag_create() => diag_free(root_diags),
+        let compiler_diags = diag_create() => diag_free(compiler_diags),
+        let words = sv_create(4) => sv_free(words),
+        let unsafe_words = sv_create(4) => sv_free(unsafe_words)
+    ) {
+        sv_push(words, "C:\\resolved compiler\\clang.exe");
+        sv_push(words, "-c");
+        sv_push(words, "pkg/module.c");
+        sv_push(words, "-Fo:pkg/module.o");
+        assert(cd_validate_windows_compile_values(
+                txn, words, safe_diags),
+            "safe exact compile transport values should pass");
+
+        txn.root = "C:\\workspace%TEMP%";
+        assert(!cd_validate_windows_compile_values(
+                txn, words, root_diags),
+            "unsafe resolved workspace must fail before compilation");
+        assert(cdt_has_code(root_diags, "L1C-2106") &&
+               diag_get(root_diags, 0).filename ==
+                   "C:\\workspace%TEMP%",
+            "unsafe workspace diagnostic mismatch");
+
+        txn.root = "C:\\safe workspace";
+        sv_push(unsafe_words, "C:\\resolved!compiler\\clang.exe");
+        sv_push(unsafe_words, "-c");
+        sv_push(unsafe_words, "pkg/module.c");
+        sv_push(unsafe_words, "-Fo:pkg/module.o");
+        assert(!cd_validate_windows_compile_values(
+                txn, unsafe_words, compiler_diags),
+            "unsafe resolved compiler path must fail before compilation");
+        assert(diag_get(compiler_diags, 0).filename ==
+                "C:\\resolved!compiler\\clang.exe",
+            "unsafe resolved compiler diagnostic mismatch");
+    }
+    cd_transaction_free(txn);
+}
+
 /** Verify canonical compiler classification without an installed tool path. */
 func test_debug_compiler_alias_classification() {
     let root = "compiler/stage1_l0/tests/.tmp-compile-driver-debug-family";
@@ -643,6 +685,7 @@ func test_transaction_collision_skips_existing_candidate() {
 /** Run focused compile-driver unit and filesystem transaction coverage. */
 func main() {
     test_object_compile_command_words();
+    test_windows_compile_value_validation();
     test_debug_compiler_alias_classification();
     test_module_relative_transaction_staging();
     test_compile_artifact_resolution();

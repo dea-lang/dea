@@ -14,8 +14,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - `compiler/stage1_l0/` is the only implemented L1 compiler today.
 - `compiler/stage2_l1/` is a placeholder for a future self-hosted L1 compiler.
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
-- `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` still
-  emit one legacy whole-program C99 translation unit.
+- `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` compile
+  one translation unit per source-backed graph node and reuse the verified common linker.
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
   verified whole-module `.l1m` fingerprints, and target-aware per-module C generation with external `I4init` / `I4fini`
   plus conditional `I5entry`. Per-module output carries no embedded Dea metadata or retention anchors. `--gen` resolves
@@ -28,11 +28,12 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   passes original opaque Dea and caller-asserted foreign native paths through a bounded output-local transaction without
   snapshots. Normal compiler families receive an exact regular runtime archive path; TinyCC retains the ADR-0027
   variant-matched raw-object compatibility carve-out when that set is available, with archive fallback otherwise.
-  Multi-CU build/run remains non-operational.
+  Multi-CU build/run selects the source target entry, mixes source and authoritative interface/object providers, accepts
+  foreign objects, retains exact mirrored generated-C trees, and launches run executables directly.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
-- Four-mode generated-C identity including build/run retention and L1 triple-bootstrap are not part of the current Stage
-  1 contract.
+- Final generated-C completion, including legacy-generator removal, and L1 triple-bootstrap are not part of the current
+  Stage 1 contract.
 
 ## Roadmap assumptions
 
@@ -158,6 +159,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   objects, complete graph and entry validation, deterministic lifecycle wrapper generation, compiler-family runtime
   inputs, and bounded output-local scratch. The wrapper/lifecycle and scratch foundations remain, while the current
   authority and foreign-input boundaries come from verified interfaces and caller assertions.
+- Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] moved build/run to graph-expanded per-module
+  compilation, authoritative interface/object providers, the common verified linker, mirrored retained-C trees, and
+  exact direct run-process execution.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -205,8 +209,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Completed feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] makes verified
   sibling `.l1m` files authoritative for standalone semantics and lifecycle planning while treating native objects as
   opaque host-link inputs.
-- Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] converts `--build` and `--run` to the shared
-  multi-CU compile/link APIs.
 - Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] follows build/run fan-out to prove
   four-mode generated-C identity and retire the legacy whole-closure generator.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl`
@@ -305,7 +307,7 @@ update to be promoted to an initiative or plan:
 [artifact-graph]: ../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
-[build-run]: ../work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
+[build-run]: ../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md
 [cheap-string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md

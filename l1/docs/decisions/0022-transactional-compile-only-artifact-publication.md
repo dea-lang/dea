@@ -1,7 +1,7 @@
 # ADR-0022: Compile-Only Artifact Endpoint Rollback
 
 - Decision date: 2026-07-24
-- Last edited: 2026-08-21
+- Last edited: 2026-08-23
 - Status: Accepted
 
 ## Context
@@ -84,8 +84,8 @@ compile-only publication path.
 - Endpoint rollback relies on the trusted-parent assumption and does not promise crash durability.
 - Auxiliary files explicitly requested through raw host-C options are not recursively deleted; if one prevents cleanup,
   the compiler reports and retains the transaction directory for inspection.
-- `--build` and `--run` use command-owned private workspaces; later multi-CU orchestration must reuse that lifecycle
-  without routing compile-only publication through it.
+- `--build` and `--run` reuse command-owned private workspaces for multi-CU orchestration without routing compile-only
+  publication through them. Interface-backed `.l1m + .o` pairs remain caller-stable across validation and link use.
 - Future Stage 2 support must preserve the same artifact validation, publication order, and rollback semantics.
 
 ## Related Plans
@@ -96,6 +96,7 @@ compile-only publication path.
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md][stage1-safety]
 - [work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-safety]
+- [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
 ## Current Docs
 
@@ -106,6 +107,7 @@ compile-only publication path.
 
 [architecture]: ../reference/architecture.md
 [backend]: ../reference/c-backend-design.md
+[build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [cli-contract]: ../../../docs/specs/compiler/cli-contract.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [cross-platform-ci]: ../../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md

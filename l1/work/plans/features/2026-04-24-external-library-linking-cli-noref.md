@@ -27,7 +27,7 @@
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
-  - `l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md`
+  - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="cli_args_test build_driver_test driver_test"`
 

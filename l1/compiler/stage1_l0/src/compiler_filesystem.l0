@@ -69,6 +69,12 @@ extern func l1c_fs_resolve_executable(
     output_capacity: int
 ) -> int;
 extern func l1c_fs_host_is_darwin() -> int;
+extern func l1c_process_run(
+    words: byte**,
+    lengths: int*,
+    count: int,
+    status_out: int*
+) -> int;
 
 /** No filesystem object exists at the path. */
 let CFS_PATH_ABSENT: int = 0;
@@ -85,6 +91,7 @@ let CFS_TEMP_KIND_INSPECT: int = -2;
 struct CompilerWorkspace {
     root: string;
     children: StringVector*;
+    directories: StringVector*;
 }
 
 /** Emit one compiler-filesystem diagnostic without source coordinates. */
@@ -457,6 +464,7 @@ func cfs_select_temp_parent(diags: DiagCollector*) -> string? {
 /** Release a workspace path bundle after explicit cleanup. */
 func cfs_workspace_free(self: CompilerWorkspace*) {
     sv_free(self.children);
+    sv_free(self.directories);
     drop self;
 }
 
@@ -474,6 +482,27 @@ func cfs_workspace_child(
     let child = cfs_join_child(workspace.root, leaf);
     sv_push(workspace.children, child);
     return child;
+}
+
+/** Register one invocation-owned regular file at an already derived path. */
+func cfs_workspace_register_file(
+    workspace: CompilerWorkspace*,
+    path: string
+) {
+    sv_push(workspace.children, path);
+}
+
+/** Register one invocation-owned directory once for deepest-first cleanup. */
+func cfs_workspace_register_directory(
+    workspace: CompilerWorkspace*,
+    path: string
+) {
+    for (let i = 0; i < sv_size(workspace.directories); i = i + 1) {
+        if (sv_get(workspace.directories, i) == path) {
+            return;
+        }
+    }
+    sv_push(workspace.directories, path);
 }
 
 /**
@@ -498,7 +527,8 @@ func cfs_workspace_create_for_identity(
         /* POSIX 0700; MinGW inherits access control from the trusted parent. */
         let created = cfs_mkdir(root, 448);
         if (created == 1) {
-            return new CompilerWorkspace(root, sv_create(4));
+            return new CompilerWorkspace(
+                root, sv_create(8), sv_create(4));
         }
         if (created < 0) {
             cfs_error(
@@ -589,6 +619,13 @@ func cfs_workspace_cleanup(
             ok = false;
         }
     }
+    for (let dir_i = sv_size(workspace.directories) - 1;
+         dir_i >= 0; dir_i = dir_i - 1) {
+        if (cfs_remove_empty_dir(
+                sv_get(workspace.directories, dir_i)) < 0) {
+            ok = false;
+        }
+    }
     if (cfs_remove_empty_dir(workspace.root) < 0) {
         ok = false;
     }
@@ -615,4 +652,45 @@ func cfs_apply_cleanup_status(primary_status: int, cleanup_ok: bool) -> int {
         return 1;
     }
     return primary_status;
+}
+
+/**
+ * Execute one program directly with an exact argument vector.
+ *
+ * The compiler-support ABI separates launch success from the selected
+ * program's normalized status, so status values such as 126 and 127 remain
+ * ordinary program results rather than shell-launch sentinels.
+ *
+ * @param words Executable path followed by exact program arguments.
+ * @param status_out Receives the normalized program status after launch.
+ * @return `1` after launch and wait, `0` for launch failure, or `-1` for an
+ * invalid argument vector or process-wait failure.
+ */
+func cfs_run_process(
+    words: StringVector*,
+    status_out: int*
+) -> int {
+    if (sv_size(words) == 0) {
+        return -1;
+    }
+
+    with (
+        let pointers = vec_create(sizeof(void*), sv_size(words)) =>
+            vec_free(pointers),
+        let lengths = vec_create(sizeof(int), sv_size(words)) =>
+            vec_free(lengths)
+    ) {
+        for (let i = 0; i < sv_size(words); i = i + 1) {
+            let word = sv_get(words, i);
+            vec_push_ptr(
+                pointers, rt_string_bytes_ptr(word) as void*);
+            vec_push_int(lengths, len_s(word));
+        }
+        return l1c_process_run(
+            pointers.arr.data as byte**,
+            lengths.arr.data as int*,
+            sv_size(words),
+            status_out
+        );
+    }
 }

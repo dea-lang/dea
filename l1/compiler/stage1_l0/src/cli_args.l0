@@ -502,7 +502,8 @@ func cli_print_help() {
     cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--compile', '--emit-interface', '--gen', '--link', '--run')");
     cli_print_line(false, "  -Cf, --foreign-object C_OBJECT");
     cli_print_line(false, "                        Assert one host-compatible relocatable native object");
-    cli_print_line(false, "                        and add it in encounter order (repeatable; valid in: '--link')");
+    cli_print_line(false, "                        and add it in encounter order (repeatable; valid in:");
+    cli_print_line(false, "                        '--build', '--link', '--run')");
     cli_print_line(false, "  -e, --entry MODULE    Select one canonical dotted Dea entry module");
     cli_print_line(false, "                        (at most once; valid in: '--link')");
     cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");
@@ -517,7 +518,8 @@ func cli_print_help() {
     cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\")");
     cli_print_line(false, "  -I, --interface-path INTERFACE_PATH");
     cli_print_line(false, "                        Add an interface search path (repeatable; valid in:");
-    cli_print_line(false, "                        '--compile', '--gen'; searched in declaration order)");
+    cli_print_line(false, "                        '--build', '--compile', '--gen', '--run'; searched in");
+    cli_print_line(false, "                        declaration order)");
     cli_print_line(false, "  --runtime-include, -Ri RUNTIME_INCLUDE");
     cli_print_line(false, "                        Path to Dea runtime headers such as `dea_rt.h`");
     cli_print_line(false, "                        (default: $L1_RUNTIME_INCLUDE or");
@@ -546,8 +548,9 @@ func cli_print_help() {
     cli_print_line(false, "  -Sb, --check-basic    Use the basic checked runtime archive; with '--gen',");
     cli_print_line(false, "                        generated C defines DEA_RT_CHECK_BASIC (link");
     cli_print_line(false, "                        libdea_rt_check_basic.a)");
-    cli_print_line(false, "  -Gk, --keep-c         Keep generated C file (valid in: '--build', '--compile',");
-    cli_print_line(false, "                        '--run'; compile mode adds the sibling .c artifact)");
+    cli_print_line(false, "  -Gk, --keep-c         Keep generated C (valid in: '--build', '--compile',");
+    cli_print_line(false, "                        '--run'; build/run retain a mirrored .dea-c tree;");
+    cli_print_line(false, "                        compile mode adds the sibling .c artifact)");
     cli_print_line(false, "  --all-modules, -a     Process all modules in the compilation unit (valid in:");
     cli_print_line(false, "                        '--tok', '--ast', '--sym', '--type')");
     cli_print_line(false, "  --include-eof         Include the EOF token in output (valid in: '--tok')");
@@ -646,6 +649,8 @@ func cli_count_link_operands(opts: CliOptions*, kind: LinkOperandKind) -> int {
 func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     let mode = opts.mode;
     let is_link = ord(mode) == ord(CM_LINK);
+    let is_build_run = ord(mode) == ord(CM_BUILD) ||
+        ord(mode) == ord(CM_RUN);
 
     if (is_link && sv_size(opts.project_roots) > 0) {
         cli_emit_error(
@@ -663,10 +668,11 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         );
     }
 
-    if (sv_size(opts.interface_paths) > 0 && ord(mode) != ord(CM_COMPILE) &&
-        ord(mode) != ord(CM_GEN)) {
+    if (sv_size(opts.interface_paths) > 0 &&
+        ord(mode) != ord(CM_COMPILE) &&
+        ord(mode) != ord(CM_GEN) && !is_build_run) {
         cli_emit_error(diags, "L1C-2031",
-            "option '--interface-path' is valid only with modes: --compile, --gen");
+            "option '--interface-path' is valid only with modes: --build, --compile, --gen, --run");
     }
 
     if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
@@ -769,8 +775,10 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         cli_emit_error(diags, "L1C-2020", "option '--include-eof' is valid only with modes: --tok");
     }
 
-    if (cli_count_link_operands(opts, LOK_FOREIGN_OBJECT) > 0 && !is_link) {
-        cli_emit_error(diags, "L1C-2091", "option '--foreign-object' is valid only with mode: --link");
+    if (cli_count_link_operands(opts, LOK_FOREIGN_OBJECT) > 0 &&
+        !is_link && !is_build_run) {
+        cli_emit_error(diags, "L1C-2091",
+            "option '--foreign-object' is valid only with modes: --build, --link, --run");
     }
 
     if (opts.entry_module != null && !is_link) {

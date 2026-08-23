@@ -21,6 +21,7 @@ import interface_emitter;
 import interface_fingerprint;
 import link_driver;
 import mi_utils;
+import module_graph;
 import module_interface;
 import util.diag;
 
@@ -829,6 +830,83 @@ func test_interface_decode_and_wrapper_endpoint_validation() {
         "wrapper substitution fixture should clean");
 }
 
+/** Verify build order and graph injection preserve both ordering contracts. */
+func test_build_run_graph_order_and_operand_injection() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let graph = mg_create();
+        let entry = mg_node_from_source(
+            "app.main",
+            "main.l1",
+            mg_artifacts_for_module(
+                "scratch", "app.main", diags)
+        );
+        let provider = mg_node_from_source(
+            "app.provider",
+            "provider.l1",
+            mg_artifacts_for_module(
+                "scratch", "app.provider", diags)
+        );
+        let leaf = mg_node_from_source(
+            "app.leaf",
+            "leaf.l1",
+            mg_artifacts_for_module(
+                "scratch", "app.leaf", diags)
+        );
+        mg_node_add_direct_import(entry, "app.provider");
+        mg_node_add_direct_import(provider, "app.leaf");
+        assert(mg_add_node(graph, entry),
+            "entry graph node should be unique");
+        assert(mg_add_node(graph, leaf),
+            "leaf graph node should be unique");
+        assert(mg_add_node(graph, provider),
+            "provider graph node should be unique");
+
+        let ordered_opt = ld_build_order(
+            graph, "app.main", diags);
+        assert(ordered_opt != null,
+            "acyclic build graph should have an order");
+        let ordered = ordered_opt as VectorBase*;
+        assert(vec_size(ordered) == 3,
+            "build order should contain each module once");
+        assert((ld_ptr_vec_get(ordered, 0) as ModuleGraphNode*).module_name ==
+                "app.leaf",
+            "leaf should compile first");
+        assert((ld_ptr_vec_get(ordered, 1) as ModuleGraphNode*).module_name ==
+                "app.provider",
+            "provider should compile after its leaf");
+        assert((ld_ptr_vec_get(ordered, 2) as ModuleGraphNode*).module_name ==
+                "app.main",
+            "entry should compile after its dependencies");
+
+        let cli_operands = cli_link_operands_create();
+        cli_link_operands_push(
+            cli_operands, LOK_FOREIGN_OBJECT, "before.o");
+        cli_link_operands_push(
+            cli_operands, LOK_DEA_OBJECT, "app.main");
+        cli_link_operands_push(
+            cli_operands, LOK_FOREIGN_OBJECT, "after.o");
+        let injected = ld_build_run_operands(
+            cli_operands, ordered);
+        assert(cli_link_operands_count(injected) == 5,
+            "target position should expand to the complete graph set");
+        assert(cli_link_operands_get(injected, 0).path == "before.o",
+            "foreign object before target should remain first");
+        assert(cli_link_operands_get(injected, 1).path ==
+                join(join("scratch", "app"), "leaf.o"),
+            "first injected object should follow dependency order");
+        assert(cli_link_operands_get(injected, 3).path ==
+                join(join("scratch", "app"), "main.o"),
+            "entry object should be the final injected Dea input");
+        assert(cli_link_operands_get(injected, 4).path == "after.o",
+            "foreign object after target should remain last");
+
+        cli_link_operands_free(injected);
+        cli_link_operands_free(cli_operands);
+        vec_free(ordered);
+        mg_free(graph);
+    }
+}
+
 /** Main entry point. */
 func main() {
     test_valid_mixed_plan_ordering();
@@ -845,5 +923,6 @@ func main() {
     test_cli_pair_loading_and_native_opacity();
     test_cli_operand_preflight_precedes_sibling_reads();
     test_interface_decode_and_wrapper_endpoint_validation();
+    test_build_run_graph_order_and_operand_injection();
     printl_s("link_driver_test: all tests passed");
 }

@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-08-22
+Version: 2026-08-23
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -67,12 +67,19 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
   |                  `.o` / `.l1m` publication with endpoint rollback
   |                  (`--keep-c` also publishes `.c`)
   |
-  +-- `--build` / `--run` --> backend_generate --> legacy whole-program C99 translation unit
-                                          |
-                                          v
-                              build_driver.l0 + compiler_filesystem.l0
-                                --> private workspace
-                                --> host C compiler / executable launch
+  +-- `--build` / `--run` --> source/interface graph in private workspace
+                                    |
+                                    v
+                         backend_generate_module once per source node
+                                    |
+                                    v
+                    staged `.c` / `.o` / `.l1m` + opaque provider `.o`
+                                    |
+                                    v
+                         common verified link plan + wrapper
+                                    |
+                                    v
+                          host link / optional direct launch
 ```
 
 The interface-authoritative standalone-link path is:
@@ -101,19 +108,22 @@ existing source-root precedence when no interface exists. Programmatic interface
 The driver closes over both interface dependency tiers. `require` providers are activated for semantic replay, while
 `link` providers remain graph obligations without entering the consumer's semantic environment. Source nodes retain
 their direct imports in exact declaration order with duplicates. Interface projection independently emits a
-first-occurrence, virtual-filtered ordered lifecycle-import view. The ordinary build/run CLI pipeline above is still
-source-based; compile-only requires verified interfaces for non-virtual imports.
+first-occurrence, virtual-filtered ordered lifecycle-import view. Build/run expands the source target with
+`MRP_ALLOW_SOURCE_FALLBACK`; compile-only requires verified interfaces for non-virtual imports.
 
-Ordinary `--build` and `--run` complete source and entry-point validation before reserving one command-owned temporary
-workspace. The driver registers generated C when it is not retained, compiler output captures, and the temporary run
-executable there, and keeps the workspace alive through child execution. Caller-selected executables and `--keep-c`
-outputs remain outside at their documented paths. Bounded no-follow cleanup removes only registered regular children and
-the empty real directory; unexpected or substituted contents retain the workspace and report `L1C-9514`.
-Temporary-parent inspection, setup, canonical trust, or exclusive-reservation failure reports `L1C-9513` and does not
-fall through to a later candidate. Cleanup changes success to status 1 but preserves an already nonzero compilation,
-launch, or child-program result. Workspace and fixed-child construction uses an actual-host filesystem primitive, so
-POSIX treats a trailing `\` in the canonical parent as a literal filename byte rather than as permission to allocate a
-sibling path.
+Ordinary `--build` and `--run` validate the source target before reserving one command-owned temporary workspace, then
+analyze the complete graph with workspace-backed canonical artifacts. Source-backed nodes compile once in deterministic
+dependency order. Before generation, each source node is re-analyzed as a one-module entry with non-virtual imports
+required to resolve from the original authoritative interface roots or already staged workspace `.l1m` files.
+Interface-backed nodes contribute verified manifests plus original opaque sibling objects. The driver registers
+generated C, objects, interfaces, captures, wrapper artifacts, and the temporary run executable, and keeps the workspace
+alive through child execution. Caller-selected executables and retained `.dea-c` trees remain outside. Bounded no-follow
+cleanup removes only registered regular files and known nested directories; unexpected or substituted contents retain
+the workspace and report `L1C-9514`. Temporary-parent inspection, setup, canonical trust, or exclusive-reservation
+failure reports `L1C-9513` and does not fall through to a later candidate. Cleanup changes success to status 1 but
+preserves an already nonzero compilation, launch, or child-program result. Workspace and fixed-child construction uses
+an actual-host filesystem primitive, so POSIX treats a trailing `\` in the canonical parent as a literal filename byte
+rather than as permission to allocate a sibling path.
 
 The internal module-generation branch selects one canonical source-backed target from the completed analysis result. It
 emits target definitions, external declarations for provider-owned source and interface values and functions consumed by
@@ -121,7 +131,8 @@ that target, always-present external `I4init` and `I4fini`, and conditional exte
 `main`, global init chain, dependency lifecycle calls, `I8metadata`, `I7imports`, replacement anchors, or retention
 reads. Compile-only connects this branch to host object compilation and sequential artifact publication with endpoint
 rollback. Standalone link consumes verified sibling `.l1m` files for Dea semantics and passes the paired native objects
-opaquely to the host. Multi-CU build/run dispatch remains a future tranche.
+opaquely to the host. Build/run now supplies the same planner with its graph-expanded object set, explicit source-target
+entry, and wrapper/capture paths owned by the command workspace.
 
 Every selected filesystem or registry interface is checked before it enters that graph. The driver parses the wire
 model, confirms the declared module identity, validates the module and dependency fingerprint envelopes, recomputes the
@@ -272,8 +283,8 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 
 ### 2.8 Backend (`backend.l0`, `c_emitter.l0`, `string_escape.l0`)
 
-- Consumes typed analysis results through the legacy `backend_generate` whole-program API or the target-aware
-  `backend_generate_module` API.
+- Consumes typed analysis results through the target-aware `backend_generate_module` API for every public generated-C,
+  compile-only, build, and run path. The legacy `backend_generate` API remains internal pending removal.
 - Keeps module definitions scoped to the selected source-backed target while declaring imported source and interface
   values and functions under provider-owned names.
 - Emits external per-module `I4init` / `I4fini` lifecycle functions and an optional external `I5entry` bridge without
@@ -300,6 +311,8 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
   compile-only transactions, and standalone-link transactions.
 - Implements compile-only interface resolution, object-only host compilation, and artifact publication with endpoint
   rollback.
+- Implements build/run graph expansion, publication-free per-module compilation, common-link reuse, exact retained-C
+  trees, and direct run-process invocation.
 - Produces generated C, module artifacts, built executables, or direct runs depending on CLI mode.
 
 ## 3. Core Data Flow
@@ -342,15 +355,14 @@ Important analysis tables include:
     underline and the displayed line always agree, independent of terminal tab-stop behavior. Unicode display-width
     handling is out of scope for this contract.
 05. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
-06. Ordinary build/run CLI generation remains one legacy whole-program C99 translation unit and owns one private
-    command-lifetime workspace; `--gen` and compile-only use the same internal module API to emit one selected
-    source-backed module translation unit, and standalone link consumes explicit objects plus their required sibling
-    interfaces.
+06. Build/run, `--gen`, and compile-only use the same internal module API. Build/run emits one translation unit per
+    source-backed graph node in one private command-lifetime workspace; standalone link consumes explicit objects plus
+    their required sibling interfaces.
 07. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
     preserve declaration order and duplicates.
 08. An interface is registered or cached only after its declared identity and whole-module fingerprint are verified.
-09. `.l1m` artifacts are normal compile-only dependency inputs and the sole Dea semantic/lifecycle authority for
-    standalone `--link`; ordinary `--build` and `--run` remain source-based.
+09. `.l1m` artifacts are normal compile-only, build/run, and standalone-link inputs and are the sole Dea
+    semantic/lifecycle authority for every interface-backed native object.
 10. Native caller and runtime inputs are opaque. Standalone link performs no object-format, symbol, metadata, or
     embedded-control inspection.
 11. Compile-only publishes `.o` and `.l1m` as its reusable artifact set and adds `.c` only with `--keep-c`. Successful

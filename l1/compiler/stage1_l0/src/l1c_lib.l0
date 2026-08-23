@@ -864,10 +864,10 @@ func run_with_argv(argv: StringVector*) -> int {
                 rc = l1c_cmd_tok(opts, cfg);
             }
             CM_RUN => {
-                rc = bd_cmd_run(opts, cfg);
+                rc = ld_cmd_run(opts, cfg);
             }
             CM_BUILD => {
-                rc = bd_cmd_build(opts, cfg);
+                rc = ld_cmd_build(opts, cfg);
             }
             CM_COMPILE => {
                 rc = cd_cmd_compile(opts, cfg);

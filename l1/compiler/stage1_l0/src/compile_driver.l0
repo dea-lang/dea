@@ -669,6 +669,30 @@ func cd_compile_shell_command(
         bd_shell_quote(basename(txn.compiler_stderr));
 }
 
+/** Validate every exact value used by one Windows compile shell command. */
+func cd_validate_windows_compile_values(
+    txn: CompileTransaction*,
+    command_words: StringVector*,
+    diags: DiagCollector*
+) -> bool {
+    with (let values = sv_create(sv_size(command_words) + 3) =>
+              sv_free(values)) {
+        sv_push(values, txn.root);
+        for (let i = 0; i < sv_size(command_words); i = i + 1) {
+            sv_push(values, sv_get(command_words, i));
+        }
+        sv_push(values, basename(txn.compiler_stdout));
+        sv_push(values, basename(txn.compiler_stderr));
+        return bd_validate_windows_shell_words(
+            values,
+            "L1C-2106",
+            "C compilation does not support '%', '!', double quotes, " +
+                "or line breaks in Windows host-command values",
+            diags
+        );
+    }
+}
+
 /** Report a staged validation failure and return `false`. */
 func cd_staged_invalid(diags: DiagCollector*, path: string, reason: string) -> bool {
     cd_error(diags, "L1C-2034", "staged compile artifact validation failed: " + reason, path);
@@ -852,6 +876,13 @@ func cd_compile_analyzed(
             txn.compiler_c_input,
             txn.compiler_object_output
         );
+        if (bd_is_windows() && !cd_validate_windows_compile_values(
+                txn, command_words, diags)) {
+            dp_print_collector(diags);
+            cd_cleanup_transaction_checked(txn, cfg);
+            cd_transaction_free(txn);
+            return 1;
+        }
         log_info(cfg, "Compiling module object:");
         log_info(cfg, bd_join_display_words(command_words));
         let compile_cmd = cd_compile_shell_command(txn, command_words);
@@ -892,6 +923,190 @@ func cd_compile_analyzed(
         log_info(cfg, "Emitted interface: " + artifacts.interface_path);
         cd_transaction_free(txn);
         return 0;
+    }
+}
+
+/** Register one created workspace directory and its non-root parents. */
+func cd_register_workspace_directory_chain(
+    workspace: CompilerWorkspace*,
+    directory: string
+) {
+    if (directory == workspace.root) {
+        return;
+    }
+    let directory_parent = parent(directory);
+    if (directory_parent != directory) {
+        cd_register_workspace_directory_chain(
+            workspace, directory_parent);
+    }
+    cfs_workspace_register_directory(workspace, directory);
+}
+
+/**
+ * Compile one analyzed source module into a caller-owned private workspace.
+ *
+ * This is the publication-free build/run adapter over the same module
+ * generator, interface projection, host-object command, and staged
+ * validation used by compile-only mode. The caller owns workspace cleanup
+ * and final linking.
+ *
+ * @param opts Shared code-generation and runtime-checking options.
+ * @param cfg Logging configuration.
+ * @param result Complete graph analysis result.
+ * @param module_name Canonical source module to compile.
+ * @param artifacts Canonical workspace artifact companions.
+ * @param workspace Invocation-owned workspace.
+ * @param compiler Caller-selected host compiler.
+ * @param extra_opts Merged host C option words.
+ * @param runtime_include Resolved runtime include directory.
+ * @param diags Diagnostic collector for staging and compilation failures.
+ * @return `true` after producing and validating all three companions.
+ */
+func cd_compile_analyzed_to_workspace(
+    opts: CliOptions*,
+    cfg: LogConfig*,
+    result: AnalysisResult*,
+    module_name: string,
+    artifacts: ModuleArtifactPaths*,
+    workspace: CompilerWorkspace*,
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    diags: DiagCollector*
+) -> bool {
+    let interface_text_opt = analysis_emit_interface(
+        result, module_name);
+    if (interface_text_opt == null) {
+        if (!analysis_has_errors(result)) {
+            cd_error(
+                diags,
+                "L1C-2030",
+                "failed to project interface for module '" +
+                    module_name + "'",
+                ""
+            );
+        }
+        return false;
+    }
+    let interface_text = interface_text_opt as string;
+
+    with (
+        let cg_opts = cg_options_from_cli(opts) =>
+            cg_options_free(cg_opts),
+        let command_words = sv_create(16) =>
+            sv_free(command_words)
+    ) {
+        let c_code = backend_generate_module(
+            result, module_name, cg_opts, cfg);
+        let compiler_command_opt = cd_compiler_for_transaction(
+            compiler);
+        if (compiler_command_opt == null) {
+            cd_error(
+                diags,
+                "L1C-0010",
+                "C compilation failed: compiler was not found in the invocation environment",
+                compiler
+            );
+            return false;
+        }
+        let compiler_command = compiler_command_opt as string;
+        let family = bd_compiler_flag_family(compiler);
+        let debug_family = cd_debug_compiler_family(
+            compiler, compiler_command);
+        let optimize = bd_get_optimize_flag(family, extra_opts);
+        let compiler_runtime_include = cd_path_for_transaction(
+            runtime_include);
+
+        let txn = cd_transaction_create(workspace.root);
+        if (!cd_configure_module_staging(
+                txn, module_name, diags)) {
+            cd_transaction_free(txn);
+            return false;
+        }
+        cd_register_workspace_directory_chain(
+            workspace, parent(txn.staged_c));
+        cfs_workspace_register_file(workspace, txn.staged_c);
+        cfs_workspace_register_file(workspace, txn.staged_object);
+        cfs_workspace_register_file(workspace, txn.staged_interface);
+        cfs_workspace_register_file(workspace, txn.compiler_stdout);
+        cfs_workspace_register_file(workspace, txn.compiler_stderr);
+
+        if (write_file(txn.staged_c, c_code) == null) {
+            cd_error(
+                diags,
+                "L1C-9511",
+                "cannot write output file: " + txn.staged_c,
+                txn.staged_c
+            );
+            cd_transaction_free(txn);
+            return false;
+        }
+        if (write_file(txn.staged_interface, interface_text) == null) {
+            cd_error(
+                diags,
+                "L1C-9511",
+                "cannot write output file: " + txn.staged_interface,
+                txn.staged_interface
+            );
+            cd_transaction_free(txn);
+            return false;
+        }
+
+        cd_push_object_compile_words(
+            command_words,
+            compiler_command,
+            family,
+            debug_family,
+            extra_opts,
+            optimize,
+            compiler_runtime_include,
+            cd_path_for_transaction(txn.root),
+            txn.compiler_c_input,
+            txn.compiler_object_output
+        );
+        if (bd_is_windows() && !cd_validate_windows_compile_values(
+                txn, command_words, diags)) {
+            cd_transaction_free(txn);
+            return false;
+        }
+        log_info(cfg, "Compiling module object '" +
+            module_name + "':");
+        log_info(cfg, bd_join_display_words(command_words));
+        let compile_rc = system(
+            cd_compile_shell_command(txn, command_words));
+        let compile_failed = compile_rc != 0;
+        if (compile_failed) {
+            cd_error(
+                diags, "L1C-0010", "C compilation failed:", "");
+        }
+        bd_replay_compile_output(
+            cfg,
+            txn.compiler_stdout,
+            txn.compiler_stderr,
+            compile_failed
+        );
+        cd_delete_if_present(txn.compiler_stdout);
+        cd_delete_if_present(txn.compiler_stderr);
+        if (compile_failed) {
+            cd_transaction_free(txn);
+            return false;
+        }
+
+        let valid = cd_validate_staged(
+            artifacts,
+            txn,
+            module_name,
+            interface_text,
+            diags
+        );
+        if (valid) {
+            log_info(cfg, "Staged generated C: " + artifacts.c_path);
+            log_info(cfg, "Staged object: " + artifacts.object_path);
+            log_info(cfg, "Staged interface: " +
+                artifacts.interface_path);
+        }
+        cd_transaction_free(txn);
+        return valid;
     }
 }
 

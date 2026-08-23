@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-08-20
+Version: 2026-08-23
 
 Status: Finalized
 
@@ -9,8 +9,9 @@ It defines the on-disk file shape, canonical declaration and fingerprint inputs,
 operational manifests, verification, discovery, standalone-link authority, and transitive closure.
 
 `.l1m` files are normal verified dependency inputs for L1 `-c` / `--compile`, which produces one source module's sibling
-`.o` and `.l1m` artifacts and optionally retains `.c` with `--keep-c`. Ordinary `--build` and `--run` flows remain
-source-based under [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative].
+`.o` and `.l1m` artifacts and optionally retains `.c` with `--keep-c`. Build/run also selects verified interfaces
+authoritatively, consumes their opaque sibling objects, and falls back to provider source only when no interface is
+selected under [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative].
 
 Standalone `--link` also requires one verified sibling `.l1m` for every positional Dea `.o`. The interface is the sole
 Dea semantic, entry, dependency, and lifecycle authority; the paired native object is an opaque host-link payload.
@@ -27,6 +28,8 @@ The current `.l1m` format serializes one module's exported public surface in det
 - programmatic supplied-interface registries use the same verification and graph contract
 - standalone link derives each sibling path from the caller's positional `.o` and verifies the complete interface set
   before registering any module identity
+- build/run uses selected interfaces as graph, lifecycle, and entry authority for interface-backed providers while
+  compiling source-backed providers into private artifacts
 - the internal `--emit-interface` mode writes artifacts for developer and testing use
 
 The version 1 fingerprint is mandatory and has the exact spelling `sip13:<16 lowercase hexadecimal digits>`. There is no

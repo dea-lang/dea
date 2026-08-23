@@ -86,6 +86,7 @@ def harness_source() -> str:
     return r'''#define SIPHASH_IMPLEMENTATION
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -162,6 +163,12 @@ int32_t l1c_fs_same_file(
     int32_t left_len,
     const uint8_t *right,
     int32_t right_len
+);
+int32_t l1c_process_run(
+    const uint8_t *const *words,
+    const int32_t *lengths,
+    int32_t count,
+    int32_t *status_out
 );
 
 static int32_t path_len(const char *path) {
@@ -267,6 +274,64 @@ int main(int argc, char **argv) {
     char notdir_child[4096];
     uint8_t resolved[4096];
     static const uint8_t embedded_nul[] = { 'a', '\0', 'b' };
+
+    if (argc >= 5 && strcmp(argv[1], "--process-child") == 0) {
+        if (strcmp(argv[3], "two words") != 0) return 124;
+        if (strcmp(argv[4], "quote\"slash\\") != 0) return 125;
+        return atoi(argv[2]);
+    }
+
+    {
+        static const uint8_t child_mode[] = "--process-child";
+        static const uint8_t child_status[] = "127";
+        static const uint8_t spaced[] = "two words";
+        static const uint8_t quoted[] = "quote\"slash\\";
+        const uint8_t *child_words[] = {
+            (const uint8_t *)argv[0],
+            child_mode,
+            child_status,
+            spaced,
+            quoted
+        };
+        int32_t child_lengths[] = {
+            path_len(argv[0]),
+            (int32_t)(sizeof(child_mode) - 1u),
+            (int32_t)(sizeof(child_status) - 1u),
+            (int32_t)(sizeof(spaced) - 1u),
+            (int32_t)(sizeof(quoted) - 1u)
+        };
+        int32_t process_status = -1;
+        if (l1c_process_run(
+                child_words,
+                child_lengths,
+                5,
+                &process_status
+            ) != 1 || process_status != 127) return 568;
+    }
+
+    {
+        static const uint8_t missing_process[] =
+            "missing-l1c-process-run-executable";
+        const uint8_t *missing_words[] = { missing_process };
+        int32_t missing_lengths[] = {
+            (int32_t)(sizeof(missing_process) - 1u)
+        };
+        int32_t process_status = -1;
+        if (l1c_process_run(
+                missing_words,
+                missing_lengths,
+                1,
+                &process_status
+            ) != 0) return 569;
+        missing_words[0] = embedded_nul;
+        missing_lengths[0] = 3;
+        if (l1c_process_run(
+                missing_words,
+                missing_lengths,
+                1,
+                &process_status
+            ) != -1) return 570;
+    }
 
 #if defined(__APPLE__)
     if (l1c_fs_host_is_darwin() != 1) return 567;

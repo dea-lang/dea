@@ -34,3 +34,5 @@
 | [0030](0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md) | Authoritative Module Interfaces and Opaque Native Link Inputs | Accepted   |
 | [0031](0031-per-module-generated-c-cli-boundary.md)                           | Per-Module Generated-C CLI Boundary                           | Accepted   |
 | [0032](0032-deterministic-compile-only-staging-paths.md)                      | Deterministic Compile-Only Staging Paths                      | Accepted   |
+| [0033](0033-multi-compilation-unit-build-and-run-pipeline.md)                 | Multi-Compilation-Unit Build and Run Pipeline                 | Accepted   |
+| [0034](0034-multi-unit-generated-c-retention-tree.md)                         | Multi-Unit Generated-C Retention Tree                         | Accepted   |

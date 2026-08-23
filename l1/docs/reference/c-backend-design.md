@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-08-22
+Version: 2026-08-23
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -28,15 +28,16 @@ The separate-compilation boundary adds:
 - verified interface-graph preparation and opaque native host-link orchestration in `link_driver.l0`
 - process-wrapper C generation in `wrapper_emitter.l0`
 
-Input is a fully typed analysis result. The backend exposes two supported output boundaries:
+Input is a fully typed analysis result. The backend exposes one operational module boundary plus one retained legacy
+entry point:
 
-- `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit used by the current
-  `--build` and `--run` flows.
+- `backend_generate(result, opts, cfg)` emits the legacy whole-program C99 translation unit. No ordinary CLI mode
+  dispatches through it; downstream generated-C cleanup owns removal.
 - `backend_generate_module(result, target_module, opts, cfg)` emits one source-backed module translation unit for
-  `--gen` and `--compile`; the resulting objects feed standalone `--link`. Build and run do not use this boundary yet.
+  `--gen`, `--compile`, `--build`, and `--run`; the resulting objects feed the common verified linker.
 
 `cg_options_from_cli(...)` is the single projection from CLI controls to byte-affecting code-generation settings, so
-pure generation and compile-only retention call the same module operation with the same settings.
+pure generation, compile-only retention, and build/run retention call the same module operation with the same settings.
 
 `compiler/stage2_l1/` does not currently provide a second backend implementation.
 
@@ -45,7 +46,7 @@ pure generation and compile-only retention call the same module operation with t
 ### Backend orchestration (`backend.l0`)
 
 - validates generation preconditions
-- selects either the legacy whole-program boundary or one canonical source-backed target module
+- selects one canonical source-backed target module for every operational CLI path
 - orders type emission using dependency-aware traversal
 - lowers statements and expressions into emitter operations
 - manages ownership-sensitive cleanup scheduling
@@ -84,9 +85,9 @@ The legacy generated C file is organized in this order:
 Top-level `const` and constant `let` initializers lower directly into C storage initializers; non-constant top-level
 `let` initializers lower as zero/default-initialized storage plus hidden per-module init assignments.
 
-For `--build` / `--run`, that generated unit now compiles against `dea_rt.h` and links `libdea_rt.a`,
-`libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or `libdea_rt_unchecked.a` instead of inlining the runtime bodies into
-the user translation unit.
+The legacy unit remains useful only as transitional internal code. Operational `--build` / `--run` instead compile the
+per-module units below and link `libdea_rt.a`, `libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or
+`libdea_rt_unchecked.a` through the common link executor.
 
 ### Per-module output
 
@@ -104,7 +105,7 @@ definitions keep external linkage; non-exported target definitions use `static`.
 external regardless of the source export manifest.
 
 Module output contains no process-level C `main`, legacy global init chain, or calls to dependency lifecycle functions.
-Standalone link owns the executable wrapper and cross-module ordering.
+The common link path used by standalone link and build/run owns the executable wrapper and cross-module ordering.
 
 `--gen` resolves the selected target from source, resolves imports interface-first under `MRP_ALLOW_SOURCE_FALLBACK`,
 and writes this per-module output to stdout or one exact requested file. A selected valid interface is sufficient
@@ -121,6 +122,22 @@ selects the exact staged C for publication. Sequential renames provide successfu
 endpoints, not an atomic reader-visible snapshot: paths may be absent or from different generations during publication
 or rollback, concurrent access requires external serialization, and failed rollback retains recovery files. The backend
 does not own staging, rollback, or destination-path policy.
+
+Build/run uses a publication-free adapter around the same module generator, interface projection, and object compiler.
+It stages canonical module-relative `.c`, `.o`, and `.l1m` files inside the command-owned workspace, compiling source
+nodes once in dependency-first order. Interface-backed providers keep their caller-owned `.l1m + .o` pair; their C is
+neither required nor regenerated. The common linker consumes the complete source/interface object set plus foreign
+objects and selects the requested source target's `I5entry`.
+
+On native Windows, each compile-only and build/run source-object transaction validates the resolved compiler, exact
+option/include/input/output words, working directory, and capture names for shell expansion, quote, and line-break bytes
+before invoking `cmd.exe`. The later common-link preflight independently covers wrapper compilation and linking.
+
+With `--keep-c`, build/run copies rather than regenerates each staged module C file into the mirrored `.dea-c` tree and
+copies the exact wrapper source used for compilation as `__dea_wrapper.c`. Objects and staged interfaces remain private.
+The private wrapper compiles beneath hidden `.link/` scratch, so a valid source module named `__dea_wrapper` does not
+collide during ordinary build/run. Keep-C rejects that root module name and ASCII case variants because the public tree
+reserves the same filename and supported filesystems may compare it case-insensitively.
 
 Generated module C contains no `I8metadata`, `I7imports`, metadata byte arrays, replacement anchors, or volatile
 retention reads. The sibling `.l1m` carries target identity, public fingerprint, entry presence, first-occurrence
@@ -327,8 +344,8 @@ result form before returning `0`. It does not initialize runtime arguments or ca
 
 ## Current Constraints
 
-1. Ordinary `--build` and `--run` output remains one legacy whole-program `.c` file; `--gen` and compile-only use the
-   internal module generator for one selected source-backed module.
+1. Ordinary `--build` and `--run` compile one module C translation unit per source-backed graph node; the legacy
+   whole-program generator is internal transitional code only.
 2. The only implemented backend is the bootstrap backend in `stage1_l0`.
 3. The runtime and ABI surface assume a C99-compatible host toolchain.
 4. Optimization is delegated to the host C compiler; backend priority is correctness and explicit lowering.

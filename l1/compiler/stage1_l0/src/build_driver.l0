@@ -367,6 +367,71 @@ func bd_windows_token_is_plain(arg: string) -> bool {
     return true;
 }
 
+/** Return whether one word is stable through the Windows `system()` shell. */
+func bd_windows_shell_word_safe(word: string) -> bool {
+    for (let i = 0; i < len_s(word); i = i + 1) {
+        let c = char_at_s(word, i);
+        if (c == '%' || c == '!' || c == '"' ||
+            c == '\r' || c == '\n') {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Lowercase hexadecimal digit used by command-value diagnostic escaping. */
+func bd_diagnostic_hex_digit(value: int) -> byte {
+    if (value < 10) {
+        return (('0' as int) + value) as byte;
+    }
+    return (('a' as int) + value - 10) as byte;
+}
+
+/** Render one rejected command word without diagnostic control characters. */
+func bd_diagnostic_word(word: string) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = 0; i < len_s(word); i = i + 1) {
+            let value = char_at_s(word, i) as int;
+            if (value < 32 || value == 127) {
+                cb_append_s(out, "\\x");
+                cb_append(out, bd_diagnostic_hex_digit(value / 16));
+                cb_append(out, bd_diagnostic_hex_digit(value % 16));
+            } else {
+                cb_append(out, value as byte);
+            }
+        }
+        return cb_to_string(out);
+    }
+}
+
+/** Validate exact Windows host-command words with one diagnostic contract. */
+func bd_validate_windows_shell_words(
+    words: StringVector*,
+    code: string,
+    message: string,
+    diags: DiagCollector*
+) -> bool {
+    for (let i = 0; i < sv_size(words); i = i + 1) {
+        let word = sv_get(words, i);
+        if (!bd_windows_shell_word_safe(word)) {
+            let displayed = bd_diagnostic_word(word);
+            diag_error(
+                diags,
+                "l1c",
+                code,
+                message + ": " + displayed,
+                displayed,
+                0,
+                0,
+                0,
+                0
+            );
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
  * Normalize one Windows executable token for `cmd.exe`.
  *

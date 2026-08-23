@@ -1,7 +1,7 @@
 # ADR-0018: Canonical Artifact Association and Module Graph
 
 - Decision date: 2026-07-19
-- Last edited: 2026-08-21
+- Last edited: 2026-08-23
 - Status: Accepted
 
 ## Context
@@ -52,14 +52,14 @@ imports without deriving lifecycle edges from `require` or `link`.
 - Treating a selected interface as authoritative prevents corrupt or stale artifacts from being hidden by source
   fallback.
 - Separate semantic, link, and ordered-import dependency views preserve the information needed by type checking, object
-  selection, and future lifecycle ordering.
+  selection, build/run compilation order, and lifecycle ordering.
 - A shared internal graph lets compile-only and build/run choose different fallback policies without duplicating module
   discovery.
 
 ## Consequences
 
-- The graph and artifact association are shared by internal analysis, compile-only publication, and standalone linking;
-  ordinary `--build` and `--run` remain source-based single-CU operations.
+- The graph and artifact association are shared by internal analysis, compile-only publication, build/run fan-out, and
+  standalone linking. Build/run uses `MRP_ALLOW_SOURCE_FALLBACK` and stages source-backed artifacts privately.
 - Interface cycles and source cycles share one canonical module-chain policy; cached nodes are not cycles, and failed
   nodes are not committed as resolved.
 - Whole-module fingerprints and operational provider expectations are validated before an interface enters the graph.
@@ -73,7 +73,7 @@ imports without deriving lifecycle edges from `require` or `link`.
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
-- [l1/work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
+- [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
 ## Current Docs
 
@@ -83,7 +83,7 @@ imports without deriving lifecycle edges from `require` or `link`.
 - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog]: interface discovery diagnostics
 
 [architecture]: ../reference/architecture.md
-[build-run]: ../../work/plans/features/2026-07-17-build-run-multi-cu-orchestration-noref.md
+[build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
