@@ -35,17 +35,24 @@ make check-examples
 make test-stage1
 make test
 make test-stage1-trace
+make test-stage1-trace-smoke
 make test-stage1-trace-all
 make test-all
+make test-ci
 ```
 
 `make test` combines the normal Stage 1, environment-stackability, and example validation without the dedicated broad
 ARC/memory trace sweep. Use it for confidently trace-independent work. `make test-all` adds the default dedicated trace
-sweep and remains the full CI/Docker backstop.
+sweep and remains the full local/Docker backstop.
 
 `make test-stage1-trace` is the default ARC/memory trace suite and skips intentionally slow trace cases such as
 `math_runtime_compile_test`. Use `make test-stage1-trace-all` to include those slow trace checks, or pass a slow test
 explicitly with `TESTS="math_runtime_compile_test"` when investigating it.
+
+`make test-stage1-trace-smoke` runs the focused ARC/memory trace subset used by hosted Windows CI. `make test-ci`
+selects full normal validation plus that smoke subset on Windows and delegates to `make test-all` on POSIX hosts. An
+explicit `make test-all` still runs the full default trace suite on every platform. Windows uses the subset because
+trace-file I/O is disproportionately slow there; its normal validation remains complete.
 
 ## Current Scope
 

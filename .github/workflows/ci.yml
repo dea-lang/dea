@@ -71,7 +71,7 @@ on:
       l1_make_target:
         description: L1 make target to run
         required: true
-        default: test-all
+        default: test-ci
         type: string
 
 permissions:
@@ -373,7 +373,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "value=${{ inputs.l1_make_target }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=test-all" >> "$GITHUB_OUTPUT"
+            echo "value=test-ci" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run L0 CI delegate

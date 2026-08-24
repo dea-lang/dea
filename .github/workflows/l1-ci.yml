@@ -19,7 +19,7 @@ on:
       make_target:
         description: Make target to run
         required: false
-        default: test-all
+        default: test-ci
         type: string
   workflow_dispatch:
     inputs:
@@ -45,7 +45,7 @@ on:
       make_target:
         description: Make target to run
         required: true
-        default: test-all
+        default: test-ci
         type: string
 
 permissions:

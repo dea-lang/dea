@@ -17,6 +17,7 @@ L1_COMPILER_RT_CHECK_BASIC ?= 1
 L1_COMPILER_RT_UNCHECKED ?=
 L1_COMPILER_RT_QUARANTINE_MAX_BYTES ?=
 L1_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
+TRACE_SMOKE_TESTS := analysis_trace_test array_test io_errno_test lexer_error_cleanup_test slice_trace_test string_vector_test
 DOCKER_IMAGE ?= l1-test
 DOCKER_CC ?= $(if $(strip $(DOCKER_L0_CC)),$(DOCKER_L0_CC),gcc)
 AR ?= ar
@@ -58,7 +59,7 @@ RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-stage1 test-stage1-trace test-stage1-trace-all test-env check-examples bench-runtime bench-link-provenance test-all test-docker print-l1-build-dir clean docker FORCE
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-env check-examples bench-runtime bench-link-provenance test-all test-docker print-l1-build-dir clean docker FORCE
 
 help:
 	@printf '%s\n' \
@@ -70,10 +71,13 @@ help:
 		'  build-stage1       Build the native repo-local L1 Stage 1 compiler.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  test               Run the default L1 validation suite without the dedicated trace sweep.' \
+		'  test-ci            Run hosted-CI validation: full checks on POSIX, full normal checks plus trace smoke checks on Windows.' \
 		'  test-all           Run the full L1 validation suite, including the default trace checks.' \
 		'  test-docker        Run the full L1 validation suite under the repo-owned Linux container (POSIX reference path).' \
 		'  test-stage1        Run the L1 Stage 1 `.l0` implementation tests with the built repo-local compiler.' \
 		'  test-stage1-trace  Run default L1 Stage 1 ARC/memory trace checks; skips intentionally slow trace tests.' \
+		'  test-stage1-trace-smoke' \
+		'                     Run the focused ARC/memory trace smoke set used by hosted Windows CI.' \
 		'  test-stage1-trace-all' \
 		'                     Run L1 Stage 1 ARC/memory trace checks including intentionally slow trace tests.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
@@ -375,6 +379,9 @@ test-stage1: venv build-stage1 _print-test-compiler-env
 test-stage1-trace: venv build-stage1 _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py $(TESTS)
 
+test-stage1-trace-smoke: venv build-stage1 _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py $(TRACE_SMOKE_TESTS)
+
 test-stage1-trace-all: venv build-stage1 _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --include-slow $(TESTS)
 
@@ -387,6 +394,13 @@ check-examples: build-stage1
 test: test-stage1 test-env check-examples
 
 test-all: test test-stage1-trace
+
+# Full trace-file I/O is disproportionately slow on Windows; normal validation remains complete.
+ifeq ($(OS),Windows_NT)
+test-ci: test test-stage1-trace-smoke
+else
+test-ci: test-all
+endif
 
 test-docker:
 	$(MAKE) docker CMD=test-all
