@@ -1,7 +1,7 @@
 # ADR-0009: Logical Lexer-Error Recovery Tokens and Code-Point Columns
 
 - Decision date: 2026-06-10
-- Last edited: 2026-06-10
+- Last edited: 2026-08-24
 - Status: Accepted
 
 ## Context
@@ -78,6 +78,8 @@ contract also does not require one identical physical token representation in ev
 
 ## Related Plans
 
+- [work/plans/bug-fixes/closed/2026-08-23-shared-lexer-recovery-expression-context-noref.md](../../work/plans/bug-fixes/closed/2026-08-23-shared-lexer-recovery-expression-context-noref.md):
+  closed bug-fix plan that aligned signed-literal context with parser-visible recovery tokens
 - [work/plans/refactors/closed/2026-06-10-shared-lexer-error-recovery-tokens-and-codepoint-columns-noref.md](../../work/plans/refactors/closed/2026-06-10-shared-lexer-error-recovery-tokens-and-codepoint-columns-noref.md):
   closed shared refactor plan that introduced this design
 - [work/plans/bug-fixes/closed/2026-06-09-shared-lex-0040-recovery-noref.md](../../work/plans/bug-fixes/closed/2026-06-09-shared-lex-0040-recovery-noref.md):

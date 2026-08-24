@@ -207,6 +207,26 @@ def test_lexer_error_not_duplicated_across_backtracking(analyze_single):
     assert result.cu is not None
 
 
+def test_recovered_integer_preserves_binary_minus_in_parser(analyze_single):
+    result = analyze_single(
+        "main",
+        """
+        module main;
+
+        func main() -> int {
+            return 2147483648 -5;
+        }
+        """,
+    )
+    lex_errors = [
+        d for d in result.diagnostics
+        if d.kind == "error" and d.message.startswith("[LEX-0060]")
+    ]
+    assert len(lex_errors) == 1
+    assert not any(d.message.startswith("[PAR-") for d in result.diagnostics)
+    assert result.cu is not None
+
+
 def test_lexer_unicode_string_keeps_following_columns(analyze_single):
     src_line = '    let s: string = "☕☕"; ⚽'
     result = analyze_single(

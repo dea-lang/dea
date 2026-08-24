@@ -789,6 +789,21 @@ func test_lexer_error_not_duplicated_across_backtracking() {
 }
 
 /**
+ * Tests recovered integer literals preserve binary-minus parser context and
+ * emit their deferred diagnostic exactly once.
+ */
+func test_recovered_integer_preserves_binary_minus() {
+    let result = parse_module_source(
+        "module main;\nfunc main() -> int {\n    return 0x -5;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected the malformed hexadecimal lexer diagnostic");
+    assert(result.root_module != null, "Expected a parsed module after literal recovery");
+    assert(count_diag_code(result, "LEX-0062") == 1, "Expected exactly one hexadecimal diagnostic");
+    assert(parse_diag_count(result) == 1, "Expected no parser diagnostics");
+    parse_result_free(result);
+}
+
+/**
  * Tests that an unknown escape before newline preserves both lexer diagnostics.
  */
 func test_queued_lexer_errors_preserve_escape_then_unterminated_string() {
@@ -1599,6 +1614,7 @@ func main() {
     test_lexer_error_tokens_keep_module_parse();
     test_lexer_error_run_has_codepoint_span();
     test_lexer_error_not_duplicated_across_backtracking();
+    test_recovered_integer_preserves_binary_minus();
     test_queued_lexer_errors_preserve_escape_then_unterminated_string();
     test_queued_lexer_errors_preserve_hex_then_unterminated_string();
     test_lexer_unicode_string_keeps_following_columns();

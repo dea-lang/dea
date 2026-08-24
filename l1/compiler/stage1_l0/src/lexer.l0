@@ -187,7 +187,7 @@ struct LexerState {
     index: int;
     line: int;
     column: int;
-    prev_kind: TokenType;
+    prev_ends_expression: bool;
     diags: DiagCollector*;
     pending_errors: DiagnosticVector*;
     queued_tokens: TokenVector;
@@ -209,7 +209,7 @@ func ls_create(source: string, filename: string) -> LexerState* {
         0,
         1,
         1,
-        TT_EOF,
+        false,
         diag_create(),
         dgv_create(),
         tv_create(),
@@ -480,7 +480,8 @@ func tokenize(self: LexerState*) -> TokenVector? {
         while (true) {
             let token = ls_next_token(self)?;
             tv_push(tokens, token);
-            self.prev_kind = token.token_type;
+            self.prev_ends_expression = token_logical_predecessor_ends_expression(
+                token, self.prev_ends_expression);
             match (token.token_type) {
                 TT_EOF => { break; }
                 _ => {}
@@ -552,7 +553,7 @@ func ls_next_token(self: LexerState*) -> Token? {
                 ls_advance(self);
                 return Token(TT_ARROW_FUNC, start_index, start_line, start_column);
             }
-            else if (is_digit(ls_peek(self)) && !is_expr_ending_token_type(self.prev_kind)) {
+            else if (is_digit(ls_peek(self)) && !self.prev_ends_expression) {
                 // Negative number literal if we are in a unary operator context,
                 // e.g. "f(-5)": here -5 is a negative number, but "x-5" is x MINUS 5
                 return ls_read_number(self, ls_advance(self), true, start_index, start_line, start_column);

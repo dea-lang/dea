@@ -2,8 +2,8 @@
 
 ## Preserve expression context after recovered lexer tokens
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-24
+- Status: Completed
 - Title: Update signed-literal context from the parser-visible recovery token in all frontends
 - Kind: Bug Fix
 - Scope: Shared
@@ -103,3 +103,24 @@ No diagnostic code is added or reassigned. Existing `LEX-*` diagnostics and reco
 1. Physical wrappers no longer corrupt signed-literal context.
 2. Parser-visible tokens and diagnostic spans remain consistent with ADR-0009.
 3. L0 Stage 1, L0 Stage 2, and L1 Stage 1 agree on every focused recovery sequence.
+
+## Implementation Outcome
+
+1. All three lexers now store the payload-free expression-ending state of the parser-visible predecessor rather than the
+   physical token kind.
+2. Recovery wrappers derive that state from their literal recovery payload, while no-recovery wrappers preserve the
+   preceding logical state across one or more skipped wrappers.
+3. Signed-minus classification therefore treats recovered literals as operands without copying or retaining native
+   recovery payloads.
+4. Regression coverage includes overflow or malformed numeric recovery, malformed string and byte literals, consecutive
+   wrappers, no-recovery wrappers after operands and operators, and parser-visible binary-minus behavior.
+
+## Verification Outcome
+
+1. The focused Python lexer/error suites passed (46 tests). L0 Stage 2 and L1 Stage 1 lexer, lexer cleanup, and parser
+   suites passed in normal and ARC/memory trace modes.
+2. Repository-root `make test` passed: 1,470 L0 Python tests, all 55 L0 Stage 2 tests including triple bootstrap, all
+   workflows and examples, and all 67 L1 Stage 1 tests and examples completed successfully.
+3. The independent read-only review found that the initial regressions stopped at physical token streams. The accepted
+   finding was fixed with full-module parser tests that assert one deferred lexer diagnostic, a preserved module AST,
+   and no parser cascade in every frontend; follow-up review reported no remaining issue.

@@ -254,6 +254,15 @@ class Token:
         return f"{self.text!r}" if self.kind != TokenKind.EOF else "end-of-file"
 
 
+def _logical_predecessor_ends_expression(token: Token, previous: bool) -> bool:
+    """Return whether the parser-visible predecessor ends an expression."""
+    if token.kind is TokenKind.LEXER_ERROR:
+        if token.recovery is None:
+            return previous
+        token = token.recovery
+    return token.kind in _EXPR_ENDING_TOKENS
+
+
 def is_reserved_keyword(word: str) -> bool:
     """Check if a word is a reserved L0 keyword.
 
@@ -310,7 +319,7 @@ class Lexer:
         self.index = 0
         self.line = 1
         self.column = 1
-        self._prev_kind: TokenKind | None = None
+        self._prev_ends_expression = False
         self.diagnostics = diagnostics if diagnostics is not None else []
 
     @classmethod
@@ -394,7 +403,9 @@ class Lexer:
         while True:
             tok = self._next_token()
             tokens.append(tok)
-            self._prev_kind = tok.kind
+            self._prev_ends_expression = _logical_predecessor_ends_expression(
+                tok, self._prev_ends_expression
+            )
             if tok.kind is TokenKind.EOF:
                 break
 
@@ -464,7 +475,7 @@ class Lexer:
             if self._peek() == ">":
                 self._advance()
                 return Token(TokenKind.ARROW_FUNC, "->", start_line, start_col)
-            elif self._peek().isdigit() and self._prev_kind not in _EXPR_ENDING_TOKENS:
+            elif self._peek().isdigit() and not self._prev_ends_expression:
                 diagnostic_start = len(self.diagnostics)
                 text = self._read_number(self._advance(), start_col, start_line, is_negative=True)
                 return self._wrap_new_diagnostics(

@@ -100,6 +100,50 @@ def test_lexer_minus_context_sensitive():
         assert kinds == expected, f"Failed for {src!r}: got {kinds}"
 
 
+@pytest.mark.parametrize(
+    "src",
+    [
+        "2147483648 -5",
+        '"\\q" -5',
+        "'a -5",
+        '"\\q\n -5',
+    ],
+)
+def test_lexer_recovery_token_preserves_binary_minus_context(src):
+    """Recovered expression tokens remain the logical predecessor."""
+    tokens = Lexer.from_source(src).tokenize()
+    assert tokens[0].kind is TokenKind.LEXER_ERROR
+    assert tokens[0].recovery is not None
+    assert [token.kind for token in tokens[-3:]] == [
+        TokenKind.MINUS,
+        TokenKind.INT,
+        TokenKind.EOF,
+    ]
+    assert tokens[-2].text == "5"
+
+
+def test_lexer_no_recovery_wrapper_retains_logical_context():
+    """Skipped wrappers neither erase an operand nor invent one."""
+    after_operand = Lexer.from_source("1 @ -5").tokenize()
+    assert [token.kind for token in after_operand] == [
+        TokenKind.INT,
+        TokenKind.LEXER_ERROR,
+        TokenKind.MINUS,
+        TokenKind.INT,
+        TokenKind.EOF,
+    ]
+    assert after_operand[3].text == "5"
+
+    after_operator = Lexer.from_source("+ @ -5").tokenize()
+    assert [token.kind for token in after_operator] == [
+        TokenKind.PLUS,
+        TokenKind.LEXER_ERROR,
+        TokenKind.INT,
+        TokenKind.EOF,
+    ]
+    assert after_operator[2].text == "-5"
+
+
 def test_lexer_negative_int_token_text():
     """Absorbed negative INT tokens have minus in text."""
     tokens = Lexer.from_source("-42").tokenize()

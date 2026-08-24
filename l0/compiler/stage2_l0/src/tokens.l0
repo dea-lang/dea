@@ -258,6 +258,29 @@ func token_recovered(wrapper: Token) -> Token {
 }
 
 /**
+ * Return whether the parser-visible predecessor ends an expression.
+ * Lexer-error wrappers with recovery contribute the recovered token context;
+ * wrappers without recovery preserve the preceding logical context.
+ *
+ * @param token Newly scanned physical token.
+ * @param previous Whether the previous parser-visible token ended an expression.
+ * @return Expression-ending context for signed-literal lexing.
+ */
+func token_logical_predecessor_ends_expression(token: Token, previous: bool) -> bool {
+    match (token.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            match (recovery) {
+                TR_NONE => { return previous; }
+                TR_INT(text, value) => { return true; }
+                TR_BYTE(text, value) => { return true; }
+                TR_STRING(text, value) => { return true; }
+            }
+        }
+        _ => { return is_expr_ending_token_type(token.token_type); }
+    }
+}
+
+/**
  * Check whether identifier text is reserved as a builtin type name.
  *
  * @param word Identifier text to inspect.

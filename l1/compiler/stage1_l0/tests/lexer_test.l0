@@ -237,6 +237,118 @@ func expect_two_lex_error_tokens(source: string, expected_first: string, expecte
 }
 
 /**
+ * Assert that one or more recovery wrappers leave the following minus binary.
+ *
+ * @param source Source ending in ` -5` after the recovered literal.
+ * @param wrapper_count Number of leading physical lexer-error wrappers.
+ */
+func expect_recovery_then_binary_minus(source: string, wrapper_count: int) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected recoverable lexing to succeed");
+
+    let tv = toks as TokenVector;
+    if (tv_len(tv) != wrapper_count + 3) {
+        printl_ss("unexpected recovery source:", source);
+        for (let i = 0; i < tv_len(tv); i = i + 1) {
+            printl_ss("unexpected recovery token:", token_to_string(tv_get(tv, i)));
+        }
+        assert(false, "Expected wrappers, binary minus, integer, and EOF");
+    }
+    for (let i = 0; i < wrapper_count; i = i + 1) {
+        let tok = tv_get(tv, i);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (i + 1 == wrapper_count) {
+                    assert(token_recovery_is_some(recovery), "Expected final wrapper recovery token");
+                    assert(token_logical_predecessor_ends_expression(tok, false),
+                           "Expected recovery token to end an expression");
+                } else {
+                    assert(!token_recovery_is_some(recovery), "Expected queued wrapper without recovery");
+                }
+            }
+            _ => { assert(false, "Expected lexer-error wrapper"); }
+        }
+    }
+
+    let minus_token = tv_get(tv, wrapper_count);
+    match (minus_token.token_type) {
+        TT_MINUS => {}
+        _ => { assert(false, "Expected binary minus after recovered expression"); }
+    }
+    let int_token = tv_get(tv, wrapper_count + 1);
+    match (int_token.token_type) {
+        TT_INT(text, value) => { assert(text == "5", "Expected positive integer after binary minus"); }
+        _ => { assert(false, "Expected positive integer token"); }
+    }
+    let eof_token = tv_get(tv, wrapper_count + 2);
+    match (eof_token.token_type) {
+        TT_EOF => {}
+        _ => { assert(false, "Expected EOF"); }
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Test parser-visible recovery tokens drive signed-literal context.
+ */
+func test_recovery_token_minus_context() {
+    expect_recovery_then_binary_minus("0x -5", 1);
+    expect_recovery_then_binary_minus("1e -5", 1);
+    expect_recovery_then_binary_minus("\"\\q\" -5", 1);
+    expect_recovery_then_binary_minus("'a -5", 1);
+    expect_recovery_then_binary_minus("\"\\q\n -5", 2);
+
+    let suffix_ls = ls_create("123f", "<test>");
+    let suffix_toks = tokenize(suffix_ls);
+    assert(suffix_toks != null, "Expected malformed numeric suffix recovery");
+    let suffix_tv = suffix_toks as TokenVector;
+    let suffix_token = tv_get(suffix_tv, 0);
+    assert(token_logical_predecessor_ends_expression(suffix_token, false),
+           "Expected malformed numeric suffix recovery to end an expression");
+    tv_free(suffix_tv);
+    ls_free(suffix_ls);
+}
+
+/**
+ * Test no-recovery wrappers retain rather than replace logical context.
+ */
+func test_no_recovery_wrapper_minus_context() {
+    let operand_ls = ls_create("1 @ -5", "<test>");
+    let operand_toks = tokenize(operand_ls);
+    assert(operand_toks != null, "Expected invalid-character recovery");
+    let operand_tv = operand_toks as TokenVector;
+    assert(tv_len(operand_tv) == 5, "Unexpected operand recovery token count");
+    let operand_minus = tv_get(operand_tv, 2);
+    match (operand_minus.token_type) {
+        TT_MINUS => {}
+        _ => { assert(false, "Expected binary minus after skipped wrapper"); }
+    }
+    let operand_int = tv_get(operand_tv, 3);
+    match (operand_int.token_type) {
+        TT_INT(text, value) => { assert(text == "5", "Expected positive right operand"); }
+        _ => { assert(false, "Expected integer right operand"); }
+    }
+    tv_free(operand_tv);
+    ls_free(operand_ls);
+
+    let operator_ls = ls_create("+ @ -5", "<test>");
+    let operator_toks = tokenize(operator_ls);
+    assert(operator_toks != null, "Expected invalid-character recovery");
+    let operator_tv = operator_toks as TokenVector;
+    assert(tv_len(operator_tv) == 4, "Unexpected operator recovery token count");
+    let operator_int = tv_get(operator_tv, 2);
+    match (operator_int.token_type) {
+        TT_INT(text, value) => { assert(text == "-5", "Expected unary signed literal after skipped wrapper"); }
+        _ => { assert(false, "Expected signed integer token"); }
+    }
+    tv_free(operator_tv);
+    ls_free(operator_ls);
+}
+
+/**
  * Lexes source and asserts the first two tokens by rendered spelling.
  *
  * @param source Source text to lex.
@@ -493,6 +605,8 @@ func main() {
     test_literal_recovery_errors();
     test_string_escape_decoding();
     test_recoverable_lexer_errors_can_queue_multiple_wrappers();
+    test_recovery_token_minus_context();
+    test_no_recovery_wrapper_minus_context();
     test_const_keyword_tokenization();
     test_real_literal_boundaries();
     test_small_integer_builtin_words();
