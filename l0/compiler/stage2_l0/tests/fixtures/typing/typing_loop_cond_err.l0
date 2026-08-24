@@ -5,13 +5,21 @@
 
 module typing_loop_cond_err;
 
+struct Box {
+    value: int;
+}
+
 /**
  * Triggers loop-condition diagnostic codes.
  */
 func err_loop_conditions() -> int {
-    while (1) { // TYP-0080
+    let p: Box* = new Box(1);
+    while (sizeof(int)) { // TYP-0080
+        drop p;
     }
-    for (let i: int = 0; i; i = i + 1) { // TYP-0090
+    let q: Box* = new Box(2);
+    for (let i: int = 0; sizeof(void); i = i + 1) { // TYP-0090, TYP-0240
+        drop q;
     }
     return 0;
 }

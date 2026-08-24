@@ -35,6 +35,14 @@ func err_second_iteration_use_after_drop() -> int {
     return 0;
 }
 
+func err_second_iteration_condition_after_drop() -> int {
+    let p: Box* = new Box(1);
+    while (p.value > 0) { // TYP-0150 on the converged loop-head state
+        drop p;
+    }
+    return 0;
+}
+
 func err_unreachable_assignment_after_break() -> int {
     let p: Box* = new Box(1);
     while (true) {

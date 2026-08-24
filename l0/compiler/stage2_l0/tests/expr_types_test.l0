@@ -212,8 +212,9 @@ func test_typing_loop_cond_err() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_loop_cond_err", cfg);
         assert(analysis_has_errors(result), "expected typing errors for typing_loop_cond_err");
-        assert(has_diag_code(result, "TYP-0080"), "expected while condition error");
-        assert(has_diag_code(result, "TYP-0090"), "expected for condition error");
+        assert(count_diag_code(result, "TYP-0080") == 1, "expected one while condition error");
+        assert(count_diag_code(result, "TYP-0090") == 1, "expected one for condition error");
+        assert(count_diag_code(result, "TYP-0240") == 1, "expected one invalid sizeof operand error");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -553,6 +554,17 @@ func test_typing_call_err() {
     sp_free(sp);
 }
 
+/** Tests calls through an inferred local function value. */
+func test_typing_local_call_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_local_call_ok", cfg);
+        assert(!analysis_has_errors(result), "expected local function-value call to type-check");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
 /**
  * Tests `match` exhaustiveness and missing-return flow diagnostics.
  */
@@ -681,7 +693,7 @@ func test_typing_loop_liveness_err() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_loop_liveness_err", cfg);
         assert(analysis_has_errors(result), "expected loop liveness errors");
-        assert(count_diag_code(result, "TYP-0150") == 5, "expected five use-after-drop diagnostics");
+        assert(count_diag_code(result, "TYP-0150") == 6, "expected six use-after-drop diagnostics");
         assert(count_diag_code(result, "TYP-0010") == 3, "expected conservative loop return diagnostics");
         analysis_result_free(result);
     }
@@ -787,6 +799,7 @@ func main() {
     test_typing_cast_null_unwrap_err();
     test_typing_nullable_assignment();
     test_typing_call_err();
+    test_typing_local_call_ok();
     test_typing_match_flow_err();
     test_typing_match_warn_ok();
     test_typing_loop_control_err();

@@ -433,15 +433,8 @@ func etc_check_update_from_backedge_states(self: ExpressionTypeChecker*, update:
 /**
  * Check one loop iteration and collect reachable backedge/exit states.
  */
-func etc_check_loop_iteration(self: ExpressionTypeChecker*, cond: ExprId, body: StmtId,
+func etc_check_loop_iteration(self: ExpressionTypeChecker*, body: StmtId,
     update: StmtId) -> LoopIterationFlow* {
-    if (cond >= 0) {
-        let cond_ty = etc_infer_expr(self, cond);
-        if (cond_ty != null) {
-            type_free(cond_ty as Type*);
-        }
-    }
-
     let capture = new LoopFlowCapture(self.loop_flow_capture_stack, ptr_vec_create(2), ptr_vec_create(2));
     self.loop_flow_capture_stack = capture;
     self.loop_depth = self.loop_depth + 1;
@@ -471,8 +464,11 @@ func etc_loop_liveness_fixed_point(self: ExpressionTypeChecker*, pre_loop: Vecto
     while (!converged) {
         etc_alive_scope_stack_restore(self, head);
         let old_suppress = self.suppress_diagnostics;
+        let old_liveness_only = self.liveness_diagnostics_only;
         self.suppress_diagnostics = true;
-        let iteration = etc_check_loop_iteration(self, cond, body, update);
+        self.liveness_diagnostics_only = true;
+        let iteration = etc_check_loop_iteration(self, body, update);
+        self.liveness_diagnostics_only = old_liveness_only;
         self.suppress_diagnostics = old_suppress;
         self.next_stmt_unreachable = saved_unreachable;
 
@@ -488,7 +484,13 @@ func etc_loop_liveness_fixed_point(self: ExpressionTypeChecker*, pre_loop: Vecto
     etc_alive_scope_stack_restore(self, head);
     let old_liveness_only = self.liveness_diagnostics_only;
     self.liveness_diagnostics_only = true;
-    with (let final_iteration = etc_check_loop_iteration(self, cond, body, update)) {
+    if (cond >= 0) {
+        let cond_ty = etc_infer_expr(self, cond);
+        if (cond_ty != null) {
+            type_free(cond_ty as Type*);
+        }
+    }
+    with (let final_iteration = etc_check_loop_iteration(self, body, update)) {
         self.liveness_diagnostics_only = old_liveness_only;
         self.next_stmt_unreachable = saved_unreachable;
         etc_alive_scope_stack_restore(self, head);
@@ -772,12 +774,11 @@ func etc_alive_revive_assignment_target(self: ExpressionTypeChecker*, expr_id: E
  * @param ty Type to store.
  */
 func etc_set_expr_type(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*) {
-    let key = etc_key(self.current_module, expr_id);
-    let old = spm_get(self.result.expr_types, key);
-    if (old != null) {
-        type_free(old as Type*);
+    if (self.liveness_diagnostics_only) {
+        return;
     }
-    spm_put(self.result.expr_types, key, type_clone(ty) as void*);
+    let key = etc_key(self.current_module, expr_id);
+    analysis_owned_type_map_put(self.result.expr_types, key, ty);
 }
 
 /**
@@ -788,12 +789,11 @@ func etc_set_expr_type(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*)
  * @param ty Type to store.
  */
 func etc_set_var_type(self: ExpressionTypeChecker*, name: string, ty: Type*) {
-    let key = self.current_module + "::var::" + name;
-    let old = spm_get(self.result.expr_types, key);
-    if (old != null) {
-        type_free(old as Type*);
+    if (self.liveness_diagnostics_only) {
+        return;
     }
-    spm_put(self.result.expr_types, key, type_clone(ty) as void*);
+    let key = self.current_module + "::var::" + name;
+    analysis_owned_type_map_put(self.result.expr_types, key, ty);
 }
 
 /**
@@ -818,6 +818,9 @@ func etc_get_var_type(self: ExpressionTypeChecker*, name: string) -> Type*? {
  * @param res Resolution kind to store.
  */
 func etc_set_var_res(self: ExpressionTypeChecker*, expr_id: ExprId, res: VarRefResolution) {
+    if (self.liveness_diagnostics_only) {
+        return;
+    }
     let key = etc_key(self.current_module, expr_id);
     sim_put(self.result.var_ref_resolution, key, ord(res));
 }
@@ -830,8 +833,11 @@ func etc_set_var_res(self: ExpressionTypeChecker*, expr_id: ExprId, res: VarRefR
  * @param ty Target type to store.
  */
 func etc_set_intrinsic_target(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*) {
+    if (self.liveness_diagnostics_only) {
+        return;
+    }
     let key = etc_key(self.current_module, expr_id);
-    spm_put(self.result.intrinsic_targets, key, type_clone(ty) as void*);
+    analysis_owned_type_map_put(self.result.intrinsic_targets, key, ty);
 }
 
 /**
@@ -1772,7 +1778,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 pre_alive_loop = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
             }
             if (pre_alive_loop != null) {
-                let iteration = etc_check_loop_iteration(self, stmt.expr_a, stmt.stmt_a, -1);
+                let iteration = etc_check_loop_iteration(self, stmt.stmt_a, -1);
                 let next_head = etc_alive_scope_stack_meet_many(pre_alive_loop as VectorBase*, iteration.backedge_states);
                 if (!etc_alive_scope_stack_equal(pre_alive_loop as VectorBase*, next_head)) {
                     etc_loop_flow_capture_free(iteration.capture);
@@ -1822,7 +1828,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             }
             if (pre_alive_for != null) {
                 if (ord(init_flow) == ord(FLOW_FALLTHROUGH)) {
-                    let iteration2 = etc_check_loop_iteration(self, stmt.expr_a, stmt.stmt_c, stmt.stmt_b);
+                    let iteration2 = etc_check_loop_iteration(self, stmt.stmt_c, stmt.stmt_b);
                     let next_head2 = etc_alive_scope_stack_meet_many(pre_alive_for as VectorBase*, iteration2.backedge_states);
                     if (!etc_alive_scope_stack_equal(pre_alive_for as VectorBase*, next_head2)) {
                         etc_loop_flow_capture_free(iteration2.capture);
@@ -1859,7 +1865,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     let saved_capture_for = self.loop_flow_capture_stack;
                     self.loop_flow_capture_stack = null;
                     self.next_stmt_unreachable = false;
-                    let unreachable_iteration = etc_check_loop_iteration(self, stmt.expr_a, stmt.stmt_c, stmt.stmt_b);
+                    let unreachable_iteration = etc_check_loop_iteration(self, stmt.stmt_c, stmt.stmt_b);
                     etc_loop_flow_capture_free(unreachable_iteration.capture);
                     etc_alive_state_vec_free(unreachable_iteration.backedge_states);
                     drop unreachable_iteration;
@@ -2260,6 +2266,17 @@ func etc_types_equal(a: Type*?, b: Type*?) -> bool {
 }
 
 /**
+ * Free an optional owned type.
+ *
+ * @param ty Optional type to free.
+ */
+func etc_type_free_opt(ty: Type*?) {
+    if (ty != null) {
+        type_free(ty as Type*);
+    }
+}
+
+/**
  * Check whether a value of one type can be assigned to another.
  *
  * @param self Expression checker state.
@@ -2577,13 +2594,15 @@ func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNod
         if (callee.text_value == "ord") {
             return etc_infer_ord_intrinsic(self, expr);
         }
-        if (etc_lookup_local(self, callee.text_value) == null &&
-            etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier) == null &&
-            callee.module_path == null && callee.name_qualifier == null &&
-            !nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, callee.text_value)) {
-            etc_diag_error(self, "TYP-0189", "unknown function '" + callee.text_value + "'",
-                (self.current_unit as DriverUnit*).path, callee.span);
-            return null;
+        with (let local_callee_ty = etc_lookup_local(self, callee.text_value) => etc_type_free_opt(local_callee_ty)) {
+            if (local_callee_ty == null &&
+                etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier) == null &&
+                callee.module_path == null && callee.name_qualifier == null &&
+                !nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, callee.text_value)) {
+                etc_diag_error(self, "TYP-0189", "unknown function '" + callee.text_value + "'",
+                    (self.current_unit as DriverUnit*).path, callee.span);
+                return null;
+            }
         }
     }
 
@@ -2831,6 +2850,35 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
     return null;
 }
 
+/** Replay local-variable use checks without repeating expression semantics. */
+func etc_check_expr_liveness(self: ExpressionTypeChecker*, expr_id: ExprId) {
+    if (expr_id < 0) {
+        return;
+    }
+    let unit = self.current_unit as DriverUnit*;
+    let expr = expr_arena_get(unit.parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_VAR_REF)) {
+        let resolution = analysis_get_var_ref_resolution(self.result, self.current_module, expr_id);
+        if (resolution != null && (resolution as int) == ord(VAR_RES_LOCAL)) {
+            let alive = etc_alive_lookup(self, expr.text_value);
+            if (alive != null && (alive as int) == 0) {
+                etc_diag_error(self, "TYP-0150", "use of dropped variable '" + expr.text_value + "'",
+                    unit.path, expr.span);
+            }
+        }
+        return;
+    }
+    etc_check_expr_liveness(self, expr.expr_a);
+    etc_check_expr_liveness(self, expr.expr_b);
+    etc_check_expr_liveness(self, expr.expr_c);
+    if (expr.ids != null) {
+        let ids = expr.ids as VectorBase*;
+        for (let i = 0; i < vec_size(ids); i = i + 1) {
+            etc_check_expr_liveness(self, id_vec_get(ids, i));
+        }
+    }
+}
+
 /**
  * Infers the type for a expr.
  *
@@ -2841,6 +2889,10 @@ func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNo
 func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
     if (expr_id < 0) {
         return null;
+    }
+    if (self.liveness_diagnostics_only) {
+        etc_check_expr_liveness(self, expr_id);
+        return analysis_get_expr_type(self.result, self.current_module, expr_id);
     }
     let unit = self.current_unit as DriverUnit*;
     let expr = expr_arena_get(unit.parse_result.expr_arena, expr_id);

@@ -6,6 +6,7 @@
 module analysis_test;
 
 import std.io;
+import std.hashmap;
 import std.path;
 import std.string;
 import std.assert;
@@ -21,6 +22,7 @@ import module_graph;
 import parser.interface;
 import sem_context;
 import source_paths;
+import types;
 import util.log;
 
 /**
@@ -280,6 +282,21 @@ func test_analysis_semantic_failure() {
     sp_free(sp);
 }
 
+/** Owned analysis maps replace values without growing or leaking the old type. */
+func test_analysis_owned_type_map_replacement() {
+    let map = spm_create();
+    with (let first = type_builtin_int() => type_free(first),
+          let replacement = type_builtin_bool() => type_free(replacement)) {
+        analysis_owned_type_map_put(map, "target", first);
+        analysis_owned_type_map_put(map, "target", replacement);
+        assert(spm_size(map) == 1, "replacement should retain one owned map entry");
+        assert(type_is_builtin(spm_get(map, "target") as Type*, "bool"),
+            "replacement should retain the latest cloned type");
+    }
+    type_free(spm_get(map, "target") as Type*);
+    spm_free(map);
+}
+
 /**
  * Tests alias-qualified imports and alias-only unqualified failure.
  */
@@ -398,6 +415,7 @@ func main() {
     test_analysis_interface_enum_from_source_fallback();
     test_analysis_entry_and_module_import_projection();
     test_analysis_semantic_failure();
+    test_analysis_owned_type_map_replacement();
     test_analysis_alias_imports();
     test_analysis_opaque_export_surfaces();
     test_analysis_imported_opaque_layout_errors();

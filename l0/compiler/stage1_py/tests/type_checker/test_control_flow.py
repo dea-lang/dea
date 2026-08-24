@@ -205,6 +205,53 @@ def test_loop_fixed_point_rejects_second_iteration_use_after_drop(analyze_single
     assert has_error_code(result.diagnostics, "TYP-0150")
 
 
+def test_loop_fixed_point_rechecks_condition_liveness(analyze_single):
+    """The settled loop head applies liveness to condition variable uses."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f() -> int {
+            let p: Box* = new Box(1);
+            while (p.value > 0) {
+                drop p;
+            }
+            return 0;
+        }
+        """,
+    )
+
+    assert sum("TYP-0150" in diag.message for diag in result.diagnostics) == 1
+
+
+def test_loop_replay_emits_semantic_condition_diagnostics_once(analyze_single):
+    """Condition semantics and intrinsic metadata are not replayed at convergence."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        func f() -> int {
+            let p: Box* = new Box(1);
+            while (sizeof(int)) {
+                drop p;
+            }
+            let q: Box* = new Box(2);
+            for (let i: int = 0; sizeof(void); i = i + 1) {
+                drop q;
+            }
+            return 0;
+        }
+        """,
+    )
+
+    messages = [diag.message for diag in result.diagnostics]
+    assert sum("TYP-0080" in message for message in messages) == 1
+    assert sum("TYP-0090" in message for message in messages) == 1
+    assert sum("TYP-0240" in message for message in messages) == 1
+
+
 def test_assignment_rhs_cannot_read_dropped_target(analyze_single):
     """Revival happens after evaluating the assignment RHS."""
     result = analyze_single(

@@ -340,8 +340,9 @@ func test_typing_loop_cond_err() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_loop_cond_err", cfg);
         assert(analysis_has_errors(result), "expected typing errors for typing_loop_cond_err");
-        assert(has_diag_code(result, "TYP-0080"), "expected while condition error");
-        assert(has_diag_code(result, "TYP-0090"), "expected for condition error");
+        assert(count_diag_code(result, "TYP-0080") == 1, "expected one while condition error");
+        assert(count_diag_code(result, "TYP-0090") == 1, "expected one for condition error");
+        assert(count_diag_code(result, "TYP-0240") == 1, "expected one invalid sizeof operand error");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -1148,7 +1149,7 @@ func test_typing_loop_liveness_err() {
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = analysis_analyze_entry(sp, "typing_loop_liveness_err", cfg);
         assert(analysis_has_errors(result), "expected loop liveness errors");
-        assert(count_diag_code(result, "TYP-0150") == 5, "expected five use-after-drop diagnostics");
+        assert(count_diag_code(result, "TYP-0150") == 6, "expected six use-after-drop diagnostics");
         assert(count_diag_code(result, "TYP-0010") == 3, "expected conservative loop return diagnostics");
         analysis_result_free(result);
     }

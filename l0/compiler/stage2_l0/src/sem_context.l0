@@ -40,6 +40,26 @@ struct AnalysisResult {
 }
 
 /**
+ * Replace one owned type-map entry with a clone of `ty`.
+ *
+ * Analysis type maps own their values.  Centralizing replacement here keeps
+ * insert and overwrite paths symmetric: an existing value is freed exactly
+ * once, while the caller retains ownership of `ty`.
+ *
+ * @param map Owned `Type*` value map.
+ * @param key Entry key.
+ * @param ty Borrowed type to clone into the map.
+ */
+func analysis_owned_type_map_put(map: StringPtrMap*, key: string, ty: Type*) {
+    let replacement = type_clone(ty);
+    let old = spm_get(map, key);
+    if (old != null) {
+        type_free(old as Type*);
+    }
+    spm_put(map, key, replacement as void*);
+}
+
+/**
  * Free an analysis result and all owned semantic tables.
  *
  * @param self Analysis result to free.

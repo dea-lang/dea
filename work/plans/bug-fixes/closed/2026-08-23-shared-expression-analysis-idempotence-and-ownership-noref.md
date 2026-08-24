@@ -2,8 +2,8 @@
 
 ## Make repeated expression analysis idempotent and ownership-safe
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-24
+- Status: Completed
 - Title: Prevent metadata leaks and duplicate semantic effects during native liveness replay
 - Kind: Bug Fix
 - Scope: Shared
@@ -18,9 +18,9 @@
 - Porting rule: Keep semantic diagnostics and result metadata idempotent across targets; apply manual type cleanup only
   to native owned `Type*` values and retain Python's managed-memory implementation.
 - Target status:
-  - L0 Python Stage 1 diagnostic replay audit: Pending
-  - L0 Stage 2 expression analysis: Pending
-  - L1 Stage 1 expression analysis: Pending
+  - L0 Python Stage 1 diagnostic replay audit: Implemented
+  - L0 Stage 2 expression analysis: Implemented
+  - L1 Stage 1 expression analysis: Implemented
 - Subsystem: Expression typing / Liveness fixed points / Analyzer memory ownership
 - Modules:
   - `l0/compiler/stage1_py/l0_expr_types.py`
@@ -118,3 +118,24 @@ per offending source expression.
 2. A source condition produces one set of semantic diagnostics independent of convergence count.
 3. Liveness replay still diagnoses uses according to the settled ownership state.
 4. L0 Stage 2 and L1 Stage 1 finish trace validation with no analyzer-owned `Type` leaks.
+
+## Implementation Outcome
+
+1. Both native analyzers now route owned analysis `Type*` entries through one clone-and-replace helper that frees any
+   prior value exactly once; expression types, temporary variable types, and intrinsic targets share that rule.
+2. L0 Stage 2 now scopes and frees the cloned local-callee type used by function-call existence checks, matching L1.
+3. Loop conditions are semantically inferred once. Convergence and settled passes use cached expression types plus a
+   dedicated local-variable liveness walk, preserving next-iteration ownership diagnostics without repeating type
+   resolution, semantic diagnostics, or result metadata writes.
+4. Python Stage 1 follows the same semantic-once replay boundary while retaining managed-memory metadata storage.
+5. Regression fixtures cover repeated valid and invalid `sizeof` conditions, exact diagnostic counts, owned map
+   replacement, L0 local function-value calls, and next-iteration condition liveness.
+
+## Verification Outcome
+
+1. Focused Python control-flow tests passed (36 tests), and focused L0 Stage 2 and L1 Stage 1 analysis/expression suites
+   passed in both normal and ARC/memory trace modes.
+2. Repository-root `make clean test-all` passed: 1,463 L0 Python tests, all 55 L0 Stage 2 tests, triple bootstrap, all
+   33 L0 broad trace targets, all 67 L1 Stage 1 tests, and all 44 L1 broad trace targets completed successfully.
+3. The required independent read-only review checked the ownership helper, replay call graph, expression traversal,
+   local-call regression, and diagnostic tests and reported no actionable findings.

@@ -404,14 +404,10 @@ class ExpressionTypeChecker:
         self,
         body: Block,
         *,
-        cond: Optional[Expr] = None,
         update: Optional[Stmt] = None,
         check_return_paths: bool = False,
     ) -> Tuple[LoopFlowCapture, List[List[Dict[str, bool]]], StmtFlow]:
         """Check one loop iteration and return captured flow states."""
-        if cond is not None:
-            self._infer_expr(cond)
-
         capture = LoopFlowCapture()
         self._loop_flow_capture_stack.append(capture)
         self._breakable_loop_depth += 1
@@ -441,14 +437,16 @@ class ExpressionTypeChecker:
         while True:
             self._alive_scopes = [dict(scope) for scope in head]
             old_suppress = self._suppress_diagnostics
+            old_liveness_only = self._liveness_diagnostics_only
             self._suppress_diagnostics = True
+            self._liveness_diagnostics_only = True
             try:
                 _, backedge_states, _ = self._check_loop_iteration(
                     body,
-                    cond=cond,
                     update=update,
                 )
             finally:
+                self._liveness_diagnostics_only = old_liveness_only
                 self._suppress_diagnostics = old_suppress
                 self._next_stmt_unreachable = saved_unreachable
             next_head = self._meet_alive_state(pre_loop, *backedge_states)
@@ -461,9 +459,10 @@ class ExpressionTypeChecker:
         old_liveness_only = self._liveness_diagnostics_only
         self._liveness_diagnostics_only = True
         try:
+            if cond is not None:
+                self._infer_expr(cond)
             capture, backedge_states, _ = self._check_loop_iteration(
                 body,
-                cond=cond,
                 update=update,
             )
         finally:
@@ -730,7 +729,6 @@ class ExpressionTypeChecker:
             pre_alive = self._clone_alive_scopes()
             capture, backedge_states, _ = self._check_loop_iteration(
                 stmt.body,
-                cond=stmt.cond,
                 check_return_paths=check_return_paths,
             )
             next_head = self._meet_alive_state(pre_alive, *backedge_states)
@@ -770,7 +768,6 @@ class ExpressionTypeChecker:
                         self._next_stmt_unreachable = False
                         self._check_loop_iteration(
                             stmt.body,
-                            cond=stmt.cond,
                             update=stmt.update,
                             check_return_paths=False,
                         )
@@ -786,7 +783,6 @@ class ExpressionTypeChecker:
 
                 capture, backedge_states, _ = self._check_loop_iteration(
                     stmt.body,
-                    cond=stmt.cond,
                     update=stmt.update,
                     check_return_paths=check_return_paths,
                 )
@@ -1209,6 +1205,38 @@ class ExpressionTypeChecker:
                     "[TYP-0290] type expression is only valid as argument to type-accepting intrinsics such as 'sizeof'")
         return None
 
+    def _check_expr_liveness(self, expr: Expr) -> None:
+        """Replay only local-variable use checks for an already typed expression."""
+        if isinstance(expr, VarRef):
+            if self.analysis.var_ref_resolution.get(id(expr)) is VarRefResolution.LOCAL:
+                alive = self._lookup_alive(expr.name)
+                if alive is False:
+                    self._error(expr, f"[TYP-0150] use of dropped variable '{expr.name}'")
+            return
+        if isinstance(expr, UnaryOp):
+            self._check_expr_liveness(expr.operand)
+        elif isinstance(expr, BinaryOp):
+            self._check_expr_liveness(expr.left)
+            self._check_expr_liveness(expr.right)
+        elif isinstance(expr, CallExpr):
+            self._check_expr_liveness(expr.callee)
+            for arg in expr.args:
+                self._check_expr_liveness(arg)
+        elif isinstance(expr, IndexExpr):
+            self._check_expr_liveness(expr.array)
+            self._check_expr_liveness(expr.index)
+        elif isinstance(expr, FieldAccessExpr):
+            self._check_expr_liveness(expr.obj)
+        elif isinstance(expr, ParenExpr):
+            self._check_expr_liveness(expr.inner)
+        elif isinstance(expr, CastExpr):
+            self._check_expr_liveness(expr.expr)
+        elif isinstance(expr, NewExpr):
+            for arg in expr.args:
+                self._check_expr_liveness(arg)
+        elif isinstance(expr, TryExpr):
+            self._check_expr_liveness(expr.expr)
+
     def _infer_expr(self, expr: Optional[Expr], *,
                     widening_type: Optional[Type] = None,
                     context_code: str = "TYP-0319",
@@ -1227,10 +1255,11 @@ class ExpressionTypeChecker:
         if expr is None:
             return self._error(Expr(), "[TYP-0149] cannot infer type of None expression")
 
-        # Memoization is safe for types, but a settled-loop diagnostic pass must
-        # revisit variable references under the converged liveness state.
         existing = self.expr_types.get(id(expr))
-        if existing is not None and not self._liveness_diagnostics_only:
+        if self._liveness_diagnostics_only:
+            self._check_expr_liveness(expr)
+            return existing
+        if existing is not None:
             return existing
 
         result: Optional[Type]
@@ -1286,7 +1315,7 @@ class ExpressionTypeChecker:
         else:
             result = None
 
-        if result is not None:
+        if result is not None and not self._liveness_diagnostics_only:
             self.expr_types[id(expr)] = result  # Always store natural type
 
         if result is not None and widening_type is not None:
@@ -1301,6 +1330,11 @@ class ExpressionTypeChecker:
 
         return result
 
+    def _store_var_resolution(self, expr: VarRef, resolution: VarRefResolution) -> None:
+        """Record stable resolution metadata outside liveness-only replay."""
+        if not self._liveness_diagnostics_only:
+            self.analysis.var_ref_resolution[id(expr)] = resolution
+
     def _infer_var_ref(self, expr: VarRef) -> Optional[Type]:
         """Infer type for a variable reference."""
         # Reject overqualified names early (e.g. color::Color::Red)
@@ -1312,7 +1346,7 @@ class ExpressionTypeChecker:
             local_scope_idx = self._lookup_local_scope_index(expr.name)
             if local_scope_idx is not None:
                 local_ty = self._local_scopes[local_scope_idx][expr.name]
-                self.analysis.var_ref_resolution[id(expr)] = VarRefResolution.LOCAL
+                self._store_var_resolution(expr, VarRefResolution.LOCAL)
                 if self._is_guarded_cleanup_header_ref(expr.name, local_scope_idx):
                     self._error(
                         expr,
@@ -1361,17 +1395,17 @@ class ExpressionTypeChecker:
 
         if sym.kind is SymbolKind.FUNC and sym.type is not None:
             # Functions have a FuncType
-            self.analysis.var_ref_resolution[id(expr)] = VarRefResolution.MODULE
+            self._store_var_resolution(expr, VarRefResolution.MODULE)
             return sym.type
 
         if sym.kind is SymbolKind.LET and sym.type is not None:
             # Top-level let bindings have their resolved type
-            self.analysis.var_ref_resolution[id(expr)] = VarRefResolution.MODULE
+            self._store_var_resolution(expr, VarRefResolution.MODULE)
             return sym.type
 
         # Zero-arg enum variants can be used as bare identifiers (e.g. `Red` instead of `Red()`).
         if sym.kind is SymbolKind.ENUM_VARIANT and isinstance(sym.type, FuncType):
-            self.analysis.var_ref_resolution[id(expr)] = VarRefResolution.MODULE
+            self._store_var_resolution(expr, VarRefResolution.MODULE)
             variant_type = sym.type
             if len(variant_type.params) == 0:
                 enum_type = variant_type.result
@@ -1648,7 +1682,8 @@ class ExpressionTypeChecker:
 
     def _store_sizeof_target(self, expr: CallExpr, target_ty: Type) -> None:
         """Store the resolved sizeof target type for codegen."""
-        self.analysis.intrinsic_targets[id(expr)] = target_ty
+        if not self._liveness_diagnostics_only:
+            self.analysis.intrinsic_targets[id(expr)] = target_ty
 
     def _infer_ord_intrinsic(self, expr: CallExpr) -> Type:
         """Handle ord(enum_value) intrinsic - returns 0-based ordinal of enum variant."""
