@@ -2,8 +2,8 @@
 
 ## Harden shared filesystem runtime boundary errors
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-24
+- Status: Completed
 - Title: Reject canonical empty paths safely and preserve empty-write close failures in L0 and L1 runtimes
 - Kind: Bug Fix
 - Scope: Shared
@@ -108,3 +108,23 @@ failures.
 2. Empty paths return deterministic existing failure values in both runtimes.
 3. A close failure makes `rt_write_file_all()` fail regardless of payload length.
 4. L0 and L1 stdlib behavior stays aligned and trace-clean.
+
+## Implementation Outcome
+
+1. Both runtimes reject empty metadata and deletion paths before converting the canonical empty string to a C pointer,
+   returning their existing neutral metadata or failure values without calling a host path API.
+2. Whole-file writes now close every successfully opened stream and combine write completion with close completion for
+   both empty and non-empty payloads.
+3. Compile-time test seams cover `fclose`, the platform-specific metadata call, and `remove` without changing the public
+   Dea runtime surface.
+4. L0 Stage 1, L0 Stage 2, and L1 `std.fs` regressions preserve the existing optional/failure contracts for empty paths.
+
+## Verification Outcome
+
+1. Focused L0 and L1 filesystem suites passed in normal and trace modes. Injected runtime probes covered successful and
+   failing closes for empty and non-empty payloads and proved that empty metadata/delete paths make zero host calls.
+2. A Clang address/undefined-behavior sanitizer probe passed for the L0 empty-path boundary operations.
+3. Repository-root `make clean test-all` passed: 1,464 L0 Python tests, all 55 L0 Stage 2 tests, triple bootstrap, all
+   33 L0 broad trace targets, all 67 L1 Stage 1 tests, and all 44 L1 broad trace targets completed successfully.
+4. The independent read-only review found that the initial tests did not prove host path APIs were skipped. The accepted
+   finding was fixed with call-counting seams in both runtimes; follow-up review reported no remaining issue.

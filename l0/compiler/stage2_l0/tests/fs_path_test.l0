@@ -34,6 +34,12 @@ func test_std_path_helpers() {
  * Tests shared `std.fs` wrappers over runtime metadata.
  */
 func test_std_fs_helpers() {
+    let empty = stat("");
+    assert(!empty.exists, "empty path should report exists=false");
+    assert(empty.size == null, "empty path should not report a size");
+    assert(delete_file("") == null, "empty path deletion should fail");
+    assert(write_file("", "") == null, "empty path write should fail");
+
     let missing_path = "build/l0_stage2_std_fs_missing_probe_20260313.txt";
     let missing = stat(missing_path);
     assert(!missing.exists, "missing path should report exists=false");

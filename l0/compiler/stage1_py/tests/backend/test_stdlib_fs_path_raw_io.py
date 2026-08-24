@@ -1,7 +1,90 @@
 #  SPDX-License-Identifier: MIT OR Apache-2.0
 #  Copyright (c) 2026 gwz
 
+import json
+
 from conftest import has_error_code
+
+
+CLOSE_FAILURE_HARNESS = r"""
+#include <stdio.h>
+#include <sys/stat.h>
+
+static int close_should_fail = 0;
+static int close_calls = 0;
+static int stat_calls = 0;
+static int remove_calls = 0;
+static int injected_close(FILE *stream);
+#if defined(_WIN32)
+static int injected_stat(const char *path, struct _stat64 *buffer);
+#else
+static int injected_stat(const char *path, struct stat *buffer);
+#endif
+static int injected_remove(const char *path);
+
+#define DEA_RUNTIME_FCLOSE injected_close
+#define DEA_RUNTIME_FILE_INFO_STAT injected_stat
+#define DEA_RUNTIME_REMOVE injected_remove
+#define SIPHASH_IMPLEMENTATION
+#include "l0_runtime.h"
+
+static int injected_close(FILE *stream) {
+    int actual = fclose(stream);
+    close_calls += 1;
+    if (actual != 0) return actual;
+    return close_should_fail ? EOF : 0;
+}
+
+#if defined(_WIN32)
+static int injected_stat(const char *path, struct _stat64 *buffer) {
+#else
+static int injected_stat(const char *path, struct stat *buffer) {
+#endif
+    (void)path;
+    (void)buffer;
+    stat_calls += 1;
+    return -1;
+}
+
+static int injected_remove(const char *path) {
+    (void)path;
+    remove_calls += 1;
+    return -1;
+}
+
+int main(void) {
+    char path_bytes[] = %(path)s;
+    char payload_bytes[] = "x";
+    l0_string path = L0_STRING_CONST(path_bytes, (l0_int)(sizeof(path_bytes) - 1));
+    l0_string payload = L0_STRING_CONST(payload_bytes, 1);
+
+    struct l0_sys_rt_RtFileInfo info = rt_file_info(L0_STRING_EMPTY);
+    if (info.exists || info.size.has_value) return 2;
+    if (rt_delete_file(L0_STRING_EMPTY)) return 3;
+    if (stat_calls != 0 || remove_calls != 0) return 9;
+
+    close_should_fail = 0;
+    if (!rt_write_file_all(path, L0_STRING_EMPTY)) return 4;
+    close_should_fail = 1;
+    if (rt_write_file_all(path, L0_STRING_EMPTY)) return 5;
+    close_should_fail = 0;
+    if (!rt_write_file_all(path, payload)) return 6;
+    close_should_fail = 1;
+    if (rt_write_file_all(path, payload)) return 7;
+    if (close_calls != 4) return 8;
+
+    remove(path_bytes);
+    return 0;
+}
+"""
+
+
+def test_l0_runtime_filesystem_boundaries_and_close_failures(compile_and_run, tmp_path):
+    path = json.dumps((tmp_path / "close-failure-probe.txt").as_posix())
+    success, _stdout, stderr = compile_and_run(
+        CLOSE_FAILURE_HARNESS % {"path": path}, tmp_path, strict_c99=True
+    )
+    assert success, stderr
 
 
 def test_shared_stdlib_path_and_fs_helpers_runtime(
@@ -28,6 +111,17 @@ def test_shared_stdlib_path_and_fs_helpers_runtime(
         }}
 
         func main() -> int {{
+            let empty = stat("");
+            if (empty.exists || empty.size != null) {{
+                return 8;
+            }}
+            if (delete_file("") != null) {{
+                return 9;
+            }}
+            if (write_file("", "") != null) {{
+                return 10;
+            }}
+
             printl_i(bool_to_int(is_sep('/' as byte)));
             printl_i(bool_to_int(is_sep('\\\\' as byte)));
             printl_i(bool_to_int(is_absolute("/tmp/demo.l0")));

@@ -42,6 +42,22 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#ifndef DEA_RUNTIME_FCLOSE
+#define DEA_RUNTIME_FCLOSE fclose
+#endif
+
+#ifndef DEA_RUNTIME_FILE_INFO_STAT
+#if defined(_WIN32)
+#define DEA_RUNTIME_FILE_INFO_STAT _stat64
+#else
+#define DEA_RUNTIME_FILE_INFO_STAT stat
+#endif
+#endif
+
+#ifndef DEA_RUNTIME_REMOVE
+#define DEA_RUNTIME_REMOVE remove
+#endif
+
 #if defined(_WIN32)
 #include <process.h>
 #else
@@ -1874,19 +1890,14 @@ static l0_bool rt_write_file_all(l0_string path, l0_string data) {
     }
 
     l0_int data_len = rt_strlen(data);
-    char *data_b = _rt_string_bytes(data);
+    size_t written = 0;
     if (data_len > 0) {
-        size_t written = fwrite(data_b, 1, (size_t)data_len, file);
-        int close_result = fclose(file);
-
-        if (written != (size_t)data_len || close_result != 0) {
-            return 0;
-        }
-    } else {
-        fclose(file);
+        char *data_b = _rt_string_bytes(data);
+        written = fwrite(data_b, 1, (size_t)data_len, file);
     }
+    int close_result = DEA_RUNTIME_FCLOSE(file);
 
-    return 1;
+    return written == (size_t)data_len && close_result == 0;
 }
 
 /**
@@ -1906,10 +1917,13 @@ static struct l0_sys_rt_RtFileInfo rt_file_info(l0_string path) {
         .mtime_sec = { .has_value = 0 },
         .mtime_nsec = { .has_value = 0 },
     };
+    if (rt_strlen(path) == 0) {
+        return out;
+    }
     char *c = _rt_string_bytes(path);
 #if defined(_WIN32)
     struct _stat64 st;
-    if (_stat64(c, &st) != 0) {
+    if (DEA_RUNTIME_FILE_INFO_STAT(c, &st) != 0) {
         return out;
     }
 
@@ -1926,7 +1940,7 @@ static struct l0_sys_rt_RtFileInfo rt_file_info(l0_string path) {
     return out;
 #else
     struct stat st;
-    if (stat(c, &st) != 0) {
+    if (DEA_RUNTIME_FILE_INFO_STAT(c, &st) != 0) {
         return out;
     }
 
@@ -1963,8 +1977,11 @@ static struct l0_sys_rt_RtFileInfo rt_file_info(l0_string path) {
  * L0 signature: `extern func rt_delete_file(path: string) -> bool;` 
  */
 static l0_bool rt_delete_file(l0_string path) {
+    if (rt_strlen(path) == 0) {
+        return 0;
+    }
     char *c = _rt_string_bytes(path);
-    int result = remove(c);
+    int result = DEA_RUNTIME_REMOVE(c);
     return result == 0;
 }
 
