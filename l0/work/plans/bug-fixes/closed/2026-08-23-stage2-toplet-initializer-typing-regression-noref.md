@@ -2,8 +2,8 @@
 
 ## Type-check Stage 2 top-level let initializers
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-24
+- Status: Completed
 - Title: Type-check L0 Stage 2 top-level `let` initializers before backend lowering
 - Kind: Bug Fix
 - Severity: High
@@ -108,3 +108,23 @@ make test
 3. Intrinsic and constructor initializers receive the metadata required by backend lowering.
 4. L0 Stage 2 agrees with Python Stage 1 for the shared L0 fixture set.
 5. L1-only top-level semantics remain out of scope.
+
+## Implementation Outcome
+
+1. L0 Stage 2 now checks every canonical, resolved module-scope `let` initializer through the same contextual
+   assignability path used by annotated local declarations.
+2. Initializer checking continues after independent signature errors while duplicate declarations are excluded from
+   signature resolution and recovered checking, preventing diagnostic cascades.
+3. Static `sizeof` and `ord` initializers receive analysis metadata and lower through the existing intrinsic backend;
+   non-static `ord` operands are rejected before invalid C reaches the host compiler.
+4. Focused analyzer, backend, and native CLI regressions cover exact diagnostics, constructor preservation, intrinsic
+   compilation, duplicate recovery, and the non-constant C initializer boundary.
+
+## Verification Outcome
+
+1. `make test-stage2 TESTS="expr_types_test backend_test l0c_stage2_toplet_test.py l0c_stage2_cleanup_policy_ice_test.py"`
+   passed after the contextual literal and nullable-wrapper corrections.
+2. `make clean test` from `l0/` passed: 1,456 Python Stage 1 tests, all 55 Stage 2 tests, triple bootstrap, example
+   checks, and workflow/distribution checks completed successfully.
+3. The required independent read-only review found two initial blockers, verified both corrections, and reported no
+   remaining actionable findings.

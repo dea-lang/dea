@@ -326,6 +326,92 @@ def test_toplet_bare_payload_variant_diagnostic(artifact_dir: Path) -> None:
     )
 
 
+def test_toplet_initializer_type_mismatch(artifact_dir: Path) -> None:
+    """Annotated top-level initializers must be checked before lowering."""
+
+    actual_rc, _stdout, stderr = run_compiler(
+        "toplet_initializer_type_mismatch",
+        """
+        module main;
+
+        let bad: int = "text";
+
+        func main() -> int {
+            return 0;
+        }
+        """,
+        artifact_dir,
+        "--check",
+    )
+    assert_true(actual_rc != 0, "top-level initializer mismatch should fail checking", artifact_dir)
+    assert_true(stderr.count("[TYP-0310]") == 1, "expected exactly one TYP-0310 diagnostic", artifact_dir)
+
+
+def test_toplet_static_intrinsics(artifact_dir: Path) -> None:
+    """Static intrinsic initializers must type-check, compile, and execute."""
+
+    run_ok(
+        "toplet_static_intrinsics",
+        0,
+        """
+        module main;
+
+        enum Choice {
+            None;
+        }
+
+        struct Holder {
+            value: byte?;
+        }
+
+        let byte_size: int = sizeof(byte);
+        let none_tag: int = ord(None);
+        let top_value: byte? = 1;
+
+        func read(value: byte?) -> int {
+            return (value as byte) as int;
+        }
+
+        func main() -> int {
+            let local_value: byte? = 2;
+            let holder = Holder(3);
+            return byte_size + none_tag + read(top_value) + read(local_value) +
+                read(holder.value) + read(4) - 11;
+        }
+        """,
+        artifact_dir,
+    )
+
+
+def test_toplet_nonconstant_ord_rejected(artifact_dir: Path) -> None:
+    """An `ord` of a top-level variable must not become an invalid C initializer."""
+
+    actual_rc, stdout, stderr = run_compiler(
+        "toplet_nonconstant_ord_rejected",
+        """
+        module main;
+
+        enum Choice {
+            None;
+        }
+
+        let choice: Choice = None;
+        let tag: int = ord(choice);
+
+        func main() -> int {
+            return tag;
+        }
+        """,
+        artifact_dir,
+        "--build",
+    )
+    output = stdout + stderr
+    assert_true(actual_rc != 0, "non-constant top-level ord should fail lowering", artifact_dir)
+    assert_true("[ICE-1181]" in output, "expected the static-initializer restriction", artifact_dir)
+    assert_true("initializer element is not constant" not in output,
+        "invalid C should not reach the host compiler", artifact_dir)
+
+
 def test_toplet_string_reassignment_arc(artifact_dir: Path) -> None:
     """Top-level string reassignment must release old values and stay leak-free."""
 
@@ -395,6 +481,9 @@ def main() -> int:
         test_execute_toplet_nested_struct,
         test_toplet_bare_variant_static_initializer,
         test_toplet_bare_payload_variant_diagnostic,
+        test_toplet_initializer_type_mismatch,
+        test_toplet_static_intrinsics,
+        test_toplet_nonconstant_ord_rejected,
         test_toplet_string_reassignment_arc,
         test_drop_toplet_pointer_diagnostic,
     ]

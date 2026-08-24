@@ -31,6 +31,38 @@ func sig_key(module_name: string, name: string) -> string {
 }
 
 /**
+ * Return the declared name carried by one top-level AST entry.
+ *
+ * @param top Top-level declaration to inspect.
+ * @return Declaration name.
+ */
+func sig_top_decl_name(top: TopLevelDecl*) -> string {
+    match (top.kind) {
+        TD_STRUCT => { return (top.data as StructDecl*).name; }
+        TD_ENUM => { return (top.data as EnumDecl*).name; }
+        TD_FUNC => { return (top.data as FuncDecl*).name; }
+        TD_TYPE_ALIAS => { return (top.data as TypeAliasDecl*).name; }
+        TD_LET => { return (top.data as LetDecl*).name; }
+    }
+}
+
+/**
+ * Return the source span carried by one top-level AST entry.
+ *
+ * @param top Top-level declaration to inspect.
+ * @return Declaration span.
+ */
+func sig_top_decl_span(top: TopLevelDecl*) -> Span {
+    match (top.kind) {
+        TD_STRUCT => { return (top.data as StructDecl*).span; }
+        TD_ENUM => { return (top.data as EnumDecl*).span; }
+        TD_FUNC => { return (top.data as FuncDecl*).span; }
+        TD_TYPE_ALIAS => { return (top.data as TypeAliasDecl*).span; }
+        TD_LET => { return (top.data as LetDecl*).span; }
+    }
+}
+
+/**
  * Emit a signature-resolution error for a source span.
  *
  * @param diags Diagnostic collector.
@@ -616,6 +648,17 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
         let mod = env.module_ptr;
         for (let j = 0; j < vec_size(mod.decls); j = j + 1) {
             let top = ptr_vec_get(mod.decls, j) as TopLevelDecl*;
+            let canonical_sym = nr_module_env_local(env, sig_top_decl_name(top));
+            if (canonical_sym != null) {
+                let canonical_span = (canonical_sym as Symbol*).span;
+                let top_span = sig_top_decl_span(top);
+                if (canonical_span.start_line != top_span.start_line ||
+                    canonical_span.start_column != top_span.start_column ||
+                    canonical_span.end_line != top_span.end_line ||
+                    canonical_span.end_column != top_span.end_column) {
+                    continue;
+                }
+            }
             match (top.kind) {
                 TD_STRUCT => {
                     sig_resolve_struct(tables, nr, env, top.data as StructDecl*, diags);

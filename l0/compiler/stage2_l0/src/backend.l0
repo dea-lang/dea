@@ -909,15 +909,24 @@ func be_convert_expr_with_expected_type(c_expr: string, natural_ty: Type*?, expe
         return c_expr;
     }
 
-    if (ord(expected.kind) == ord(TY_NULLABLE) && type_equals(expected.inner as Type*, natural)) {
-        if (cem_is_niche_nullable(expected)) {
-            return c_expr;
+    if (ord(expected.kind) == ord(TY_NULLABLE)) {
+        let inner = expected.inner as Type*;
+        let payload = be_convert_expr_with_expected_type(c_expr, natural, inner);
+        if (type_is_builtin(natural, "int") && type_is_builtin(inner, "byte")) {
+            payload = cem_emit_cast(cem_emit_type(inner), c_expr);
         }
-        return cem_emit_some_value_for_nullable(expected, c_expr);
+        if (cem_is_niche_nullable(expected)) {
+            return payload;
+        }
+        return cem_emit_some_value_for_nullable(expected, payload);
     }
 
     if (type_is_builtin(natural, "byte") && type_is_builtin(expected, "int")) {
         return cem_emit_widen_int(c_expr, natural, expected);
+    }
+
+    if (type_is_builtin(natural, "int") && type_is_builtin(expected, "byte")) {
+        return cem_emit_cast(cem_emit_type(expected), c_expr);
     }
 
     return c_expr;
@@ -1351,6 +1360,62 @@ func be_emit_bare_variant_static_initializer(self: Backend*, expr_id: ExprId, ex
 }
 
 /**
+ * Check whether an expression belongs to the supported static-initializer subset.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression id to inspect.
+ * @return `true` when the expression can be emitted at C file scope.
+ */
+func be_is_static_let_initializer(self: Backend*, expr_id: ExprId) -> bool {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    match (expr.kind) {
+        EX_INT => { return true; }
+        EX_BYTE => { return true; }
+        EX_BOOL => { return true; }
+        EX_STRING => { return true; }
+        EX_NULL => { return true; }
+        EX_VAR_REF => {
+            let sym = be_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+            return sym != null && sig_symbol_is_zero_field_enum_variant(sym as Symbol*);
+        }
+        EX_CALL => {
+            let callee = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+            if (ord(callee.kind) != ord(EX_VAR_REF)) {
+                return false;
+            }
+            let args = expr.ids as VectorBase*;
+            let arg_count = 0;
+            if (args != null) arg_count = vec_size(args);
+            if (callee.text_value == "sizeof") {
+                return arg_count == 1;
+            }
+            if (callee.text_value == "ord") {
+                return arg_count == 1 && be_is_static_let_initializer(self, id_vec_get(args, 0));
+            }
+            let sym2 = be_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
+            if (sym2 == null) {
+                return false;
+            }
+            let target = sym2 as Symbol*;
+            let is_constructor = ord(target.kind) == ord(SYM_STRUCT) ||
+                ord(target.kind) == ord(SYM_ENUM_VARIANT) ||
+                (ord(target.kind) == ord(SYM_TYPE_ALIAS) && target.resolved_type != null &&
+                 ord((target.resolved_type as Type*).kind) == ord(TY_STRUCT));
+            if (!is_constructor) {
+                return false;
+            }
+            for (let i = 0; i < arg_count; i = i + 1) {
+                if (!be_is_static_let_initializer(self, id_vec_get(args, i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        _ => { return false; }
+    }
+}
+
+/**
  * Emit a constant initializer for a top-level `let`.
  *
  * @param self Backend state to inspect.
@@ -1359,7 +1424,18 @@ func be_emit_bare_variant_static_initializer(self: Backend*, expr_id: ExprId, ex
  * @return Constant initializer expression.
  */
 func be_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type: Type*) -> string {
+    if (!be_is_static_let_initializer(self, expr_id)) {
+        return be_ice_string("[ICE-1181] unsupported top-level let initializer");
+    }
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) != ord(EX_NULL) && ord(expected_type.kind) == ord(TY_NULLABLE)) {
+        let inner = expected_type.inner as Type*;
+        let payload = be_emit_let_initializer(self, expr_id, inner);
+        if (cem_is_niche_nullable(expected_type)) {
+            return payload;
+        }
+        return "{.has_value = 1, .value = " + payload + "}";
+    }
     match (expr.kind) {
         EX_INT => { return cem_emit_int_literal(expr.int_value); }
         EX_BYTE => { return cem_emit_byte_literal(expr.int_value as byte); }
@@ -1367,7 +1443,14 @@ func be_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type: Typ
         EX_STRING => { return cem_emit_const_string_literal(expr.text_value); }
         EX_NULL => { return cem_emit_null_literal(expected_type, true); }
         EX_VAR_REF => { return be_emit_bare_variant_static_initializer(self, expr_id, expected_type); }
-        EX_CALL => { return be_emit_const_constructor(self, expr_id, expected_type); }
+        EX_CALL => {
+            let callee = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+            if (ord(callee.kind) == ord(EX_VAR_REF) &&
+                (callee.text_value == "sizeof" || callee.text_value == "ord")) {
+                return be_emit_call(self, expr_id);
+            }
+            return be_emit_const_constructor(self, expr_id, expected_type);
+        }
         _ => {
             return be_ice_string("[ICE-1181] unsupported top-level let initializer");
         }

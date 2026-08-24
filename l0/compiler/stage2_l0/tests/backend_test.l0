@@ -264,6 +264,10 @@ func test_backend_generate_types_and_top_level_lets() {
         sv_push(lines, "type Alias = Point;");
         sv_push(lines, "let origin: Alias = Alias(0, 0);");
         sv_push(lines, "let empty = None;");
+        sv_push(lines, "let point_size: int = sizeof(Point);");
+        sv_push(lines, "let empty_tag: int = ord(None);");
+        sv_push(lines, "let small: byte = 1;");
+        sv_push(lines, "let optional_small: byte? = 2;");
         sv_push(lines, "func main() -> int {");
         sv_push(lines, "    let p: Alias = Alias(origin.x, origin.y);");
         sv_push(lines, "    return p.x + ord(empty);");
@@ -285,6 +289,16 @@ func test_backend_generate_types_and_top_level_lets() {
             "local alias-backed struct constructor lowering mismatch");
         assert(contains_s(generated, "static struct l0_demo_main_MaybePoint l0_demo_main_empty = { .tag = l0_demo_main_MaybePoint_None };"),
             "top-level bare variant let mismatch");
+        assert(contains_s(generated, "static l0_int l0_demo_main_point_size = ((l0_int)sizeof(struct l0_demo_main_Point));"),
+            "top-level sizeof initializer mismatch");
+        assert(contains_s(generated,
+            "static l0_int l0_demo_main_empty_tag = ((l0_int)(((struct l0_demo_main_MaybePoint){ .tag = l0_demo_main_MaybePoint_None }).tag));"),
+            "top-level ord initializer mismatch");
+        assert(contains_s(generated, "static l0_byte l0_demo_main_small = 1;"),
+            "top-level contextual byte initializer mismatch");
+        assert(contains_s(generated,
+            "static l0_opt_byte l0_demo_main_optional_small = {.has_value = 1, .value = 2};"),
+            "top-level contextual nullable byte initializer mismatch");
         assert(contains_s(generated, "(p).x"), "field access lowering mismatch");
 
         analysis_result_free(result);

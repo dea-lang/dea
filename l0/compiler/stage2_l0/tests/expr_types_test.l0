@@ -127,6 +127,25 @@ func test_typing_err() {
 }
 
 /**
+ * Tests top-level initializer typing, intrinsic validation, and recovery after signature errors.
+ */
+func test_typing_toplet_initializer_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_toplet_initializer_err", cfg);
+        assert(analysis_has_errors(result), "expected top-level initializer typing errors");
+        assert(count_diag_code(result, "TYP-0050") == 1, "expected one top-level void annotation diagnostic");
+        assert(count_diag_code(result, "TYP-0310") == 1, "expected one top-level initializer mismatch");
+        assert(count_diag_code(result, "TYP-0243") == 1, "expected one invalid top-level ord diagnostic");
+        assert(count_diag_code(result, "TYP-0700") == 1, "expected one top-level byte literal range diagnostic");
+        assert(count_diag_code(result, "SIG-0030") == 1, "expected one top-level inference diagnostic");
+        assert(count_diag_code(result, "RES-0010") == 1, "expected one duplicate top-level diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests alias-to-struct constructor parity cases.
  */
 func test_typing_alias_struct_constructor_ok() {
@@ -715,6 +734,7 @@ func main() {
     test_typing_ok();
     test_typing_for_loop_scope();
     test_typing_err();
+    test_typing_toplet_initializer_err();
     test_typing_alias_struct_constructor_ok();
     test_typing_alias_value_err();
     test_typing_let_diag_err();
