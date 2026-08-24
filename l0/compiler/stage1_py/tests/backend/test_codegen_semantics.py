@@ -597,6 +597,30 @@ def test_codegen_line_directives_normalize_backslashes(analyze_single):
     assert '#line 4 "D:/tmp/project/main.l0"' in c_code
 
 
+def test_codegen_trigraph_spellings_preserve_runtime_bytes(codegen_single, compile_and_run, tmp_path):
+    source_bytes = "??=??/??'??(??)??!??<??>??-"
+    c_code, diagnostics = codegen_single(
+        "main",
+        f'''
+        module main;
+
+        import std.io;
+
+        func main() -> int {{
+            print_s("{source_bytes}");
+            return 0;
+        }}
+        ''',
+    )
+
+    assert c_code is not None, diagnostics
+    assert re.search(r"\?\?[=/'()!<>-]", c_code) is None
+
+    ok, stdout, stderr = compile_and_run(c_code, tmp_path, strict_c99=True)
+    assert ok, stderr
+    assert stdout == source_bytes
+
+
 # ---------------------------------------------------------------------------
 # Runtime-backed tests
 # ---------------------------------------------------------------------------

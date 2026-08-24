@@ -473,6 +473,13 @@ func test_interface_fingerprint_literal_canonicalization() {
         "non-ASCII string bytes should use the pinned octal spelling");
     assert(il_literal_is_canonical("\"\\303\\251\"", "literals"),
         "canonical non-ASCII string spelling should be a normalization fixed point");
+    let trigraph_safe = il_canonicalize_literal("\"??!\"", "literals");
+    assert(ifpt_optional_equals(trigraph_safe, "\"?\\?!\""),
+        "interface strings should escape the second question mark in trigraph spellings");
+    assert(il_literal_is_canonical("\"?\\?!\"", "literals"),
+        "trigraph-safe interface string spelling should be a normalization fixed point");
+    assert(ifpt_optional_equals(il_canonicalize_literal("\"?\\?!\"", "literals"), "\"?\\?!\""),
+        "trigraph-safe interface string spelling should round-trip unchanged");
     assert(il_canonicalize_literal("\"\\xFFFFFFFFFFFFFFFF\"", "literals") == null,
         "oversized hexadecimal string escapes should fail canonicalization safely");
     let nested = il_canonicalize_literal(

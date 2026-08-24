@@ -50,6 +50,17 @@ func se_is_direct_c_byte(b: byte) -> bool {
 }
 
 /**
+ * Return whether a byte can complete a historical C trigraph spelling.
+ *
+ * @param b Byte to inspect.
+ * @return `true` for the nine trigraph suffix bytes.
+ */
+func se_is_trigraph_suffix(b: byte) -> bool {
+    return b == '=' || b == '/' || b == '\'' || b == '(' || b == ')' ||
+        b == '!' || b == '<' || b == '>' || b == '-';
+}
+
+/**
  * Encode decoded string bytes for inclusion in a C string literal body.
  *
  * @param data Decoded byte string.
@@ -59,6 +70,11 @@ func se_encode_c_string_bytes(data: string) -> string {
     with (let cb = cb_create() => cb_free(cb)) {
         for (let i = 0; i < len_s(data); i = i + 1) {
             let b = char_at_s(data, i);
+            if (b == '?' && i > 0 && i + 1 < len_s(data) && char_at_s(data, i - 1) == '?' &&
+                se_is_trigraph_suffix(char_at_s(data, i + 1))) {
+                cb_append_s(cb, "\\?");
+                continue;
+            }
             if (se_is_direct_c_byte(b)) {
                 cb_append(cb, b);
                 continue;

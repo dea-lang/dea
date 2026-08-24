@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 _HEX_CHARS = "0123456789abcdefABCDEF"
 _OCT_CHARS = "01234567"
+_TRIGRAPH_THIRD_BYTES = frozenset(map(ord, "=/'()!<>-"))
 _SIMPLE_ESCAPES = {
     "\\": ord("\\"),
     "'": ord("'"),
@@ -139,7 +140,16 @@ def encode_c_string_bytes(data: bytes) -> str:
         A string containing the encoded C literal content (without quotes).
     """
     parts: list[str] = []
-    for b in data:
+    for index, b in enumerate(data):
+        if (
+            b == ord("?")
+            and index > 0
+            and index + 1 < len(data)
+            and data[index - 1] == ord("?")
+            and data[index + 1] in _TRIGRAPH_THIRD_BYTES
+        ):
+            parts.append("\\?")
+            continue
         if b == 0x5C:  # backslash
             parts.append("\\\\")
         elif b == 0x22:  # quote

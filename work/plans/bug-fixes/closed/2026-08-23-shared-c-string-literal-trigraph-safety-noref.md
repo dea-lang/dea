@@ -2,8 +2,8 @@
 
 ## Make generated C string literals trigraph-safe
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-24
+- Status: Completed
 - Title: Preserve source bytes when generated C string literals contain trigraph spellings
 - Kind: Bug Fix
 - Scope: Shared
@@ -18,9 +18,9 @@
 - Porting rule: Keep the encoded C literal bytes identical across all three emitters; native ports should be mechanical
   except for language-specific buffer APIs.
 - Target status:
-  - L0 Python Stage 1: Pending
-  - L0 Stage 2: Pending
-  - L1 Stage 1: Pending
+  - L0 Python Stage 1: Implemented
+  - L0 Stage 2: Implemented
+  - L1 Stage 1: Implemented
 - Subsystem: C backend / String literal emission / Portability
 - Modules:
   - `l0/compiler/stage1_py/l0_string_escape.py`
@@ -107,3 +107,23 @@ changes.
 2. Ordinary question marks retain their exact runtime value.
 3. The same escaping rule is used for literals, filenames, diagnostic strings, and L1 interface literals.
 4. Existing string-escape and backend goldens remain stable except for intentionally safer question-mark encoding.
+
+## Implementation Outcome
+
+1. All three encoders now break every physical `??X` trigraph spelling by escaping the second question mark as `\?`,
+   preserving the original runtime byte while preventing translation-phase replacement.
+2. The Python and native implementations use the same suffix set and original-input look-behind/look-ahead rule,
+   including for adjacent and overlapping question-mark runs.
+3. Literal, constant-literal, line-directive filename, compiler-authored reason, and L1 interface-literal consumers keep
+   routing through the corrected shared encoder.
+4. Regression coverage checks all nine historical spellings, question-mark-run boundaries, generated C, strict-C99
+   runtime bytes, filename emission, and L1 interface canonicalization fixed points.
+
+## Verification Outcome
+
+1. Focused Python encoder/backend tests and the L0 Stage 2 and L1 Stage 1 emitter/backend suites passed.
+2. The L1 interface fingerprint suite passed with canonicalization, canonical fixed-point, and round-trip assertions.
+3. Repository-root `make test` passed: 1,459 L0 Python tests, all 55 L0 Stage 2 tests, triple bootstrap, all 67 L1 Stage
+   1 tests, examples, runtime checks, and workflow checks completed successfully.
+4. The required independent read-only review verified the final C99 encoding with clang `-trigraphs -Werror` and
+   reported no remaining actionable findings.

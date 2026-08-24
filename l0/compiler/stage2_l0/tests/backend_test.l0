@@ -1076,6 +1076,34 @@ func test_backend_generate_string_concat_ops() {
     }
 }
 
+/** Tests generated literals and line-directive filenames are trigraph-safe. */
+func test_backend_generate_trigraph_safe_c_strings() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(6) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        sv_push(filenames, "demo/??=/main.l0");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> string {");
+        sv_push(lines, "    return \"??=??/??'??(??)??!??<??>??-\";");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "trigraph string fixture should analyze");
+
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "\"demo/?\\?=/main.l0\""),
+            "generated line directive should escape trigraph spelling");
+        assert(contains_s(generated,
+            "L0_STRING_CONST(\"?\\?=?\\?/?\\?'?\\?(?\\?)?\\?!?\\?<?\\?>?\\?-\", 27)"),
+            "generated string literal should escape all trigraph spellings");
+
+        analysis_result_free(result);
+    }
+}
+
 /**
  * Main entry point for the module.
  */
@@ -1104,5 +1132,6 @@ func main() {
     test_backend_generate_string_equality_ops();
     test_backend_generate_string_relational_ops();
     test_backend_generate_string_concat_ops();
+    test_backend_generate_trigraph_safe_c_strings();
     printl_s("backend_test: all tests passed");
 }

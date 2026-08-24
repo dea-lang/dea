@@ -113,6 +113,12 @@ func cet_empty_enum_decl(name: string) -> EnumDecl* {
 func test_string_escape_encodes_control_and_quote_bytes() {
     let escaped = se_encode_c_string_bytes("A\n\"\\B");
     assert(escaped == "A\\n\\\"\\\\B", "escaped string mismatch");
+
+    let trigraphs = se_encode_c_string_bytes("??=??/??'??(??)??!??<??>??-");
+    assert(trigraphs == "?\\?=?\\?/?\\?'?\\?(?\\?)?\\?!?\\?<?\\?>?\\?-",
+        "trigraph escaping mismatch");
+    assert(se_encode_c_string_bytes("? ?? ??? ????= ?!?=") == "? ?? ??? ???\\?= ?!?=",
+        "question-mark run escaping mismatch");
 }
 
 /**
@@ -434,6 +440,25 @@ func test_emitter_line_directives_normalize_windows_paths() {
     analysis_result_free(result);
 }
 
+/** Tests line-directive filenames cannot form C trigraphs. */
+func test_emitter_line_directives_escape_trigraphs() {
+    let result = cet_empty_analysis_result();
+    let decls = ptr_vec_create(0);
+    cet_push_module(result, cet_module("demo.main", "D:\\tmp\\??=\\demo.l1", decls));
+
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    cem_set_analysis(emitter, result);
+
+    cem_emit_line_directive(emitter, 7, "demo.main", opts);
+    assert(cem_get_output(emitter) == "#line 7 \"D:/tmp/?\\?=/demo.l1\"\n",
+        "line directive should escape trigraph spelling");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+    analysis_result_free(result);
+}
+
 /**
  * Tests test_emitter_string_literals_use_dea_string_const.
  */
@@ -443,6 +468,10 @@ func test_emitter_string_literals_use_dea_string_const() {
 
     assert(expr_literal == "((dea_string)DEA_STRING_CONST(\"A\\nB\", 3))", "expression literal mismatch");
     assert(const_literal == "DEA_STRING_CONST(\"A\\nB\", 3)", "const literal mismatch");
+    assert(cem_emit_string_literal("??!") == "((dea_string)DEA_STRING_CONST(\"?\\?!\", 3))",
+        "expression literal should escape trigraph spelling");
+    assert(cem_emit_const_string_literal("??=") == "DEA_STRING_CONST(\"?\\?=\", 3)",
+        "const literal should escape trigraph spelling");
 }
 
 /**
@@ -1011,6 +1040,7 @@ func main() {
     test_emitter_header_emits_float_contract_guards();
     test_emitter_header_emits_sys_real_guard();
     test_emitter_line_directives_normalize_windows_paths();
+    test_emitter_line_directives_escape_trigraphs();
     test_emitter_string_literals_use_dea_string_const();
     test_emitter_expression_and_statement_helpers();
     test_emitter_trace_runtime_calls_use_impl_entrypoints();
