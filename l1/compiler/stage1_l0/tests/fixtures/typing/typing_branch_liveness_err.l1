@@ -1,0 +1,65 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_branch_liveness_err;
+
+struct Box {
+    value: int;
+}
+
+enum Choice {
+    A;
+    B;
+}
+
+func if_sibling(flag: bool) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    if (flag) {
+        p = new Box(2);
+    } else {
+        return p.value; // TYP-0150
+    }
+    return 0;
+}
+
+func match_sibling(choice: Choice) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    match (choice) {
+        A => { p = new Box(2); }
+        B => { return p.value; } // TYP-0150
+    }
+    return 0;
+}
+
+func match_partial_revival(choice: Choice) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    match (choice) {
+        A => { p = new Box(2); }
+        B => { null; }
+    }
+    return p.value; // TYP-0150
+}
+
+func match_partial_drop(choice: Choice) -> int {
+    let p: Box* = new Box(1);
+    match (choice) {
+        A => { drop p; }
+        B => { let seen: int = p.value; }
+    }
+    return p.value; // TYP-0150
+}
+
+func case_partial_revival(tag: int) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    case (tag) {
+        0 => { p = new Box(2); }
+        _ => { null; }
+    }
+    return p.value; // TYP-0150
+}

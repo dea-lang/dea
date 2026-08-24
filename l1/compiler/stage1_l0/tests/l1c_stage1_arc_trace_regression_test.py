@@ -2506,6 +2506,61 @@ def test_with_cleanup_block_header_try_failure_nullable_vars(artifact_dir: Path)
     assert_true("inside" not in stdout, "with body should not execute after nullable header `?` failure", artifact_dir)
 
 
+def test_branch_liveness_revival_paths(artifact_dir: Path) -> None:
+    """Revived owners on reachable if, match, and case paths remain trace-balanced."""
+
+    run_case(
+        "branch_liveness_revival_paths",
+        """
+        module main;
+
+        struct Box { value: int; }
+        enum Choice { A; B; }
+
+        func through_if(flag: bool) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            if (flag) { return 0; } else { p = new Box(2); }
+            let value: int = p.value;
+            drop p;
+            return value;
+        }
+
+        func through_match(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            match (choice) {
+                A => { return 0; }
+                B => { p = new Box(3); }
+            }
+            let value: int = p.value;
+            drop p;
+            return value;
+        }
+
+        func through_case(tag: int) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            case (tag) {
+                0 => { p = new Box(4); }
+                _ => { p = new Box(5); }
+            }
+            let value: int = p.value;
+            drop p;
+            return value;
+        }
+
+        func main() -> int {
+            if (through_if(false) != 2) { return 1; }
+            if (through_match(B) != 3) { return 2; }
+            if (through_case(1) != 5) { return 3; }
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -2575,6 +2630,7 @@ def main() -> int:
         test_with_inline_continue_header_runs_cleanup,
         test_with_header_try_failure_runs_prior_inline_cleanup,
         test_with_cleanup_block_header_try_failure_nullable_vars,
+        test_branch_liveness_revival_paths,
     ]
 
     try:

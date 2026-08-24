@@ -1903,6 +1903,23 @@ func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type
     }
 }
 
+/** Return whether wildcard match arms are unreachable because variants cover the enum. */
+func etc_match_wildcard_is_unreachable(self: ExpressionTypeChecker*, match_ty: Type*, arms: VectorBase*) -> bool {
+    if (ord(match_ty.kind) != ord(TY_ENUM)) return false;
+    let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
+    if (info == null) return false;
+    with (let covered = ss_create() => ss_free(covered)) {
+        for (let i = 0; i < vec_size(arms); i = i + 1) {
+            let arm = ptr_vec_get(arms, i) as MatchArm*;
+            let pattern = pattern_arena_get((self.current_unit as DriverUnit*).parse_result.pattern_arena, arm.pattern);
+            if (ord(pattern.kind) == ord(PT_VARIANT)) {
+                ss_add(covered, pattern.name);
+            }
+        }
+        return ss_size(covered) == vec_size((info as EnumInfo*).variants);
+    }
+}
+
 /**
  * Return whether a type is valid as a `case` scrutinee.
  *
@@ -2708,19 +2725,60 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 } else if (stmt.match_arms != null) {
                     let arms = stmt.match_arms as VectorBase*;
                     let all_arms_return = true;
+                    let pre_match_alive: VectorBase*? = null;
+                    if (self.alive_scopes != null) {
+                        pre_match_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+                    }
+                    let fallthrough_states_match = ptr_vec_create(vec_size(arms) + 1);
+                    let wildcard_is_unreachable = etc_match_wildcard_is_unreachable(self, val_ty2 as Type*, arms);
                     for (let i = 0; i < vec_size(arms); i = i + 1) {
                         let arm = ptr_vec_get(arms, i) as MatchArm*;
+                        let arm_pattern = pattern_arena_get(unit.parse_result.pattern_arena, arm.pattern);
+                        let arm_is_reachable = !(wildcard_is_unreachable && ord(arm_pattern.kind) == ord(PT_WILDCARD));
+                        if (pre_match_alive != null) {
+                            etc_alive_scope_stack_restore(self, pre_match_alive as VectorBase*);
+                        }
+                        self.next_stmt_unreachable = false;
                         if (etc_check_match_pattern(self, val_ty2 as Type*, arm.pattern)) {
                             etc_bind_pattern_types(self, val_ty2 as Type*, arm.pattern);
                         }
-                        let arm_flow = etc_check_stmt(self, arm.body);
-                        if (ord(arm_flow) != ord(FLOW_RETURNS)) {
-                            all_arms_return = false;
+                        let arm_flow = FLOW_FALLTHROUGH;
+                        if (arm_is_reachable) {
+                            arm_flow = etc_check_stmt(self, arm.body);
+                            if (ord(arm_flow) != ord(FLOW_RETURNS)) {
+                                all_arms_return = false;
+                            }
+                        } else {
+                            arm_flow = etc_check_dead_const_stmt(self, arm.body);
+                        }
+                        if (arm_is_reachable && ord(arm_flow) == ord(FLOW_FALLTHROUGH) && self.alive_scopes != null) {
+                            etc_alive_state_vec_push_clone(fallthrough_states_match, self.alive_scopes as VectorBase*);
                         }
                     }
-                    if (etc_check_match_exhaustiveness(self, val_ty2 as Type*, arms, stmt.span) && all_arms_return) {
-                        flow = FLOW_RETURNS;
+                    let is_exhaustive = etc_check_match_exhaustiveness(self, val_ty2 as Type*, arms, stmt.span);
+                    if (!is_exhaustive && pre_match_alive != null) {
+                        etc_alive_state_vec_push_clone(fallthrough_states_match, pre_match_alive as VectorBase*);
                     }
+                    if (is_exhaustive && all_arms_return) {
+                        if (pre_match_alive != null) {
+                            etc_alive_scope_stack_restore(self, pre_match_alive as VectorBase*);
+                        }
+                        flow = FLOW_RETURNS;
+                    } else if (vec_size(fallthrough_states_match) > 0) {
+                        let after_match = etc_alive_scope_stack_meet_many(
+                            ptr_vec_get(fallthrough_states_match, 0) as VectorBase*, fallthrough_states_match);
+                        etc_alive_scope_stack_free(self.alive_scopes);
+                        self.alive_scopes = after_match;
+                        flow = FLOW_FALLTHROUGH;
+                    } else if (is_exhaustive) {
+                        if (pre_match_alive != null) {
+                            etc_alive_scope_stack_restore(self, pre_match_alive as VectorBase*);
+                        }
+                        flow = FLOW_STOPS;
+                    }
+                    etc_alive_state_vec_free(fallthrough_states_match);
+                    etc_alive_scope_stack_free(pre_match_alive);
+                    self.next_stmt_unreachable = false;
                 }
                 type_free(val_ty2 as Type*);
             }
@@ -2841,7 +2899,12 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                 etc_alive_scope_stack_restore(self, pre_case_alive as VectorBase*);
                             }
                             self.next_stmt_unreachable = false;
-                            let arm_flow2 = etc_check_stmt(self, arm2.body);
+                            let arm_flow2 = FLOW_FALLTHROUGH;
+                            if (ord(class_code) == ord(CASE_LIT_ALWAYS_FALSE)) {
+                                arm_flow2 = etc_check_dead_const_stmt(self, arm2.body);
+                            } else {
+                                arm_flow2 = etc_check_stmt(self, arm2.body);
+                            }
                             if (ord(class_code) != ord(CASE_LIT_ALWAYS_FALSE) && ord(arm_flow2) != ord(FLOW_RETURNS)) {
                                 all_case_arms_return = false;
                             }
@@ -2874,6 +2937,11 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                                 ptr_vec_get(fallthrough_states_case, 0) as VectorBase*, fallthrough_states_case);
                             etc_alive_scope_stack_free(self.alive_scopes);
                             self.alive_scopes = after_case;
+                        } else if (stmt.case_else != null) {
+                            if (pre_case_alive != null) {
+                                etc_alive_scope_stack_restore(self, pre_case_alive as VectorBase*);
+                            }
+                            flow = FLOW_STOPS;
                         }
                         etc_alive_state_vec_free(fallthrough_states_case);
                         etc_alive_scope_stack_free(pre_case_alive);

@@ -317,6 +317,137 @@ def test_for_header_break_does_not_apply_unexecuted_body_liveness(analyze_single
     assert not has_error_code(result.diagnostics, "TYP-0062")
 
 
+def test_alternative_branches_isolate_and_meet_liveness(analyze_single):
+    """Sibling mutations are isolated and only reachable fallthrough states meet."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        enum Choice { A; B; }
+
+        func match_sibling(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            match (choice) {
+                A => { p = new Box(2); }
+                B => { return p.value; }
+            }
+            return 0;
+        }
+
+        func match_partial_revival(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            match (choice) {
+                A => { p = new Box(2); }
+                B => { null; }
+            }
+            return p.value;
+        }
+
+        func match_partial_drop(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            match (choice) {
+                A => { drop p; }
+                B => { let seen: int = p.value; }
+            }
+            return p.value;
+        }
+
+        func case_partial_revival(tag: int) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            case (tag) {
+                0 => { p = new Box(2); }
+                _ => { null; }
+            }
+            return p.value;
+        }
+        """,
+    )
+
+    assert sum("TYP-0150" in diag.message for diag in result.diagnostics) == 4
+
+
+def test_returning_alternatives_do_not_poison_liveness_meet(analyze_single):
+    """Returning alternatives are excluded and complete revival is accepted."""
+    result = analyze_single(
+        "main",
+        """
+        module main;
+        struct Box { value: int; }
+        enum Choice { A; B; }
+
+        func returning_arm(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            match (choice) {
+                A => { return 0; }
+                B => { p = new Box(2); }
+            }
+            return p.value;
+        }
+
+        func every_arm_revives(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            match (choice) {
+                A => { p = new Box(2); }
+                B => { p = new Box(3); }
+            }
+            return p.value;
+        }
+
+        func sibling_drop_isolated(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            match (choice) {
+                A => { drop p; return 0; }
+                B => { return p.value; }
+            }
+        }
+
+        func unreachable_wildcard_is_dead(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            drop p;
+            match (choice) {
+                A => { p = new Box(2); }
+                B => { p = new Box(3); }
+                _ => { let dead: int = p.value; }
+            }
+            return p.value;
+        }
+
+        func unreachable_wildcard_cannot_break(choice: Choice) -> int {
+            let p: Box* = new Box(1);
+            while (true) {
+                match (choice) {
+                    A => { return 0; }
+                    B => { return 1; }
+                    _ => { drop p; break; }
+                }
+            }
+            return p.value;
+        }
+
+        func exhaustive_case_stops(tag: int) -> int {
+            let p: Box* = new Box(1);
+            while (true) {
+                case (tag) {
+                    0 => { continue; }
+                    _ => { drop p; break; }
+                }
+                return p.value;
+            }
+            return 0;
+        }
+        """,
+    )
+
+    assert not has_error_code(result.diagnostics, "TYP-0150")
+    assert not has_error_code(result.diagnostics, "TYP-0062")
+
+
 def test_loops_do_not_satisfy_required_return_policy(analyze_single):
     """Conservative return analysis does not treat loop bodies as proof."""
     result = analyze_single(

@@ -1168,6 +1168,31 @@ func test_typing_loop_liveness_ok() {
     sp_free(sp);
 }
 
+/** Tests sibling alternatives are isolated and their fallthrough liveness is met. */
+func test_typing_branch_liveness_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_branch_liveness_err", cfg);
+        assert(analysis_has_errors(result), "expected branch liveness errors");
+        assert(count_diag_code(result, "TYP-0150") == 5, "expected five branch use-after-drop diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests returning alternatives are excluded and complete revival remains usable. */
+func test_typing_branch_liveness_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_branch_liveness_ok", cfg);
+        assert(!analysis_has_errors(result), "expected branch liveness fixture to pass");
+        assert(!has_diag_code(result, "TYP-0150"), "did not expect branch use-after-drop diagnostics");
+        assert(!has_diag_code(result, "TYP-0062"), "did not expect branch second-drop diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
 /** Tests definite-return flow through with statements and for initialization. */
 func test_typing_with_return_flow_ok() {
     let sp = make_paths();
@@ -1756,6 +1781,8 @@ func main() {
     test_typing_drop_flow_err();
     test_typing_loop_liveness_err();
     test_typing_loop_liveness_ok();
+    test_typing_branch_liveness_err();
+    test_typing_branch_liveness_ok();
     test_typing_with_return_flow_ok();
     test_typing_with_return_flow_override();
     test_typing_dea_local_shadow_ok();

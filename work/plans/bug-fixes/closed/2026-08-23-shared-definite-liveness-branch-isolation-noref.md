@@ -2,8 +2,8 @@
 
 ## Isolate definite-liveness state across alternative branches
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-24
+- Status: Completed
 - Title: Analyze each if, match, and case alternative from the same incoming ownership state
 - Kind: Bug Fix
 - Scope: Shared
@@ -18,9 +18,9 @@
 - Porting rule: Share the same incoming-state isolation and fallthrough meet semantics; preserve target-specific
   constant-flow capabilities without allowing one alternative to seed another.
 - Target status:
-  - L0 Python Stage 1: Pending
-  - L0 Stage 2: Pending
-  - L1 Stage 1: Pending
+  - L0 Python Stage 1: Implemented
+  - L0 Stage 2: Implemented
+  - L1 Stage 1: Implemented
 - Subsystem: Definite liveness / Ownership flow / Statement analysis
 - Modules:
   - `l0/compiler/stage1_py/l0_expr_types.py`
@@ -108,3 +108,24 @@ missing-return codes.
 1. No alternative observes outer-binding liveness mutations from a sibling alternative.
 2. Post-statement liveness is the meet of exactly the reachable fallthrough states.
 3. All three frontends agree on diagnostics for the shared L0-compatible fixture set.
+
+## Implementation Outcome
+
+1. L0 Stage 2 restores the incoming liveness stack before checking `else`, matching the existing Python and L1 rule.
+2. All three match analyzers restore the incoming state before every reachable arm and meet only reachable fallthrough
+   states, including the implicit path of a non-exhaustive match.
+3. Returning and stopping alternatives are excluded from post-statement meets; explicit exhaustive `case` statements
+   with no fallthrough now restore the incoming state and propagate `STOPS`.
+4. Unreachable wildcard match arms and L1 always-false case arms remain type-checked, but cannot emit liveness errors,
+   mutate the outgoing meet, or export `break` and `continue` states.
+5. Shared fixtures cover sibling contamination, partial revival/drop, all-arm revival, returning arms, wildcard arms,
+   exhaustive stopping cases, nested loop captures, and L1 impossible case values.
+
+## Verification Outcome
+
+1. Focused Python, L0 Stage 2, and L1 Stage 1 expression-analysis suites passed.
+2. The complete L0 and L1 ARC/memory regression scripts passed with branch-revival runtime coverage.
+3. Repository-root `make clean test-all` passed: 1,461 L0 Python tests, all 55 L0 Stage 2 tests, triple bootstrap, all
+   33 L0 broad trace targets, all 67 L1 Stage 1 tests, and all 44 L1 broad trace targets completed successfully.
+4. The required independent read-only review found three additional dead-branch/stop-flow gaps, verified their fixes
+   with targeted falsification probes, and reported no remaining actionable findings.

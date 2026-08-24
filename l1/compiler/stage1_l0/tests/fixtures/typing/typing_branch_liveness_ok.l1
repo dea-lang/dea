@@ -1,0 +1,99 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_branch_liveness_ok;
+
+struct Box {
+    value: int;
+}
+
+enum Choice {
+    A;
+    B;
+}
+
+func returning_arm(choice: Choice) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    match (choice) {
+        A => { return 0; }
+        B => { p = new Box(2); }
+    }
+    return p.value;
+}
+
+func every_match_arm_revives(choice: Choice) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    match (choice) {
+        A => { p = new Box(2); }
+        B => { p = new Box(3); }
+    }
+    return p.value;
+}
+
+func sibling_drop_isolated(choice: Choice) -> int {
+    let p: Box* = new Box(1);
+    match (choice) {
+        A => { drop p; return 0; }
+        B => { return p.value; }
+    }
+}
+
+func every_case_arm_revives(tag: int) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    case (tag) {
+        0 => { p = new Box(2); }
+        _ => { p = new Box(3); }
+    }
+    return p.value;
+}
+
+func unreachable_wildcard_is_dead(choice: Choice) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    match (choice) {
+        A => { p = new Box(2); }
+        B => { p = new Box(3); }
+        _ => { let dead: int = p.value; }
+    }
+    return p.value;
+}
+
+func unreachable_wildcard_cannot_break(choice: Choice) -> int {
+    let p: Box* = new Box(1);
+    while (true) {
+        match (choice) {
+            A => { return 0; }
+            B => { return 1; }
+            _ => { drop p; break; }
+        }
+    }
+    return p.value;
+}
+
+func exhaustive_case_stops(tag: int) -> int {
+    let p: Box* = new Box(1);
+    while (true) {
+        case (tag) {
+            0 => { continue; }
+            _ => { drop p; break; }
+        }
+        return p.value;
+    }
+    return 0;
+}
+
+func impossible_case_arm_cannot_break(tag: byte) -> int {
+    let p: Box* = new Box(1);
+    while (true) {
+        case (tag) {
+            256 => { drop p; break; }
+            _ => { return 0; }
+        }
+    }
+    return p.value;
+}

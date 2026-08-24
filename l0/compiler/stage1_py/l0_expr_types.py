@@ -101,6 +101,7 @@ class ExpressionTypeChecker:
         self._breakable_loop_depth: int = 0  # depth of loops allowing 'break'/'continue'
         self._next_stmt_unreachable: bool = False  # is next statement unreachable?
         self._suppress_diagnostics: bool = False
+        self._suppress_liveness_diagnostics: bool = False
         self._liveness_diagnostics_only: bool = False
         self._loop_flow_capture_stack: List[LoopFlowCapture] = []
         # Stack of guards for cleanup-block references to header vars that may
@@ -355,6 +356,25 @@ class ExpressionTypeChecker:
                     for state in states
                 )
         return merged
+
+    def _check_dead_liveness_block(self, block: Block, *, check_return_paths: bool) -> StmtFlow:
+        """Type-check an unreachable branch without exporting liveness or loop exits."""
+        saved_alive = self._clone_alive_scopes()
+        saved_unreachable = self._next_stmt_unreachable
+        saved_return_paths = self._return_paths
+        saved_capture_stack = self._loop_flow_capture_stack
+        saved_suppress_liveness = self._suppress_liveness_diagnostics
+        self._next_stmt_unreachable = False
+        self._loop_flow_capture_stack = []
+        self._suppress_liveness_diagnostics = True
+        try:
+            return self._check_block(block, check_return_paths=check_return_paths, push_new_scope=False)
+        finally:
+            self._alive_scopes = saved_alive
+            self._next_stmt_unreachable = saved_unreachable
+            self._return_paths = saved_return_paths
+            self._loop_flow_capture_stack = saved_capture_stack
+            self._suppress_liveness_diagnostics = saved_suppress_liveness
 
     def _check_update_from_backedge_states(
         self,
@@ -881,8 +901,11 @@ class ExpressionTypeChecker:
                 return StmtFlow.RETURNS
             if fallthrough_states:
                 self._alive_scopes = self._meet_alive_state(*fallthrough_states)
+                self._next_stmt_unreachable = pre_case_unreachable
+                return StmtFlow.FALLTHROUGH
+            self._alive_scopes = [dict(scope) for scope in pre_case_alive]
             self._next_stmt_unreachable = pre_case_unreachable
-            return StmtFlow.FALLTHROUGH
+            return StmtFlow.STOPS
 
         if isinstance(stmt, MatchStmt):
             # Type the scrutinee
@@ -892,14 +915,35 @@ class ExpressionTypeChecker:
                 self._error(stmt, f"[TYP-0100] match expression must have enum type, got '{format_type(scrutinee_ty)}'")
                 return StmtFlow.FALLTHROUGH
 
-            all_arms_return = len(stmt.arms) > 0  # False if no arms
+            enum_info = self.enum_infos.get((scrutinee_ty.module, scrutinee_ty.name))
+            defined_variants = set(enum_info.variants.keys()) if enum_info is not None else set()
+            explicit_variants = {
+                arm.pattern.name for arm in stmt.arms if isinstance(arm.pattern, VariantPattern)
+            }
+            wildcard_is_unreachable = enum_info is not None and explicit_variants == defined_variants
+            reachable_arm_count = sum(
+                not (isinstance(arm.pattern, WildcardPattern) and wildcard_is_unreachable)
+                for arm in stmt.arms
+            )
+            all_arms_return = reachable_arm_count > 0
+            pre_match_alive = self._clone_alive_scopes()
+            pre_match_unreachable = self._next_stmt_unreachable
+            fallthrough_states: List[List[Dict[str, bool]]] = []
 
             # Check each arm with pattern variables in scope
             for arm in stmt.arms:
                 assert isinstance(arm, MatchArm)
 
+                self._alive_scopes = [dict(scope) for scope in pre_match_alive]
+                self._next_stmt_unreachable = False
+                self._return_paths = False
+
                 # Push a new scope for this arm
                 self._push_scope()
+                arm_flow = StmtFlow.FALLTHROUGH
+                arm_is_reachable = not (
+                    isinstance(arm.pattern, WildcardPattern) and wildcard_is_unreachable
+                )
                 try:
                     # Bind pattern variables if this is a variant pattern
                     if isinstance(arm.pattern, VariantPattern) and isinstance(scrutinee_ty, EnumType):
@@ -977,23 +1021,25 @@ class ExpressionTypeChecker:
 
                     # Check the arm body with pattern variables in scope
                     # Don't call _check_block because it would push another scope
-                    this_arm_returns = False
-
                     check_or_not = check_return_paths
-                    arm_flow = self._check_block(arm.body, check_return_paths=check_or_not, push_new_scope=False)
-                    if check_return_paths:
-                        this_arm_returns = self._return_paths
+                    if arm_is_reachable:
+                        arm_flow = self._check_block(arm.body, check_return_paths=check_or_not, push_new_scope=False)
+                        all_arms_return = all_arms_return and arm_flow is StmtFlow.RETURNS
                     else:
-                        this_arm_returns = arm_flow is StmtFlow.RETURNS
-
-                    all_arms_return = all_arms_return and this_arm_returns
+                        arm_flow = self._check_dead_liveness_block(
+                            arm.body,
+                            check_return_paths=check_or_not,
+                        )
 
                 finally:
                     self._pop_scope()
+                if arm_is_reachable and arm_flow is StmtFlow.FALLTHROUGH:
+                    fallthrough_states.append(self._clone_alive_scopes())
 
-            enum_info = self.enum_infos.get((scrutinee_ty.module, scrutinee_ty.name))
             if not enum_info:
                 self._error(stmt, f"[TYP-0103] no type information for enum '{format_type(scrutinee_ty)}'")
+                self._alive_scopes = [dict(scope) for scope in pre_match_alive]
+                self._next_stmt_unreachable = pre_match_unreachable
                 return StmtFlow.FALLTHROUGH
 
             # check that all variants are covered (or wildcard present)
@@ -1001,7 +1047,6 @@ class ExpressionTypeChecker:
             is_wildcard_present = any(isinstance(arm.pattern, WildcardPattern) for arm in stmt.arms)
             is_exhaustive = is_wildcard_present
             if not is_wildcard_present:
-                defined_variants = set(enum_info.variants.keys())
                 if arm_variants == defined_variants:
                     is_exhaustive = True
                 else:
@@ -1021,9 +1066,21 @@ class ExpressionTypeChecker:
                 # A match guarantees a return if it is exhaustive AND all arms return.
                 self._return_paths = is_exhaustive and all_arms_return
 
+            if not is_exhaustive:
+                fallthrough_states.append([dict(scope) for scope in pre_match_alive])
+
             if is_exhaustive and all_arms_return:
+                self._alive_scopes = [dict(scope) for scope in pre_match_alive]
+                self._next_stmt_unreachable = pre_match_unreachable
                 return StmtFlow.RETURNS
-            return StmtFlow.FALLTHROUGH
+            if fallthrough_states:
+                self._alive_scopes = self._meet_alive_state(*fallthrough_states)
+                stmt_flow = StmtFlow.FALLTHROUGH
+            else:
+                self._alive_scopes = [dict(scope) for scope in pre_match_alive]
+                stmt_flow = StmtFlow.STOPS
+            self._next_stmt_unreachable = pre_match_unreachable
+            return stmt_flow
 
         if isinstance(stmt, WithStmt):
             # Type-check items sequentially in a new scope
@@ -2058,6 +2115,10 @@ class ExpressionTypeChecker:
     def _diagnostic(self, node: Optional[Node], message: str, kind: str = "info") -> None:
         """Internal helper to create and append a diagnostic."""
         if self._suppress_diagnostics:
+            return
+        if self._suppress_liveness_diagnostics and (
+            "[TYP-0062]" in message or "[TYP-0150]" in message
+        ):
             return
         if self._liveness_diagnostics_only and not (
             "[TYP-0062]" in message or "[TYP-0150]" in message
