@@ -117,6 +117,17 @@ jobs:
             head_sha="$PUSH_SHA"
           fi
 
+          if [ "$EVENT_NAME" = "push" ] && \
+             [ -n "$base_sha" ] && \
+             [ "$base_sha" != "0000000000000000000000000000000000000000" ] && \
+             ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1; then
+            echo "Push base $base_sha is not in the advertised history; fetching it by object ID."
+            if ! git fetch --no-tags --no-recurse-submodules origin "$base_sha"; then
+              echo "::error::ADR impact policy could not fetch the push base commit."
+              exit 2
+            fi
+          fi
+
           if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ] || \
              ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 || \
              ! git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
