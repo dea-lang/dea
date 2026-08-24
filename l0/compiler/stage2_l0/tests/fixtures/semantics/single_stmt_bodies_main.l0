@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module single_stmt_bodies_main;
+
+func scope_demo(n: int) -> int {
+    let total: int = n;
+
+    case (total) {
+        0 => let case_local: int = 1;
+        _ => let case_else_local: int = 2;
+    }
+
+    return total;
+}
+
+func main() -> int {
+    return scope_demo(1);
+}

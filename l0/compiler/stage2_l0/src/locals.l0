@@ -31,6 +31,8 @@ struct LocalSymbol {
     name: string;
     kind: LocalKind;
     decl_ptr: void*;
+    decl_id: int;
+    binding_slot: int;
 }
 
 /**
@@ -108,12 +110,15 @@ func lc_scope_create(parent: Scope*?) -> Scope* {
  * @param name Local name to bind.
  * @param kind Kind of local binding.
  * @param decl_ptr AST pointer associated with the binding.
+ * @param decl_id Owning statement, pattern, or parameter index.
+ * @param binding_slot Pattern binder slot, or `-1` for other bindings.
  */
-func lc_scope_define(self: Scope*, name: string, kind: LocalKind, decl_ptr: void*) {
+func lc_scope_define(self: Scope*, name: string, kind: LocalKind, decl_ptr: void*, decl_id: int,
+                     binding_slot: int) {
     if (spm_has(self.symbols, name)) {
         return;
     }
-    spm_put(self.symbols, name, new LocalSymbol(name, kind, decl_ptr) as void*);
+    spm_put(self.symbols, name, new LocalSymbol(name, kind, decl_ptr, decl_id, binding_slot) as void*);
 }
 
 /**
@@ -292,7 +297,7 @@ func lc_bind_pattern(env: FunctionEnv*, pattern_id: PatternId, scope: Scope*) {
     }
     let vars = pattern.vars as StringVector*;
     for (let i = 0; i < sv_size(vars); i = i + 1) {
-        lc_scope_define(scope, sv_get(vars, i), LK_PATTERN_VAR, pattern as void*);
+        lc_scope_define(scope, sv_get(vars, i), LK_PATTERN_VAR, pattern as void*, pattern_id, i);
     }
 }
 
@@ -314,6 +319,23 @@ func lc_visit_block(env: FunctionEnv*, block_id: StmtId, scope: Scope*) {
 }
 
 /**
+ * Visit a statement body under an already-created scope.
+ *
+ * @param env Current function environment.
+ * @param stmt_id Body statement id.
+ * @param scope Body scope.
+ */
+func lc_visit_scoped_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
+    let stmt = stmt_arena_get(env.stmt_arena, stmt_id);
+    lc_scope_set_block(env, stmt_id, scope);
+    if (ord(stmt.kind) == ord(ST_BLOCK)) {
+        lc_visit_block(env, stmt_id, scope);
+    } else {
+        lc_visit_stmt(env, stmt_id, scope);
+    }
+}
+
+/**
  * Visits a arm during AST traversal.
  *
  * @param env The current module environment.
@@ -324,9 +346,8 @@ func lc_visit_match_arm(env: FunctionEnv*, arm: MatchArm*, parent_scope: Scope*)
     let scope = lc_scope_create(parent_scope);
     lc_scope_track(env, scope);
     ptr_vec_push(env.arm_scopes, new MatchArmScopeEntry(arm, scope) as void*);
-    lc_scope_set_block(env, arm.body, scope);
     lc_bind_pattern(env, arm.pattern, scope);
-    lc_visit_block(env, arm.body, scope);
+    lc_visit_scoped_stmt(env, arm.body, scope);
 }
 
 /**
@@ -339,13 +360,7 @@ func lc_visit_match_arm(env: FunctionEnv*, arm: MatchArm*, parent_scope: Scope*)
 func lc_visit_case_arm(env: FunctionEnv*, arm: CaseArm*, parent_scope: Scope*) {
     let scope = lc_scope_create(parent_scope);
     lc_scope_track(env, scope);
-    let body = stmt_arena_get(env.stmt_arena, arm.body);
-    if (ord(body.kind) == ord(ST_BLOCK)) {
-        lc_scope_set_block(env, arm.body, scope);
-        lc_visit_block(env, arm.body, scope);
-    } else {
-        lc_visit_stmt(env, arm.body, scope);
-    }
+    lc_visit_scoped_stmt(env, arm.body, scope);
 }
 
 /**
@@ -358,13 +373,7 @@ func lc_visit_case_arm(env: FunctionEnv*, arm: CaseArm*, parent_scope: Scope*) {
 func lc_visit_case_else(env: FunctionEnv*, arm: CaseElse*, parent_scope: Scope*) {
     let scope = lc_scope_create(parent_scope);
     lc_scope_track(env, scope);
-    let body = stmt_arena_get(env.stmt_arena, arm.body);
-    if (ord(body.kind) == ord(ST_BLOCK)) {
-        lc_scope_set_block(env, arm.body, scope);
-        lc_visit_block(env, arm.body, scope);
-    } else {
-        lc_visit_stmt(env, arm.body, scope);
-    }
+    lc_visit_scoped_stmt(env, arm.body, scope);
 }
 
 /**
@@ -414,7 +423,7 @@ func lc_visit_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
     let stmt = stmt_arena_get(env.stmt_arena, stmt_id);
     match (stmt.kind) {
         ST_LET => {
-            lc_scope_define(scope, stmt.name, LK_LOCAL, stmt as void*);
+            lc_scope_define(scope, stmt.name, LK_LOCAL, stmt as void*, stmt_id, -1);
         }
         ST_IF => {
             lc_visit_stmt(env, stmt.stmt_a, scope);
@@ -423,8 +432,7 @@ func lc_visit_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
         ST_WHILE => {
             let body_scope = lc_scope_create(scope);
             lc_scope_track(env, body_scope);
-            lc_scope_set_block(env, stmt.stmt_a, body_scope);
-            lc_visit_block(env, stmt.stmt_a, body_scope);
+            lc_visit_scoped_stmt(env, stmt.stmt_a, body_scope);
         }
         ST_FOR => {
             // The loop header (init declaration and step) lives in its own
@@ -437,8 +445,7 @@ func lc_visit_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
             lc_visit_stmt(env, stmt.stmt_b, header_scope);
             let body_scope = lc_scope_create(header_scope);
             lc_scope_track(env, body_scope);
-            lc_scope_set_block(env, stmt.stmt_c, body_scope);
-            lc_visit_block(env, stmt.stmt_c, body_scope);
+            lc_visit_scoped_stmt(env, stmt.stmt_c, body_scope);
         }
         ST_MATCH => {
             let arms = stmt.match_arms as VectorBase*;
@@ -500,7 +507,7 @@ func lc_make_function_env(module_name: string, unit: DriverUnit*, decl: FuncDecl
 
     for (let param_i = 0; param_i < vec_size(decl.params); param_i = param_i + 1) {
         let param = ptr_vec_get(decl.params, param_i) as Param*;
-        lc_scope_define(env.root_scope, param.name, LK_PARAM, param as void*);
+        lc_scope_define(env.root_scope, param.name, LK_PARAM, param as void*, param_i, -1);
     }
 
     lc_scope_set_block(env, decl.body, env.root_scope);

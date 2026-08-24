@@ -2,8 +2,8 @@
 
 ## Restore binding identity and declaration-order visibility in self-hosted analysis
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-24
+- Status: Completed
 - Title: Make native scope, pattern, and cleanup analysis track exact bindings at their declaration points
 - Kind: Bug Fix
 - Scope: Shared
@@ -17,8 +17,8 @@
 - Porting rule: Port declaration visibility, pattern-binding identity, and cleanup-guard identity mechanically; retain
   L1's already-correct `lc_visit_scoped_stmt()` behavior and port that helper back to L0 Stage 2.
 - Target status:
-  - L0 Stage 2: Pending
-  - L1 Stage 1: Pending
+  - L0 Stage 2: Completed
+  - L1 Stage 1: Completed
 - Subsystem: Local scopes / Expression typing / Match bindings / Cleanup analysis
 - Modules:
   - `l0/compiler/stage1_py/l0_locals.py`
@@ -132,3 +132,26 @@ association, but no reassignment is planned.
 2. Binding metadata cannot collide solely because two declarations share a text name.
 3. L0 Stage 2 maps every scoped single-statement body consistently with L1 Stage 1.
 4. Existing duplicate and shadow diagnostics retain their codes and counts.
+
+## Implementation Outcome
+
+1. Native local symbols now retain exact statement, pattern, or parameter identities plus pattern binder slots.
+2. Declaration-order lookup uses exact active scope/map pairs and activates omitted synthetic ancestors before nested
+   loop or `with` header scopes, preserving outer and pattern bindings in single-statement bodies.
+3. Pattern payload types are keyed by function, pattern id, and binder slot; cleanup guards retain exact header
+   declaration ids rather than text names.
+4. L0 Stage 2 now registers every scoped statement body through the shared helper used by L1 Stage 1, including bare
+   `case` arms and `else` bodies.
+
+## Verification Outcome
+
+1. Python Stage 1's locals, `case`, and `with` oracle suites passed with 117 tests. Focused L0 Stage 2 and L1 Stage 1
+   locals/expression suites passed in normal and ARC/memory trace modes.
+2. Regressions cover declaration-order shadowing, bare L0 `case` scopes, omitted synthetic ancestors, nested and
+   repeated pattern names, distinct cross-arm/cross-function pattern map entries, cleanup-local shadows, and exact
+   guarded header references.
+3. Final cross-level validation passed: 1,472 Python tests, all 55 L0 Stage 2 tests, triple bootstrap, eight L0
+   examples, workflow/distribution checks, all 33 L0 trace tests, all 67 L1 Stage 1 tests, environment stackability,
+   four L1 examples, and all 44 default L1 trace tests.
+4. The independent read-only review found a missing synthetic-ancestor activation path and weak direct cross-binding
+   assertions. Both findings were accepted and fixed; follow-up review reported no remaining findings.

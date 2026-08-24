@@ -31,6 +31,8 @@ struct LocalSymbol {
     name: string;
     kind: LocalKind;
     decl_ptr: void*;
+    decl_id: int;
+    binding_slot: int;
 }
 
 /**
@@ -108,12 +110,15 @@ func lc_scope_create(parent: Scope*?) -> Scope* {
  * @param name Local name to bind.
  * @param kind Kind of local binding.
  * @param decl_ptr AST pointer associated with the binding.
+ * @param decl_id Owning statement, pattern, or parameter index.
+ * @param binding_slot Pattern binder slot, or `-1` for other bindings.
  */
-func lc_scope_define(self: Scope*, name: string, kind: LocalKind, decl_ptr: void*) {
+func lc_scope_define(self: Scope*, name: string, kind: LocalKind, decl_ptr: void*, decl_id: int,
+                     binding_slot: int) {
     if (spm_has(self.symbols, name)) {
         return;
     }
-    spm_put(self.symbols, name, new LocalSymbol(name, kind, decl_ptr) as void*);
+    spm_put(self.symbols, name, new LocalSymbol(name, kind, decl_ptr, decl_id, binding_slot) as void*);
 }
 
 /**
@@ -292,7 +297,7 @@ func lc_bind_pattern(env: FunctionEnv*, pattern_id: PatternId, scope: Scope*) {
     }
     let vars = pattern.vars as StringVector*;
     for (let i = 0; i < sv_size(vars); i = i + 1) {
-        lc_scope_define(scope, sv_get(vars, i), LK_PATTERN_VAR, pattern as void*);
+        lc_scope_define(scope, sv_get(vars, i), LK_PATTERN_VAR, pattern as void*, pattern_id, i);
     }
 }
 
@@ -418,7 +423,7 @@ func lc_visit_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
     let stmt = stmt_arena_get(env.stmt_arena, stmt_id);
     match (stmt.kind) {
         ST_LET => {
-            lc_scope_define(scope, stmt.name, LK_LOCAL, stmt as void*);
+            lc_scope_define(scope, stmt.name, LK_LOCAL, stmt as void*, stmt_id, -1);
         }
         ST_IF => {
             lc_visit_stmt(env, stmt.stmt_a, scope);
@@ -502,7 +507,7 @@ func lc_make_function_env(module_name: string, unit: DriverUnit*, decl: FuncDecl
 
     for (let param_i = 0; param_i < vec_size(decl.params); param_i = param_i + 1) {
         let param = ptr_vec_get(decl.params, param_i) as Param*;
-        lc_scope_define(env.root_scope, param.name, LK_PARAM, param as void*);
+        lc_scope_define(env.root_scope, param.name, LK_PARAM, param as void*, param_i, -1);
     }
 
     lc_scope_set_block(env, decl.body, env.root_scope);

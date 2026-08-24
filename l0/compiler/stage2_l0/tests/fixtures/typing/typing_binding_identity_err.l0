@@ -1,0 +1,22 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_binding_identity_err;
+
+func maybe_value() -> int? {
+    return 1 as int?;
+}
+
+func cleanup_exact_identity() -> int? {
+    with (let guarded: int = maybe_value()?) {
+    } cleanup {
+        {
+            let guarded: int = 1;
+            guarded;
+        }
+        guarded; // TYP-0156
+    }
+    return 0 as int?;
+}

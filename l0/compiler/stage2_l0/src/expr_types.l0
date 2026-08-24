@@ -38,6 +38,7 @@ struct ExpressionTypeChecker {
     current_scope: Scope*?;
     alive_scopes: VectorBase*?; // StringIntMap*
     decl_scopes: VectorBase*?; // StringIntMap*
+    decl_scope_defs: VectorBase*?; // Scope*
     loop_depth: int;
     next_stmt_unreachable: bool;
     suppress_diagnostics: bool;
@@ -97,7 +98,7 @@ enum AssignCheckResult {
  */
 struct CleanupHeaderGuard {
     parent: CleanupHeaderGuard*?;
-    guarded: StringSet*;
+    guarded_decl_ids: IntSet*;
 }
 
 /**
@@ -581,23 +582,24 @@ func etc_decl_scope_current(self: ExpressionTypeChecker*) -> StringIntMap*? {
  * @param self Expression checker state.
  * @param scope Scope whose immediate non-local bindings should seed the map.
  */
-func etc_decl_scope_push(self: ExpressionTypeChecker*, scope: Scope*?) {
+func etc_decl_scope_push(self: ExpressionTypeChecker*, scope: Scope*) {
     if (self.decl_scopes == null) {
         self.decl_scopes = ptr_vec_create(4);
     }
+    if (self.decl_scope_defs == null) {
+        self.decl_scope_defs = ptr_vec_create(4);
+    }
     let map = sim_create();
-    if (scope != null) {
-        let scope2 = scope as Scope*;
-        for (let i = 0; i < spm_capacity(scope2.symbols); i = i + 1) {
-            if (spm_slot_occupied(scope2.symbols, i)) {
-                let local = spm_slot_value(scope2.symbols, i) as LocalSymbol*;
-                if (ord(local.kind) != ord(LK_LOCAL)) {
-                    sim_put(map, local.name, 1);
-                }
+    for (let i = 0; i < spm_capacity(scope.symbols); i = i + 1) {
+        if (spm_slot_occupied(scope.symbols, i)) {
+            let local = spm_slot_value(scope.symbols, i) as LocalSymbol*;
+            if (ord(local.kind) != ord(LK_LOCAL)) {
+                sim_put(map, local.name, 1);
             }
         }
     }
     ptr_vec_push(self.decl_scopes as VectorBase*, map as void*);
+    ptr_vec_push(self.decl_scope_defs as VectorBase*, scope as void*);
 }
 
 /**
@@ -613,6 +615,48 @@ func etc_decl_scope_pop(self: ExpressionTypeChecker*) {
     let last = vec_size(scopes) - 1;
     sim_free(ptr_vec_get(scopes, last) as StringIntMap*);
     scopes.length = scopes.length - 1;
+    if (self.decl_scope_defs != null) {
+        let defs = self.decl_scope_defs as VectorBase*;
+        defs.length = defs.length - 1;
+    }
+}
+
+/**
+ * Activate every missing lexical scope from the tracked scope to `target`.
+ *
+ * Synthetic single-statement scopes can sit between the currently active
+ * scope and a mapped loop or `with` header scope, so each ancestor must have
+ * its own declaration and liveness state.
+ *
+ * @return Number of scope states pushed.
+ */
+func etc_scope_chain_push(self: ExpressionTypeChecker*, target: Scope*) -> int {
+    let target_depth = 0;
+    let ancestor: Scope*? = target;
+    while (ancestor != null) {
+        target_depth = target_depth + 1;
+        ancestor = (ancestor as Scope*).parent;
+    }
+    let active_depth = 0;
+    if (self.decl_scope_defs != null) {
+        active_depth = vec_size(self.decl_scope_defs as VectorBase*);
+    }
+    let missing_count = target_depth - active_depth;
+    let missing = ptr_vec_create(4);
+    let cur: Scope*? = target;
+    for (let missing_i = 0; missing_i < missing_count; missing_i = missing_i + 1) {
+        let scope = cur as Scope*;
+        ptr_vec_push(missing, scope as void*);
+        cur = scope.parent;
+    }
+    let pushed = vec_size(missing);
+    for (let i = pushed - 1; i >= 0; i = i - 1) {
+        let scope2 = ptr_vec_get(missing, i) as Scope*;
+        etc_alive_scope_push(self, scope2);
+        etc_decl_scope_push(self, scope2);
+    }
+    vec_free(missing);
+    return pushed;
 }
 
 /**
@@ -783,29 +827,48 @@ func etc_set_expr_type(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*)
 }
 
 /**
- * Record the inferred type for a pattern-bound variable.
+ * Build the type-map key for one exact pattern-bound variable.
  *
  * @param self Expression checker state.
- * @param name Variable name.
+ * @param pattern_id Owning pattern id.
+ * @param binding_slot Binder position within the pattern.
+ * @return Stable binding-specific type-map key.
+ */
+func etc_pattern_var_key(self: ExpressionTypeChecker*, pattern_id: PatternId, binding_slot: int) -> string {
+    let function_key = self.current_module;
+    if (self.current_func != null) {
+        function_key = (self.current_func as FunctionEnv*).key;
+    }
+    return function_key + "::pattern::" + int_to_string(pattern_id) + "::" + int_to_string(binding_slot);
+}
+
+/**
+ * Record the inferred type for one exact pattern-bound variable.
+ *
+ * @param self Expression checker state.
+ * @param pattern_id Owning pattern id.
+ * @param binding_slot Binder position within the pattern.
  * @param ty Type to store.
  */
-func etc_set_var_type(self: ExpressionTypeChecker*, name: string, ty: Type*) {
+func etc_set_pattern_var_type(self: ExpressionTypeChecker*, pattern_id: PatternId, binding_slot: int, ty: Type*) {
     if (self.liveness_diagnostics_only) {
         return;
     }
-    let key = self.current_module + "::var::" + name;
+    let key = etc_pattern_var_key(self, pattern_id, binding_slot);
     analysis_owned_type_map_put(self.result.expr_types, key, ty);
 }
 
 /**
- * Return a cloned stored type for a named temporary variable binding.
+ * Return a cloned stored type for one exact pattern-bound variable.
  *
  * @param self Expression checker state.
- * @param name Variable name.
+ * @param pattern_id Owning pattern id.
+ * @param binding_slot Binder position within the pattern.
  * @return Cloned stored type, or `null` if absent.
  */
-func etc_get_var_type(self: ExpressionTypeChecker*, name: string) -> Type*? {
-    let key = self.current_module + "::var::" + name;
+func etc_get_pattern_var_type(self: ExpressionTypeChecker*, pattern_id: PatternId,
+                              binding_slot: int) -> Type*? {
+    let key = etc_pattern_var_key(self, pattern_id, binding_slot);
     let val = spm_get(self.result.expr_types, key);
     if (val == null) return null;
     return type_clone(val as Type*);
@@ -844,21 +907,21 @@ func etc_set_intrinsic_target(self: ExpressionTypeChecker*, expr_id: ExprId, ty:
 /**
  * Free a temporary cleanup-header guard stack.
  *
- * @param stack Vector of StringPtrMap* entries to free.
+ * @param stack Linked cleanup-header guard entries to free.
  */
 func etc_cleanup_header_guard_stack_free(stack: CleanupHeaderGuard*?) {
     let cur = stack;
     while (cur != null) {
         let node = cur as CleanupHeaderGuard*;
         let parent = node.parent;
-        ss_free(node.guarded);
+        iset_free(node.guarded_decl_ids);
         drop node;
         cur = parent;
     }
 }
 
 /**
- * Return whether the current cleanup-block guard stack marks a local name as maybe uninitialized.
+ * Return whether the current cleanup-block guard stack marks the visible local as maybe uninitialized.
  *
  * @param self Expression checker state.
  * @param name Variable name to inspect.
@@ -868,7 +931,7 @@ func etc_is_guarded_cleanup_header_local(self: ExpressionTypeChecker*, name: str
     if (self.cleanup_header_guard_stack == null || self.current_scope == null) {
         return false;
     }
-    let local = lc_scope_lookup(self.current_scope, name);
+    let local = etc_lookup_visible_local_symbol(self, name);
     if (local == null) {
         return false;
     }
@@ -879,7 +942,7 @@ func etc_is_guarded_cleanup_header_local(self: ExpressionTypeChecker*, name: str
     let guards = self.cleanup_header_guard_stack;
     while (guards != null) {
         let guard_node = guards as CleanupHeaderGuard*;
-        if (ss_has(guard_node.guarded, name)) {
+        if (iset_has(guard_node.guarded_decl_ids, symbol.decl_id)) {
             return true;
         }
         guards = guard_node.parent;
@@ -958,15 +1021,27 @@ func etc_stmt_contains_try(unit: DriverUnit*, stmt_id: StmtId) -> bool {
  * @param name Local name to look up.
  * @return Resolved type, or `null` if the name is not a visible local.
  */
-func etc_lookup_local(self: ExpressionTypeChecker*, name: string) -> Type*? {
-    if (self.current_scope == null) {
+func etc_lookup_visible_local_symbol(self: ExpressionTypeChecker*, name: string) -> LocalSymbol*? {
+    if (self.decl_scopes == null || self.decl_scope_defs == null) {
         return null;
     }
-    let local = lc_scope_lookup(self.current_scope, name);
-    if (local == null) {
-        return null;
+    let maps = self.decl_scopes as VectorBase*;
+    let defs = self.decl_scope_defs as VectorBase*;
+    for (let scope_index = vec_size(maps) - 1; scope_index >= 0; scope_index = scope_index - 1) {
+        let current = ptr_vec_get(defs, scope_index) as Scope*;
+        let visible = ptr_vec_get(maps, scope_index) as StringIntMap*;
+        if (sim_has(visible, name)) {
+            let local = spm_get(current.symbols, name);
+            if (local != null) {
+                return local as LocalSymbol*;
+            }
+        }
     }
-    let l = local as LocalSymbol*;
+    return null;
+}
+
+/** Resolve the type represented by one exact local symbol. */
+func etc_local_symbol_type(self: ExpressionTypeChecker*, l: LocalSymbol*) -> Type*? {
     match (l.kind) {
         LK_PARAM => {
             let p = l.decl_ptr as Param*;
@@ -990,10 +1065,25 @@ func etc_lookup_local(self: ExpressionTypeChecker*, name: string) -> Type*? {
             }
         }
         LK_PATTERN_VAR => {
-            return etc_get_var_type(self, name);
+            return etc_get_pattern_var_type(self, l.decl_id, l.binding_slot);
         }
     }
     return null;
+}
+
+/**
+ * Resolve the type of a local binding visible at the current statement position.
+ *
+ * @param self Expression checker state.
+ * @param name Local name to look up.
+ * @return Resolved type, or `null` if the name is not a visible local.
+ */
+func etc_lookup_local(self: ExpressionTypeChecker*, name: string) -> Type*? {
+    let local = etc_lookup_visible_local_symbol(self, name);
+    if (local == null) {
+        return null;
+    }
+    return etc_local_symbol_type(self, local as LocalSymbol*);
 }
 
 /**
@@ -1256,7 +1346,8 @@ func etc_bind_pattern_types(self: ExpressionTypeChecker*, match_ty: Type*, patte
                 let vars = pattern.vars as StringVector*;
                 for (let j = 0; j < sv_size(vars); j = j + 1) {
                     if (j < vec_size(v_info.field_types)) {
-                        etc_set_var_type(self, sv_get(vars, j), ptr_vec_get(v_info.field_types, j) as Type*);
+                        etc_set_pattern_var_type(self, pattern_id, j,
+                            ptr_vec_get(v_info.field_types, j) as Type*);
                     }
                 }
             }
@@ -1594,15 +1685,11 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
     let flow = FLOW_FALLTHROUGH;
     
     let old_scope = self.current_scope;
-    let pushed_alive_scope = false;
-    let pushed_decl_scope = false;
+    let pushed_scope_count = 0;
     if (self.current_func != null) {
         let scope = lc_func_env_get_block_scope(self.current_func as FunctionEnv*, stmt_id);
         if (scope != null) {
-            etc_alive_scope_push(self, scope);
-            etc_decl_scope_push(self, scope);
-            pushed_alive_scope = true;
-            pushed_decl_scope = true;
+            pushed_scope_count = etc_scope_chain_push(self, scope as Scope*);
             self.current_scope = scope;
         }
     }
@@ -2109,7 +2196,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             }
         }
         ST_WITH => {
-            let cleanup_guards: StringSet*? = null;
+            let cleanup_guards: IntSet*? = null;
             let header_returns = false;
             if (stmt.with_items != null) {
                 let items = stmt.with_items as VectorBase*;
@@ -2127,16 +2214,18 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     if (seen_header_try) {
                         let init_stmt = stmt_arena_get(unit.parse_result.stmt_arena, item.init);
                         if (ord(init_stmt.kind) == ord(ST_LET) && init_stmt.type_ref != null) {
-                            let local = lc_scope_lookup(self.current_scope, init_stmt.name);
+                            let local = etc_lookup_visible_local_symbol(self, init_stmt.name);
                             if (local != null) {
-                                let local_ty = etc_lookup_local(self, init_stmt.name);
+                                let symbol = local as LocalSymbol*;
+                                let local_ty = etc_local_symbol_type(self, symbol);
                                 if (local_ty != null) {
                                     let ty = local_ty as Type*;
-                                    if (ord(ty.kind) != ord(TY_NULLABLE)) {
+                                    if (ord(symbol.kind) == ord(LK_LOCAL) && symbol.decl_id == item.init &&
+                                        ord(ty.kind) != ord(TY_NULLABLE)) {
                                         if (cleanup_guards == null) {
-                                            cleanup_guards = ss_create();
+                                            cleanup_guards = iset_create();
                                         }
-                                        ss_add(cleanup_guards as StringSet*, init_stmt.name);
+                                        iset_add(cleanup_guards as IntSet*, symbol.decl_id);
                                     }
                                     type_free(ty);
                                 }
@@ -2165,18 +2254,19 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
             }
             let cleanup_guard_node: CleanupHeaderGuard*? = null;
             if (stmt.stmt_b >= 0 && cleanup_guards != null) {
-                cleanup_guard_node = new CleanupHeaderGuard(self.cleanup_header_guard_stack, cleanup_guards as StringSet*);
+                cleanup_guard_node = new CleanupHeaderGuard(self.cleanup_header_guard_stack,
+                    cleanup_guards as IntSet*);
                 self.cleanup_header_guard_stack = cleanup_guard_node;
                 cleanup_guards = null;
             }
             let cleanup_flow = etc_check_stmt(self, stmt.stmt_b);
             if (cleanup_guards != null) {
-                ss_free(cleanup_guards as StringSet*);
+                iset_free(cleanup_guards as IntSet*);
             }
             if (cleanup_guard_node != null) {
                 let node = cleanup_guard_node as CleanupHeaderGuard*;
                 self.cleanup_header_guard_stack = node.parent;
-                ss_free(node.guarded);
+                iset_free(node.guarded_decl_ids);
                 drop node;
             }
             if (ord(cleanup_flow) == ord(FLOW_RETURNS) || inline_override == 1 ||
@@ -2267,10 +2357,8 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
     }
     
     self.current_scope = old_scope;
-    if (pushed_decl_scope) {
+    for (let scope_i = 0; scope_i < pushed_scope_count; scope_i = scope_i + 1) {
         etc_decl_scope_pop(self);
-    }
-    if (pushed_alive_scope) {
         etc_alive_scope_pop(self);
     }
     return flow;
@@ -3347,7 +3435,8 @@ func etc_check_top_level_initializers(self: ExpressionTypeChecker*, root: Module
  */
 func expr_types_check(result: AnalysisResult*) {
     let check_function_bodies = !analysis_has_errors(result);
-    let checker = new ExpressionTypeChecker(result, "", null, null, null, null, null, ptr_vec_create(4), ptr_vec_create(4), 0, false, false, false, false, null, null);
+    let checker = new ExpressionTypeChecker(result, "", null, null, null, null, null, ptr_vec_create(4),
+        ptr_vec_create(4), ptr_vec_create(4), 0, false, false, false, false, null, null);
     
     for (let i = 0; i < driver_unit_count(result.driver_state); i = i + 1) {
         let unit = driver_unit_get(result.driver_state, i);
@@ -3379,6 +3468,9 @@ func expr_types_check(result: AnalysisResult*) {
     
     etc_alive_scope_stack_free(checker.alive_scopes);
     etc_alive_scope_stack_free(checker.decl_scopes);
+    if (checker.decl_scope_defs != null) {
+        vec_free(checker.decl_scope_defs as VectorBase*);
+    }
     etc_cleanup_header_guard_stack_free(checker.cleanup_header_guard_stack);
     drop checker;
 }

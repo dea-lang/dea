@@ -126,10 +126,42 @@ func test_local_scope_construction() {
     sp_free(sp);
 }
 
+/** Tests synthetic scopes for single-statement `case` bodies. */
+func test_single_statement_body_scope_construction() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "single_stmt_bodies_main", cfg);
+        assert(!analysis_has_errors(result), "expected no semantic errors");
+
+        let locals_opt = analysis_locals(result);
+        assert(locals_opt != null, "expected locals result");
+        let all_locals = locals_opt as LocalsResult*;
+        let env_opt = locals_env_find(all_locals, "single_stmt_bodies_main", "scope_demo");
+        assert(env_opt != null, "expected scope_demo locals env");
+        let env = env_opt as FunctionEnv*;
+        let body_block = stmt_arena_get(env.stmt_arena, env.func_decl.body);
+
+        let case_stmt = stmt_arena_get(env.stmt_arena, nth_stmt_id(body_block, 1));
+        let case_arm = ptr_vec_get(case_stmt.case_arms as VectorBase*, 0) as CaseArm*;
+        let case_scope = lc_func_env_get_block_scope(env, case_arm.body);
+        assert(case_scope != null, "expected single-statement case arm scope");
+        assert(lc_scope_lookup(case_scope, "case_local") != null, "case local should stay arm-local");
+
+        let case_else = case_stmt.case_else as CaseElse*;
+        let case_else_scope = lc_func_env_get_block_scope(env, case_else.body);
+        assert(case_else_scope != null, "expected single-statement case else scope");
+        assert(lc_scope_lookup(case_else_scope, "case_else_local") != null, "case else local should stay arm-local");
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
 /**
  * Main entry point for the module.
  */
 func main() {
     test_local_scope_construction();
+    test_single_statement_body_scope_construction();
     printl_s("locals_test: all tests passed");
 }

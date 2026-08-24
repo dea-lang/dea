@@ -8,9 +8,13 @@ module expr_types_test;
 import std.io;
 import std.string;
 import std.assert;
+import std.hashmap;
+import std.text;
 import std.vector;
 
 import analysis;
+import ast;
+import locals;
 import sem_context;
 import signatures;
 import source_paths;
@@ -90,6 +94,22 @@ func count_diag_code(result: AnalysisResult*, code: string) -> int {
     return count;
 }
 
+/** Assert the stored type for one exact pattern binder. */
+func assert_pattern_binding_type(result: AnalysisResult*, func_name: string, arm_index: int,
+                                 expected_type: string) {
+    let all_locals = result.locals_result as LocalsResult*;
+    let env_opt = locals_env_find(all_locals, "typing_binding_identity_ok", func_name);
+    assert(env_opt != null, "expected function locals for pattern-binding assertion");
+    let env = env_opt as FunctionEnv*;
+    let body = stmt_arena_get(env.stmt_arena, env.func_decl.body);
+    let match_stmt = stmt_arena_get(env.stmt_arena, id_vec_get(body.ids as VectorBase*, 0));
+    let arm = ptr_vec_get(match_stmt.match_arms as VectorBase*, arm_index) as MatchArm*;
+    let key = env.key + "::pattern::" + int_to_string(arm.pattern) + "::0";
+    let stored = spm_get(result.expr_types, key);
+    assert(stored != null, "expected exact pattern-binding type-map entry");
+    assert(type_is_builtin(stored as Type*, expected_type), "unexpected exact pattern-binding type");
+}
+
 /** Return whether one diagnostic starts at the expected source location. */
 func has_diag_start(result: AnalysisResult*, code: string, line: int, column: int) -> bool {
     for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
@@ -115,6 +135,31 @@ func test_typing_for_loop_scope() {
         assert(!analysis_has_errors(result), "expected no typing errors for typing_for_loop_scope");
         assert(count_diag_code(result, "TYP-0021") == 1, "expected exactly one TYP-0021 (genuine nested shadow only)");
         analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests declaration-order visibility and exact pattern and cleanup binding identity. */
+func test_typing_binding_identity() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let ok_result = analysis_analyze_entry(sp, "typing_binding_identity_ok", cfg);
+        assert(!analysis_has_errors(ok_result), "expected binding-identity regressions to type-check");
+        assert(count_diag_code(ok_result, "TYP-0021") == 4,
+            "expected only the four intentional shadowing warnings");
+        assert(!has_diag_code(ok_result, "TYP-0156"),
+            "cleanup-local shadow must not inherit the header guard");
+        assert_pattern_binding_type(ok_result, "cross_arm_identity", 0, "int");
+        assert_pattern_binding_type(ok_result, "cross_arm_identity", 1, "string");
+        assert_pattern_binding_type(ok_result, "number_identity", 0, "int");
+        assert_pattern_binding_type(ok_result, "text_identity", 0, "string");
+        analysis_result_free(ok_result);
+
+        let err_result = analysis_analyze_entry(sp, "typing_binding_identity_err", cfg);
+        assert(analysis_has_errors(err_result), "expected the exact guarded header reference to fail");
+        assert(count_diag_code(err_result, "TYP-0156") == 1,
+            "expected only the exact header binding to be guarded");
+        analysis_result_free(err_result);
     }
     sp_free(sp);
 }
@@ -1766,6 +1811,7 @@ func test_typing_slice_escape_err() {
 
 func main() {
     test_typing_ok();
+    test_typing_binding_identity();
     test_typing_err();
     test_typing_alias_struct_constructor_ok();
     test_typing_alias_value_err();
