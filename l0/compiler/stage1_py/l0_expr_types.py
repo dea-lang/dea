@@ -19,6 +19,7 @@ from l0_diagnostics import diag_from_node
 from l0_locals import FunctionEnv
 from l0_logger import log_debug
 from l0_resolve import resolve_symbol, resolve_type_ref, TypeResolveErrorKind, ResolveErrorKind
+from l0_signatures import EnumInfo
 from l0_string_escape import decode_l0_string_token, EscapeDecodeError
 from l0_symbols import ModuleEnv, SymbolKind, Symbol
 from l0_types import (
@@ -913,10 +914,22 @@ class ExpressionTypeChecker:
 
             enum_info = self.enum_infos.get((scrutinee_ty.module, scrutinee_ty.name))
             defined_variants = set(enum_info.variants.keys()) if enum_info is not None else set()
-            explicit_variants = {
-                arm.pattern.name for arm in stmt.arms if isinstance(arm.pattern, VariantPattern)
-            }
-            wildcard_is_unreachable = enum_info is not None and explicit_variants == defined_variants
+            validated_variant_names: List[Optional[str]] = []
+            for arm in stmt.arms:
+                if isinstance(arm.pattern, VariantPattern):
+                    validated_variant_names.append(
+                        self._validate_match_variant_pattern(arm.pattern, scrutinee_ty, enum_info)
+                    )
+                else:
+                    validated_variant_names.append(None)
+            covered_variants = {name for name in validated_variant_names if name is not None}
+            variants_before_wildcard: Set[str] = set()
+            for arm, validated_name in zip(stmt.arms, validated_variant_names):
+                if isinstance(arm.pattern, WildcardPattern):
+                    break
+                if validated_name is not None:
+                    variants_before_wildcard.add(validated_name)
+            wildcard_is_unreachable = enum_info is not None and variants_before_wildcard == defined_variants
             reachable_arm_count = sum(
                 not (isinstance(arm.pattern, WildcardPattern) and wildcard_is_unreachable)
                 for arm in stmt.arms
@@ -927,7 +940,7 @@ class ExpressionTypeChecker:
             fallthrough_states: List[List[Dict[str, bool]]] = []
 
             # Check each arm with pattern variables in scope
-            for arm in stmt.arms:
+            for arm_index, arm in enumerate(stmt.arms):
                 assert isinstance(arm, MatchArm)
 
                 self._alive_scopes = [dict(scope) for scope in pre_match_alive]
@@ -941,79 +954,12 @@ class ExpressionTypeChecker:
                     isinstance(arm.pattern, WildcardPattern) and wildcard_is_unreachable
                 )
                 try:
-                    # Bind pattern variables if this is a variant pattern
-                    if isinstance(arm.pattern, VariantPattern) and isinstance(scrutinee_ty, EnumType):
-                        invalid_variant = False
-                        if self._reject_name_qualifier(
-                                arm.pattern, arm.pattern.name,
-                                arm.pattern.name_qualifier, arm.pattern.module_path
-                        ):
-                            invalid_variant = True
-                        elif arm.pattern.module_path is not None:
-                            assert self._current_func_env is not None
-                            module_name = self._current_func_env.module_name
-                            sym_result = resolve_symbol(
-                                self.module_envs,
-                                module_name,
-                                arm.pattern.name,
-                                module_path=arm.pattern.module_path,
-                            )
-                            sym = sym_result.symbol
-                            qualified = f"{'.'.join(arm.pattern.module_path)}::{arm.pattern.name}"
-                            if sym is None:
-                                if sym_result.error is ResolveErrorKind.UNKNOWN_MODULE:
-                                    self._error(
-                                        arm.pattern,
-                                        f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'"
-                                        f" (unknown module '{sym_result.module_name}')",
-                                    )
-                                elif sym_result.error is ResolveErrorKind.MODULE_NOT_IMPORTED:
-                                    self._error(
-                                        arm.pattern,
-                                        f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'"
-                                        f" (module '{sym_result.module_name}' not imported)",
-                                    )
-                                else:
-                                    self._error(
-                                        arm.pattern,
-                                        f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'",
-                                    )
-                                invalid_variant = True
-                            elif sym.kind is not SymbolKind.ENUM_VARIANT:
-                                self._error(
-                                    arm.pattern,
-                                    f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'",
-                                )
-                                invalid_variant = True
-                            elif sym.module.name != scrutinee_ty.module:
-                                self._error(
-                                    arm.pattern,
-                                    f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'",
-                                )
-                                invalid_variant = True
-
-                        # Look up the enum and variant info
-                        enum_info = self.enum_infos.get((scrutinee_ty.module, scrutinee_ty.name))
-                        if enum_info and not invalid_variant:
-                            variant_info = enum_info.variants.get(arm.pattern.name)
-                            if variant_info:
-                                # Check arity matches
-                                if len(arm.pattern.vars) == len(variant_info.field_types):
-                                    # Bind each pattern variable to its field type
-                                    for var_name, field_type in zip(arm.pattern.vars, variant_info.field_types):
-                                        self._declare_local(var_name, field_type, arm)
-                                else:
-                                    self._error(
-                                        arm.pattern,
-                                        f"[TYP-0101] pattern variable count mismatch: variant '{arm.pattern.name}' "
-                                        f"has {len(variant_info.field_types)} fields but pattern has "
-                                        f"{len(arm.pattern.vars)} variables"
-                                    )
-                            else:
-                                self._error(
-                                    arm.pattern,
-                                    f"[TYP-0102] unknown variant '{arm.pattern.name}' for enum '{format_type(scrutinee_ty)}'"
-                                )
+                    # Bind payload variables only from the canonical validated variant.
+                    validated_name = validated_variant_names[arm_index]
+                    if isinstance(arm.pattern, VariantPattern) and enum_info is not None and validated_name is not None:
+                        variant_info = enum_info.variants[validated_name]
+                        for var_name, field_type in zip(arm.pattern.vars, variant_info.field_types):
+                            self._declare_local(var_name, field_type, arm)
 
                     # Check the arm body with pattern variables in scope
                     # Don't call _check_block because it would push another scope
@@ -1039,20 +985,19 @@ class ExpressionTypeChecker:
                 return StmtFlow.FALLTHROUGH
 
             # check that all variants are covered (or wildcard present)
-            arm_variants = set(arm.pattern.name for arm in stmt.arms if isinstance(arm.pattern, VariantPattern))
             is_wildcard_present = any(isinstance(arm.pattern, WildcardPattern) for arm in stmt.arms)
             is_exhaustive = is_wildcard_present
             if not is_wildcard_present:
-                if arm_variants == defined_variants:
+                if covered_variants == defined_variants:
                     is_exhaustive = True
                 else:
-                    missing_variants = defined_variants - arm_variants
+                    missing_variants = defined_variants - covered_variants
                     self._error(
                         stmt,
                         f"[TYP-0104] non-exhaustive match: missing variants ("
                         f"{', '.join(missing_variants)}) for enum '{format_type(scrutinee_ty)}'"
                     )
-            elif len(arm_variants) == len(enum_info.variants):
+            elif wildcard_is_unreachable:
                 # wildcard is a no-op if all variants are already covered
                 self._warn(stmt,
                            f"[TYP-0105] unreachable wildcard pattern in match: all variants of "
@@ -2297,6 +2242,73 @@ class ExpressionTypeChecker:
             f"paths must have the form 'module::symbol' (did you mean '{simple}'?)",
         )
         return True
+
+    def _validate_match_variant_pattern(
+            self,
+            pattern: VariantPattern,
+            scrutinee_ty: EnumType,
+            enum_info: Optional[EnumInfo],
+    ) -> Optional[str]:
+        """Validate one match variant and return its canonical enum name."""
+        if self._reject_name_qualifier(
+                pattern, pattern.name, pattern.name_qualifier, pattern.module_path
+        ):
+            return None
+
+        if pattern.module_path is not None:
+            assert self._current_func_env is not None
+            module_name = self._current_func_env.module_name
+            sym_result = resolve_symbol(
+                self.module_envs,
+                module_name,
+                pattern.name,
+                module_path=pattern.module_path,
+            )
+            sym = sym_result.symbol
+            qualified = f"{'.'.join(pattern.module_path)}::{pattern.name}"
+            if sym is None:
+                if sym_result.error is ResolveErrorKind.UNKNOWN_MODULE:
+                    self._error(
+                        pattern,
+                        f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'"
+                        f" (unknown module '{sym_result.module_name}')",
+                    )
+                elif sym_result.error is ResolveErrorKind.MODULE_NOT_IMPORTED:
+                    self._error(
+                        pattern,
+                        f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'"
+                        f" (module '{sym_result.module_name}' not imported)",
+                    )
+                else:
+                    self._error(
+                        pattern,
+                        f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'",
+                    )
+                return None
+            if sym.kind is not SymbolKind.ENUM_VARIANT or sym.module.name != scrutinee_ty.module:
+                self._error(
+                    pattern,
+                    f"[TYP-0102] unknown variant '{qualified}' for enum '{format_type(scrutinee_ty)}'",
+                )
+                return None
+
+        if enum_info is None:
+            return None
+        variant_info = enum_info.variants.get(pattern.name)
+        if variant_info is None:
+            self._error(
+                pattern,
+                f"[TYP-0102] unknown variant '{pattern.name}' for enum '{format_type(scrutinee_ty)}'",
+            )
+            return None
+        if len(pattern.vars) != len(variant_info.field_types):
+            self._error(
+                pattern,
+                f"[TYP-0101] pattern variable count mismatch: variant '{pattern.name}' "
+                f"has {len(variant_info.field_types)} fields but pattern has {len(pattern.vars)} variables",
+            )
+            return None
+        return variant_info.name
 
     def _infer_new(self, expr: NewExpr) -> Optional[Type]:
         """Infer type for a 'new' heap allocation expression."""

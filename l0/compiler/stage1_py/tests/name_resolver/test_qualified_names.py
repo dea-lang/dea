@@ -160,6 +160,7 @@ def test_qualified_variant_pattern(write_l0_file, temp_project):
             Red;
             Blue;
         }
+
         """,
     )
 
@@ -278,6 +279,102 @@ def test_qualified_variant_pattern_wrong_module(write_l0_file, temp_project):
     result = driver.analyze("main")
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0102")
+    assert has_error_code(result.diagnostics, "TYP-0104")
+
+
+def test_wrong_enum_variant_does_not_complete_match_coverage(write_l0_file, temp_project):
+    write_l0_file(
+        "main",
+        """
+        module main;
+
+        enum Color {
+            Red;
+            Blue;
+        }
+
+        enum Shape {
+            Circle;
+        }
+
+        func f(c: Color) -> int {
+            match (c) {
+                Red => { return 1; }
+                Circle => { return 2; }
+            }
+        }
+        """,
+    )
+
+    paths = SourceSearchPaths()
+    paths.add_project_root(temp_project)
+    driver = L0Driver(search_paths=paths)
+
+    result = driver.analyze("main")
+    assert result.has_errors()
+    assert has_error_code(result.diagnostics, "TYP-0102")
+    assert has_error_code(result.diagnostics, "TYP-0104")
+
+
+def test_invalid_variant_does_not_make_wildcard_unreachable(write_l0_file, temp_project):
+    write_l0_file(
+        "main",
+        """
+        module main;
+
+        enum Color {
+            Red;
+            Blue;
+        }
+
+        enum PayloadColor {
+            Loaded(value: int);
+            Empty;
+        }
+
+        func f(c: Color) -> int {
+            match (c) {
+                Red => { return 1; }
+                Missing => { return 2; }
+                _ => { return 3; }
+            }
+        }
+
+        func wildcard_first(c: Color) -> int {
+            match (c) {
+                _ => { return 1; }
+                Red => { return 2; }
+                Blue => { return 3; }
+            }
+        }
+
+        func explicit_exhaustive(c: Color) -> int {
+            match (c) {
+                Red => { return 1; }
+                Blue => { return 2; }
+            }
+        }
+
+        func invalid_arity(c: PayloadColor) -> int {
+            match (c) {
+                Loaded(value, extra) => { return value; }
+                Empty => { return 0; }
+            }
+        }
+        """,
+    )
+
+    paths = SourceSearchPaths()
+    paths.add_project_root(temp_project)
+    driver = L0Driver(search_paths=paths)
+
+    result = driver.analyze("main")
+    assert result.has_errors()
+    assert has_error_code(result.diagnostics, "TYP-0102")
+    assert has_error_code(result.diagnostics, "TYP-0101")
+    assert has_error_code(result.diagnostics, "TYP-0104")
+    assert has_error_code(result.diagnostics, "TYP-0159")
+    assert not has_error_code(result.diagnostics, "TYP-0105")
 
 
 def test_unqualified_variant_conflict_is_error(write_l0_file, temp_project):
@@ -736,6 +833,7 @@ def test_overqualified_name_in_pattern(write_l0_file, temp_project):
     result = driver.analyze("main")
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0158")
+    assert has_error_code(result.diagnostics, "TYP-0104")
     diags_0158 = [d for d in result.diagnostics if "TYP-0158" in d.message]
     assert any(
         "nested symbol path 'color::Color::Red': paths must have the form 'module::symbol' "

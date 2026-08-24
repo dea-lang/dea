@@ -70,6 +70,28 @@ func count_diag_code(result: AnalysisResult*, code: string) -> int {
     return count;
 }
 
+/** Return whether one diagnostic has the exact expected code and message. */
+func has_diag_message(result: AnalysisResult*, code: string, message: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code && d.message == message) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Return whether one diagnostic starts at the expected source location. */
+func has_diag_start(result: AnalysisResult*, code: string, line: int, column: int) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code && d.line == line && d.column == column) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Tests test_typing_ok.
  */
@@ -245,6 +267,49 @@ func test_typing_match_qualified_pattern_err() {
         let result = analysis_analyze_entry(sp, "typing_match_qualified_pattern_err", cfg);
         assert(analysis_has_errors(result), "expected typing errors for typing_match_qualified_pattern_err");
         assert(has_diag_code(result, "TYP-0102"), "expected qualified-pattern unknown-variant error");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that only canonical, successfully validated variants contribute to match coverage.
+ */
+func test_typing_match_validation_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_match_validation_err", cfg);
+        assert(analysis_has_errors(result), "expected match validation errors");
+        assert(count_diag_code(result, "TYP-0158") == 1, "expected one nested-pattern path error");
+        assert(count_diag_code(result, "TYP-0102") == 4,
+            "expected unknown, wildcard-adjacent, wrong-module, and wrong-enum errors");
+        assert(count_diag_code(result, "TYP-0101") == 1, "expected one invalid pattern arity error");
+        assert(count_diag_code(result, "TYP-0104") == 5,
+            "expected every invalid explicit-pattern match to stay non-exhaustive");
+        assert(count_diag_code(result, "TYP-0159") == 1,
+            "invalid pattern payload variables must remain unbound");
+        assert(count_diag_code(result, "TYP-0105") == 0,
+            "invalid, wildcard-first, and wildcard-free matches must not report an unreachable wildcard");
+        assert(has_diag_message(result, "TYP-0158",
+            "nested symbol path 'typing_match_validation_dep::RemoteColor::Red': paths must have the form 'module::symbol' (did you mean 'typing_match_validation_dep::Red'?)"),
+            "expected shared nested-pattern diagnostic wording");
+        assert(has_diag_start(result, "TYP-0158", 13, 9),
+            "expected nested-pattern diagnostic on the pattern span");
+        assert(has_diag_start(result, "TYP-0104", 12, 5),
+            "expected non-exhaustive diagnostic on the match span");
+        assert(has_diag_start(result, "TYP-0102", 21, 9),
+            "expected unknown-variant diagnostic on the pattern span");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests that duplicate match variant names remain a parser error. */
+func test_typing_match_duplicate_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_match_duplicate_err", cfg);
+        assert(count_diag_code(result, "PAR-0176") == 1, "expected duplicate match variant error");
         analysis_result_free(result);
     }
     sp_free(sp);
@@ -779,6 +844,8 @@ func main() {
     test_typing_loop_cond_err();
     test_typing_match_diag_err();
     test_typing_match_qualified_pattern_err();
+    test_typing_match_validation_err();
+    test_typing_match_duplicate_err();
     test_typing_case_diag_err();
     test_typing_with_cleanup_guard();
     test_typing_field_diag_err();

@@ -12,6 +12,7 @@ import std.string;
 import std.text;
 import std.vector;
 import util.diag;
+import util.intset;
 import util.strings;
 
 import ast;
@@ -1298,23 +1299,63 @@ func etc_pattern_symbol_name(pattern: PatternNode*) -> string {
 }
 
 /**
+ * Build the `TYP-0158` message for one nested match-pattern path.
+ *
+ * @param pattern Variant pattern carrying module and qualifier segments.
+ * @return Diagnostic text matching expression nested-path diagnostics.
+ */
+func etc_nested_pattern_path_message(pattern: PatternNode*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        if (pattern.module_path != null) {
+            let mp = pattern.module_path as StringVector*;
+            for (let i = 0; i < sv_size(mp); i = i + 1) {
+                if (i > 0) {
+                    sb_append(sb, ".");
+                }
+                sb_append(sb, sv_get(mp, i));
+            }
+            if (sv_size(mp) > 0) {
+                sb_append(sb, "::");
+            }
+        }
+        let nq = pattern.name_qualifier as StringVector*;
+        for (let i = 0; i < sv_size(nq); i = i + 1) {
+            sb_append(sb, sv_get(nq, i));
+            sb_append(sb, "::");
+        }
+        sb_append(sb, pattern.name);
+        let full = sb_to_string(sb);
+        let simple = pattern.name;
+        if (pattern.module_path != null) {
+            simple = tr_module_from_path(pattern.module_path as StringVector*) + "::" + pattern.name;
+        }
+        return "nested symbol path '" + full + "': paths must have the form 'module::symbol' (did you mean '" + simple + "'?)";
+    }
+}
+
+/**
  * Check whether one `match` arm pattern is valid for the matched enum type.
  *
  * @param self Expression checker state.
  * @param match_ty Enum type of the scrutinee.
  * @param pattern_id Pattern to validate.
- * @return `true` when payload binding may proceed.
+ * @return Canonical metadata for the validated variant, or `null`.
  */
-func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, pattern_id: PatternId) -> bool {
+func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, pattern_id: PatternId) -> EnumVariantInfo*? {
     let unit = self.current_unit as DriverUnit*;
     let pattern = pattern_arena_get(unit.parse_result.pattern_arena, pattern_id);
     if (ord(pattern.kind) != ord(PT_VARIANT)) {
-        return true;
+        return null;
+    }
+
+    if (pattern.name_qualifier != null) {
+        etc_diag_error(self, "TYP-0158", etc_nested_pattern_path_message(pattern), unit.path, pattern.span);
+        return null;
     }
 
     let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
     if (info == null) {
-        return false;
+        return null;
     }
 
     if (pattern.module_path != null) {
@@ -1329,7 +1370,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
                 unit.path,
                 pattern.span
             );
-            return false;
+            return null;
         }
         if (nr_env_find(self.result.names as NameResolution*, target_module) == null) {
             etc_diag_error(
@@ -1339,7 +1380,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
                 unit.path,
                 pattern.span
             );
-            return false;
+            return null;
         }
         let sym = tr_symbol_lookup(self.result.names as NameResolution*, self.current_env as ModuleEnv*, pattern.name,
             pattern.module_path, pattern.name_qualifier);
@@ -1354,7 +1395,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
                 unit.path,
                 pattern.span
             );
-            return false;
+            return null;
         }
     }
 
@@ -1367,7 +1408,7 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
             unit.path,
             pattern.span
         );
-        return false;
+        return null;
     }
 
     let pattern_arity = 0;
@@ -1384,10 +1425,10 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
             unit.path,
             pattern.span
         );
-        return false;
+        return null;
     }
 
-    return true;
+    return variant_info;
 }
 
 /**
@@ -1415,16 +1456,30 @@ func etc_format_missing_match_variants(info: EnumInfo*, covered: StringSet*) -> 
     }
 }
 
+/** Return whether every declared enum variant is present in validated coverage. */
+func etc_match_variants_fully_covered(info: EnumInfo*, covered: StringSet*) -> bool {
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let variant = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        if (!ss_has(covered, variant.name)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
  * Check whether an enum `match` covers all variants.
  *
  * @param self Expression checker state.
  * @param match_ty Type of the matched expression.
- * @param arms Match arms to inspect.
+ * @param covered Canonical names from successfully validated variant patterns.
+ * @param wildcard_present Whether the match contains a wildcard arm.
+ * @param wildcard_is_unreachable Whether prior validated variants already cover the enum.
  * @param span Source span for diagnostics.
  * @return `true` if the match is exhaustive.
  */
-func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type*, arms: VectorBase*, span: Span) -> bool {
+func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type*, covered: StringSet*,
+                                    wildcard_present: bool, wildcard_is_unreachable: bool, span: Span) -> bool {
     let unit = self.current_unit as DriverUnit*;
     if (ord(match_ty.kind) != ord(TY_ENUM)) {
         return false;
@@ -1442,63 +1497,38 @@ func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type
         return false;
     }
 
-    with (let covered = ss_create() => ss_free(covered)) {
-        let wildcard_present = false;
-        for (let i = 0; i < vec_size(arms); i = i + 1) {
-            let arm = ptr_vec_get(arms, i) as MatchArm*;
-            let pattern = pattern_arena_get(unit.parse_result.pattern_arena, arm.pattern);
-            if (ord(pattern.kind) == ord(PT_WILDCARD)) {
-                wildcard_present = true;
-            } else if (ord(pattern.kind) == ord(PT_VARIANT)) {
-                ss_add(covered, pattern.name);
-            }
-        }
-
-        if (wildcard_present && ss_size(covered) == vec_size((info as EnumInfo*).variants)) {
-            etc_diag_warn(
-                self,
-                "TYP-0105",
-                "unreachable wildcard pattern in match: all variants of enum '" + type_format(match_ty) + "' are already covered",
-                unit.path,
-                span
-            );
-            return true;
-        }
-
-        if (wildcard_present) {
-            return true;
-        }
-
-        if (ss_size(covered) == vec_size((info as EnumInfo*).variants)) {
-            return true;
-        }
-
-        etc_diag_error(
+    let fully_covered = etc_match_variants_fully_covered(info as EnumInfo*, covered);
+    if (wildcard_present && wildcard_is_unreachable) {
+        etc_diag_warn(
             self,
-            "TYP-0104",
-            "non-exhaustive match: missing variants (" + etc_format_missing_match_variants(info as EnumInfo*, covered) + ") for enum '" + type_format(match_ty) + "'",
+            "TYP-0105",
+            "unreachable wildcard pattern in match: all variants of enum '" + type_format(match_ty) + "' are already covered",
             unit.path,
             span
         );
-        return false;
+        return true;
     }
+
+    if (wildcard_present || fully_covered) {
+        return true;
+    }
+
+    etc_diag_error(
+        self,
+        "TYP-0104",
+        "non-exhaustive match: missing variants (" + etc_format_missing_match_variants(info as EnumInfo*, covered) + ") for enum '" + type_format(match_ty) + "'",
+        unit.path,
+        span
+    );
+    return false;
 }
 
 /** Return whether wildcard match arms are unreachable because variants cover the enum. */
-func etc_match_wildcard_is_unreachable(self: ExpressionTypeChecker*, match_ty: Type*, arms: VectorBase*) -> bool {
+func etc_match_wildcard_is_unreachable(self: ExpressionTypeChecker*, match_ty: Type*, covered: StringSet*) -> bool {
     if (ord(match_ty.kind) != ord(TY_ENUM)) return false;
     let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
     if (info == null) return false;
-    with (let covered = ss_create() => ss_free(covered)) {
-        for (let i = 0; i < vec_size(arms); i = i + 1) {
-            let arm = ptr_vec_get(arms, i) as MatchArm*;
-            let pattern = pattern_arena_get((self.current_unit as DriverUnit*).parse_result.pattern_arena, arm.pattern);
-            if (ord(pattern.kind) == ord(PT_VARIANT)) {
-                ss_add(covered, pattern.name);
-            }
-        }
-        return ss_size(covered) == vec_size((info as EnumInfo*).variants);
-    }
+    return etc_match_variants_fully_covered(info as EnumInfo*, covered);
 }
 
 /**
@@ -1896,7 +1926,28 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         pre_match_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
                     }
                     let fallthrough_states_match = ptr_vec_create(vec_size(arms) + 1);
-                    let wildcard_is_unreachable = etc_match_wildcard_is_unreachable(self, val_ty2 as Type*, arms);
+                    let validated_pattern_ids = iset_create_with_capacity(vec_size(arms));
+                    let covered_variants = ss_create();
+                    let variants_before_wildcard = ss_create();
+                    let wildcard_present = false;
+                    for (let i = 0; i < vec_size(arms); i = i + 1) {
+                        let arm = ptr_vec_get(arms, i) as MatchArm*;
+                        let arm_pattern = pattern_arena_get(unit.parse_result.pattern_arena, arm.pattern);
+                        if (ord(arm_pattern.kind) == ord(PT_WILDCARD)) {
+                            wildcard_present = true;
+                        } else if (ord(arm_pattern.kind) == ord(PT_VARIANT)) {
+                            let canonical_variant = etc_check_match_pattern(self, val_ty2 as Type*, arm.pattern);
+                            if (canonical_variant != null) {
+                                iset_add(validated_pattern_ids, arm.pattern);
+                                ss_add(covered_variants, (canonical_variant as EnumVariantInfo*).name);
+                                if (!wildcard_present) {
+                                    ss_add(variants_before_wildcard, (canonical_variant as EnumVariantInfo*).name);
+                                }
+                            }
+                        }
+                    }
+                    let wildcard_is_unreachable = etc_match_wildcard_is_unreachable(
+                        self, val_ty2 as Type*, variants_before_wildcard);
                     for (let i = 0; i < vec_size(arms); i = i + 1) {
                         let arm = ptr_vec_get(arms, i) as MatchArm*;
                         let arm_pattern = pattern_arena_get(unit.parse_result.pattern_arena, arm.pattern);
@@ -1905,7 +1956,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                             etc_alive_scope_stack_restore(self, pre_match_alive as VectorBase*);
                         }
                         self.next_stmt_unreachable = false;
-                        if (etc_check_match_pattern(self, val_ty2 as Type*, arm.pattern)) {
+                        if (iset_has(validated_pattern_ids, arm.pattern)) {
                             etc_bind_pattern_types(self, val_ty2 as Type*, arm.pattern);
                         }
                         let arm_flow = FLOW_FALLTHROUGH;
@@ -1921,7 +1972,11 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                             etc_alive_state_vec_push_clone(fallthrough_states_match, self.alive_scopes as VectorBase*);
                         }
                     }
-                    let is_exhaustive = etc_check_match_exhaustiveness(self, val_ty2 as Type*, arms, stmt.span);
+                    let is_exhaustive = etc_check_match_exhaustiveness(
+                        self, val_ty2 as Type*, covered_variants, wildcard_present, wildcard_is_unreachable, stmt.span);
+                    iset_free(validated_pattern_ids);
+                    ss_free(covered_variants);
+                    ss_free(variants_before_wildcard);
                     if (!is_exhaustive && pre_match_alive != null) {
                         etc_alive_state_vec_push_clone(fallthrough_states_match, pre_match_alive as VectorBase*);
                     }

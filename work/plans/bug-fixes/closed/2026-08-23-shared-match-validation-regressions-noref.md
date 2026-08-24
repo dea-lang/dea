@@ -2,8 +2,8 @@
 
 ## Keep invalid match patterns out of validated coverage
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-24
+- Status: Completed
 - Title: Reject nested qualified patterns and compute exhaustiveness from validated enum variants
 - Kind: Bug Fix
 - Scope: Shared
@@ -17,8 +17,8 @@
 - Porting rule: Keep pattern-path validation, canonical variant identity, exhaustiveness membership, and diagnostic
   codes identical across the self-hosted analyzers.
 - Target status:
-  - L0 Stage 2: Pending
-  - L1 Stage 1: Pending
+  - L0 Stage 2: Completed
+  - L1 Stage 1: Completed
 - Subsystem: Match typing / Qualified-name validation / Exhaustiveness analysis
 - Modules:
   - `l0/compiler/stage1_py/l0_expr_types.py`
@@ -104,3 +104,26 @@ No new codes are needed:
 1. Every covered variant is known to belong to the scrutinee enum.
 2. Invalid arms remain type-checked enough for useful diagnostics but contribute no coverage or payload bindings.
 3. Both native compilers match Python Stage 1 codes and source spans for the focused cases.
+
+## Implementation Outcome
+
+1. Python Stage 1 and both native expression checkers now validate each enum pattern once and retain its canonical
+   scrutinee-variant identity for coverage and payload-binding decisions.
+2. Nested `module::Enum::Variant` patterns report the shared `TYP-0158` wording before lookup, while unknown,
+   wrong-module, and wrong-enum patterns remain `TYP-0102` errors.
+3. Exhaustiveness and wildcard reachability are derived only from successfully validated variants and prove membership
+   against the enum definition; invalid names and arity-invalid patterns cannot satisfy coverage.
+4. `TYP-0105` is emitted only when a wildcard is present after every declared variant has already been validly covered.
+   Explicit exhaustive matches without `_`, wildcard-first matches, and invalid arms before `_` do not warn.
+
+## Verification Outcome
+
+1. The Python qualified-name suite passed with 22 tests. L0 Stage 2 and L1 Stage 1 expression-type suites passed in
+   normal and ARC/memory trace modes.
+2. Native regressions cover nested paths, unknown names, wrong modules, wrong enums, duplicates, invalid-plus-missing
+   coverage, wildcard ordering, wildcard-free exhaustive matches, arity-invalid coverage, payload-binding exclusion,
+   exact nested-path wording, and representative diagnostic spans.
+3. Repository-root `make test` passed: 1,472 L0 Python tests, all 55 L0 Stage 2 tests, workflows and examples, and all
+   67 L1 Stage 1 tests and examples completed successfully.
+4. The independent read-only review found missing no-wildcard, arity/binding, and diagnostic-detail regressions. All
+   findings were accepted and fixed; follow-up review reported no remaining actionable issue.
