@@ -191,6 +191,8 @@ func test_vec_reserve() {
     vec_reserve(vec, 100);
     printl_si("  new capacity:", vec_capacity(vec));
     printl_si("  size (should still be 0):", vec_size(vec));
+    assert(vec_size(vec) == 0, "vec_reserve must not change logical length");
+    assert(vec_capacity(vec) == 100, "vec_reserve must grow physical capacity");
 
     // Push some elements to verify it works
     printl_s("Pushing 10 elements...");
@@ -199,6 +201,10 @@ func test_vec_reserve() {
     }
     printl_si("  size after push:", vec_size(vec));
     printl_si("  capacity (should still be 100):", vec_capacity(vec));
+    assert(vec_size(vec) == 10, "pushes after reserve must grow logical length");
+    assert(vec_capacity(vec) == 100, "pushes within reserved storage must preserve capacity");
+    vec_check(vec, 9);
+    assert(*(vec_get(vec, 9) as int*) == 9, "last logical element must remain accessible");
 
     vec_free(vec);
     printl_s("vec_reserve tests passed!\n");
@@ -253,6 +259,8 @@ func test_vec_clear() {
     vec_clear(vec);
     printl_si("  size after clear:", vec_size(vec));
     printl_si("  capacity after clear:", vec_capacity(vec));
+    assert(vec_size(vec) == 0, "vec_clear must reset logical length");
+    assert(vec_capacity(vec) == 1, "vec_clear must retain one backing slot");
 
     // Push again to verify it still works
     printl_s("Pushing 2 new values after clear...");

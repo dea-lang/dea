@@ -440,7 +440,6 @@ func tv_push(self: TokenVector, token: Token) {
  * @return Token at `index`.
  */
 func tv_get(self: TokenVector, index: int) -> Token {
-    vec_check(self.vec, index);
     let data = vec_get(self.vec, index) as Token*;
     return *data;
 }

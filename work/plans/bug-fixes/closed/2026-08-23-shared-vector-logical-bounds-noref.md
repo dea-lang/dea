@@ -2,8 +2,8 @@
 
 ## Enforce logical bounds for shared vectors and compiler token access
 
-- Date: 2026-08-23
-- Status: Draft
+- Date: 2026-08-25
+- Status: Completed
 - Title: Check vector length rather than reserved capacity in shared L0 and L1 containers
 - Kind: Bug Fix
 - Scope: Shared
@@ -17,21 +17,27 @@
 - Porting rule: Keep L0 and L1 `VectorBase` bounds behavior identical; compiler token-vector tests must exercise the
   public vector invariant rather than add target-specific capacity checks.
 - Target status:
-  - L0 shared stdlib and L0 Stage 2 token vectors: Pending
-  - L1 shared stdlib and L1 Stage 1 token vectors: Pending
+  - L0 shared stdlib and L0 Stage 2 token vectors: Completed
+  - L1 shared stdlib and L1 Stage 1 token vectors: Completed
 - Subsystem: Standard library containers / Compiler token storage / Runtime safety
 - Modules:
   - `l0/compiler/shared/l0/stdlib/std/vector.l0`
   - `l0/compiler/shared/l0/stdlib/std/array.l0`
+  - `l0/compiler/shared/l0/stdlib/std/text.l0`
   - `l0/compiler/stage2_l0/src/tokens.l0`
   - `l1/compiler/shared/l1/stdlib/std/vector.l1`
   - `l1/compiler/shared/l1/stdlib/std/array.l1`
+  - `l1/compiler/shared/l1/stdlib/std/text.l1`
   - `l1/compiler/stage1_l0/src/tokens.l0`
 - Test modules:
   - `l0/compiler/stage2_l0/tests/vector_test.l0`
   - `l0/compiler/stage2_l0/tests/lexer_test.l0`
+  - `l0/compiler/stage2_l0/tests/util_text_test.l0`
+  - `l0/compiler/stage2_l0/tests/vector_logical_bounds_test.py`
   - `l1/compiler/stage1_l0/tests/vector_test.l0`
   - `l1/compiler/stage1_l0/tests/lexer_test.l0`
+  - `l1/compiler/stage1_l0/tests/util_text_test.l0`
+  - `l1/compiler/stage1_l0/tests/vector_logical_bounds_test.py`
 - Related:
   - `l0/docs/reference/standard-library.md`
   - `l1/docs/reference/standard-library.md`
@@ -101,3 +107,26 @@ makes that failure occur at the correct logical boundary.
 2. `vec_push()` and internal sort/move operations continue to access the newly grown logical slot safely.
 3. Both native compilers fail deterministically at the token-vector boundary instead of reading zero-filled capacity.
 4. L0 and L1 stdlib implementations remain behaviorally aligned.
+
+## Implementation Outcome
+
+1. `vec_check()` now enforces the exact logical range `[0, length)` in both shared stdlibs, and `vec_get()` plus
+   `vec_zap()` route all public element access through that invariant while `ArrayBase` retains capacity bounds.
+2. Both compiler `tv_get()` wrappers now inherit the shared public-vector check directly from `vec_get()` instead of
+   duplicating target-specific checks.
+3. Reserve, grow, push, sort, and linear-map removal callers were audited; newly grown slots become logical before
+   access, and removal paths zap their final logical slot before decrementing length.
+4. The audit exposed one intentional empty-buffer capacity access in `cb_to_string()`. Empty and cleared char buffers
+   now return `""` before requesting element zero, while non-empty conversion continues through logical vector access.
+
+## Verification Outcome
+
+1. Focused L0 Stage 2 and L1 Stage 1 vector, lexer, parser, and text suites passed in normal and ARC/memory trace modes.
+2. New auto-discovered subprocess regressions prove deterministic runtime rejection for empty, negative,
+   `index == length`, cleared, over-reserved, and zap access, plus direct empty, partially filled, cleared, and
+   over-reserved `TokenVector` access in both compiler trees.
+3. Repository-root `make test-all` passed: 1,472 L0 Python tests, all 56 L0 Stage 2 tests, triple bootstrap, eight L0
+   examples, workflow/distribution checks, all 33 L0 trace tests, all 68 L1 Stage 1 tests, environment stackability,
+   four L1 examples, and all 44 default L1 trace tests.
+4. The independent read-only review audited the complete diff, relevant callers, test discovery, L0/L1 parity, and the
+   empty-buffer compatibility path and reported no actionable findings.

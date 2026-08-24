@@ -235,6 +235,9 @@ func cb_reverse(cb: CharBuffer*) {
  */
 func cb_to_string(self: CharBuffer*) -> string {
     let size = cb_size(self);
+    if (size == 0) {
+        return "";
+    }
     let bytes = vec_get(self.chars, 0) as byte*;
     return bytes_to_s(bytes, size);
 }

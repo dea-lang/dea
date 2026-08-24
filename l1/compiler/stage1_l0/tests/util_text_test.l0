@@ -245,6 +245,16 @@ func test_char_buffer() {
 }
 
 /**
+ * Tests converting an empty CharBuffer without reading a reserved vector slot.
+ */
+func test_char_buffer_empty() {
+    let cb = cb_create();
+    assert(cb_size(cb) == 0, "Expected new CharBuffer to be empty");
+    assert(cb_to_string(cb) == "", "Expected empty CharBuffer conversion");
+    cb_free(cb);
+}
+
+/**
  * Tests test_char_buffer_clear.
  */
 func test_char_buffer_clear() {
@@ -259,6 +269,7 @@ func test_char_buffer_clear() {
     printl_s("Clearing buffer...");
     cb_clear(cb);
     printl_si("  size after clear:", cb_size(cb));
+    assert(cb_to_string(cb) == "", "Expected cleared CharBuffer conversion to be empty");
 
     printl_s("Appending 'X', 'Y' after clear...");
     cb_append(cb, 'X');
@@ -961,6 +972,7 @@ func main() -> int {
 
     // CharBuffer
     test_char_buffer();
+    test_char_buffer_empty();
     test_char_buffer_clear();
 
     // String utilities

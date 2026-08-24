@@ -9,10 +9,24 @@ import std.io;
 import std.string;
 import std.assert;
 import std.text;
+import std.vector;
 
 import lexer;
 import tokens;
 import util.diag;
+
+/**
+ * Tests that token storage keeps reserved capacity distinct from logical length.
+ */
+func test_token_vector_reserved_capacity() {
+    let tv = tv_create();
+    assert(tv_len(tv) == 0, "new token vector must be logically empty");
+    assert(vec_capacity(tv.vec) > tv_len(tv), "new token vector must keep reserved storage outside its length");
+    vec_reserve(tv.vec, 64);
+    assert(tv_len(tv) == 0, "token reserve must not change logical length");
+    assert(vec_capacity(tv.vec) == 64, "token reserve must grow physical capacity");
+    tv_free(tv);
+}
 
 /**
  * Lexes source and asserts that the first token is one integer literal.
@@ -596,6 +610,7 @@ func test_tab_advances_one_column() {
  * Main entry point for the module.
  */
 func main() {
+    test_token_vector_reserved_capacity();
     test_prefixed_int_literals_ok();
     test_prefixed_int_literals_err();
     test_int_literal_limits_all_bases();

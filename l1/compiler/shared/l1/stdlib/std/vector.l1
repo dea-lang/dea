@@ -82,7 +82,7 @@ func vec_reserve(self: VectorBase*, total_capacity: int) {
  * @param index The index to check.
  */
 func vec_check(self: VectorBase*, index: int) {
-    arr_check(self.arr, index);
+    assert(index >= 0 && index < self.length, "Index out of bounds in vector access");
 }
 
 /**
@@ -93,6 +93,7 @@ func vec_check(self: VectorBase*, index: int) {
  * @return A pointer to the element data.
  */
 func vec_get(self: VectorBase*, index: int) -> void* {
+    vec_check(self, index);
     return arr_get(self.arr, index);
 }
 
@@ -134,6 +135,7 @@ func vec_capacity(self: VectorBase*) -> int {
  * @param index The index of the element to zap.
  */
 func vec_zap(self: VectorBase*, index: int) {
+    vec_check(self, index);
     arr_zap(self.arr, index);
 }
 

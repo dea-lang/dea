@@ -8,6 +8,7 @@ module lexer_test;
 import std.io;
 import std.string;
 import std.assert;
+import std.vector;
 
 import tokens;
 import lexer;
@@ -261,6 +262,8 @@ func test_token_vector() {
     printl_s("Creating TokenVector...");
     let tv = tv_create();
     printl_si("Initial length:", tv_len(tv));
+    assert(tv_len(tv) == 0, "new token vector must be logically empty");
+    assert(vec_capacity(tv.vec) > tv_len(tv), "new token vector must keep reserved storage outside its length");
 
     // Create some test tokens
     printl_s("\nPushing tokens...");
@@ -274,6 +277,8 @@ func test_token_vector() {
     tv_push(tv, tok3);
     tv_push(tv, tok4);
     printl_si("Length after pushing 4 tokens:", tv_len(tv));
+    assert(tv_len(tv) == 4, "token pushes must grow logical length");
+    assert(vec_capacity(tv.vec) > tv_len(tv), "token vector must remain over-reserved after pushes");
 
     // Test get
     printl_s("\nTesting get...");
