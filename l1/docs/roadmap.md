@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-08-23
+Version: 2026-08-25
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -111,6 +111,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   [0002-runtime-static-library][runtime-library].
 - Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] moved OS/process helpers and RNG into dedicated
   `dea_rt_sys.c` and `dea_rt_rand.c` runtime translation units.
+- Feature [2026-06-30-runtime-pointer-access-validation-noref][runtime-pointer-validation] added checked raw-pointer
+  access, allocation provenance, foreign-storage registration, full/basic/unchecked runtime modes, bounded quarantine,
+  and content-sensitive runtime-variant builds.
 - Feature [2026-04-24-export-manifests-and-aliased-imports-noref][export-imports] added module-level export manifests
   plus alias and selective import resolution for the separate-compilation initiative.
 - Feature [2026-04-24-lbi-symbol-mangling-and-linkage-noref][symbol-linkage] adopted tagged-section LBI names for source
@@ -147,6 +150,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   metadata classification, exact Darwin TinyCC ELF and ARM64EC aliases, aligned Mach-O command and symbol validation,
   byte-bounded iterative LBI parsing, and standard ARMNT/ARM64EC COFF support. That historical subsystem is now retired
   from the current implementation in favor of authoritative sibling interfaces.
+- Feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] made verified sibling
+  `.l1m` files authoritative for standalone semantics and lifecycle planning, removed native-object readers and input
+  snapshots, and made paired Dea objects plus explicit foreign objects opaque caller-asserted host inputs.
 - Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] made `-c` resolve one source module against
   verified interfaces and publish sibling `.o + .l1m` with endpoint rollback; `--keep-c` adds the exact generated `.c`.
   Successful return leaves the complete new selected set, recoverable failure restores the prior set, failed rollback
@@ -210,9 +216,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Completed feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] makes verified
-  sibling `.l1m` files authoritative for standalone semantics and lifecycle planning while treating native objects as
-  opaque host-link inputs.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl`
   / `--link-arg` as the external-library linking surface.
 - Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
@@ -221,16 +224,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   production source modules while preserving public root imports and current compiler behavior.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
-- Feature [2026-06-30-runtime-pointer-access-validation-noref][runtime-pointer-validation] adds runtime pointer access
-  validation to L1 under the shared Dea-wide pointer-safety plan; checked builds are the default and `DEA_RT_UNCHECKED`
-  compiles validation out for release builds. The prebuilt archive runtime honors `DEA_RT_QUARANTINE_MAX_BYTES` and
-  `DEA_RT_QUARANTINE_MAX_COUNT` environment overrides read once at first tracker use. The `l1c --check-basic` flag
-  selects `libdea_rt_check_basic.a` and keeps exact-base validation while omitting the interior-pointer treap; the
-  `l1c --unchecked` flag selects `libdea_rt_unchecked.a` and defines `DEA_RT_UNCHECKED` in generated C. Allocation
-  provenance separates raw, `new`, ARC, static, and registered foreign storage: raw memory uses `rt_free`/`rt_realloc`,
-  `new` uses extent-aware generated drop cleanup, and external lifetimes use
-  `rt_register_foreign`/`rt_unregister_foreign` without transferring ownership. Content-sensitive runtime variant stamps
-  rebuild archives and tcc objects when compiler flags or baked settings change.
 
 ## Backlog
 

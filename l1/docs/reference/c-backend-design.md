@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-08-23
+Version: 2026-08-25
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -55,6 +55,7 @@ pure generation, compile-only retention, and build/run retention call the same m
 - maps semantic types to runtime/C representations
 - performs C identifier hygiene and name mangling
 - emits helper calls for checked arithmetic, allocation, retain/release, casts, and unwraps
+- C-escapes decoded string bytes while neutralizing every historical trigraph spelling without changing runtime bytes
 
 ### Interface and lifecycle projection
 

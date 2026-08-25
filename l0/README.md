@@ -5,8 +5,8 @@
 **L0 (Level Zero)** is a small systems language that compiles to C99. It is the first level of the
 [Dea language family](../README.md) and the compiler base used to build Dea/L1.
 
-**Level 0 is self-hosted.** The current release line is `1.1.0`, tagged `l0-v1.1.0` in the monorepo's level-prefixed
-release namespace.
+**Level 0 is self-hosted.** The latest release is `1.1.0`, tagged `l0-v1.1.0` in the monorepo's level-prefixed release
+namespace. The current development line targets `2.0.0` because it includes a coordinated breaking CLI alias migration.
 
 Run all L0 build, test, docs, and compiler commands described here from this directory.
 
@@ -35,7 +35,7 @@ the semantics are enforced by L0 itself.
 
 ## Project status and directions
 
-L0 `1.1.0` is the current release line.
+L0 `1.1.0` is the current stable release; repository HEAD is the unreleased `2.0.0` development line.
 
 - Stage 1: complete and remains the reference implementation for language behavior.
 

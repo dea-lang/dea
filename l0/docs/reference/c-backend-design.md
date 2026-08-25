@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-07-11
+Version: 2026-08-25
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -47,7 +47,7 @@ Input is a fully-typed `AnalysisResult`. Output is one C99 translation unit.
 - Emits runtime helper calls (checked arithmetic, unwrap helpers, retain/release, allocation, and sized drop
   begin/finish).
 - Lowers string literals (const and non-const) through one canonical decode/encode path, emitted via
-  `L0_STRING_CONST(...)`.
+  `L0_STRING_CONST(...)`; C escaping neutralizes every historical trigraph spelling without changing runtime bytes.
 
 ## Generated Unit Layout
 
@@ -65,6 +65,10 @@ The generated C file is organized in this order in both stages:
 9. C `main(int argc, char **argv)` wrapper when entry module defines `main`
 
 Current backend target is a **single C translation unit**.
+
+Top-level `let` storage is emitted as file-scope `static` C. Initializers are restricted to the supported C99 constant
+subset; Stage 2 checks them against the resolved declaration type and lowers statically known `ord(Variant)` calls to
+direct enum-tag constants. Non-static top-level initializer expressions are rejected before host compilation.
 
 ## Type Lowering
 
@@ -110,7 +114,7 @@ Implemented lowering includes:
 
 - Literals, var refs, unary/binary ops, calls, field/index access, casts, constructors
 - String literals are decoded from token escapes to bytes, then emitted as `L0_STRING_CONST("...", len)` values (cast to
-  `l0_string` where required by expression context), with bytes C-escaped from decoded content.
+  `l0_string` where required by expression context), with decoded bytes C-escaped and trigraph-safe.
 - `new` heap allocation (`_rt_alloc_obj`) + initialization
 - `try` (`expr?`) lowering to checked unwrap with early return on empty
 - Checked int arithmetic uses runtime helpers (`_rt_iadd`, `_rt_isub`, `_rt_imul`, `_rt_idiv`, `_rt_imod`)
@@ -144,6 +148,8 @@ Key points:
 - Loop cleanup is path-sensitive: `continue` cleans only the current iteration body scope before jumping to the update
   step, while `break` and `return` clean all nested scopes up to the relevant exit boundary. This ensures that ARC
   locals declared after a `continue` are not released if the `continue` path is taken before their initialization.
+- `if`, `match`, and `case` alternatives analyze from the same incoming liveness state and meet only reachable
+  fallthrough states; impossible or dead wildcard arms do not make dropped bindings appear live.
 - A `for` initialization or update clause executes in the surrounding loop context. Header `break` / `continue`
   therefore targets an enclosing loop, while body loop control targets the `for` itself. Condition-false and body-break
   exits share one cleanup point for initialization-scope ARC values.

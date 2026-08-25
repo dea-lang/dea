@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-07-23
+Version: 2026-08-25
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -49,7 +49,9 @@ Its repository status today is:
 - self-hosted through Stage 2,
 - the canonical public CLI and user documentation surface,
 - validated through the existing L0 test, bootstrap, packaging, and docs workflows,
-- versioned under the `l0-v*` / `l0-snapshot-*` release namespace.
+- versioned under the `l0-v*` / `l0-snapshot-*` release namespace,
+- stable at released version `1.1.0`, while the unreleased development line targets `2.0.0` because of its coordinated
+  breaking CLI alias migration.
 
 ### Dea/L1
 
@@ -57,9 +59,8 @@ L1 is in bootstrap development.
 
 Its repository status today is:
 
-- scaffolded as a separate subtree under `l1/`,
-- seeded from the runnable L0 Stage 2 compiler,
-- buildable as a repo-local `l1c-stage1` compiler,
+- maintained as a separate bootstrap compiler subtree under `l1/`,
+- built from the runnable L0 Stage 2 compiler and selectable as the repo-local `l1c` command,
 - validated through copied Stage 1 implementation tests written in `.l0` and run through the upstream L0 compiler,
 - using `.l1` as the current L1 source surface for the copied L1 stdlib, example programs, and bootstrap test fixtures,
 - carrying implemented post-L0 language work such as wider numeric types, real literals, bitwise operators, top-level
@@ -67,8 +68,10 @@ Its repository status today is:
   arguments, the `is(...)` enum tag intrinsic, function pointer and L1-defined variadic function types, `unsafe func`,
   raw-pointer indexing inside unsafe functions, fixed-size arrays, non-owning slices with `len`/`slice`, and
   single-statement `while` / `for` / `match` bodies,
-- emitting deterministic textual `.l1m` module interfaces through the internal `--emit-interface` mode while ordinary
-  imports remain source-based,
+- emitting and verifying deterministic textual `.l1m` module interfaces that are authoritative for interface-backed
+  imports and standalone-link semantics,
+- supporting per-module `--gen`, compile-only `.o + .l1m` publication, verified standalone `--link`, and
+  multi-compilation-unit `--build` / `--run` across mixed source/interface graphs,
 - shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
   value-type helper surface,
 - not yet an install/dist/release-bearing product.
@@ -77,10 +80,11 @@ L1 bootstrap CI validation is now automated through the unified `ci.yml` GitHub 
 L1-relevant changes into the reusable `l1-ci.yml` delegate. That path covers:
 
 - building the L1 Stage 1 compiler via an explicit upstream L0 Stage 2 compiler on Linux, macOS, and Windows,
-- running L1 Stage 1 implementation tests and default ARC/memory trace checks,
+- running all normal L1 Stage 1 checks plus the default ARC/memory trace suite on POSIX and a focused trace smoke set on
+  Windows,
 - validating `examples/*.l1` sources, and
-- providing `workflow_dispatch` inputs for platform selection, manual C compiler selection, and opt-in slow trace
-  coverage.
+- providing `workflow_dispatch` inputs for platform selection, manual C compiler selection, and explicit Make-target
+  selection, including full Windows trace validation when requested.
 
 L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not yet active and will only be added when the L1
 install/dist artifact contract is defined, stable, and smoke-testable. See `MONOREPO.md` for the full release-line
@@ -116,8 +120,8 @@ by the relevant level subtree.
 
 Near-term project direction is split cleanly by level:
 
-1. Maintain the released Dea/L0 `1.1.0` line through documented, semantically versioned fixes and focused foundational
-   changes.
+1. Keep Dea/L0 `1.1.0` as the stable release while preparing the semantically versioned `2.0.0` development line and its
+   breaking CLI migration for a deliberate release.
 2. Keep Dea/L1 focused on bootstrap stabilization and planned post-L0 language/library growth, not on release parity
    yet.
 3. Only move or duplicate level-local reference documents into root `docs/reference/` when they clearly become Dea-wide

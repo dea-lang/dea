@@ -30,15 +30,17 @@ self-hosted through its Stage 2 compiler and is the canonical user-facing toolch
 
 **Dea/L1** carries post-L0 language growth: wider fixed-width integer types, `float`/`double` with an explicit
 floating-point contract, bitwise operators, top-level `const`, function pointer types, the `unsafe` function marker,
-fixed-size arrays, export manifests, and selective/aliased imports, among others. It currently exists as a bootstrap
-compiler implemented in L0 (`stage1_l0`) and consumes the L0 Stage 2 compiler as its upstream toolchain; it is not yet a
+fixed-size arrays, export manifests, and selective/aliased imports, among others. Its L0-implemented bootstrap compiler
+(`stage1_l0`) now supports per-module generated C, compile-only `.o + .l1m` artifacts, verified standalone linking, and
+multi-compilation-unit build/run. It consumes the L0 Stage 2 compiler as its upstream toolchain and is not yet a
 release-bearing product. Start at [l1/README.md](l1/README.md) and [l1/docs/roadmap.md](l1/docs/roadmap.md).
 
 ## Stability and Evolution
 
 Dea is highly experimental, and the language itself is evolving daily. Dea/L0 is quite stable as of its `1.1.0` release,
 but no level is immune from breaking changes; when breaking changes land, they are properly incorporated into that
-level's semantic versioning.
+level's semantic versioning. The current L0 development line targets `2.0.0` because it includes a coordinated breaking
+CLI alias migration; `1.1.0` remains the latest released version.
 
 At any given moment:
 
@@ -87,8 +89,9 @@ For L1 bootstrap development:
 
 ```shell
 make venv
-cd l0 && make use-dev-stage2   # prepare the upstream L0 compiler
-cd ../l1 && make build-stage1
+cd l1
+make use-dev-stage1            # auto-prepares the repo-local upstream L0 Stage 2 compiler
+source build/dea/bin/l1-env.sh
 ```
 
 See [l1/README.md](l1/README.md) for the current L1 workflow.
@@ -98,7 +101,7 @@ See [l1/README.md](l1/README.md) for the current L1 workflow.
 | Directory  | Description                                          |
 | ---------- | ---------------------------------------------------- |
 | `l0/`      | Dea/L0 language, compiler, runtime, docs, and tests  |
-| `l1/`      | Dea/L1 bootstrap scaffold and compiler seed          |
+| `l1/`      | Dea/L1 bootstrap compiler, runtime, docs, and tests  |
 | `editors/` | Shared editor grammars, modes, indexes, and fixtures |
 | `scripts/` | Shared monorepo automation and helper modules        |
 | `docs/`    | Dea-wide and monorepo-wide stable documentation      |

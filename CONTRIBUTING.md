@@ -8,7 +8,8 @@ from the `l0/` directory.
 
 ## Scope and status
 
-Dea/L0 remains experimental, but `1.1.0` is a released, semantically versioned language line. Language, compiler CLI,
+Dea/L0 remains experimental. `1.1.0` is the latest released, semantically versioned language line, while the current
+development line targets `2.0.0` because it contains a coordinated breaking CLI alias migration. Language, compiler CLI,
 and runtime changes must be documented and versioned; backward-incompatible changes are not introduced silently into an
 existing release line.
 

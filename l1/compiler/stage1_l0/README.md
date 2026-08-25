@@ -1,9 +1,13 @@
-# L1 Stage 1 Compiler Seed
+# L1 Stage 1 Compiler
 
-This directory contains the initial `stage1_l0` compiler seed for Dea/L1.
+This directory contains the active `stage1_l0` bootstrap compiler for Dea/L1.
 
 `stage1_l0` means the compiler is implemented in Dea/L0. It is seeded from the runnable Dea/L0 Stage 2 compiler and
 retargeted to the Dea/L1 public interface.
+
+The driver currently provides per-module generated C, compile-only `.o + .l1m` artifacts, verified standalone linking,
+and multi-compilation-unit build/run. See [`l1/docs/project-status.md`][project-status] for the complete current
+contract.
 
 The implementation sources in this subtree remain `.l0`, and the copied implementation test suite is also `.l0`. Those
 tests are exercised through the upstream `l0c-stage2` bootstrap compiler rather than through `l1c` itself. The fixture
@@ -37,3 +41,4 @@ For a non-default upstream bootstrap compiler, set `L1_BOOTSTRAP_L0C=/path/to/l0
 `make build-stage1`.
 
 [l1-root]: ../../README.md
+[project-status]: ../../docs/project-status.md

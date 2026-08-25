@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-07-11
+Version: 2026-08-25
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -170,6 +170,9 @@ When you unwrap `string?` with `opt as string`, the resulting `string` is owners
 
 In ordinary L1 code, you should not need to add a compensating manual retain after `opt as string`.
 
+Parentheses around a place or its unwrap cast preserve the same borrowed-place classification. A non-niche ARC `T -> T?`
+wrap remains an ownership-producing boundary and retains its payload exactly once.
+
 ## 6. Container Ownership Contracts
 
 ### `std.vector` / `StringVector`
@@ -220,8 +223,9 @@ Current compiler behavior:
 - `for` initialization and update execute in the surrounding loop context; header `break` / `continue` targets an
   enclosing loop, while body loop control targets the `for` itself
 - normal `for` condition-false and body-break exits clean initialization-scope ARC values exactly once
-- drop liveness is definite across loop fixed points; assignment to a bare local revives it only after the right-hand
-  side checks successfully
+- drop liveness is definite across loop fixed points; `if`, `match`, and `case` alternatives start from the same
+  incoming state and meet only reachable fallthrough states, while assignment to a bare local revives it only after the
+  right-hand side checks successfully
 - abrupt `with` cleanup replaces the pending exit; cleanup fallthrough resumes it, and inline cleanup is LIFO
 
 ## 9. Validation and Bug Reporting

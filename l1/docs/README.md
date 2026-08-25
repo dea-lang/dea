@@ -5,7 +5,7 @@ This `l1/docs/` tree holds stable documentation for the Dea/L1 subtree.
 At the current bootstrap stage, this tree is still intentionally narrow:
 
 - L1 bootstrap/reference documents
-- future L1 language/compiler specs once they exist
+- normative L1 language/compiler specifications
 
 L1-local lifecycle artifacts live in the sibling `l1/work/` tree. Dea-wide stable docs live under the root `docs/` tree,
 while Dea-wide lifecycle artifacts live under the root `work/` tree.
@@ -15,7 +15,7 @@ while Dea-wide lifecycle artifacts live under the root `work/` tree.
 - `roadmap.md` for the singular evergreen L1 roadmap
 - `project-status.md` for the current L1 bootstrap status snapshot
 - `reference/` for L1-local bootstrap and implementation references
-- `specs/` for future L1-local specifications
+- `specs/` for L1-local compiler and module-interface specifications
 - `implementation/` for future accepted implementation notes if needed
 - `decisions/` for ADR-style records linking design decisions to the closed plans that shaped them and the current docs
   where they are normatively recorded

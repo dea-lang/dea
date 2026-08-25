@@ -31,7 +31,7 @@ from the root `pyproject.toml`.
 | Directory  | Description                                                   |
 | ---------- | ------------------------------------------------------------- |
 | `l0/`      | Dea/L0 language, compiler, runtime, docs, examples, and tests |
-| `l1/`      | Dea/L1 bootstrap scaffold and compiler seed                   |
+| `l1/`      | Dea/L1 bootstrap compiler, runtime, docs, examples, and tests |
 | `editors/` | Shared editor grammars, fallback modes, tags, and tests       |
 | `scripts/` | Monorepo-owned automation and shared helper modules           |
 | `docs/`    | Dea-wide and monorepo-wide stable documentation               |
@@ -100,8 +100,8 @@ Third-party notices for shared vendored assets live at [`THIRD_PARTY_NOTICES`](T
 
 ## Working In `l1/`
 
-Dea/L1 currently exists as a bootstrap scaffold inside [`l1/`](l1/). From the monorepo root, `cd l1` before running L1
-bootstrap commands.
+Dea/L1 currently exists as a bootstrap compiler subtree inside [`l1/`](l1/). From the monorepo root, `cd l1` before
+running L1 bootstrap commands.
 
 - L1 subtree pointer: [`l1/README.md`](l1/README.md)
 - L1 AI guidance: [`l1/CLAUDE.md`](l1/CLAUDE.md)
@@ -110,7 +110,7 @@ Typical local bootstrap flow:
 
 ```bash
 make venv
-cd l0 && make use-dev-stage2
-cd ../l1
-make build-stage1
+cd l1
+make use-dev-stage1
+source build/dea/bin/l1-env.sh
 ```

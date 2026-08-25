@@ -122,7 +122,7 @@ wheels = [
 
 [[package]]
 name = "l0c"
-version = "1.1.0.dev0"
+version = "2.0.0.dev0"
 source = { virtual = "l0" }
 
 [[package]]

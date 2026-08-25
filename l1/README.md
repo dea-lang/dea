@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub>
 
-This subtree contains the bootstrap scaffold for Dea/L1 inside the Dea monorepo.
+This subtree contains the active bootstrap compiler for Dea/L1 inside the Dea monorepo.
 
 The canonical project overview lives in [README.md][root-readme]. Run L1 bootstrap commands from this directory.
 L1-local stable documentation lives under [l1/docs/][docs], while L1-local plans and other lifecycle artifacts live
@@ -18,6 +18,10 @@ At the moment the Dea/L1 source surface is `.l1`, including the copied L1 stdlib
 the L1-language fixture programs exercised by the bootstrap compiler tests. The `stage1_l0` compiler implementation and
 its implementation tests are `.l0` sources and are built or run with the upstream `l0c-stage2` toolchain during
 bootstrap.
+
+The current Stage 1 driver supports per-module generated C, compile-only `.o + .l1m` artifact pairs, verified standalone
+linking, and multi-compilation-unit build/run across mixed source/interface graphs. These are bootstrap capabilities; L1
+does not yet have a self-hosted Stage 2 compiler or install/dist/release workflow.
 
 Current Stage 1 validation combines the `.l0` implementation test suite under `compiler/stage1_l0/tests/` with
 warning-free latest-stage `--check` coverage for `examples/*.l1`. Exact generated-C golden-file parity is not part of

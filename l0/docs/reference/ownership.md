@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-07-16
+Version: 2026-08-25
 
 This document describes how ownership works in L0 today, covering:
 
@@ -181,6 +181,9 @@ The same applies to:
 - Returning an unwrapped `string?` from a function.
 - Passing an unwrapped `string?` into a container (e.g. `sv_push`).
 
+Parentheses around a place or its unwrap cast preserve the same borrowed-place classification. A non-niche ARC `T -> T?`
+wrap remains an ownership-producing boundary and retains its payload exactly once.
+
 **When would you need a manual retain?** Only if you are moving the unwrapped value across a **raw, non-assignment
 boundary**, for example storing it via `rt_memcpy` into a manually managed buffer. In normal L0 code, you should not
 need to add `rt_string_retain` after `opt as string`.
@@ -246,7 +249,8 @@ The compiler ensures that ARC-managed locals are only cleaned up if they were ac
   targets an enclosing loop, while body loop control targets the `for` itself. Condition-false and body-break exits
   release initialization-scope ARC values exactly once.
 - **Drop liveness:** A pointer binding is usable only when it is alive on every path reaching the use. Loop analysis
-  converges liveness across backedges, and assignment to a bare local revives the binding only after the right-hand side
+  converges liveness across backedges; `if`, `match`, and `case` alternatives start from the same incoming state and
+  meet only reachable fallthrough states. Assignment to a bare local revives the binding only after the right-hand side
   checks successfully.
 - **Early `return`:** All scopes up to the function top-level are cleaned in reverse order.
 - **`with` exit precedence:** Cleanup fallthrough resumes the pending exit. An abrupt cleanup replaces that exit, and

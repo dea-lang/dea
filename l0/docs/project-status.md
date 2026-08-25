@@ -1,6 +1,6 @@
 # L0 Project Status
 
-Version: 2026-07-28
+Version: 2026-08-25
 
 This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `1.1.0`; the current
 development line targets `2.0.0` and includes a coordinated breaking CLI alias migration.
@@ -54,7 +54,10 @@ At a high level, it provides:
 - release packaging plus docs/PDF publishing automation through the repository workflows,
 - current parity fixes for Stage 2 diagnostics, drop-liveness checks, string comparisons, bare enum variants in
   top-level bindings, ARC borrowed-parameter reassignment, unwrap-cast ARC cleanup, optional-wrapper typedef ordering,
-  and Windows trace-runner behavior.
+  and Windows trace-runner behavior,
+- current Stage 2 correctness fixes for canonical match validation and binding identity, alternative-branch liveness,
+  expression-analysis replay ownership, trigraph-safe C strings, logical vector bounds and filesystem error boundaries,
+  top-level initializer typing, and C99-portable static `ord(Variant)` constants.
 
 Stage 1 remains the behavioral oracle for equivalent Stage 2 paths.
 
@@ -108,7 +111,7 @@ The current development support baseline remains:
 
 ## Known Limitations and Constraints
 
-These remain true in the `1.1.0` release:
+These remain true in repository HEAD; the released `1.1.0` line has the same constraints:
 
 1. Backend output is one C translation unit (no multi-object/header split pipeline yet).
 2. Arrays/slices are not implemented, and pointer indexing is not part of the current L0 language surface; indexing

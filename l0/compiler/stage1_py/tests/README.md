@@ -31,7 +31,7 @@ Shared fixtures and helpers stay in `conftest.py` at this directory root.
 
 ## Running tests
 
-From repository root:
+From the `l0/` directory:
 
 ```bash
 cd compiler/stage1_py

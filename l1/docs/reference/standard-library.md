@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-07-13
+Version: 2026-08-25
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -86,6 +86,9 @@ abstraction used by existing containers and raw-memory helpers; it is not the re
 | `read_file`   | `func(path: string) -> string?`                                                                                 | Reads entire file; `null` on error.                     |
 | `write_file`  | `func(path: string, data: string) -> Unit?`                                                                     | Writes entire file; `null` on error.                    |
 
+All path-taking operations treat an empty path as failure without invoking host filesystem APIs. A whole-file write
+succeeds only when both the write and stream close succeed.
+
 ### `std.vector`
 
 **Imports:** `sys.rt`, `sys.memory`, `std.assert`, `std.string`, `std.array`
@@ -106,6 +109,8 @@ abstraction used by existing containers and raw-memory helpers; it is not the re
 | `vi_sort`                    | `func(self: VectorBase*) -> void`                               | Insertion sort for `int` vectors (ascending).   |
 | `StringVector`               | `type StringVector = VectorBase`                                | String-specialized vector alias.                |
 | `sv_*`                       | `sv_create/push/get/size/capacity/sort/clear/free`              | String vector API with ARC-aware clear/free.    |
+
+`vec_get` and the typed/string get helpers validate against logical length, never merely reserved capacity.
 
 ### `std.hashmap`
 
@@ -662,8 +667,8 @@ All `extern func` and `unsafe extern func` symbols exposed to L1 from `sys.*` mo
 | `rt_string_from_byte`         | `func(b: byte) -> string`                         | Creates a one-byte string.                                                                                 |
 | `rt_string_retain`            | `func(s: string) -> void`                         | Increments heap-string refcount.                                                                           |
 | `rt_string_release`           | `func(s: string) -> void`                         | Decrements heap-string refcount.                                                                           |
-| `rt_read_file_all`            | `func(path: string) -> string?`                   | Reads a whole file into a string.                                                                          |
-| `rt_write_file_all`           | `func(path: string, data: string) -> bool`        | Writes a whole string to a file.                                                                           |
+| `rt_read_file_all`            | `func(path: string) -> string?`                   | Reads a nonempty path; returns `null` on failure.                                                          |
+| `rt_write_file_all`           | `func(path: string, data: string) -> bool`        | Writes a nonempty path; returns false on write or close failure.                                           |
 | `rt_flush_stdout`             | `func() -> void`                                  | Flushes standard output.                                                                                   |
 | `rt_flush_stderr`             | `func() -> void`                                  | Flushes standard error.                                                                                    |
 | `rt_print`                    | `func(s: string) -> void`                         | Prints a string to stdout.                                                                                 |
@@ -702,7 +707,7 @@ All `extern func` and `unsafe extern func` symbols exposed to L1 from `sys.*` mo
 | `rt_time_local_is_dst`        | `func(unix_sec: int) -> bool?`                    | Looks up local DST state.                                                                                  |
 | `rt_system`                   | `func(cmd: string) -> int`                        | Runs a shell command.                                                                                      |
 | `rt_file_info`                | `func(path: string) -> RtFileInfo`                | Returns stat-like file metadata.                                                                           |
-| `rt_delete_file`              | `func(path: string) -> bool`                      | Deletes a file by path.                                                                                    |
+| `rt_delete_file`              | `func(path: string) -> bool`                      | Deletes a nonempty path; returns false on failure.                                                         |
 
 ### Declared in `sys.real` (68)
 

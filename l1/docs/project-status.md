@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-08-24
+Version: 2026-08-25
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -203,6 +203,9 @@ randomness, assertions, optionals, the current container set, the shared `int` h
 `_F` variants), basic math functions, `std.io` numeric print plus integer token-read helpers for the implemented
 fixed-width integer family, and the `std.types` `Value` enum plus optionality/type-query helpers for built-in value
 types.
+
+Container access now checks vector logical length rather than reserved capacity, and filesystem path operations treat
+empty paths as failures without host calls; whole-file writes also report stream-close failures.
 
 ## Delivery and Validation
 
