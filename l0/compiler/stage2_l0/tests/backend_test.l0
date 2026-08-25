@@ -266,6 +266,7 @@ func test_backend_generate_types_and_top_level_lets() {
         sv_push(lines, "let empty = None;");
         sv_push(lines, "let point_size: int = sizeof(Point);");
         sv_push(lines, "let empty_tag: int = ord(None);");
+        sv_push(lines, "let some_tag: int = ord(Some(Point(1, 2)));");
         sv_push(lines, "let small: byte = 1;");
         sv_push(lines, "let optional_small: byte? = 2;");
         sv_push(lines, "func main() -> int {");
@@ -292,8 +293,11 @@ func test_backend_generate_types_and_top_level_lets() {
         assert(contains_s(generated, "static l0_int l0_demo_main_point_size = ((l0_int)sizeof(struct l0_demo_main_Point));"),
             "top-level sizeof initializer mismatch");
         assert(contains_s(generated,
-            "static l0_int l0_demo_main_empty_tag = ((l0_int)(((struct l0_demo_main_MaybePoint){ .tag = l0_demo_main_MaybePoint_None }).tag));"),
+            "static l0_int l0_demo_main_empty_tag = ((l0_int)(l0_demo_main_MaybePoint_None));"),
             "top-level ord initializer mismatch");
+        assert(contains_s(generated,
+            "static l0_int l0_demo_main_some_tag = ((l0_int)(l0_demo_main_MaybePoint_Some));"),
+            "top-level payload ord initializer mismatch");
         assert(contains_s(generated, "static l0_byte l0_demo_main_small = 1;"),
             "top-level contextual byte initializer mismatch");
         assert(contains_s(generated,

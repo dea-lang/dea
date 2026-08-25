@@ -350,14 +350,12 @@ def test_toplet_initializer_type_mismatch(artifact_dir: Path) -> None:
 def test_toplet_static_intrinsics(artifact_dir: Path) -> None:
     """Static intrinsic initializers must type-check, compile, and execute."""
 
-    run_ok(
-        "toplet_static_intrinsics",
-        0,
-        """
+    source = """
         module main;
 
         enum Choice {
             None;
+            Some(value: int);
         }
 
         struct Holder {
@@ -366,6 +364,7 @@ def test_toplet_static_intrinsics(artifact_dir: Path) -> None:
 
         let byte_size: int = sizeof(byte);
         let none_tag: int = ord(None);
+        let some_tag: int = ord(Some(99));
         let top_value: byte? = 1;
 
         func read(value: byte?) -> int {
@@ -375,12 +374,23 @@ def test_toplet_static_intrinsics(artifact_dir: Path) -> None:
         func main() -> int {
             let local_value: byte? = 2;
             let holder = Holder(3);
-            return byte_size + none_tag + read(top_value) + read(local_value) +
-                read(holder.value) + read(4) - 11;
+            return byte_size + none_tag + some_tag + read(top_value) +
+                read(local_value) + read(holder.value) + read(4) - 12;
         }
-        """,
+    """
+
+    c_code = run_gen("toplet_static_intrinsics_gen", source, artifact_dir)
+    assert_true(
+        "static l0_int l0_main_none_tag = ((l0_int)(l0_main_Choice_None));" in c_code,
+        "bare variant ord should use its direct tag constant",
         artifact_dir,
     )
+    assert_true(
+        "static l0_int l0_main_some_tag = ((l0_int)(l0_main_Choice_Some));" in c_code,
+        "payload variant ord should use its direct tag constant",
+        artifact_dir,
+    )
+    run_ok("toplet_static_intrinsics", 0, source, artifact_dir)
 
 
 def test_toplet_nonconstant_ord_rejected(artifact_dir: Path) -> None:

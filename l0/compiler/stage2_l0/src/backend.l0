@@ -1416,6 +1416,53 @@ func be_is_static_let_initializer(self: Backend*, expr_id: ExprId) -> bool {
 }
 
 /**
+ * Resolve the enum-variant symbol named by one static constructor expression.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Bare or called variant constructor expression.
+ * @return Resolved variant symbol, or `null` when the expression is not a variant constructor.
+ */
+func be_static_variant_symbol(self: Backend*, expr_id: ExprId) -> Symbol*? {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    let name_expr = expr;
+    if (ord(expr.kind) == ord(EX_CALL)) {
+        name_expr = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+    }
+    if (ord(name_expr.kind) != ord(EX_VAR_REF)) {
+        return null;
+    }
+
+    let sym = be_lookup_symbol(self, name_expr.text_value, name_expr.module_path, name_expr.name_qualifier);
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_ENUM_VARIANT)) {
+        return null;
+    }
+    return sym as Symbol*;
+}
+
+/**
+ * Emit a file-scope `ord` initializer as a direct C enum-tag constant.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Static `ord` call expression.
+ * @return C99 constant expression for the resolved variant tag.
+ */
+func be_emit_static_ord_initializer(self: Backend*, expr_id: ExprId) -> string {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) != ord(EX_CALL) || expr.ids == null || vec_size(expr.ids as VectorBase*) != 1) {
+        return be_ice_string("[ICE-1181] unsupported top-level ord initializer");
+    }
+
+    let sym = be_static_variant_symbol(self, id_vec_get(expr.ids as VectorBase*, 0));
+    if (sym == null) {
+        return be_ice_string("[ICE-1181] unsupported top-level ord initializer");
+    }
+    let target = sym as Symbol*;
+    with (let enum_type = type_new_enum(target.module_name, target.owner_name) => type_free(enum_type)) {
+        return cem_emit_cast("l0_int", cem_emit_enum_tag(enum_type, target.name));
+    }
+}
+
+/**
  * Emit a constant initializer for a top-level `let`.
  *
  * @param self Backend state to inspect.
@@ -1445,9 +1492,11 @@ func be_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type: Typ
         EX_VAR_REF => { return be_emit_bare_variant_static_initializer(self, expr_id, expected_type); }
         EX_CALL => {
             let callee = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
-            if (ord(callee.kind) == ord(EX_VAR_REF) &&
-                (callee.text_value == "sizeof" || callee.text_value == "ord")) {
+            if (ord(callee.kind) == ord(EX_VAR_REF) && callee.text_value == "sizeof") {
                 return be_emit_call(self, expr_id);
+            }
+            if (ord(callee.kind) == ord(EX_VAR_REF) && callee.text_value == "ord") {
+                return be_emit_static_ord_initializer(self, expr_id);
             }
             return be_emit_const_constructor(self, expr_id, expected_type);
         }
