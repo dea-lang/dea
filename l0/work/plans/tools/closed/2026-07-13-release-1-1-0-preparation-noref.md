@@ -18,7 +18,7 @@
 - Test modules:
   - `l0/tests/test_release_tag_policy.py`
 - Related:
-  - `l0/work/plans/features/2026-06-08-case-else-removal-l0-phase2-noref.md`
+  - `l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md`
   - `l0/work/plans/tools/closed/2026-05-01-immutable-release-workflows-noref.md`
 - Repro: `cd l0 && make test-workflows`
 
@@ -129,5 +129,14 @@ duplicate GitHub release.
   repository synchronized the versioned API documentation.
 - The reviewed announcement passed the blog repository's production build and link checks, then was published as
   [Dea/L0 1.1.0: safer control flow and a frontend that keeps going](https://googlielmo.github.io/posts/dea-l0-v1-1-0-safer-control-flow-and-a-frontend-that-keeps-going/).
-- Every publication check is complete. This plan moved to `l0/work/plans/tools/closed/`; removal of deprecated
-  `case ... else` remains deferred to Dea/L0 2.0.0 in the open Phase 2 plan.
+- Every publication check is complete. This plan moved to `l0/work/plans/tools/closed/`; at release time, removal of
+  deprecated `case ... else` remained deferred to Dea/L0 2.0.0 under the then-open Phase 2 plan.
+
+## ADR Impact
+
+- Decision: Prepare and publish the L0 1.1.0 release without advancing the deferred 2.0.0 grammar removal.
+  - Scope: N/A
+  - Disposition: ADR not warranted
+  - ADR: None
+  - Rationale: The plan executed an existing release and publication workflow without establishing a new architectural
+    policy.

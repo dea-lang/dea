@@ -8,12 +8,24 @@ from l0_parser import Parser
 CASE_DEFAULT_RECOVERY_SRC = """module main;
 func main() -> int {
     case (1) {
-        else { return 0; }
+        _ => { return 0; }
         "a" => { return 1; }
         _ => 2;
-        else 3;
+        _ => 3;
     }
     printl_s("ok");
+    return 0;
+}
+"""
+
+CASE_STRAY_ELSE_RECOVERY_SRC = """module main;
+func main() -> int {
+    case (1) {
+        _ => return 0;
+        1 => return 1;
+        else return 2;
+        else return 3;
+    }
     return 0;
 }
 """
@@ -142,19 +154,13 @@ def test_case_default_recovery_stays_inside_case():
     parser = Parser.from_source(CASE_DEFAULT_RECOVERY_SRC)
     parser.parse_module()
 
-    assert has_error_code(parser.diagnostics, "PAR-0242")
     assert has_error_code(parser.diagnostics, "PAR-0234")
     assert diag_code_count(parser.diagnostics, "PAR-0236") == 2
     assert not has_error_code(parser.diagnostics, "PAR-0225")
     assert not has_error_code(parser.diagnostics, "PAR-0123")
     assert not has_error_code(parser.diagnostics, "PAR-0020")
-    assert diag_lines(parser.diagnostics, "PAR-0242") == [4]
     assert diag_lines(parser.diagnostics, "PAR-0234") == [5]
     assert diag_lines(parser.diagnostics, "PAR-0236") == [6, 7]
-
-    deprecated_else = diags_for_code(parser.diagnostics, "PAR-0242")[0]
-    assert (deprecated_else.line, deprecated_else.column) == (4, 9)
-    assert (deprecated_else.end_line, deprecated_else.end_column) == (4, 13)
 
     value_after_default = diags_for_code(parser.diagnostics, "PAR-0234")[0]
     assert (value_after_default.line, value_after_default.column) == (5, 9)
@@ -164,4 +170,18 @@ def test_case_default_recovery_stays_inside_case():
     assert (duplicate_defaults[0].line, duplicate_defaults[0].column) == (6, 9)
     assert (duplicate_defaults[0].end_line, duplicate_defaults[0].end_column) == (6, 10)
     assert (duplicate_defaults[1].line, duplicate_defaults[1].column) == (7, 9)
-    assert (duplicate_defaults[1].end_line, duplicate_defaults[1].end_column) == (7, 13)
+    assert (duplicate_defaults[1].end_line, duplicate_defaults[1].end_column) == (7, 10)
+
+
+def test_case_recovery_preserves_stray_else_boundaries():
+    parser = Parser.from_source(CASE_STRAY_ELSE_RECOVERY_SRC)
+    parser.parse_module()
+
+    assert diag_code_count(parser.diagnostics, "PAR-0234") == 1
+    assert diag_code_count(parser.diagnostics, "PAR-0123") == 2
+    assert not has_error_code(parser.diagnostics, "PAR-0235")
+    assert not has_error_code(parser.diagnostics, "PAR-0100")
+    assert not has_error_code(parser.diagnostics, "PAR-0225")
+    assert not has_error_code(parser.diagnostics, "PAR-0020")
+    assert diag_lines(parser.diagnostics, "PAR-0234") == [5]
+    assert diag_lines(parser.diagnostics, "PAR-0123") == [6, 7]

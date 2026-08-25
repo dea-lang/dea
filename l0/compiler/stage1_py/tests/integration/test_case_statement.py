@@ -6,10 +6,10 @@ Tests for the `case` statement: scalar and string dispatch.
 
 Covers:
 - Lexer: `case` keyword
-- Parser: valid forms, all error codes (PAR-0230 ... PAR-0241)
+- Parser: valid forms, error diagnostics, and recovery
 - Type checker: scrutinee type (TYP-0106), arm type mismatch (TYP-0107),
   duplicate literals (TYP-0108), Unicode escape validation (TYP-0109)
-- Codegen: int switch, string if/else chain, byte, bool, else arm,
+- Codegen: int switch, string if/else chain, byte, bool, default arm,
   compile-and-run round-trips
 """
 
@@ -96,38 +96,6 @@ def test_parse_case_multiple_int_arms():
     assert stmt.arms[2].literal.value == 3
 
 
-def test_parse_case_with_else():
-    src = """
-    module test;
-    func main() {
-        case (42) {
-            1 => { return; }
-            else { return; }
-        }
-    }
-    """
-    stmt = get_func_body_stmt(src)
-    assert isinstance(stmt, CaseStmt)
-    assert len(stmt.arms) == 1
-    assert stmt.else_arm is not None
-    assert isinstance(stmt.else_arm, CaseElse)
-
-
-def test_parse_case_only_else():
-    src = """
-    module test;
-    func main() {
-        case (42) {
-            else { return; }
-        }
-    }
-    """
-    stmt = get_func_body_stmt(src)
-    assert isinstance(stmt, CaseStmt)
-    assert len(stmt.arms) == 0
-    assert stmt.else_arm is not None
-
-
 def test_parse_case_string_literal():
     src = """
     module test;
@@ -210,7 +178,7 @@ def test_parse_case_arm_body_is_single_stmt():
     func main() -> int {
         case (42) {
             1 => return 1;
-            else return 0;
+            _ => return 0;
         }
     }
     """
@@ -223,7 +191,7 @@ def test_parse_case_arm_body_is_single_stmt():
 
 
 def test_parse_case_with_wildcard_default():
-    """`_ =>` is the canonical default arm and yields the same AST as `else`."""
+    """`_ =>` parses as the sole default-arm spelling."""
     src = """
     module test;
     func main() {
@@ -239,18 +207,17 @@ def test_parse_case_with_wildcard_default():
     assert len(stmt.arms) == 1
     assert stmt.else_arm is not None
     assert isinstance(stmt.else_arm, CaseElse)
-    # The canonical spelling is not deprecated, so no PAR-0242 warning.
-    assert not any("PAR-0242" in d.message for d in parser.diagnostics)
+    assert not parser.diagnostics
 
 
 def test_parse_case_only_wildcard_default():
     src = """
-    module test;
-    func main() {
-        case (42) {
-            _ => { return; }
+        module test;
+        func main() {
+            case (42) {
+                _ => { return; }
+            }
         }
-    }
     """
     stmt = get_func_body_stmt(src)
     assert isinstance(stmt, CaseStmt)
@@ -273,55 +240,42 @@ def test_parse_case_wildcard_single_stmt():
     assert not isinstance(stmt.else_arm.body, Block)
 
 
-def test_parse_case_else_emits_deprecation_warning():
-    """A deprecated `else` default arm still parses but warns with PAR-0242."""
+def test_parse_case_stray_else_arm_error():
+    """Stray `else` arm spellings are PAR-0123 without a generic cascade."""
+    for arm in ("else { return; }", "else => { return; }"):
+        src = f"""
+        module test;
+        func main() {{
+            case (42) {{
+                {arm}
+            }}
+        }}
+        """
+        _, parser = parse_module_with_parser(src)
+        codes = [d.message for d in parser.diagnostics]
+        assert sum("PAR-0123" in message for message in codes) == 1
+        assert not any("PAR-0235" in message for message in codes)
+        assert not any("PAR-0225" in message for message in codes)
+        assert not any("PAR-0020" in message for message in codes)
+
+
+def test_parse_case_value_arm_if_else_body_accepted():
+    """An unbraced value-arm `if` eagerly consumes its matching `else`."""
     src = """
     module test;
-    func main() {
-        case (42) {
-            1 => { return; }
-            else { return; }
-        }
-    }
-    """
-    mod, parser = parse_module_with_parser(src)
-    stmt = mod.decls[0].body.stmts[0]
-    assert isinstance(stmt, CaseStmt)
-    assert stmt.else_arm is not None
-    warnings = [d for d in parser.diagnostics if "PAR-0242" in d.message]
-    assert len(warnings) == 1
-    assert warnings[0].kind == "warning"
-
-
-def test_parse_case_ambiguous_if_else_rewrites_accepted():
-    """The two disambiguating rewrites for PAR-0243 both parse cleanly."""
-    braced = """
-    module test;
     func main() -> int {
         case (42) {
-            1 => { if (true) return 1; else return 0; }
-        }
-        return 0;
-    }
-    """
-    mod, parser = parse_module_with_parser(braced)
-    assert not any("PAR-0243" in d.message for d in parser.diagnostics)
-
-    wildcard = """
-    module test;
-    func main() -> int {
-        case (42) {
-            1 => if (true) return 1;
+            1 => if (true) return 1; else return 0;
             _ => return 0;
         }
     }
     """
-    mod, parser = parse_module_with_parser(wildcard)
-    assert not any("PAR-0243" in d.message for d in parser.diagnostics)
+    mod, parser = parse_module_with_parser(src)
+    assert not parser.diagnostics
 
 
 def test_parse_case_default_arm_if_else_body_accepted():
-    """A default-arm body may be an unbraced if-else; only value arms are guarded."""
+    """A default-arm body may be an unbraced if-else."""
     wildcard = """
     module test;
     func main() -> int {
@@ -332,19 +286,7 @@ def test_parse_case_default_arm_if_else_body_accepted():
     }
     """
     mod, parser = parse_module_with_parser(wildcard)
-    assert not any("PAR-0243" in d.message for d in parser.diagnostics)
-
-    else_chain = """
-    module test;
-    func main() -> int {
-        case (42) {
-            1 => { return 1; }
-            else if (true) return 2; else return 3;
-        }
-    }
-    """
-    mod, parser = parse_module_with_parser(else_chain)
-    assert not any("PAR-0243" in d.message for d in parser.diagnostics)
+    assert not parser.diagnostics
 
 
 # ============================================================================
@@ -387,20 +329,6 @@ def test_parse_case_missing_lbrace():
     assert any("PAR-0233" in d.message for d in parser.diagnostics)
 
 
-def test_parse_case_is_after_else():
-    src = """
-    module test;
-    func main() {
-        case (42) {
-            else { return; }
-            1 => { return; }
-        }
-    }
-    """
-    mod, parser = parse_module_with_parser(src)
-    assert any("PAR-0234" in d.message for d in parser.diagnostics)
-
-
 def test_parse_case_missing_arrow_in_arm():
     src = """
     module test;
@@ -412,33 +340,6 @@ def test_parse_case_missing_arrow_in_arm():
     """
     mod, parser = parse_module_with_parser(src)
     assert any("PAR-0235" in d.message for d in parser.diagnostics)
-
-
-def test_parse_case_duplicate_else():
-    src = """
-    module test;
-    func main() {
-        case (42) {
-            else { return; }
-            else { return; }
-        }
-    }
-    """
-    mod, parser = parse_module_with_parser(src)
-    assert any("PAR-0236" in d.message for d in parser.diagnostics)
-
-
-def test_parse_case_arrow_in_else():
-    src = """
-    module test;
-    func main() {
-        case (42) {
-            else => return;
-        }
-    }
-    """
-    mod, parser = parse_module_with_parser(src)
-    assert any("PAR-0237" in d.message for d in parser.diagnostics)
 
 
 def test_parse_case_unexpected_token():
@@ -504,14 +405,14 @@ def test_parse_case_wildcard_missing_arrow():
     assert any("PAR-0235" in d.message for d in parser.diagnostics)
 
 
-def test_parse_case_duplicate_default_mixed():
-    """A second default in any `_`/`else` combination is PAR-0236."""
+def test_parse_case_duplicate_wildcard_default():
+    """A second `_` default is PAR-0236."""
     src = """
     module test;
     func main() {
         case (42) {
             _ => { return; }
-            else { return; }
+            _ => { return; }
         }
     }
     """
@@ -533,21 +434,6 @@ def test_parse_case_value_arm_after_wildcard():
     assert any("PAR-0234" in d.message for d in parser.diagnostics)
 
 
-def test_parse_case_ambiguous_if_else():
-    """An unbraced `if` arm body followed by `else` is PAR-0243."""
-    src = """
-    module test;
-    func main() -> int {
-        case (42) {
-            1 => if (true) return 1;
-            else return 0;
-        }
-    }
-    """
-    mod, parser = parse_module_with_parser(src)
-    assert any("PAR-0243" in d.message for d in parser.diagnostics)
-
-
 # ============================================================================
 # Type checker tests
 # ============================================================================
@@ -561,7 +447,7 @@ def test_typecheck_case_int_passes(analyze_single):
             case (x) {
                 1 => { return 1; }
                 2 => { return 2; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -577,7 +463,7 @@ def test_typecheck_case_string_passes(analyze_single):
             case (s) {
                 "hi" => { return 1; }
                 "bye" => { return 2; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -593,7 +479,7 @@ def test_typecheck_case_byte_passes(analyze_single):
             case (b) {
                 'a' => { return 1; }
                 'b' => { return 2; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -609,7 +495,7 @@ def test_typecheck_case_bool_passes(analyze_single):
             case (b) {
                 true => { return 1; }
                 false => { return 0; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -625,7 +511,7 @@ def test_typecheck_case_invalid_scrutinee_type(analyze_single):
         func main() -> int {
             let p: Point = Point(1, 2);
             case (p) {
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -641,7 +527,7 @@ def test_typecheck_case_arm_type_mismatch(analyze_single):
             let x: int = 1;
             case (x) {
                 "hello" => { return 1; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -658,7 +544,7 @@ def test_typecheck_case_duplicate_literal(analyze_single):
             case (x) {
                 1 => { return 1; }
                 1 => { return 2; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -675,7 +561,7 @@ def test_typecheck_case_duplicate_string_literal(analyze_single):
             case (s) {
                 "hi" => { return 1; }
                 "hi" => { return 2; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -707,7 +593,7 @@ def test_typecheck_case_return_path_with_else(analyze_single):
             case (x) {
                 1 => { return 1; }
                 2 => { return 2; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
         func main() -> int {
@@ -801,7 +687,7 @@ def test_codegen_case_with_else(codegen_single):
             let x: int = 42;
             case (x) {
                 1 => { return 1; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -817,7 +703,7 @@ def test_codegen_case_string_with_else(codegen_single):
             let s: string = "other";
             case (s) {
                 "hi" => { return 1; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -859,7 +745,7 @@ def test_codegen_case_int_else_compiles_and_runs(codegen_single, compile_and_run
             case (x) {
                 1 => { return 1; }
                 2 => { return 1; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -895,7 +781,7 @@ def test_codegen_case_string_else_compiles_and_runs(codegen_single, compile_and_
             case (s) {
                 "hi" => { return 1; }
                 "bye" => { return 1; }
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -985,7 +871,7 @@ def test_codegen_case_only_else_compiles_and_runs(codegen_single, compile_and_ru
         func main() -> int {
             let x: int = 42;
             case (x) {
-                else { return 0; }
+                _ => { return 0; }
             }
         }
     """)
@@ -1040,7 +926,7 @@ def test_codegen_case_break_inside_while(codegen_single, compile_and_run, tmp_pa
             }
             case (i) {
                 5 => { return 0; }
-                else { return 1; }
+                _ => { return 1; }
             }
         }
     """)
@@ -1065,7 +951,7 @@ def test_codegen_case_continue_inside_while(codegen_single, compile_and_run, tmp
             }
             case (sum) {
                 18 => { return 0; }
-                else { return 1; }
+                _ => { return 1; }
             }
         }
     """)
@@ -1082,7 +968,7 @@ def test_codegen_match_break_inside_while(codegen_single, compile_and_run, tmp_p
         func get_cmd(i: int) -> Cmd {
             case (i) {
                 3 => { return Stop(); }
-                else { return Go(); }
+                _ => { return Go(); }
             }
         }
         func main() -> int {
@@ -1097,7 +983,7 @@ def test_codegen_match_break_inside_while(codegen_single, compile_and_run, tmp_p
             }
             case (i) {
                 3 => { return 0; }
-                else { return 1; }
+                _ => { return 1; }
             }
         }
     """)
@@ -1119,7 +1005,7 @@ def test_codegen_case_break_inside_for(codegen_single, compile_and_run, tmp_path
             }
             case (result) {
                 7 => return 0;
-                else return 1;
+                _ => return 1;
             }
         }
     """)
@@ -1142,7 +1028,7 @@ def test_codegen_case_string_rvalue_scrutinee(codegen_single, compile_and_run, t
             case (get_name()) {
                 "hello" => { return 0; }
                 "world" => { return 1; }
-                else { return 2; }
+                _ => { return 2; }
             }
         }
     """)

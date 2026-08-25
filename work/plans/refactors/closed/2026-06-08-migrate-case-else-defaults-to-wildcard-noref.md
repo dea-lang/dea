@@ -24,10 +24,11 @@ warning, while keeping `else` working. Both spellings lower to the identical AST
 `case … else <Stmt>` to `_ => <Stmt>` is behavior-preserving — it only silences the deprecation warning.
 
 This refactor canonicalizes all in-tree sources now, independently and at any time. It is the prerequisite for the two
-Phase 2 grammar-removal plans ([L1](../../../l1/work/plans/features/2026-06-08-case-else-removal-l1-phase2-noref.md),
-[L0](../../../l0/work/plans/features/2026-06-08-case-else-removal-l0-phase2-noref.md)): once no in-tree source uses an
-`else` default, those plans become pure behavior-only changes (remove the grammar/parser path, retire the codes) with no
-coupled migration.
+Phase 2 grammar-removal plans
+([l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../../../../l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md),
+[l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md](../../../../l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md)):
+once no in-tree source uses an `else` default, those plans become pure behavior-only changes (remove the grammar/parser
+path, retire the codes) with no coupled migration.
 
 ## Proposed Changes
 
@@ -67,3 +68,12 @@ coupled migration.
 - Canonicalized all instances of `else` within `case` statements to `_ =>`.
 - Validated via successful L0 (`make test-all`) and L1 (`make test-stage1`) suites with zero regressions or deprecation
   warnings emitted.
+
+## ADR Impact
+
+- Decision: Canonicalize in-tree `case` defaults before removing the compatibility grammar.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0007-case-default-arm-wildcard.md`
+  - Rationale: ADR-0007 defines the staged wildcard migration, including the source rewrite that made terminal grammar
+    removal safe.

@@ -2,8 +2,8 @@
 
 ## `case` default arm `_ =>`, Phase 2 (L0): remove `else` and retire the interim codes
 
-- Date: 2026-06-08
-- Status: Draft
+- Date: 2026-08-25
+- Status: Completed
 - Title: Remove `else` as a `case` default arm in L0 Stage 1 + Stage 2 and retire `PAR-0242`/`0243`
 - Kind: Feature
 - Scope: L0
@@ -16,13 +16,13 @@
 - Origin: Dangling-`else` ambiguity retired by making `_ =>` the sole `case` default
 - Depends on:
   - The completed source-migration prerequisite
-    [work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../../../work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):
+    [work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../../../../work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):
     all in-tree compiled `.l0` `case … else` defaults, including `.l0` files under `l1/`, are already `_ =>` before this
     plan removes the `else` grammar.
   - The completed `PAR-0123` bug fix
-    ([work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md](../../../../work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md)).
+    ([work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md](../../../../../work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md)).
   - The independent L1 Phase 2 plan has already landed
-    ([l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../../../../l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md)).
+    ([l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../../../../../l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md)).
 - Subsystem: Parser / grammar / diagnostics / docs / ADR
 - Modules:
   - `l0/compiler/stage1_py/l0_parser.py`, `l0_diagnostics.py`
@@ -52,11 +52,10 @@ Phase 2 plan and has no `case … else` of its own.
    `_parse_case_value_arm_body` / `ps_parse_case_value_arm_body` and the `guard_dangling_else` parameter on
    `_parse_if_stmt` / `ps_parse_if_stmt` (and its two call sites), so `1 => if (c) x; else y;` parses cleanly. Drop the
    now-unused `_warning` / `ps_emit_warning` if unreferenced.
-2. **Shared diagnostic retirement:** remove `PAR-0242`/`0243` from `l0_diagnostics.py` `DIAGNOSTIC_CODE_FAMILIES`,
-   `test_diagnostic_codes.py` (`PAR_TRIGGERS` / `WARNING_CODES`), and the catalog rows; reword the Phase 1 generalized
-   meanings back to `_`-only: `PAR-0234` "value arm cannot appear after the `_` default arm", `PAR-0236` "duplicate `_`
-   default arm", `PAR-0238` "expected value literal or `_` in `case` arm". Remove the now-moot `PAR-0242`/`0243` `l1`
-   skip added by the completed L1 plan in `scripts/diagnostic_parity.py`. Bump catalog `Version:`.
+2. **Shared diagnostic retirement:** remove `PAR-0237`, `PAR-0242`, and `PAR-0243` from `l0_diagnostics.py`
+   `DIAGNOSTIC_CODE_FAMILIES`, `test_diagnostic_codes.py` (`PAR_TRIGGERS` / `WARNING_CODES`), and the catalog rows;
+   reword the Phase 1 generalized meanings back to `_`-only for `PAR-0234` and `PAR-0236`. Remove the now-moot L1 parity
+   skips for all three retired codes in `scripts/diagnostic_parity.py`. Bump catalog `Version:`.
 3. **Tests:** remove the L0 Phase 1 `PAR-0242`/`0243` tests and the `else if … else` default-body test; add tests that a
    stray `case`-arm `else` emits `PAR-0123`, `_ =>` is the only default, and `1 => if (c) x; else y;` parses cleanly.
 4. **Grammar** (`l0/docs/reference/grammar.md`): terminal form below; remove the Phase 1 `PAR-0243`/deprecation prose;
@@ -79,6 +78,11 @@ WildcardArm ::= "_" "=>" Stmt
   - Disposition: Amend ADR
   - ADR: `docs/decisions/0007-case-default-arm-wildcard.md`
   - Rationale: This is the terminal L0 half of the shared wildcard-default migration already governed by ADR-0007.
+- Decision: Remove the temporary L1-ahead-of-L0 diagnostic parity exceptions when L0 reaches the terminal grammar.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0014-intentional-cross-level-divergence-and-parity-exceptions.md`
+  - Rationale: ADR-0014 requires narrowly scoped migration exceptions to be retired once the oracle converges.
 
 ## Verification
 
@@ -86,11 +90,31 @@ WildcardArm ::= "_" "=>" Stmt
    `PAR-0123`; `1 => if (c) x; else y;` parses cleanly.
 2. A pre-removal build/check sweep confirms the source-migration prerequisite: no compiled in-tree `.l0` source emits
    `PAR-0242`.
-3. `rg 'PAR-0242|PAR-0243' l0 l1` is empty except historical ADR/plan prose; diagnostic-code parity tests pass.
+3. `rg 'PAR-0237|PAR-0242|PAR-0243' l0 l1` is empty except historical ADR/plan/release prose; diagnostic-code parity
+   tests pass.
 4. Whole-tree build clean: `cd l0 && make -j test-all` + `make triple-test`; `cd l1 && make test-stage1` still green;
    both `check-examples` with no warnings/errors.
 5. `l0/docs/reference/grammar.md` version-bumped to terminal form; catalog updated; ADR-0007 updated; this plan closed
    and linked from the ADR.
+
+## Completion Notes
+
+- L0 Stage 1 and Stage 2 now accept `_ =>` as the sole `case` default arm, diagnose a stray arm-level `else` as
+  `PAR-0123`, and eagerly bind an unbraced value-arm `if` body to its matching `else`.
+- Removed the Phase 1 parser branches, dangling-`else` guards, warning helpers, and tests for `PAR-0242`/`PAR-0243`.
+- Retired `PAR-0237` with `PAR-0242`/`PAR-0243` because its `else =>` condition became unreachable when the old arm
+  spelling was removed; migrated diagnostic triggers, parser/backend fixtures, ARC regressions, and L1 parity skips.
+- Updated the L0 grammar, shared diagnostic catalog, and ADR-0007 to the terminal wildcard-only state.
+- Pre-removal prerequisite builds passed without `PAR-0242`: `cd l0 && make use-dev-stage2` and
+  `cd l1 && make use-dev-stage1`.
+- Focused validation passed: the three Stage 1 parser/diagnostic test modules (324 tests), traced Stage 2 `parser_test`,
+  and L0/L1 diagnostic-code parity.
+- Full `cd l0 && make test-all` validation passed: 1,464 Stage 1 tests; all 56 Stage 2 tests; all 8 examples; all
+  workflow tests; and all 33 broad trace checks.
+- `cd l1 && make test-all` passed: 68 normal tests, environment stackability, all 4 examples, and all 44 trace tests.
+- Independent review found and prompted fixes for case-arm `else` recovery boundaries, direct `else =>` replacement
+  coverage, one dynamically assembled L1 fixture, moved-plan links, and the parity-exception ADR records. The corrected
+  L1 backend fixture passed both its focused normal and ARC/memory trace tests.
 
 ## Non-Goals
 

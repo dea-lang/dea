@@ -417,7 +417,7 @@ func test_backend_generate_loop_exit_case_lowering() {
         sv_push(lines, "            0 => {");
         sv_push(lines, "                continue;");
         sv_push(lines, "            }");
-        sv_push(lines, "            else {");
+        sv_push(lines, "            _ => {");
         sv_push(lines, "                break;");
         sv_push(lines, "            }");
         sv_push(lines, "        }");

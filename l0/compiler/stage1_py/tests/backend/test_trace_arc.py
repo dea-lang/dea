@@ -267,7 +267,7 @@ def test_trace_arc_case_scrutinee_unwrap_retains(
             let opt: string? = concat_s("o", "k") as string?;
             case (opt as string) {
                 "ok" => { return 0; }
-                else { return 1; }
+                _ => { return 1; }
             }
         }
         """,

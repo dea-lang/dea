@@ -1,6 +1,6 @@
 # Dea/L<sub>0</sub> Grammar
 
-Version: 2026-06-24
+Version: 2026-08-25
 
 The following is the formal grammar for the Dea/L<sub>0</sub> programming language in EBNF-style. This describes the
 concrete syntax that lexers and parsers should accept.
@@ -270,28 +270,16 @@ MatchArm        ::=     Pattern "=>" Block
 ### 5.6 Case (scalar/string dispatch)
 
 ```ebnf
-CaseStmt        ::=     "case" "(" Expr ")" "{" CaseArm* DefaultArm? "}"
+CaseStmt        ::=     "case" "(" Expr ")" "{" CaseArm* WildcardArm? "}"
 
 CaseArm         ::=     CaseLiteral "=>" Stmt
 
-DefaultArm      ::=     WildcardArm | ElseArm
-
 WildcardArm     ::=     "_" "=>" Stmt
-
-ElseArm         ::=     "else" Stmt
 
 CaseLiteral     ::=     IntLiteral | ByteLiteral | StringLiteral | BoolLiteral
 ```
 
-The default arm has two spellings. `_ =>` is canonical and takes a match arrow, mirroring `match`. `else` is deprecated
-and arrow-less; it still parses but emits `PAR-0242` and is removed in a later phase. A `case` has at most one default
-arm in either spelling.
-
-While `else` remains accepted, an unbraced `if` used as a `case` *value-arm* body may not be immediately followed by
-`else`: the `else` is ambiguous between the `if` and the still-open `case` default, so it is rejected with `PAR-0243`.
-Brace the arm body (`1 => { if (c) ... else ... }`) or use a `_ =>` default. Default-arm bodies are unaffected, since
-their trailing `else` is unambiguous once the default slot is taken. This rule disappears once `else` is removed,
-because `_` shares no token with `if`.
+`_ =>` is the sole `case` default-arm spelling, mirrors the `match` wildcard arm, and may appear at most once.
 
 Patterns (L<sub>0</sub> subset):
 

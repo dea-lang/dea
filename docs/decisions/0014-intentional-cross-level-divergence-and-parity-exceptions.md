@@ -1,7 +1,7 @@
 # ADR-0014: Intentional Cross-Level Divergence and Parity Exceptions
 
 - Decision date: 2026-06-08
-- Last edited: 2026-07-27
+- Last edited: 2026-08-25
 - Status: Accepted
 
 ## Context
@@ -53,6 +53,8 @@ is removed.
 
 - [l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../../l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md):
   established the explicit L1-ahead-of-L0 parity exception for the `case` default migration
+- [l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md](../../l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md):
+  retired the temporary parity exception once L0 reached the terminal wildcard-only grammar
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the historical decision into the ADR catalog
 

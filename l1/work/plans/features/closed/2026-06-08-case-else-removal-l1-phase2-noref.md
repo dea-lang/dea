@@ -13,10 +13,10 @@
 - Origin: Dangling-`else` ambiguity retired by making `_ =>` the sole `case` default
 - Depends on:
   - The source-migration prerequisite
-    [work/plans/refactors/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../../../work/plans/refactors/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):
+    [work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../../../../work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):
     all in-tree `.l1` `case … else` defaults must already be `_ =>` before this plan removes the `else` grammar.
   - The committed bug-fix
-    ([work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md](../../../../work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md)),
+    ([work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md](../../../../../work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md)),
     which introduced `PAR-0123` ("else without if"). This plan routes a stray `case`-arm `else` to it.
 - Subsystem: Parser / grammar / diagnostics parity / tests
 - Modules:
@@ -35,7 +35,7 @@ removes `else` as an L1 `case` default after the prerequisite source-migration r
 This plan is independent of the L0 half and is intended to land first: L1 is unreleased, the two levels are independent,
 and both move in the same direction. The shared `PAR-0242`/`0243` retirement and the catalog/ADR updates belong to the
 L0 plan
-([l0/work/plans/features/2026-06-08-case-else-removal-l0-phase2-noref.md](../../../../l0/work/plans/features/2026-06-08-case-else-removal-l0-phase2-noref.md)).
+([l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md](../../../../../l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md)).
 
 ## Why this is safe before the L0 plan
 
@@ -86,3 +86,17 @@ WildcardArm ::= "_" "=>" Stmt
 1. L0 parser changes, the shared `PAR-0242`/`0243` retirement, catalog/ADR updates, and Phase 1 plan closure: all in the
    L0 plan. Any source migration belongs to the prerequisite refactor plan.
 2. Any change to `match` or `with`; the block-body alternative; new tokens/keywords.
+
+## ADR Impact
+
+- Decision: Advance L1 to the terminal wildcard-only `case` default grammar before L0.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0007-case-default-arm-wildcard.md`
+  - Rationale: ADR-0007 records the level-specific rollout and the terminal `_ =>` grammar shared by L0 and L1.
+- Decision: Represent the intentional L1-ahead-of-L0 behavior as narrow parity exceptions with an upstream-convergence
+  retirement condition.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0014-intentional-cross-level-divergence-and-parity-exceptions.md`
+  - Rationale: ADR-0014 governs forward-only cross-level migrations and the lifecycle of their parity exceptions.

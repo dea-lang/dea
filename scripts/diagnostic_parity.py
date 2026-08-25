@@ -178,9 +178,6 @@ def all_codes(stage: str, oracle) -> list[str]:
     if stage == "l1":
         skip.add("LEX-0060")
         skip.add("PAR-0226")
-        skip.add("PAR-0237")
-        skip.add("PAR-0242")
-        skip.add("PAR-0243")
         skip.add("PAR-9401")
         skip.add("TYP-0212")
     return [code for code in codes if code not in skip]

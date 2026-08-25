@@ -208,14 +208,14 @@ func main() -> int {
 
     parser = Parser.from_source(src)
     parser.parse_module(filename=str(path))
-    duplicate_else_diag = next(
+    stray_else_diag = next(
         diag for diag in parser.diagnostics
-        if "[PAR-0236]" in diag.message and diag.line == 7
+        if "[PAR-0123]" in diag.message and diag.line == 7
     )
 
-    lines = _capture_snippet(duplicate_else_diag, monkeypatch)
+    lines = _capture_snippet(stray_else_diag, monkeypatch)
     assert lines == [
-        duplicate_else_diag.format(),
+        stray_else_diag.format(),
         "    7 |         else 3;",
         "      |         ^^^^",
     ]

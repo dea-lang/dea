@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-08-23
+Version: 2026-08-25
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -161,15 +161,12 @@ diagnostic.
 | `PAR-0231` | All     | Expected '('                                                             |
 | `PAR-0232` | All     | Expected ')'                                                             |
 | `PAR-0233` | All     | Expected '{' after 'case' expression                                     |
-| `PAR-0234` | All     | Value arm cannot appear after the default arm in 'case' statement        |
+| `PAR-0234` | All     | Value arm cannot appear after the `_` default arm in 'case' statement    |
 | `PAR-0235` | All     | Expected '=>' in 'case' arm                                              |
-| `PAR-0236` | All     | Duplicate default arm in 'case' statement                                |
-| `PAR-0237` | L0 only | '=>' not allowed in deprecated `else` arm                                |
+| `PAR-0236` | All     | Duplicate `_` default arm in 'case' statement                            |
 | `PAR-0239` | All     | Expected '}' after 'case' statement                                      |
 | `PAR-0240` | All     | 'case' statement must have at least one arm                              |
 | `PAR-0241` | All     | Expected literal (L0) or constant value expression (L1+) in 'case' arm   |
-| `PAR-0242` | L0 only | Deprecated `else` default arm in `case`; use `_ =>` instead (warning)    |
-| `PAR-0243` | L0 only | Ambiguous `else` after `if` in `case` value arm; brace it or use `_ =>`  |
 | `PAR-0260` | L1+     | `const` declarations require an explicit type annotation                 |
 | `PAR-0261` | L1+     | Expected '=' in const binding                                            |
 | `PAR-0262` | L1+     | Expected ';' after const declaration                                     |

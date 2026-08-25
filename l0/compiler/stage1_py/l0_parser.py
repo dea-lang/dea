@@ -122,29 +122,6 @@ class Parser:
                 end_column=end_column,
             ))
 
-    def _warning(self, message: str, token: Optional[Token] = None) -> None:
-        """Add a warning diagnostic (non-fatal).
-
-        Args:
-            message: The warning message.
-            token: Optional token where the warning occurred. Defaults to peek().
-        """
-        tok = token if token is not None else self._peek()
-        line = tok.line if tok else 0
-        column = tok.column if tok else 0
-        end_line = tok.line if tok else None
-        end_column = tok.column + token_len(tok) if tok else None
-        self.diagnostics.append(
-            Diagnostic(
-                kind="warning",
-                message=message,
-                filename=self.filename,
-                line=line,
-                column=column,
-                end_line=end_line,
-                end_column=end_column,
-            ))
-
     def _error_bail(self, message: str, token: Optional[Token] = None) -> NoReturn:
         """Report an error and raise a synchronization exception.
 
@@ -643,16 +620,8 @@ class Parser:
         value = self._parse_expr()
         return LetStmt(name_tok.text, type_ref, value, span=self._extend_span(start))
 
-    def _parse_if_stmt(self, guard_dangling_else: bool = False) -> IfStmt:
-        """Parse an 'if' statement.
-
-        Args:
-            guard_dangling_else: When True, an 'else' immediately following the
-                then-branch is treated as ambiguous (PAR-0243) rather than
-                silently attached. Set only when the 'if' is an unbraced 'case'
-                arm body, where a trailing 'else' could belong to either the
-                'if' or the 'case' default arm.
-        """
+    def _parse_if_stmt(self) -> IfStmt:
+        """Parse an 'if' statement."""
         start = self._span_start()
         self._expect(TokenKind.IF, "[PAR-0120] expected 'if'")
         self._expect(TokenKind.LPAREN, "[PAR-0121] expected '(' after 'if'")
@@ -661,11 +630,6 @@ class Parser:
         then_stmt = self._parse_stmt()
         else_stmt: Optional[Stmt] = None
         if self._check(TokenKind.ELSE):
-            if guard_dangling_else:
-                self._error_bail(
-                    "[PAR-0243] ambiguous 'else' after 'if' in 'case' arm; "
-                    "brace the arm body or use a '_ =>' default",
-                    self._peek())
             self._advance()
             else_stmt = self._parse_stmt()
         return IfStmt(cond, then_stmt, else_stmt, span=self._extend_span(start))
@@ -816,12 +780,15 @@ class Parser:
         seen_default = False
 
         while not self._check(TokenKind.RBRACE) and not self._at_end():
-            # Canonical wildcard default arm: `_ => Stmt`. The default arm body is
-            # not dangling-else guarded: a trailing 'else' is unambiguous here
-            # because a second case default would be a duplicate (PAR-0236).
+            if self._check(TokenKind.ELSE):
+                self._error("[PAR-0123] 'else' without matching 'if'", self._peek())
+                self._sync_case_invalid_arm()
+                continue
+
+            # Wildcard default arm: `_ => Stmt`.
             if self._check(TokenKind.UNDERSCORE):
                 if seen_default:
-                    self._error("[PAR-0236] duplicate default arm in 'case' statement", self._peek())
+                    self._error("[PAR-0236] duplicate '_' default arm in 'case' statement", self._peek())
                     self._sync_case_invalid_arm()
                     continue
                 default_start = self._span_start()
@@ -831,33 +798,17 @@ class Parser:
                 else_arm = CaseElse(body, span=self._extend_span(default_start))
                 seen_default = True
                 continue
-            # Deprecated 'else' default arm (no '=>'); removed in a later phase.
-            if self._check(TokenKind.ELSE):
-                if seen_default:
-                    self._error("[PAR-0236] duplicate default arm in 'case' statement", self._peek())
-                    self._sync_case_invalid_arm()
-                    continue
-                else_tok = self._advance()  # consume 'else'
-                self._warning(
-                    "[PAR-0242] deprecated 'else' default arm in 'case'; use '_ =>' instead", else_tok)
-                else_start = Span(else_tok.line, else_tok.column, else_tok.line, else_tok.column)
-                if self._match(TokenKind.ARROW_MATCH):
-                    self._error_bail("[PAR-0237] '=>' not allowed in 'else' arm", self._peek())
-                body = self._parse_stmt()
-                else_arm = CaseElse(body, span=self._extend_span(else_start))
-                seen_default = True
-                continue
             # Value arm: `CaseLiteral => Stmt`.
             if seen_default:
                 self._error(
-                    "[PAR-0234] value arm cannot appear after the default arm in 'case' statement",
+                    "[PAR-0234] value arm cannot appear after the '_' default arm in 'case' statement",
                     self._peek())
                 self._sync_case_invalid_arm()
                 continue
             arm_start = self._span_start()
             literal = self._parse_case_literal()
             self._expect(TokenKind.ARROW_MATCH, "[PAR-0235] expected '=>' in 'case' arm")
-            body = self._parse_case_value_arm_body()
+            body = self._parse_stmt()
             arms.append(CaseArm(literal, body, span=self._extend_span(arm_start)))
 
         self._expect(TokenKind.RBRACE, "[PAR-0239] expected '}' after 'case' statement")
@@ -868,9 +819,11 @@ class Parser:
         return CaseStmt(expr, arms, else_arm, span=self._extend_span(start))
 
     def _at_case_arm_start(self) -> bool:
-        """Return True if the current token can begin a case arm."""
+        """Return True if the current token is a likely case-arm recovery boundary."""
         return self._peek().kind in (
             TokenKind.UNDERSCORE,
+            # `else` is rejected by `_parse_case_stmt`, but preserving it as a
+            # boundary lets the loop emit the dedicated PAR-0123 diagnostic.
             TokenKind.ELSE,
             TokenKind.INT,
             TokenKind.BYTE,
@@ -903,20 +856,6 @@ class Parser:
                     boundary_ready = True
             elif depth == 0 and tok.kind is TokenKind.SEMI:
                 boundary_ready = True
-
-    def _parse_case_value_arm_body(self) -> Stmt:
-        """Parse a 'case' value-arm body, guarding the dangling-'else' ambiguity.
-
-        When a value-arm body is an unbraced 'if' whose then-branch is followed
-        by 'else', the 'else' could bind to the 'if' or be the (still-open) 'case'
-        default arm. Such a body is rejected with PAR-0243 so the author must
-        brace the body or use a '_ =>' default. Default-arm bodies are not
-        guarded: their trailing 'else' is unambiguous because the default slot is
-        already taken. All other bodies parse normally.
-        """
-        if self._check(TokenKind.IF):
-            return self._parse_if_stmt(guard_dangling_else=True)
-        return self._parse_stmt()
 
     def _parse_case_literal(self) -> Expr:
         """Parse a literal value for a 'case' arm."""
