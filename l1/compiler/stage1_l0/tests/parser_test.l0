@@ -998,8 +998,16 @@ func test_case_value_arm_if_else_body_ok() {
  * Tests that a stray `case`-arm `else` is PAR-0123.
  */
 func test_case_stray_else_arm_error() {
-    let src = "module main; func main() -> int { case (1) { else return 0; } }";
-    expect_error_code(src, "PAR-0123");
+    let arrowless = "module main; func main() -> int { case (1) { else return 0; } }";
+    let arrow = "module main; func main() -> int { case (1) { else => return 0; } }";
+    expect_diag_code_count(arrowless, "PAR-0123", 1);
+    expect_diag_code_count(arrow, "PAR-0123", 1);
+    expect_diag_code_absent(arrowless, "PAR-0235");
+    expect_diag_code_absent(arrow, "PAR-0235");
+    expect_diag_code_absent(arrowless, "PAR-0225");
+    expect_diag_code_absent(arrow, "PAR-0225");
+    expect_diag_code_absent(arrowless, "PAR-0020");
+    expect_diag_code_absent(arrow, "PAR-0020");
 }
 
 /**
@@ -1036,6 +1044,56 @@ func test_case_default_recovery_stays_inside_case() {
     expect_diag_code_span(src, "PAR-0234", 0, 5, 9, 5, 12);
     expect_diag_code_span(src, "PAR-0236", 0, 6, 9, 6, 10);
     expect_diag_code_span(src, "PAR-0236", 1, 7, 9, 7, 10);
+}
+
+/**
+ * Tests that a forbidden `else` arm remains a recovery boundary after another
+ * invalid arm, so it receives PAR-0123 without a generic parse cascade.
+ */
+func test_case_recovery_preserves_one_stray_else_boundary() {
+    let src = "module main;\n" +
+        "func main() -> int {\n" +
+        "    case (1) {\n" +
+        "        _ => return 0;\n" +
+        "        1 => return 1;\n" +
+        "        else return 2;\n" +
+        "    }\n" +
+        "    return 0;\n" +
+        "}\n";
+    expect_diag_code_count(src, "PAR-0234", 1);
+    expect_diag_code_count(src, "PAR-0123", 1);
+    expect_diag_code_absent(src, "PAR-0235");
+    expect_diag_code_absent(src, "PAR-0100");
+    expect_diag_code_absent(src, "PAR-0225");
+    expect_diag_code_absent(src, "PAR-0020");
+    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0123", 0, 6);
+}
+
+/**
+ * Tests that repeated forbidden `else` arms remain distinct recovery boundaries
+ * after another invalid arm.
+ */
+func test_case_recovery_preserves_multiple_stray_else_boundaries() {
+    let src = "module main;\n" +
+        "func main() -> int {\n" +
+        "    case (1) {\n" +
+        "        _ => return 0;\n" +
+        "        1 => return 1;\n" +
+        "        else return 2;\n" +
+        "        else return 3;\n" +
+        "    }\n" +
+        "    return 0;\n" +
+        "}\n";
+    expect_diag_code_count(src, "PAR-0234", 1);
+    expect_diag_code_count(src, "PAR-0123", 2);
+    expect_diag_code_absent(src, "PAR-0235");
+    expect_diag_code_absent(src, "PAR-0100");
+    expect_diag_code_absent(src, "PAR-0225");
+    expect_diag_code_absent(src, "PAR-0020");
+    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0123", 0, 6);
+    expect_diag_code_line(src, "PAR-0123", 1, 7);
 }
 
 /**
@@ -1581,6 +1639,8 @@ func main() {
     test_case_stray_else_arm_error();
     test_case_default_arm_if_else_body_ok();
     test_case_default_recovery_stays_inside_case();
+    test_case_recovery_preserves_one_stray_else_boundary();
+    test_case_recovery_preserves_multiple_stray_else_boundaries();
     test_case_default_recovery_byte_literal_span();
     test_expr_precedence_postfix_and_qualified_type_ok();
     test_prefixed_int_literals_ok();

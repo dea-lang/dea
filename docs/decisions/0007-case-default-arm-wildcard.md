@@ -60,6 +60,8 @@ arm after `_ =>` is `PAR-0234`, a second `_ =>` is `PAR-0236`, and `else` in a `
   removed the deprecated spelling from the L1 parser
 - [l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md](../../l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md):
   completed the migration in L0 Stage 1 and Stage 2 and retired the transitional diagnostics
+- [l1/work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md](../../l1/work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md):
+  preserved rejected `else` tokens as L1 Stage 1 `case` recovery boundaries without restoring the old default spelling
 
 ## Current Docs
 

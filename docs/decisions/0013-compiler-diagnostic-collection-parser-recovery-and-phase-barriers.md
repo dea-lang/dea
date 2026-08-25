@@ -1,7 +1,7 @@
 # ADR-0013: Compiler Diagnostic Collection, Parser Recovery, and Phase Barriers
 
 - Decision date: 2026-06-09
-- Last edited: 2026-07-27
+- Last edited: 2026-08-25
 - Status: Accepted
 
 ## Context
@@ -82,6 +82,8 @@ downstream gates.
   made end-of-file terminal after an unmatched statement-block close
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the historical decision into the ADR catalog
+- [l1/work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md](../../l1/work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md):
+  preserved rejected `else` tokens as L1 Stage 1 `case` recovery boundaries for dedicated diagnostics
 
 ## Current Docs
 

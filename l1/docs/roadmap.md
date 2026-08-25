@@ -191,6 +191,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Bug Fix [2026-08-21-shared-parenthesized-casted-place-arc-classification-noref][parenthesized-casted-place-arc]
   preserved borrowed identity and unwrap casts through repeated parentheses across all three backends while retaining
   non-niche ARC `T -> T?` place payloads exactly once at their owner-producing cast boundary.
+- Bug Fix [2026-08-25-stage1-case-stray-else-recovery-boundary-noref][case-else-recovery] preserved each rejected
+  case-arm `else` as a synchronization boundary so L1 Stage 1 retains its dedicated `PAR-0123` diagnostic after an
+  earlier invalid arm.
 
 </details>
 
@@ -210,8 +213,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
-- Bug Fix [2026-08-25-stage1-case-stray-else-recovery-boundary-noref][case-else-recovery] ports the settled L0 recovery
-  boundary to L1 so each stray case-arm `else` retains `PAR-0123` after an earlier malformed arm.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
@@ -307,7 +308,7 @@ update to be promoted to an initiative or plan:
 [build-run]: ../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md
-[case-else-recovery]: ../work/plans/bug-fixes/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md
+[case-else-recovery]: ../work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md
 [cheap-string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md
 [child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-foundation]: ../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md

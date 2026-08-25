@@ -3,7 +3,7 @@
 ## Preserve stray `else` boundaries during L1 Stage 1 `case` recovery
 
 - Date: 2026-08-25
-- Status: Draft
+- Status: Completed
 - Title: Port the L0 case-arm stray-else recovery-boundary fix to L1 Stage 1
 - Kind: Bug Fix
 - Severity: Medium
@@ -13,11 +13,12 @@
   - `l1/compiler/stage1_l0/src/parser/stmt.l0`
 - Test modules:
   - `l1/compiler/stage1_l0/tests/parser_test.l0`
+- Roadmap: [l1/docs/roadmap.md](../../../../docs/roadmap.md)
 - Related:
-  - [docs/decisions/0013-compiler-diagnostic-collection-parser-recovery-and-phase-barriers.md](../../../../docs/decisions/0013-compiler-diagnostic-collection-parser-recovery-and-phase-barriers.md)
-  - [docs/decisions/0007-case-default-arm-wildcard.md](../../../../docs/decisions/0007-case-default-arm-wildcard.md)
-  - [l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md](../../../../l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md)
-  - [l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md)
+  - [docs/decisions/0013-compiler-diagnostic-collection-parser-recovery-and-phase-barriers.md](../../../../../docs/decisions/0013-compiler-diagnostic-collection-parser-recovery-and-phase-barriers.md)
+  - [docs/decisions/0007-case-default-arm-wildcard.md](../../../../../docs/decisions/0007-case-default-arm-wildcard.md)
+  - [l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md](../../../../../l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md)
+  - [l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../../features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md)
 - Repro: Parse `case (1) { _ => return 0; 1 => return 1; else return 2; }` and inspect the L1 Stage 1 diagnostics.
 
 ## Summary
@@ -41,8 +42,8 @@ After an earlier invalid arm sets `boundary_ready`, `ps_sync_case_invalid_arm` t
 and recovery may escape the intended arm or `case` boundary.
 
 The corresponding L0 recovery tests are in
-[l0/compiler/stage1_py/tests/parser/test_parser_recovery.py](../../../../l0/compiler/stage1_py/tests/parser/test_parser_recovery.py)
-and [l0/compiler/stage2_l0/tests/parser_test.l0](../../../../l0/compiler/stage2_l0/tests/parser_test.l0).
+[l0/compiler/stage1_py/tests/parser/test_parser_recovery.py](../../../../../l0/compiler/stage1_py/tests/parser/test_parser_recovery.py)
+and [l0/compiler/stage2_l0/tests/parser_test.l0](../../../../../l0/compiler/stage2_l0/tests/parser_test.l0).
 
 ## Root Cause
 
@@ -128,3 +129,24 @@ The focused normal and trace runs must pass with exact `PAR-0123` counts for the
   - ADR: `docs/decisions/0007-case-default-arm-wildcard.md`
   - Rationale: ADR-0007 records the completed wildcard-only grammar and requires unmatched `else` to remain `PAR-0123`
     rather than accepted syntax.
+
+## Resolution
+
+- Added `TT_ELSE` to the L1 Stage 1 `case` arm synchronization-boundary helper without admitting it to the accepted-arm
+  grammar.
+- Documented that the rejected token is preserved so the enclosing `case` loop can emit the dedicated `PAR-0123`
+  diagnostic.
+- Added focused one- and multiple-`else` recovery regressions with exact diagnostic counts and lines plus assertions
+  against generic, statement, function-body, and top-level cascades.
+- Strengthened the direct stray-`else` regressions for arrowless and arrow spellings while keeping `_ =>` as the only
+  accepted default arm.
+- Independent read-only review found no parser-logic or regression-test defect; its lifecycle closure finding was
+  resolved in the roadmap and covered ADRs.
+
+## Verification
+
+- `make -C l1 test-stage1 TESTS="parser_test"`: passed 1/1.
+- `make -C l1 test-stage1-trace TESTS="parser_test"`: passed 1/1.
+- `make -C l1 clean test-all`: passed 68/68 normal Stage 1 tests, environment stackability, 4/4 examples, and 44/44
+  dedicated trace tests.
+- `python3 scripts/check_adr_impact.py --all-active`: passed before closure.

@@ -605,8 +605,17 @@ func ps_parse_case_arm_value(self: ParserState*) -> ExprId? {
     return null;
 }
 
+/**
+ * Report whether the current token can start a `case` arm.
+ *
+ * @param self Parser state to inspect.
+ * @return True if the current token is a likely arm boundary.
+ */
 func ps_at_case_arm_start(self: ParserState*) -> bool {
     return ps_check(self, ord(TT_UNDERSCORE)) ||
+           // `else` is rejected by `ps_parse_case_stmt`, but preserving it as a
+           // boundary lets the loop emit the dedicated PAR-0123 diagnostic.
+           ps_check(self, ord(TT_ELSE)) ||
            ps_check_int(self) ||
            ps_check_bigint(self) ||
            ps_check_byte(self) ||
