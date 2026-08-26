@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-08-21
+- Last edited: 2026-08-26
 - Status: Accepted
 
 ## Context
@@ -63,7 +63,7 @@ short-option cluster.
 - Stage 2 parity plans reference this contract as the acceptance criterion.
 - New flags and modes must be added to the contract document before being implemented in either stage.
 - L1 compiler inherits the same contract, adapting only where L1-specific behavior genuinely differs.
-- The coordinated alias migration is intentionally breaking for L0 2.0; L1 has no released compatibility surface.
+- The coordinated alias migration is intentionally breaking for L0 2.0.0; L1 has no released compatibility surface.
 - Long option names and level-scoped environment variables remain stable across the migration.
 
 ## Related Plans

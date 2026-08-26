@@ -5,8 +5,8 @@
 **L0 (Level Zero)** is a small systems language that compiles to C99. It is the first level of the
 [Dea language family](../README.md) and the compiler base used to build Dea/L1.
 
-**Level 0 is self-hosted.** The latest release is `1.1.0`, tagged `l0-v1.1.0` in the monorepo's level-prefixed release
-namespace. The current development line targets `2.0.0` because it includes a coordinated breaking CLI alias migration.
+**Level 0 is self-hosted.** The latest release is `2.0.0`, tagged `l0-v2.0.0` in the monorepo's level-prefixed release
+namespace. See [l0/docs/releases/2.0.0.md](docs/releases/2.0.0.md) for its complete changes and migration guidance.
 
 Run all L0 build, test, docs, and compiler commands described here from this directory.
 
@@ -35,7 +35,7 @@ the semantics are enforced by L0 itself.
 
 ## Project status and directions
 
-L0 `1.1.0` is the current stable release; repository HEAD is the unreleased `2.0.0` development line.
+L0 `2.0.0` is the current stable release.
 
 - Stage 1: complete and remains the reference implementation for language behavior.
 
@@ -52,6 +52,23 @@ L0 `1.1.0` is the current stable release; repository HEAD is the unreleased `2.0
   - Fixed-point self-hosting verified: retained generated C matches across self-builds, and native compiler-binary
     identity is also checked on the validated reproducibility matrix. See
     [l0/compiler/stage2_l0/README.md](compiler/stage2_l0/README.md) for the documented `tcc` and Windows exceptions.
+
+The L0 2.0.0 release completes several coordinated changes:
+
+- `case` defaults are wildcard-only (`_ =>`); the deprecated `case ... else` spelling has been removed.
+
+- Dea-specific short compiler options use stable namespaces, while conventional `-c`, `-g`, `-I`, `-L`, `-l`, and `-S`
+  spellings have their shared driver meanings or remain reserved for them.
+
+- Fully checked generated programs validate pointer provenance, extent, alignment, lifetime, and access direction;
+  `--check-basic` and `--unchecked` expose explicit lower-overhead modes.
+
+- Cross-stage fixes cover ownership, alternative-branch liveness, match validation, binding identity, static
+  initializers, lexer recovery, generated-C portability, native compiler workspaces, filesystem failure boundaries, and
+  logical vector bounds.
+
+- Shared editor support now covers VS Code/TextMate, Vim, Emacs, Universal Ctags, and Tree-sitter. See
+  [editors/README.md](../editors/README.md).
 
 - **Built-in Observability:** Language developers need to know what memory is doing. L0 ships with native compiler flags
   to trace ARC events and allocations directly to stderr. Today these are fully usable through the Stage 1 driver and
@@ -107,7 +124,7 @@ The `$CC` environment variable will be checked as a last resort if none of the a
 
 If you need a specific compiler, set `$L0_CC` to its executable name or path.
 
-For the current `1.1.0` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2 `MINGW64`
+For the current `2.0.0` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2 `MINGW64`
 is supported as an alternate environment.
 
 MSVC-family builds are still unsupported and are not part of the validated release matrix.
@@ -432,6 +449,9 @@ are as follows:
 l0c --build --keep-c hello.l0             # retain the generated C
 l0c --run app.main -- arg1 arg2           # pass arguments to the program
 l0c --run --trace-arc --trace-memory app  # trace ARC and allocation to stderr
+l0c --build --check-basic app.l0          # retain core checks with lower overhead
+l0c --build --unchecked app.l0            # explicitly opt out of runtime pointer checks
+l0c --build -Cs support.c app.l0          # compile an additional C source intact
 l0c -Cc clang -Co "-Og -DDEBUG" hello.l0  # use a specific C compiler with custom flags
 ```
 

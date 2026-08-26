@@ -15,6 +15,7 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 - [MONOREPO.md](../MONOREPO.md) for monorepo layout and root workflow.
 - [work/plans/](../work/plans/) for active and closed Dea-wide plans.
 - [l0/docs/project-status.md](../l0/docs/project-status.md) for the current L0 implementation and release status.
+- [l0/docs/releases/2.0.0.md](../l0/docs/releases/2.0.0.md) for L0 2.0.0 changes and migration guidance.
 - [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 bootstrap implementation status.
 - [l1/README.md](../l1/README.md) for the current L1 bootstrap subtree entry point.
 - [docs/specs/compiler/cli-contract.md](specs/compiler/cli-contract.md) for the shared compiler CLI contract.
@@ -50,8 +51,8 @@ Its repository status today is:
 - the canonical public CLI and user documentation surface,
 - validated through the existing L0 test, bootstrap, packaging, and docs workflows,
 - versioned under the `l0-v*` / `l0-snapshot-*` release namespace,
-- stable at released version `1.1.0`, while the unreleased development line targets `2.0.0` because of its coordinated
-  breaking CLI alias migration.
+- stable at released version `2.0.0`, including its namespaced CLI aliases, wildcard-only `case` defaults, and checked
+  runtime pointer validation modes.
 
 ### Dea/L1
 
@@ -119,8 +120,8 @@ by the relevant level subtree.
 
 Near-term project direction is split cleanly by level:
 
-1. Keep Dea/L0 `1.1.0` as the stable release while preparing the semantically versioned `2.0.0` development line and its
-   breaking CLI migration for a deliberate release.
+1. Maintain Dea/L0 `2.0.0` as the stable release line, with user-visible fixes and future compatibility changes governed
+   by L0 semantic versioning and Stage 1/Stage 2 parity.
 2. Keep Dea/L1 focused on bootstrap stabilization and planned post-L0 language/library growth, not on release parity
    yet.
 3. Only move or duplicate level-local reference documents into root `docs/reference/` when they clearly become Dea-wide

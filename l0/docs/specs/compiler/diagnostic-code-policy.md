@@ -1,6 +1,6 @@
 # Diagnostic Code Policy
 
-Version: 2026-07-16
+Version: 2026-08-26
 
 Normative L0 Stage 1/Stage 2 supplement for compiler diagnostic-code assignment and reuse.
 
