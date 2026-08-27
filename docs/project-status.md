@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-08-25
+Version: 2026-08-27
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -80,11 +80,10 @@ L1 bootstrap CI validation is now automated through the unified `ci.yml` GitHub 
 L1-relevant changes into the reusable `l1-ci.yml` delegate. That path covers:
 
 - building the L1 Stage 1 compiler via an explicit upstream L0 Stage 2 compiler on Linux, macOS, and Windows,
-- running all normal L1 Stage 1 checks plus the default ARC/memory trace suite on POSIX and a focused trace smoke set on
-  Windows,
+- running all normal L1 Stage 1 checks plus the default ARC/memory trace suite on Linux, macOS, and Windows,
 - validating `examples/*.l1` sources, and
 - providing `workflow_dispatch` inputs for platform selection, manual C compiler selection, and explicit Make-target
-  selection, including full Windows trace validation when requested.
+  selection; the focused Windows-capable trace smoke target remains available for manual diagnostics.
 
 L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not yet active and will only be added when the L1
 install/dist artifact contract is defined, stable, and smoke-testable. See `MONOREPO.md` for the full release-line

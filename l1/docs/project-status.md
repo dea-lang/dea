@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-08-25
+Version: 2026-08-27
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -239,26 +239,24 @@ latest-stage `--check` coverage for `examples/*.l1`. `make test` combines the im
 environment-stackability checks, and example checks without the dedicated broad trace sweep; `make test-all` adds the
 default ARC/memory trace checks. Linux portability is exercised via `make test-docker`, which runs `test-all` inside the
 repo-owned Docker image with GCC selected for `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`. Set `DOCKER_CC=clang` to switch all
-three roles together. `make test-stage1-trace-smoke` runs a focused ARC/memory subset, and `make test-ci` uses that
-subset after full normal validation on Windows while delegating to `make test-all` on POSIX hosts. An explicit
-`make test-all` retains the full default trace sweep on every platform. The subset avoids Windows' disproportionate
-trace-file I/O cost; normal Windows validation remains complete. The legacy `DOCKER_L0_CC` selector remains a
-compatibility fallback when `DOCKER_CC` is unset. Run the Docker lane after runtime, Makefile, or build-driver changes.
+three roles together. `make test-stage1-trace-smoke` retains a focused ARC/memory subset for quick developer
+diagnostics. `make test-ci` delegates to `make test-all` on every supported host, so Windows, Linux, and macOS all run
+the full normal suite plus the default dedicated trace sweep. The legacy `DOCKER_L0_CC` selector remains a compatibility
+fallback when `DOCKER_CC` is unset. Run the Docker lane after runtime, Makefile, or build-driver changes.
 
 Validation is currently centered on:
 
 - automated CI via `.github/workflows/ci.yml`, which routes L1-relevant `push`/`pull_request` changes into the reusable
   `l1-ci.yml` workflow; `workflow_dispatch` remains available for platform selection, manual C compiler selection, and
-  explicit Make-target selection. Hosted CI defaults to `make test-ci`: Linux and macOS run the full default trace
-  suite, while Windows runs every normal check plus the focused trace smoke set. Selecting `test-all` explicitly keeps
-  the full Windows trace sweep available. Each selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`,
-  and the resolved executable plus version is logged before the Make target runs.
+  explicit Make-target selection. Hosted CI defaults to `make test-ci`, which runs the full normal and default trace
+  suites on Linux, macOS, and Windows. Each selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`, and
+  the resolved executable plus version is logged before the Make target runs.
 
 - `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
 
 - `make test-stage1-trace` for default ARC/memory trace validation across the `.l0` implementation tests
 
-- `make test-stage1-trace-smoke` for the focused ARC/memory subset used by hosted Windows CI
+- `make test-stage1-trace-smoke` for quick focused ARC/memory diagnostics
 
 - `make test-stage1-trace-all` for opt-in slow trace coverage, including nested-compiler cases such as
   `math_runtime_compile_test`
@@ -272,7 +270,7 @@ Validation is currently centered on:
 
 - `make test-all` as the combined local Stage 1, trace, environment, and example validation entry point
 
-- `make test-ci` as the hosted-CI entry point with the Windows trace-smoke policy
+- `make test-ci` as the full trace-inclusive hosted-CI entry point on every supported platform
 
 - `make test-docker` as the Linux container reference path for runtime/build-driver portability
 

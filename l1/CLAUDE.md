@@ -49,10 +49,9 @@ sweep and remains the full local/Docker backstop.
 `math_runtime_compile_test`. Use `make test-stage1-trace-all` to include those slow trace checks, or pass a slow test
 explicitly with `TESTS="math_runtime_compile_test"` when investigating it.
 
-`make test-stage1-trace-smoke` runs the focused ARC/memory trace subset used by hosted Windows CI. `make test-ci`
-selects full normal validation plus that smoke subset on Windows and delegates to `make test-all` on POSIX hosts. An
-explicit `make test-all` still runs the full default trace suite on every platform. Windows uses the subset because
-trace-file I/O is disproportionately slow there; its normal validation remains complete.
+`make test-stage1-trace-smoke` retains the focused ARC/memory trace subset for quick developer diagnostics. The
+`make test-ci` target delegates to `make test-all` on every supported host, so hosted Windows, Linux, and macOS
+validation all run the full normal suite plus the default dedicated trace sweep.
 
 ## Current Scope
 

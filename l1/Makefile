@@ -73,13 +73,13 @@ help:
 		'  build-stage1       Build the native repo-local L1 Stage 1 compiler.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  test               Run the default L1 validation suite without the dedicated trace sweep.' \
-		'  test-ci            Run hosted-CI validation: full checks on POSIX, full normal checks plus trace smoke checks on Windows.' \
+		'  test-ci            Run hosted-CI validation with the full normal and default trace checks.' \
 		'  test-all           Run the full L1 validation suite, including the default trace checks.' \
 		'  test-docker        Run the full L1 validation suite under the repo-owned Linux container (POSIX reference path).' \
 		'  test-stage1        Run the L1 Stage 1 `.l0` implementation tests with the built repo-local compiler.' \
 		'  test-stage1-trace  Run default L1 Stage 1 ARC/memory trace checks; skips intentionally slow trace tests.' \
 		'  test-stage1-trace-smoke' \
-		'                     Run the focused ARC/memory trace smoke set used by hosted Windows CI.' \
+		'                     Run the focused ARC/memory trace smoke set for developer diagnostics.' \
 		'  test-stage1-trace-all' \
 		'                     Run L1 Stage 1 ARC/memory trace checks including intentionally slow trace tests.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
@@ -397,12 +397,8 @@ test: test-stage1 test-env check-examples
 
 test-all: test test-stage1-trace
 
-# Full trace-file I/O is disproportionately slow on Windows; normal validation remains complete.
-ifeq ($(OS),Windows_NT)
-test-ci: test test-stage1-trace-smoke
-else
+# Hosted CI uses the full default trace sweep on every supported platform.
 test-ci: test-all
-endif
 
 test-docker:
 	$(MAKE) docker CMD=test-all
