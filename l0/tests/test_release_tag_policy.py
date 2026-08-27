@@ -312,6 +312,14 @@ def check_docs_build_workflow() -> None:
     assert_contains(text, "inputs.source_ref == inputs.release_tag", context="l0-docs-build.yml")
     assert_contains(text, "format('refs/tags/{0}', inputs.release_tag)", context="l0-docs-build.yml")
     assert_contains(text, "actions/checkout", context="l0-docs-build.yml")
+    assert_contains(text, "- name: Show Doxygen version", context="l0-docs-build.yml")
+    assert_contains(text, "run: doxygen --version", context="l0-docs-build.yml")
+
+
+def check_docs_validate_workflow() -> None:
+    text = read_text(".github/workflows/l0-docs-validate.yml")
+    assert_contains(text, "- name: Show Doxygen version", context="l0-docs-validate.yml")
+    assert_contains(text, "run: doxygen --version", context="l0-docs-validate.yml")
 
 
 def check_docs() -> None:
@@ -338,6 +346,7 @@ def main() -> int:
     check_snapshot_workflow()
     check_docs_publish_workflow()
     check_docs_build_workflow()
+    check_docs_validate_workflow()
     check_docs()
     print("test_release_tag_policy: PASS")
     return 0

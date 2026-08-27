@@ -76,6 +76,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y doxygen graphviz make
 
+      - name: Show Doxygen version
+        run: doxygen --version
+
       - name: Sync docs dependencies
         working-directory: ${{ github.workspace }}
         run: uv sync --group docs

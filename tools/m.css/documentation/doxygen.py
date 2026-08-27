@@ -167,6 +167,7 @@ copy a link to the result using <span class="m-label m-dim">⌘</span>
 xref_id_rx = re.compile(r"""(.*)_1(_[a-z-0-9]+|@)$""")
 slugify_nonalnum_rx = re.compile(r"""[^\w\s-]""")
 slugify_hyphens_rx = re.compile(r"""[-\s]+""")
+doxygen_anonymous_compound_name_rx = re.compile(r"""^(?P<scope>.*)::\[(?:class|struct|union)\]\.(?P<path>.+)$""")
 
 class StateCompound:
     def __init__(self):
@@ -2599,6 +2600,25 @@ def extract_metadata(state: State, xml):
 
     state.compounds[compound.id] = compound
 
+def _compound_leaf_name(name, parent_name):
+    prefix = parent_name + '::'
+    if name.startswith(prefix):
+        return name[len(prefix):]
+
+    # Doxygen 1.18 represents nested anonymous C compounds as field paths
+    # rooted in the nearest named scope. Thus a [struct].data.s_str child can
+    # belong to a [union].data parent even though the full display names don't
+    # have a textual prefix relationship. Validate both the named scope and
+    # the field path before stripping the parent path.
+    name_match = doxygen_anonymous_compound_name_rx.match(name)
+    parent_match = doxygen_anonymous_compound_name_rx.match(parent_name)
+    if name_match and parent_match and name_match.group('scope') == parent_match.group('scope'):
+        path_prefix = parent_match.group('path') + '.'
+        if name_match.group('path').startswith(path_prefix):
+            return name_match.group('path')[len(path_prefix):]
+
+    raise AssertionError("compound name {!r} does not descend from {!r}".format(name, parent_name))
+
 def postprocess_state(state: State):
     # Save parent for each child
     for _, compound in state.compounds.items():
@@ -2621,9 +2641,7 @@ def postprocess_state(state: State):
 
         # Strip parent namespace/class from symbol name
         elif compound.kind in ['struct', 'class', 'union']:
-            prefix = state.compounds[compound.parent].name + '::'
-            assert compound.name.startswith(prefix)
-            compound.leaf_name = compound.name[len(prefix):]
+            compound.leaf_name = _compound_leaf_name(compound.name, state.compounds[compound.parent].name)
 
         # Strip parent dir from dir name
         elif compound.kind == 'dir':

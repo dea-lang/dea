@@ -56,6 +56,9 @@ jobs:
             graphviz \
             make
 
+      - name: Show Doxygen version
+        run: doxygen --version
+
       - name: Install TeX toolchain
         if: inputs.build_pdf
         run: |

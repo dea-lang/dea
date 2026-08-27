@@ -7,6 +7,8 @@
   - allow `Python`, `C`, `Markdown`, and `Objective-C` compounds in addition to `C++`
   - handle nested or empty heading/title text via `itertext()`
   - avoid false heading warnings on empty text nodes with children
+  - validate and normalize Doxygen 1.18 anonymous nested-compound field paths when their `[struct]` / `[union]`
+    markers prevent the child display name from using the parent display name as a literal prefix
   - preserve bitfield width metadata from Doxygen XML for member-variable declarations
   - treat unnamed bitfields with C-keyword placeholder names (for example `int`) as declaration-only types
 - Local adjustments in `documentation/templates/doxygen/`:
