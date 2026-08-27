@@ -69,6 +69,9 @@ _rt_string_retain_impl
 _rt_time_to_dea_int_nsec
 _rt_time_to_dea_int_sec
 _rt_time_write_parts
+_rt_trace_event_end
+_rt_trace_flush_pending
+_rt_trace_init
 _rt_track_arc_bytes
 _rt_track_static_bytes
 _rt_uadd

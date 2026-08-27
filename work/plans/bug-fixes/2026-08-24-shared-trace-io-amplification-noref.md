@@ -3,7 +3,7 @@
 ## Eliminate shared trace I/O amplification without weakening ordering
 
 - Date: 2026-08-24
-- Status: Draft
+- Status: In Progress (implementation complete; hosted verification pending)
 - Title: Eliminate ARC and memory trace I/O amplification across runtimes and test runners
 - Kind: Bug Fix
 - Scope: Shared
@@ -17,8 +17,8 @@
 - Porting rule: Keep event text, flush boundaries, failure behavior, and streaming-capture semantics aligned. Preserve
   the intentional implementation difference between L0's header-only runtime and L1's compiled runtime archives.
 - Target status:
-  - L0 runtime and Stage 2 trace tooling: Pending
-  - L1 runtime and Stage 1 trace tooling: Pending
+  - L0 runtime and Stage 2 trace tooling: Implemented
+  - L1 runtime and Stage 1 trace tooling: Implemented
 - Subsystem: Runtime tracing / Test capture / Trace analysis / Cross-platform CI
 - Modules:
   - `l0/compiler/shared/runtime/l0_runtime.h`
@@ -28,6 +28,7 @@
   - `l0/compiler/stage2_l0/scripts/check_trace_log.py`
   - `l0/docs/specs/runtime/trace.md`
   - `l1/compiler/shared/runtime/include/dea_rt.h`
+  - `l1/compiler/shared/runtime/src/dea_rt_trace.c`
   - `l1/compiler/shared/runtime/src/dea_rt_panic.c`
   - `l1/compiler/shared/runtime/src/dea_rt_sys.c`
   - `l1/compiler/shared/runtime/src/dea_rt_io.c`
@@ -37,6 +38,7 @@
   - `l1/compiler/stage1_l0/scripts/run_trace_tests.py`
   - `l1/compiler/stage1_l0/scripts/run_test_trace.py`
   - `l1/compiler/stage1_l0/scripts/check_trace_log.py`
+  - `l1/compiler/stage1_l0/src/build_driver.l0`
   - `l1/Makefile`
   - `.github/workflows/ci.yml`
   - `.github/workflows/l1-ci.yml`
@@ -46,7 +48,10 @@
   - `l0/compiler/stage2_l0/tests/l0c_stage2_trace_runner_common_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_trace_runner_common_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_arc_trace_regression_test.py`
+  - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
+  - `l1/compiler/stage1_l0/tests/runtime_build_config_test.py`
+  - `l1/compiler/stage1_l0/tests/runtime_trace_policy_test.py`
 - Related:
   - `l0/work/plans/bug-fixes/closed/2026-04-01-stage2-windows-trace-runner-pipe-capture-noref.md`
   - `l0/docs/decisions/0025-runtime-trace-source-provenance.md`
@@ -253,5 +258,34 @@ durable event policy and may produce a runner warning; they must not alter gener
    hosted-Windows coverage-restoration gate.
 6. Run `python3 scripts/check_adr_impact.py --all-active`, Markdown formatting, staged whitespace checks, and the
    repository pre-commit gate before closure.
+
+## Implementation Progress
+
+- On 2026-08-27, both runtime targets gained the startup-selected `event`/`block` policy, pre-initialization fallback,
+  and explicit process-boundary flushing. The L1 normal archives do not compile or link the trace-policy object.
+- Both trace capture helpers now drain stdout and stderr concurrently in 64 KiB chunks directly into final artifacts,
+  wait for inherited writers to close the pipes, and return only process status, paths, and byte counts.
+- Both full trace runners select block mode by default, analyze successful traces once without pre-reading them, emit
+  completion-order timing/size/event progress, bound failure excerpts, and retain selection-order failure summaries.
+- The 4,096-event compiled-runtime probe produced byte-identical event/block traces on macOS and measured 0.032435
+  seconds in event mode versus 0.014912 seconds in block mode (2.18x). This is local correctness and directional
+  throughput evidence, not the hosted-Windows coverage-restoration gate.
+- Focused macOS runs passed for L0 `analysis_trace_test` (3.326 seconds run, 0.205 seconds analysis, 815,042 trace
+  bytes, 4,969 events) and L1 `analysis_trace_test` (45.474 seconds run, 0.290 seconds analysis, 1,585,946 trace bytes,
+  8,735 events).
+- The large macOS regressions passed for L0 `l0c_lib_test` (10.842 seconds run, 15.680 seconds analysis, 180,760,923
+  trace bytes, 1,074,049 events) and L1 `l1c_lib_test` (192.292 seconds run, 634.432 seconds analysis, 3,635,124,307
+  trace bytes, 19,512,089 events). The latter completed through the bounded live-identity analyzer state and its
+  temporary artifact was removed after success.
+- An independent read-only review found and prompted fixes for missing L1 runtime-header dependencies, a missing traced
+  runtime object in the TinyCC direct-object link path, retained balanced-pointer analyzer metadata, and unbounded
+  analyzer report sections. Focused regressions cover each correction, and the reviewer found no remaining actionable
+  issue after re-review.
+- Root `make test-all` passed on macOS after the review fixes, including 56 L0 Stage 2 tests, 33 L0 broad trace tests,
+  69 L1 Stage 1 tests, and 44 L1 broad trace tests. The final L1 `l1c_lib_test` trace contained 3,627,828,427 bytes and
+  19,511,529 events and completed with zero reported leaks.
+- Hosted-Windows `test-all` comparison has not been dispatched because this plan does not authorize remote workflow
+  writes. Windows CI therefore intentionally retains the trace smoke selection until two qualifying hosted runs satisfy
+  the existing ratio gate.
 
 [trace-spec]: ../../../l0/docs/specs/runtime/trace.md

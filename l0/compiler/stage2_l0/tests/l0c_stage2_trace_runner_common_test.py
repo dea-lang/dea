@@ -197,6 +197,39 @@ def test_run_captured_binary_output_supports_parallel_calls() -> str | None:
     return None
 
 
+def test_run_captured_binary_output_streams_large_artifacts_without_result_copies() -> str | None:
+    """Return one failure message, or `None` when large output stays file-backed."""
+
+    with tempfile.TemporaryDirectory(prefix="l0_trace_runner_common.") as tmp_dir:
+        stdout_path = Path(tmp_dir) / "stdout.log"
+        stderr_path = Path(tmp_dir) / "stderr.log"
+        stdout_size = common.CAPTURE_CHUNK_SIZE * 8 + 3
+        stderr_size = common.CAPTURE_CHUNK_SIZE * 5 + 1
+        completed = common.run_captured_binary_output(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys; "
+                    f"sys.stdout.buffer.write(b'x' * {stdout_size}); "
+                    f"sys.stderr.buffer.write(b'y' * {stderr_size})"
+                ),
+            ],
+            cwd=Path.cwd(),
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+        )
+        if completed.returncode != 0:
+            return f"expected large capture to succeed, got rc={completed.returncode}"
+        if hasattr(completed, "stdout") or hasattr(completed, "stderr"):
+            return "capture result unexpectedly retained stdout/stderr payloads"
+        if completed.stdout_bytes != stdout_size or stdout_path.stat().st_size != stdout_size:
+            return f"unexpected streamed stdout size: result={completed.stdout_bytes} file={stdout_path.stat().st_size}"
+        if completed.stderr_bytes != stderr_size or stderr_path.stat().st_size != stderr_size:
+            return f"unexpected streamed stderr size: result={completed.stderr_bytes} file={stderr_path.stat().st_size}"
+    return None
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -206,6 +239,7 @@ def main() -> int:
         test_run_captured_binary_output_writes_complete_files,
         test_run_captured_binary_output_waits_for_inherited_grandchild_writers,
         test_run_captured_binary_output_supports_parallel_calls,
+        test_run_captured_binary_output_streams_large_artifacts_without_result_copies,
     ]
     for check in checks:
         message = check()

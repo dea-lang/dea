@@ -1,6 +1,6 @@
 # L0 Trace Specification
 
-Version: 2026-07-28
+Version: 2026-08-27
 
 This document specifies the shared trace instrumentation contract for generated C code and runtime behavior in both
 Stage 1 and Stage 2.
@@ -50,6 +50,26 @@ Manual C defines passed via `-Co` (for example `-Co "-DL0_TRACE_ARC"`) remain co
 - Trace format is line-oriented text, one event per line.
 
 No stdout behavior is changed by tracing.
+
+### 4.1 Trace flush policy
+
+Trace-enabled runtimes select one process-wide stderr flush policy during `_rt_init_args()`, before user module
+initialization:
+
+- The default and `DEA_TRACE_FLUSH=event` flush after every complete trace event. This is the durable interactive mode
+  and is appropriate for native-crash archaeology.
+- `DEA_TRACE_FLUSH=block` installs a fixed 64 KiB stderr buffer and flushes at process boundaries. This is the bulk
+  capture mode used by the repository trace runners.
+- Missing, empty, or unrecognized values use event flushing. A trace macro invoked before `_rt_init_args()` also keeps
+  event flushing for the rest of the process because C stream buffering cannot safely change after I/O begins.
+
+Block mode preserves complete-event formatting and flushes pending trace bytes before `rt_system()` launches a child,
+before panic or abort diagnostics, when `rt_flush_stderr()` is called, and through normal C process termination or
+`rt_exit()`. This keeps synchronous parent/child stderr ordering while avoiding one operating-system flush per trace
+event.
+
+The Stage 2 and L1 Stage 1 trace runners choose block mode unless `DEA_TRACE_FLUSH` is already set. To rerun a bulk
+trace capture with event durability, set `DEA_TRACE_FLUSH=event` explicitly.
 
 ## 5. Trace Families
 
@@ -104,6 +124,8 @@ successful drops emit `action=free` before quarantine eviction can release the p
 - Tracing is disabled by default.
 - Enabling tracing does not change language semantics; it only emits additional `stderr` logs.
 - Existing programs compile and run unchanged without trace flags.
+- Successful bulk trace capture streams stdout and stderr directly into artifact files, waits for EOF from inherited
+  writers, and analyzes the trace line by line. Runner memory does not scale with the raw trace byte count.
 
 ## 7. Non-goals (Current Stage)
 

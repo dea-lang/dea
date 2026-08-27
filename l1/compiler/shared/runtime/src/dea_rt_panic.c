@@ -20,6 +20,9 @@ void _rt_panic(const char* message) {
         message = "Guru Meditation";
     }
     fflush(stdout);
+#if defined(DEA_TRACE_ARC) || defined(DEA_TRACE_MEMORY)
+    _rt_trace_flush_pending();
+#endif
     fprintf(stderr, "Software Failure: %s\n", message);
     fflush(stderr);
     abort();
@@ -33,6 +36,9 @@ void _rt_panic(const char* message) {
 void _rt_panic_fmt(const char* fmt, ...) {
     va_list args;
     fflush(stdout);
+#if defined(DEA_TRACE_ARC) || defined(DEA_TRACE_MEMORY)
+    _rt_trace_flush_pending();
+#endif
     fprintf(stderr, "Software Failure: ");
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);

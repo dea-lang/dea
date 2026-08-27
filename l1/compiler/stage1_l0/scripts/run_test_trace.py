@@ -18,6 +18,7 @@ from test_runner_common import (
     discover_trace_l0_tests,
     repo_stage1_command,
     require_repo_stage1_test_env,
+    run_captured_binary_output,
     stage1_support_args,
 )
 
@@ -65,9 +66,9 @@ def main() -> int:
     print(f"stdout={stdout_path}")
     print(f"stderr={stderr_path}")
 
-    import subprocess
-
-    completed = subprocess.run(
+    trace_env = repo_env.copy()
+    trace_env.setdefault("DEA_TRACE_FLUSH", "block")
+    completed = run_captured_binary_output(
         [
             *repo_stage1_command(),
             *stage1_support_args(),
@@ -79,11 +80,9 @@ def main() -> int:
             str(test_path),
         ],
         cwd=REPO_ROOT,
-        env=repo_env,
-        stdin=subprocess.DEVNULL,
-        stdout=stdout_path.open("wb"),
-        stderr=stderr_path.open("wb"),
-        check=False,
+        env=trace_env,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
     )
     return completed.returncode
 

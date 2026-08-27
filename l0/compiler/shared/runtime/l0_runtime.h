@@ -96,6 +96,41 @@
  * Optional tracing support (compile-time toggles)
  * ========================================================================= */
 
+#if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
+#define _RT_TRACE_STDERR_BUFFER_SIZE (64u * 1024u)
+
+static int _rt_trace_flush_each_event = 1;
+static int _rt_trace_output_started = 0;
+static char _rt_trace_stderr_buffer[_RT_TRACE_STDERR_BUFFER_SIZE];
+
+/** Flush one completed trace event when the durable policy is active. */
+static void _rt_trace_event_end(void) {
+    _rt_trace_output_started = 1;
+    if (_rt_trace_flush_each_event) {
+        fflush(stderr);
+    }
+}
+
+/** Select the process-wide trace flush policy before user initialization. */
+static void _rt_trace_init(void) {
+    const char *policy = getenv("DEA_TRACE_FLUSH");
+
+    if (_rt_trace_output_started) {
+        return;
+    }
+    if (policy != NULL && strcmp(policy, "block") == 0) {
+        if (setvbuf(
+                stderr,
+                _rt_trace_stderr_buffer,
+                _IOFBF,
+                sizeof(_rt_trace_stderr_buffer)
+            ) == 0) {
+            _rt_trace_flush_each_event = 0;
+        }
+    }
+}
+#endif
+
 #ifdef L0_TRACE_ARC
 /**
  * Trace reference counting operations to stderr.
@@ -105,7 +140,7 @@
         fprintf(stderr, "[l0][arc] "); \
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, "\n"); \
-        fflush(stderr); \
+        _rt_trace_event_end(); \
     } while (0)
 /**
  * Trace reference counting operations with location info.
@@ -116,7 +151,7 @@
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, " loc=\"%s\":%d", loc_file, loc_line); \
         fprintf(stderr, "\n"); \
-        fflush(stderr); \
+        _rt_trace_event_end(); \
     } while (0)
 #else
 #define _RT_TRACE_ARC(...) ((void)0)
@@ -132,7 +167,7 @@
         fprintf(stderr, "[l0][mem] "); \
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, "\n"); \
-        fflush(stderr); \
+        _rt_trace_event_end(); \
     } while (0)
 /**
  * Trace memory allocation operations with location info.
@@ -143,7 +178,7 @@
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, " loc=\"%s\":%d", loc_file, loc_line); \
         fprintf(stderr, "\n"); \
-        fflush(stderr); \
+        _rt_trace_event_end(); \
     } while (0)
 #else
 #define _RT_TRACE_MEM(...) ((void)0)
@@ -302,6 +337,9 @@ static char** _rt_argv = NULL;
  * @param argv Argument vector.
  */
 void _rt_init_args(int argc, char** argv) {
+#if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
+    _rt_trace_init();
+#endif
     _rt_argc = argc;
     _rt_argv = argv;
 }
@@ -320,6 +358,9 @@ static void _rt_panic(const char* message) {
         message = "Guru Meditation";
     }
     fflush(stdout);
+#if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
+    fflush(stderr);
+#endif
     fprintf(stderr, "Software Failure: %s\n", message);
     fflush(stderr);
     abort();
@@ -333,6 +374,9 @@ static void _rt_panic(const char* message) {
 static void _rt_panic_fmt(const char* fmt, ...) {
     va_list args;
     fflush(stdout);
+#if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
+    fflush(stderr);
+#endif
     fprintf(stderr, "Software Failure: ");
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
@@ -1494,6 +1538,9 @@ static void rt_string_release(l0_string s) {
  */
 static l0_int rt_system(l0_string cmd) {
     char *c = _rt_string_bytes(cmd);
+#if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
+    fflush(stderr);
+#endif
     int status = system(c);
 #if defined(_WIN32)
     return (l0_int)status;

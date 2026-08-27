@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 from run_tests import select_cases
 from test_runner_common import (
@@ -46,8 +47,13 @@ class TraceResult:
     case_name: str
     status: str
     report_text: str
-    trace_text: str
+    failure_excerpt: str
     summary: str
+    trace_path: Path
+    run_seconds: float
+    analyzer_seconds: float
+    trace_bytes: int
+    event_count: int | None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -101,14 +107,40 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def read_text_excerpt(path: Path, max_bytes: int = 64 * 1024) -> str:
+    """Read a bounded leading excerpt from one artifact."""
+
+    with path.open("rb") as artifact_file:
+        data = artifact_file.read(max_bytes + 1)
+    truncated = len(data) > max_bytes
+    text = data[:max_bytes].decode("utf-8", errors="replace")
+    if truncated:
+        text += f"\n... trace excerpt truncated after {max_bytes} bytes ...\n"
+    return text
+
+
 def leak_summary(report_text: str) -> str:
     """Return the leak summary fields from one trace report."""
 
     fields: list[str] = []
     for line in report_text.splitlines():
-        if line.startswith("leaked_object_ptrs=") or line.startswith("leaked_string_ptrs="):
-            fields.append(line)
+        stripped = line.strip()
+        if stripped.startswith("leaked_object_ptrs=") or stripped.startswith("leaked_string_ptrs="):
+            fields.append(stripped)
     return " ".join(fields)
+
+
+def parsed_event_count(report_text: str) -> int | None:
+    """Return the analyzer's total parsed event count, when present."""
+
+    for line in report_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("total_events="):
+            try:
+                return int(stripped.partition("=")[2])
+            except ValueError:
+                return None
+    return None
 
 
 def run_one(
@@ -126,6 +158,9 @@ def run_one(
     trace_path = artifact_dir / f"{case_name}.stderr.log"
     report_path = artifact_dir / f"{case_name}.trace_report.txt"
 
+    trace_env = repo_env.copy()
+    trace_env.setdefault("DEA_TRACE_FLUSH", "block")
+    run_started = time.perf_counter()
     run_result = run_captured_binary_output(
         [
             *repo_stage1_command(),
@@ -138,19 +173,32 @@ def run_one(
             str(case_path),
         ],
         cwd=REPO_ROOT,
-        env=repo_env,
+        env=trace_env,
         stdout_path=out_path,
         stderr_path=trace_path,
     )
-    trace_text = read_text(trace_path)
+    run_seconds = time.perf_counter() - run_started
     if run_result.returncode != 0:
-        return TraceResult(case_index, case_name, "RUN_FAIL", "", trace_text, "")
+        return TraceResult(
+            case_index,
+            case_name,
+            "RUN_FAIL",
+            "",
+            read_text_excerpt(trace_path),
+            "",
+            trace_path,
+            run_seconds,
+            0.0,
+            run_result.stderr_bytes,
+            None,
+        )
 
+    analyzer_started = time.perf_counter()
     with report_path.open("w", encoding="utf-8") as report_file:
         analyzer_result = subprocess.run(
             [str(python_path), str(TRACE_CHECKER), str(trace_path), "--triage", "--max-details", str(max_details)],
             cwd=REPO_ROOT,
-            env=repo_env,
+            env=trace_env,
             stdout=report_file,
             stderr=subprocess.STDOUT,
             check=False,
@@ -158,12 +206,38 @@ def run_one(
             encoding="utf-8",
             errors="replace",
         )
+    analyzer_seconds = time.perf_counter() - analyzer_started
 
     report_text = read_text(report_path)
+    event_count = parsed_event_count(report_text)
     if analyzer_result.returncode == 0:
-        return TraceResult(case_index, case_name, "TRACE_OK", report_text, trace_text, leak_summary(report_text))
+        return TraceResult(
+            case_index,
+            case_name,
+            "TRACE_OK",
+            report_text,
+            "",
+            leak_summary(report_text),
+            trace_path,
+            run_seconds,
+            analyzer_seconds,
+            run_result.stderr_bytes,
+            event_count,
+        )
 
-    return TraceResult(case_index, case_name, "TRACE_FAIL", report_text, trace_text, "")
+    return TraceResult(
+        case_index,
+        case_name,
+        "TRACE_FAIL",
+        report_text,
+        "",
+        "",
+        trace_path,
+        run_seconds,
+        analyzer_seconds,
+        run_result.stderr_bytes,
+        event_count,
+    )
 
 
 def main() -> int:
@@ -195,7 +269,7 @@ def main() -> int:
         return 0
 
     artifact_dir, cleanup_artifacts = resolve_artifact_dir(args)
-    failed_names: list[str] = []
+    failed_results: list[TraceResult] = []
     passed = 0
 
     try:
@@ -213,26 +287,29 @@ def main() -> int:
             )
         print("======================================", flush=True)
 
-        ready: dict[int, TraceResult] = {}
-        next_index = 0
-
         def emit(result: TraceResult) -> None:
             nonlocal passed
 
+            events = str(result.event_count) if result.event_count is not None else "n/a"
+            summary = f" {result.summary}" if result.summary else ""
+            metrics = (
+                f" run_s={result.run_seconds:.3f} analyzer_s={result.analyzer_seconds:.3f}"
+                f" trace_bytes={result.trace_bytes} events={events}"
+            )
             if result.status == "TRACE_OK":
                 passed += 1
                 if args.verbose:
-                    print(f"Running {result.case_name}... PASS", flush=True)
+                    print(f"Running {result.case_name}... PASS{metrics}", flush=True)
                     print(result.report_text, flush=True)
                 else:
-                    summary = f" {result.summary}" if result.summary else ""
-                    print(f"Running {result.case_name}... PASS{summary}", flush=True)
+                    print(f"Running {result.case_name}... PASS{summary}{metrics}", flush=True)
                 return
 
-            failed_names.append(result.case_name)
-            print(f"Running {result.case_name}... FAIL", flush=True)
+            failed_results.append(result)
+            print(f"Running {result.case_name}... FAIL{metrics}", flush=True)
+            print(f"trace_artifact={result.trace_path} trace_bytes={result.trace_bytes}", flush=True)
             if result.status == "RUN_FAIL":
-                print(first_lines(result.trace_text, 40), flush=True)
+                print(first_lines(result.failure_excerpt, 40), flush=True)
             else:
                 print(result.report_text, flush=True)
 
@@ -251,17 +328,16 @@ def main() -> int:
                 for case in cases
             }
             for future in as_completed(future_map):
-                result = future.result()
-                ready[result.case_index] = result
-                while next_index in ready:
-                    emit(ready.pop(next_index))
-                    next_index += 1
+                emit(future.result())
 
         print("======================================", flush=True)
         print(f"Passed: {passed}", flush=True)
-        print(f"Failed: {len(failed_names)}", flush=True)
-        if failed_names:
+        print(f"Failed: {len(failed_results)}", flush=True)
+        if failed_results:
+            failed_names = [result.case_name for result in sorted(failed_results, key=lambda result: result.case_index)]
             print(f"Failed tests: {' '.join(failed_names)}", flush=True)
+            print(f"Trace artifacts kept at: {artifact_dir}", flush=True)
+            cleanup_artifacts = False
             return 1
         print("All trace tests passed!", flush=True)
         return 0

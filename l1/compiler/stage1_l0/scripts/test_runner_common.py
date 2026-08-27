@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import tempfile
 import subprocess
 import sys
+import threading
+from contextlib import ExitStack
 from dataclasses import dataclass
-from typing import Iterable
+from typing import BinaryIO, Iterable
 
 MONOREPO_SCRIPTS_ROOT = Path(__file__).resolve().parents[4] / "scripts"
 L1_SCRIPTS_ROOT = Path(__file__).resolve().parents[3] / "scripts"
@@ -27,6 +28,7 @@ from build_stage1_l1c import stage1_support_args, stage1_support_build_env
 
 
 DEFAULT_MAX_JOBS = 12
+CAPTURE_CHUNK_SIZE = 64 * 1024
 SCRIPT_DIR = Path(__file__).resolve().parent
 STAGE_DIR = SCRIPT_DIR.parent
 REPO_ROOT = STAGE_DIR.parent.parent
@@ -85,6 +87,18 @@ class CommandResult:
 
     returncode: int
     output: str
+
+
+@dataclass(frozen=True)
+class CapturedProcessResult:
+    """Result of a subprocess streamed directly into artifact files."""
+
+    args: list[str]
+    returncode: int
+    stdout_path: Path | None
+    stderr_path: Path | None
+    stdout_bytes: int
+    stderr_bytes: int
 
 
 def prepend_path(existing_path: str, entries: list[Path]) -> str:
@@ -290,41 +304,62 @@ def run_captured_binary_output(
     env: dict[str, str] | None = None,
     stdout_path: Path | None = None,
     stderr_path: Path | None = None,
-) -> subprocess.CompletedProcess[bytes]:
-    """Run one subprocess, capture binary stdout/stderr, and optionally write artifacts."""
-    temp_dir = Path(tempfile.mkdtemp(prefix="l1_trace_capture."))
-    tmp_stdout_path = temp_dir / "stdout.bin"
-    tmp_stderr_path = temp_dir / "stderr.bin"
+) -> CapturedProcessResult:
+    """Run one subprocess and stream its binary output into final artifacts."""
 
-    try:
-        with tmp_stdout_path.open("wb") as stdout_file:
-            with tmp_stderr_path.open("wb") as stderr_file:
-                completed = subprocess.run(
-                    command,
-                    cwd=cwd,
-                    env=env,
-                    stdin=subprocess.DEVNULL,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    check=False,
-                )
+    for artifact_path in (stdout_path, stderr_path):
+        if artifact_path is not None:
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
 
-        stdout_bytes = tmp_stdout_path.read_bytes()
-        stderr_bytes = tmp_stderr_path.read_bytes()
-        if stdout_path is not None:
-            stdout_path.write_bytes(stdout_bytes)
-        if stderr_path is not None:
-            stderr_path.write_bytes(stderr_bytes)
-        return subprocess.CompletedProcess(
-            completed.args,
-            completed.returncode,
-            stdout=stdout_bytes,
-            stderr=stderr_bytes,
+    byte_counts = [0, 0]
+    drain_errors: list[BaseException] = []
+
+    def drain(stream: BinaryIO, artifact_file: BinaryIO, count_index: int) -> None:
+        try:
+            with stream:
+                while chunk := stream.read(CAPTURE_CHUNK_SIZE):
+                    artifact_file.write(chunk)
+                    byte_counts[count_index] += len(chunk)
+        except BaseException as exc:  # Propagate drainer failures on the caller thread.
+            drain_errors.append(exc)
+
+    with ExitStack() as stack:
+        stdout_file = stack.enter_context(stdout_path.open("wb")) if stdout_path is not None else None
+        stderr_file = stack.enter_context(stderr_path.open("wb")) if stderr_path is not None else None
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE if stdout_file is not None else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if stderr_file is not None else subprocess.DEVNULL,
         )
-    finally:
-        tmp_stdout_path.unlink(missing_ok=True)
-        tmp_stderr_path.unlink(missing_ok=True)
-        temp_dir.rmdir()
+
+        drainers: list[threading.Thread] = []
+        for stream, artifact_file, count_index in (
+            (process.stdout, stdout_file, 0),
+            (process.stderr, stderr_file, 1),
+        ):
+            if stream is None or artifact_file is None:
+                continue
+            drainer = threading.Thread(target=drain, args=(stream, artifact_file, count_index))
+            drainer.start()
+            drainers.append(drainer)
+
+        returncode = process.wait()
+        for drainer in drainers:
+            drainer.join()
+        if drain_errors:
+            raise OSError(f"failed to drain captured process output: {drain_errors[0]}")
+
+    return CapturedProcessResult(
+        args=command,
+        returncode=returncode,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        stdout_bytes=byte_counts[0],
+        stderr_bytes=byte_counts[1],
+    )
 
 
 def print_output_block(text: str) -> None:

@@ -78,6 +78,7 @@ def require_runtime_build(
     compiler: str,
     quarantine_count: int | None = None,
     compiler_runtime_overrides: dict[str, str] | None = None,
+    force_newer: Path | None = None,
 ) -> str:
     """Build runtime archives in an isolated directory and return make output."""
 
@@ -90,6 +91,11 @@ def require_runtime_build(
     ]
     if quarantine_count is not None:
         command.append(f"L1_RT_QUARANTINE_MAX_COUNT={quarantine_count}")
+    if force_newer is not None:
+        force_path = force_newer
+        if force_path.is_absolute() and force_path.is_relative_to(L1_ROOT):
+            force_path = force_path.relative_to(L1_ROOT)
+        command.extend(["-W", force_path.as_posix()])
     for name, value in sorted((compiler_runtime_overrides or {}).items()):
         command.append(f"{name}={value}")
 
@@ -172,6 +178,20 @@ def main() -> int:
 
         repeated_changed = require_runtime_build(build_dir, compiler, quarantine_count=17)
         assert_no_object_rebuild(repeated_changed, "repeated changed runtime configuration")
+
+        header_changed = require_runtime_build(
+            build_dir,
+            compiler,
+            quarantine_count=17,
+            force_newer=L1_ROOT / "compiler" / "shared" / "runtime" / "include" / "dea_rt.h",
+        )
+        for variant in ("default", "traced", "unchecked", "check_basic"):
+            expected = f"runtime/{variant}/dea_rt_alloc.o"
+            if expected not in header_changed:
+                raise AssertionError(f"runtime header change did not rebuild {variant}:\n{header_changed}")
+
+        repeated_header = require_runtime_build(build_dir, compiler, quarantine_count=17)
+        assert_no_object_rebuild(repeated_header, "completed runtime header rebuild")
 
         runtime_artifacts = [
             build_dir / "runtime" / variant / ".build-config"

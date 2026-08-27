@@ -107,6 +107,8 @@ def main() -> int:
     stderr_path.parent.mkdir(parents=True, exist_ok=True)
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
 
+    trace_env = repo_env.copy()
+    trace_env.setdefault("DEA_TRACE_FLUSH", "block")
     result = run_captured_binary_output(
         [
             *source_tree_l0c_command(),
@@ -120,7 +122,7 @@ def main() -> int:
             str(test_path.relative_to(REPO_ROOT)),
         ],
         cwd=REPO_ROOT,
-        env=repo_env,
+        env=trace_env,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
     )

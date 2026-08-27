@@ -285,11 +285,12 @@ func test_runtime_object_paths_return_default_or_traced_dirs() {
         opts.trace_memory = true;
         let traced_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
         let traced_dir = join(join(join("build-root", "runtime"), "tcc"), "traced");
-        assert(sv_size(traced_paths) == 9, "traced runtime object count mismatch");
-        assert(sv_get(traced_paths, 0) == join(traced_dir, "dea_rt_panic.o"), "traced panic object path mismatch");
-        assert(sv_get(traced_paths, 1) == join(traced_dir, "dea_rt_sys.o"), "traced sys object path mismatch");
-        assert(sv_get(traced_paths, 3) == join(traced_dir, "dea_rt_rand.o"), "traced rand object path mismatch");
-        assert(sv_get(traced_paths, 8) == join(traced_dir, "dea_rt_time.o"), "traced time object path mismatch");
+        assert(sv_size(traced_paths) == 10, "traced runtime object count mismatch");
+        assert(sv_get(traced_paths, 0) == join(traced_dir, "dea_rt_trace.o"), "traced policy object path mismatch");
+        assert(sv_get(traced_paths, 1) == join(traced_dir, "dea_rt_panic.o"), "traced panic object path mismatch");
+        assert(sv_get(traced_paths, 2) == join(traced_dir, "dea_rt_sys.o"), "traced sys object path mismatch");
+        assert(sv_get(traced_paths, 4) == join(traced_dir, "dea_rt_rand.o"), "traced rand object path mismatch");
+        assert(sv_get(traced_paths, 9) == join(traced_dir, "dea_rt_time.o"), "traced time object path mismatch");
         sv_free(traced_paths);
     }
 }

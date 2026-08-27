@@ -60,6 +60,12 @@
  * Optional tracing support (compile-time toggles)
  * ========================================================================= */
 
+#if defined(DEA_TRACE_ARC) || defined(DEA_TRACE_MEMORY)
+void _rt_trace_init(void);
+void _rt_trace_event_end(void);
+void _rt_trace_flush_pending(void);
+#endif
+
 #ifdef DEA_TRACE_ARC
 /**
  * Trace reference counting operations to stderr.
@@ -69,7 +75,7 @@
         fprintf(stderr, "[l0][arc] "); \
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, "\n"); \
-        fflush(stderr); \
+        _rt_trace_event_end(); \
     } while (0)
 /**
  * Trace reference counting operations with location info.
@@ -80,7 +86,7 @@
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, " loc=\"%s\":%d", loc_file, loc_line); \
         fprintf(stderr, "\n"); \
-        fflush(stderr); \
+        _rt_trace_event_end(); \
     } while (0)
 #else
 #define _RT_TRACE_ARC(...) ((void)0)
@@ -96,7 +102,7 @@
         fprintf(stderr, "[l0][mem] "); \
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, "\n"); \
-        fflush(stderr); \
+        _rt_trace_event_end(); \
     } while (0)
 /**
  * Trace memory allocation operations with location info.
@@ -107,7 +113,7 @@
         fprintf(stderr, __VA_ARGS__); \
         fprintf(stderr, " loc=\"%s\":%d", loc_file, loc_line); \
         fprintf(stderr, "\n"); \
-        fflush(stderr); \
+        _rt_trace_event_end(); \
     } while (0)
 #else
 #define _RT_TRACE_MEM(...) ((void)0)

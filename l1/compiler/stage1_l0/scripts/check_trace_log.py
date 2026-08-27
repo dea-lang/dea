@@ -13,7 +13,24 @@ TRACE_RE = re.compile(r"^\[l0\]\[(mem|arc)\]\s+(.*)$")
 KV_RE = re.compile(r"(\w+)=([^\s]+)")
 
 
-def _iter_events(lines: Iterable[str]) -> tuple[Iterable[dict[str, str]], list[str], dict[str, int]]:
+class _MessageCollector:
+    """Count messages while retaining only a bounded leading sample."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self.messages: list[str] = []
+        self.total = 0
+
+    def append(self, message: str) -> None:
+        self.total += 1
+        if len(self.messages) < self.limit:
+            self.messages.append(message)
+
+
+def _iter_events(
+    lines: Iterable[str],
+    max_details: int = 20,
+) -> tuple[Iterable[dict[str, str]], _MessageCollector, dict[str, int]]:
     """Yield structured trace events from one raw line iterator.
 
     Args:
@@ -27,7 +44,7 @@ def _iter_events(lines: Iterable[str]) -> tuple[Iterable[dict[str, str]], list[s
         `_validate_trace_file`: Consumes the parsed events for semantic checks.
         `main`: Opens the input file and drives the full validation flow.
     """
-    warnings: list[str] = []
+    warnings = _MessageCollector(max_details)
     counts = {"mem_events": 0, "arc_events": 0, "total_events": 0}
 
     def event_iter() -> Iterable[dict[str, str]]:
@@ -57,7 +74,15 @@ def _iter_events(lines: Iterable[str]) -> tuple[Iterable[dict[str, str]], list[s
 
 def _validate_trace_file(
     trace_path: Path,
-) -> tuple[list[str], list[str], dict[str, int], dict, list[str], dict[str, int]]:
+    max_details: int = 20,
+) -> tuple[
+    _MessageCollector,
+    _MessageCollector,
+    dict[str, int],
+    dict,
+    _MessageCollector,
+    dict[str, int],
+]:
     """Validate one trace file without materializing the entire event stream.
 
     Args:
@@ -70,8 +95,8 @@ def _validate_trace_file(
         `_iter_events`: Produces the streaming event iterator consumed here.
         `_print_report`: Renders the returned validation summary.
     """
-    errors: list[str] = []
-    warnings: list[str] = []
+    errors = _MessageCollector(max_details)
+    warnings = _MessageCollector(max_details)
     op_counts: Counter[str] = Counter()
 
     obj_balance: defaultdict[str, int] = defaultdict(int)
@@ -82,8 +107,19 @@ def _validate_trace_file(
     str_alloc_loc: dict[str, str] = {}
     str_last_ptr_line: dict[str, str] = {}
 
+    def forget_object(ptr: str) -> None:
+        obj_balance.pop(ptr, None)
+        obj_new_meta.pop(ptr, None)
+        obj_last_ptr_line.pop(ptr, None)
+
+    def forget_string(ptr: str) -> None:
+        str_balance.pop(ptr, None)
+        str_alloc_line.pop(ptr, None)
+        str_alloc_loc.pop(ptr, None)
+        str_last_ptr_line.pop(ptr, None)
+
     with trace_path.open(encoding="utf-8", errors="replace") as trace_file:
-        events, parse_warnings, counts = _iter_events(trace_file)
+        events, parse_warnings, counts = _iter_events(trace_file, max_details)
         for ev in events:
             family = ev["family"]
             line_no = ev["line_no"]
@@ -96,43 +132,61 @@ def _validate_trace_file(
 
             if family == "mem":
                 if ptr:
-                    obj_last_ptr_line[ptr] = line_no
-                    str_last_ptr_line[ptr] = line_no
+                    if obj_balance.get(ptr, 0) > 0:
+                        obj_last_ptr_line[ptr] = line_no
+                    if str_balance.get(ptr, 0) > 0:
+                        str_last_ptr_line[ptr] = line_no
 
                 if op in {"new_alloc", "drop", "alloc_string", "free_string"} and not ptr:
                     errors.append(f"line {line_no}: mem op={op} is missing ptr")
                     continue
 
                 if op == "new_alloc" and action == "ok":
-                    obj_balance[ptr] += 1  # type: ignore[index]
+                    obj_balance[ptr] = obj_balance.get(ptr, 0) + 1  # type: ignore[arg-type]
                     obj_new_meta[ptr] = {
                         "new_line": line_no,
                         "bytes": ev.get("bytes", "?"),
                         "loc": ev.get("loc", "?"),
                     }
+                    obj_last_ptr_line[ptr] = line_no  # type: ignore[index]
                 elif op == "drop" and action == "free":
-                    obj_balance[ptr] -= 1  # type: ignore[index]
-                    if obj_balance[ptr] < 0:  # type: ignore[index]
+                    remaining = obj_balance.get(ptr, 0) - 1  # type: ignore[arg-type]
+                    if remaining < 0:
+                        obj_balance[ptr] = remaining  # type: ignore[index]
                         errors.append(
                             f"line {line_no}: drop/free for ptr={ptr} without matching new_alloc in this log"
                         )
+                    elif remaining == 0:
+                        forget_object(ptr)  # type: ignore[arg-type]
+                    else:
+                        obj_balance[ptr] = remaining  # type: ignore[index]
                 elif op == "free" and action == "call" and ptr:
-                    if obj_balance[ptr] > 0:
-                        obj_balance[ptr] -= 1
+                    if obj_balance.get(ptr, 0) > 0:
+                        remaining = obj_balance[ptr] - 1
+                        if remaining == 0:
+                            forget_object(ptr)
+                        else:
+                            obj_balance[ptr] = remaining
                         warnings.append(
                             f"line {line_no}: new_alloc ptr={ptr} released via mem op=free action=call (preferred: drop/free)"
                         )
                 elif op == "alloc_string":
-                    str_balance[ptr] += 1  # type: ignore[index]
+                    str_balance[ptr] = str_balance.get(ptr, 0) + 1  # type: ignore[arg-type]
                     if ptr not in str_alloc_line:
                         str_alloc_line[ptr] = line_no
                         str_alloc_loc[ptr] = ev.get("loc", "?")
+                    str_last_ptr_line[ptr] = line_no  # type: ignore[index]
                 elif op == "free_string" and action == "free":
-                    str_balance[ptr] -= 1  # type: ignore[index]
-                    if str_balance[ptr] < 0:  # type: ignore[index]
+                    remaining = str_balance.get(ptr, 0) - 1  # type: ignore[arg-type]
+                    if remaining < 0:
+                        str_balance[ptr] = remaining  # type: ignore[index]
                         errors.append(
                             f"line {line_no}: free_string/free for ptr={ptr} without matching alloc_string in this log"
                         )
+                    elif remaining == 0:
+                        forget_string(ptr)  # type: ignore[arg-type]
+                    else:
+                        str_balance[ptr] = remaining  # type: ignore[index]
                 elif op == "free_string" and action == "decrement-only":
                     pass
                 elif op == "free_string" and action:
@@ -222,9 +276,9 @@ def _validate_trace_file(
 
 def _print_report(
     counts: dict[str, int],
-    parse_warnings: list[str],
-    errors: list[str],
-    warnings: list[str],
+    parse_warnings: _MessageCollector,
+    errors: _MessageCollector,
+    warnings: _MessageCollector,
     op_counts: dict[str, int],
     triage: dict,
     max_details: int,
@@ -245,33 +299,37 @@ def _print_report(
     See Also:
         `_validate_events`: Produces the summary and triage data rendered here.
     """
-    total_warnings = parse_warnings + warnings
+    total_warning_count = parse_warnings.total + warnings.total
+    warning_samples = (parse_warnings.messages + warnings.messages)[:max_details]
 
     print("stats:")
     print(f"  mem_events={counts['mem_events']}")
     print(f"  arc_events={counts['arc_events']}")
     print(f"  total_events={counts['total_events']}")
-    print(f"  errors={len(errors)}")
-    print(f"  warnings={len(total_warnings)}")
+    print(f"  errors={errors.total}")
+    print(f"  warnings={total_warning_count}")
 
     if op_counts:
         print("op_counts:")
-        for key in sorted(op_counts.keys()):
+        op_keys = sorted(op_counts.keys())
+        for key in op_keys[:max_details]:
             print(f"  {key}={op_counts[key]}")
+        if len(op_keys) > max_details:
+            print(f"  ... {len(op_keys) - max_details} more operation kinds")
 
-    if errors:
+    if errors.total:
         print("errors:")
-        for msg in errors[:max_details]:
+        for msg in errors.messages:
             print(f"ERROR: {msg}")
-        if len(errors) > max_details:
-            print(f"ERROR: ... {len(errors) - max_details} more")
+        if errors.total > len(errors.messages):
+            print(f"ERROR: ... {errors.total - len(errors.messages)} more")
 
-    if total_warnings:
+    if total_warning_count:
         print("warnings:")
-        for msg in total_warnings[:max_details]:
+        for msg in warning_samples:
             print(f"WARN: {msg}")
-        if len(total_warnings) > max_details:
-            print(f"WARN: ... {len(total_warnings) - max_details} more")
+        if total_warning_count > len(warning_samples):
+            print(f"WARN: ... {total_warning_count - len(warning_samples)} more")
 
     if show_triage:
         leaked_objects = triage.get("leaked_objects", [])
@@ -284,11 +342,14 @@ def _print_report(
 
         if leaked_object_bytes:
             print("  leaked_object_bytes:")
-            for b, count in sorted(
+            byte_counts = sorted(
                 leaked_object_bytes.items(),
                 key=lambda item: (-item[1], item[0]),
-            ):
+            )
+            for b, count in byte_counts[:max_details]:
                 print(f"    bytes={b} count={count}")
+            if len(byte_counts) > max_details:
+                print(f"    ... {len(byte_counts) - max_details} more byte sizes")
 
         if leaked_objects:
             print("  leaked_object_examples:")
@@ -370,7 +431,10 @@ def main(argv: list[str]) -> int:
         return 2
 
     try:
-        errors, warnings, op_counts, triage, parse_warnings, counts = _validate_trace_file(trace_path)
+        errors, warnings, op_counts, triage, parse_warnings, counts = _validate_trace_file(
+            trace_path,
+            args.max_details,
+        )
     except OSError as exc:
         print(f"error: failed to read trace file {trace_path}: {exc}")
         return 2
@@ -384,7 +448,7 @@ def main(argv: list[str]) -> int:
         max_details=args.max_details,
         show_triage=args.triage,
     )
-    return 1 if errors else 0
+    return 1 if errors.total else 0
 
 
 if __name__ == "__main__":

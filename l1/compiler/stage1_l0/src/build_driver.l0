@@ -856,6 +856,9 @@ func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?
     }
     let object_dir = join(join(join(build_dir as string, "runtime"), "tcc"), variant);
     let paths = sv_create(16);
+    if (opts.trace_arc || opts.trace_memory) {
+        sv_push(paths, join(object_dir, "dea_rt_trace.o"));
+    }
     sv_push(paths, join(object_dir, "dea_rt_panic.o"));
     sv_push(paths, join(object_dir, "dea_rt_sys.o"));
     sv_push(paths, join(object_dir, "dea_rt_math.o"));

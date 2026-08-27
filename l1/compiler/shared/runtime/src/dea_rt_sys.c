@@ -24,6 +24,9 @@ static char** _rt_argv = NULL;
  * @param argv Argument vector.
  */
 void _rt_init_args(int argc, char** argv) {
+#if defined(DEA_TRACE_ARC) || defined(DEA_TRACE_MEMORY)
+    _rt_trace_init();
+#endif
     _rt_argc = argc;
     _rt_argv = argv;
 }
@@ -44,6 +47,9 @@ void _rt_init_args(int argc, char** argv) {
  */
 dea_int rt_system(dea_string cmd) {
     char *c = _rt_string_bytes(cmd);
+#if defined(DEA_TRACE_ARC) || defined(DEA_TRACE_MEMORY)
+    _rt_trace_flush_pending();
+#endif
     int status = system(c);
 #if defined(_WIN32)
     return (dea_int)status;

@@ -357,6 +357,7 @@ def compile_and_run(runtime_dir: Path):
         stdin_text: str | None = None,
         *,
         strict_c99: bool = False,
+        env: dict[str, str | None] | None = None,
     ) -> tuple[bool, str, str]:
         cc = _find_cc()
         flag_family = _compiler_flag_family(cc)
@@ -400,12 +401,20 @@ def compile_and_run(runtime_dir: Path):
         if result.returncode != 0:
             return False, "", result.stderr
 
+        run_env = os.environ.copy()
+        for name, value in (env or {}).items():
+            if value is None:
+                run_env.pop(name, None)
+            else:
+                run_env[name] = value
+
         result = subprocess.run(
             [str(exe_file)],
             capture_output=True,
             text=True,
             timeout=10,
             input=stdin_text,
+            env=run_env,
         )
 
         return result.returncode == 0, result.stdout, result.stderr
