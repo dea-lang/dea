@@ -35,6 +35,7 @@ def _iter_events(
 
     Args:
         lines: Raw trace log lines, typically captured from Stage 2 stderr.
+        max_details: Maximum number of non-fatal parse-warning details to retain.
 
     Returns:
         A triple containing the parsed event iterator, non-fatal parse warnings,
@@ -80,6 +81,7 @@ def _validate_events(
 
     Args:
         events: Parsed trace events from `_parse_events`.
+        max_details: Maximum number of validation error and warning details to retain.
 
     Returns:
         A tuple of ``(errors, warnings, op_counts, triage)`` summarizing the
