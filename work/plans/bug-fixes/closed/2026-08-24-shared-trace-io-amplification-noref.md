@@ -2,8 +2,8 @@
 
 ## Eliminate shared trace I/O amplification without weakening ordering
 
-- Date: 2026-08-24
-- Status: In Progress (full Windows default restored locally; automatic hosted verification pending)
+- Date: 2026-08-28
+- Status: Completed
 - Title: Eliminate ARC and memory trace I/O amplification across runtimes and test runners
 - Kind: Bug Fix
 - Scope: Shared
@@ -262,7 +262,7 @@ durable event policy and may produce a runner warning; they must not alter gener
 6. Run `python3 scripts/check_adr_impact.py --all-active`, Markdown formatting, staged whitespace checks, and the
    repository pre-commit gate before closure.
 
-## Implementation Progress
+## Outcome and Verification
 
 - On 2026-08-27, both runtime targets gained the startup-selected `event`/`block` policy, pre-initialization fallback,
   and explicit process-boundary flushing. The L1 normal archives do not compile or link the trace-policy object.
@@ -302,6 +302,9 @@ durable event policy and may produce a runner warning; they must not alter gener
   output. Full `l1c_lib_test` totals varied by platform and by 411 events between Windows runs, so those integration
   totals remain diagnostic while deterministic same-input probe and analyzer-fixture parity carry the correctness gate.
 - `test-ci` now delegates to the full `test-all` suite on every supported platform. The six-test smoke target remains an
-  explicit diagnostic command. An automatic hosted run of the restored default remains the final closure gate.
+  explicit diagnostic command.
+- The automatic push-triggered [Unified CI run](https://github.com/googlielmo/dea-lang/actions/runs/33119125512) passed
+  on hosted Linux, macOS Intel, macOS ARM64, and Windows. The Windows job selected `test-ci`, entered the full Stage 1
+  trace sweep, and passed all 44 trace tests.
 
-[trace-spec]: ../../../l0/docs/specs/runtime/trace.md
+[trace-spec]: ../../../../l0/docs/specs/runtime/trace.md
