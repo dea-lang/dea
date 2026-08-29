@@ -186,6 +186,12 @@ For history-only rewrites such as squash, reword, or reorder operations:
   `git diff --cached --quiet "$pre_rewrite_commit"` to prove staged tree identity, then verify the replacement commit's
   tree matches the recorded pre-rewrite tree.
 
+- Example-only exception: When the complete intended diff is confined to example programs and example-local supporting
+  files, do not run aggregate `test`, `test-all`, trace, or other extensive suites. Run `make check-examples` from each
+  affected level directory, then manually run every added or modified example through its intended execution workflow
+  and inspect its output and behavior. Changes to shared compiler, runtime, build, test, or tooling behavior do not
+  qualify for this exception. Still run the required staged whitespace and pre-commit checks.
+
 - For trace-independent non-documentation functional changes confined to `l0/`: run `make -C l0 clean test`.
 
 - For trace-sensitive non-documentation functional changes confined to `l0/`: run `make -C l0 clean test-all`.
@@ -259,6 +265,7 @@ Rules:
 
 - Summary is sentence case and ends with a period.
 - Follow the "Level naming in summaries" rules in root `CLAUDE.md`.
+- An example-only summary must name each affected level naturally.
 - Leave exactly one blank line between summary and bullets.
 - Body bullets start with `- `, are factual, sentence case, and end with a period.
 - Keep each bullet on one physical line.
@@ -272,6 +279,8 @@ Summary verb selection:
 - Use `Fix ...` when the commit introduces a bug fix.
 - Use `Implement ...` when the commit introduces a feature or implementation.
 - Use `Refactor ...` when the commit primarily restructures existing behavior without changing semantics.
+- Use `Add ... example.` or `Add ... examples.` when the primary change adds one or more example programs, name each
+  affected level, and use a form such as `Add a new L0 Forth parsing example.`
 - Use `Document ...` when the commit is docs-only.
 - Use `Complete ...` only when prior commits already introduced the main implementation and this commit finishes
   residual work.
@@ -308,7 +317,8 @@ git log -1 --oneline
 4. Final response must include:
 
 - commit hash and summary
-- selected validation tier, or docs-only classification, and the trace-risk rationale for that classification
+- selected validation tier, example-only classification, or docs-only classification, and the trace-risk rationale for
+  that classification
 - validation commands run; for every reused result, its command, result, and unchanged-input evidence, plus tree
   identity for a history-only rewrite
 - any unstaged/untracked files intentionally left alone

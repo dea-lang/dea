@@ -194,6 +194,16 @@ Treat local implementation, remote writes, and publication as separate authoriza
   behavior instead.
 - No `Co-Authored-By` lines.
 
+### Example-only validation
+
+- Treat a change as example-only only when the complete intended diff is confined to example programs and example-local
+  supporting files. Changes to shared compiler, runtime, build, test, or tooling behavior follow the normal validation
+  rules.
+- For an example-only change, do not run aggregate `test`, `test-all`, trace, or other extensive suites. From each
+  affected level directory, run `make check-examples`, then manually run every added or modified example through its
+  intended execution workflow and inspect its output and behavior.
+- Still run the required staged whitespace and pre-commit checks before committing.
+
 ### Level naming in summaries
 
 - Determine level scope from the primary intent of the change, not solely from the locations of the touched files.
@@ -205,6 +215,7 @@ Treat local implementation, remote writes, and publication as separate authoriza
   documentation and vendored dependency updates.
 - Treat primarily single-level work as level-scoped when it also updates supporting shared files, such as the shared
   diagnostic-code catalog.
+- An example-only summary must name each affected level naturally, as in `Add a new L0 Forth parsing example.`
 
 ### Summary verb selection
 
@@ -215,6 +226,8 @@ Treat local implementation, remote writes, and publication as separate authoriza
 - Use `Implement ...` for a commit that introduces a new feature or completed implementation, even when the same commit
   also closes the corresponding feature plan.
 - Use `Refactor ...` when the commit primarily restructures existing behavior without changing semantics.
+- Use `Add ... example.` or `Add ... examples.` when the primary change adds one or more example programs, and include
+  each affected level according to the level-naming rule above.
 - Use `Document ...` when the commit is docs-only.
 - Use `Complete ...` only for follow-up completion work where the implementation already exists in prior commits and
   this commit finishes remaining integration, docs, tests, or plan cleanup.
