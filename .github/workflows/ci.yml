@@ -10,34 +10,38 @@ on:
       - ci-probe
     paths:
       - .agents/skills/**
-      - .github/workflows/ci.yml
-      - .github/workflows/l0-ci.yml
-      - .github/workflows/l1-ci.yml
+      - .github/workflows/**
       - .pre-commit-config.yaml
       - CLAUDE.md
       - CONTRIBUTING.md
       - Makefile
+      - README.md
+      - THIRD_PARTY_NOTICES
       - docs/decisions/**
+      - pyproject.toml
       - scripts/check_adr_impact.py
       - scripts/tests/test_check_adr_impact.py
       - tools/**
+      - uv.lock
       - work/**
       - l0/**
       - l1/**
   pull_request:
     paths:
       - .agents/skills/**
-      - .github/workflows/ci.yml
-      - .github/workflows/l0-ci.yml
-      - .github/workflows/l1-ci.yml
+      - .github/workflows/**
       - .pre-commit-config.yaml
       - CLAUDE.md
       - CONTRIBUTING.md
       - Makefile
+      - README.md
+      - THIRD_PARTY_NOTICES
       - docs/decisions/**
+      - pyproject.toml
       - scripts/check_adr_impact.py
       - scripts/tests/test_check_adr_impact.py
       - tools/**
+      - uv.lock
       - work/**
       - l0/**
       - l1/**
@@ -153,6 +157,7 @@ jobs:
     outputs:
       run_l0: ${{ steps.route.outputs.run_l0 }}
       run_l1: ${{ steps.route.outputs.run_l1 }}
+      run_docs: ${{ steps.route.outputs.run_docs }}
       run_any: ${{ steps.route.outputs.run_any }}
     steps:
       - name: Check out repository
@@ -172,10 +177,12 @@ jobs:
         run: |
           run_l0=false
           run_l1=false
+          run_docs=false
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             run_l0=true
             run_l1=true
+            run_docs=true
           else
             if [ "$EVENT_NAME" = "pull_request" ]; then
               base_sha="$PR_BASE_SHA"
@@ -188,16 +195,18 @@ jobs:
             if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
               run_l0=true
               run_l1=true
+              run_docs=true
             elif ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 || \
                  ! git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
-              echo "Diff endpoints unavailable; running both levels."
+              echo "Diff endpoints unavailable; running all validation workloads."
               run_l0=true
               run_l1=true
+              run_docs=true
             else
               changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
               shared=false
 
-              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|\.github/workflows/|Makefile)'; then
+              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|\.github/workflows/(ci|l0-ci|l1-ci)\.yml$|Makefile$)'; then
                 shared=true
               fi
               if printf '%s\n' "$changed_files" | grep -Eq '^l0/'; then
@@ -210,6 +219,9 @@ jobs:
                 run_l0=true
                 run_l1=true
               fi
+              if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|tools/|pyproject\.toml$|uv\.lock$|l0/(compiler/(stage1_py|docgen|stage2_l0|shared)/|docs/|README(-WINDOWS)?\.md$|CLAUDE\.md$|pyproject\.toml$|scripts/(docs/|gen_docs\.py$)))'; then
+                run_docs=true
+              fi
             fi
           fi
 
@@ -221,8 +233,14 @@ jobs:
           {
             echo "run_l0=$run_l0"
             echo "run_l1=$run_l1"
+            echo "run_docs=$run_docs"
             echo "run_any=$run_any"
           } >> "$GITHUB_OUTPUT"
+
+  docs-validation:
+    needs: route-levels
+    if: needs.route-levels.outputs.run_docs == 'true'
+    uses: ./.github/workflows/l0-docs-validate.yml
 
   select-matrix:
     runs-on: ubuntu-latest

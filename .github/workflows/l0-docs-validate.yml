@@ -4,51 +4,11 @@
 name: L0 Validate Documentation
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/**"
-      - "README.md"
-      - "l0/README-WINDOWS.md"
-      - "CONTRIBUTING.md"
-      - "CLAUDE.md"
-      - "THIRD_PARTY_NOTICES"
-      - "tools/**"
-      - "l0/compiler/stage1_py/**"
-      - "l0/compiler/docgen/**"
-      - "l0/compiler/stage2_l0/**"
-      - "l0/compiler/shared/**"
-      - "l0/docs/**"
-      - "l0/README.md"
-      - "l0/CLAUDE.md"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "l0/pyproject.toml"
-      - "l0/scripts/docs/**"
-      - "l0/scripts/gen_docs.py"
+  workflow_call:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/**"
-      - "README.md"
-      - "l0/README-WINDOWS.md"
-      - "CONTRIBUTING.md"
-      - "CLAUDE.md"
-      - "THIRD_PARTY_NOTICES"
-      - "tools/**"
-      - "l0/compiler/stage1_py/**"
-      - "l0/compiler/docgen/**"
-      - "l0/compiler/stage2_l0/**"
-      - "l0/compiler/shared/**"
-      - "l0/docs/**"
-      - "l0/README.md"
-      - "l0/CLAUDE.md"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "l0/pyproject.toml"
-      - "l0/scripts/docs/**"
-      - "l0/scripts/gen_docs.py"
+
+permissions:
+  contents: read
 
 jobs:
   validate-docs:
@@ -87,7 +47,14 @@ jobs:
         run: python3 scripts/gen_docs.py --strict
 
       - name: Show undocumented functions report
-        run: cat build/docs/undocumented-functions.txt
+        if: always()
+        run: |
+          report_path="build/docs/undocumented-functions.txt"
+          if [ -f "$report_path" ]; then
+            cat "$report_path"
+          else
+            echo "No undocumented functions report was generated."
+          fi
 
       - name: Export Chirpy Markdown
         run: |

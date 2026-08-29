@@ -174,7 +174,8 @@ faster local previews, `python scripts/gen_docs.py --pdf-fast --latex-only` perf
 successful docs run, generated artifacts are mirrored to a stable preview tree under `build/preview/` (`html/`,
 `markdown/`, `pdf/`), which is overwritten by the next successful run. Use `-v` / `--verbose` with `scripts/gen_docs.py`
 to show m.css warnings and LaTeX build output directly. Release/manual publishing is handled by
-`.github/workflows/l0-docs-publish.yml`; PR validation is handled by `.github/workflows/l0-docs-validate.yml`.
+`.github/workflows/l0-docs-publish.yml`; Unified CI routes PR validation through the callable
+`.github/workflows/l0-docs-validate.yml`, which also remains manually dispatchable.
 
 ### Testing
 
