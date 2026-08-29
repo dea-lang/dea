@@ -17,11 +17,22 @@ class _MessageCollector:
     """Count messages while retaining only a bounded leading sample."""
 
     def __init__(self, limit: int) -> None:
+        """Initialize an empty collector with a retained-message limit.
+
+        Args:
+            limit: Maximum number of leading messages to retain. All appended
+                messages still contribute to `total`.
+        """
         self.limit = limit
         self.messages: list[str] = []
         self.total = 0
 
     def append(self, message: str) -> None:
+        """Count one message and retain it while the sample has capacity.
+
+        Args:
+            message: Message text to count and potentially retain.
+        """
         self.total += 1
         if len(self.messages) < self.limit:
             self.messages.append(message)

@@ -19,7 +19,34 @@ import util.diag;
  * This ABI is compiler-internal. Its implementation lives in the L0 Stage 2
  * compiler-support translation unit, not in the Dea runtime or stdlib.
  */
+
+/**
+ * Create one directory from a native path byte span.
+ *
+ * @param path Non-empty native path bytes without an embedded NUL.
+ * @param path_len Number of bytes in `path`.
+ * @param mode POSIX permission and special bits through `07777`; validated but
+ *     otherwise ignored on Windows.
+ * @return `1` after creation, `0` when an object already exists at the path,
+ *     or `-1` on invalid input or an operating-system error.
+ */
 extern func l0c_fs_mkdir(path: byte*, path_len: int, mode: int) -> int;
+
+/**
+ * Join a trusted parent path and one internal child name.
+ *
+ * A query with a null `output` and zero capacity returns the required byte
+ * length. A sufficiently large output span receives the path without a
+ * trailing NUL.
+ *
+ * @param parent Non-empty native parent path bytes without an embedded NUL.
+ * @param parent_len Number of bytes in `parent`.
+ * @param child Non-empty native child-name bytes without an embedded NUL.
+ * @param child_len Number of bytes in `child`.
+ * @param output Optional destination for the joined path bytes.
+ * @param output_capacity Available bytes in `output`, or zero for a query.
+ * @return Required byte length, or `-1` on invalid input or overflow.
+ */
 extern func l0c_fs_join_child(
     parent: byte*,
     parent_len: int,
@@ -28,10 +55,63 @@ extern func l0c_fs_join_child(
     output: byte*?,
     output_capacity: int
 ) -> int;
+
+/**
+ * Classify one native path without following a final symlink or reparse point.
+ *
+ * @param path Non-empty native path bytes without an embedded NUL.
+ * @param path_len Number of bytes in `path`.
+ * @return A `CFS_PATH_*` kind, or `-1` on invalid input or an
+ *     operating-system error.
+ */
 extern func l0c_fs_path_kind_nofollow(path: byte*, path_len: int) -> int;
+
+/**
+ * Classify one native path after following symlinks or reparse points.
+ *
+ * @param path Non-empty native path bytes without an embedded NUL.
+ * @param path_len Number of bytes in `path`.
+ * @return A `CFS_PATH_*` kind, with dangling links reported as absent, or
+ *     `-1` on invalid input or an operating-system error.
+ */
 extern func l0c_fs_path_kind_follow(path: byte*, path_len: int) -> int;
+
+/**
+ * Remove one regular file without following a substituted path object.
+ *
+ * @param path Non-empty native path bytes without an embedded NUL.
+ * @param path_len Number of bytes in `path`.
+ * @return `1` after removal, `0` when absent, or `-1` for invalid input, an
+ *     unsupported object kind, or an operating-system error.
+ */
 extern func l0c_fs_remove_regular_file(path: byte*, path_len: int) -> int;
+
+/**
+ * Remove one empty real directory without accepting a symlink or reparse point.
+ *
+ * @param path Non-empty native path bytes without an embedded NUL.
+ * @param path_len Number of bytes in `path`.
+ * @return `1` after removal, `0` when absent, or `-1` on invalid input, a
+ *     non-directory object, a non-empty directory, or an operating-system
+ *     error.
+ */
 extern func l0c_fs_remove_empty_dir(path: byte*, path_len: int) -> int;
+
+/**
+ * Resolve and validate one selected compiler temporary parent.
+ *
+ * A query with a null `output` and zero capacity returns the canonical byte
+ * length. A sufficiently large output span receives the canonical path
+ * without a trailing NUL. POSIX validates the complete resolved directory
+ * trust chain; Windows relies on the documented trusted-parent ACL assumption.
+ *
+ * @param path Non-empty native path bytes without an embedded NUL.
+ * @param path_len Number of bytes in `path`.
+ * @param output Optional destination for the canonical path bytes.
+ * @param output_capacity Available bytes in `output`, or zero for a query.
+ * @return Canonical byte length, or `-1` on invalid input, trust failure, or
+ *     an operating-system error.
+ */
 extern func l0c_fs_resolve_trusted_temp_parent(
     path: byte*,
     path_len: int,

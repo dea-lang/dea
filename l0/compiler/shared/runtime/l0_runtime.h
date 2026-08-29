@@ -648,6 +648,16 @@ struct _rt_ptr_site {
     uint64_t generation;
 };
 
+/**
+ * Register one raw runtime-owned allocation for checked pointer operations.
+ *
+ * @param ptr Allocation base; a null pointer is ignored.
+ * @param size Allocation extent in bytes; zero is tracked as one byte.
+ * @param align Allocation alignment metadata.
+ * @param type_id Reserved runtime type identifier.
+ * @param loc_file Source file of the allocation site.
+ * @param loc_line Source line of the allocation site.
+ */
 static void _rt_track_alloc_record(
     void *ptr,
     size_t size,
@@ -656,13 +666,85 @@ static void _rt_track_alloc_record(
     const char *loc_file,
     int loc_line
 );
+
+/**
+ * Reclassify a live tracked raw allocation as storage created by `new`.
+ *
+ * @param ptr Allocation base to promote; a null pointer is ignored.
+ */
 static void _rt_promote_new_alloc(void *ptr);
+
+/**
+ * Release one tracked raw allocation.
+ *
+ * Checked mode retains the allocation in quarantine for stale-pointer
+ * diagnostics; unchecked mode releases it immediately.
+ *
+ * @param ptr Raw allocation base; a null pointer is ignored.
+ * @param loc_file Source file of the release site.
+ * @param loc_line Source line of the release site.
+ * @param op_name Operation name used in invalid-release diagnostics.
+ */
 static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_line, const char *op_name);
+
+/**
+ * Reallocate tracked raw storage while preserving checked-runtime history.
+ *
+ * The checked implementation allocates and tracks a replacement, copies the
+ * shared byte extent, and quarantines the original allocation.
+ *
+ * @param ptr Live raw allocation base, or null to allocate new storage.
+ * @param new_size Requested replacement extent in bytes.
+ * @param loc_file Source file of the reallocation site.
+ * @param loc_line Source line of the reallocation site.
+ * @return Replacement allocation, or null when allocation fails.
+ */
 static void *_rt_realloc_tracked_alloc(void *ptr, size_t new_size, const char *loc_file, int loc_line);
 #ifndef L0_RT_UNCHECKED
+
+/**
+ * Validate a pointer access after the call-site cache fast path misses.
+ *
+ * @param site Optional call-site cache populated after tracked validation.
+ * @param ptr Pointer about to be accessed.
+ * @param required_size Required access extent; zero requests one byte.
+ * @param required_align Required alignment, or zero for no alignment check.
+ * @param access_mode `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`.
+ * @param loc_file Source file of the access site.
+ * @param loc_line Source line of the access site.
+ * @return `ptr` when valid; panics on a definite invalid access.
+ */
 static void *_rt_check_ptr_site_slow(_rt_ptr_site *site, void *ptr, l0_int required_size, l0_int required_align, int access_mode, const char *loc_file, int loc_line);
+
+/**
+ * Validate an indexed pointer access before forming the target address.
+ *
+ * @param site Optional call-site cache populated after tracked validation.
+ * @param base_ptr Pointer from which indexing starts.
+ * @param index Non-negative element index.
+ * @param element_size Positive element extent in bytes.
+ * @param required_align Required target alignment, or zero for no check.
+ * @param access_mode Read/write mode and optional `_RT_ACCESS_UNTRACKED_OK`.
+ * @param loc_file Source file of the indexed access site.
+ * @param loc_line Source line of the indexed access site.
+ * @return Validated target address; panics on an invalid index or access.
+ */
 static void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, l0_int index, l0_int element_size, l0_int required_align, int access_mode, const char *loc_file, int loc_line);
 #endif
+
+/**
+ * Validate the allocation base, extent, and alignment before object cleanup.
+ *
+ * This first phase does not change allocation state; generated cleanup runs
+ * before `_rt_drop_finish_impl` performs the release.
+ *
+ * @param ptr Pointer supplied to `drop`; null is accepted as a no-op.
+ * @param required_size Required pointee extent; zero requests one byte.
+ * @param required_align Required pointee alignment, or zero for no check.
+ * @param loc_file Source file of the drop site.
+ * @param loc_line Source line of the drop site.
+ * @return `ptr` when valid, or null when `ptr` is null; panics otherwise.
+ */
 static void *_rt_drop_begin_impl(
     void *ptr,
     l0_int required_size,
@@ -670,10 +752,49 @@ static void *_rt_drop_begin_impl(
     const char *loc_file,
     int loc_line
 );
+
+/**
+ * Complete object drop by quarantining or freeing its allocation.
+ *
+ * @param ptr Live `new` allocation base; null is accepted as a no-op.
+ * @param loc_file Source file of the drop site.
+ * @param loc_line Source line of the drop site.
+ */
 static void _rt_drop_finish_impl(void *ptr, const char *loc_file, int loc_line);
+
+/**
+ * Validate a pointer derived from a tracked parent allocation.
+ *
+ * Unregistered parents defer validation to the eventual access site.
+ *
+ * @param derived Derived pointer to validate; null is returned unchanged.
+ * @param parent_base Parent pointer used to locate the tracked allocation.
+ * @param size Required derived extent; zero requests one byte.
+ * @param align Required derived alignment, or zero for no check.
+ * @param loc_file Source file of the derivation site.
+ * @param loc_line Source line of the derivation site.
+ * @return `derived` when valid or deferred; panics on a definite violation.
+ */
 static void *_rt_validate_derived_ptr(void *derived, void *parent_base, l0_int size, l0_int align, const char *loc_file, int loc_line);
 static void _rt_track_arc_bytes(void *ptr, size_t size);
+
+/**
+ * Remove ARC allocation metadata without releasing the ARC payload.
+ *
+ * @param ptr Tracked ARC allocation base; null or untracked pointers are
+ *     ignored.
+ */
 static void _rt_untrack_arc_alloc(void *ptr);
+
+/**
+ * Lazily register one static byte span as read-only tracked storage.
+ *
+ * An existing tracked base makes the operation a no-op. Full checked mode
+ * also ignores a span already contained by tracked storage.
+ *
+ * @param ptr Static span base; a null pointer is ignored.
+ * @param size Static span extent; zero is tracked as one byte.
+ */
 static void _rt_track_static_bytes(const void *ptr, size_t size);
 
 /**
@@ -2852,6 +2973,14 @@ static _rt_alloc_record *_rt_rec_new(_rt_alloc_record_cold **cold_out) {
     return rec;
 }
 
+/**
+ * Return one allocation record to the persistent hot-record free list.
+ *
+ * Resetting the generation invalidates call-site cache entries while keeping
+ * the record storage itself safe to dereference.
+ *
+ * @param rec Record already removed from every allocation index.
+ */
 static void _rt_rec_recycle(_rt_alloc_record *rec) {
     rec->state = _RT_ALLOC_POOLED;
     rec->generation = 0;
@@ -2859,6 +2988,13 @@ static void _rt_rec_recycle(_rt_alloc_record *rec) {
     _rt_rec_free_list = rec;
 }
 
+/**
+ * Hash an allocation base into a power-of-two table capacity.
+ *
+ * @param ptr Allocation base to hash.
+ * @param cap Non-zero power-of-two table capacity.
+ * @return Table index in the range `[0, cap)`.
+ */
 static inline size_t _rt_alloc_hash(void *ptr, size_t cap) {
     uint64_t v = (uint64_t)(uintptr_t)ptr;
     uint32_t x = (uint32_t)(v ^ (v >> 32));
@@ -2905,6 +3041,12 @@ static void _rt_alloc_table_rehash(void) {
     _rt_alloc_table_tombstones = 0;
 }
 
+/**
+ * Look up the record whose base exactly matches a pointer.
+ *
+ * @param ptr Allocation base to find; null is never tracked.
+ * @return Matching live or quarantined record, or null when absent.
+ */
 static _rt_alloc_record *_rt_alloc_table_lookup(void *ptr) {
     if (_rt_alloc_table_cap == 0 || ptr == NULL) return NULL;
 
@@ -2919,6 +3061,13 @@ static _rt_alloc_record *_rt_alloc_table_lookup(void *ptr) {
     return NULL;
 }
 
+/**
+ * Insert a record into the allocation-base hash table.
+ *
+ * The table is rebuilt first when needed to preserve its load bound.
+ *
+ * @param rec Record with a unique, non-null allocation base.
+ */
 static void _rt_alloc_table_insert(_rt_alloc_record *rec) {
     if (_rt_alloc_table_cap == 0 ||
         (_rt_alloc_table_cnt + _rt_alloc_table_tombstones + 1) * 10 > _rt_alloc_table_cap * 7) {
@@ -2937,6 +3086,14 @@ static void _rt_alloc_table_insert(_rt_alloc_record *rec) {
     _rt_alloc_table_cnt++;
 }
 
+/**
+ * Remove an exact record from the allocation-base hash table.
+ *
+ * The vacated slot becomes a tombstone; excessive tombstones or a sparse
+ * live set trigger a rebuild.
+ *
+ * @param target Record to remove. An absent record is ignored.
+ */
 static void _rt_alloc_table_remove(_rt_alloc_record *target) {
     if (_rt_alloc_table_cap == 0) return;
 
@@ -2957,6 +3114,14 @@ static void _rt_alloc_table_remove(_rt_alloc_record *target) {
     }
 }
 
+/**
+ * Panic with a source-located invalid pointer-access diagnostic.
+ *
+ * @param reason Human-readable access failure reason.
+ * @param ptr Pointer involved in the invalid access.
+ * @param loc_file Source file of the access site, or null when unavailable.
+ * @param loc_line Source line of the access site.
+ */
 static void _rt_panic_invalid_access(const char *reason, void *ptr, const char *loc_file, int loc_line) {
     _rt_panic_fmt(
         "runtime error: %s\n  pointer: %p\n  accessed at: %s:%d",
@@ -2967,6 +3132,14 @@ static void _rt_panic_invalid_access(const char *reason, void *ptr, const char *
     );
 }
 
+/**
+ * Panic with a source-located invalid object-drop diagnostic.
+ *
+ * @param reason Human-readable drop failure reason.
+ * @param ptr Pointer supplied to `drop`.
+ * @param loc_file Source file of the drop site, or null when unavailable.
+ * @param loc_line Source line of the drop site.
+ */
 static void _rt_panic_invalid_drop(const char *reason, void *ptr, const char *loc_file, int loc_line) {
     _rt_panic_fmt(
         "runtime error: invalid drop\n  reason: %s\n  pointer: %p\n  dropped at: %s:%d",
@@ -2977,6 +3150,15 @@ static void _rt_panic_invalid_drop(const char *reason, void *ptr, const char *lo
     );
 }
 
+/**
+ * Panic with a source-located invalid raw-release diagnostic.
+ *
+ * @param op_name Release operation name, or null for `release`.
+ * @param reason Human-readable release failure reason.
+ * @param ptr Pointer supplied to the release operation.
+ * @param loc_file Source file of the release site, or null when unavailable.
+ * @param loc_line Source line of the release site.
+ */
 static void _rt_panic_invalid_release(
     const char *op_name,
     const char *reason,
@@ -2994,6 +3176,13 @@ static void _rt_panic_invalid_release(
     );
 }
 
+/**
+ * Emit the memory-trace event used immediately before an invalid-drop panic.
+ *
+ * @param ptr Pointer supplied to `drop`.
+ * @param loc_file Source file of the drop site, or null when unavailable.
+ * @param loc_line Source line of the drop site.
+ */
 static void _rt_trace_invalid_drop(void *ptr, const char *loc_file, int loc_line) {
     _RT_TRACE_MEM(
         "op=drop ptr=%p action=panic-not-found loc=\"%s\":%d",
@@ -3003,11 +3192,31 @@ static void _rt_trace_invalid_drop(void *ptr, const char *loc_file, int loc_line
     );
 }
 
+/**
+ * Test whether a pointer satisfies an alignment requirement.
+ *
+ * @param ptr Pointer to test.
+ * @param align Required alignment; values below two impose no constraint.
+ * @return Non-zero when aligned, otherwise zero.
+ */
 static int _rt_ptr_is_aligned(void *ptr, size_t align) {
     if (align <= 1) return 1;
     return ((uintptr_t)ptr % align) == 0;
 }
 
+/**
+ * Test whether a byte range lies within an allocation span.
+ *
+ * Address comparisons use integer representations so the test does not form
+ * or compare out-of-object C pointers.
+ *
+ * @param base Allocation span base.
+ * @param total_size Allocation span extent in bytes.
+ * @param ptr Candidate contained-range base.
+ * @param need_size Required contained-range extent in bytes.
+ * @param offset_out Optional destination for the candidate offset on success.
+ * @return Non-zero when the complete candidate range is contained.
+ */
 static int _rt_range_contains(void *base, size_t total_size, void *ptr, size_t need_size, size_t *offset_out) {
     uintptr_t b = (uintptr_t)base;
     uintptr_t p = (uintptr_t)ptr;
@@ -3023,6 +3232,13 @@ static int _rt_range_contains(void *base, size_t total_size, void *ptr, size_t n
 }
 
 #ifndef L0_RT_CHECK_BASIC
+
+/**
+ * Derive a deterministic non-zero treap priority from an allocation base.
+ *
+ * @param base Allocation base to mix.
+ * @return Odd treap priority associated with `base`.
+ */
 static inline uint32_t _rt_tree_prio_for(void *base) {
     uint64_t v = (uint64_t)(uintptr_t)base;
     uint32_t x = (uint32_t)(v ^ (v >> 32));
@@ -3032,6 +3248,13 @@ static inline uint32_t _rt_tree_prio_for(void *base) {
     return x | 1u;
 }
 
+/**
+ * Insert one allocation record into a treap subtree.
+ *
+ * @param node Current subtree root, or null for an empty subtree.
+ * @param rec Record with a unique base and initialized priority.
+ * @return Root of the updated subtree.
+ */
 static _rt_alloc_record *_rt_tree_insert_at(_rt_alloc_record *node, _rt_alloc_record *rec) {
     if (node == NULL) {
         rec->tree_left = NULL;
@@ -3070,6 +3293,13 @@ static _rt_alloc_record *_rt_tree_merge(_rt_alloc_record *a, _rt_alloc_record *b
     return b;
 }
 
+/**
+ * Remove an allocation base from a treap subtree.
+ *
+ * @param node Current subtree root, or null for an empty subtree.
+ * @param base Exact allocation base to remove.
+ * @return Root of the updated subtree.
+ */
 static _rt_alloc_record *_rt_tree_remove_at(_rt_alloc_record *node, void *base) {
     if (node == NULL) return NULL;
     if ((uintptr_t)base < (uintptr_t)node->base) {
@@ -3082,11 +3312,21 @@ static _rt_alloc_record *_rt_tree_remove_at(_rt_alloc_record *node, void *base) 
     return node;
 }
 
+/**
+ * Insert one tracked record into the global address-ordered treap.
+ *
+ * @param rec Record with a unique allocation base.
+ */
 static void _rt_alloc_tree_insert(_rt_alloc_record *rec) {
     rec->tree_prio = _rt_tree_prio_for(rec->base);
     _rt_alloc_tree_root = _rt_tree_insert_at(_rt_alloc_tree_root, rec);
 }
 
+/**
+ * Remove one tracked record from the global address-ordered treap.
+ *
+ * @param rec Record whose exact allocation base should be removed.
+ */
 static void _rt_alloc_tree_remove(_rt_alloc_record *rec) {
     _rt_alloc_tree_root = _rt_tree_remove_at(_rt_alloc_tree_root, rec->base);
 }
@@ -3123,6 +3363,16 @@ static _rt_alloc_record *_rt_alloc_tree_lub(void *ptr) {
     return best;
 }
 
+/**
+ * Find a tracked allocation containing a complete byte range.
+ *
+ * Overlapping static spans are searched from greatest to lower bases; heap
+ * allocation spans are assumed not to overlap.
+ *
+ * @param ptr Candidate byte-range base; null is never contained.
+ * @param need_size Required range extent in bytes.
+ * @return Containing live or quarantined record, or null when none exists.
+ */
 static _rt_alloc_record *_rt_alloc_tree_find_containing(void *ptr, size_t need_size) {
     if (ptr == NULL) return NULL;
 
@@ -3143,12 +3393,25 @@ static _rt_alloc_record *_rt_alloc_tree_find_containing(void *ptr, size_t need_s
 }
 #endif /* L0_RT_CHECK_BASIC */
 
+/**
+ * Populate a pointer-check call-site cache from a validated owner record.
+ *
+ * @param site Cache slot to populate; null is ignored.
+ * @param owner Validated owner record; null is ignored.
+ */
 static void _rt_ptr_site_store(_rt_ptr_site *site, _rt_alloc_record *owner) {
     if (site == NULL || owner == NULL) return;
     site->owner = owner;
     site->generation = owner->generation;
 }
 
+/**
+ * Normalize a generated pointer-access extent.
+ *
+ * @param required_size Requested byte extent.
+ * @return Positive extent, with zero normalized to one byte; panics when the
+ *     requested extent is negative.
+ */
 static size_t _rt_required_size(l0_int required_size) {
     if (required_size < 0) {
         _rt_panic("runtime pointer check: negative required size");
@@ -3156,6 +3419,12 @@ static size_t _rt_required_size(l0_int required_size) {
     return required_size == 0 ? 1u : (size_t)required_size;
 }
 
+/**
+ * Validate and convert a generated pointer-alignment requirement.
+ *
+ * @param required_align Requested alignment, where zero disables the check.
+ * @return Non-negative alignment as `size_t`; panics when negative.
+ */
 static size_t _rt_required_align(l0_int required_align) {
     if (required_align < 0) {
         _rt_panic("runtime pointer check: negative required alignment");
@@ -3163,6 +3432,12 @@ static size_t _rt_required_align(l0_int required_align) {
     return (size_t)required_align;
 }
 
+/**
+ * Validate and convert an indexed pointer's element extent.
+ *
+ * @param element_size Requested element extent in bytes.
+ * @return Positive element extent as `size_t`; panics when non-positive.
+ */
 static size_t _rt_index_element_size(l0_int element_size) {
     if (element_size <= 0) {
         _rt_panic("runtime pointer index: invalid element size");
@@ -3170,6 +3445,14 @@ static size_t _rt_index_element_size(l0_int element_size) {
     return (size_t)element_size;
 }
 
+/**
+ * Compute a checked byte offset for an indexed pointer access.
+ *
+ * @param index Non-negative element index.
+ * @param element_size Validated positive element extent in bytes.
+ * @return `index * element_size`; panics on a negative index or `size_t`
+ *     overflow.
+ */
 static size_t _rt_index_offset(l0_int index, size_t element_size) {
     if (index < 0) {
         _rt_panic("runtime pointer index: negative pointer index");
@@ -3186,6 +3469,12 @@ static size_t _rt_index_offset(l0_int index, size_t element_size) {
     return (size_t)index * element_size;
 }
 
+/**
+ * Validate a non-indexed pointer access mode.
+ *
+ * @param access_mode Candidate access mode.
+ * @return `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`; panics otherwise.
+ */
 static int _rt_required_access_mode(int access_mode) {
     if (access_mode != _RT_ACCESS_READ && access_mode != _RT_ACCESS_WRITE) {
         _rt_panic("runtime pointer check: invalid access mode");
@@ -3193,6 +3482,13 @@ static int _rt_required_access_mode(int access_mode) {
     return access_mode;
 }
 
+/**
+ * Validate an indexed pointer access mode and isolate its read/write value.
+ *
+ * @param access_mode Read/write mode with optional
+ *     `_RT_ACCESS_UNTRACKED_OK`.
+ * @return `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`; panics on unknown flags.
+ */
 static int _rt_index_access_mode(int access_mode) {
     int mode = access_mode & _RT_ACCESS_WRITE;
     int flags = access_mode & ~_RT_ACCESS_WRITE;
@@ -3203,6 +3499,12 @@ static int _rt_index_access_mode(int access_mode) {
     return mode;
 }
 
+/**
+ * Test whether indexed access explicitly permits untracked storage.
+ *
+ * @param access_mode Indexed pointer access mode and flags.
+ * @return Non-zero when `_RT_ACCESS_UNTRACKED_OK` is present.
+ */
 static int _rt_index_allows_untracked(int access_mode) {
     return (access_mode & _RT_ACCESS_UNTRACKED_OK) != 0;
 }
@@ -3221,12 +3523,37 @@ static void _rt_check_ptr_align(void *ptr, size_t need_align, const char *loc_fi
     }
 }
 
+/**
+ * Reject a write through a record registered as read-only.
+ *
+ * @param rec Allocation record that owns the target.
+ * @param ptr Pointer used for the access diagnostic.
+ * @param access_mode Validated read/write access mode.
+ * @param loc_file Source file of the access site.
+ * @param loc_line Source line of the access site.
+ */
 static void _rt_check_record_writeable(_rt_alloc_record *rec, void *ptr, int access_mode, const char *loc_file, int loc_line) {
     if (access_mode == _RT_ACCESS_WRITE && rec->read_only) {
         _rt_panic_invalid_access("read-only pointer write", ptr, loc_file, loc_line);
     }
 }
 
+/**
+ * Register one allocation with an explicit memory kind and mutability.
+ *
+ * The record is initialized as live and inserted into the base hash table and,
+ * in full checked mode, the address-ordered tree. A duplicate allocation base
+ * is a runtime error.
+ *
+ * @param ptr Allocation base; a null pointer is ignored.
+ * @param size Allocation extent; zero is tracked as one byte.
+ * @param align Allocation alignment metadata.
+ * @param type_id Reserved runtime type identifier.
+ * @param mem_kind One `_RT_MEM_*` allocation kind.
+ * @param read_only Non-zero to reject writes through checked accesses.
+ * @param loc_file Source file of the allocation site.
+ * @param loc_line Source line of the allocation site.
+ */
 static void _rt_track_alloc_record_kind(
     void *ptr,
     size_t size,
@@ -3383,6 +3710,12 @@ static void rt_unregister_foreign(void *ptr) {
     _rt_rec_recycle(rec);
 }
 
+/**
+ * Evict the oldest quarantined allocations until both limits are satisfied.
+ *
+ * Each eviction removes the record from the allocation indexes, releases the
+ * payload, and returns the persistent metadata record to its pool.
+ */
 static void _rt_evict_quarantine(void) {
     while (_rt_quarantine_head != NULL &&
            (_rt_quarantine_bytes > _RT_QUARANTINE_MAX_BYTES ||
@@ -3404,6 +3737,14 @@ static void _rt_evict_quarantine(void) {
     }
 }
 
+/**
+ * Mark an allocation released and append it to the quarantine queue.
+ *
+ * @param rec Live tracked allocation record to quarantine.
+ * @param cold Cold metadata paired with `rec`.
+ * @param loc_file Source file of the release site.
+ * @param loc_line Source line of the release site.
+ */
 static void _rt_quarantine_alloc_record(_rt_alloc_record *rec, _rt_alloc_record_cold *cold, const char *loc_file, int loc_line) {
     rec->state = _RT_ALLOC_QUARANTINED;
     cold->drop_file = loc_file;
@@ -3799,6 +4140,15 @@ static void _rt_drop_finish_impl(void *ptr, const char *loc_file, int loc_line) 
 #endif
 }
 #ifdef L0_TRACE_MEMORY
+
+/**
+ * Allocate and track zero-initialized storage for a `new` expression.
+ *
+ * @param bytes Positive allocation extent in bytes.
+ * @param _loc_file Generated C file containing the allocation site.
+ * @param _loc_line Generated C line containing the allocation site.
+ * @return Newly allocated object storage; panics on invalid size or failure.
+ */
 static void *_rt_alloc_obj_impl(l0_int bytes, const char *_loc_file, int _loc_line) {
     if (bytes <= 0) {
         _rt_panic("new: invalid allocation size");
@@ -3817,6 +4167,13 @@ static void *_rt_alloc_obj_impl(l0_int bytes, const char *_loc_file, int _loc_li
 }
 #define _rt_alloc_obj(bytes) _rt_alloc_obj_impl((bytes), __FILE__, __LINE__)
 #else
+
+/**
+ * Allocate and track zero-initialized storage for a `new` expression.
+ *
+ * @param bytes Positive allocation extent in bytes.
+ * @return Newly allocated object storage; panics on invalid size or failure.
+ */
 static void *_rt_alloc_obj(l0_int bytes) {
     if (bytes <= 0) {
         _rt_panic("new: invalid allocation size");
