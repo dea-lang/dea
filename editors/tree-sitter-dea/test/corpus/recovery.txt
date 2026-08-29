@@ -50,3 +50,19 @@ func work() {
     with (let resource = new Handle(
 
 ---
+
+====================================
+Legacy case else default is rejected
+:error
+====================================
+
+module legacy_case_default;
+
+func choose(value: int) -> int {
+    case (value) {
+        1 => return 1;
+        else return 0;
+    }
+}
+
+---

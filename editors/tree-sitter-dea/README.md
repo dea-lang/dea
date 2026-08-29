@@ -13,7 +13,7 @@ code is incomplete; it does not enforce level-specific or semantic restrictions.
 
 - declarations, exports, imports, structs, enums, aliases, and top-level bindings;
 - safe, unsafe, and extern functions;
-- statements, control flow, `match`, `case`, and `with` / `cleanup`;
+- statements, control flow, `match`, wildcard-only `_ =>` `case` defaults, and `with` / `cleanup`;
 - pointer, nullable, array, slice, and function-pointer types;
 - calls, fields, indexes, casts, postfix try expressions, and L1 operators;
 - highlights, indentation, locals, and tags queries; and

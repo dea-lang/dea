@@ -1,7 +1,7 @@
 # ADR-0018: Shared Editor Tooling, Level Identities, and Compiler Authority
 
 - Decision date: 2026-06-30
-- Last edited: 2026-07-27
+- Last edited: 2026-08-29
 - Status: Accepted
 
 ## Context
@@ -66,6 +66,8 @@ reimplementing the language independently.
   established and implemented the shared editor baseline
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the historical decision into the ADR catalog
+- [work/plans/bug-fixes/closed/2026-08-29-shared-editor-case-default-parity-noref.md](../../work/plans/bug-fixes/closed/2026-08-29-shared-editor-case-default-parity-noref.md):
+  restored wildcard-only `case` syntax and consistent wildcard presentation within the shared editor boundary
 
 ## Current Docs
 

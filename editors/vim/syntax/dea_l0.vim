@@ -22,6 +22,7 @@ syntax region deaByte start=+'+ skip=+\\\\\|\\'+ end=+'+ oneline contains=deaEsc
 syntax match deaNumber "\<[0-9]\+\>"
 syntax keyword deaBoolean true false
 syntax keyword deaNull null
+syntax match deaWildcard "\<_\>"
 
 syntax keyword deaDeclaration module import func struct enum type extern
 syntax keyword deaStorage let const
@@ -46,6 +47,7 @@ highlight default link deaByte Character
 highlight default link deaNumber Number
 highlight default link deaBoolean Boolean
 highlight default link deaNull Constant
+highlight default link deaWildcard Constant
 highlight default link deaDeclaration Keyword
 highlight default link deaStorage StorageClass
 highlight default link deaControl Conditional

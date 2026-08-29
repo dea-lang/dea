@@ -35,7 +35,10 @@ unsafe func first(pointer: int*) -> int {
 }
 
 func choose(left: int, right: int) -> int {
-    return left | right;
+    case (left) {
+        0 => return right;
+        _ => return left | right;
+    }
 }
 
 func sum(base: int, values: int...) -> int {

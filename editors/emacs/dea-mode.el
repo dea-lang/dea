@@ -69,6 +69,7 @@
       (,(regexp-opt keywords 'symbols) . font-lock-keyword-face)
       (,(regexp-opt dea--builtin-types 'symbols) . font-lock-type-face)
       ("\\_<\\(?:true\\|false\\|null\\)\\_>" . font-lock-constant-face)
+      ("\\_<_\\_>" . font-lock-constant-face)
       (,number-pattern . font-lock-constant-face)
       ("'\\(?:\\\\.\\|[^\\\\'\n]\\)'" . font-lock-constant-face)
       ("\\_<[A-Za-z_][A-Za-z0-9_.]*::[A-Za-z_][A-Za-z0-9_:]*\\_>"

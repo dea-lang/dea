@@ -492,16 +492,10 @@ export default grammar({
       $.qualified_identifier,
     ),
 
-    case_default_arm: $ => choice(
-      seq(
-        "_",
-        "=>",
-        field("body", $._statement),
-      ),
-      seq(
-        "else",
-        field("body", $._statement),
-      ),
+    case_default_arm: $ => seq(
+      "_",
+      "=>",
+      field("body", $._statement),
     ),
 
     with_statement: $ => seq(

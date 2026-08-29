@@ -1,6 +1,6 @@
 # Dea Editor Support
 
-Version: 2026-07-23
+Version: 2026-08-29
 
 This directory contains syntax highlighting, editing configuration, and top-level navigation indexes for Dea/L0 and
 Dea/L1. The compiler remains authoritative: these integrations deliberately accept incomplete code and do not attempt
@@ -53,7 +53,7 @@ ln -s "$PWD/editors/vim" ~/.vim/pack/dea/start/dea
 ```
 
 The file detector maps `.l0` to `dea_l0` and `.l1` to `dea_l1`. The L1 syntax extends the common L0 rules with the L1
-keywords, numeric literal forms, labels, and variadic marker.
+keywords, numeric literal forms, labels, and variadic marker. Both modes highlight standalone `_` as a wildcard.
 
 ## Emacs
 
@@ -65,7 +65,7 @@ Load the fallback mode directly:
 ```
 
 `dea-mode` is registered for both `.l0` and `.l1`. It sets the buffer-local `dea-language-level` to `0` or `1` from the
-file extension and selects the corresponding keyword and literal rules.
+file extension and selects the corresponding keyword and literal rules, including standalone wildcard highlighting.
 
 ## Universal Ctags and ETAGS
 
@@ -94,6 +94,7 @@ The self-contained grammar package lives at `tree-sitter-dea/`. Its stable contr
 
 - grammar name `dea`;
 - the L1 syntactic superset, with error recovery suitable for incomplete buffers;
+- wildcard-only `_ =>` `case` defaults, with removed `else` defaults recovered as invalid syntax;
 - separate host mappings for `.l0` and `.l1`; and
 - `highlights.scm`, `indents.scm`, `locals.scm`, and `tags.scm` queries.
 

@@ -204,6 +204,27 @@ test("L1 grammar adds superset keywords, literals, labels, and variadics", async
   assertScope(tokenized, "ratio: double", "double", "support.type.builtin.dea");
 });
 
+test("case wildcard defaults keep wildcard and arrow scopes across levels", async () => {
+  for (const [scopeName, fixtureName] of [
+    ["source.dea.l0", "l0_hello.l0"],
+    ["source.dea.l1", "l1_surface.l1"],
+  ]) {
+    const tokenized = await tokenizeFixture(scopeName, fixtureName);
+    assertScope(
+      tokenized,
+      "_ => return",
+      "_",
+      "constant.language.wildcard.dea",
+    );
+    assertScope(
+      tokenized,
+      "_ => return",
+      "=>",
+      "keyword.operator.arrow.dea",
+    );
+  }
+});
+
 test("grammars remain useful on incomplete input", async () => {
   const l0 = await tokenizeFixture("source.dea.l0", "l0_incomplete.l0");
   const l1 = await tokenizeFixture("source.dea.l1", "l1_incomplete.l1");

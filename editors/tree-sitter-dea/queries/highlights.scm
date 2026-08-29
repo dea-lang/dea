@@ -12,6 +12,10 @@
 (float_literal) @number
 (boolean_literal) @boolean
 (null_literal) @constant.builtin
+(wildcard_pattern) @constant.builtin
+
+(case_default_arm
+  "_" @constant.builtin)
 
 ; Types and declarations
 

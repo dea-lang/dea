@@ -238,3 +238,57 @@ func inspect(result: Result?, limit: int) -> int {
         (return_statement
           value: (qualified_identifier
             name: (identifier)))))))
+
+==============================================
+Case value arm retains its nearest if else
+==============================================
+
+module nested_if_else;
+
+func choose(value: int, flag: bool) -> int {
+    case (value) {
+        1 => if (flag) return 1; else return 2;
+        _ => return 0;
+    }
+}
+
+---
+
+(source_file
+  (module_declaration
+    name: (module_path
+      segment: (identifier)))
+  (function_declaration
+    name: (identifier)
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (type
+          base: (builtin_type)))
+      (parameter
+        name: (identifier)
+        type: (type
+          base: (builtin_type))))
+    return_type: (type
+      base: (builtin_type))
+    body: (block
+      (case_statement
+        value: (qualified_identifier
+          name: (identifier))
+        (case_arm
+          value: (case_arm_value
+            (signed_integer_literal
+              (integer_literal)))
+          body: (if_statement
+            condition: (qualified_identifier
+              name: (identifier))
+            consequence: (simple_statement
+              (return_statement
+                value: (integer_literal)))
+            alternative: (simple_statement
+              (return_statement
+                value: (integer_literal)))))
+        (case_default_arm
+          body: (simple_statement
+            (return_statement
+              value: (integer_literal))))))))

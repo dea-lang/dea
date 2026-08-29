@@ -1,0 +1,23 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module wildcards;
+
+enum Result {
+    Value(value: int);
+    Empty;
+}
+
+func inspect(result: Result, key: int) -> int {
+    match (result) {
+        Value(value) => return value;
+        _ => return 0;
+    }
+
+    case (key) {
+        1 => return 1;
+        _ => return 0;
+    }
+}

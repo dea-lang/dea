@@ -66,6 +66,7 @@ class EditorSupportTests(unittest.TestCase):
 
         self.assertIn("Minimized from l0/examples/hello.l0", l0_example)
         self.assertIn("你好，世界", l0_example)
+        self.assertIn("_ =>", l0_example)
         for spelling in ("std.io::printl_s", "with", "cleanup", "enum", "/**"):
             self.assertIn(spelling, l0_surface)
 
@@ -79,6 +80,7 @@ class EditorSupportTests(unittest.TestCase):
             "right:",
             "int...",
             "const ratio",
+            "_ =>",
         ):
             self.assertIn(spelling, l1_surface)
 
@@ -111,7 +113,7 @@ class EditorSupportTests(unittest.TestCase):
     def test_vim_detects_and_loads_both_syntaxes(self) -> None:
         vim = self._optional_tool("vim")
         for fixture_name, expected_filetype in (
-            ("l0_surface.l0", "dea_l0"),
+            ("l0_hello.l0", "dea_l0"),
             ("l1_surface.l1", "dea_l1"),
         ):
             fixture = FIXTURE_ROOT / fixture_name
@@ -135,6 +137,18 @@ endif
 let declaration_column = match(getline(declaration_line), 'func') + 1
 if synIDattr(synID(declaration_line, declaration_column, 1), 'name') !=# 'deaDeclaration'
   cquit 13
+endif
+let wildcard_line = search('_ =>')
+if wildcard_line == 0
+  cquit 14
+endif
+let wildcard_column = match(getline(wildcard_line), '_ =>') + 1
+if synIDattr(synID(wildcard_line, wildcard_column, 1), 'name') !=# 'deaWildcard'
+  cquit 15
+endif
+let arrow_column = match(getline(wildcard_line), '=>') + 1
+if synIDattr(synID(wildcard_line, arrow_column, 1), 'name') !=# 'deaOperator'
+  cquit 16
 endif
 quitall!
 """
@@ -160,7 +174,7 @@ quitall!
 
     def test_emacs_loads_mode_for_both_extensions(self) -> None:
         emacs = self._optional_tool("emacs")
-        l0_fixture = (FIXTURE_ROOT / "l0_surface.l0").as_posix()
+        l0_fixture = (FIXTURE_ROOT / "l0_hello.l0").as_posix()
         l1_fixture = (FIXTURE_ROOT / "l1_surface.l1").as_posix()
         expression = f"""
 (progn
@@ -168,11 +182,23 @@ quitall!
   (unless (and (eq major-mode 'dea-mode) (= dea-language-level 0))
     (kill-emacs 10))
   (font-lock-ensure)
+  (goto-char (point-min))
+  (search-forward "_ =>")
+  (let* ((face (get-text-property (- (point) 4) 'face))
+         (faces (if (listp face) face (list face))))
+    (unless (memq 'font-lock-constant-face faces)
+      (kill-emacs 12)))
   (kill-buffer)
   (find-file "{l1_fixture}")
   (unless (and (eq major-mode 'dea-mode) (= dea-language-level 1))
     (kill-emacs 11))
   (font-lock-ensure)
+  (goto-char (point-min))
+  (search-forward "_ =>")
+  (let* ((face (get-text-property (- (point) 4) 'face))
+         (faces (if (listp face) face (list face))))
+    (unless (memq 'font-lock-constant-face faces)
+      (kill-emacs 13)))
   (kill-buffer))
 """
         result = subprocess.run(

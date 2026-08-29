@@ -11,9 +11,11 @@ const fixtures = [
   path.join(root, "test", "fixtures", "l0_surface.l0"),
   path.join(root, "test", "fixtures", "l1_surface.l1"),
 ];
+const wildcardFixture = path.join(root, "test", "fixtures", "wildcards.l1");
 const queryFixtures = [
   ...fixtures,
   path.join(root, "test", "fixtures", "incomplete.l1"),
+  wildcardFixture,
 ];
 
 mkdirSync(cache, { recursive: true });
@@ -57,6 +59,23 @@ for (const [name, expectedCapture] of queryExpectations) {
   if (!expectedCapture.test(output)) {
     throw new Error(`${name} did not produce the expected captures`);
   }
+}
+
+const wildcardHighlights = run([
+  "query",
+  "-p",
+  ".",
+  "--config-path",
+  config,
+  "--captures",
+  path.join("queries", "highlights.scm"),
+  wildcardFixture,
+]);
+const wildcardCaptures = wildcardHighlights.match(
+  /capture: \d+ - constant\.builtin,[^\n]*text: `_`/g,
+);
+if (wildcardCaptures?.length !== 2) {
+  throw new Error("highlights.scm did not capture both match and case wildcards");
 }
 
 run([

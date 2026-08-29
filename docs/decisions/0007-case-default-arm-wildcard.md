@@ -1,7 +1,7 @@
 # ADR-0007: Case Default Arm `_ =>` Wildcard Migration
 
 - Decision date: 2026-06-07
-- Last edited: 2026-08-25
+- Last edited: 2026-08-29
 - Status: Accepted
 
 ## Context
@@ -62,6 +62,8 @@ arm after `_ =>` is `PAR-0234`, a second `_ =>` is `PAR-0236`, and `else` in a `
   completed the migration in L0 Stage 1 and Stage 2 and retired the transitional diagnostics
 - [l1/work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md](../../l1/work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md):
   preserved rejected `else` tokens as L1 Stage 1 `case` recovery boundaries without restoring the old default spelling
+- [work/plans/bug-fixes/closed/2026-08-29-shared-editor-case-default-parity-noref.md](../../work/plans/bug-fixes/closed/2026-08-29-shared-editor-case-default-parity-noref.md):
+  aligned the shared structural grammar and wildcard highlighting with the completed migration
 
 ## Current Docs
 
