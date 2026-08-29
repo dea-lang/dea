@@ -1,6 +1,6 @@
 # L0 Stage 1 Compiler Contract
 
-Version: 2026-07-26
+Version: 2026-08-29
 
 This document is the compact Stage 1 contract and navigation index.
 
@@ -74,6 +74,8 @@ Stage 1-specific notes:
 - Stage 1 emits a single C99 translation unit.
 - When trace flags are enabled, generated C emits `L0_TRACE_ARC` and/or `L0_TRACE_MEMORY` defines before including
   `l0_runtime.h`.
+- Generated C owns the header-only implementation through `l0_runtime.h`. Additional `--c-source` translation units use
+  declaration-only `dea_rt.h`; they must not include `l0_runtime.h`.
 - Backend details are canonical in [reference/c-backend-design.md](../../reference/c-backend-design.md).
 - Trace details are canonical in [specs/runtime/trace.md](../runtime/trace.md).
 

@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-08-25
+Version: 2026-08-29
 
 This document describes how ownership works in L0 today, covering:
 
@@ -319,6 +319,7 @@ Primary source files:
 - `compiler/shared/l0/stdlib/std/linear_map.l0`
 - `compiler/shared/l0/stdlib/std/io.l0`
 - `compiler/stage2_l0/src/{tokens,lexer,parser,ast,expr_types,scope_context}.l0`
+- `compiler/shared/runtime/dea_rt.h` (public C declarations)
 - `compiler/shared/runtime/l0_runtime.h`
 
 Repro-style checks:

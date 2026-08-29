@@ -65,7 +65,10 @@
 #include <sys/wait.h>
 #endif
 
+#include "dea_rt.h"
 #include "dea_siphash.h"
+
+/** @cond L0_RUNTIME_IMPLEMENTATION */
 
 #ifndef _RT_ALIGNOF
 #if defined(__clang__) || (defined(__GNUC__) && !defined(__TINYC__))
@@ -186,142 +189,14 @@ static void _rt_trace_init(void) {
 #endif
 
 /* =========================================================================
- * Core type definitions
+ * Private runtime type helpers
  * ========================================================================= */
 
-typedef uint8_t  l0_bool;
-
-typedef int8_t   l0_tiny; /**< future use */
-typedef int16_t  l0_short;
-typedef int32_t  l0_int;
-typedef int64_t  l0_long;
-
-typedef uint8_t  l0_byte;
-typedef uint16_t l0_ushort;
-typedef uint32_t l0_uint;
-typedef uint64_t l0_ulong;
-
-typedef float    l0_float;
-typedef double   l0_double;
-
-/**
- * @struct _l0_h_string
- * Heap-allocated L0 string header.
- *
- * L0 string: length-tracked, reference counted, immutable character sequence.
- * Strings are always length-tracked to prevent out-of-bounds access.
- * An l0_string with len=0 represents an empty string.
- * Data should be NULL for empty strings to maintain consistency, but non-NULL is tolerated.
- * refcount is used for memory management; if refcount == INT32_MAX, the string
- * is not reference counted (e.g. allocated strings).
- * Strings with refcount > 0 are reference counted and should be freed when refcount reaches zero.
- * Strings with refcount == INT32_MAX are not ref-counted, but heap-allocated or empty, and should be freed manually.
- * Strings with refcount == _RT_MEM_SENTINEL have already been freed (double-free detected).
- * Data is null-terminated for C interoperability, but length is authoritative.
- */
-typedef struct {
-    l0_int refcount;    /**< Reference count for memory management, or INT32_MAX if not reference counted */
-    l0_int len;         /**< Length in bytes (must be >= 0) */
-    char bytes[];       /**< Mutable character data, 0-terminated for C interoperability */
-} _l0_h_string;
-
-#define L0_STRING_K_STATIC  0
-#define L0_STRING_K_HEAP    1
-
-/**
- * Sentinel value for memory checks.
- */
+/** Sentinel stored in released heap string headers. */
 static const l0_int _RT_MEM_SENTINEL = 0xF00DB10C;
 
-/**
- * @struct l0_string
- * Unified L0 string type (static or heap-allocated).
- */
-typedef struct {
-    unsigned int kind : 1;      /**< Kind of string: either L0_STRING_K_STATIC (0) or L0_STRING_K_HEAP (1) */
-    unsigned int : 0;           /**< Align to next unsigned int boundary */
-    union {
-        struct {
-            l0_int len;         /**< Length in bytes (for constant inline strings) */
-            const char* bytes;  /**< Pointer to character data (may be NULL for empty string) */
-        } s_str;                /**< Static string structure for constant inline strings */
-        _l0_h_string *h_str;    /**< Heap-allocated string structure for dynamic strings */
-    } data;
-} l0_string;
-
-/**
- * Static empty string instance.
- */
-static l0_string L0_STRING_EMPTY = { 0, { .s_str = { 0, NULL } } };
-
-/**
- * String literal construction macro.
- */
-#define L0_STRING_CONST(str_data, str_len) { .kind = L0_STRING_K_STATIC, .data.s_str = { .len = (str_len), .bytes = (str_data) } }
-
-/* =========================================================================
- * Optional type wrappers (T? as {has_value, value})
- * ========================================================================= */
-
-#ifndef L0_OPT_BOOL_DEFINED
-#define L0_OPT_BOOL_DEFINED
-/** Optional boolean wrapper. */
-typedef struct { l0_bool has_value; l0_bool value; } l0_opt_bool;
-#endif /* L0_OPT_BOOL_DEFINED */
-
-#ifndef L0_OPT_BYTE_DEFINED
-#define L0_OPT_BYTE_DEFINED
-/** Optional byte wrapper. */
-typedef struct { l0_bool has_value; l0_byte value; } l0_opt_byte;
-#endif /* L0_OPT_BYTE_DEFINED */
-
-#ifndef L0_OPT_INT_DEFINED
-#define L0_OPT_INT_DEFINED
-/** Optional integer wrapper. */
-typedef struct { l0_bool has_value; l0_int value; } l0_opt_int;
-#endif /* L0_OPT_INT_DEFINED */
-
-#ifndef L0_OPT_STRING_DEFINED
-#define L0_OPT_STRING_DEFINED
-/** Optional string wrapper. */
-typedef struct { l0_bool has_value; l0_string value; } l0_opt_string;
-#endif /* L0_OPT_STRING_DEFINED */
-
-/** Base structure for optional types to access `has_value`. */
+/** Base structure used to inspect the `has_value` field of optional values. */
 typedef struct { l0_bool has_value; } _l0_base_opt;
-
-/** Static instance for null optional string. */
-static l0_opt_string L0_OPT_STRING_NULL = { .has_value = 0, .value = { 0 } };
-/** Static instance for empty optional string. */
-static l0_opt_string L0_OPT_STRING_EMPTY = { .has_value = 1, .value = { 0 } };
-
-/**
- * @struct l0_sys_rt_RtTimeParts
- * Definition for `sys.rt::RtTimeParts`.
- */
-#ifndef L0_DEFINED_l0_sys_rt_RtTimeParts
-#define L0_DEFINED_l0_sys_rt_RtTimeParts
-struct l0_sys_rt_RtTimeParts {
-    l0_int sec;
-    l0_int nsec;
-};
-#endif
-
-/**
- * @struct l0_sys_rt_RtFileInfo
- * Definition for `sys.rt::RtFileInfo`.
- */
-#ifndef L0_DEFINED_l0_sys_rt_RtFileInfo
-#define L0_DEFINED_l0_sys_rt_RtFileInfo
-struct l0_sys_rt_RtFileInfo {
-    l0_bool exists;
-    l0_bool is_file;
-    l0_bool is_dir;
-    l0_opt_int size;
-    l0_opt_int mtime_sec;
-    l0_opt_int mtime_nsec;
-};
-#endif
 
 /* =========================================================================
  * Argument handling
@@ -336,7 +211,7 @@ static char** _rt_argv = NULL;
  * @param argc Number of arguments.
  * @param argv Argument vector.
  */
-void _rt_init_args(int argc, char** argv) {
+static void _rt_init_args(int argc, char** argv) {
 #if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
     _rt_trace_init();
 #endif
@@ -511,7 +386,7 @@ static l0_int _rt_imul(l0_int a, l0_int b) {
  * @param value Integer value.
  * @return Byte value.
  */
-l0_byte _rt_narrow_l0_byte(l0_int value) {
+static l0_byte _rt_narrow_l0_byte(l0_int value) {
     if (value < 0 || value > 255) {
         _rt_panic("int to byte cast overflow");
     }
@@ -1235,7 +1110,7 @@ static char *_rt_string_bytes(l0_string s) {
  *
  * L0 signature: `extern func rt_strlen(str: string) -> int;` 
  */
-static l0_int rt_strlen(l0_string str) {
+l0_int rt_strlen(l0_string str) {
     switch(str.kind) {
     case L0_STRING_K_STATIC:
         return str.data.s_str.len;
@@ -1261,7 +1136,7 @@ static l0_int rt_strlen(l0_string str) {
  *
  * L0 signature: `extern func rt_string_get(s: string, index: int) -> byte;` 
  */
-static l0_byte rt_string_get(l0_string a, l0_int index) {
+l0_byte rt_string_get(l0_string a, l0_int index) {
     l0_int a_len = rt_strlen(a);
     if (index < 0 || index >= a_len) {
         _rt_panic_fmt("rt_string_get: index %d out of bounds for string of length %d",
@@ -1288,7 +1163,7 @@ static l0_byte rt_string_get(l0_string a, l0_int index) {
  * hand out raw bytes stay out of the tracker. Both are runtime-managed:
  * passing the returned pointer to `drop` or `rt_free` is a runtime error.
  */
-static l0_byte *rt_string_bytes_ptr(l0_string s) {
+l0_byte *rt_string_bytes_ptr(l0_string s) {
     char *bytes = _rt_string_bytes(s);
     if (s.kind == L0_STRING_K_STATIC && bytes != NULL) {
         _rt_track_static_bytes(bytes, (size_t)s.data.s_str.len + 1);
@@ -1308,7 +1183,7 @@ static l0_byte *rt_string_bytes_ptr(l0_string s) {
  *
  * L0 signature: `extern func rt_string_equals(a: string, b: string) -> bool;` 
  */
-static l0_bool rt_string_equals(l0_string a, l0_string b) {
+l0_bool rt_string_equals(l0_string a, l0_string b) {
     l0_int a_len = rt_strlen(a);
     l0_int b_len = rt_strlen(b);
     if (a_len != b_len) {
@@ -1335,7 +1210,7 @@ static l0_bool rt_string_equals(l0_string a, l0_string b) {
  *
  * L0 signature: `extern func rt_string_compare(a: string, b: string) -> int;` 
  */
-static l0_int rt_string_compare(l0_string a, l0_string b) {
+l0_int rt_string_compare(l0_string a, l0_string b) {
     l0_int a_len = rt_strlen(a);
     l0_int b_len = rt_strlen(b);
 
@@ -1411,9 +1286,12 @@ static l0_string _rt_string_concat_impl(l0_string a, l0_string b, const char *_l
     s_data[total_len] = '\0'; /* null-terminate */
     return s;
 }
+l0_string (rt_string_concat)(l0_string a, l0_string b) {
+    return _rt_string_concat_impl(a, b, "<runtime>", 0);
+}
 #define rt_string_concat(a, b) _rt_string_concat_impl((a), (b), __FILE__, __LINE__)
 #else
-static l0_string rt_string_concat(l0_string a, l0_string b) {
+l0_string rt_string_concat(l0_string a, l0_string b) {
     l0_int a_len = rt_strlen(a);
     l0_int b_len = rt_strlen(b);
     
@@ -1457,7 +1335,7 @@ static l0_string rt_string_concat(l0_string a, l0_string b) {
  *
  * L0 signature: `extern func rt_string_slice(s: string, start: int, end: int) -> string;` 
  */
-static l0_string rt_string_slice(l0_string s, l0_int start, l0_int end) {
+l0_string rt_string_slice(l0_string s, l0_int start, l0_int end) {
     l0_int s_len = rt_strlen(s);
     if (start < 0 || start > s_len) {
         _rt_panic_fmt("rt_string_slice: start %d out of bounds for string of length %d",
@@ -1493,7 +1371,7 @@ static l0_string rt_string_slice(l0_string s, l0_int start, l0_int end) {
  *
  * L0 signature: `extern func rt_string_from_byte(b: byte) -> string;` 
  */
-static l0_string rt_string_from_byte(l0_byte b) {
+l0_string rt_string_from_byte(l0_byte b) {
     l0_string s = _rt_alloc_string(1);
     char *s_data = _rt_string_bytes(s);
     s_data[0] = (char)b;
@@ -1514,7 +1392,7 @@ static l0_string rt_string_from_byte(l0_byte b) {
  *
  * L0 signature: `extern func rt_string_from_byte_array(bytes: byte*, len: int) -> string;` 
  */
-static l0_string rt_string_from_byte_array(l0_byte* bytes, l0_int len) {
+l0_string rt_string_from_byte_array(l0_byte* bytes, l0_int len) {
     if (len < 0) {
         _rt_panic("rt_string_from_byte_array: negative length");
     }
@@ -1577,9 +1455,12 @@ static void _rt_string_retain_impl(l0_string s, const char *_loc_file, int _loc_
         _rt_panic_fmt("rt_string_retain: invalid refcount state: %d", (int)hs->refcount);
     }
 }
+void (rt_string_retain)(l0_string s) {
+    _rt_string_retain_impl(s, "<runtime>", 0);
+}
 #define rt_string_retain(s) _rt_string_retain_impl((s), __FILE__, __LINE__)
 #else
-static void rt_string_retain(l0_string s) {
+void rt_string_retain(l0_string s) {
     if (s.kind == L0_STRING_K_STATIC) {
         _RT_TRACE_ARC("op=retain kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop", (void*)s.data.s_str.bytes);
         return; /* Static strings are not reference counted */
@@ -1636,9 +1517,12 @@ static void rt_string_retain(l0_string s) {
 static void _rt_string_release_impl(l0_string s, const char *_loc_file, int _loc_line) {
     _rt_free_string_impl(s, _loc_file, _loc_line);
 }
+void (rt_string_release)(l0_string s) {
+    _rt_string_release_impl(s, "<runtime>", 0);
+}
 #define rt_string_release(s) _rt_string_release_impl((s), __FILE__, __LINE__)
 #else
-static void rt_string_release(l0_string s) {
+void rt_string_release(l0_string s) {
     _rt_free_string(s);
 }
 #endif
@@ -1657,7 +1541,7 @@ static void rt_string_release(l0_string s) {
  *
  * L0 signature: `extern func rt_system(cmd: string) -> int;` 
  */
-static l0_int rt_system(l0_string cmd) {
+l0_int rt_system(l0_string cmd) {
     char *c = _rt_string_bytes(cmd);
 #if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
     fflush(stderr);
@@ -1688,7 +1572,7 @@ static l0_int rt_system(l0_string cmd) {
  *
  * L0 signature: `extern func rt_get_env_var(name: string) -> string?;` 
  */
-static l0_opt_string rt_get_env_var(l0_string name) {
+l0_opt_string rt_get_env_var(l0_string name) {
     if (rt_strlen(name) == 0) {
         return L0_OPT_STRING_NULL;
     }
@@ -1718,7 +1602,7 @@ static l0_opt_string rt_get_env_var(l0_string name) {
  *
  * L0 signature: `extern func rt_get_argc() -> int;` 
  */
-static l0_int rt_get_argc(void) {
+l0_int rt_get_argc(void) {
     return (l0_int)_rt_argc;
 }
 
@@ -1744,7 +1628,7 @@ static l0_bool _rt_pid_to_l0_int(intmax_t value, l0_int *out) {
  *
  * L0 signature: `extern func rt_get_pid() -> int;`
  */
-static l0_int rt_get_pid(void) {
+l0_int rt_get_pid(void) {
     l0_int out = 0;
 #if defined(_WIN32)
     if (!_rt_pid_to_l0_int((intmax_t)_getpid(), &out)) {
@@ -1767,7 +1651,7 @@ static l0_int rt_get_pid(void) {
  *
  * L0 signature: `extern func rt_get_argv(i: int) -> string;` 
  */
-static l0_string rt_get_argv(l0_int i) {
+l0_string rt_get_argv(l0_int i) {
     if (i < 0 || i >= _rt_argc) {
         _rt_panic_fmt("rt_get_argv: index %d out of bounds (argc=%d)", (int)i, _rt_argc);
     }
@@ -1822,7 +1706,7 @@ static l0_bool _rt_time_write_parts(struct l0_sys_rt_RtTimeParts *out, l0_int se
  *
  * L0 signature: `extern func rt_time_unix(out: RtTimeParts*) -> bool;` 
  */
-static l0_bool rt_time_unix(struct l0_sys_rt_RtTimeParts *out) {
+l0_bool rt_time_unix(struct l0_sys_rt_RtTimeParts *out) {
     if (out == NULL) {
         _rt_panic("rt_time_unix: out-parameter is null");
     }
@@ -1862,7 +1746,7 @@ static l0_bool rt_time_unix(struct l0_sys_rt_RtTimeParts *out) {
  *
  * L0 signature: `extern func rt_time_monotonic(out: RtTimeParts*) -> bool;` 
  */
-static l0_bool rt_time_monotonic(struct l0_sys_rt_RtTimeParts *out) {
+l0_bool rt_time_monotonic(struct l0_sys_rt_RtTimeParts *out) {
     if (out == NULL) {
         _rt_panic("rt_time_monotonic: out-parameter is null");
     }
@@ -1895,7 +1779,7 @@ static l0_bool rt_time_monotonic(struct l0_sys_rt_RtTimeParts *out) {
  *
  * L0 signature: `extern func rt_time_monotonic_supported() -> bool;` 
  */
-static l0_bool rt_time_monotonic_supported(void) {
+l0_bool rt_time_monotonic_supported(void) {
 #if defined(CLOCK_MONOTONIC)
     return 1;
 #else
@@ -1914,7 +1798,7 @@ static l0_bool rt_time_monotonic_supported(void) {
  *
  * L0 signature: `extern func rt_time_local_offset_sec(unix_sec: int) -> int?;`
  */
-static l0_opt_int rt_time_local_offset_sec(l0_int unix_sec) {
+l0_opt_int rt_time_local_offset_sec(l0_int unix_sec) {
     time_t t = (time_t)unix_sec;
     if ((l0_int)t != unix_sec) {
         return (l0_opt_int){ .has_value = 0 };
@@ -1961,7 +1845,7 @@ static l0_opt_int rt_time_local_offset_sec(l0_int unix_sec) {
  *
  * L0 signature: `extern func rt_time_local_is_dst(unix_sec: int) -> bool?;` 
  */
-static l0_opt_bool rt_time_local_is_dst(l0_int unix_sec) {
+l0_opt_bool rt_time_local_is_dst(l0_int unix_sec) {
     time_t t = (time_t)unix_sec;
     if ((l0_int)t != unix_sec) {
         return (l0_opt_bool){ .has_value = 0 };
@@ -1991,7 +1875,7 @@ static l0_opt_bool rt_time_local_is_dst(l0_int unix_sec) {
  *
  * L0 signature: `extern func rt_read_file_all(path: string) -> string?;` 
  */
-static l0_opt_string rt_read_file_all(l0_string path) {
+l0_opt_string rt_read_file_all(l0_string path) {
 
     l0_int path_len = rt_strlen(path);
 
@@ -2044,7 +1928,7 @@ static l0_opt_string rt_read_file_all(l0_string path) {
  *
  * L0 signature: `extern func rt_write_file_all(path: string, data: string) -> bool;` 
  */
-static l0_bool rt_write_file_all(l0_string path, l0_string data) {
+l0_bool rt_write_file_all(l0_string path, l0_string data) {
     l0_int path_len = rt_strlen(path);
     if (path_len == 0) {
         return 0;
@@ -2076,7 +1960,7 @@ static l0_bool rt_write_file_all(l0_string path, l0_string data) {
  *
  * L0 signature: `extern func rt_file_info(path: string) -> RtFileInfo;`
  */
-static struct l0_sys_rt_RtFileInfo rt_file_info(l0_string path) {
+struct l0_sys_rt_RtFileInfo rt_file_info(l0_string path) {
     struct l0_sys_rt_RtFileInfo out = {
         .exists = 0,
         .is_file = 0,
@@ -2144,7 +2028,7 @@ static struct l0_sys_rt_RtFileInfo rt_file_info(l0_string path) {
  *
  * L0 signature: `extern func rt_delete_file(path: string) -> bool;` 
  */
-static l0_bool rt_delete_file(l0_string path) {
+l0_bool rt_delete_file(l0_string path) {
     if (rt_strlen(path) == 0) {
         return 0;
     }
@@ -2190,7 +2074,7 @@ static l0_int _rt_stream_write_some(FILE *stream, const l0_byte *buf, l0_int len
  *
  * L0 signature: `extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;`
  */
-static l0_int rt_stdin_read(l0_byte *buf, l0_int capacity) {
+l0_int rt_stdin_read(l0_byte *buf, l0_int capacity) {
     if (capacity < 0) {
         return -1;
     }
@@ -2219,7 +2103,7 @@ static l0_int rt_stdin_read(l0_byte *buf, l0_int capacity) {
  *
  * L0 signature: `extern func rt_stdout_write(buf: byte*?, len: int) -> int;`
  */
-static l0_int rt_stdout_write(l0_byte *buf, l0_int len) {
+l0_int rt_stdout_write(l0_byte *buf, l0_int len) {
     return _rt_stream_write_some(stdout, buf, len);
 }
 
@@ -2233,7 +2117,7 @@ static l0_int rt_stdout_write(l0_byte *buf, l0_int len) {
  *
  * L0 signature: `extern func rt_stderr_write(buf: byte*?, len: int) -> int;`
  */
-static l0_int rt_stderr_write(l0_byte *buf, l0_int len) {
+l0_int rt_stderr_write(l0_byte *buf, l0_int len) {
     return _rt_stream_write_some(stderr, buf, len);
 }
 
@@ -2243,7 +2127,7 @@ static l0_int rt_stderr_write(l0_byte *buf, l0_int len) {
 
 /**
  * Flush stdout. */
-static void rt_flush_stdout(void) {
+void rt_flush_stdout(void) {
     fflush(stdout);
 }
 
@@ -2255,7 +2139,7 @@ static void rt_flush_stdout(void) {
  *
  * L0 signature: `extern func rt_flush_stderr() -> void;` 
  */
-static void rt_flush_stderr(void) {
+void rt_flush_stderr(void) {
     fflush(stderr);
 }
 
@@ -2265,7 +2149,7 @@ static void rt_flush_stderr(void) {
  * @param s String to print.
  * @param stream Target stream.
  */
-void _rt_print(l0_string s, FILE *stream){
+static void _rt_print(l0_string s, FILE *stream){
     l0_int s_len = rt_strlen(s);
     char *s_data = _rt_string_bytes(s);
     if (s_len > 0 && s_data != NULL) {
@@ -2280,7 +2164,7 @@ void _rt_print(l0_string s, FILE *stream){
  *
  * L0 signature: `extern func rt_print(s: string) -> void;` 
  */
-static void rt_print(l0_string s) {
+void rt_print(l0_string s) {
     _rt_print(s, stdout);
 }
 
@@ -2291,13 +2175,13 @@ static void rt_print(l0_string s) {
  *
  * L0 signature: `extern func rt_print_stderr(s: string) -> void;` 
  */
-static void rt_print_stderr(l0_string s) {
+void rt_print_stderr(l0_string s) {
     _rt_print(s, stderr);
 }
 
 /**
  * Print a newline to stdout. */
-static void rt_println(void) {
+void rt_println(void) {
     fputc('\n', stdout);
 }
 
@@ -2309,7 +2193,7 @@ static void rt_println(void) {
  *
  * L0 signature: `extern func rt_println_stderr() -> void;` 
  */
-static void rt_println_stderr(void) {
+void rt_println_stderr(void) {
     fputc('\n', stderr);
 }
 
@@ -2320,7 +2204,7 @@ static void rt_println_stderr(void) {
  *
  * L0 signature: `extern func rt_print_int(x: int) -> void;` 
  */
-static void rt_print_int(l0_int x) {
+void rt_print_int(l0_int x) {
     printf("%d", (int)x);
 }
 
@@ -2331,7 +2215,7 @@ static void rt_print_int(l0_int x) {
  *
  * L0 signature: `extern func rt_print_int_stderr(x: int) -> void;` 
  */
-static void rt_print_int_stderr(l0_int x) {
+void rt_print_int_stderr(l0_int x) {
     fprintf(stderr, "%d", (int)x);
 }
 
@@ -2342,7 +2226,7 @@ static void rt_print_int_stderr(l0_int x) {
  *
  * L0 signature: `extern func rt_print_bool(x: bool) -> void;` 
  */
-static void rt_print_bool(l0_bool x) {
+void rt_print_bool(l0_bool x) {
     printf("%s", x ? "true" : "false");
 }
 
@@ -2353,7 +2237,7 @@ static void rt_print_bool(l0_bool x) {
  *
  * L0 signature: `extern func rt_print_bool_stderr(x: bool) -> void;` 
  */
-static void rt_print_bool_stderr(l0_bool x) {
+void rt_print_bool_stderr(l0_bool x) {
     fprintf(stderr, "%s", x ? "true" : "false");
 }
 
@@ -2372,7 +2256,7 @@ static void rt_print_bool_stderr(l0_bool x) {
  *
  * L0 signature: `extern func rt_read_line() -> string?;` 
  */
-static l0_opt_string rt_read_line(void) {
+l0_opt_string rt_read_line(void) {
     size_t capacity = 128;
     size_t length = 0;
 
@@ -2423,7 +2307,7 @@ static l0_opt_string rt_read_line(void) {
  *
  * L0 signature: `extern func rt_read_char() -> int;` 
  */
-static l0_int rt_read_char(void) {
+l0_int rt_read_char(void) {
     int c = fgetc(stdin);
     if (c == EOF) {
         return -1;
@@ -2442,7 +2326,7 @@ static l0_int rt_read_char(void) {
  *
  * L0 signature: `extern func rt_abort(message: string) -> void;` 
  */
-static void rt_abort(l0_string message) {
+void rt_abort(l0_string message) {
     if (rt_strlen(message) == 0) {
         _rt_panic(NULL);
     } else {
@@ -2458,7 +2342,7 @@ static void rt_abort(l0_string message) {
  *
  * L0 signature: `extern func rt_exit(code: int) -> void;` 
  */
-static void rt_exit(l0_int code) {
+void rt_exit(l0_int code) {
     exit((int)code);
 }
 
@@ -2474,7 +2358,7 @@ static void rt_exit(l0_int code) {
  *
  * L0 signature: `extern func rt_srand(seed: int) -> void;` 
  */
-static void rt_srand(l0_int seed) {
+void rt_srand(l0_int seed) {
     if (seed == 0) {
         srand((unsigned int)time(NULL));
     } else {
@@ -2491,7 +2375,7 @@ static void rt_srand(l0_int seed) {
  *
  * L0 signature: `extern func rt_rand(max: int) -> int;` 
  */
-static l0_int rt_rand(l0_int max) {
+l0_int rt_rand(l0_int max) {
     if (max <= 0) {
         return 0;
     }
@@ -2505,7 +2389,7 @@ static l0_int rt_rand(l0_int max) {
  *
  * L0 signature: `extern func rt_errno() -> int;` 
  */
-static l0_int rt_errno(void) {
+l0_int rt_errno(void) {
     return (l0_int)errno;
 }
 
@@ -2559,9 +2443,12 @@ static void *_rt_alloc_impl(l0_int bytes, const char *_loc_file, int _loc_line) 
     _RT_TRACE_MEM("op=alloc bytes=%d ptr=%p action=ok loc=\"%s\":%d", (int)bytes, ptr, _loc_file, _loc_line);
     return ptr;
 }
+void *(rt_alloc)(l0_int bytes) {
+    return _rt_alloc_impl(bytes, "<runtime>", 0);
+}
 #define rt_alloc(bytes) _rt_alloc_impl((bytes), __FILE__, __LINE__)
 #else
-static void *rt_alloc(l0_int bytes) {
+void *rt_alloc(l0_int bytes) {
     /* zero-size allocations are not allowed */
     if (bytes <= 0) {
         _rt_panic("rt_alloc: invalid allocation size");
@@ -2623,9 +2510,12 @@ static void *_rt_realloc_impl(void *ptr, l0_int new_bytes, const char *_loc_file
     _RT_TRACE_MEM("op=realloc old_ptr=%p bytes=%d new_ptr=%p action=ok loc=\"%s\":%d", (void*)old_ptr_addr, (int)new_bytes, new_ptr, _loc_file, _loc_line);
     return new_ptr;
 }
+void *(rt_realloc)(void *ptr, l0_int new_bytes) {
+    return _rt_realloc_impl(ptr, new_bytes, "<runtime>", 0);
+}
 #define rt_realloc(ptr, new_bytes) _rt_realloc_impl((ptr), (new_bytes), __FILE__, __LINE__)
 #else
-static void *rt_realloc(void *ptr, l0_int new_bytes) {
+void *rt_realloc(void *ptr, l0_int new_bytes) {
     /* zero-size allocations are not allowed */
     if (new_bytes <= 0) {
         _rt_panic("rt_realloc: invalid allocation size");
@@ -2662,9 +2552,12 @@ static void _rt_free_impl(void *ptr, const char *_loc_file, int _loc_line) {
     _RT_TRACE_MEM("op=free ptr=%p action=call loc=\"%s\":%d", ptr, _loc_file, _loc_line);
     _rt_release_tracked_alloc(ptr, _loc_file, _loc_line, "rt_free");
 }
+void (rt_free)(void *ptr) {
+    _rt_free_impl(ptr, "<runtime>", 0);
+}
 #define rt_free(ptr) _rt_free_impl((ptr), __FILE__, __LINE__)
 #else
-static void rt_free(void *ptr) {
+void rt_free(void *ptr) {
     /* free(NULL) is a no-op in C */
     _RT_TRACE_MEM("op=free ptr=%p action=call", ptr);
     _rt_release_tracked_alloc(ptr, "<runtime>", 0, "rt_free");
@@ -2706,9 +2599,12 @@ static void *_rt_calloc_impl(l0_int count, l0_int elem_size, const char *_loc_fi
     );
     return ptr;
 }
+void *(rt_calloc)(l0_int count, l0_int elem_size) {
+    return _rt_calloc_impl(count, elem_size, "<runtime>", 0);
+}
 #define rt_calloc(count, elem_size) _rt_calloc_impl((count), (elem_size), __FILE__, __LINE__)
 #else
-static void *rt_calloc(l0_int count, l0_int elem_size) {
+void *rt_calloc(l0_int count, l0_int elem_size) {
     if (count <= 0 || elem_size <= 0) {
         _rt_panic("rt_calloc: invalid count or element size");
     }
@@ -2745,7 +2641,7 @@ static void *rt_calloc(l0_int count, l0_int elem_size) {
  *
  * L0 signature: `extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;` 
  */
-static void *rt_memset(void *dest, l0_int value, l0_int bytes) {
+void *rt_memset(void *dest, l0_int value, l0_int bytes) {
     if (bytes < 0) {
         _rt_panic("rt_memset: negative byte count");
     }
@@ -2770,7 +2666,7 @@ static void *rt_memset(void *dest, l0_int value, l0_int bytes) {
  *
  * L0 signature: `extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;` 
  */
-static void *rt_memcpy(void *dest, void *src, l0_int bytes) {
+void *rt_memcpy(void *dest, void *src, l0_int bytes) {
     if (bytes < 0) {
         _rt_panic("rt_memcpy: negative byte count");
     }
@@ -2794,7 +2690,7 @@ static void *rt_memcpy(void *dest, void *src, l0_int bytes) {
  *
  * L0 signature: `extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;` 
  */
-static l0_int rt_memcmp(void *a, void *b, l0_int bytes) {
+l0_int rt_memcmp(void *a, void *b, l0_int bytes) {
     if (bytes < 0) {
         _rt_panic("rt_memcmp: negative byte count");
     }
@@ -2825,7 +2721,7 @@ static l0_int rt_memcmp(void *a, void *b, l0_int bytes) {
  *
  * L0 signature: `extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;` 
  */
-static void *rt_array_element(void *array_data, l0_int element_size, l0_int index) {
+void *rt_array_element(void *array_data, l0_int element_size, l0_int index) {
     if (array_data == NULL) {
         _rt_panic("rt_array_element: null array data pointer");
     }
@@ -3653,7 +3549,7 @@ static void _rt_track_static_bytes(const void *ptr, size_t size) {
 }
 
 /** Register externally owned storage for checked generated pointer accesses. */
-static void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
+void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
     if (ptr == NULL) {
         _rt_panic("rt_register_foreign: null pointer");
     }
@@ -3693,7 +3589,7 @@ static void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
 }
 
 /** Unregister externally owned storage without releasing its payload. */
-static void rt_unregister_foreign(void *ptr) {
+void rt_unregister_foreign(void *ptr) {
     if (ptr == NULL) {
         _rt_panic("rt_unregister_foreign: null pointer");
     }
@@ -4074,7 +3970,7 @@ static void _rt_track_static_bytes(const void *ptr, size_t size) {
     (void)ptr; (void)size;
 }
 
-static void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
+void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
     if (ptr == NULL) {
         _rt_panic("rt_register_foreign: null pointer");
     }
@@ -4086,7 +3982,7 @@ static void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
     }
 }
 
-static void rt_unregister_foreign(void *ptr) {
+void rt_unregister_foreign(void *ptr) {
     if (ptr == NULL) {
         _rt_panic("rt_unregister_foreign: null pointer");
     }
@@ -4338,7 +4234,7 @@ static l0_int _rt_hash_data(void *data, l0_int size, const uint8_t flags) {
  *
  * L0 signature: `extern func rt_hash_bool(value: bool) -> int;` 
  */
-static l0_int rt_hash_bool(l0_bool value) {
+l0_int rt_hash_bool(l0_bool value) {
     return _rt_hash_bool(value, 0);
 }
 
@@ -4350,7 +4246,7 @@ static l0_int rt_hash_bool(l0_bool value) {
  *
  * L0 signature: `extern func rt_hash_byte(value: byte) -> int;` 
  */
-static l0_int rt_hash_byte(l0_byte value) {
+l0_int rt_hash_byte(l0_byte value) {
     return _rt_hash_byte(value, 0);
 }
 
@@ -4362,7 +4258,7 @@ static l0_int rt_hash_byte(l0_byte value) {
  *
  * L0 signature: `extern func rt_hash_int(value: int) -> int;` 
  */
-static l0_int rt_hash_int(l0_int value) {
+l0_int rt_hash_int(l0_int value) {
     return _rt_hash_int(value, 0);
 }
 
@@ -4374,7 +4270,7 @@ static l0_int rt_hash_int(l0_int value) {
  *
  * L0 signature: `extern func rt_hash_string(value: string) -> int;` 
  */
-static l0_int rt_hash_string(l0_string value) {
+l0_int rt_hash_string(l0_string value) {
     return _rt_hash_string(value, 0);
 }
 
@@ -4388,7 +4284,7 @@ static l0_int rt_hash_string(l0_string value) {
  *
  * L0 signature: `extern func rt_hash_data(data: void*, size: int) -> int;` 
  */
-static l0_int rt_hash_data(void *data, l0_int size) {
+l0_int rt_hash_data(void *data, l0_int size) {
     if (size < 0) {
         _rt_panic("rt_hash_data: negative size");
     }
@@ -4406,7 +4302,7 @@ static l0_int rt_hash_data(void *data, l0_int size) {
  *
  * L0 signature: `extern func rt_hash_opt_bool(opt: bool?) -> int;` 
  */
-static l0_int rt_hash_opt_bool(l0_opt_bool opt) {
+l0_int rt_hash_opt_bool(l0_opt_bool opt) {
     uint8_t flags = _L0_TAG_OPT;
     return _rt_hash_data(&opt, sizeof(l0_opt_bool), flags);
 }
@@ -4419,7 +4315,7 @@ static l0_int rt_hash_opt_bool(l0_opt_bool opt) {
  *
  * L0 signature: `extern func rt_hash_opt_byte(opt: byte?) -> int;` 
  */
-static l0_int rt_hash_opt_byte(l0_opt_byte opt) {
+l0_int rt_hash_opt_byte(l0_opt_byte opt) {
     uint8_t flags = _L0_TAG_OPT;
     return _rt_hash_data(&opt, sizeof(l0_opt_byte), flags);
 }
@@ -4432,7 +4328,7 @@ static l0_int rt_hash_opt_byte(l0_opt_byte opt) {
  *
  * L0 signature: `extern func rt_hash_opt_int(opt: int?) -> int;` 
  */
-static l0_int rt_hash_opt_int(l0_opt_int opt) {
+l0_int rt_hash_opt_int(l0_opt_int opt) {
     uint8_t flags = _L0_TAG_OPT;
     return _rt_hash_data(&opt, sizeof(l0_opt_int), flags);
 }
@@ -4446,7 +4342,7 @@ static l0_int rt_hash_opt_int(l0_opt_int opt) {
  *
  * L0 signature: `extern func rt_hash_opt_string(opt: string?) -> int;` 
  */
-static l0_int rt_hash_opt_string(l0_opt_string opt) {
+l0_int rt_hash_opt_string(l0_opt_string opt) {
     uint8_t flags = _L0_TAG_OPT;
     if (opt.has_value) {
         return _rt_hash_string(opt.value, flags);
@@ -4465,7 +4361,7 @@ static l0_int rt_hash_opt_string(l0_opt_string opt) {
  *
  * L0 signature: `extern func rt_hash_ptr(ptr: void*) -> int;` 
  */
-static l0_int rt_hash_ptr(void *ptr) {
+l0_int rt_hash_ptr(void *ptr) {
     if (ptr == NULL) {
         _rt_panic("rt_hash_ptr: null pointer");
     }
@@ -4483,7 +4379,7 @@ static l0_int rt_hash_ptr(void *ptr) {
  *
  * L0 signature: `extern func rt_hash_opt_ptr(opt: void*?) -> int;` 
  */
-static l0_int rt_hash_opt_ptr(void *opt) {
+l0_int rt_hash_opt_ptr(void *opt) {
     if (opt == NULL) {
         _rt_panic("rt_hash_opt_ptr: unwrap of empty optional");
     }
@@ -4494,5 +4390,7 @@ static l0_int rt_hash_opt_ptr(void *opt) {
 /* =========================================================================
  * End of L0 Runtime
  * ========================================================================= */
+
+/** @endcond */
 
 #endif /* L0_RUNTIME_H */

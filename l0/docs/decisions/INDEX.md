@@ -28,3 +28,4 @@
 | [0024](0024-filesystem-metadata-and-file-read-abi.md)                | Filesystem Metadata and File-Read ABI                  | Accepted |
 | [0025](0025-runtime-trace-source-provenance.md)                      | Runtime Trace Source Provenance                        | Accepted |
 | [0026](0026-stage2-semantic-result-and-pass-ordering.md)             | Stage 2 Semantic Result and Pass Ordering              | Accepted |
+| [0027](0027-public-c-runtime-header.md)                              | Public C Runtime Header                                | Accepted |

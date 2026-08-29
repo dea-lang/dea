@@ -3,7 +3,7 @@
  * Copyright (c) 2026 gwz
  */
 
-#include <stdint.h>
+#include "dea_rt.h"
 
 /**
  * Add two L0 integers across the C FFI boundary.
@@ -12,7 +12,7 @@
  * @param right Right operand.
  * @return The sum of the operands.
  */
-int32_t add_in_c(int32_t left, int32_t right)
+dea_int add_in_c(dea_int left, dea_int right)
 {
     return left + right;
 }

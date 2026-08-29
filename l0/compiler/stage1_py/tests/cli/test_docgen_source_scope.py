@@ -16,6 +16,7 @@ def test_docgen_source_manifest_includes_expected_roots() -> None:
     assert "compiler/stage2_l0/src/analysis.l0" in files
     assert "compiler/stage2_l0/scripts/check_trace_log.py" in files
     assert "compiler/shared/l0/stdlib/std/io.l0" in files
+    assert "compiler/shared/runtime/dea_rt.h" in files
     assert "compiler/shared/runtime/l0_runtime.h" in files
 
 

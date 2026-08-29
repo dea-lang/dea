@@ -1,6 +1,6 @@
 # L0 Trace Specification
 
-Version: 2026-08-27
+Version: 2026-08-29
 
 This document specifies the shared trace instrumentation contract for generated C code and runtime behavior in both
 Stage 1 and Stage 2.
@@ -40,6 +40,12 @@ When enabled, generated C emitted by either stage writes preprocessor defines im
 These defines gate runtime trace code with `#ifdef` so trace logic is fully excluded when flags are off.
 
 Manual C defines passed via `-Co` (for example `-Co "-DL0_TRACE_ARC"`) remain compatible.
+
+Generated L0 calls to trace-sensitive `rt_*` names use macros from `l0_runtime.h` to capture the Dea call site through
+`__FILE__` and `__LINE__` plus emitted `#line` directives. Additional C translation units instead include public
+`dea_rt.h`, which declares stable `rt_*` function symbols without exposing `_rt_*` implementation helpers. In a
+trace-enabled executable, calls through those foreign-C symbols remain traceable and use `loc="<runtime>":0`, because
+there is no Dea source location to preserve. This fallback does not change generated-code provenance.
 
 ## 4. Runtime Output Contract
 

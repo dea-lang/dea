@@ -241,6 +241,29 @@ def main() -> int:
         (work_dir / "ok_main.stdout").write_text(ok_result.stdout, encoding="utf-8")
         assert_text_equals(work_dir / "ok_main.stdout", "")
 
+        c_interop_root = REPO_ROOT / "examples" / "c_interop"
+        c_interop_result = run(
+            [
+                l0c,
+                "--run",
+                "--project-root",
+                native_path(c_interop_root),
+                "--c-source",
+                native_path(c_interop_root / "c_add.c"),
+                "--c-source",
+                native_path(c_interop_root / "c_multiply.c"),
+                "c_interop",
+            ],
+        )
+        (work_dir / "c_interop.stdout").write_text(
+            c_interop_result.stdout,
+            encoding="utf-8",
+        )
+        assert_text_equals(
+            work_dir / "c_interop.stdout",
+            "C sum: 42\nC product: 42\n",
+        )
+
         workspace_build_bin = work_dir / (
             "workspace-build.exe"
             if is_windows_host()

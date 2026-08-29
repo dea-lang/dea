@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-08-25
+Version: 2026-08-29
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -54,7 +54,8 @@ Input is a fully-typed `AnalysisResult`. Output is one C99 translation unit.
 The generated C file is organized in this order in both stages:
 
 1. File header and includes (`stdint.h`, `stdbool.h`, `stddef.h`, `dea_siphash.h`, `l0_runtime.h`), with optional trace
-   defines (`L0_TRACE_ARC`, `L0_TRACE_MEMORY`) emitted before `l0_runtime.h` when enabled via CLI
+   defines (`L0_TRACE_ARC`, `L0_TRACE_MEMORY`) emitted before `l0_runtime.h` when enabled via CLI. `l0_runtime.h`
+   includes the public declarations from `dea_rt.h` and supplies their single header-only implementation owner.
 2. Forward declarations for all structs/enums
 3. Optional wrapper typedefs (early phase: builtins)
 4. Struct/enum definitions in dependency order
@@ -80,7 +81,8 @@ direct enum-tag constants. Non-static top-level initializer expressions are reje
 - `string` -> `l0_string`
 - `void` -> `void`
 
-(typedefs/runtime definitions live in `compiler/shared/runtime/l0_runtime.h`.)
+(Public ABI typedefs live in `compiler/shared/runtime/dea_rt.h`; runtime definitions live in
+`compiler/shared/runtime/l0_runtime.h`.)
 
 ### Structs and enums
 
@@ -105,6 +107,20 @@ Wrapper typedefs are emitted in two phases so dependencies are valid.
 - Top-level lets: `l0_{module}_{let_name}`
 - Local identifiers conflicting with C/runtime-reserved names are suffixed (`__v`).
 - `extern func` names are intentionally **not mangled** (FFI boundary).
+
+### Public C interoperability header
+
+Additional C translation units passed with `--c-source` include `dea_rt.h`, never `l0_runtime.h`. The public header
+contains types, storage-free value macros, and `rt_*` declarations but no runtime function or object definitions, so any
+number of foreign C units can include it. The generated L0 unit remains the one owner of the header-only runtime.
+
+The shared scalar `dea_*` types, `dea_string`, four shared optional types, their `DEA_*` value macros, and identically
+typed common `rt_*` functions form a source-compatible cross-level subset with L1. Existing `l0_*` names remain L0
+aliases. `rt_time_unix`, `rt_time_monotonic`, and `rt_file_info` are not portable between levels because their record
+tags are level-mangled. L1-only wider optionals and numeric printers are absent from L0. This promise covers C source
+and the representation of common types, not interchange of L0/L1 object files or runtime implementations.
+Compiler-private `_rt_*` names, tracker internals, configuration macros, and packaging models are also outside the
+subset.
 
 ## Statement and Expression Lowering
 
@@ -182,7 +198,8 @@ Tracing details and runtime log contract are specified in [specs/runtime/trace.m
 
 1. Backend emits one `.c` file (no header/source split, no separate object emission strategy).
 2. Function type emission as first-class C function pointers is not implemented.
-3. Runtime/ABI surface is C-only and assumes C99-compatible toolchains.
+3. Runtime/ABI surface is C-only and assumes C99-compatible toolchains. Its public foreign-C entry point is `dea_rt.h`;
+   `l0_runtime.h` is the generated unit's implementation header.
 4. Advanced optimizations are delegated to the underlying C compiler (focus is correctness and explicit lowering).
 
 ## Testing Coverage

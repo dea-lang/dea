@@ -1,7 +1,7 @@
 # ADR-0025: Runtime Trace Source Provenance
 
 - Decision date: 2026-02-28
-- Last edited: 2026-07-27
+- Last edited: 2026-08-29
 - Status: Accepted
 
 ## Context
@@ -28,6 +28,9 @@ Trace source provenance is one generated-C/runtime contract:
 5. C forward declarations protect runtime names from accidental function-like macro expansion.
 6. Trace parsing and leak triage preserve and display the location field; column provenance is not part of the current
    contract.
+7. The public declaration-only C header exposes stable function symbols for trace-sensitive `rt_*` entry points. Calls
+   from additional C translation units use `loc="<runtime>":0`; generated L0 calls retain macro-captured Dea provenance
+   and the private `_rt_*` implementations remain unexposed.
 
 ## Rationale
 
@@ -44,6 +47,8 @@ Trace source provenance is one generated-C/runtime contract:
 - Runtime declarations for macro-wrapped names require a spelling that suppresses preprocessor expansion.
 - Trace fixtures and triage tooling treat `loc` as part of the stable text contract when present.
 - Runtime-internal events should forward an originating location instead of substituting a runtime-header line.
+- Foreign-C calls have no Dea source position and therefore use the stable `<runtime>:0` fallback rather than claiming
+  the foreign C file is Dea source.
 - Exact source columns would require a separate extension because standard C has no portable `__COLUMN__`.
 
 ## Related Plans
@@ -52,9 +57,13 @@ Trace source provenance is one generated-C/runtime contract:
   established macro-captured locations, generated-C mapping, and trace-tool propagation
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the trace provenance contract into this ADR
+- [l0/work/plans/features/closed/2026-08-29-public-c-runtime-header-noref.md](../../work/plans/features/closed/2026-08-29-public-c-runtime-header-noref.md):
+  added stable foreign-C wrapper symbols without weakening generated Dea provenance
 
 ## Current Docs
 
 - [l0/docs/specs/runtime/trace.md](../specs/runtime/trace.md): trace flags, event fields, and `loc` semantics
 - [l0/docs/decisions/0011-c-emission-strategy.md](0011-c-emission-strategy.md): generated-C source mapping and emission
   architecture
+- [l0/docs/decisions/0027-public-c-runtime-header.md](0027-public-c-runtime-header.md): public declarations and the
+  generated-unit runtime ownership boundary

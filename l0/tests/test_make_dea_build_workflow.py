@@ -470,6 +470,7 @@ def main() -> int:
             assert_exists(prefix_stage2_cmd_path)
             assert_exists(prefix_env_cmd_path)
         assert_exists(prefix_dir / "shared" / "l0" / "stdlib" / "std" / "io.l0")
+        assert_exists(prefix_dir / "shared" / "runtime" / "dea_rt.h")
         assert_exists(prefix_dir / "shared" / "runtime" / "l0_runtime.h")
         if is_windows_host():
             assert_exists(prefix_alias_path)

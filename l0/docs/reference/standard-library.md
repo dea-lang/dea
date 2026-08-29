@@ -1,6 +1,6 @@
 # The L0 Standard Library
 
-Version: 2026-08-25
+Version: 2026-08-29
 
 The standard library provides ergonomic L0 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -30,7 +30,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
                              |
                              v
 +---------------------------------------------------------+
-|                 C Runtime (l0_runtime.h)                |
+| C Runtime (dea_rt.h API; l0_runtime.h implementation)  |
 +---------------------------------------------------------+
 ```
 
@@ -400,6 +400,24 @@ Low-level raw memory FFI. Misuse can cause undefined behavior.
 ## FFI Inventory (`extern func`)
 
 All `extern func` symbols exposed to L0 from stdlib modules are listed here.
+
+The same declarations are available to additional C translation units through the declaration-only public header
+`compiler/shared/runtime/dea_rt.h`, introduced for L0 2.1.0. Foreign C should use its `dea_*` types and public `rt_*`
+functions and must not include the implementation-bearing `l0_runtime.h`.
+
+The exact source-compatible subset with L1 is:
+
+- every scalar `dea_*` type and `dea_string`;
+- `dea_opt_bool`, `dea_opt_byte`, `dea_opt_int`, and `dea_opt_string`;
+- `DEA_STRING_*` and `DEA_OPT_STRING_*` value macros;
+- identically typed common `rt_*` functions in the string, process/environment, scalar-time, file-content, stream/I/O,
+  memory, and hash groups below.
+
+`rt_time_unix`, `rt_time_monotonic`, and `rt_file_info` are not portable C calls across levels because their record tags
+are level-mangled. L1's wider optional types and unsigned/long/floating-point print functions are not L0 APIs. The
+common subset promises source compatibility and common-type representation, not that L0 and L1 objects or runtime
+binaries can be mixed. L0-specific `l0_*` aliases remain supported; `_rt_*` helpers, tracker internals, build macros,
+and packaging are private or level-specific.
 
 ### Declared in `sys.rt` (42)
 

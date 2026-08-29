@@ -302,6 +302,7 @@ def main() -> int:
         assert_exists(dist_dir / "docs" / "user" / "README-WINDOWS.md")
         assert_same_file_tree(REPO_ROOT / "docs", dist_dir / "docs")
         assert_missing(dist_dir / "CONTRIBUTING.md")
+        assert_exists(dist_dir / "shared" / "runtime" / "dea_rt.h")
         assert_exists(dist_dir / "shared" / "runtime" / "l0_runtime.h")
         assert_exists(archive_path)
         assert_not_contains(dist_dir / "bin" / "l0c-stage2", str(REPO_ROOT))
@@ -325,6 +326,7 @@ def main() -> int:
         assert_exists(unpacked_dist / "bin" / "l0c-stage2")
         assert_exists(unpacked_dist / "bin" / "l0c-stage2.native")
         assert_exists(unpacked_dist / "bin" / "l0c")
+        assert_exists(unpacked_dist / "shared" / "runtime" / "dea_rt.h")
         if is_windows_host():
             assert_exists(unpacked_dist / "bin" / "l0-env.cmd")
         assert_exists(unpacked_dist / "VERSION")

@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-07-16
+Version: 2026-08-29
 
 This document records rationale and policy decisions.
 
@@ -30,13 +30,20 @@ We keep a layered boundary:
 
 1. L0 language + compiler.
 2. L0 std/runtime libraries.
-3. Small C kernel/runtime interface (`runtime/l0_runtime.h`).
+3. Small C kernel/runtime interface (`runtime/dea_rt.h`) with its L0 header-only implementation
+   (`runtime/l0_runtime.h`).
 
 Design intent:
 
 - language semantics stay stable,
 - platform-specific behavior stays quarantined in the C runtime boundary,
 - generated C remains conservative and portable.
+
+Generated L0 C includes `l0_runtime.h` exactly once and owns the implementation definitions. Additional foreign C
+translation units include declaration-only `dea_rt.h`. The public `dea_*` types and common `rt_*` declarations are
+source-compatible with L1; `l0_*` remains available as the L0 spelling. The levels do not promise binary runtime
+interchange: L0 retains generated-unit ownership, while L1 links a runtime archive. Private `_rt_*` helpers, tracker
+details, level-mangled records, configuration macros, and packaging are not cross-level interfaces.
 
 ## 3. Pointer Model and Address-of Decision
 
@@ -171,8 +178,8 @@ Rationale:
 - enough for compiler bootstrapping and diagnostics,
 - avoids premature API surface complexity.
 
-Concrete runtime API names are available in the `sys.rt` module and implemented in
-`compiler/shared/runtime/l0_runtime.h`.
+Concrete runtime API names are available in the `sys.rt` module, declared for foreign C in
+`compiler/shared/runtime/dea_rt.h`, and implemented by `compiler/shared/runtime/l0_runtime.h`.
 
 See also: [reference/standard-library.md](standard-library.md) for the current `std`/`sys` module API surface.
 

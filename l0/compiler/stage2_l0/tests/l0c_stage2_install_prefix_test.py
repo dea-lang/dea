@@ -118,6 +118,7 @@ def main() -> int:
     install_log = BUILD_TESTS_ROOT / f"l0_stage2_install_prefix_{os.getpid()}.log"
     reinstall_log = BUILD_TESTS_ROOT / f"l0_stage2_install_prefix_reinstall_{os.getpid()}.log"
     run_output = BUILD_TESTS_ROOT / f"l0_stage2_install_prefix_run_{os.getpid()}.out"
+    ffi_run_output = BUILD_TESTS_ROOT / f"l0_stage2_install_prefix_ffi_run_{os.getpid()}.out"
     env_run_output = BUILD_TESTS_ROOT / f"l0_stage2_install_prefix_env_run_{os.getpid()}.out"
     version_output = BUILD_TESTS_ROOT / f"l0_stage2_install_prefix_version_{os.getpid()}.out"
     native_version_output = BUILD_TESTS_ROOT / f"l0_stage2_install_prefix_native_version_{os.getpid()}.out"
@@ -134,6 +135,30 @@ import std.io;
 func main() -> int {
     printl_s("Hello, World!");
     return 0;
+}
+""",
+        )
+        write_text(
+            project_dir / "ffi.l0",
+            """module ffi;
+
+import std.io;
+
+extern func add_in_c(left: int, right: int) -> int;
+
+func main() -> int {
+    printl_i(add_in_c(19, 23));
+    return 0;
+}
+""",
+        )
+        write_text(
+            project_dir / "add.c",
+            """#include "dea_rt.h"
+
+dea_int add_in_c(dea_int left, dea_int right)
+{
+    return left + right;
 }
 """,
         )
@@ -159,6 +184,7 @@ func main() -> int {
         assert_file(prefix_dir / "shared" / "l0" / "stdlib" / "std" / "fs.l0")
         assert_file(prefix_dir / "shared" / "l0" / "stdlib" / "std" / "io.l0")
         assert_file(prefix_dir / "shared" / "l0" / "stdlib" / "std" / "path.l0")
+        assert_file(prefix_dir / "shared" / "runtime" / "dea_rt.h")
         assert_file(prefix_dir / "shared" / "runtime" / "l0_runtime.h")
         if is_windows_host():
             assert_file(prefix_dir / "bin" / "l0c")
@@ -222,6 +248,21 @@ func main() -> int {
         run_output.write_text(hello_run.stdout, encoding="utf-8")
         assert_contains(run_output, "Hello, World!")
 
+        ffi_run = run(
+            [
+                stage2_launcher_path(prefix_dir / "bin" / "l0c-stage2"),
+                "--run",
+                "--project-root",
+                native_path(project_dir),
+                "--c-source",
+                native_path(project_dir / "add.c"),
+                "ffi",
+            ],
+            env=clean_env(),
+        )
+        ffi_run_output.write_text(ffi_run.stdout, encoding="utf-8")
+        assert_contains(ffi_run_output, "42")
+
         run_prefix_env_probe(prefix_dir, project_dir, env_run_output)
         assert_contains(env_run_output, "Hello, World!")
     except ToolTestFailure as exc:
@@ -233,6 +274,7 @@ func main() -> int {
                 install_log,
                 reinstall_log,
                 run_output,
+                ffi_run_output,
                 env_run_output,
                 version_output,
                 native_version_output,
