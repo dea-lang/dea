@@ -1,6 +1,6 @@
 # L1 Initiative 0002 - L1 Runtime Library
 
-- Version: 2026-04-29
+- Version: 2026-08-30
 - Status: Completed
 - Kind: Initiative
 
@@ -30,9 +30,9 @@ make test-all
 ## Related initiatives
 
 - **Initiative 0001 - Separate Compilation and External Linking**
-  ([`0001-separate-compilation-and-linking.md`][separate-compilation]) is a soft consumer of this work. Separate
-  compilation can land independently, but its link model is cleaner once a real runtime archive exists to anchor archive
-  linkage and trace-variant selection.
+  ([`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][separate-compilation]) was a soft consumer of
+  this work. Separate compilation could land independently, but its link model became cleaner once a real runtime
+  archive existed to anchor archive linkage and trace-variant selection.
 - **Initiative 0003 - C FFI** ([`0003-c-ffi.md`][c-ffi]) is a future downstream consumer for the `dea_siphash.h` aside
   below: once the runtime has been split, surfacing SipHash through the C FFI as its own shared object becomes a natural
   follow-up.
@@ -193,6 +193,16 @@ retiring the short aliases when `-I` and `-L` are reclaimed for interface and li
 The implementation of the runtime split itself remains owned by
 [`l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md`][runtime-split].
 
+## ADR Impact
+
+- Decision: Deliver the L1 runtime through a declaration-only public header and build-driver-selected normal or traced
+  compiled link inputs.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md`
+  - Rationale: ADR-0027 records the header and archive boundary, canonical artifact names, trace selection,
+    compiler-family fallback, and L0 isolation implemented by this initiative.
+
 ## Spawned plans
 
 - Phase 1: runtime split into `libdea_rt.a` and traced runtime delivery under
@@ -208,5 +218,5 @@ The implementation of the runtime split itself remains owned by
 [c-ffi]: ../0003-c-ffi.md
 [roadmap]: ../../../docs/roadmap.md
 [runtime-split]: ../../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
-[separate-compilation]: ../0001-separate-compilation-and-linking.md
+[separate-compilation]: 0001-separate-compilation-and-linking.md
 [std-real]: ../../plans/features/closed/2026-04-14-l1-std-real-module-noref.md

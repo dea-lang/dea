@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+- Parent Initiative: `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
 - Subsystem: CLI / driver / build workflow / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/analysis.l0`
@@ -42,7 +42,7 @@
   - `l1/compiler/stage1_l0/tests/type_resolve_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-all`
 
@@ -262,6 +262,6 @@ Closing this plan does not claim that `-c`, `--link`, or multi-CU build/run orch
 8. Assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
 
 [artifact graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
+[build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md

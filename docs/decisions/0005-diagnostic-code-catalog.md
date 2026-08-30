@@ -1,7 +1,7 @@
 # ADR-0005: Shared Diagnostic Code Catalog
 
 - Decision date: 2026-04-03
-- Last edited: 2026-07-11
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -19,9 +19,14 @@ Rules:
 
 - Stage 2 conditions that have a Stage 1 equivalent must reuse the Stage 1 code exactly, including `ICE-xxxx` codes.
 - New codes are allowed only for Stage 2-only conditions with no Stage 1 equivalent.
+- Diagnostic families are organized by the compiler phase that detects a condition, not by feature topic. Separate
+  compilation and linking therefore use the existing `PAR-*`, `RES-*`, `SIG-*`, `TYP-*`, `DRV-*`, and `L1C-*` families.
+  A topic family such as `MOD-*` or `LNK-*` requires concrete evidence that phase-based allocation harms user
+  diagnostics or Stage 1 / Stage 2 parity.
 - When a new diagnostic area is needed, one block of 20 unused codes is provisionally reserved per family; when only a
   few new codes are needed in an established area, nearby unused codes are preferred.
-- Code reservations in plans are provisional; the live catalog is re-checked at implementation time.
+- Code reservations in plans are provisional; the live catalog is re-checked at implementation time, and placeholder
+  catalog rows are not added before concrete diagnostics exist.
 
 ## Rationale
 
@@ -39,6 +44,8 @@ Rules:
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../l1/work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  settled phase-oriented family allocation for separate-compilation and linking diagnostics
 - [work/plans/features/closed/2026-04-03-shared-diagnostic-code-catalog-noref.md](../../work/plans/features/closed/2026-04-03-shared-diagnostic-code-catalog-noref.md):
   introduced the catalog
 - [work/plans/features/closed/2026-04-03-diagnostic-code-catalog-meanings-noref.md](../../work/plans/features/closed/2026-04-03-diagnostic-code-catalog-meanings-noref.md):

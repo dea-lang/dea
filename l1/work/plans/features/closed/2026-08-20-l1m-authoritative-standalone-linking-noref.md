@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: 1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Subsystem: Separate compilation, module interfaces, lifecycle planning, and standalone linking
 - Modules:
   - `l1/compiler/stage1_l0/src/analysis.l0`
@@ -539,23 +539,25 @@ implementation-time recheck rule.
 
 ### Opening-time coordination
 
-The change that opens this plan must:
+The change that opened this plan:
 
-1. add its path to `Open plans:` in [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative], update
-   that initiative's version, and retain the reciprocal `Parent Initiative` metadata above;
-2. add a clearly future-tense planned-transition and spawned-plan entry to Initiative 0001 without rewriting its current
-   baseline, completed phases, resolved decisions, glossary, or existing ADR Impact as though implementation had landed;
-3. add this active plan to `l1/docs/roadmap.md` and refresh the roadmap version;
-4. record the provisional diagnostic assignments only in this plan, not in the live catalog; and
-5. move the build/run plan's stale provisional diagnostic block to `L1C-2130..2149` so active reservations do not
+1. added its path to `Open plans:` in the then-active
+   [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative], updated that initiative's
+   version, and retained the reciprocal `Parent Initiative` metadata above;
+2. added a clearly future-tense planned-transition and spawned-plan entry to Initiative 0001 without rewriting its
+   current baseline, completed phases, resolved decisions, glossary, or existing ADR Impact as though implementation had
+   landed;
+3. added the then-active plan to `l1/docs/roadmap.md` and refreshed the roadmap version;
+4. recorded the provisional diagnostic assignments only in this plan, not in the live catalog; and
+5. moved the build/run plan's stale provisional diagnostic block to `L1C-2130..2149` so active reservations did not
    overlap this plan's provisional `L1C-2111`.
 
-Opening the plan does not update normative current-state specifications, the live diagnostic catalog, accepted ADRs, or
-Initiative 0001's implemented baseline. There are no separate prospective "interface/CLI contract drafts" to update.
+Opening the plan did not update normative current-state specifications, the live diagnostic catalog, accepted ADRs, or
+Initiative 0001's implemented baseline. There were no separate prospective "interface/CLI contract drafts" to update.
 
-After opening the plan, run `python3 scripts/check_adr_impact.py --all-active` from the repository root. Before
-committing any opening, implementation, or closure change that modifies work documents or ADRs, stage the intended
-document set and run `python3 scripts/check_adr_impact.py --staged`.
+After the plan opened, the active-tree check was `python3 scripts/check_adr_impact.py --all-active` from the repository
+root. Opening, implementation, and closure changes that modified work documents or ADRs staged the intended document set
+and ran `python3 scripts/check_adr_impact.py --staged`.
 
 ### Implementation and closure coordination
 
@@ -908,7 +910,7 @@ evidence additionally requires green L1 CI for Linux x86-64, macOS Intel, macOS 
 [diagnostics]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [generated-c]: 2026-07-24-per-module-generated-c-mode-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [interface-emission]: 2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [interface-format]: ../../../../docs/specs/compiler/module-interface-format.md

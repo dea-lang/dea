@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Medium
 - Stage: L1
-- Parent Initiative: `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+- Parent Initiative: `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
 - Subsystem: Backend / driver / initialization ordering / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/backend.l0`
@@ -23,7 +23,7 @@
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `l1/work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md`
 - Repro: `make -C l1 test-stage1 TESTS="backend_test build_driver_test driver_test l1c_lib_test"`
 
@@ -125,6 +125,6 @@ modules and not just the old single-CU build shape.
 2. The executable wrapper calls `_dea_init` helpers in deterministic dependency order across multiple objects.
 3. Driver/backend tests cover modules with and without deferred initialization and imported-state dependencies.
 
-[build-run]: ../2026-07-17-build-run-multi-cu-orchestration-noref.md
+[build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md

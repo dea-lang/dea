@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Subsystem: Backend / C emission / module lifecycle / executable entry bridge
 - Modules:
   - `l1/compiler/stage1_l0/src/backend.l0`
@@ -221,7 +221,7 @@ the legacy generator until the fan-out plan removes it.
 8. Existing single-CU build/run and top-level initializer tests remain passing through the retained legacy generator.
 9. The ABI and C backend design documents describe the three compiler-generated symbols before this plan closes.
 
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md

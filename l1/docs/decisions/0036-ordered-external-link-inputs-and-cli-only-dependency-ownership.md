@@ -70,6 +70,8 @@ surface, while any hidden controls are left to host-toolchain behavior.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md][external-linking]
 
 ## Current Docs

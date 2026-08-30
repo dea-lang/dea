@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Subsystem: CLI / module graph / C backend / compile-only determinism
 - Modules:
   - `l1/compiler/stage1_l0/src/cli_args.l0`
@@ -245,6 +245,6 @@ the nearest unused code in the established driver range if an unforeseen distinc
 [build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [generated-c-completion]: 2026-07-24-per-module-generated-c-mode-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [stage1-temp-safety]: ../../../../../l0/work/plans/bug-fixes/closed/2026-07-14-stage1-anonymous-generated-c-safety-noref.md

@@ -1,7 +1,7 @@
 # ADR-0014: Module Interface Artifact
 
 - Decision date: 2026-06-13
-- Last edited: 2026-08-23
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -65,10 +65,9 @@ dependency values and recompute the module fingerprint before graph registration
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints-plan]
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][metadata-plan]
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
-
-## Related Initiatives
-
-- [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative]: broader rollout (open)
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md][initiative]: completed broader rollout
+- [l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md](../../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md):
+  enforced semantic `require` closure without admitting `link`-only providers
 
 ## Current Docs
 
@@ -83,7 +82,7 @@ dependency values and recompute the module fingerprint before graph registration
 [fingerprints-plan]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [format-spec]: ../specs/compiler/module-interface-format.md
 [graph-plan]: ../../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[initiative]: ../../work/initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [interface-authority]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [interface-plan]: ../../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [metadata-plan]: ../../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md

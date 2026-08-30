@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+- Parent Initiative: `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
 - Subsystem: ABI / hashing / driver / linker verification / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/analysis.l0`
@@ -22,7 +22,7 @@
   - `l1/compiler/stage1_l0/tests/driver_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: None
 

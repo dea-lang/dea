@@ -1,7 +1,7 @@
 # ADR-0032: Deterministic Compile-Only Staging Paths
 
 - Decision date: 2026-08-21
-- Last edited: 2026-08-23
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -75,6 +75,8 @@ and code-generation settings.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][foundation]
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]

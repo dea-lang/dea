@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Medium
 - Stage: L1
-- Parent Initiative: `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+- Parent Initiative: `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
 - Subsystem: CLI / build driver / linker integration / docs
 - Modules:
   - `README.md`
@@ -33,7 +33,7 @@
   - `l1/docs/reference/separate-compilation.md`
   - `l1/docs/specs/compiler/module-interface-format.md`
   - `l1/docs/user/linking.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `l1/work/initiatives/0003-c-ffi.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
   - `l1/work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md`
@@ -50,7 +50,7 @@
   - `l1/compiler/stage1_l0/tests/link_driver_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`

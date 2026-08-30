@@ -62,6 +62,8 @@ host link and flows through bounded command-workspace cleanup.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 - [l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md][completion]
 - [l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md][external-linking]

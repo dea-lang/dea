@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Subsystem: CLI / module graph / build orchestration / execution
 - Modules:
   - `l1/compiler/stage1_l0/src/cli_args.l0`
@@ -366,7 +366,7 @@ Completed on 2026-08-23.
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [generated-c-completion]: 2026-07-24-per-module-generated-c-mode-noref.md
 [generated-c-foundation]: 2026-08-21-per-module-generated-c-foundation-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md

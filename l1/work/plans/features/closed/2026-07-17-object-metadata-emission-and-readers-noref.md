@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Subsystem: Object ABI / backend / object readers / link verification boundary
 - Modules:
   - `l1/compiler/stage1_l0/src/backend.l0`
@@ -307,7 +307,7 @@ suites, environment stackability, all four L1 examples, and all 41 default ARC/m
 [abi]: ../../../../docs/specs/compiler/abi.md
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [interface-format]: ../../../../docs/specs/compiler/module-interface-format.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: 2026-07-17-link-set-driver-and-wrapper-noref.md

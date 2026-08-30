@@ -9,7 +9,7 @@
 - Severity: High
 - Stage: 1
 - Subsystem: Module graph / interface replay / signature and expression type resolution
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative-0001]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative-0001]
 - Roadmap: [`l1/docs/roadmap.md`][roadmap]
 - Modules:
   - `l1/compiler/stage1_l0/src/driver.l0`
@@ -108,11 +108,22 @@ and shares one non-short-circuiting dependency loop for registry and filesystem 
 centralized in `source_paths`, the pre-node failure cache has a scope-specific name, and source projection retains the
 resolved-type fallback only for inferred exported bindings. The CLI and `.l1m` wire format are unchanged.
 
-## ADR Note
+## ADR Impact
 
-No new ADR is expected. The fix enforces the existing semantic distinction between `require` and `link` recorded by the
-separate-compilation architecture and [interface-format contract][interface-format]; it does not introduce a new public
-or wire-level decision.
+- Decision: Resolve qualified type names in `sizeof` through the same import-aware visibility boundary as other
+  qualified symbol uses.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0009-module-visibility-exports-imports.md`
+  - Rationale: ADR-0009 owns aliased and selective imports plus importer access to exported names; this fix restores
+    that existing lookup contract without expanding visibility.
+- Decision: Validate interface surface types against the transitive `require` closure while excluding
+  implementation-only `link` providers.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0014-module-interface-artifact.md`
+  - Rationale: ADR-0014 classifies public-surface dependencies as `require` and remaining implementation uses as `link`;
+    this fix enforces that existing artifact contract without changing the wire format.
 
 ## Verification
 
@@ -133,6 +144,6 @@ Results:
 
 [artifact-graph]: ../../features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[initiative-0001]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative-0001]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [interface-format]: ../../../../docs/specs/compiler/module-interface-format.md
 [roadmap]: ../../../../docs/roadmap.md

@@ -1,7 +1,7 @@
 # ADR-0013: Opaque Type Exports and Layout-Hiding Visibility
 
 - Decision date: 2026-06-13
-- Last edited: 2026-07-23
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -206,8 +206,8 @@ Neutral:
 
 ## Related Initiatives
 
-- [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative]: separate compilation and `.l1m` emission
-  (Active).
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md][initiative]: separate compilation and `.l1m`
+  emission (Completed).
 
 ## Related Decisions
 
@@ -220,6 +220,6 @@ Neutral:
   three-state visibility model.
 
 [adr-0009]: 0009-module-visibility-exports-imports.md
-[initiative]: ../../work/initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [opaque-plan]: ../../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
 [visibility-spec]: ../specs/compiler/module-visibility-and-imports.md

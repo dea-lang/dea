@@ -1,7 +1,7 @@
 # ADR-0027: L1 Runtime Archive and Trace-Selection Boundary
 
 - Decision date: 2026-04-24
-- Last edited: 2026-07-27
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -60,6 +60,8 @@ the platform archive, and backporting the split to L0.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md][runtime-split]
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 - [l1/work/initiatives/closed/0002-runtime-static-library.md][runtime-initiative]

@@ -8,6 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
+- Parent Initiative: `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
 - Subsystem: Analysis / interface serialization / parser / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/analysis.l0`
@@ -28,7 +29,7 @@
   - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make test-stage1 TESTS="interface_test parser_test analysis_test l1c_lib_test"`; `make test-stage1`
 
@@ -126,6 +127,16 @@ source-based.
 3. Provisionally reserve `DRV-0050` to `DRV-0069` for interface-file discovery, read, and format/load errors.
 4. Re-check the live catalog at implementation time before assigning final numbers. If any proposed slot has been used
    in the meantime, choose a different free block then.
+
+## ADR Impact
+
+- Decision: Represent exported L1 module surfaces as deterministic textual `.l1m` artifacts with constrained source-like
+  emission and parsing.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/0014-module-interface-artifact.md`
+  - Rationale: ADR-0014 records the textual grammar, exported-surface projection, canonical declaration order, internal
+    emission, and constrained parser contract established by this plan.
 
 ## Non-Goals
 

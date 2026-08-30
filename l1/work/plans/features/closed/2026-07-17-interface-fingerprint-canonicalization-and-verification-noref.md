@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative]
+- Parent Initiative: [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md][initiative]
 - Subsystem: Module interfaces / ABI fingerprinting / compatibility diagnostics
 - Modules:
   - `l1/compiler/stage1_l0/src/module_interface.l0`
@@ -281,6 +281,23 @@ whole-module values, remove declaration suffixes, and define provider-module dep
 all active planning references that still describe per-symbol compatibility hashes. Do not describe object embedding or
 link-time checking as implemented; those remain in [object metadata][object-metadata].
 
+## ADR Impact
+
+- Decision: Use one tagged, canonical whole-module fingerprint for producer emission and pre-replay consumer
+  verification, with no per-declaration compatibility hashes.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/0019-whole-module-interface-fingerprints.md`
+  - Rationale: ADR-0019 records the SipHash-1-3 contract, canonical public-surface input, tagged spelling, exclusions,
+    and verification boundary.
+- Decision: Make the canonical fingerprint mandatory in the textual `.l1m` grammar and carry provider whole-module
+  expectations on `require` and `link` records.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0014-module-interface-artifact.md`
+  - Rationale: ADR-0014 records the interface grammar, declaration representation, dependency tiers, and operational
+    pre-replay verification.
+
 ## Diagnostics
 
 1. `SIG-0280` reports malformed module or provider fingerprints.
@@ -335,9 +352,9 @@ link-time checking as implemented; those remain in [object metadata][object-meta
 [abi]: ../../../../docs/specs/compiler/abi.md
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [foundation]: 2026-04-24-separate-compilation-driver-surface-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [module-format]: ../../../../docs/specs/compiler/module-interface-format.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
-[structured-c-source]: ../../../../../work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md
+[structured-c-source]: ../../../../../work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md
 [superseded]: 2026-04-24-interface-fingerprints-and-object-metadata-noref.md

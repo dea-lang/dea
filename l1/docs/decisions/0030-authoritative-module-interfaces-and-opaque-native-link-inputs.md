@@ -1,7 +1,7 @@
 # ADR-0030: Authoritative Module Interfaces and Opaque Native Link Inputs
 
 - Decision date: 2026-08-21
-- Last edited: 2026-08-21
+- Last edited: 2026-08-30
 - Status: Accepted
 - Supersedes: [ADR-0021][object-metadata]
 - Supersedes: [ADR-0028][verified-link-set]
@@ -72,6 +72,8 @@ pair. Concurrent readers and same-stem writers must serialize externally.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][authority-plan]
 
 ## Current Docs

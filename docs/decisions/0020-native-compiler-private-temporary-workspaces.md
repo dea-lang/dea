@@ -1,7 +1,7 @@
 # ADR-0020: Native Compiler Private Temporary Workspaces
 
 - Decision date: 2026-07-29
-- Last edited: 2026-08-23
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -99,6 +99,8 @@ through the native build/run workspace.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../l1/work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed L1 separate-compilation and external-linking initiative
 - [work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md](../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md):
   introduced and implemented the shared native build/run workspace safety contract
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md](../../l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md):

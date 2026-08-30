@@ -8,7 +8,7 @@
 - Kind: Bug Fix
 - Severity: Low
 - Stage: 1
-- Parent Initiative: [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative]
+- Parent Initiative: [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md][initiative]
 - Roadmap: [l1/docs/roadmap.md][roadmap]
 - Subsystem: Module graph / source-unit registry / interface projection
 - Modules:
@@ -81,11 +81,22 @@ per-interface semantic `require`-closure validation. ADR-0014 no longer pins a s
 open compile-only and build/run plans use the implemented `MRP_REQUIRE_INTERFACE` and `MRP_ALLOW_SOURCE_FALLBACK` policy
 names. The `.l1m`, CLI, diagnostic-code, and public semantic contracts are unchanged.
 
-## ADR Note
+## ADR Impact
 
-No new ADR is needed. The work hardens internal ownership and failure-state invariants under the existing module-graph
-and interface-format contracts; ADR-0018 and the current interface-format specification already record the relevant
-semantic dependency behavior.
+- Decision: Keep pre-node failures node-less and expose source units through canonical name lookup only after their
+  declared module identity is validated.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md`
+  - Rationale: ADR-0018 establishes canonical module identity, one selected origin per node, and the rule that failed
+    nodes are not committed as resolved; this fix hardens those existing graph invariants.
+- Decision: Retain `link` providers as graph obligations without opening them into the semantic `require` surface or
+  inventing absent placeholder nodes.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md`
+  - Rationale: ADR-0018 already separates semantic, link, and lifecycle dependency views; this fix preserves that
+    contract under strict interface resolution.
 
 ## Verification
 
@@ -105,6 +116,6 @@ Results:
 
 [graph]: ../../features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [hardening]: 2026-07-20-stage1-module-interface-resolution-hardening-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [interface-format]: ../../../../docs/specs/compiler/module-interface-format.md
 [roadmap]: ../../../../docs/roadmap.md

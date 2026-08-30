@@ -8,7 +8,7 @@
 - Kind: Bug Fix
 - Severity: High
 - Stage: 1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Roadmap: [`l1/docs/roadmap.md`][roadmap]
 - Subsystem: Public runtime header / native compiler commands / compile-only filesystem policy / CI toolchain selection
 - Modules:
@@ -91,10 +91,15 @@ independent fallback selection.
   legacy selector retained as a compatibility fallback, and both entry points report resolved compiler versions.
 - The accepted compile-only publication ADR now records the compiler-private follow/no-follow implementation.
 
-## ADR Note
+## ADR Impact
 
-No new architectural decision was required. The implementation preserves the accepted transaction model and records its
-compiler-private follow/no-follow path-classification detail in ADR-0022.
+- Decision: Distinguish followed output-parent directories from dangling lexical aliases before compile-only transaction
+  creation.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0022-transactional-compile-only-artifact-publication.md`
+  - Rationale: ADR-0022 owns compile-only endpoint rollback and records the compiler-private follow and no-follow path
+    classification introduced by this fix; the remaining portability repairs preserve existing ABI and CLI contracts.
 
 ## Verification
 
@@ -130,7 +135,7 @@ action is part of this plan.
 [ci-run]: https://github.com/googlielmo/DEA/actions/runs/30212969416
 [compile-only]: ../../features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [fingerprints]: ../../features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [object-metadata]: ../../features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [roadmap]: ../../../../docs/roadmap.md
 [transaction-adr]: ../../../../docs/decisions/0022-transactional-compile-only-artifact-publication.md

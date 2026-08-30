@@ -1,6 +1,6 @@
 # Dea/L1 Module Visibility and Imports
 
-Version: 2026-08-25
+Version: 2026-08-30
 
 Status: Finalized
 
@@ -9,8 +9,8 @@ source of truth for export manifests, alias imports, selective imports, the fing
 textual `.l1m` module interfaces, and the separate ordered lifecycle-import projection.
 
 The link-symbol spelling and C storage-class consequences are specified separately in
-[`l1/docs/specs/compiler/abi.md`][abi]. The broader rollout is tracked by
-[`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative-0001].
+[`l1/docs/specs/compiler/abi.md`][abi]. The broader rollout was completed under
+[`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative-0001].
 
 ## Module Surface
 
@@ -341,5 +341,5 @@ This visibility and import model does not introduce:
 - C FFI visibility controls.
 
 [abi]: abi.md
-[initiative-0001]: ../../../work/initiatives/0001-separate-compilation-and-linking.md
+[initiative-0001]: ../../../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [unsafe-adr]: ../../decisions/0010-unsafe-marker-and-raw-pointer-indexing.md

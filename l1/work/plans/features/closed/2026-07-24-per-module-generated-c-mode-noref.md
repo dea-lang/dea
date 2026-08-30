@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Subsystem: CLI / C backend / build orchestration / compiler artifact identity
 - Modules:
   - `l1/compiler/stage1_l0/src/backend.l0`
@@ -171,5 +171,5 @@ rg -n 'backend_generate\(' l1/compiler/stage1_l0
 [build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [generated-c-foundation]: 2026-08-21-per-module-generated-c-foundation-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

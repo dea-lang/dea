@@ -1,7 +1,7 @@
 # ADR-0009: Module Visibility, Exports, and Imports
 
 - Decision date: 2026-04-24
-- Last edited: 2026-07-11
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -62,16 +62,14 @@ ImportDecl ::= "import" ModulePath ";"                          (* open import *
 
 - The compiler must enforce that only exported names are accessible across module boundaries.
 - The export set is the input to LBI symbol mangling (see [l1/docs/decisions/0008-lbi-symbol-mangling.md][lbi]).
-- The broader separate-compilation initiative is still open; this ADR covers the visibility/import decisions already
-  implemented.
+- The completed separate-compilation initiative uses this visibility and import contract as its module boundary.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md][export-plan]
-
-## Related Initiatives
-
-- [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative]: broader rollout (open)
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md][initiative]: completed broader rollout
+- [l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md](../../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md):
+  restored import-aware qualified type lookup
 
 ## Current Docs
 
@@ -80,6 +78,6 @@ ImportDecl ::= "import" ModulePath ";"                          (* open import *
 
 [abi-spec]: ../specs/compiler/abi.md
 [export-plan]: ../../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
-[initiative]: ../../work/initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [lbi]: 0008-lbi-symbol-mangling.md
 [visibility-spec]: ../specs/compiler/module-visibility-and-imports.md

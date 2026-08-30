@@ -48,7 +48,7 @@
   - `l1/docs/specs/compiler/module-visibility-and-imports.md`
   - `l1/docs/project-status.md`
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
 - Test modules:
   - `l0/compiler/stage1_py/tests/backend/test_math_runtime.py`
   - `l0/compiler/stage2_l0/tests/math_test.l0`
@@ -125,6 +125,16 @@ rename with no compatibility shim.
 2. Update L1 current-state docs, roadmap text, compiler specs, and active work/initiative examples so the integer helper
    module is documented as `std.integer`.
 3. Update ABI and mangling examples that currently spell `std.math` so they remain accurate after the rename.
+
+## ADR Impact
+
+- Decision: Rename the shared integer-helper module from `std.math` to `std.integer` as an atomic pre-release hard break
+  without a compatibility shim, while preserving `std.real` and helper semantics.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0019-shared-standard-library-naming-and-compatibility-policy.md`
+  - Rationale: ADR-0019 records the canonical `std.integer` / `std.real` split, no-shim compatibility policy, and
+    naming-only boundary.
 
 ## Diagnostics
 

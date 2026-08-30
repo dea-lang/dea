@@ -1,7 +1,7 @@
 # ADR-0008: LBI Symbol Mangling
 
 - Decision date: 2026-04-24
-- Last edited: 2026-07-11
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -46,6 +46,8 @@ source-significant order.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md][lbi-mangling]
 - [l1/work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md][lbi-unified]
 - [l1/work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md][slices]

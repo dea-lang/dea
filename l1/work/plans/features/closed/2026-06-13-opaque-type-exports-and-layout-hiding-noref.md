@@ -9,7 +9,7 @@
 - Severity: High
 - Stage: L1
 - Subsystem: Analysis / signature resolution / interface emission / parser / docs
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Modules:
   - `l1/compiler/stage1_l0/src/signatures.l0`
   - `l1/compiler/stage1_l0/src/parser/decl.l0`
@@ -24,7 +24,7 @@
 - Related:
   - [`l1/docs/decisions/0013-opaque-type-exports-and-layout-hiding-visibility.md`][adr-0013]
   - [`l1/docs/specs/compiler/module-visibility-and-imports.md`][visibility-spec]
-  - [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+  - [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diag-catalog]
 - Repro: None
 
@@ -95,6 +95,16 @@ The implementation assigns these diagnostics in the existing `RES` export/visibi
 - `RES-0038`: opaque type used by value where a transparent type is required.
 - `RES-0039`: `opaque` export qualifier applied to a non-type symbol.
 
+## ADR Impact
+
+- Decision: Derive opaque type exports from layout-hiding visibility, enforce by-value and by-pointer surface rules, and
+  project opaque nominal types as name-only `.l1m` declarations.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0013-opaque-type-exports-and-layout-hiding-visibility.md`
+  - Rationale: ADR-0013 records the three visibility states, exported-surface and aggregate-closure rules,
+    endpoints-only scope, and interface projection implemented by this plan.
+
 ## Completion Notes
 
 - Implemented `opaque` as a keyword in source export manifests and `.l1m` interface declarations.
@@ -123,5 +133,5 @@ The implementation assigns these diagnostics in the existing `RES` export/visibi
 
 [adr-0013]: ../../../../docs/decisions/0013-opaque-type-exports-and-layout-hiding-visibility.md
 [diag-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [visibility-spec]: ../../../../docs/specs/compiler/module-visibility-and-imports.md

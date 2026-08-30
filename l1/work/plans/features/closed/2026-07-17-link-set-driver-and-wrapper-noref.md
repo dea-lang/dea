@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Subsystem: CLI / object verification / lifecycle wrapper / host linker
 - Modules:
   - `l1/compiler/stage1_l0/src/build_driver.l0`
@@ -335,7 +335,7 @@ repeats the path with `extern "C"`.
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [module-graph]: 2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [native-workspace]: ../../../../../work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md

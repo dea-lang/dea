@@ -1,7 +1,7 @@
 # ADR-0022: Compile-Only Artifact Endpoint Rollback
 
 - Decision date: 2026-07-24
-- Last edited: 2026-08-23
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -90,6 +90,8 @@ compile-only publication path.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][generated-c-foundation]
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md][cross-platform-ci]

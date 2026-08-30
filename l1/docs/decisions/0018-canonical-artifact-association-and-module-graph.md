@@ -1,7 +1,7 @@
 # ADR-0018: Canonical Artifact Association and Module Graph
 
 - Decision date: 2026-07-19
-- Last edited: 2026-08-23
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -67,6 +67,10 @@ imports without deriving lifecycle edges from `require` or `link`.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
+- [l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md](../../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md):
+  hardened canonical identity, node-less failures, and dependency-view separation
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][generated-c-foundation]
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]

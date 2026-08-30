@@ -1,7 +1,7 @@
 # ADR-0035: Cross-Mode Generated-C Byte Identity
 
 - Decision date: 2026-08-23
-- Last edited: 2026-08-23
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -49,6 +49,8 @@ generator, combined initialization walk, and backend-owned process wrapper are r
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md][completion]
 
 ## Current Docs

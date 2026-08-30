@@ -204,13 +204,13 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active initiatives
 
-- Initiative [0001-separate-compilation-and-linking][separate-compilation] has completed separate compilation, interface
-  verification, and external-library linking implementation; only initiative lifecycle closure remains.
 - Initiative [0003-c-ffi][c-ffi] adds the typed C boundary: `extern "C"` declarations, `cstr`, and the closed FFI-safe
   surface.
 
 ## Completed initiatives
 
+- Initiative [0001-separate-compilation-and-linking][separate-compilation] added separate compilation, authoritative
+  module interfaces, graph-aware build/run and standalone linking, and ordered external-library inputs.
 - Initiative [0002-runtime-static-library][runtime-library] split the L1 runtime from header-only inclusion into public
   headers plus normal and traced static archives.
 - Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe] added the function-level `unsafe` marker for
@@ -239,8 +239,8 @@ surface.
 
 ### Language core
 
-- Separate compilation, interface verification, and external-library linking are implemented under Initiative
-  [0001-separate-compilation-and-linking][separate-compilation], whose lifecycle closure remains pending.
+- Separate compilation, interface verification, and external-library linking were completed under Initiative
+  [0001-separate-compilation-and-linking][separate-compilation].
 - Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative [0003-c-ffi][c-ffi]. The
   proposed scoped conversion design is recorded in [cstr-and-c-string-guards][cstr-proposal].
 - C variadic FFI remains a sibling tranche under Initiative [0003-c-ffi][c-ffi]; implemented L1-defined variadics do not
@@ -354,7 +354,7 @@ update to be promoted to an initiative or plan:
 [runtime-resplit]: ../work/plans/refactors/closed/2026-04-27-runtime-cu-resplit-noref.md
 [runtime-split]: ../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
 [scalar-const-flow]: ../work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md
-[separate-compilation]: ../work/initiatives/0001-separate-compilation-and-linking.md
+[separate-compilation]: ../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md

@@ -8,6 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
+- Parent Initiative: `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
 - Subsystem: Backend / C emitter / ABI / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/backend.l0`
@@ -21,7 +22,7 @@
   - `l1/compiler/stage1_l0/tests/l0c_lib_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `l1/work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md`
 - Repro: `make -C l1 test-stage1 TESTS="c_emitter_test backend_test l0c_lib_test"`
 - Final validation:
@@ -124,6 +125,15 @@ describe the export-driven linkage model.
 1. No dedicated new user-facing diagnostic family is expected from this tranche.
 2. If implementation pressure reveals a real user-facing failure mode, first reuse existing reserved-identifier and
    build/link diagnostics rather than minting new codes in this naming-only/backend tranche.
+
+## ADR Impact
+
+- Decision: Use tagged-section, length-prefixed LBI names and export-driven C linkage for L1 module symbols.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0008-lbi-symbol-mangling.md`
+  - Rationale: ADR-0008 records the canonical mangling grammar, stable module-derived symbol identity, and
+    exported-versus-internal linkage implemented by this plan.
 
 ## Non-Goals
 

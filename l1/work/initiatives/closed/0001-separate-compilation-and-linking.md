@@ -1,7 +1,7 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
 - Version: 2026-08-30
-- Status: Active
+- Status: Completed
 - Kind: Initiative
 - Open plans: (none)
 - Closed plans:
@@ -41,16 +41,27 @@ decisions, the phasing, and the dependencies. Their implementation tranches are 
 
 This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
 
-All implementation plans are complete. The initiative remains active only for a later lifecycle-closure pass that
-updates its complete historical ADR/backlink set before moving the initiative itself to `closed/`.
+## Completion
+
+Initiative 0001 is complete. L1 now compiles and links modules independently through authoritative `.l1m` interfaces,
+per-module generated C and native artifacts, graph-aware build/run orchestration, and verified standalone linking. The
+completed toolchain also accepts ordered external library names, search paths, runtime search paths, raw linker
+arguments, and caller-asserted foreign objects while preserving exact runtime selection and typed Dea object roles.
+
+Validation:
+
+```bash
+make -C l1 clean test-all
+```
 
 ## Related initiatives
 
-- **Initiative 0002 - L1 Runtime Library** ([`closed/0002-runtime-static-library.md`][runtime-library]) is a soft
-  prerequisite. It moves the runtime from header-only inclusion to a real static archive, which de-risks the link
-  mechanics that this initiative depends on. Separate compilation can land independently, but the link model is cleaner
-  once 0002 has settled archive linkage and the trace-variant story.
-- **Initiative 0003 - C FFI** ([`0003-c-ffi.md`][c-ffi]) is a downstream consumer. Its LBI mangling,
+- **Initiative 0002 - L1 Runtime Library**
+  ([`l1/work/initiatives/closed/0002-runtime-static-library.md`][runtime-library]) was a soft prerequisite. It moved the
+  runtime from header-only inclusion to a real static archive, which de-risked the link mechanics this initiative
+  consumed. Separate compilation could land independently, but the link model became cleaner once 0002 settled archive
+  linkage and the trace-variant story.
+- **Initiative 0003 - C FFI** ([`l1/work/initiatives/0003-c-ffi.md`][c-ffi]) is a downstream consumer. Its LBI mangling,
   separate-compilation driver, and external-library linking prerequisites are implemented here. This initiative also
   owns the explicit `--foreign-object` path by which caller-asserted host-compatible C relocatable objects satisfy
   current unmangled `extern func` declarations and future `extern "C"` declarations without joining the Dea module graph
@@ -675,8 +686,8 @@ the chosen answer and points at the owning section.
    does not own workspace allocation or cleanup. The transaction owns wrapper and capture files only; original native
    paths replace the retired exact-byte snapshots. Recorded by the amended [ADR-0029][link-transaction-adr].
 
-FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery open questions live in
-[Initiative 0002][runtime-library].
+FFI-specific open questions live in [Initiative 0003][c-ffi]; the settled runtime-delivery decisions are recorded in
+completed [Initiative 0002][runtime-library].
 
 ## ADR Impact
 
@@ -754,6 +765,18 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0035-cross-mode-generated-c-byte-identity.md`
   - Rationale: ADR-0035 records the cross-mode identity, exact compiler-input retention, and wrapper-exclusion rules.
+- Decision: Run build and run through one verified multi-compilation-unit orchestration pipeline.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0033-multi-compilation-unit-build-and-run-pipeline.md`
+  - Rationale: ADR-0033 records graph fan-out, provider and entry selection, per-unit compilation, ordered native
+    inputs, common linking, direct execution, and workspace cleanup.
+- Decision: Retain build/run generated C as a complete canonical multi-unit tree copied from exact compiler inputs.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0034-multi-unit-generated-c-retention-tree.md`
+  - Rationale: ADR-0034 records the public retention layout, absent-root ownership, exact byte-copying, and bounded
+    rollback contract.
 - Decision: Use stable module-relative host-compiler paths for deterministic compile-only objects where the toolchain
   permits.
   - Scope: L1
@@ -774,7 +797,7 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - Scope: Shared
   - Disposition: Amend ADR
   - ADR: `docs/decisions/0005-diagnostic-code-catalog.md`
-  - Rationale: The shared diagnostic ADR should state the phase-oriented allocation rule settled by this initiative.
+  - Rationale: ADR-0005 now records the phase-oriented allocation rule settled by this initiative.
 - Decision: Keep external dependencies CLI-only and ordered, without package or per-module link manifests.
   - Scope: L1
   - Disposition: Covered by ADR
@@ -841,42 +864,42 @@ implementation tranche proves that one decision area needs additional design wor
   may satisfy unmangled C symbols but is not a Dea module and has no fingerprint, lifecycle, dependency, or entry
   semantics; Dea does not inspect its bytes.
 
-[abi]: ../../docs/specs/compiler/abi.md
-[artifact-graph]: ../plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[backend-design]: ../../docs/reference/c-backend-design.md
-[build-run]: ../plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
-[c-ffi]: 0003-c-ffi.md
-[compile-foundation]: ../plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
-[compile-only]: ../plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
-[compile-only-adr]: ../../docs/decisions/0022-transactional-compile-only-artifact-publication.md
-[compile-staging-adr]: ../../docs/decisions/0032-deterministic-compile-only-staging-paths.md
-[diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
-[export-imports]: ../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
-[fingerprint-adr]: ../../docs/decisions/0019-whole-module-interface-fingerprints.md
-[generated-c-adr]: ../../docs/decisions/0031-per-module-generated-c-cli-boundary.md
-[generated-c-foundation]: ../plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
-[generated-c-identity-adr]: ../../docs/decisions/0035-cross-mode-generated-c-byte-identity.md
-[interface-emission]: ../plans/features/closed/2026-04-24-module-interface-emission-noref.md
-[interface-fingerprints]: ../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
-[l1m-authoritative-linking]: ../plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
-[l1m-authority-adr]: ../../docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md
-[library-linking]: ../plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
-[lifecycle-adr]: ../../docs/decisions/0020-per-module-backend-and-lifecycle-abi.md
-[lifecycle-entrypoints]: ../plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-set]: ../plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
-[link-set-adr]: ../../docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md
-[link-transaction-adr]: ../../docs/decisions/0029-output-local-standalone-link-transaction.md
-[linking]: ../../docs/user/linking.md
-[metadata-adr]: ../../docs/decisions/0021-portable-object-metadata-and-inspection.md
-[module-interface]: ../../docs/specs/compiler/module-interface-format.md
-[module-interface-hardening]: ../plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
-[module-visibility]: ../../docs/specs/compiler/module-visibility-and-imports.md
-[object-metadata]: ../plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
-[opaque-exports]: ../plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
-[per-module-generated-c]: ../plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
-[roadmap]: ../../docs/roadmap.md
-[runtime-library]: closed/0002-runtime-static-library.md
-[separate-compilation]: ../../docs/reference/separate-compilation.md
-[siphash]: ../../compiler/shared/runtime/internal/dea_siphash.h
-[standalone-link-hardening]: ../plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
-[symbol-linkage]: ../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
+[abi]: ../../../docs/specs/compiler/abi.md
+[artifact-graph]: ../../plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[backend-design]: ../../../docs/reference/c-backend-design.md
+[build-run]: ../../plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
+[c-ffi]: ../0003-c-ffi.md
+[compile-foundation]: ../../plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
+[compile-only]: ../../plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[compile-only-adr]: ../../../docs/decisions/0022-transactional-compile-only-artifact-publication.md
+[compile-staging-adr]: ../../../docs/decisions/0032-deterministic-compile-only-staging-paths.md
+[diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[export-imports]: ../../plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
+[fingerprint-adr]: ../../../docs/decisions/0019-whole-module-interface-fingerprints.md
+[generated-c-adr]: ../../../docs/decisions/0031-per-module-generated-c-cli-boundary.md
+[generated-c-foundation]: ../../plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
+[generated-c-identity-adr]: ../../../docs/decisions/0035-cross-mode-generated-c-byte-identity.md
+[interface-emission]: ../../plans/features/closed/2026-04-24-module-interface-emission-noref.md
+[interface-fingerprints]: ../../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[l1m-authoritative-linking]: ../../plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
+[l1m-authority-adr]: ../../../docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md
+[library-linking]: ../../plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
+[lifecycle-adr]: ../../../docs/decisions/0020-per-module-backend-and-lifecycle-abi.md
+[lifecycle-entrypoints]: ../../plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
+[link-set]: ../../plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
+[link-set-adr]: ../../../docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md
+[link-transaction-adr]: ../../../docs/decisions/0029-output-local-standalone-link-transaction.md
+[linking]: ../../../docs/user/linking.md
+[metadata-adr]: ../../../docs/decisions/0021-portable-object-metadata-and-inspection.md
+[module-interface]: ../../../docs/specs/compiler/module-interface-format.md
+[module-interface-hardening]: ../../plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
+[module-visibility]: ../../../docs/specs/compiler/module-visibility-and-imports.md
+[object-metadata]: ../../plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
+[opaque-exports]: ../../plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
+[per-module-generated-c]: ../../plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
+[roadmap]: ../../../docs/roadmap.md
+[runtime-library]: 0002-runtime-static-library.md
+[separate-compilation]: ../../../docs/reference/separate-compilation.md
+[siphash]: ../../../compiler/shared/runtime/internal/dea_siphash.h
+[standalone-link-hardening]: ../../plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md
+[symbol-linkage]: ../../plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md

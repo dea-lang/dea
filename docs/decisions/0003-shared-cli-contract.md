@@ -70,6 +70,8 @@ arguments, while levels without an external-link capability may retain the share
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../l1/work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed L1 separate-compilation and external-linking initiative
 - [l0/work/plans/features/closed/2026-03-12-shared-cli-contract-spec.md](../../l0/work/plans/features/closed/2026-03-12-shared-cli-contract-spec.md):
   introduced the contract spec
 - [l0/work/plans/features/closed/2026-03-12-cli-version-flag-and-identity-text-noref.md](../../l0/work/plans/features/closed/2026-03-12-cli-version-flag-and-identity-text-noref.md):

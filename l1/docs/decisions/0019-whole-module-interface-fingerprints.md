@@ -1,7 +1,7 @@
 # ADR-0019: Whole-Module Interface Fingerprints
 
 - Decision date: 2026-07-21
-- Last edited: 2026-08-21
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -72,6 +72,8 @@ never falls back to source after fingerprint failure.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][module-graph]

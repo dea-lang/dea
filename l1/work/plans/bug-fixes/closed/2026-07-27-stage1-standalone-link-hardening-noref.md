@@ -8,7 +8,7 @@
 - Kind: Bug Fix
 - Severity: High
 - Stage: 1
-- Parent Initiative: [`l1/work/initiatives/0001-separate-compilation-and-linking.md`][initiative]
+- Parent Initiative: [`l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`][initiative]
 - Roadmap: [`l1/docs/roadmap.md`][roadmap]
 - Subsystem: Object inspection / standalone link validation / lifecycle ordering / Windows host transport
 - Modules:
@@ -160,7 +160,7 @@ and skip output aliases on Windows.
 
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [external-linking]: ../../features/closed/2026-04-24-external-library-linking-cli-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [inspection-adr]: ../../../../docs/decisions/0021-portable-object-metadata-and-inspection.md
 [link-set]: ../../features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [link-set-adr]: ../../../../docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md

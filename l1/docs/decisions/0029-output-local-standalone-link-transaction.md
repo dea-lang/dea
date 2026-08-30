@@ -1,7 +1,7 @@
 # ADR-0029: Output-Local Standalone Link Transaction
 
 - Decision date: 2026-07-27
-- Last edited: 2026-08-21
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -63,6 +63,8 @@ ownership also permits safe reuse by the planned multi-CU build/run transaction.
 
 ## Related Plans
 
+- [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
+  completed separate-compilation and external-linking initiative
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
 - [work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md][native-workspace]

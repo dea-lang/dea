@@ -8,6 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
+- Parent Initiative: `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
 - Subsystem: Parser / name resolution / import analysis / docs
 - Modules:
   - `l1/compiler/stage1_l0/src/ast.l0`
@@ -25,7 +26,7 @@
   - `l1/compiler/stage1_l0/tests/analysis_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
-  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Repro: `make -C l1 test-stage1 TESTS="parser_test name_resolver_test analysis_test"`
 - Final validation:
@@ -131,6 +132,16 @@ Update the grammar/reference text and add fixtures covering:
    unknown exported names, duplicate explicit exports, and invalid alias/selective import bindings.
 4. Re-check the live catalog at implementation time before assigning final numbers. If any proposed slot has been used
    in the meantime, choose a different free block then.
+
+## ADR Impact
+
+- Decision: Define L1 module visibility through one export manifest and provide open, aliased, and selective import
+  forms.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0009-module-visibility-exports-imports.md`
+  - Rationale: ADR-0009 records the explicit and implicit export rules, import spellings, and public-surface enforcement
+    implemented by this plan.
 
 ## Non-Goals
 

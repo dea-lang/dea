@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Stage: L1
-- Parent Initiative: [l1/work/initiatives/0001-separate-compilation-and-linking.md][initiative]
+- Parent Initiative: [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md][initiative]
 - Subsystem: Driver / module discovery / interface closure / artifact paths
 - Modules:
   - `l1/compiler/stage1_l0/src/ast.l0`
@@ -210,6 +210,23 @@ build/run fan-out. Update the module-interface format documentation for recursiv
 Fingerprint spelling and verification were left to, and later completed by, the [fingerprint plan][fingerprints]. Keep
 CLI help explicit that `-c` remains reserved until the [compile-only plan][compile-only] lands.
 
+## ADR Impact
+
+- Decision: Map canonical dotted module identities to sibling `.c`, `.o`, and `.l1m` artifacts and resolve imported
+  modules through deterministic interface-first graph closure.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/0018-canonical-artifact-association-and-module-graph.md`
+  - Rationale: ADR-0018 records canonical artifact identity, interface/source precedence, graph origins, dependency
+    views, and ordered direct imports.
+- Decision: Extend `.l1m` consumption from direct supplied-interface replay to filesystem-discovered transitive
+  `require` and `link` closure through the canonical module graph.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0014-module-interface-artifact.md`
+  - Rationale: ADR-0014 records graph-backed interface discovery, transitive dependency loading, and semantic replay of
+    authoritative textual interfaces.
+
 ## Diagnostics
 
 1. `DRV-0070` is retired and reserved now that transitive interface replay is supported. `DRV-0071` remains assigned to
@@ -256,6 +273,6 @@ CLI help explicit that `-c` remains reserved until the [compile-only plan][compi
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [foundation]: 2026-04-24-separate-compilation-driver-surface-noref.md
-[initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
+[initiative]: ../../../initiatives/closed/0001-separate-compilation-and-linking.md
 [module-format]: ../../../../docs/specs/compiler/module-interface-format.md
 [object-metadata]: 2026-07-17-object-metadata-emission-and-readers-noref.md
