@@ -36,7 +36,7 @@
   - `l1/work/initiatives/closed/0001-separate-compilation-and-linking.md`
   - `l1/work/initiatives/0003-c-ffi.md`
   - `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
-  - `l1/work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md`
+  - `l1/work/plans/features/closed/2026-04-24-c-ffi-extern-c-and-cstr-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`

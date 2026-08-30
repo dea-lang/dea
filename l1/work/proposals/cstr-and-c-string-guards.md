@@ -1,6 +1,6 @@
 # `cstr` and Scoped C-String Guards Proposal
 
-Version: 2026-06-21
+Version: 2026-08-30
 
 Status: Proposed
 
@@ -11,7 +11,8 @@ surface introduces builtin `cstr`, explicit pointer conversions, a call-scoped `
 internal guard that owns a terminated string for the duration of a C call.
 
 This document is a design proposal, not an implementation plan. Accepted decisions should graduate into the L1 C-FFI
-initiative, its feature plan, and stable language/runtime documentation before implementation.
+initiative, a new or substantively revised feature plan, and stable language/runtime documentation before
+implementation.
 
 ## Context
 
@@ -241,13 +242,14 @@ the live catalog before implementation.
 
 ## Proposal Lifecycle
 
-1. Link this proposal from [C FFI initiative] and [C FFI plan] as an unresolved design dependency.
+1. Link this proposal from the [C FFI initiative]; retain the closed [C FFI plan] only as a historical design record.
 2. Do not document this surface as accepted language behavior while the proposal remains open.
 3. On acceptance, move normative rules into L1 grammar, ownership, C-backend, and ABI documentation.
-4. Revise the C-FFI plan's zero-cost `string -> cstr` assumption and diagnostic reservations.
+4. Carry forward only justified parts of the closed C-FFI plan, revisiting its zero-cost `string -> cstr` assumption and
+   diagnostic reservations.
 5. Create or update the implementation plan only after the proposal's conversion syntax, lifetime, and embedded-NUL
    decisions are accepted.
 
 [c ffi initiative]: ../initiatives/0003-c-ffi.md
-[c ffi plan]: ../plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
+[c ffi plan]: ../plans/features/closed/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
 [cheap string slices plan]: ../plans/features/2026-06-21-cheap-string-slices-noref.md

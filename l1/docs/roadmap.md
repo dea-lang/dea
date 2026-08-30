@@ -204,8 +204,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active initiatives
 
-- Initiative [0003-c-ffi][c-ffi] adds the typed C boundary: `extern "C"` declarations, `cstr`, and the closed FFI-safe
-  surface.
+- Initiative [0003-c-ffi][c-ffi] is on hold while real binding experience informs a choice among direct typed
+  declarations, annotated C carriers, generated shims, or another first-class C interoperability design.
 
 ## Completed initiatives
 
@@ -224,8 +224,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
-  non-variadic C boundary.
 - Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] decomposes oversized Stage 1
   production source modules while preserving public root imports and current compiler behavior.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
@@ -324,7 +322,6 @@ update to be promoted to an initiative or plan:
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
-[ffi-cstr]: ../work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md

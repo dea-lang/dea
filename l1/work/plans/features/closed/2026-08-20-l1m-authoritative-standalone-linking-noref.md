@@ -55,7 +55,7 @@
   - `l1/compiler/stage1_l0/tests/wrapper_emitter_test.l0`
 - Related:
   - [`l1/work/initiatives/0003-c-ffi.md`][c-ffi-initiative]
-  - [`l1/work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md`][c-ffi-plan]
+  - [`l1/work/plans/features/closed/2026-04-24-c-ffi-extern-c-and-cstr-noref.md`][c-ffi-plan]
   - [`l1/work/plans/features/closed/2026-04-24-module-interface-emission-noref.md`][interface-emission]
   - [`l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md`][interface-fingerprints]
   - [`l1/work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md`][lifecycle]
@@ -573,10 +573,11 @@ keeping implemented-current-state prose explicit:
    metadata-free-object and embedded-control enforcement assumptions with the caller-asserted foreign-object boundary;
    keep archives, libraries, scripts, and raw arguments on their typed future surface.
 4. [`l1/work/initiatives/0003-c-ffi.md`][c-ffi-initiative], updating its `Version` to the amendment date whenever it is
-   substantively changed, and its [`l1/work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md`][c-ffi-plan]:
-   replace claims that Dea verifies a metadata-free C object with the caller assertion that `--foreign-object` names one
-   host-compatible relocatable object. It remains outside Dea fingerprints, lifecycle, entry, and module identity, but
-   Dea does not prove its format, symbols, or embedded controls.
+   substantively changed, and its
+   [`l1/work/plans/features/closed/2026-04-24-c-ffi-extern-c-and-cstr-noref.md`][c-ffi-plan]: replace claims that Dea
+   verifies a metadata-free C object with the caller assertion that `--foreign-object` names one host-compatible
+   relocatable object. It remains outside Dea fingerprints, lifecycle, entry, and module identity, but Dea does not
+   prove its format, symbols, or embedded controls.
 
 As the implementation lands, update the following normative and status documents to describe implemented behavior:
 
@@ -903,7 +904,7 @@ evidence additionally requires green L1 CI for Linux x86-64, macOS Intel, macOS 
 [backend-design]: ../../../../docs/reference/c-backend-design.md
 [build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi-initiative]: ../../../initiatives/0003-c-ffi.md
-[c-ffi-plan]: ../2026-04-24-c-ffi-extern-c-and-cstr-noref.md
+[c-ffi-plan]: 2026-04-24-c-ffi-extern-c-and-cstr-noref.md
 [cli-contract]: ../../../../../docs/specs/compiler/cli-contract.md
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [design-decisions]: ../../../../docs/reference/design-decisions.md
