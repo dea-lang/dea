@@ -2,8 +2,8 @@
 
 ## Add external-library linking flags to the L1 CLI
 
-- Date: 2026-04-24
-- Status: Draft
+- Date: 2026-08-30
+- Status: Completed
 - Title: Add external-library linking flags to the L1 CLI
 - Kind: Feature
 - Severity: Medium
@@ -11,25 +11,51 @@
 - Parent Initiative: `l1/work/initiatives/0001-separate-compilation-and-linking.md`
 - Subsystem: CLI / build driver / linker integration / docs
 - Modules:
-  - `l1/compiler/stage1_l0/src/cli_args.l0`
+  - `README.md`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
-  - `l1/compiler/stage1_l0/src/driver.l0`
-  - `l1/compiler/stage1_l0/src/l1c.l0`
+  - `l1/compiler/stage1_l0/src/cli_args.l0`
+  - `l1/compiler/stage1_l0/src/link_driver.l0`
   - `docs/specs/compiler/cli-contract.md`
+  - `docs/specs/compiler/diagnostic-code-catalog.md`
+  - `docs/decisions/0003-shared-cli-contract.md`
+  - `docs/project-status.md`
+  - `l1/README.md`
+  - `l1/compiler/stage1_l0/README.md`
+  - `l1/docs/README.md`
   - `l1/docs/roadmap.md`
+  - `l1/docs/decisions/0033-multi-compilation-unit-build-and-run-pipeline.md`
+  - `l1/docs/decisions/0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md` (new)
+  - `l1/docs/decisions/INDEX.md`
+  - `l1/docs/project-status.md`
+  - `l1/docs/reference/architecture.md`
+  - `l1/docs/reference/c-backend-design.md`
   - `l1/docs/reference/design-decisions.md`
+  - `l1/docs/reference/separate-compilation.md`
+  - `l1/docs/specs/compiler/module-interface-format.md`
   - `l1/docs/user/linking.md`
+  - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
+  - `l1/work/initiatives/0003-c-ffi.md`
+  - `l1/work/plans/bug-fixes/closed/2026-07-27-stage1-standalone-link-hardening-noref.md`
+  - `l1/work/plans/features/2026-04-24-c-ffi-extern-c-and-cstr-noref.md`
+  - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
+  - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
+  - `l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md`
+  - `work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
   - `l1/compiler/stage1_l0/tests/build_driver_test.l0`
-  - `l1/compiler/stage1_l0/tests/driver_test.l0`
+  - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_multi_cu_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_link_set_test.py`
+  - `l1/compiler/stage1_l0/tests/link_driver_test.l0`
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/0001-separate-compilation-and-linking.md`
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
-- Repro: `make -C l1 test-stage1 TESTS="cli_args_test build_driver_test driver_test"`
+- Repro:
+  `make -C l1 test-stage1 TESTS="build_driver_test cli_args_test link_driver_test l1c_stage1_build_run_multi_cu_test l1c_stage1_help_output_test l1c_stage1_link_set_test"`
 
 ## Summary
 
@@ -72,8 +98,9 @@ interface-path lookup rather than raw linker/include-path behavior.
    later adds `extern "C"`; package manifests and automatic dependency metadata stay out of scope.
 7. `--link-arg` cannot substitute for the typed object surfaces. A direct relocatable-object operand is rejected with
    guidance to use a positional Dea `.o` with its sibling `.l1m`, or `--foreign-object` for one caller-asserted foreign
-   relocatable. Opaque response-file indirection remains outside the supported contract. Archive and shared-library
-   operands remain valid external-library inputs.
+   relocatable. Object-suffixed `-l` values and raw linker payload segments are rejected as the same role violation.
+   Opaque response, file-list, and driver-config indirection remains outside the supported contract. Archive and
+   shared-library operands remain valid external-library inputs.
 8. Dea does not inspect native object bytes for embedded linker controls. Libraries, search paths, rpaths, and raw
    arguments must enter through this plan's explicit typed CLI surface for supported use, while any controls hidden in
    caller-supplied native bytes are outside Dea validation and may be accepted or rejected by the host toolchain.
@@ -106,7 +133,7 @@ user's order across Dea objects, `--foreign-object` operands, libraries, and raw
 semantically observable. Translate rpath values per supported compiler family and pass the validated runtime link inputs
 by exact path: one selected archive for normal families, or the complete variant-matched TinyCC raw-object set when
 available with archive fallback. Validate raw host-driver arguments before invocation so direct relocatable-object
-operands retain their typed CLI role and response-file indirection remains outside the supported contract.
+operands retain their typed CLI role and opaque option-file indirection remains outside the supported contract.
 
 ### Phase 3: Docs and smoke coverage
 
@@ -116,11 +143,13 @@ for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 
 ## Diagnostics
 
-1. This plan is expected to need diagnostics for invalid linker-option combinations, missing linker-option values, and
-   host-link failures attributable to explicit external-library options.
-2. Provisionally reserve `L1C-2070` to `L1C-2089` for external-linking CLI and linker-forwarding diagnostics.
-3. Re-check the live catalog at implementation time before assigning final numbers. If any proposed slot has been used
-   in the meantime, choose a different free block then.
+1. `L1C-2070` reports external-link options used outside `--build`, `--link`, and `--run`.
+2. `L1C-2071` reports a library/raw link input that attempts to supply a relocatable object or opaque option-file
+   indirection.
+3. `L1C-2072` reports an external-link control unsupported or not losslessly representable by the selected host
+   platform, compiler family, or value, including canonical `-l` / `-L` under MSVC.
+4. Missing values continue to use shared `L1C-2003`; captured host-link failures retain the existing common-link
+   diagnostic path.
 
 ## ADR Impact
 
@@ -134,9 +163,15 @@ for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
   module identity, without package or per-module dependency manifests.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md`
   - Rationale: Input ordering and dependency ownership constrain `--link`, `--build`, `--run`, FFI bindings, and any
     future package-metadata design.
+- Decision: Extend the multi-compilation-unit build/run pipeline with the common ordered external-link input stream.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0033-multi-compilation-unit-build-and-run-pipeline.md`
+  - Rationale: ADR-0033 owns build/run delegation to the common link planner and previously excluded external libraries
+    and raw host-driver arguments.
 
 ## Non-Goals
 
@@ -151,9 +186,26 @@ for `.o`, `.obj`, `.a`, `.so`, `.dylib`, `.lib`, and `.dll` expectations.
 2. Link-involving flows forward the requested flags to the host toolchain deterministically.
 3. Mixed Dea objects, explicit foreign objects, libraries, rpaths, and raw host-driver arguments retain the documented
    order, and user search paths cannot shadow the validated runtime link inputs.
-4. A direct relocatable object supplied through `--link-arg` fails with typed-operand guidance, and response-file
+4. An object-suffixed library/raw input fails with typed-operand guidance, and response, file-list, and driver-config
    indirection remains outside the supported contract. Archives and shared libraries remain valid external inputs.
 5. Native object bytes are never inspected for linker-control carriers; explicitly typed options remain the supported
    way to request libraries and raw host arguments, and hidden controls are left to host-tool behavior.
 6. The roadmap and user docs distinguish the currently usable `extern func` workflow from future `extern "C"` support.
 7. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
+
+## Completion Notes
+
+- Added the canonical library, library-search, rpath, and raw host-driver options to the L1 parser and help surface with
+  link-mode validation and typed raw-argument rejection.
+- Extended the common link plan used by standalone link and build/run so external controls retain encounter order, use
+  compiler-family rpath lowering, and precede exact driver-selected runtime inputs.
+- Kept external dependencies CLI-owned, preserved opaque native-input handling, and recorded the durable boundary in
+  ADR-0036 while amending the shared CLI and multi-CU build/run decisions.
+- Added focused parser, help-output, ordering, rpath-family, build/run propagation, Windows preflight, compiler-family,
+  typed-object-boundary, and opaque option-file regressions.
+- Validation:
+  - `make -C l1 test-stage1 TESTS="build_driver_test cli_args_test link_driver_test l1c_stage1_build_run_multi_cu_test l1c_stage1_help_output_test l1c_stage1_link_set_test"`:
+    passed 6/6.
+  - `make -C l1 clean test-all`: passed 69/69 normal Stage 1 tests, environment stackability, all four examples, and
+    44/44 ownership trace tests.
+  - `python3 scripts/check_adr_impact.py --all-active`: passed before closure.

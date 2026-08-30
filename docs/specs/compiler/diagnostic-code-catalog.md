@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-08-25
+Version: 2026-08-30
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -305,6 +305,9 @@ diagnostic.
 |            | `L1C-2034` | L1 only | Staged compile-only artifact validation failed                                                                    |
 |            | `L1C-2035` | L1 only | Compile-only artifact publication failed and the previous artifact set was restored                               |
 |            | `L1C-2036` | L1 only | Compile-only artifact rollback failed and recovery files were retained                                            |
+|            | `L1C-2070` | L1 only | External-link option is invalid for the selected non-linking mode                                                 |
+|            | `L1C-2071` | L1 only | Library/raw link input supplies a relocatable object or opaque option-file indirection                            |
+|            | `L1C-2072` | L1 only | External-link control is unsupported for the selected compiler family, value, or host platform                    |
 |            | `L1C-2090` | L1 only | Source project or system roots are not valid with standalone link mode                                            |
 |            | `L1C-2091` | L1 only | '--foreign-object' is valid only with build, run, or standalone link mode                                         |
 |            | `L1C-2092` | L1 only | '--entry' is valid only with standalone link mode                                                                 |

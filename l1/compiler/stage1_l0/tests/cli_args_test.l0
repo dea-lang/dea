@@ -29,6 +29,19 @@ func cli_result_has_code(parsed: CliParseResult*, code: string) -> bool {
     return false;
 }
 
+/** Assert one ordered CLI link operand's kind and value. */
+func cli_assert_operand(
+    operands: VectorBase*,
+    index: int,
+    expected_kind: LinkOperandKind,
+    expected_value: string,
+    context: string
+) {
+    let operand = cli_link_operands_get(operands, index);
+    assert(ord(operand.kind) == ord(expected_kind), context + " kind mismatch");
+    assert(operand.value == expected_value, context + " value mismatch");
+}
+
 /**
  * Tests test_default_mode_build.
  */
@@ -300,18 +313,30 @@ func test_compile_mode_validation() {
 }
 
 /**
- * Tests link mode records positional Dea and explicit foreign objects in
- * exact encounter order.
+ * Tests link mode records every typed native and external input in exact
+ * encounter order.
  */
 func test_link_mode_ordered_typed_operands() {
-    with (let argv = sv_create(16) => sv_free(argv)) {
+    with (let argv = sv_create(32) => sv_free(argv)) {
         sv_push(argv, "obj/first.o");
+        sv_push(argv, "-L");
+        sv_push(argv, "external/first");
+        sv_push(argv, "-lmath");
         sv_push(argv, "-Cf");
         sv_push(argv, "obj/provider.o");
+        sv_push(argv, "-Rr=runtime/first");
+        sv_push(argv, "--link-arg=-Wl,--as-needed");
         sv_push(argv, "-k");
         sv_push(argv, "-e");
         sv_push(argv, "app.main");
         sv_push(argv, "obj/second.o");
+        sv_push(argv, "--rpath");
+        sv_push(argv, "runtime/second");
+        sv_push(argv, "-Cl");
+        sv_push(argv, "-Wl,--no-as-needed");
+        sv_push(argv, "-l");
+        sv_push(argv, "pthread");
+        sv_push(argv, "-Lexternal/second");
         sv_push(argv, "-Cf=obj/helper.o");
         sv_push(argv, "-o");
         sv_push(argv, "bin/app");
@@ -323,22 +348,274 @@ func test_link_mode_ordered_typed_operands() {
         assert(ord(opts.mode) == ord(CM_LINK), "expected CM_LINK");
         assert(opts.entry_module as string == "app.main", "explicit entry module mismatch");
         assert(opts.output as string == "bin/app", "link output mismatch");
-        assert(cli_link_operands_count(opts.link_operands) == 4, "expected four ordered link operands");
+        assert(cli_link_operands_count(opts.link_operands) == 12, "expected twelve ordered link operands");
 
         let first = cli_link_operands_get(opts.link_operands, 0);
-        let provider = cli_link_operands_get(opts.link_operands, 1);
-        let second = cli_link_operands_get(opts.link_operands, 2);
-        let helper = cli_link_operands_get(opts.link_operands, 3);
+        let search_first = cli_link_operands_get(opts.link_operands, 1);
+        let math = cli_link_operands_get(opts.link_operands, 2);
+        let provider = cli_link_operands_get(opts.link_operands, 3);
+        let rpath_first = cli_link_operands_get(opts.link_operands, 4);
+        let as_needed = cli_link_operands_get(opts.link_operands, 5);
+        let second = cli_link_operands_get(opts.link_operands, 6);
+        let rpath_second = cli_link_operands_get(opts.link_operands, 7);
+        let no_as_needed = cli_link_operands_get(opts.link_operands, 8);
+        let pthread = cli_link_operands_get(opts.link_operands, 9);
+        let search_second = cli_link_operands_get(opts.link_operands, 10);
+        let helper = cli_link_operands_get(opts.link_operands, 11);
         assert(ord(first.kind) == ord(LOK_DEA_OBJECT), "first operand should be a Dea object");
-        assert(first.path == "obj/first.o", "first Dea object path mismatch");
+        assert(first.value == "obj/first.o", "first Dea object value mismatch");
+        assert(ord(search_first.kind) == ord(LOK_LIBRARY_SEARCH), "first search-path kind mismatch");
+        assert(search_first.value == "external/first", "first search-path value mismatch");
+        assert(ord(math.kind) == ord(LOK_LIBRARY), "math library kind mismatch");
+        assert(math.value == "math", "math library value mismatch");
         assert(ord(provider.kind) == ord(LOK_FOREIGN_OBJECT), "provider should be a foreign object");
-        assert(provider.path == "obj/provider.o", "provider object path mismatch");
+        assert(provider.value == "obj/provider.o", "provider object value mismatch");
+        assert(ord(rpath_first.kind) == ord(LOK_RPATH), "first rpath kind mismatch");
+        assert(rpath_first.value == "runtime/first", "first rpath value mismatch");
+        assert(ord(as_needed.kind) == ord(LOK_LINK_ARG), "first raw link argument kind mismatch");
+        assert(as_needed.value == "-Wl,--as-needed", "first raw link argument value mismatch");
         assert(ord(second.kind) == ord(LOK_DEA_OBJECT), "second positional should be a Dea object");
-        assert(second.path == "obj/second.o", "second Dea object path mismatch");
+        assert(second.value == "obj/second.o", "second Dea object value mismatch");
+        assert(ord(rpath_second.kind) == ord(LOK_RPATH), "second rpath kind mismatch");
+        assert(rpath_second.value == "runtime/second", "second rpath value mismatch");
+        assert(ord(no_as_needed.kind) == ord(LOK_LINK_ARG), "second raw link argument kind mismatch");
+        assert(no_as_needed.value == "-Wl,--no-as-needed", "second raw link argument value mismatch");
+        assert(ord(pthread.kind) == ord(LOK_LIBRARY), "pthread library kind mismatch");
+        assert(pthread.value == "pthread", "pthread library value mismatch");
+        assert(ord(search_second.kind) == ord(LOK_LIBRARY_SEARCH), "second search-path kind mismatch");
+        assert(search_second.value == "external/second", "second search-path value mismatch");
         assert(ord(helper.kind) == ord(LOK_FOREIGN_OBJECT), "helper should be a foreign object");
-        assert(helper.path == "obj/helper.o", "helper object path mismatch");
+        assert(helper.value == "obj/helper.o", "helper object value mismatch");
 
         cli_parse_result_free(parsed);
+    }
+}
+
+/** Tests every accepted spelling for external-link value options. */
+func test_external_link_option_spellings() {
+    with (let argv = sv_create(32) => sv_free(argv)) {
+        sv_push(argv, "-L");
+        sv_push(argv, "library/one");
+        sv_push(argv, "-Llibrary/two");
+        sv_push(argv, "-l");
+        sv_push(argv, "one");
+        sv_push(argv, "-ltwo");
+        sv_push(argv, "-Rr");
+        sv_push(argv, "runtime/one");
+        sv_push(argv, "-Rr=runtime/two");
+        sv_push(argv, "--rpath");
+        sv_push(argv, "runtime/three");
+        sv_push(argv, "--rpath=runtime/four");
+        sv_push(argv, "-Cl");
+        sv_push(argv, "-Wl,one");
+        sv_push(argv, "-Cl=-Wl,two");
+        sv_push(argv, "--link-arg");
+        sv_push(argv, "-pthread");
+        sv_push(argv, "--link-arg=-Wl,four");
+        sv_push(argv, "app.main");
+
+        let parsed = cli_parse(argv);
+        assert(!diag_has_errors(parsed.diags), "every external-link spelling should parse in build mode");
+        let operands = (parsed.options as CliOptions*).link_operands;
+        assert(cli_link_operands_count(operands) == 13,
+            "twelve external controls plus the source target should be retained");
+
+        cli_assert_operand(operands, 0, LOK_LIBRARY_SEARCH, "library/one", "separated -L");
+        cli_assert_operand(operands, 1, LOK_LIBRARY_SEARCH, "library/two", "attached -L");
+        cli_assert_operand(operands, 2, LOK_LIBRARY, "one", "separated -l");
+        cli_assert_operand(operands, 3, LOK_LIBRARY, "two", "attached -l");
+        cli_assert_operand(operands, 4, LOK_RPATH, "runtime/one", "separated -Rr");
+        cli_assert_operand(operands, 5, LOK_RPATH, "runtime/two", "equals -Rr");
+        cli_assert_operand(operands, 6, LOK_RPATH, "runtime/three", "separated --rpath");
+        cli_assert_operand(operands, 7, LOK_RPATH, "runtime/four", "equals --rpath");
+        cli_assert_operand(operands, 8, LOK_LINK_ARG, "-Wl,one", "separated -Cl");
+        cli_assert_operand(operands, 9, LOK_LINK_ARG, "-Wl,two", "equals -Cl");
+        cli_assert_operand(operands, 10, LOK_LINK_ARG, "-pthread", "separated --link-arg");
+        cli_assert_operand(operands, 11, LOK_LINK_ARG, "-Wl,four", "equals --link-arg");
+        cli_assert_operand(operands, 12, LOK_DEA_OBJECT, "app.main", "source target");
+
+        cli_parse_result_free(parsed);
+    }
+}
+
+/** Tests raw link arguments cannot bypass typed object and response-file roles. */
+func test_link_arg_typed_boundary() {
+    with (let object_values = sv_create(12) => sv_free(object_values)) {
+        sv_push(object_values, "native/provider.o");
+        sv_push(object_values, "native/provider.obj");
+        sv_push(object_values, "-Wl,-dead_strip,native/provider.o");
+        sv_push(object_values, "/tmp/native:provider.o");
+        sv_push(object_values, "-l:provider.o");
+        sv_push(object_values, "-lprovider.o");
+        sv_push(object_values, "-Wl,-l:provider.o");
+        sv_push(object_values, "-Wl,--library=:provider.obj");
+        sv_push(object_values, "-Wl,-needed-lprovider.o");
+        for (let i = 0; i < sv_size(object_values); i = i + 1) {
+            with (let argv = sv_create(4) => sv_free(argv)) {
+                sv_push(argv, "--build");
+                sv_push(argv, "--link-arg=" + sv_get(object_values, i));
+                sv_push(argv, "app.main");
+                let parsed = cli_parse(argv);
+                assert(diag_count(parsed.diags) == 1,
+                    "raw relocatable object should emit exactly one diagnostic");
+                assert(cli_result_has_code(parsed, "L1C-2071"),
+                    "raw relocatable object should report L1C-2071");
+                assert(contains_s(diag_get(parsed.diags, 0).message, "relocatable"),
+                    "raw object diagnostic should explain the typed relocatable boundary");
+                cli_parse_result_free(parsed);
+            }
+        }
+    }
+
+    with (let library_objects = sv_create(2) => sv_free(library_objects)) {
+        sv_push(library_objects, "provider.o");
+        sv_push(library_objects, "provider.obj");
+        for (let library_i = 0;
+             library_i < sv_size(library_objects);
+             library_i = library_i + 1) {
+            with (let library_argv = sv_create(4) => sv_free(library_argv)) {
+                sv_push(library_argv, "--build");
+                sv_push(library_argv, "-l");
+                sv_push(library_argv, sv_get(library_objects, library_i));
+                sv_push(library_argv, "app.main");
+                let parsed_library = cli_parse(library_argv);
+                assert(diag_count(parsed_library.diags) == 1 &&
+                       cli_result_has_code(parsed_library, "L1C-2071"),
+                    "typed library option must not carry a relocatable object");
+                cli_parse_result_free(parsed_library);
+            }
+        }
+    }
+
+    with (let attached_library_objects = sv_create(2) =>
+              sv_free(attached_library_objects)) {
+        sv_push(attached_library_objects, "-lprovider.o");
+        sv_push(attached_library_objects, "-l:provider.obj");
+        for (let attached_i = 0;
+             attached_i < sv_size(attached_library_objects);
+             attached_i = attached_i + 1) {
+            with (let attached_library_argv = sv_create(3) =>
+                      sv_free(attached_library_argv)) {
+                sv_push(attached_library_argv, "--build");
+                sv_push(attached_library_argv,
+                    sv_get(attached_library_objects, attached_i));
+                sv_push(attached_library_argv, "app.main");
+                let parsed_attached_library =
+                    cli_parse(attached_library_argv);
+                assert(diag_count(parsed_attached_library.diags) == 1 &&
+                       cli_result_has_code(
+                           parsed_attached_library, "L1C-2071"),
+                    "attached library option must not carry a relocatable object");
+                cli_parse_result_free(parsed_attached_library);
+            }
+        }
+    }
+
+    with (let argv2 = sv_create(4) => sv_free(argv2)) {
+        sv_push(argv2, "--build");
+        sv_push(argv2, "-Cl=@link-inputs.rsp");
+        sv_push(argv2, "app.main");
+        let parsed2 = cli_parse(argv2);
+        assert(diag_count(parsed2.diags) == 1,
+            "response-file link argument should emit exactly one diagnostic");
+        assert(cli_result_has_code(parsed2, "L1C-2071"),
+            "response-file link argument should report L1C-2071");
+        assert(contains_s(diag_get(parsed2.diags, 0).message, "response"),
+            "response-file diagnostic should identify unsupported indirection");
+        cli_parse_result_free(parsed2);
+    }
+
+    with (let forwarded_response = sv_create(4) => sv_free(forwarded_response)) {
+        sv_push(forwarded_response, "--build");
+        sv_push(forwarded_response,
+            "--link-arg=-Wl,-dead_strip,@link-inputs.rsp");
+        sv_push(forwarded_response, "app.main");
+        let parsed_forwarded = cli_parse(forwarded_response);
+        assert(diag_count(parsed_forwarded.diags) == 1 &&
+               cli_result_has_code(parsed_forwarded, "L1C-2071"),
+            "forwarded response-file link argument should report L1C-2071");
+        cli_parse_result_free(parsed_forwarded);
+    }
+
+    with (let file_list = sv_create(4) => sv_free(file_list)) {
+        sv_push(file_list, "--build");
+        sv_push(file_list, "--link-arg=-Wl,-filelist,objects.txt");
+        sv_push(file_list, "app.main");
+        let parsed_file_list = cli_parse(file_list);
+        assert(diag_count(parsed_file_list.diags) == 1 &&
+               cli_result_has_code(parsed_file_list, "L1C-2071") &&
+               contains_s(diag_get(parsed_file_list.diags, 0).message,
+                   "file-list"),
+            "object file-list indirection should report L1C-2071");
+        cli_parse_result_free(parsed_file_list);
+    }
+
+    with (let opaque_indirections = sv_create(10) =>
+              sv_free(opaque_indirections)) {
+        sv_push(opaque_indirections, "-filelist");
+        sv_push(opaque_indirections, "--config");
+        sv_push(opaque_indirections, "--config=link.cfg");
+        sv_push(opaque_indirections, "--config-user-dir=configs");
+        sv_push(opaque_indirections, "--config-system-dir=configs");
+        sv_push(opaque_indirections, "-specs");
+        sv_push(opaque_indirections, "-specs=link.specs");
+        sv_push(opaque_indirections, "--specs");
+        sv_push(opaque_indirections, "--specs=link.specs");
+        for (let opaque_i = 0;
+             opaque_i < sv_size(opaque_indirections);
+             opaque_i = opaque_i + 1) {
+            with (let opaque_argv = sv_create(4) => sv_free(opaque_argv)) {
+                sv_push(opaque_argv, "--build");
+                sv_push(opaque_argv, "--link-arg");
+                sv_push(opaque_argv, sv_get(opaque_indirections, opaque_i));
+                sv_push(opaque_argv, "app.main");
+                let parsed_opaque = cli_parse(opaque_argv);
+                assert(diag_count(parsed_opaque.diags) == 1 &&
+                       cli_result_has_code(parsed_opaque, "L1C-2071"),
+                    "opaque option-file indirection should report L1C-2071");
+                cli_parse_result_free(parsed_opaque);
+            }
+        }
+    }
+
+    with (let response_object = sv_create(4) => sv_free(response_object)) {
+        sv_push(response_object, "--build");
+        sv_push(response_object, "--link-arg=@link-inputs.o");
+        sv_push(response_object, "app.main");
+        let parsed_response_object = cli_parse(response_object);
+        assert(diag_count(parsed_response_object.diags) == 1 &&
+               contains_s(
+                   diag_get(parsed_response_object.diags, 0).message,
+                   "response"),
+            "at-sign response must be classified before its object suffix");
+        cli_parse_result_free(parsed_response_object);
+    }
+
+    with (let allowed = sv_create(16) => sv_free(allowed)) {
+        sv_push(allowed, "--build");
+        sv_push(allowed, "--link-arg=libnative.a");
+        sv_push(allowed, "--link-arg=libnative.so");
+        sv_push(allowed, "--link-arg=libnative.dylib");
+        sv_push(allowed, "--link-arg=native.lib");
+        sv_push(allowed, "--link-arg=native.dll");
+        sv_push(allowed, "--link-arg=-Wl,-map,map.o");
+        sv_push(allowed, "app.main");
+        let parsed3 = cli_parse(allowed);
+        assert(!diag_has_errors(parsed3.diags),
+            "archive and shared-library raw operands should remain valid");
+        let operands = (parsed3.options as CliOptions*).link_operands;
+        assert(cli_link_operands_count(operands) == 7,
+            "allowed library operands plus the source target should be retained");
+        cli_assert_operand(operands, 0, LOK_LINK_ARG, "libnative.a", "static archive link argument");
+        cli_assert_operand(operands, 1, LOK_LINK_ARG, "libnative.so", "ELF shared-library link argument");
+        cli_assert_operand(operands, 2, LOK_LINK_ARG, "libnative.dylib", "Mach-O shared-library link argument");
+        cli_assert_operand(operands, 3, LOK_LINK_ARG, "native.lib", "Windows import-library link argument");
+        cli_assert_operand(operands, 4, LOK_LINK_ARG, "native.dll", "Windows shared-library link argument");
+        cli_assert_operand(operands, 5, LOK_LINK_ARG,
+            "-Wl,-map,map.o", "object-suffixed linker map output");
+        cli_assert_operand(operands, 6, LOK_DEA_OBJECT,
+            "app.main", "allowed-library source target");
+        cli_parse_result_free(parsed3);
     }
 }
 
@@ -357,6 +634,23 @@ func test_link_mode_required_operands_and_output() {
         assert(cli_result_has_code(parsed, "L1C-2095"), "expected missing positional Dea object diagnostic");
         assert(!cli_result_has_code(parsed, "L1C-2021"), "link mode must not use source-target diagnostics");
         cli_parse_result_free(parsed);
+    }
+
+    with (let external_only = sv_create(12) => sv_free(external_only)) {
+        sv_push(external_only, "--link");
+        sv_push(external_only, "-Lexternal");
+        sv_push(external_only, "-lprovider");
+        sv_push(external_only, "-Rr=runtime");
+        sv_push(external_only, "--link-arg=libprovider.a");
+        sv_push(external_only, "-o");
+        sv_push(external_only, "app");
+
+        let parsed_external = cli_parse(external_only);
+        assert(cli_result_has_code(parsed_external, "L1C-2095"),
+            "external controls must not satisfy the positional Dea object requirement");
+        assert(!cli_result_has_code(parsed_external, "L1C-2096"),
+            "external-only link fixture should otherwise provide its output");
+        cli_parse_result_free(parsed_external);
     }
 
     with (let no_output = sv_create(4) => sv_free(no_output)) {
@@ -455,6 +749,49 @@ func test_link_option_scope_and_missing_values() {
         cli_parse_result_free(parsed_scope);
     }
 
+    with (let run_external = sv_create(12) => sv_free(run_external)) {
+        sv_push(run_external, "--run");
+        sv_push(run_external, "-Lexternal");
+        sv_push(run_external, "-lprovider");
+        sv_push(run_external, "-Rr=runtime");
+        sv_push(run_external, "-Cl=-pthread");
+        sv_push(run_external, "app.main");
+        let parsed_run = cli_parse(run_external);
+        assert(!diag_has_errors(parsed_run.diags),
+            "run should accept every external-link option kind");
+        assert(cli_link_operands_count(
+                (parsed_run.options as CliOptions*).link_operands) == 5,
+            "run should retain four external controls and its source target");
+        cli_parse_result_free(parsed_run);
+    }
+
+    with (let compile_external = sv_create(12) => sv_free(compile_external)) {
+        sv_push(compile_external, "--compile");
+        sv_push(compile_external, "-Lexternal");
+        sv_push(compile_external, "-lprovider");
+        sv_push(compile_external, "-Rr=runtime");
+        sv_push(compile_external, "-Cl=-pthread");
+        sv_push(compile_external, "app.main");
+        let parsed_compile = cli_parse(compile_external);
+        assert(diag_count(parsed_compile.diags) == 1,
+            "compile should emit one grouped external-link scope diagnostic");
+        assert(cli_result_has_code(parsed_compile, "L1C-2070"),
+            "compile should reject external-link options with L1C-2070");
+        cli_parse_result_free(parsed_compile);
+    }
+
+    with (let check_external = sv_create(6) => sv_free(check_external)) {
+        sv_push(check_external, "--check");
+        sv_push(check_external, "--rpath=runtime");
+        sv_push(check_external, "app.main");
+        let parsed_check = cli_parse(check_external);
+        assert(diag_count(parsed_check.diags) == 1,
+            "analysis should emit one external-link scope diagnostic");
+        assert(cli_result_has_code(parsed_check, "L1C-2070"),
+            "analysis should reject external-link options with L1C-2070");
+        cli_parse_result_free(parsed_check);
+    }
+
     with (let build_entry = sv_create(6) => sv_free(build_entry)) {
         sv_push(build_entry, "--build");
         sv_push(build_entry, "-e");
@@ -465,11 +802,17 @@ func test_link_option_scope_and_missing_values() {
         cli_parse_result_free(parsed2);
     }
 
-    with (let value_options = sv_create(8) => sv_free(value_options)) {
+    with (let value_options = sv_create(16) => sv_free(value_options)) {
         sv_push(value_options, "--foreign-object");
         sv_push(value_options, "-Cf");
         sv_push(value_options, "--entry");
         sv_push(value_options, "-e");
+        sv_push(value_options, "-L");
+        sv_push(value_options, "-l");
+        sv_push(value_options, "-Rr");
+        sv_push(value_options, "--rpath");
+        sv_push(value_options, "-Cl");
+        sv_push(value_options, "--link-arg");
         for (let i = 0; i < sv_size(value_options); i = i + 1) {
             let option = sv_get(value_options, i);
             with (let argv = sv_create(8) => sv_free(argv)) {
@@ -521,6 +864,35 @@ func test_link_option_scope_and_missing_values() {
             "empty inline entry message mismatch"
         );
         cli_parse_result_free(parsed5);
+    }
+
+    with (let empty_external = sv_create(8) => sv_free(empty_external)) {
+        sv_push(empty_external, "-Rr=");
+        sv_push(empty_external, "--rpath=");
+        sv_push(empty_external, "-Cl=");
+        sv_push(empty_external, "--link-arg=");
+        for (let i = 0; i < sv_size(empty_external); i = i + 1) {
+            let token = sv_get(empty_external, i);
+            let option = token;
+            if (token == "-Rr=") option = "-Rr";
+            if (token == "--rpath=") option = "--rpath";
+            if (token == "-Cl=") option = "-Cl";
+            if (token == "--link-arg=") option = "--link-arg";
+            with (let argv = sv_create(4) => sv_free(argv)) {
+                sv_push(argv, "--build");
+                sv_push(argv, token);
+                sv_push(argv, "app.main");
+                let parsed6 = cli_parse(argv);
+                assert(diag_count(parsed6.diags) == 1,
+                    token + " should emit exactly one empty-value diagnostic");
+                assert(cli_result_has_code(parsed6, "L1C-2003"),
+                    token + " should report L1C-2003");
+                assert(diag_get(parsed6.diags, 0).message ==
+                        "missing value for option '" + option + "'",
+                    token + " should report its canonical option spelling");
+                cli_parse_result_free(parsed6);
+            }
+        }
     }
 }
 
@@ -627,7 +999,7 @@ func test_interface_path_scope_and_value_validation() {
  * Tests separated value options stop at the program-argument separator.
  */
 func test_separated_values_do_not_consume_separator() {
-    with (let options = sv_create(20) => sv_free(options)) {
+    with (let options = sv_create(24) => sv_free(options)) {
         sv_push(options, "-Rp");
         sv_push(options, "--project-root");
         sv_push(options, "-Rs");
@@ -646,6 +1018,10 @@ func test_separated_values_do_not_consume_separator() {
         sv_push(options, "--runtime-lib");
         sv_push(options, "-L");
         sv_push(options, "-l");
+        sv_push(options, "-Rr");
+        sv_push(options, "--rpath");
+        sv_push(options, "-Cl");
+        sv_push(options, "--link-arg");
 
         for (let i = 0; i < sv_size(options); i = i + 1) {
             let option = sv_get(options, i);
@@ -797,6 +1173,8 @@ func test_namespaced_values_reject_concatenation() {
         sv_push(concatenated, "-Co-O2");
         sv_push(concatenated, "-Riruntime/include");
         sv_push(concatenated, "-Rlruntime/lib");
+        sv_push(concatenated, "-Rrruntime/search");
+        sv_push(concatenated, "-Cl-Wl,defs");
         sv_push(concatenated, "-Gkmore");
         sv_push(concatenated, "-Gimore");
         sv_push(concatenated, "-Sbmore");
@@ -809,7 +1187,7 @@ func test_namespaced_values_reject_concatenation() {
         sv_push(concatenated, "-Cfprovider.o");
         sv_push(concatenated, "app.main");
         let parsed = cli_parse(concatenated);
-        assert(diag_count(parsed.diags) == 16, "expected each concatenated alias to be rejected");
+        assert(diag_count(parsed.diags) == 18, "expected each concatenated alias to be rejected");
         for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
             assert(diag_get(parsed.diags, i).code == "L1C-2001", "expected unknown-option diagnostic");
         }
@@ -824,10 +1202,8 @@ func test_namespaced_values_reject_concatenation() {
         cli_parse_result_free(parsed2);
     }
 
-    with (let deferred = sv_create(4) => sv_free(deferred)) {
+    with (let deferred = sv_create(1) => sv_free(deferred)) {
         sv_push(deferred, "-Cs");
-        sv_push(deferred, "-Rr");
-        sv_push(deferred, "-Cl");
         for (let i = 0; i < sv_size(deferred); i = i + 1) {
             with (let argv = sv_create(3) => sv_free(argv)) {
                 sv_push(argv, sv_get(deferred, i));
@@ -856,25 +1232,17 @@ func test_namespaced_values_reject_concatenation() {
  * Tests canonical reserved options and retired historical spellings.
  */
 func test_canonical_reservations_and_retired_aliases() {
-    with (let canonical = sv_create(12) => sv_free(canonical)) {
+    with (let canonical = sv_create(4) => sv_free(canonical)) {
         sv_push(canonical, "-g");
         sv_push(canonical, "-S");
-        sv_push(canonical, "-L");
-        sv_push(canonical, "external/first");
-        sv_push(canonical, "-Lexternal/second");
-        sv_push(canonical, "-l");
-        sv_push(canonical, "math");
-        sv_push(canonical, "-lpthread");
         sv_push(canonical, "app.main");
         let parsed = cli_parse(canonical);
-        assert(diag_count(parsed.diags) == 6, "expected one diagnostic per reserved canonical option");
+        assert(diag_count(parsed.diags) == 2, "expected one diagnostic per remaining reserved canonical option");
         for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
             assert(diag_get(parsed.diags, i).code == "L1C-2032", "expected reserved-option diagnostic");
         }
         assert(contains_s(diag_get(parsed.diags, 0).message, "debug information"), "-g reservation mismatch");
         assert(contains_s(diag_get(parsed.diags, 1).message, "assembly output"), "-S reservation mismatch");
-        assert(contains_s(diag_get(parsed.diags, 2).message, "external library search"), "-L reservation mismatch");
-        assert(contains_s(diag_get(parsed.diags, 4).message, "external library selection"), "-l reservation mismatch");
         cli_parse_result_free(parsed);
     }
 
@@ -1239,6 +1607,8 @@ func main() {
     test_compile_mode_and_interface_paths_parsed();
     test_compile_mode_validation();
     test_link_mode_ordered_typed_operands();
+    test_external_link_option_spellings();
+    test_link_arg_typed_boundary();
     test_link_mode_required_operands_and_output();
     test_link_mode_entry_validation();
     test_link_option_scope_and_missing_values();

@@ -67,7 +67,10 @@ def main() -> int:
     help_text = completed.stdout
     expected_fragments = (
         "usage: l1c [-h] [-V] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT]",
-        "       l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT",
+        "           [-Cf C_OBJECT] [-l LIBRARY] [-L LIBRARY_PATH]",
+        "           [-Rr RPATH] [-Cl LINK_ARG] [-e MODULE]",
+        "       l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L LIBRARY_PATH]...",
+        "           [-Rr RPATH]... [-Cl LINK_ARG]... [-e MODULE] -o OUTPUT",
         "  -V, --version         show compiler version and exit",
         "  -Vl, --log            Enable rich log formatting",
         "  -Rp, --project-root PROJECT_ROOT",
@@ -84,6 +87,13 @@ def main() -> int:
         "  --runtime-include, -Ri RUNTIME_INCLUDE",
         "  --runtime-lib, -Rl RUNTIME_LIB",
         "  -Cf, --foreign-object C_OBJECT",
+        "  -l LIBRARY            Link an external library in encounter order",
+        "attached -lLIBRARY is also accepted; valid in:",
+        "  -L LIBRARY_PATH       Add an external-library search path in encounter order",
+        "attached -LLIBRARY_PATH is also accepted;",
+        "  -Rr, --rpath RPATH    Add a runtime dynamic-library search path in encounter",
+        "  -Cl, --link-arg LINK_ARG",
+        "Pass one intact host compiler-driver argument in",
         "  -e, --entry MODULE    Select one canonical dotted Dea entry module",
         "  -Gk, --keep-c         Keep generated C (valid in: '--build', '--compile',",
         "  -Sb, --check-basic",
@@ -94,8 +104,6 @@ def main() -> int:
         "compile mode adds the sibling .c artifact)",
         "  -g                    Reserved debug-information option (not supported yet)",
         "  -S                    Reserved assembly-output option (not supported yet)",
-        "  -L LIBRARY_PATH       Reserved library search path (not supported yet)",
-        "  -l LIBRARY            Reserved library link option (not supported yet)",
     )
     for fragment in expected_fragments:
         assert fragment in help_text, f"missing help fragment: {fragment!r}"
@@ -109,6 +117,8 @@ def main() -> int:
         "  --c-options, -C C_OPTIONS",
         "  --runtime-include, -I RUNTIME_INCLUDE",
         "  --runtime-lib, -L RUNTIME_LIB",
+        "Reserved library search path (not supported yet)",
+        "Reserved library link option (not supported yet)",
     )
     for fragment in retired_fragments:
         assert fragment not in help_text, f"retired help fragment remains: {fragment!r}"

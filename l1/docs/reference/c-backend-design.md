@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-08-25
+Version: 2026-08-30
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -11,6 +11,7 @@ Related docs:
   [l1/docs/reference/separate-compilation.md](separate-compilation.md)
 - Language/runtime rationale and policy: [design-decisions.md](design-decisions.md)
 - Current status snapshot: [l1/docs/project-status.md](../project-status.md)
+- External native-library workflow: [l1/docs/user/linking.md](../user/linking.md)
 
 ## Overview
 
@@ -140,12 +141,21 @@ emits a separate C99 translation unit that:
 6. returns the normalized status supplied by `I5entry`.
 
 The wrapper has no foreign-object-specific declarations or lifecycle calls. It is compiled to a standalone relocatable
-object before the final host link. The final command places the wrapper object first, retains all user-supplied Dea and
-foreign objects in CLI encounter order, appends the selected runtime inputs, and adds `-lm` for non-MSVC compiler
-families because interface manifests do not encode `sys.real` use. `L1_CFLAGS` and `--c-options` configure wrapper
-compilation and are deliberately absent from the final-link command words. The wrapper object must be a no-follow
-regular file, but Dea does not inspect its native format or embedded controls; caller-selected compiler options may
-therefore encode toolchain-specific linker controls that the final linker honors outside the typed native-operand model.
+object before the final host link. The final command places the wrapper object first, retains the complete user stream
+of Dea objects, foreign objects, libraries, search paths, translated rpaths, and raw host-driver words in encounter
+order, appends the selected runtime inputs by exact path, and adds `-lm` for non-MSVC compiler families because
+interface manifests do not encode `sys.real` use. `L1_CFLAGS` and `--c-options` configure wrapper compilation and are
+deliberately absent from the final-link command words. The wrapper object must be a no-follow regular file, but Dea does
+not inspect its native format or embedded controls; caller-selected compiler options may therefore encode
+toolchain-specific linker controls that the final linker honors outside the typed native-operand model.
+
+Recognized GCC and Clang driver names plus exact `cc` receive rpaths as repeated `-Xlinker` option/value words so commas
+remain intact. TinyCC receives `-Wl,-rpath=VALUE`; comma-containing values are rejected because that syntax would split
+them. The link driver diagnoses Windows and unknown family combinations before wrapper compilation. Object-suffixed
+library/raw inputs and response, file-list, or driver-config indirection fail during CLI parsing; every accepted raw
+argument is otherwise emitted as the original single driver word. MSVC also rejects canonical `-l` / `-L` entries
+because correct `/link` placement would require a distinct final-command layout; explicit raw `.lib` inputs remain
+host-driver-defined.
 
 ## Type Lowering
 
@@ -195,7 +205,8 @@ active C compiler family is tcc, the build driver links those objects directly t
 Darwin tcc ELF objects versus platform Mach-O archives. Standalone link follows the same ADR-0027 compatibility
 boundary: normal compiler families always receive the selected archive as one exact path, while TinyCC receives the
 complete variant-matched raw-object set when available and otherwise falls back to the exact archive path. The driver
-does not translate normal archive paths into `-L` / `-l` search requests.
+does not translate normal runtime archive paths into `-L` / `-l` search requests, so user search directories cannot
+shadow the selected runtime.
 
 Each archive and tcc object variant depends on a content-sensitive build-configuration stamp recording its compiler,
 runtime flags, mode defines, and baked tuning flags. Make therefore rebuilds affected variants when configuration
@@ -350,6 +361,7 @@ Current backend validation is centered on the copied bootstrap test suite under 
 - `wrapper_emitter_test.l0`
 - `l1c_stage1_generated_c_identity_test.py`
 - `l1c_stage1_link_set_test.py`
+- `l1c_stage1_build_run_multi_cu_test.py`
 
 Ownership and trace-oriented validation also uses:
 

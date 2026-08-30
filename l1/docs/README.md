@@ -16,6 +16,7 @@ while Dea-wide lifecycle artifacts live under the root `work/` tree.
 - `project-status.md` for the current L1 bootstrap status snapshot
 - `reference/` for L1-local bootstrap and implementation references
 - `specs/` for L1-local compiler and module-interface specifications
+- `user/` for task-oriented L1 bootstrap user guides
 - `implementation/` for future accepted implementation notes if needed
 - `decisions/` for ADR-style records linking design decisions to the closed plans that shaped them and the current docs
   where they are normatively recorded

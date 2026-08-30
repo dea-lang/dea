@@ -28,7 +28,7 @@
   - [`l1/docs/decisions/0021-portable-object-metadata-and-inspection.md`][inspection-adr]
   - [`l1/docs/decisions/0028-verified-link-set-and-foreign-object-boundary.md`][link-set-adr]
   - [`l1/docs/decisions/0029-output-local-standalone-link-transaction.md`][transaction-adr]
-  - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
+  - [`l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro: `make -C l1 test-stage1 TESTS="object_reader_test link_driver_test l1c_stage1_link_set_test.py"`
 
@@ -159,7 +159,7 @@ and skip output aliases on Windows.
     spaced compiler-path and output-junction regressions on Windows.
 
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[external-linking]: ../../features/2026-04-24-external-library-linking-cli-noref.md
+[external-linking]: ../../features/closed/2026-04-24-external-library-linking-cli-noref.md
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [inspection-adr]: ../../../../docs/decisions/0021-portable-object-metadata-and-inspection.md
 [link-set]: ../../features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md

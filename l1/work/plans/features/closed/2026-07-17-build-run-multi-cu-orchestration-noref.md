@@ -60,7 +60,7 @@
   - [`l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`][generated-c-foundation]
   - [`l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md`][generated-c-completion]
   - [`l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`][link-set]
-  - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
+  - [`l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
   - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-temp-safety]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
 - Repro:
@@ -362,7 +362,7 @@ Completed on 2026-08-23.
 
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[external-linking]: ../2026-04-24-external-library-linking-cli-noref.md
+[external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [generated-c-completion]: 2026-07-24-per-module-generated-c-mode-noref.md
 [generated-c-foundation]: 2026-08-21-per-module-generated-c-foundation-noref.md

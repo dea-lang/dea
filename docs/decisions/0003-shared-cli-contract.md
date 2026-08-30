@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-08-26
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -31,7 +31,7 @@ Silently changing a shared flag or exit-code meaning is a bug.
 
 The normal driver grammar accepts exactly one source target. L1 standalone `--link` is a documented level-specific
 operand exception: it accepts one or more positional Dea objects plus repeatable explicitly typed foreign objects and
-does not reinterpret those paths as source targets.
+external-link controls without reinterpreting those paths or values as source targets.
 
 When Dea exposes an operation equivalent to a widespread compiler-driver operation, its short spelling follows that
 convention. `-c`, `-I`, `-L`, and `-l` therefore mean compile without linking, interface/import search, native-library
@@ -45,11 +45,13 @@ structured sources, explicit foreign objects, and raw link arguments. `-Rp` / `-
 safety, and `-Vl` / `-Va` / `-Vm` select log, ARC-trace, and memory-trace visibility. `-V` is the version flag; other
 unassigned bare namespace prefixes remain invalid.
 
-L1 standalone linking uses `-k` / `--link`, conventional `-e` / `--entry`, and `-Cf` / `--foreign-object`. L0 build and
-run modes use repeatable `-Cs` / `--c-source` values for intact, ordered additional C source arguments. The `-Rr` and
-`-Cl` spellings are reserved for planned options and are not parsed before those capabilities land. Namespaced values
-are separated or use `=VALUE`, while canonical path/library spellings may use attached values. Only `-vv...` is a valid
-short-option cluster.
+L1 standalone linking uses `-k` / `--link`, conventional `-e` / `--entry`, and `-Cf` / `--foreign-object`. L1 build,
+link, and run also accept conventional `-l` / `-L`, namespaced `-Rr` / `--rpath`, and `-Cl` / `--link-arg` as repeatable
+ordered external-link controls. `-l` and `-L` accept attached or following values. Namespaced values are separated or
+use `=VALUE`; `--link-arg` contributes one intact host compiler-driver word and does not replace the typed object
+options. L0 build and run modes use repeatable `-Cs` / `--c-source` values for intact, ordered additional C source
+arguments, while levels without an external-link capability may retain the shared spellings as unavailable. Only
+`-vv...` is a valid short-option cluster.
 
 ## Rationale
 
@@ -80,6 +82,8 @@ short-option cluster.
   retained typed foreign-object operand under the opaque native-input boundary
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md](../../l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md):
   preserved exact generated-C output semantics while making L1 generation per-module
+- [l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md](../../l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md):
+  implemented ordered external-library, search-path, rpath, and raw host-driver controls for L1 link-involving modes
 - [work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md](../../work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md):
   coordinated current aliases and deferred semantic reservations
 - [work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md](../../work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md):
@@ -90,3 +94,6 @@ short-option cluster.
 - [docs/specs/compiler/cli-contract.md](../specs/compiler/cli-contract.md): normative CLI surface
 - [l0/docs/specs/compiler/cli-contract.md](../../l0/docs/specs/compiler/cli-contract.md): complete L0 Stage 1/Stage 2
   realization
+- [l1/docs/reference/separate-compilation.md](../../l1/docs/reference/separate-compilation.md): L1 ordered link-input
+  realization
+- [l1/docs/user/linking.md](../../l1/docs/user/linking.md): L1 external-library option workflows

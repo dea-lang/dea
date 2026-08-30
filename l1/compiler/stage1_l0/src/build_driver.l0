@@ -519,8 +519,9 @@ func bd_compiler_driver_name_matches(compiler: string, driver: string) -> bool {
  * @return Flag-family tag.
  */
 func bd_compiler_flag_family(compiler: string) -> string {
-    let base = basename(compiler);
-    if (base == "tcc" || base == "tcc.exe" || starts_with_s(base, "tcc-")) {
+    let base = to_lower_s(basename(compiler));
+    if (bd_compiler_driver_name_matches(compiler, "tcc") ||
+        starts_with_s(base, "tcc-")) {
         return "tcc";
     }
     if (bd_compiler_driver_name_matches(compiler, "gcc") ||

@@ -38,7 +38,7 @@ import wrapper_emitter;
 /** One typed standalone-link input with optional verified Dea authority. */
 struct LinkInput {
     kind: LinkOperandKind;
-    object_path: string;
+    value: string;
     interface_path: string?;
     interface: ModuleInterface*?;
     visit_state: int;
@@ -122,11 +122,11 @@ func ld_error(diags: DiagCollector*, code: string, message: string, path: string
 /** Create one typed link input, taking ownership of its optional interface. */
 func ld_input_create(
     kind: LinkOperandKind,
-    object_path: string,
+    value: string,
     interface_path: string?,
     interface: ModuleInterface*?
 ) -> LinkInput* {
-    return new LinkInput(kind, object_path, interface_path, interface, 0);
+    return new LinkInput(kind, value, interface_path, interface, 0);
 }
 
 /** Create one opaque foreign input. */
@@ -168,9 +168,15 @@ func ld_plan_input_get(plan: LinkPlan*, index: int) -> LinkInput* {
     return ld_ptr_vec_get(plan.inputs, index) as LinkInput*;
 }
 
+/** Return whether one typed link input names a caller-selected native file. */
+func ld_input_is_native(input: LinkInput*) -> bool {
+    return ord(input.kind) == ord(LOK_DEA_OBJECT) ||
+        ord(input.kind) == ord(LOK_FOREIGN_OBJECT);
+}
+
 /** Return the original caller-selected native path used by the host linker. */
 func ld_input_link_path(input: LinkInput*) -> string {
-    return input.object_path;
+    return input.value;
 }
 
 /** Free a resolved runtime include bundle. */
@@ -221,9 +227,9 @@ func ld_verify_interfaces(plan: LinkPlan*, diags: DiagCollector*) -> bool {
     let ok = true;
     for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
         let input = ld_plan_input_get(plan, i);
-        if (ord(input.kind) == ord(LOK_FOREIGN_OBJECT)) {
+        if (ord(input.kind) != ord(LOK_DEA_OBJECT)) {
             assert(input.interface_path == null && input.interface == null,
-                "[ICE-2112] foreign link input carries Dea interface state");
+                "[ICE-2112] non-Dea link input carries Dea interface state");
             continue;
         }
         if (input.interface_path == null || input.interface == null) {
@@ -231,8 +237,8 @@ func ld_verify_interfaces(plan: LinkPlan*, diags: DiagCollector*) -> bool {
                 diags,
                 "DRV-0074",
                 "required sibling module interface was not provided for object: " +
-                    input.object_path,
-                input.object_path
+                    input.value,
+                input.value
             );
             ok = false;
             continue;
@@ -251,9 +257,9 @@ func ld_verify_interfaces(plan: LinkPlan*, diags: DiagCollector*) -> bool {
 func _ld_assert_verified_input_invariants(plan: LinkPlan*) {
     for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
         let input = ld_plan_input_get(plan, i);
-        if (ord(input.kind) == ord(LOK_FOREIGN_OBJECT)) {
+        if (ord(input.kind) != ord(LOK_DEA_OBJECT)) {
             assert(input.interface_path == null && input.interface == null,
-                "[ICE-2112] foreign link input carries Dea interface state");
+                "[ICE-2112] non-Dea link input carries Dea interface state");
         } else {
             assert(input.interface_path != null && input.interface != null,
                 "[ICE-2113] verified Dea link input is missing interface state");
@@ -277,8 +283,8 @@ func ld_register_modules(plan: LinkPlan*, diags: DiagCollector*) -> bool {
                 diags,
                 "L1C-2100",
                 "duplicate Dea module identity '" + interface.module_name +
-                    "' in sibling interfaces for '" + previous.object_path +
-                    "' and '" + input.object_path + "'",
+                    "' in sibling interfaces for '" + previous.value +
+                    "' and '" + input.value + "'",
                 input.interface_path as string
             );
             ok = false;
@@ -990,14 +996,14 @@ func ld_prepare_cli_inputs(
     for (let i = 0; i < cli_link_operands_count(operands); i = i + 1) {
         let operand = cli_link_operands_get(operands, i);
         if (ord(operand.kind) == ord(LOK_DEA_OBJECT)) {
-            let interface_path = mg_interface_path_from_object_path(operand.path);
+            let interface_path = mg_interface_path_from_object_path(operand.value);
             if (interface_path == null) {
                 ld_error(
                     diags,
                     "L1C-2097",
                     "positional Dea native input must have a nonempty basename stem " +
-                        "and exact terminal '.o' suffix: " + operand.path,
-                    operand.path
+                        "and exact terminal '.o' suffix: " + operand.value,
+                    operand.value
                 );
                 ok = false;
             }
@@ -1012,13 +1018,24 @@ func ld_prepare_cli_inputs(
     ok = true;
     for (let i2 = 0; i2 < cli_link_operands_count(operands); i2 = i2 + 1) {
         let operand2 = cli_link_operands_get(operands, i2);
-        if (cfs_path_kind_follow(operand2.path) != CFS_PATH_REGULAR) {
+        let is_native = ord(operand2.kind) == ord(LOK_DEA_OBJECT) ||
+            ord(operand2.kind) == ord(LOK_FOREIGN_OBJECT);
+        if (!is_native) {
+            ld_ptr_vec_push(
+                inputs,
+                ld_input_create(
+                    operand2.kind, operand2.value, null, null) as void*
+            );
+            continue;
+        }
+
+        if (cfs_path_kind_follow(operand2.value) != CFS_PATH_REGULAR) {
             ld_error(
                 diags,
                 "L1C-2097",
                 "standalone-link native input is missing or is not a regular file: " +
-                    operand2.path,
-                operand2.path
+                    operand2.value,
+                operand2.value
             );
             ok = false;
             continue;
@@ -1026,16 +1043,16 @@ func ld_prepare_cli_inputs(
 
         if (ord(operand2.kind) == ord(LOK_FOREIGN_OBJECT)) {
             ld_ptr_vec_push(
-                inputs, ld_foreign_input_create(operand2.path) as void*);
+                inputs, ld_foreign_input_create(operand2.value) as void*);
             continue;
         }
 
-        let interface_path2 = mg_interface_path_from_object_path(operand2.path);
+        let interface_path2 = mg_interface_path_from_object_path(operand2.value);
         ld_ptr_vec_push(
             inputs,
             ld_input_create(
                 operand2.kind,
-                operand2.path,
+                operand2.value,
                 interface_path2 as string,
                 null
             ) as void*
@@ -1050,11 +1067,11 @@ func ld_prepare_cli_inputs(
     ok = true;
     for (let input_i = 0; input_i < vec_size(inputs); input_i = input_i + 1) {
         let input = ld_ptr_vec_get(inputs, input_i) as LinkInput*;
-        if (ord(input.kind) == ord(LOK_FOREIGN_OBJECT)) {
+        if (ord(input.kind) != ord(LOK_DEA_OBJECT)) {
             continue;
         }
         let interface = ld_load_sibling_interface(
-            input.object_path, input.interface_path as string, diags);
+            input.value, input.interface_path as string, diags);
         if (interface == null) {
             ok = false;
             continue;
@@ -1275,8 +1292,11 @@ func ld_validate_output_aliases(
 
     for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
         let input = ld_plan_input_get(plan, i);
+        if (!ld_input_is_native(input)) {
+            continue;
+        }
         if (!ld_validate_output_alias(
-                output_path, input.object_path, "caller native input", diags)) {
+                output_path, input.value, "caller native input", diags)) {
             return false;
         }
         if (input.interface_path != null &&
@@ -1442,6 +1462,78 @@ func ld_take_compiler(opts: CliOptions*, diags: DiagCollector*) -> string? {
 }
 
 /**
+ * Validate compiler-dependent external-link controls before native work.
+ *
+ * Library names and search paths retain the canonical compiler-driver
+ * spellings where supported; MSVC requires a different command layout and is
+ * rejected. Runtime search paths need a documented family-specific lowering
+ * and are deliberately unavailable on Windows.
+ */
+func ld_validate_external_link_operands(
+    operands: VectorBase*,
+    compiler: string,
+    diags: DiagCollector*
+) -> bool {
+    let family = bd_compiler_flag_family(compiler);
+    let supported_rpath_family = family == "gcc" || family == "cc" ||
+        family == "tcc";
+    let ok = true;
+    for (let i = 0; i < cli_link_operands_count(operands); i = i + 1) {
+        let operand = cli_link_operands_get(operands, i);
+        if (family == "msvc" &&
+            (ord(operand.kind) == ord(LOK_LIBRARY) ||
+             ord(operand.kind) == ord(LOK_LIBRARY_SEARCH))) {
+            ld_error(
+                diags,
+                "L1C-2072",
+                "canonical '-l' and '-L' external-library controls are " +
+                    "unsupported by the selected MSVC driver family",
+                operand.value
+            );
+            ok = false;
+            continue;
+        }
+        if (ord(operand.kind) != ord(LOK_RPATH)) {
+            continue;
+        }
+        if (bd_is_windows()) {
+            ld_error(
+                diags,
+                "L1C-2072",
+                "runtime library search paths are unsupported on Windows: " +
+                    operand.value,
+                operand.value
+            );
+            ok = false;
+            continue;
+        }
+        if (!supported_rpath_family) {
+            ld_error(
+                diags,
+                "L1C-2072",
+                "runtime library search path requires a recognized GCC/Clang, " +
+                    "exact 'cc', or TinyCC driver; selected compiler family is '" +
+                    family + "': " + operand.value,
+                operand.value
+            );
+            ok = false;
+            continue;
+        }
+        if (family == "tcc" && contains_s(operand.value, ",")) {
+            ld_error(
+                diags,
+                "L1C-2072",
+                "TinyCC cannot preserve a comma inside a runtime library " +
+                    "search path: " + operand.value,
+                operand.value
+            );
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+/**
  * Return a host-driver argument that is unambiguously a filesystem path.
  *
  * Prefixing relative option/response-shaped names preserves the selected file
@@ -1503,12 +1595,56 @@ func ld_validate_windows_shell_values(
         }
         for (let input_i = 0; input_i < vec_size(plan.inputs);
              input_i = input_i + 1) {
-            sv_push(values, ld_plan_input_get(plan, input_i).object_path);
+            sv_push(values, ld_plan_input_get(plan, input_i).value);
         }
         return ld_validate_windows_shell_words(
             values,
             "L1C-2106",
-            "standalone linking does not support '%', '!', double quotes, " +
+            "host linking does not support '%', '!', double quotes, " +
+                "or line breaks in Windows host-command values",
+            diags
+        );
+    }
+}
+
+/** Validate build/run values that are known before source compilation. */
+func ld_validate_windows_build_run_values(
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    runtime_inputs: StringVector*,
+    output_path: string,
+    operands: VectorBase*,
+    diags: DiagCollector*
+) -> bool {
+    with (let values = sv_create(
+              8 + sv_size(extra_opts) + sv_size(runtime_inputs) +
+                  cli_link_operands_count(operands)) =>
+              sv_free(values)) {
+        sv_push(values, compiler);
+        sv_push(values, runtime_include);
+        sv_push(values, output_path);
+        for (let option_i = 0; option_i < sv_size(extra_opts);
+             option_i = option_i + 1) {
+            sv_push(values, sv_get(extra_opts, option_i));
+        }
+        for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
+             runtime_i = runtime_i + 1) {
+            sv_push(values, sv_get(runtime_inputs, runtime_i));
+        }
+        for (let operand_i = 0;
+             operand_i < cli_link_operands_count(operands);
+             operand_i = operand_i + 1) {
+            let operand = cli_link_operands_get(operands, operand_i);
+            /* The source target is replaced by generated object paths later. */
+            if (ord(operand.kind) != ord(LOK_DEA_OBJECT)) {
+                sv_push(values, operand.value);
+            }
+        }
+        return ld_validate_windows_shell_words(
+            values,
+            "L1C-2106",
+            "host linking does not support '%', '!', double quotes, " +
                 "or line breaks in Windows host-command values",
             diags
         );
@@ -1583,8 +1719,28 @@ func ld_push_final_link_words_with_runtime_inputs(
     sv_push(words, ld_host_input_path(wrapper_object, family));
     for (let input_i = 0; input_i < vec_size(plan.inputs);
          input_i = input_i + 1) {
-        sv_push(words, ld_host_input_path(
-            ld_input_link_path(ld_plan_input_get(plan, input_i)), family));
+        let input = ld_plan_input_get(plan, input_i);
+        if (ld_input_is_native(input)) {
+            sv_push(words, ld_host_input_path(
+                ld_input_link_path(input), family));
+        } else if (ord(input.kind) == ord(LOK_LIBRARY)) {
+            sv_push(words, "-l" + input.value);
+        } else if (ord(input.kind) == ord(LOK_LIBRARY_SEARCH)) {
+            sv_push(words, "-L" + input.value);
+        } else if (ord(input.kind) == ord(LOK_RPATH)) {
+            if (family == "tcc") {
+                sv_push(words, "-Wl,-rpath=" + input.value);
+            } else {
+                sv_push(words, "-Xlinker");
+                sv_push(words, "-rpath");
+                sv_push(words, "-Xlinker");
+                sv_push(words, input.value);
+            }
+        } else {
+            assert(ord(input.kind) == ord(LOK_LINK_ARG),
+                "[ICE-2114] unknown typed link input kind");
+            sv_push(words, input.value);
+        }
     }
     for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
          runtime_i = runtime_i + 1) {
@@ -1791,7 +1947,10 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
         let extra_opts = bd_collect_c_option_words(opts);
         let runtime_include = ld_runtime_include(opts, diags);
         let runtime_inputs: StringVector*? = null;
+        let valid_external = true;
         if (compiler != null) {
+            valid_external = ld_validate_external_link_operands(
+                opts.link_operands, compiler as string, diags);
             runtime_inputs = ld_runtime_link_inputs(
                 opts, compiler as string, diags);
         }
@@ -1822,7 +1981,7 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
         }
         if (!valid_output || compiler == null ||
             runtime_include == null || runtime_inputs == null ||
-            !valid_aliases || !valid_windows_values) {
+            !valid_external || !valid_aliases || !valid_windows_values) {
             dp_print_collector(diags);
             if (runtime_inputs != null) {
                 sv_free(runtime_inputs as StringVector*);
@@ -2157,9 +2316,9 @@ func ld_build_run_operands(
          cli_i = cli_i + 1) {
         let cli_operand = cli_link_operands_get(
             cli_operands, cli_i);
-        if (ord(cli_operand.kind) == ord(LOK_FOREIGN_OBJECT)) {
+        if (ord(cli_operand.kind) != ord(LOK_DEA_OBJECT)) {
             cli_link_operands_push(
-                operands, LOK_FOREIGN_OBJECT, cli_operand.path);
+                operands, cli_operand.kind, cli_operand.value);
             continue;
         }
 
@@ -2514,12 +2673,31 @@ func ld_build_run_in_workspace(
         let extra_opts = bd_collect_c_option_words(opts);
         let runtime_include = ld_runtime_include(opts, diags);
         let runtime_inputs: StringVector*? = null;
+        let valid_external = true;
         if (compiler != null) {
+            valid_external = ld_validate_external_link_operands(
+                opts.link_operands, compiler as string, diags);
             runtime_inputs = ld_runtime_link_inputs(
                 opts, compiler as string, diags);
         }
+        let valid_precompile_windows_values = true;
+        if (bd_is_windows() &&
+            compiler != null && runtime_include != null &&
+            runtime_inputs != null) {
+            valid_precompile_windows_values =
+                ld_validate_windows_build_run_values(
+                    compiler as string,
+                    extra_opts,
+                    (runtime_include as LinkRuntimeInclude*).directory,
+                    runtime_inputs as StringVector*,
+                    executable,
+                    opts.link_operands,
+                    diags
+                );
+        }
         if (compiler == null || runtime_include == null ||
-            runtime_inputs == null ||
+            runtime_inputs == null || !valid_external ||
+            !valid_precompile_windows_values ||
             !bd_validate_float_c_options(
                 result, extra_opts, diags)) {
             dp_print_collector(diags);

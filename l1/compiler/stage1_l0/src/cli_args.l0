@@ -36,14 +36,18 @@ enum CliMode {
 enum LinkOperandKind {
     LOK_DEA_OBJECT;
     LOK_FOREIGN_OBJECT;
+    LOK_LIBRARY;
+    LOK_LIBRARY_SEARCH;
+    LOK_RPATH;
+    LOK_LINK_ARG;
 }
 
 /**
- * Represents one ordered standalone-link input.
+ * Represents one ordered link input or host-driver control.
  */
 struct LinkOperand {
     kind: LinkOperandKind;
-    path: string;
+    value: string;
 }
 
 /**
@@ -98,10 +102,10 @@ func cli_link_operands_create() -> VectorBase* {
  *
  * @param operands Ordered link-operand vector.
  * @param kind Operand classification supplied by the CLI spelling.
- * @param path Operand path.
+ * @param value Operand path, name, directory, or raw host-driver word.
  */
-func cli_link_operands_push(operands: VectorBase*, kind: LinkOperandKind, path: string) {
-    vec_push_ptr(operands, new LinkOperand(kind, path) as void*);
+func cli_link_operands_push(operands: VectorBase*, kind: LinkOperandKind, value: string) {
+    vec_push_ptr(operands, new LinkOperand(kind, value) as void*);
 }
 
 /**
@@ -454,14 +458,16 @@ func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "           -c | --compile | -k | -Gi | --gen | --check | --tok | --ast | --sym | --type]");
     cli_print_line(to_stderr, "           [-I INTERFACE_PATH]");
     cli_print_line(to_stderr, "           [--output OUTPUT]");
-    cli_print_line(to_stderr, "           [-Cf C_OBJECT] [-e MODULE]");
+    cli_print_line(to_stderr, "           [-Cf C_OBJECT] [-l LIBRARY] [-L LIBRARY_PATH]");
+    cli_print_line(to_stderr, "           [-Rr RPATH] [-Cl LINK_ARG] [-e MODULE]");
     cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS]");
     cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
     cli_print_line(to_stderr, "           [--no-line-directives] [-Va] [-Vm] [-Su] [-Sb]");
     cli_print_line(to_stderr, "           [-Gk]");
     cli_print_line(to_stderr, "           [--all-modules] [--include-eof]");
     cli_print_line(to_stderr, "           targets [targets ...]");
-    cli_print_line(to_stderr, "       l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT");
+    cli_print_line(to_stderr, "       l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L LIBRARY_PATH]...");
+    cli_print_line(to_stderr, "           [-Rr RPATH]... [-Cl LINK_ARG]... [-e MODULE] -o OUTPUT");
 }
 
 /**
@@ -504,6 +510,19 @@ func cli_print_help() {
     cli_print_line(false, "                        Assert one host-compatible relocatable native object");
     cli_print_line(false, "                        and add it in encounter order (repeatable; valid in:");
     cli_print_line(false, "                        '--build', '--link', '--run')");
+    cli_print_line(false, "  -l LIBRARY            Link an external library in encounter order (repeatable;");
+    cli_print_line(false, "                        attached -lLIBRARY is also accepted; valid in:");
+    cli_print_line(false, "                        '--build', '--link', '--run')");
+    cli_print_line(false, "  -L LIBRARY_PATH       Add an external-library search path in encounter order");
+    cli_print_line(false, "                        (repeatable; attached -LLIBRARY_PATH is also accepted;");
+    cli_print_line(false, "                        valid in: '--build', '--link', '--run')");
+    cli_print_line(false, "  -Rr, --rpath RPATH    Add a runtime dynamic-library search path in encounter");
+    cli_print_line(false, "                        order (repeatable; valid in: '--build', '--link',");
+    cli_print_line(false, "                        '--run')");
+    cli_print_line(false, "  -Cl, --link-arg LINK_ARG");
+    cli_print_line(false, "                        Pass one intact host compiler-driver argument in");
+    cli_print_line(false, "                        encounter order (repeatable; valid in: '--build',");
+    cli_print_line(false, "                        '--link', '--run')");
     cli_print_line(false, "  -e, --entry MODULE    Select one canonical dotted Dea entry module");
     cli_print_line(false, "                        (at most once; valid in: '--link')");
     cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");
@@ -531,8 +550,6 @@ func cli_print_help() {
     cli_print_line(false, "                        $L1_BUILD_DIR/lib; valid in: '--build', '--link', '--run')");
     cli_print_line(false, "  -g                    Reserved debug-information option (not supported yet)");
     cli_print_line(false, "  -S                    Reserved assembly-output option (not supported yet)");
-    cli_print_line(false, "  -L LIBRARY_PATH       Reserved library search path (not supported yet)");
-    cli_print_line(false, "  -l LIBRARY            Reserved library link option (not supported yet)");
     cli_print_line(false, "  --no-line-directives, -NLD");
     cli_print_line(false, "                        Disable #line directives in generated C code (valid");
     cli_print_line(false, "                        in: '--build', '--compile', '--gen', '--run')");
@@ -638,6 +655,179 @@ func cli_count_link_operands(opts: CliOptions*, kind: LinkOperandKind) -> int {
         }
     }
     return count;
+}
+
+/**
+ * Return whether one operand kind is an explicit external-link control.
+ *
+ * @param kind Operand kind to classify.
+ * @return `true` for libraries, search paths, rpaths, and raw link arguments.
+ */
+func cli_is_external_link_operand_kind(kind: LinkOperandKind) -> bool {
+    return ord(kind) == ord(LOK_LIBRARY) ||
+        ord(kind) == ord(LOK_LIBRARY_SEARCH) ||
+        ord(kind) == ord(LOK_RPATH) ||
+        ord(kind) == ord(LOK_LINK_ARG);
+}
+
+/** Return whether parsed options contain any external-link control. */
+func cli_has_external_link_operands(opts: CliOptions*) -> bool {
+    for (let i = 0; i < cli_link_operands_count(opts.link_operands); i = i + 1) {
+        if (cli_is_external_link_operand_kind(
+                cli_link_operands_get(opts.link_operands, i).kind)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Return whether one raw word delegates argument selection to an opaque file. */
+func cli_link_arg_has_opaque_indirection(value: string) -> bool {
+    if (starts_with_s(value, "@") || value == "-filelist" ||
+        starts_with_s(value, "-filelist=") || value == "--config" ||
+        starts_with_s(value, "--config=") ||
+        value == "--config-user-dir" ||
+        starts_with_s(value, "--config-user-dir=") ||
+        value == "--config-system-dir" ||
+        starts_with_s(value, "--config-system-dir=") ||
+        value == "-specs" || starts_with_s(value, "-specs=") ||
+        value == "--specs" || starts_with_s(value, "--specs=")) {
+        return true;
+    }
+    if (!starts_with_s(value, "-Wl,")) {
+        return false;
+    }
+    with (
+        let parts = split_s(
+            slice_s(value, len_s("-Wl,"), len_s(value)), ",") =>
+            sv_free(parts)
+    ) {
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            let part = sv_get(parts, i);
+            if (starts_with_s(part, "@") || part == "-filelist" ||
+                starts_with_s(part, "-filelist=")) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/** Return whether a linker option consumes an object-suffixed output word. */
+func cli_link_arg_allows_object_suffixed_value(option: string) -> bool {
+    let lowered = to_lower_s(option);
+    return lowered == "-map" || lowered == "-mapfile" ||
+        lowered == "-map-file" || lowered == "-o" ||
+        lowered == "--output" || lowered == "-dependency_info" ||
+        lowered == "-object_path_lto" || lowered == "-install_name" ||
+        lowered == "-rpath";
+}
+
+/** Return whether one word has a relocatable-object terminal suffix. */
+func cli_link_arg_has_relocatable_suffix(value: string) -> bool {
+    let lowered = to_lower_s(value);
+    return ends_with_s(lowered, ".o") || ends_with_s(lowered, ".obj");
+}
+
+/** Return whether one inline option assigns an object-suffixed output path. */
+func cli_link_arg_is_inline_object_output(value: string) -> bool {
+    let lowered = to_lower_s(value);
+    return starts_with_s(lowered, "-o=") ||
+        (starts_with_s(lowered, "-o") && len_s(lowered) > len_s("-o")) ||
+        starts_with_s(lowered, "--output=") ||
+        starts_with_s(lowered, "-map=") ||
+        starts_with_s(lowered, "-mapfile=") ||
+        starts_with_s(lowered, "-map-file=") ||
+        starts_with_s(lowered, "-dependency_info=") ||
+        starts_with_s(lowered, "-object_path_lto=");
+}
+
+/** Return whether one raw host-driver word carries a relocatable object. */
+func cli_link_arg_is_relocatable(value: string) -> bool {
+    if (starts_with_s(value, "-Wl,")) {
+        with (
+            let parts = split_s(
+                slice_s(value, len_s("-Wl,"), len_s(value)), ",") =>
+                sv_free(parts)
+        ) {
+            for (let i = 0; i < sv_size(parts); i = i + 1) {
+                let part = sv_get(parts, i);
+                if (!cli_link_arg_has_relocatable_suffix(part) ||
+                    cli_link_arg_is_inline_object_output(part) ||
+                    (i > 0 && cli_link_arg_allows_object_suffixed_value(
+                        sv_get(parts, i - 1)))) {
+                    continue;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+    if (cli_link_arg_is_inline_object_output(value)) {
+        return false;
+    }
+    return cli_link_arg_has_relocatable_suffix(value);
+}
+
+/**
+ * Append one required nonempty link-operand value.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector.
+ * @param kind Operand classification.
+ * @param option Exact option spelling used for diagnostics.
+ * @param value Candidate value.
+ * @return `true` when the value was recorded.
+ */
+func cli_record_link_operand(
+    opts: CliOptions*,
+    diags: DiagCollector*,
+    kind: LinkOperandKind,
+    option: string,
+    value: string
+) -> bool {
+    if (is_empty_s(value)) {
+        cli_emit_error(
+            diags,
+            "L1C-2003",
+            "missing value for option '" + option + "'"
+        );
+        return false;
+    }
+    if (ord(kind) == ord(LOK_LINK_ARG) &&
+        cli_link_arg_has_opaque_indirection(value)) {
+        cli_emit_error(
+            diags,
+            "L1C-2071",
+            "raw link argument must not use response, object-file-list, or " +
+                "driver-config indirection: '" +
+                value + "'"
+        );
+        return false;
+    }
+    if (ord(kind) == ord(LOK_LIBRARY) &&
+        cli_link_arg_has_relocatable_suffix(value)) {
+        cli_emit_error(
+            diags,
+            "L1C-2071",
+            "library option must not name a relocatable object; use a " +
+                "positional Dea object or '--foreign-object': '" + value + "'"
+        );
+        return false;
+    }
+    if (ord(kind) == ord(LOK_LINK_ARG) &&
+        cli_link_arg_is_relocatable(value)) {
+        cli_emit_error(
+            diags,
+            "L1C-2071",
+            "raw link argument must not supply a relocatable object: '" +
+                value + "'; use a positional Dea '.o' with its sibling '.l1m', " +
+                "or '--foreign-object' for a caller-asserted foreign object"
+        );
+        return false;
+    }
+    cli_link_operands_push(opts.link_operands, kind, value);
+    return true;
 }
 
 /**
@@ -779,6 +969,14 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         !is_link && !is_build_run) {
         cli_emit_error(diags, "L1C-2091",
             "option '--foreign-object' is valid only with modes: --build, --link, --run");
+    }
+
+    if (cli_has_external_link_operands(opts) && !is_link && !is_build_run) {
+        cli_emit_error(
+            diags,
+            "L1C-2070",
+            "external-link options are valid only with modes: --build, --link, --run"
+        );
     }
 
     if (opts.entry_module != null && !is_link) {
@@ -1262,6 +1460,90 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 continue;
             }
 
+            if (token == "-Rr" || token == "--rpath") {
+                let value = cli_require_next_value(
+                    argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    cli_record_link_operand(
+                        opts as CliOptions*,
+                        diags as DiagCollector*,
+                        LOK_RPATH,
+                        token,
+                        value as string
+                    );
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--rpath=")) {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_RPATH,
+                    "--rpath",
+                    slice_s(token, len_s("--rpath="), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Rr=")) {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_RPATH,
+                    "-Rr",
+                    slice_s(token, len_s("-Rr="), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Cl" || token == "--link-arg") {
+                let value = cli_require_next_value(
+                    argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    cli_record_link_operand(
+                        opts as CliOptions*,
+                        diags as DiagCollector*,
+                        LOK_LINK_ARG,
+                        token,
+                        value as string
+                    );
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--link-arg=")) {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_LINK_ARG,
+                    "--link-arg",
+                    slice_s(token, len_s("--link-arg="), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Cl=")) {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_LINK_ARG,
+                    "-Cl",
+                    slice_s(token, len_s("-Cl="), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
             if (token == "-g") {
                 cli_emit_reserved_option_error(diags as DiagCollector*, "-g", "debug information");
                 i = i + 1;
@@ -1279,7 +1561,13 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 if (value == null) {
                     i = i + 1;
                 } else {
-                    cli_emit_reserved_option_error(diags as DiagCollector*, "-L", "external library search");
+                    cli_record_link_operand(
+                        opts as CliOptions*,
+                        diags as DiagCollector*,
+                        LOK_LIBRARY_SEARCH,
+                        token,
+                        value as string
+                    );
                     i = i + 2;
                 }
                 continue;
@@ -1287,7 +1575,11 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
 
             if (starts_with_s(token, "-L") && len_s(token) > len_s("-L") &&
                 char_at_s(token, len_s("-L")) != '=') {
-                cli_emit_reserved_option_error(diags as DiagCollector*, "-L", "external library search");
+                cli_link_operands_push(
+                    (opts as CliOptions*).link_operands,
+                    LOK_LIBRARY_SEARCH,
+                    slice_s(token, len_s("-L"), len_s(token))
+                );
                 i = i + 1;
                 continue;
             }
@@ -1297,7 +1589,13 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 if (value2 == null) {
                     i = i + 1;
                 } else {
-                    cli_emit_reserved_option_error(diags as DiagCollector*, "-l", "external library selection");
+                    cli_record_link_operand(
+                        opts as CliOptions*,
+                        diags as DiagCollector*,
+                        LOK_LIBRARY,
+                        token,
+                        value2 as string
+                    );
                     i = i + 2;
                 }
                 continue;
@@ -1305,7 +1603,13 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
 
             if (starts_with_s(token, "-l") && len_s(token) > len_s("-l") &&
                 char_at_s(token, len_s("-l")) != '=') {
-                cli_emit_reserved_option_error(diags as DiagCollector*, "-l", "external library selection");
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_LIBRARY,
+                    "-l",
+                    slice_s(token, len_s("-l"), len_s(token))
+                );
                 i = i + 1;
                 continue;
             }

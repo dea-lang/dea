@@ -1023,7 +1023,7 @@ def test_opaque_inputs_use_original_final_paths(
     objects: dict[str, Path],
     foreign_main: Path,
 ) -> None:
-    """Opaque positional and foreign bytes reach the final host command."""
+    """Opaque native and typed external inputs reach the final host command."""
 
     probe_root = root / "opaque original-path probe"
     opaque_main = probe_root / "renamed malformed main.o"
@@ -1067,16 +1067,27 @@ def test_opaque_inputs_use_original_final_paths(
     foreign_inputs = [foreign_main, control_object]
     before = capture_link_input_bytes(dea_inputs, foreign_inputs)
     output = executable_path(root, "opaque direct output")
+    library_search = probe_root / "external library search"
+    rpath = probe_root / "external runtime search"
+    raw_link_arg = "-Wl,--as-needed"
+    external_args = ["--rpath", str(rpath)] if os.name != "nt" else []
     completed = run_compiler(
         compiler,
         root,
         "--link",
         str(opaque_main),
+        "-L",
+        str(library_search),
         "--foreign-object",
         str(foreign_main),
+        "-lfirst",
         str(objects["linkset.provider"]),
+        *external_args,
+        f"--link-arg={raw_link_arg}",
         "-Cf",
         str(control_object),
+        "-l",
+        "second",
         str(objects["linkset.leaf"]),
         "--c-compiler",
         str(compiler_probe),
@@ -1098,24 +1109,37 @@ def test_opaque_inputs_use_original_final_paths(
             )
 
     final_args = recorded_final_args(marker, "opaque original-path probe")
-    expected_callers = [
+    expected_user_words = [
         opaque_main,
+        f"-L{library_search}",
         foreign_main,
+        "-lfirst",
         objects["linkset.provider"],
-        control_object,
-        objects["linkset.leaf"],
     ]
+    if os.name != "nt":
+        if Path(c_compiler).name.lower().startswith("tcc"):
+            expected_user_words.append(f"-Wl,-rpath={rpath}")
+        else:
+            expected_user_words.extend(("-Xlinker", "-rpath", "-Xlinker", rpath))
+    expected_user_words.extend(
+        (
+            raw_link_arg,
+            control_object,
+            "-lsecond",
+            objects["linkset.leaf"],
+        )
+    )
     if not final_args or Path(final_args[0]).name != "wrapper.o":
         raise LinkSetFailure(
             f"final host command was not wrapper-first: {final_args!r}"
         )
-    actual_callers = final_args[1 : 1 + len(expected_callers)]
-    if [normalized_host_path(path) for path in actual_callers] != [
-        normalized_host_path(path) for path in expected_callers
+    actual_user_words = final_args[1 : 1 + len(expected_user_words)]
+    if [normalized_host_path(word) for word in actual_user_words] != [
+        normalized_host_path(word) for word in expected_user_words
     ]:
         raise LinkSetFailure(
-            "final caller input order/path mismatch:\n"
-            f"expected={expected_callers!r}\nactual={actual_callers!r}"
+            "final ordered user input mismatch:\n"
+            f"expected={expected_user_words!r}\nactual={actual_user_words!r}"
         )
     if any(Path(path).name.startswith("input-") for path in final_args):
         raise LinkSetFailure(
@@ -1123,7 +1147,7 @@ def test_opaque_inputs_use_original_final_paths(
             f"{final_args!r}"
         )
 
-    tail = final_args[1 + len(expected_callers) :]
+    tail = final_args[1 + len(expected_user_words) :]
     runtime_inputs = expected_default_runtime_inputs(compiler, c_compiler)
     expected_tail = [
         *(str(path) for path in runtime_inputs),

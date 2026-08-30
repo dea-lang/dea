@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-08-23
+Version: 2026-08-30
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -73,7 +73,9 @@ submission, and callers must serialize externally against same-stem publication 
 
 The requested source target is always the entry selection, so `--entry` remains standalone-link-only. The target must
 itself carry an eligible `I5entry`; another linked module's entry cannot substitute. Repeatable `--foreign-object` /
-`-Cf` inputs are valid in build and run and retain their relative declaration order around the graph-expanded Dea set.
+`-Cf`, `-l`, `-L`, `--rpath` / `-Rr`, and `--link-arg` / `-Cl` inputs are valid in build and run. The source target is
+expanded into the dependency-ordered Dea object set at its encounter position; every other link input retains its
+relative position around that expansion.
 
 `--build -o PATH --keep-c` retains exact generated C beneath `PATH.dea-c/`; default output uses the same suffix on the
 default executable name. `--run --keep-c` retains beneath `<canonical-target>.dea-c/` in the invocation directory and
@@ -110,24 +112,38 @@ The current shared option surface is:
 - `--include-eof` for token dumps
 - repeatable L1 `--foreign-object PATH` / `--foreign-object=PATH` / `-Cf PATH` / `-Cf=PATH` for build, run, and
   standalone linking; optional `--entry MODULE` / `--entry=MODULE` / `-e MODULE` remains standalone-link-only
+- repeatable L1 external-link controls for build, run, and standalone linking: `-l LIBRARY` / `-lLIBRARY`,
+  `-L DIRECTORY` / `-LDIRECTORY`, `--rpath RPATH` / `--rpath=RPATH` / `-Rr RPATH` / `-Rr=RPATH`, and
+  `--link-arg ARGUMENT` / `--link-arg=ARGUMENT` / `-Cl ARGUMENT` / `-Cl=ARGUMENT`
 
 Using a mode-scoped option with an incompatible mode is a CLI argument error. In L1, interface paths are valid with
 `--build`, `--run`, `--compile`, and `--gen`; in L0 they remain valid only with the reserved `--compile` mode.
-Incompatible uses produce `L0C-2031` or `L1C-2031`.
+Incompatible interface-path uses produce `L0C-2031` or `L1C-2031`; L1 external-link controls outside `--build`, `--run`,
+and `--link` produce `L1C-2070`.
 
-The conventional driver spellings `-g`, `-S`, `-L`, and `-l` are reserved for debug information, assembly output,
-external-library search, and external-library selection respectively. Those capabilities are not implemented yet;
-syntactically complete uses produce `L0C-2032` or `L1C-2032`. `-L` and `-l` accept either an attached value or a
-following value when their implementations land.
+The conventional driver spellings `-g` and `-S` remain reserved for debug information and assembly output; syntactically
+complete uses produce `L0C-2032` or `L1C-2032`. L0 also recognizes `-L` and `-l` as reserved and reports `L0C-2032`,
+while L1 implements them as external-library search and selection controls.
 
 Multi-letter short options are exact, case-sensitive tokens. Value-taking namespaced options accept a following value or
 `=VALUE`, but not an attached suffix. Canonical `-I`, `-L`, and `-l` accept directly attached or following values; their
 `-I=...`, `-L=...`, and `-l=...` forms are invalid. `-e` accepts only a following value. Only the counted `-vv...` form
 is a short-option cluster; other clusters are invalid. `-V` is explicitly assigned to version; unassigned bare namespace
-prefixes such as `-C` and `-R` are not options.
+prefixes such as `-C` and `-R` are not options. L1 implements the exact namespaced `-Rr` and `-Cl` spellings; L0 leaves
+them unknown because their capabilities are L1-specific today.
 
-The namespaced spellings `-Rr` and `-Cl` are reserved for the planned `--rpath` and `--link-arg` options. They remain
-unknown until their owning capabilities land.
+L1 places all Dea objects, foreign objects, libraries, library search paths, runtime search paths, and raw host-driver
+arguments in one encounter-ordered typed stream. `--link-arg` contributes exactly one intact compiler-driver argument;
+it is not implicitly rewritten as a native-linker option. Object-suffixed `-l` values, raw words, and `-Wl,` payload
+segments, plus response-file, object-file-list, or driver-config indirection, are rejected with `L1C-2071`; callers use
+positional Dea objects or `--foreign-object` for relocatables. This is a conservative syntactic boundary across compiler
+families. Archive and shared-library arguments such as `.a`, `.so`, `.dylib`, `.lib`, and `.dll` remain valid raw driver
+inputs. Rpaths are lowered only for recognized GCC and Clang driver names, exact `cc`, and TinyCC on non-Windows hosts;
+unsupported families, Windows, and comma-containing TinyCC rpaths report `L1C-2072`. The canonical GNU-style `-l` / `-L`
+lowering is unavailable for the MSVC driver family and reports the same code; an explicit `.lib` may still be one raw
+driver input when the selected MSVC invocation accepts it. On native Windows, `%`, `!`, literal `"`, carriage returns,
+and line feeds in build/run external-link values report `L1C-2106` before source compilation; exact rendered command and
+capture values are checked again before execution.
 
 ## 4. Level-Scoped Environment
 
@@ -260,11 +276,13 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 The implemented L1 Stage 1 form is:
 
 ```text
-l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
+l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L DIRECTORY]...
+    [-Rr RPATH]... [-Cl LINK_ARG]... [-e MODULE] -o OUTPUT
 ```
 
-- At least one positional Dea object and exactly one non-empty output path are required. Positional Dea objects and
-  explicit foreign objects may be interleaved with options; the final host-link command retains their encounter order.
+- At least one positional Dea object and exactly one non-empty output path are required. Positional Dea objects,
+  explicit foreign objects, libraries, search paths, rpaths, and raw host-driver arguments may be interleaved; the final
+  host-link command retains their encounter order.
 - Each positional path must have a nonempty basename stem and the exact case-sensitive terminal suffix `.o`. Replacing
   only that suffix with `.l1m` in the same directory selects the required sibling interface. Both paths must resolve to
   regular files; `.o`, `dir/.o`, separator-terminated paths, and other suffixes are rejected. The verified sibling
@@ -277,6 +295,12 @@ l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
   native object. Dea does not prove the format, architecture, relocatability, symbols, absence of `main`, absence of
   reserved names, or absence of embedded linker controls. Archives, shared libraries, linker scripts, response files,
   and raw host-link arguments remain outside this option's supported contract even if a host accepts a mislabeled path.
+- External libraries and their search paths enter through `-l` and `-L`. `--rpath` / `-Rr` translates one load-time
+  runtime search directory for the selected supported compiler family. `--link-arg` / `-Cl` contributes one unchanged
+  host compiler-driver word; object-suffixed library/raw inputs and response, file-list, or driver-config indirection
+  are rejected, while direct archive and shared-library words are allowed. These external controls are CLI/build-tool
+  configuration and do not become Dea module identities, `.l1m` records, lifecycle edges, or automatically discovered
+  dependencies.
 - `--entry` / `-e` may appear at most once and requires a canonical dotted module name. Without it, exactly one verified
   interface must carry `entry;`. With it, the named supplied module's verified interface must carry `entry;`.
 - Module identities must be unique. Every non-virtual provider named by `import module`, `require`, or `link` must be in
@@ -298,8 +322,9 @@ l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
   otherwise it attempts the same exact archive selection. These native inputs are not byte-inspected. `L1_CFLAGS` and
   `--c-options` configure wrapper compilation and are not appended as final-link command words. Because the resulting
   wrapper object is opaque, compiler options may still cause the host compiler to encode toolchain-specific linker
-  controls that the final linker honors; those effects are caller-trusted. External libraries, archives supplied as
-  foreign objects, `-L`, `-l`, rpaths, and raw host-link arguments remain outside this mode's direct CLI surface.
+  controls that the final linker honors; those effects are caller-trusted. The final command places the wrapper first,
+  then the encounter-ordered user link stream, then the selected runtime native inputs by exact path, followed by the
+  ordinary non-MSVC math-library and output arguments. A user `-L` therefore cannot shadow the selected runtime.
 - Until native Windows process spawning replaces `cmd.exe`, exact standalone-link command words and redirection paths
   containing `%`, `!`, `"`, carriage return, or line feed are rejected before scratch allocation.
 

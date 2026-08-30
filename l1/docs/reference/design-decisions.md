@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-08-20
+Version: 2026-08-30
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -99,8 +99,25 @@ fingerprint remains a hash of exported declarations only; entry and every operat
 
 `--foreign-object` is a caller assertion that one regular-file path names a host-compatible relocatable input. Dea does
 not inspect native bytes to prove format, architecture, symbols, absence of `main`, reserved-name cleanliness, or lack
-of embedded linker controls. Those failures belong to captured host diagnostics, and archives, libraries, scripts,
-response files, and raw link arguments remain outside this typed option.
+of embedded linker controls. Those failures belong to captured host diagnostics. Archives, libraries, scripts, response
+files, rpaths, and raw link arguments remain outside this relocatable-object option even when another explicit link
+surface can represent them.
+
+## 4.2 External Link Dependency Ownership
+
+External host dependencies are explicit CLI or invoking-build-tool configuration. `-l`, `-L`, `--rpath` / `-Rr`, and
+`--link-arg` / `-Cl` share one encounter-ordered stream with typed Dea and foreign objects, but they do not acquire Dea
+module identity, lifecycle meaning, or `.l1m` dependency records. There is no package or per-binding library manifest.
+This keeps the linker's order-sensitive inputs visible without making an early package-metadata design permanent.
+
+A raw link argument is exactly one host compiler-driver word. It cannot bypass the typed object boundary with a direct
+`.o` / `.obj` or hide arbitrary words in a response file. Archive and shared-library words remain available. Native
+bytes themselves stay opaque, so linker controls already embedded by an external toolchain are outside Dea validation.
+
+The selected Dea runtime is not an ambient `-l` dependency: its validated archive or TinyCC object set follows the user
+stream by exact path. Rpath lowering is compiler-family-specific and unavailable where the driver has no documented
+translation. This policy is recorded by
+[ADR-0036](../decisions/0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md).
 
 ## 5. Future Evolution
 

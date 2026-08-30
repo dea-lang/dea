@@ -37,7 +37,7 @@
 - Related:
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
-  - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
+  - `l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md`
   - `work/plans/bug-fixes/2026-07-21-shared-structured-c-source-input-noref.md`
 - Repro: compare each approved short spelling with its canonical long spelling in compiler CLI parsing and help output
 

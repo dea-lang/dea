@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-08-23
+Version: 2026-08-30
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -22,6 +22,7 @@ Related canonical docs:
 - Language/runtime rationale and policy: [design-decisions.md](design-decisions.md)
 - Bootstrap status snapshot: [l1/docs/project-status.md](../project-status.md)
 - Shared CLI behavior: [docs/specs/compiler/cli-contract.md](../../../docs/specs/compiler/cli-contract.md)
+- External native-library workflow: [l1/docs/user/linking.md](../user/linking.md)
 
 ## 1. High-Level Pipeline
 
@@ -147,8 +148,9 @@ one source-backed target, prefers selected interfaces for imports, falls back to
 selected, and emits one module to stdout or an exact output file without host compilation. Compile-only requires
 verified interfaces for non-virtual imports and publishes the sibling `.o` and `.l1m` pair without linking. `--keep-c`
 adds C bytes identical to `--gen` under the same resolved inputs and options. L1 follows the shared exact-token short
-namespaces for roots, host-C controls, runtime paths, generated C, and log presentation; reserved canonical
-debug/assembly/external-library flags report `L1C-2032` rather than acquiring L1-specific meanings.
+namespaces for roots, host-C controls, runtime paths, generated C, and log presentation. Canonical debug/assembly flags
+remain reserved; external `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl` / `--link-arg` controls are implemented only in
+build, run, and standalone link.
 
 Compile-only follows trusted directory aliases while validating and recursively creating the destination parent.
 Dangling and non-directory aliases are rejected. Final `.c`, `.o`, and `.l1m` destinations and transaction, backup,
@@ -174,19 +176,20 @@ rollback reports a publication failure; if rollback itself fails, the compiler r
 `L1C-2036` instead of discarding them. Cleanup is deliberately non-recursive: an auxiliary file requested through raw
 host-C options is reported and retained with the transaction directory rather than silently removed.
 
-The CLI also implements standalone `l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT`, with long aliases
-`--link`, `--foreign-object`, and `--entry`. For each exact positional `.o`, the driver derives and fully verifies the
-sibling `.l1m` before registering identities. It verifies unique modules, provider presence and public fingerprints,
-entry selection, lifecycle-import cycles, and transitive lifecycle provenance for semantic providers. `require` and
-`link` never create lifecycle edges. Dea and foreign native bytes remain opaque; `--foreign-object` is a caller
-assertion rather than a content classification.
+The CLI also implements standalone
+`l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L DIRECTORY]... [-Rr RPATH]... [-Cl LINK_ARG]... [-e MODULE] -o OUTPUT`.
+For each exact positional `.o`, the driver derives and fully verifies the sibling `.l1m` before registering identities.
+It verifies unique modules, provider presence and public fingerprints, entry selection, lifecycle-import cycles, and
+transitive lifecycle provenance for semantic providers. `require` and `link` never create lifecycle edges. Dea and
+foreign native bytes remain opaque; `--foreign-object` is a caller assertion rather than a content classification.
 
 After validation, `link_driver.l0` records one deterministic dependency-first lifecycle order through an explicit
 depth-first frame stack. It traverses the selected entry component first in interface import order, then visits
 unvisited explicitly supplied Dea roots in positional order without consuming the native call stack.
 `wrapper_emitter.l0` defines process `main`, initializes runtime arguments, calls every `I4init` in that order, calls
-only the selected `I5entry`, and calls every `I4fini` in reverse. Foreign objects remain in final host-link encounter
-order but receive no generated calls.
+only the selected `I5entry`, and calls every `I4fini` in reverse. The plan retains a single encounter-ordered stream of
+Dea objects, foreign objects, libraries, search paths, rpaths, and raw host-driver words. Only Dea inputs participate in
+interface and lifecycle state; all other entries receive no generated calls.
 
 Standalone link validates the compiler, runtime inputs, exact `dea_rt.h`, output parent, final output kind, and original
 caller paths before reserving scratch state. Its exclusively created `.l1c-link-...` transaction sits beside the output
@@ -198,6 +201,13 @@ native input, consumed interface, runtime input, or resolved header are rejected
 rejects `%`, `!`, literal `"`, carriage-return, and line-feed bytes in parsed command words and redirection paths
 because the current host-tool transport passes through `cmd.exe`; the exact rendered commands and capture paths are
 checked again immediately before execution.
+
+Raw link arguments are validated during CLI parsing: object-suffixed library/raw inputs must use a typed object role,
+and response, file-list, or driver-config indirection is unavailable. Compiler-dependent rpath validation completes
+before host compilation; recognized GCC and Clang driver names plus exact `cc` use repeated `-Xlinker` words, TinyCC
+uses `-Wl,-rpath=...`, and unsupported or Windows combinations fail. Final linking emits the wrapper, the complete user
+stream in place, exact selected runtime inputs, the ordinary non-MSVC math-library argument, and output controls in that
+order.
 
 Normal developer workflow:
 
@@ -296,11 +306,11 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.9 Module Lifecycle and Standalone Link (`module_lifecycle.l0`, `link_driver.l0`, `wrapper_emitter.l0`)
 
 - Constructs canonical `I4init`, `I4fini`, and `I5entry` symbols without an object-metadata subsystem.
-- Owns typed link inputs containing original object paths and optional verified interfaces.
+- Owns typed link inputs containing native paths or external driver controls plus optional verified Dea interfaces.
 - Parses and verifies every sibling interface before identity registration.
 - Validates provider presence, supplied interface fingerprints, entry, lifecycle cycles, and transitive provenance.
 - Computes one nonrecursive deterministic lifecycle order and emits the process wrapper.
-- Passes caller and runtime native inputs opaquely to the host toolchain in the documented order.
+- Lowers external controls in place and passes caller/runtime native inputs opaquely in the documented order.
 
 ### 2.10 Driver and CLI (`driver.l0`, `l1c_lib.l0`, `cli_args.l0`, `build_driver.l0`)
 
@@ -315,6 +325,8 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
   rollback.
 - Implements build/run graph expansion, publication-free per-module compilation, common-link reuse, exact retained-C
   trees, and direct run-process invocation.
+- Validates external-link option scope and raw-argument roles, and expands only the build/run Dea target inside the
+  ordered link stream.
 - Produces generated C, module artifacts, built executables, or direct runs depending on CLI mode.
 
 ## 3. Core Data Flow
@@ -374,7 +386,9 @@ Important analysis tables include:
     inputs remain caller-trusted native payloads.
 13. Standalone wrapper initialization is dependency-first and deterministic; finalization is its exact reverse. The
     selected entry bridge is the only Dea entry invoked, and the wrapper owns process `main`.
-14. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in
+14. External host dependencies are explicit CLI/build-tool inputs, not module identities or `.l1m` dependency metadata.
+    The selected runtime follows the user stream by exact path.
+15. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in
     the other L1 reference documents.
 
 ## 5. File/Module Layout

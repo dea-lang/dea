@@ -284,6 +284,32 @@ def write_source_mutating_compiler(
     return launcher
 
 
+def write_invocation_marker_compiler(root: Path, marker: Path) -> Path:
+    """Write a compiler proxy that records any unexpected invocation."""
+
+    bin_dir = root / "preflight-marker-bin"
+    bin_dir.mkdir()
+    script = bin_dir / ("gcc.py" if os.name == "nt" else "gcc")
+    script.write_text(
+        textwrap.dedent(
+            f"""\
+            #!{sys.executable}
+            from pathlib import Path
+
+            Path({str(marker)!r}).write_text("invoked\\n", encoding="ascii")
+            raise SystemExit(97)
+            """
+        ),
+        encoding="utf-8",
+    )
+    script.chmod(script.stat().st_mode | 0o111)
+    if os.name != "nt":
+        return script
+    launcher = bin_dir / "gcc.cmd"
+    launcher.write_text(f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n')
+    return launcher
+
+
 def main() -> int:
     """Run the multi-CU build/run regression matrix."""
 
@@ -297,6 +323,46 @@ def main() -> int:
         env["TMPDIR"] = str(temp_parent)
         env.pop("TEMP", None)
         env.pop("TMP", None)
+
+        if os.name == "nt":
+            invocation_marker = root / "unsafe-link-arg-invoked-compiler"
+            marker_cc = write_invocation_marker_compiler(root, invocation_marker)
+            unsafe_output = root / "unsafe-link-arg.exe"
+            unsafe_link_arg = run(
+                compiler_command(
+                    compiler,
+                    str(marker_cc),
+                    "--build",
+                    SEPARATE_FIXTURES,
+                    "linkset.main",
+                    "--link-arg=%TEMP%",
+                    "--output",
+                    unsafe_output,
+                ),
+                cwd=root,
+                env=env,
+            )
+            require_status(
+                unsafe_link_arg,
+                1,
+                "unsafe Windows build/run link argument preflight",
+            )
+            if "[L1C-2106]" not in unsafe_link_arg.stderr:
+                raise MultiCuFailure(
+                    "unsafe Windows build/run link argument lacks L1C-2106"
+                )
+            if invocation_marker.exists():
+                raise MultiCuFailure(
+                    "unsafe Windows build/run link argument invoked the host compiler"
+                )
+            if unsafe_output.exists():
+                raise MultiCuFailure(
+                    "unsafe Windows build/run link argument published an executable"
+                )
+            require_no_workspaces(
+                temp_parent,
+                "unsafe Windows build/run link argument preflight",
+            )
 
         source_executable = root / ("source.exe" if os.name == "nt" else "source.out")
         source_build = run(

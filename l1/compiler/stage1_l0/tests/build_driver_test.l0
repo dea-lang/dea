@@ -102,8 +102,18 @@ func test_compiler_flag_family_detection() {
     assert(bd_compiler_flag_family(
             "C:\\toolchain\\AARCH64-LINUX-GNU-CLANG-18.EXE") == "gcc",
         "target-prefixed Clang flag family mismatch");
+    assert(bd_compiler_flag_family(
+            "/opt/cross/bin/x86_64-linux-tcc") == "tcc",
+        "target-prefixed TinyCC flag family mismatch");
+    assert(bd_compiler_flag_family(
+            "C:\\toolchain\\I386-WIN32-TCC.EXE") == "tcc",
+        "case-insensitive target-prefixed TinyCC flag family mismatch");
+    assert(bd_compiler_flag_family("tcc-0.9.28rc") == "tcc",
+        "TinyCC nonnumeric version suffix family mismatch");
     assert(bd_compiler_flag_family("cc") == "cc", "cc family mismatch");
     assert(bd_compiler_flag_family("cl.exe") == "msvc", "msvc family mismatch");
+    assert(bd_compiler_flag_family("C:\\Toolchain\\CL.EXE") == "msvc",
+        "MSVC family detection must be case-insensitive");
     assert(bd_compiler_flag_family("custom-cc") == "unknown", "unknown family mismatch");
 
     assert(bd_compiler_debug_family("x86_64-linux-gnu-gcc-12") == "gcc",

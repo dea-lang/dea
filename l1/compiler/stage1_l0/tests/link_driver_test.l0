@@ -103,6 +103,11 @@ func ldt_dea_input(interface: ModuleInterface*) -> LinkInput* {
     return input;
 }
 
+/** Wrap one ordered external linker operand without Dea interface state. */
+func ldt_external_input(kind: LinkOperandKind, value: string) -> LinkInput* {
+    return ld_input_create(kind, value, null, null);
+}
+
 /** Build a mixed valid plan with an entry component and disconnected root. */
 func ldt_valid_mixed_plan(diags: DiagCollector*) -> LinkPlan*? {
     let leaf = ldt_interface("app.leaf", false);
@@ -119,6 +124,36 @@ func ldt_valid_mixed_plan(diags: DiagCollector*) -> LinkPlan*? {
     ld_ptr_vec_push(inputs, ld_foreign_input_create("foreign.o") as void*);
     ld_ptr_vec_push(inputs, ldt_dea_input(side) as void*);
     ld_ptr_vec_push(inputs, ldt_dea_input(dep) as void*);
+    ld_ptr_vec_push(inputs, ldt_dea_input(leaf) as void*);
+    return ld_prepare_inputs(inputs, null, diags);
+}
+
+/** Build a valid plan whose native and external operands are interleaved. */
+func ldt_valid_external_plan(diags: DiagCollector*) -> LinkPlan*? {
+    let leaf = ldt_interface("app.leaf", false);
+    let fingerprint = leaf.fingerprint;
+    let dep = ldt_interface("app.dep", false);
+    ldt_add_import(dep, "app.leaf", fingerprint);
+    let entry = ldt_interface("app.main", true);
+    ldt_add_import(entry, "app.dep", fingerprint);
+    let side = ldt_interface("side.effect", false);
+    ldt_add_import(side, "app.leaf", fingerprint);
+
+    let inputs = ld_ptr_vec_create(10);
+    ld_ptr_vec_push(inputs, ldt_dea_input(entry) as void*);
+    ld_ptr_vec_push(inputs,
+        ldt_external_input(LOK_LIBRARY_SEARCH, "vendor/lib") as void*);
+    ld_ptr_vec_push(inputs, ld_foreign_input_create("foreign.o") as void*);
+    ld_ptr_vec_push(inputs,
+        ldt_external_input(LOK_LIBRARY, "first") as void*);
+    ld_ptr_vec_push(inputs, ldt_dea_input(side) as void*);
+    ld_ptr_vec_push(inputs,
+        ldt_external_input(LOK_RPATH, "runtime/lib") as void*);
+    ld_ptr_vec_push(inputs,
+        ldt_external_input(LOK_LINK_ARG, "-Wl,--as-needed") as void*);
+    ld_ptr_vec_push(inputs, ldt_dea_input(dep) as void*);
+    ld_ptr_vec_push(inputs,
+        ldt_external_input(LOK_LIBRARY, "second") as void*);
     ld_ptr_vec_push(inputs, ldt_dea_input(leaf) as void*);
     return ld_prepare_inputs(inputs, null, diags);
 }
@@ -140,7 +175,7 @@ func test_valid_mixed_plan_ordering() {
             "entry must follow its dependency closure");
         assert(sv_get(plan.lifecycle_order, 3) == "side.effect",
             "disconnected explicit root must follow the entry component");
-        assert(ld_plan_input_get(plan, 1).object_path == "foreign.o",
+        assert(ld_plan_input_get(plan, 1).value == "foreign.o",
             "foreign input encounter order must be retained");
         assert(ld_plan_input_get(plan, 1).interface == null &&
                ld_plan_input_get(plan, 1).interface_path == null,
@@ -494,7 +529,7 @@ func test_host_command_words_and_windows_preflight() {
                 "C:\\runtime include", runtime_inputs,
                 "C:\\output path\\app.exe", plan, diags),
             "ordinary original paths should pass Windows preflight");
-        ld_plan_input_get(plan, 1).object_path = "%TEMP%\\foreign.o";
+        ld_plan_input_get(plan, 1).value = "%TEMP%\\foreign.o";
         assert(!ld_validate_windows_shell_values(
                 "clang.exe", extra, "runtime", runtime_inputs,
                 "app.exe", plan, diags),
@@ -515,6 +550,135 @@ func test_host_command_words_and_windows_preflight() {
                !ld_windows_shell_word_safe("line\rbreak.obj") &&
                !ld_windows_shell_word_safe("line\nbreak.obj"),
             "Windows shell-word validation mismatch");
+        ld_plan_free(plan);
+    }
+}
+
+/** Verify exact external operand lowering and runtime-input placement. */
+func test_external_link_command_words() {
+    with (
+        let diags = diag_create() => diag_free(diags),
+        let unsupported_diags = diag_create() => diag_free(unsupported_diags),
+        let tcc_rpath_diags = diag_create() => diag_free(tcc_rpath_diags),
+        let msvc_diags = diag_create() => diag_free(msvc_diags),
+        let gcc_words = sv_create(24) => sv_free(gcc_words),
+        let cc_words = sv_create(24) => sv_free(cc_words),
+        let tcc_words = sv_create(20) => sv_free(tcc_words),
+        let archive_runtime = sv_create(1) => sv_free(archive_runtime),
+        let raw_runtime = sv_create(2) => sv_free(raw_runtime)
+    ) {
+        let plan_opt = ldt_valid_external_plan(diags);
+        assert(plan_opt != null,
+            "interleaved external-link fixture plan should validate");
+        let plan = plan_opt as LinkPlan*;
+        sv_push(archive_runtime, "/exact/libdea_rt.a");
+        sv_push(raw_runtime, "/exact/dea_rt_sys.o");
+        sv_push(raw_runtime, "/exact/dea_rt_math.o");
+
+        let msvc_operands = cli_link_operands_create();
+        cli_link_operands_push(
+            msvc_operands, LOK_LIBRARY_SEARCH, "vendor/lib");
+        cli_link_operands_push(
+            msvc_operands, LOK_LIBRARY, "native");
+        assert(!ld_validate_external_link_operands(
+                msvc_operands, "cl.exe", msvc_diags) &&
+               ldt_has_code(msvc_diags, "L1C-2072"),
+            "MSVC must reject canonical GNU-style library controls");
+        assert(!ld_validate_external_link_operands(
+                msvc_operands, "C:\\Toolchain\\CL.EXE", msvc_diags),
+            "MSVC control rejection must be case-insensitive");
+        cli_link_operands_free(msvc_operands);
+
+        let rpath_operands = cli_link_operands_create();
+        cli_link_operands_push(
+            rpath_operands, LOK_RPATH, "runtime/lib");
+        if (bd_is_windows()) {
+            assert(!ld_validate_external_link_operands(
+                    rpath_operands, "gcc", unsupported_diags) &&
+                   ldt_has_code(unsupported_diags, "L1C-2072"),
+                "Windows rpath must receive its driver diagnostic");
+            cli_link_operands_free(rpath_operands);
+            ld_plan_free(plan);
+            return;
+        }
+        assert(ld_validate_external_link_operands(
+                rpath_operands, "gcc", diags) &&
+               ld_validate_external_link_operands(
+                rpath_operands, "cc", diags) &&
+               ld_validate_external_link_operands(
+                rpath_operands, "tcc", diags),
+            "supported compiler families must accept typed rpaths");
+        let comma_rpath_operands = cli_link_operands_create();
+        cli_link_operands_push(
+            comma_rpath_operands, LOK_RPATH, "runtime,lib");
+        assert(!ld_validate_external_link_operands(
+                comma_rpath_operands, "tcc", tcc_rpath_diags) &&
+               ldt_has_code(tcc_rpath_diags, "L1C-2072"),
+            "TinyCC must reject an rpath value it would split at a comma");
+        cli_link_operands_free(comma_rpath_operands);
+
+        ld_push_final_link_words_with_runtime_inputs(
+            gcc_words, "gcc", "gcc", "scratch/wrapper.o",
+            plan, archive_runtime, "out/app");
+        assert(sv_size(gcc_words) == 19,
+            "GNU external-link word count mismatch");
+        assert(sv_get(gcc_words, 0) == "gcc" &&
+               sv_get(gcc_words, 1) == "scratch/wrapper.o" &&
+               sv_get(gcc_words, 2) == "app.main.o" &&
+               sv_get(gcc_words, 3) == "-Lvendor/lib" &&
+               sv_get(gcc_words, 4) == "foreign.o" &&
+               sv_get(gcc_words, 5) == "-lfirst" &&
+               sv_get(gcc_words, 6) == "side.effect.o",
+            "GNU linker must retain the native/search/library prefix order");
+        assert(sv_get(gcc_words, 7) == "-Xlinker" &&
+               sv_get(gcc_words, 8) == "-rpath" &&
+               sv_get(gcc_words, 9) == "-Xlinker" &&
+               sv_get(gcc_words, 10) == "runtime/lib",
+            "GNU rpath must lower through paired -Xlinker arguments");
+        assert(sv_get(gcc_words, 11) == "-Wl,--as-needed" &&
+               sv_get(gcc_words, 12) == "app.dep.o" &&
+               sv_get(gcc_words, 13) == "-lsecond" &&
+               sv_get(gcc_words, 14) == "app.leaf.o",
+            "GNU linker must retain the raw-argument/native/library suffix order");
+        assert(sv_get(gcc_words, 15) == "/exact/libdea_rt.a" &&
+               sv_get(gcc_words, 16) == "-lm" &&
+               sv_get(gcc_words, 17) == "-o" &&
+               sv_get(gcc_words, 18) == "out/app",
+            "validated runtime inputs must follow the complete user stream");
+
+        ld_push_final_link_words_with_runtime_inputs(
+            cc_words, "cc", "cc", "scratch/wrapper.o",
+            plan, archive_runtime, "out/app");
+        assert(sv_size(cc_words) == sv_size(gcc_words),
+            "cc and GNU lowering must have the same word count");
+        for (let cc_i = 1; cc_i < sv_size(cc_words); cc_i = cc_i + 1) {
+            assert(sv_get(cc_words, cc_i) == sv_get(gcc_words, cc_i),
+                "cc and GNU lowering must differ only by compiler word");
+        }
+
+        ld_push_final_link_words_with_runtime_inputs(
+            tcc_words, "tcc", "tcc", "scratch/wrapper.o",
+            plan, raw_runtime, "out/app");
+        assert(sv_size(tcc_words) == 17,
+            "TinyCC external-link word count mismatch");
+        assert(sv_get(tcc_words, 3) == "-Lvendor/lib" &&
+               sv_get(tcc_words, 5) == "-lfirst" &&
+               sv_get(tcc_words, 7) == "-Wl,-rpath=runtime/lib" &&
+               sv_get(tcc_words, 8) == "-Wl,--as-needed" &&
+               sv_get(tcc_words, 10) == "-lsecond",
+            "TinyCC must lower only rpath while retaining external order");
+        assert(sv_get(tcc_words, 12) == "/exact/dea_rt_sys.o" &&
+               sv_get(tcc_words, 13) == "/exact/dea_rt_math.o" &&
+               sv_get(tcc_words, 14) == "-lm" &&
+               sv_get(tcc_words, 15) == "-o" &&
+               sv_get(tcc_words, 16) == "out/app",
+            "TinyCC raw runtime set must follow the complete user stream");
+
+        assert(!ld_validate_external_link_operands(
+                rpath_operands, "cl.exe", unsupported_diags) &&
+               ldt_has_code(unsupported_diags, "L1C-2072"),
+            "unsupported rpath family must receive its driver diagnostic");
+        cli_link_operands_free(rpath_operands);
         ld_plan_free(plan);
     }
 }
@@ -543,6 +707,32 @@ func test_windows_shell_option_word_validation() {
                diag_get(diags, 0).filename == "-DCLI=\"bad&echo",
             "unsafe parsed-option diagnostic mismatch");
         ld_plan_free(plan);
+    }
+
+    with (
+        let build_diags = diag_create() => diag_free(build_diags),
+        let build_operands = cli_link_operands_create() =>
+            cli_link_operands_free(build_operands),
+        let build_opts = sv_create(0) => sv_free(build_opts),
+        let build_runtime = sv_create(1) => sv_free(build_runtime)
+    ) {
+        cli_link_operands_push(
+            build_operands, LOK_DEA_OBJECT, "app.main");
+        cli_link_operands_push(
+            build_operands, LOK_LINK_ARG, "%TEMP%");
+        sv_push(build_runtime, "C:\\runtime\\dea_rt.lib");
+        assert(!ld_validate_windows_build_run_values(
+                "clang.exe",
+                build_opts,
+                "C:\\runtime\\include",
+                build_runtime,
+                "app.exe",
+                build_operands,
+                build_diags
+            ) &&
+            ldt_has_code(build_diags, "L1C-2106") &&
+            diag_get(build_diags, 0).filename == "%TEMP%",
+            "unsafe build/run link word must fail before source compilation");
     }
 
     with (
@@ -685,7 +875,7 @@ func test_cli_pair_loading_and_native_opacity() {
             "regular opaque bytes plus a verified sibling must prepare");
         assert((plan as LinkPlan*).entry_module == "header.identity",
             "sibling header must be authoritative over basename spelling");
-        assert(ld_plan_input_get(plan as LinkPlan*, 0).object_path == object_path,
+        assert(ld_plan_input_get(plan as LinkPlan*, 0).value == object_path,
             "prepared input must preserve the original native path");
         with (let runtime_inputs = sv_create(0) => sv_free(runtime_inputs)) {
             assert(!ld_validate_output_aliases(
@@ -882,23 +1072,61 @@ func test_build_run_graph_order_and_operand_injection() {
         cli_link_operands_push(
             cli_operands, LOK_FOREIGN_OBJECT, "before.o");
         cli_link_operands_push(
+            cli_operands, LOK_LIBRARY_SEARCH, "before/lib");
+        cli_link_operands_push(
+            cli_operands, LOK_LIBRARY, "before");
+        cli_link_operands_push(
             cli_operands, LOK_DEA_OBJECT, "app.main");
         cli_link_operands_push(
+            cli_operands, LOK_RPATH, "runtime/lib");
+        cli_link_operands_push(
+            cli_operands, LOK_LINK_ARG, "-Wl,--as-needed");
+        cli_link_operands_push(
             cli_operands, LOK_FOREIGN_OBJECT, "after.o");
+        cli_link_operands_push(
+            cli_operands, LOK_LIBRARY, "after");
         let injected = ld_build_run_operands(
             cli_operands, ordered);
-        assert(cli_link_operands_count(injected) == 5,
-            "target position should expand to the complete graph set");
-        assert(cli_link_operands_get(injected, 0).path == "before.o",
+        assert(cli_link_operands_count(injected) == 10,
+            "only the source target should expand to the complete graph set");
+        assert(ord(cli_link_operands_get(injected, 0).kind) ==
+                   ord(LOK_FOREIGN_OBJECT) &&
+               cli_link_operands_get(injected, 0).value == "before.o",
             "foreign object before target should remain first");
-        assert(cli_link_operands_get(injected, 1).path ==
+        assert(ord(cli_link_operands_get(injected, 1).kind) ==
+                   ord(LOK_LIBRARY_SEARCH) &&
+               cli_link_operands_get(injected, 1).value == "before/lib",
+            "library search before target should retain its position");
+        assert(ord(cli_link_operands_get(injected, 2).kind) ==
+                   ord(LOK_LIBRARY) &&
+               cli_link_operands_get(injected, 2).value == "before",
+            "library before target should retain its position");
+        assert(ord(cli_link_operands_get(injected, 3).kind) ==
+                   ord(LOK_DEA_OBJECT) &&
+               cli_link_operands_get(injected, 3).value ==
                 join(join("scratch", "app"), "leaf.o"),
             "first injected object should follow dependency order");
-        assert(cli_link_operands_get(injected, 3).path ==
+        assert(ord(cli_link_operands_get(injected, 5).kind) ==
+                   ord(LOK_DEA_OBJECT) &&
+               cli_link_operands_get(injected, 5).value ==
                 join(join("scratch", "app"), "main.o"),
             "entry object should be the final injected Dea input");
-        assert(cli_link_operands_get(injected, 4).path == "after.o",
-            "foreign object after target should remain last");
+        assert(ord(cli_link_operands_get(injected, 6).kind) ==
+                   ord(LOK_RPATH) &&
+               cli_link_operands_get(injected, 6).value == "runtime/lib",
+            "rpath after target should retain its position");
+        assert(ord(cli_link_operands_get(injected, 7).kind) ==
+                   ord(LOK_LINK_ARG) &&
+               cli_link_operands_get(injected, 7).value == "-Wl,--as-needed",
+            "raw host argument should remain one intact operand");
+        assert(ord(cli_link_operands_get(injected, 8).kind) ==
+                   ord(LOK_FOREIGN_OBJECT) &&
+               cli_link_operands_get(injected, 8).value == "after.o",
+            "foreign object after target should retain its position");
+        assert(ord(cli_link_operands_get(injected, 9).kind) ==
+                   ord(LOK_LIBRARY) &&
+               cli_link_operands_get(injected, 9).value == "after",
+            "final library should remain after the foreign object");
 
         cli_link_operands_free(injected);
         cli_link_operands_free(cli_operands);
@@ -916,6 +1144,7 @@ func main() {
     test_deep_graph_uses_iterative_traversal();
     test_lifecycle_diamond_and_entry_selection();
     test_host_command_words_and_windows_preflight();
+    test_external_link_command_words();
     test_windows_shell_option_word_validation();
     test_windows_system_command_transport();
     test_output_validation();

@@ -1,6 +1,6 @@
 # Dea/L1 Module Interface Format
 
-Version: 2026-08-23
+Version: 2026-08-30
 
 Status: Finalized
 
@@ -189,6 +189,10 @@ projected:
   interface closure.
 - **`link`**: the provider symbol is used only by implementation and creates a future link obligation without exposing
   names for downstream type checking.
+
+That obligation always names another Dea provider in the verified object/interface set. It is not host-library metadata:
+external libraries, search paths, rpaths, and raw compiler-driver arguments remain explicit CLI or invoking build-tool
+configuration.
 
 A symbol present in both tiers appears only as `require`. Each line names `<provider_module>::<symbol_name>` and repeats
 the provider's canonical tagged whole-module fingerprint:

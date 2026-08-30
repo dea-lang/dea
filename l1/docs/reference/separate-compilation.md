@@ -1,6 +1,6 @@
 # L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-08-23
+Version: 2026-08-30
 
 This document describes the implemented Dea/L1 Stage 1 path from per-module generated C and one-module compilation to an
 interface-authoritative executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
@@ -41,8 +41,8 @@ source.
 Build or run a source-rooted graph:
 
 ```text
-l1c --build MODULE [-I INTERFACE_ROOT]... [-Cf C_OBJECT]... [-o OUTPUT] [-Gk]
-l1c --run MODULE [-I INTERFACE_ROOT]... [-Cf C_OBJECT]... [-Gk] [-- PROGRAM_ARG...]
+l1c --build MODULE [-I INTERFACE_ROOT]... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT]... [-o OUTPUT] [-Gk]
+l1c --run MODULE [-I INTERFACE_ROOT]... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT]... [-Gk] [-- PROGRAM_ARG...]
 ```
 
 Both modes expand the requested source target under `MRP_ALLOW_SOURCE_FALLBACK`. The first selected interface is
@@ -58,10 +58,14 @@ must be absent and contains only exact generated C bytes. A root module named `_
 runnable without retention, but it and its ASCII case variants report `L1C-2132` with keep-C because both canonical
 outputs may claim the root wrapper path on case-insensitive filesystems.
 
+`EXTERNAL_LINK_INPUT` is any repeatable `-l LIBRARY` / `-lLIBRARY`, `-L DIRECTORY` / `-LDIRECTORY`, `--rpath` / `-Rr`,
+or `--link-arg` / `-Cl` form from the shared CLI contract. The source target expands into the dependency-ordered Dea set
+at its encounter position; every other item stays in relative order.
+
 Link an explicitly supplied object set:
 
 ```text
-l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT
+l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT]... [-e MODULE] -o OUTPUT
 ```
 
 `--link` / `-k` requires at least one positional Dea object and exactly one non-empty output path. Positional Dea paths
@@ -74,8 +78,9 @@ and analysis-only options are not valid link inputs. Host compiler/options, runt
 `--unchecked`, and `--check-basic` remain valid because the wrapper must be compiled and the matching runtime variant
 must be linked. `L1_CFLAGS` and `--c-options` configure wrapper compilation and are never forwarded as final-link
 command words. The wrapper object is opaque, however, so caller-selected compiler options may encode toolchain-specific
-linker controls that the final linker honors. External `-L`, `-l`, rpath, and raw host-link argument surfaces remain
-reserved; effects carried through the caller-controlled wrapper compilation are trusted rather than inspected.
+linker controls that the final linker honors. External controls enter the common typed stream instead: `-L` and `-l` use
+their canonical driver spellings, rpaths receive compiler-family lowering, and each raw link argument remains one
+unchanged host-driver word.
 
 ## 2. Artifact Authority and Trusted Pair
 
@@ -129,6 +134,9 @@ TinyCC runtime-object bytes during standalone link, build, or run.
   `__dea` definitions, or absence of embedded linker controls for either input role.
 - Archives, shared libraries, linker scripts, response files, rpaths, and raw host-link arguments remain outside
   `--foreign-object` even if a host toolchain accepts a mislabeled operand.
+- Archives and shared libraries may instead enter through `-l` / `-L` or a raw host-driver word. Rpaths have their own
+  typed option. Object-suffixed library/raw operands and response, file-list, or driver-config indirection are rejected
+  before native work.
 
 Native-format errors, duplicate symbols, entry collisions, architecture mismatches, hidden controls, and unresolved C
 symbols are host-tool concerns. Their captured diagnostics are preserved under `L1C-2109`.
@@ -137,7 +145,8 @@ symbols are host-tool concerns. Their captured diagnostics are preserved under `
 
 Before scratch allocation, the driver performs these phases in order:
 
-1. validate CLI operand roles, exact positional `.o` suffixes, and regular-file status;
+1. validate CLI operand roles, reject object-suffixed library/raw inputs and opaque option-file indirection, validate
+   exact positional `.o` suffixes, and check native-input regular-file status;
 2. derive, read, UTF-8 validate, parse, and run full interface verification on every sibling `.l1m`;
 3. reject the complete set if any interface fails, so unverified identities never enter graph state;
 4. register canonical module identities and reject duplicates;
@@ -199,8 +208,9 @@ The driver then:
 1. writes `wrapper.c`;
 2. compiles it alone to `wrapper.o`;
 3. requires the compiler result to be a no-follow regular file;
-4. invokes the host driver with `wrapper.o`, every original Dea and foreign native path in exact interleaved CLI order,
-   the selected runtime native inputs, the optional non-MSVC math-library argument, and the output arguments; and
+4. invokes the host driver with `wrapper.o`, every user Dea object, foreign object, library, search path, translated
+   rpath, and raw driver word in exact encounter order, then the selected runtime native inputs, the optional non-MSVC
+   math-library argument, and the output arguments; and
 5. requires the final output to be a regular file.
 
 There are no caller-input snapshots. "Original path" means the original caller-selected file rather than copied bytes;
@@ -215,7 +225,14 @@ wrapper-compile or final-link command together with its transaction-owned captur
 Runtime mode selects `libdea_rt.a`, `libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or `libdea_rt_unchecked.a`. Normal
 compiler families receive one exact archive path. Under ADR-0027, TinyCC receives the complete variant-matched raw
 runtime object set when available, with exact archive fallback. Native runtime inputs are opaque and the carve-out does
-not authorize arbitrary public raw runtime inputs.
+not authorize arbitrary public raw runtime inputs. Because runtime inputs follow the user stream by exact path, `-L`
+cannot change which runtime is selected.
+
+Recognized GCC and Clang driver names plus exact `cc` lower each rpath as `-Xlinker -rpath -Xlinker VALUE`, which
+preserves commas inside the value. TinyCC receives its documented `-Wl,-rpath=VALUE` form; because that syntax splits
+commas, a comma-containing TinyCC value is rejected. Windows and unknown/unsupported compiler families report `L1C-2072`
+before wrapper compilation. The same preflight rejects canonical `-l` / `-L` entries for MSVC rather than emitting
+invalid GNU-style words into its distinct `/link` command layout.
 
 ## 7. Output-Local Transaction
 
@@ -254,8 +271,9 @@ For identical source, resolved graph, verified interfaces, fingerprints, code-ge
 the exact compiler input after linking, interface/object providers require and produce no C, and `__dea_wrapper.c`
 remains outside module identity as a separate link-orchestration artifact.
 
-External libraries, library search paths, rpaths, raw host-driver arguments, static/shared-library production, C++
-interoperation, and object discovery remain outside the implemented standalone-link surface.
+Automatic host-dependency discovery, package or per-module library manifests, static/shared-library production, C++
+interoperation, and implicit object discovery remain outside the implemented surface. External host dependencies must be
+supplied by the CLI or an invoking build tool.
 
 [abi]: ../specs/compiler/abi.md
 [architecture]: architecture.md

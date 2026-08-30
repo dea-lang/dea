@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-08-27
+Version: 2026-08-30
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -26,6 +26,7 @@ Use this file as the status snapshot. For implementation details, use:
 - [l1/docs/reference/grammar.md](reference/grammar.md) for accepted concrete syntax
 - [l1/docs/reference/ownership.md](reference/ownership.md) for ownership and cleanup behavior
 - [l1/docs/reference/standard-library.md](reference/standard-library.md) for current std/sys module APIs
+- [l1/docs/user/linking.md](user/linking.md) for external libraries, foreign objects, rpaths, and raw link arguments
 - [l1/docs/specs/compiler/abi.md](specs/compiler/abi.md) for L1 Binary Interface symbol mangling and linkage rules
 - [l1/docs/specs/compiler/module-interface-format.md](specs/compiler/module-interface-format.md) for textual `.l1m`
   module interface artifacts
@@ -115,14 +116,15 @@ rollback use sequential renames, so concurrent readers may observe missing paths
 access requires external serialization. The shared semantic aliases include `-Gc` / `-Gi` / `-Gk` for generated
 artifacts, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` / `-Cf` for host-C controls and explicit foreign objects, `-Ri`
 / `-Rl` for runtime paths, `-Sb` / `-Su` for runtime safety, and `-Vl` / `-Va` / `-Vm` for logging and tracing. `-V`
-prints version information. The conventional `-g`, `-S`, `-L`, and `-l` meanings are reserved but not implemented.
+prints version information. The conventional `-g` and `-S` meanings remain reserved. `-L`, `-l`, `-Rr` / `--rpath`, and
+`-Cl` / `--link-arg` are implemented for build, run, and standalone link.
 
-The CLI implements `l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-e MODULE] -o OUTPUT`, with long aliases `--link`,
-`--foreign-object`, and `--entry`. Every positional path must have the exact terminal `.o` suffix and a verified regular
-sibling `.l1m`; the interface header supplies identity, `entry;` supplies entry eligibility, and ordered `import module`
-records supply lifecycle edges. The paired `.o` remains an opaque original-path host input. `--foreign-object` asserts
-one regular host-compatible relocatable input without Dea inspecting its format, symbols, `main`, reserved names, or
-embedded controls.
+The CLI implements `l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT]... [-e MODULE] -o OUTPUT`, with long
+aliases `--link`, `--foreign-object`, and `--entry`. Every positional path must have the exact terminal `.o` suffix and
+a verified regular sibling `.l1m`; the interface header supplies identity, `entry;` supplies entry eligibility, and
+ordered `import module` records supply lifecycle edges. The paired `.o` remains an opaque original-path host input.
+`--foreign-object` asserts one regular host-compatible relocatable input without Dea inspecting its format, symbols,
+`main`, reserved names, or embedded controls.
 
 The driver verifies all interfaces before identity registration, then checks unique modules, provider presence, exact
 provider-interface fingerprints, explicit or inferred entry, lifecycle-import cycles, and transitive lifecycle
@@ -136,8 +138,17 @@ repo-local raw object set under the ADR-0027 compatibility carve-out when that s
 fallback otherwise. Runtime native inputs are checked as regular files but not read. Wrapper and capture artifacts live
 in an exclusive output-local `.l1c-link-...` transaction with bounded, non-recursive cleanup; caller inputs are not
 snapshotted, and the host linker receives their original safe-rendered paths and writes directly to the caller-selected
-output. Native Windows rejects expansion-, quote-, or line-break-bearing standalone command words and redirection paths
-while the transport still passes through `cmd.exe`.
+output. Native Windows rejects expansion-, quote-, or line-break-bearing host-link words and redirection paths while the
+transport still passes through `cmd.exe`; build/run values known from the CLI are rejected before source compilation.
+
+The common link plan now retains one encounter-ordered stream across Dea objects, explicit foreign objects, `-l`
+libraries, `-L` search paths, rpaths, and one-word raw host-driver arguments. Build/run expands only the source target
+into its dependency-ordered Dea set. Recognized GCC and Clang driver names plus exact `cc` use explicit linker-word
+rpath forwarding; TinyCC uses its documented `-Wl,-rpath=...` form; Windows and unknown families reject rpath requests.
+Object-suffixed library/raw operands and response, file-list, or driver-config indirection are rejected in favor of the
+typed object surfaces, while archive/shared-library words remain available. Selected runtime inputs follow the entire
+user stream by exact path and cannot be shadowed by a user library search directory. MSVC rejects canonical GNU-style
+`-l` / `-L` controls rather than receiving invalid words; explicit raw `.lib` inputs remain subject to that host driver.
 
 `--build` and `--run` expand the requested source target through the canonical graph, compile each source-backed node
 once into the private native workspace, and combine those objects with authoritative interface-backed objects and
@@ -294,8 +305,8 @@ bootstrap path:
 These remain true today:
 
 1. There is no implemented `stage2_l1` compiler yet.
-2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit
-   objects, compile sources, or accept external libraries, rpaths, or raw host-link arguments.
+2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit Dea
+   objects, compile sources, or infer external-library dependencies from modules or manifests.
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
 4. Address-of (`&`) and generics are not part of the current active language surface.

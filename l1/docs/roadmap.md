@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-08-25
+Version: 2026-08-30
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -31,7 +31,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   Multi-CU build/run selects the source target entry, mixes source and authoritative interface/object providers, accepts
   foreign objects, retains exact mirrored generated-C trees, and launches run executables directly. Module C is
   byte-identical across generation, compile-only retention, build retention, and run retention for identical inputs and
-  settings; the legacy whole-program generator and backend-owned process wrapper are removed.
+  settings; the legacy whole-program generator and backend-owned process wrapper are removed. Build, standalone link,
+  and run accept ordered external libraries, library search paths, supported-family rpaths, and raw host-driver words
+  while preserving typed object roles and exact driver-selected runtime inputs.
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 - L1 triple-bootstrap is not part of the current Stage 1 contract.
@@ -172,6 +174,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] proved byte identity across all four
   generated-C producer modes for source-only and mixed graphs, verified exact compiler-input retention, and removed the
   legacy whole-closure backend and process wrapper.
+- Feature [2026-04-24-external-library-linking-cli-noref][library-linking] added ordered `-l`, `-L`, `-Rr` / `--rpath`,
+  and `-Cl` / `--link-arg` inputs to build, standalone link, and run while retaining typed object roles and exact
+  runtime selection.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -199,8 +204,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active initiatives
 
-- Initiative [0001-separate-compilation-and-linking][separate-compilation] covers separate compilation, interface
-  verification, and external-library linking.
+- Initiative [0001-separate-compilation-and-linking][separate-compilation] has completed separate compilation, interface
+  verification, and external-library linking implementation; only initiative lifecycle closure remains.
 - Initiative [0003-c-ffi][c-ffi] adds the typed C boundary: `extern "C"` declarations, `cstr`, and the closed FFI-safe
   surface.
 
@@ -219,8 +224,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Feature [2026-04-24-external-library-linking-cli-noref][library-linking] adds `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl`
-  / `--link-arg` as the external-library linking surface.
 - Feature [2026-04-24-c-ffi-extern-c-and-cstr-noref][ffi-cstr] adds `extern "C"` declarations, `cstr`, and the typed
   non-variadic C boundary.
 - Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] decomposes oversized Stage 1
@@ -236,8 +239,8 @@ surface.
 
 ### Language core
 
-- Separate compilation, interface verification, and external-library linking are tracked by Initiative
-  [0001-separate-compilation-and-linking][separate-compilation].
+- Separate compilation, interface verification, and external-library linking are implemented under Initiative
+  [0001-separate-compilation-and-linking][separate-compilation], whose lifecycle closure remains pending.
 - Full C FFI, including C boundary string design and C variadic FFI, is tracked by Initiative [0003-c-ffi][c-ffi]. The
   proposed scoped conversion design is recorded in [cstr-and-c-string-guards][cstr-proposal].
 - C variadic FFI remains a sibling tranche under Initiative [0003-c-ffi][c-ffi]; implemented L1-defined variadics do not
@@ -331,7 +334,7 @@ update to be promoted to an initiative or plan:
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [l1m-authoritative-linking]: ../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
-[library-linking]: ../work/plans/features/2026-04-24-external-library-linking-cli-noref.md
+[library-linking]: ../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph-invariant-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md

@@ -1,11 +1,11 @@
 # L1 Initiative 0001 - Separate Compilation and External Linking
 
-- Version: 2026-08-23
+- Version: 2026-08-30
 - Status: Active
 - Kind: Initiative
-- Open plans:
-  - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
+- Open plans: (none)
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md`
   - `l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md`
   - `l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`
   - `l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md`
@@ -37,10 +37,12 @@ single-compilation-unit producer into a toolchain capable of compiling and linki
 2. **Link external static and dynamic libraries from L1 programs.**
 
 The two goals share design surface around the C ABI and link-time identity, so this document captures the cross-cutting
-decisions, the phasing, and the dependencies. Individual phases will spawn entries under `l1/work/plans/features/` and
-`l1/work/plans/refactors/` as they become actionable.
+decisions, the phasing, and the dependencies. Their implementation tranches are recorded under `l1/work/plans/`.
 
 This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
+
+All implementation plans are complete. The initiative remains active only for a later lifecycle-closure pass that
+updates its complete historical ADR/backlink set before moving the initiative itself to `closed/`.
 
 ## Related initiatives
 
@@ -48,12 +50,11 @@ This initiative executes under the L1 roadmap ([`l1/docs/roadmap.md`][roadmap]).
   prerequisite. It moves the runtime from header-only inclusion to a real static archive, which de-risks the link
   mechanics that this initiative depends on. Separate compilation can land independently, but the link model is cleaner
   once 0002 has settled archive linkage and the trace-variant story.
-- **Initiative 0003 - C FFI** ([`0003-c-ffi.md`][c-ffi]) is a downstream consumer. C FFI requires the LBI mangling
-  defined here, the separate-compilation driver surface, and the external-library linking CLI before it can express
-  `extern "C"` declarations and the closed FFI-safe boundary. This initiative also owns the explicit `--foreign-object`
-  path by which caller-asserted host-compatible C relocatable objects satisfy current unmangled `extern func`
-  declarations and future `extern "C"` declarations without joining the Dea module graph or undergoing Dea byte
-  inspection.
+- **Initiative 0003 - C FFI** ([`0003-c-ffi.md`][c-ffi]) is a downstream consumer. Its LBI mangling,
+  separate-compilation driver, and external-library linking prerequisites are implemented here. This initiative also
+  owns the explicit `--foreign-object` path by which caller-asserted host-compatible C relocatable objects satisfy
+  current unmangled `extern func` declarations and future `extern "C"` declarations without joining the Dea module graph
+  or undergoing Dea byte inspection.
 
 ## Non-goals
 
@@ -103,6 +104,10 @@ Relevant facts that constrain the plan at the time of writing:
   `-k` / `--link` accepts positional Dea `.o` paths with required verified sibling `.l1m` files, repeatable explicit
   `-Cf` / `--foreign-object` operands, optional `-e` / `--entry`, and one mandatory output; it emits the lifecycle
   wrapper and invokes the host linker with original opaque native paths.
+- `--build`, `--link`, and `--run` accept repeatable `-l`, `-L`, `-Rr` / `--rpath`, and `-Cl` / `--link-arg` controls in
+  the common typed encounter-ordered stream. Object-suffixed library/raw inputs and opaque option-file indirection
+  remain rejected, rpaths are lowered only for supported host/compiler families, and driver-selected runtime inputs
+  retain exact paths.
 - The shared driver CLI also implements per-module `--gen` with ordered interface roots and source fallback only when no
   interface is selected. Pure generation creates one exact C output without host-tool or native-sibling access.
   Compile-only stages canonical module-relative compiler inputs and retains C bytes identical to `--gen` for the same
@@ -119,8 +124,8 @@ makes each verified sibling `.l1m` the standalone linker's semantic, entry, and 
 paired native objects and explicit foreign objects as caller-asserted opaque host inputs.
 
 Embedded object metadata, native-object readers, and input snapshots are removed. Interfaces now carry ordered lifecycle
-imports and entry presence. The generated-C, build/run, external-linking, and C-FFI active work has been rebased onto
-the new boundary. [ADR-0030][l1m-authority-adr] supersedes the former object-metadata and verified-native-input
+imports and entry presence. The generated-C, build/run, and external-linking work completed on the new boundary; C FFI
+remains active downstream. [ADR-0030][l1m-authority-adr] supersedes the former object-metadata and verified-native-input
 authority records; Linux, Windows UCRT64, macOS Intel, and macOS ARM64 validation completed the plan's host matrix.
 
 ## Phase 0 - Anchor decisions before coding
@@ -318,9 +323,10 @@ work is split by dependency, not by the former whole-plan labels:
     and link APIs over the source/interface graph.
 09. **Generated-C completion (complete):** verified byte identity across generation, compile-only retention, and
     build/run retention, then retired the legacy whole-closure generator after fan-out removed its remaining callers.
-10. **External libraries:** extend the ordered link-input stream with libraries, rpaths, and raw host-driver arguments.
+10. **External libraries (complete):** extend the ordered link-input stream with libraries, search paths, rpaths, and
+    raw host-driver arguments.
 
-The driver ultimately exposes these contracts:
+The driver exposes these contracts:
 
 - `-c <module> [-o <canonical-object-path>] [--keep-c]` compiles one module without linking and publishes sibling
   `.o + .l1m` with endpoint rollback; `--keep-c` adds the exact generated `.c`.
@@ -440,9 +446,9 @@ exist.
 - Incremental rebuilds without `make`-level help. Out of scope for this phase; the driver rebuilds whatever it's asked
   to. A future plan can add a build-graph cache.
 
-## Phase 3 - Linking external libraries (Goal 2)
+## Phase 3 - Linking external libraries (Goal 2, complete)
 
-Once Phase 2 lands, this is mostly a CLI and build-driver story; the language doesn't move.
+Phase 3 completed as a CLI and common-link-driver feature; the language did not move.
 
 ### CLI surface
 
@@ -463,26 +469,26 @@ no opinion on static vs. dynamic linkage.
 The former runtime-specific short aliases retired in the CLI-surface tranche: `-I` is committed to interface search,
 `-L` returns to its normal library-search meaning, and runtime paths use `-Ri` / `-Rl`. Validated runtime link inputs
 are passed by exact path so a user `-L` directory cannot shadow them: normal families receive one selected archive,
-while TinyCC receives the complete variant-matched raw-object set when available, with archive fallback. Until this
-phase implements external linking, syntactically complete `-L` / `-l` uses report the shared reserved-option diagnostic.
-Today's binding workflow uses legacy unmangled `extern func`; Initiative 0003 later adds `extern "C"`. Neither workflow
-requires a raw C-header include-path flag in the core compiler.
+while TinyCC receives the complete variant-matched raw-object set when available, with archive fallback. Today's binding
+workflow uses legacy unmangled `extern func`; Initiative 0003 later adds `extern "C"`. Neither workflow requires a raw
+C-header include-path flag in the core compiler.
 
 ### Manifest support
 
 Deferred indefinitely unless and until Dea decides to adopt package management. External library link information is
 user-side via CLI flags or build-tool configuration (Makefile, IDE task, shell wrapper). No per-module `[link]` sidecar,
-no `Dea.toml`, and no other in-tree manifest format is introduced by this initiative. `--link-arg=<flag>` is the
-universal escape hatch for any platform-specific oddity without committing to a schema.
+no `Dea.toml`, and no other in-tree manifest format is introduced by this initiative. `--link-arg=<flag>` is a bounded
+one-word escape hatch for platform-specific controls: typed relocatables, response/file-list/driver-config indirection,
+and unsafe Windows shell values remain outside it.
 
 [Initiative 0003 - C FFI][c-ffi] may revisit this if a binding-module-local hint mechanism turns out to be necessary
 there; even then, prefer extending CLI ergonomics over introducing a new file format.
 
 ### Documentation
 
-Add a short user-facing page at [`l1/docs/user/linking.md`][linking] covering the platform-specific expectations (`.a`/
-`.so`/`.dylib`/`.lib`/`.dll`), the `tcc` caveats, and the recommended pattern for binding a C library (FFI binding
-module + linker flags).
+The completed plan adds a user-facing page at [`l1/docs/user/linking.md`][linking] covering platform-specific
+expectations (`.a`/`.so`/`.dylib`/`.lib`/`.dll`), TinyCC caveats, and the recommended legacy `extern func` binding
+module plus linker-flags workflow.
 
 ## Phase 4 - Full C FFI
 
@@ -536,8 +542,8 @@ structured --c-source --> shared native workspace ------------------------------
   paths to the common link executor. It is not blocked by structured `--c-source` or the shared native workspace.
 - Structured `--c-source` enables the L0 Stage 2 support unit required by the shared native workspace. The link API,
   shared workspace, and completed generated-C foundation converge in the completed build/run fan-out.
-- External-library options extend the finished ordered input model. Initiative 0003 consumes both external libraries and
-  the caller-asserted `--foreign-object` boundary.
+- External-library options now extend the finished ordered input model. Initiative 0003 consumes both external libraries
+  and the caller-asserted `--foreign-object` boundary.
 
 Recorded near-term tranche checkpoints:
 
@@ -562,7 +568,7 @@ Recorded near-term tranche checkpoints:
 - [x] Complete supported-host CI and ADR lifecycle closure for the `.l1m` authority plan.
 - [x] Convert `--build` / `--run` to the shared multi-CU compile/link APIs.
 - [x] Verify four-mode generated-C identity and retire the legacy whole-closure generator after build/run fan-out.
-- [ ] Add ordered external-library and raw host-driver inputs.
+- [x] Add ordered external-library and raw host-driver inputs.
 
 ## Cross-cutting concerns
 
@@ -771,15 +777,13 @@ FFI-specific open questions live in [Initiative 0003][c-ffi]; runtime-delivery o
   - Rationale: The shared diagnostic ADR should state the phase-oriented allocation rule settled by this initiative.
 - Decision: Keep external dependencies CLI-only and ordered, without package or per-module link manifests.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
-  - Rationale: The child external-linking plan owns the durable dependency and ordering contract selected by this
-    initiative.
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md`
+  - Rationale: ADR-0036 records the child external-linking plan's durable dependency and ordering contract.
 
 ## Spawned plans
 
-(Filled in as implementation tranches become actionable. Cross-link from here to the spawned plans, and from each plan
-back to this initiative.)
+The completed implementation tranches are recorded below and cross-linked to this initiative.
 
 Phase 0 decisions are now recorded directly in this initiative. They do not need separate spawned plans unless a later
 implementation tranche proves that one decision area needs additional design work.
@@ -820,8 +824,8 @@ implementation tranche proves that one decision area needs additional design wor
 - `--build` / `--run` graph fan-out through shared compile/link APIs under [build/run fan-out][build-run].
 - Four-mode generated-C identity and legacy-generator retirement completed after build/run under
   [generated-C completion][per-module-generated-c].
-- Phase 3: external-library linking CLI under
-  [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][library-linking]
+- Phase 3: external-library linking CLI completed under
+  [`l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md`][library-linking]
 
 ## Glossary
 
@@ -856,7 +860,7 @@ implementation tranche proves that one decision area needs additional design wor
 [interface-fingerprints]: ../plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [l1m-authoritative-linking]: ../plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [l1m-authority-adr]: ../../docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md
-[library-linking]: ../plans/features/2026-04-24-external-library-linking-cli-noref.md
+[library-linking]: ../plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-adr]: ../../docs/decisions/0020-per-module-backend-and-lifecycle-abi.md
 [lifecycle-entrypoints]: ../plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md

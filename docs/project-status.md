@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-08-27
+Version: 2026-08-30
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -72,7 +72,8 @@ Its repository status today is:
 - emitting and verifying deterministic textual `.l1m` module interfaces that are authoritative for interface-backed
   imports and standalone-link semantics,
 - supporting per-module `--gen`, compile-only `.o + .l1m` publication, verified standalone `--link`, and
-  multi-compilation-unit `--build` / `--run` across mixed source/interface graphs,
+  multi-compilation-unit `--build` / `--run` across mixed source/interface graphs, with encounter-ordered external
+  libraries, search paths, rpaths, and raw host-driver arguments in every link-involving mode,
 - shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
   value-type helper surface,
 - not yet an install/dist/release-bearing product.

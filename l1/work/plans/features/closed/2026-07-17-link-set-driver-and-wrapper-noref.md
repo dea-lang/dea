@@ -38,7 +38,7 @@
   - [`l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md`][object-metadata]
   - [`l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md`][compile-only]
   - [`l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md`][build-run]
-  - [`l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
+  - [`l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md`][external-linking]
   - [`work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md`][structured-input]
   - [`work/plans/bug-fixes/closed/2026-07-25-shared-native-compiler-temporary-workspace-safety-noref.md`][native-workspace]
   - [`docs/specs/compiler/diagnostic-code-catalog.md`][diagnostic-catalog]
@@ -333,7 +333,7 @@ repeats the path with `extern "C"`.
 [build-run]: 2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: 2026-07-17-compile-only-artifact-production-noref.md
 [diagnostic-catalog]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[external-linking]: ../2026-04-24-external-library-linking-cli-noref.md
+[external-linking]: 2026-04-24-external-library-linking-cli-noref.md
 [fingerprints]: 2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [initiative]: ../../../initiatives/0001-separate-compilation-and-linking.md
 [lifecycle]: 2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

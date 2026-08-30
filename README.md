@@ -32,8 +32,9 @@ self-hosted through its Stage 2 compiler and is the canonical user-facing toolch
 floating-point contract, bitwise operators, top-level `const`, function pointer types, the `unsafe` function marker,
 fixed-size arrays, export manifests, and selective/aliased imports, among others. Its L0-implemented bootstrap compiler
 (`stage1_l0`) now supports per-module generated C, compile-only `.o + .l1m` artifacts, verified standalone linking, and
-multi-compilation-unit build/run. It consumes the L0 Stage 2 compiler as its upstream toolchain and is not yet a
-release-bearing product. Start at [l1/README.md](l1/README.md) and [l1/docs/roadmap.md](l1/docs/roadmap.md).
+multi-compilation-unit build/run, including ordered external-library, search-path, rpath, and raw driver arguments. It
+consumes the L0 Stage 2 compiler as its upstream toolchain and is not yet a release-bearing product. Start at
+[l1/README.md](l1/README.md) and [l1/docs/roadmap.md](l1/docs/roadmap.md).
 
 ## Stability and Evolution
 

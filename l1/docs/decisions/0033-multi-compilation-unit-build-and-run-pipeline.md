@@ -1,7 +1,7 @@
 # ADR-0033: Multi-Compilation-Unit Build and Run Pipeline
 
 - Decision date: 2026-08-23
-- Last edited: 2026-08-23
+- Last edited: 2026-08-30
 - Status: Accepted
 
 ## Context
@@ -25,6 +25,8 @@ L1 `--build` and `--run` use one source-rooted multi-compilation-unit pipeline:
 - The graph-expanded Dea object set is submitted to the common verified link planner at the requested source operand's
   typed-input position. Repeatable foreign objects remain caller-asserted opaque native inputs and preserve their
   relative declaration order.
+- Repeatable libraries, library search paths, runtime search paths, and raw host compiler-driver words use that same
+  typed ordered stream. Build/run forwards them to the common link executor without regrouping them by category.
 - Source-backed nodes are re-analyzed dependency-first as one-module entries before generation. Original `-I` interfaces
   retain precedence, while previously source-backed providers must resolve through their staged workspace `.l1m`; source
   fallback is disabled at this per-unit boundary.
@@ -53,14 +55,16 @@ host link and flows through bounded command-workspace cleanup.
 - Build/run can mix source-backed modules, authoritative `.l1m + .o` providers, and foreign relocatables.
 - Compile-only endpoint rollback is not a reader snapshot; callers must externally serialize interface/object pairs
   against publication and replacement.
-- Parallel compilation, caching, package manifests, external libraries, and raw host-link arguments remain outside this
-  pipeline.
+- Parallel compilation, caching, and package manifests remain outside this pipeline. [ADR-0036][external-linking-adr]
+  extends the common ordered input stream with explicit CLI-owned external libraries, search paths, rpaths, and raw
+  host-driver words.
 - The generated-C completion work removed the legacy whole-program generator after proving cross-mode module identity.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 - [l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md][completion]
+- [l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md][external-linking]
 
 ## Current Docs
 
@@ -75,4 +79,6 @@ host link and flows through bounded command-workspace cleanup.
 [build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [completion]: ../../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
+[external-linking]: ../../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
+[external-linking-adr]: 0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md
 [separate-compilation]: ../reference/separate-compilation.md

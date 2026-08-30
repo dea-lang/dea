@@ -6,8 +6,9 @@ This directory contains the active `stage1_l0` bootstrap compiler for Dea/L1.
 retargeted to the Dea/L1 public interface.
 
 The driver currently provides per-module generated C, compile-only `.o + .l1m` artifacts, verified standalone linking,
-and multi-compilation-unit build/run. See [`l1/docs/project-status.md`][project-status] for the complete current
-contract.
+and multi-compilation-unit build/run, including ordered external-library inputs in every link-involving mode. See
+[`l1/docs/project-status.md`][project-status] for the complete current contract and [`l1/docs/user/linking.md`][linking]
+for the user workflow.
 
 The implementation sources in this subtree remain `.l0`, and the copied implementation test suite is also `.l0`. Those
 tests are exercised through the upstream `l0c-stage2` bootstrap compiler rather than through `l1c` itself. The fixture
@@ -41,4 +42,5 @@ For a non-default upstream bootstrap compiler, set `L1_BOOTSTRAP_L0C=/path/to/l0
 `make build-stage1`.
 
 [l1-root]: ../../README.md
+[linking]: ../../docs/user/linking.md
 [project-status]: ../../docs/project-status.md

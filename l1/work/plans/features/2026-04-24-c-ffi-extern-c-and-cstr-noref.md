@@ -34,7 +34,7 @@
   - `l1/docs/reference/design-decisions.md`
   - `l1/work/initiatives/0003-c-ffi.md`
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
-  - `l1/work/plans/features/2026-04-24-external-library-linking-cli-noref.md`
+  - `l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md`
   - `l1/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
   - `l1/work/proposals/cstr-and-c-string-guards.md`
   - `l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md`
@@ -63,6 +63,8 @@ strings.
 5. Initiative `0001` provides repeatable `--foreign-object` inputs as caller assertions that each path is one
    host-compatible C relocatable object. This plan consumes that mechanism rather than treating C objects as Dea
    modules; Dea does not inspect or prove the object's format, symbols, or embedded controls.
+6. Initiative `0001` now also provides ordered `-l`/`-L`, rpath, and raw-link-word controls for `--link`, `--build`, and
+   `--run`. FFI bindings consume those explicit caller/build-tool inputs; declarations do not carry dependency metadata.
 
 The draft [cheap string slices plan] would allow a logical `string` view whose end is not NUL-terminated. The
 [C-string guard proposal] records the resulting alternative to this plan's current zero-cost reinterpretation default.
