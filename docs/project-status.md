@@ -117,13 +117,9 @@ The monorepo now has a small but real shared top-level layer:
 This shared layer is intentionally narrow. Most compiler, language, runtime, and user-facing documentation remains owned
 by the relevant level subtree.
 
-## Near-Term Direction
+## Current Project Posture
 
-Near-term project direction is split cleanly by level:
-
-1. Maintain Dea/L0 `2.0.0` as the stable release line, with user-visible fixes and future compatibility changes governed
-   by L0 semantic versioning and Stage 1/Stage 2 parity.
-2. Keep Dea/L1 focused on bootstrap stabilization and planned post-L0 language/library growth, not on release parity
-   yet.
-3. Only move or duplicate level-local reference documents into root `docs/reference/` when they clearly become Dea-wide
-   rather than L0-specific.
+- Dea/L0 `2.0.0` is the stable release line. User-visible fixes and future compatibility changes remain governed by L0
+  semantic versioning and Stage 1/Stage 2 parity.
+- Dea/L1 remains a bootstrap subtree rather than a release-bearing product. Its current direction is maintained in
+  [l1/docs/roadmap.md](../l1/docs/roadmap.md).

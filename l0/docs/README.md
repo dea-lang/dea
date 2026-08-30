@@ -4,7 +4,7 @@ This directory is organized by document intent first, then subsystem.
 
 ## Folders
 
-- `project-status.md`: current implementation status, known limitations, and near-term direction.
+- `project-status.md`: current implementation status and known limitations.
 - `reference/`: stable current-state documentation for language and compiler.
 - `user/`: standalone end-user guides used as the source for shipped distribution docs.
 - `releases/`: curated stable-release notes used unchanged as GitHub release descriptions.
@@ -73,7 +73,7 @@ Plans and proposals follow the metadata and lifecycle rules in [`../work/README.
 
 ## Core Docs
 
-- [project-status.md](project-status.md): current implementation status, known limitations, and near-term direction.
+- [project-status.md](project-status.md): current implementation status and known limitations.
 - [releases/README.md](releases/README.md): index of curated stable-release descriptions.
 - [reference/architecture.md](reference/architecture.md): compiler pipeline and pass structure.
 - [reference/c-backend-design.md](reference/c-backend-design.md): Stage 1 lowering/runtime interaction details.

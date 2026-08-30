@@ -28,7 +28,7 @@ implementation status, read the relevant doc file(s).**
 | `docs/reference/c-backend-design.md`       | C backend architecture, emission strategy                     |
 | `docs/reference/design-decisions.md`       | Runtime, pointer model, integer model, I/O, rationale         |
 | `docs/reference/grammar.md`                | Formal EBNF grammar                                           |
-| `docs/project-status.md`                   | Implementation status, known limitations, roadmap             |
+| `docs/project-status.md`                   | Implementation status and known limitations                   |
 | `docs/reference/standard-library.md`       | stdlib module reference (`std.*`, `sys.*`)                    |
 | `docs/reference/ownership.md`              | Ownership rules for `new`/`drop`, ARC strings, and containers |
 | `docs/specs/runtime/trace.md`              | Trace flags, generated defines, runtime trace contract        |

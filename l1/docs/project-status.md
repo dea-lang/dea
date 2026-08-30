@@ -310,11 +310,3 @@ These remain true today:
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
 4. Address-of (`&`) and generics are not part of the current active language surface.
-
-## Near-Term Direction
-
-Near-term L1 work should focus on:
-
-1. stabilizing and expanding the Stage-1 compiler and stdlib/runtime surface
-2. improving L1-local documentation and tests
-3. preparing the subtree for a later self-hosted `stage2_l1` implementation without claiming it exists today
