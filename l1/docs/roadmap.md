@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-08-30
+Version: 2026-08-31
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -206,6 +206,18 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 - Initiative [0003-c-ffi][c-ffi] is on hold while real binding experience informs a choice among direct typed
   declarations, annotated C carriers, generated shims, or another first-class C interoperability design.
+- Initiative [0005-filesystem-and-stream-io][filesystem-io] owns the Priority 1 OS error, 64-bit filesystem metadata,
+  dynamic byte-buffer, file-handle, and directory foundations; Priority 2 streams and buffering; and the roadmap's
+  Priority 4 file-watch design. Persistent file extents, positions, offsets, and timestamp seconds use `long`, while
+  in-memory lengths, indexes, and individual transfer counts remain `int`.
+- Initiative [0006-process-and-host-services][host-services] owns Priority 2 secure entropy, temporary objects, process
+  spawning, and anonymous pipes plus Priority 3 sleep, deadlines, timeouts, and general time-second widening.
+- Initiative [0007-blocking-networking][blocking-networking] promotes networking into a Priority 3 blocking IPv4/IPv6
+  TCP, UDP, and DNS surface without selecting a portable asynchronous model prematurely.
+- Initiative [0008-data-format-modules][data-formats] owns Priority 3 JSON and a Priority 4 scope decision for the
+  roadmap's currently unspecified `IFF` item.
+- Initiative [0009-safe-concurrency][safe-concurrency] promotes the Priority 4 concurrency direction into memory-model
+  and runtime-readiness design before safe threads, synchronization, atomics, or channels are exposed.
 
 ## Completed initiatives
 
@@ -228,12 +240,16 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   production source modules while preserving public root imports and current compiler behavior.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
+- Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial
+  print-helper surface, using typed L1 variadics with shared string and writer formatting.
+- Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Priority 2 audit that records
+  portable systems capability and C99-family coverage without promising literal C99 API parity.
 
 ## Backlog
 
-These items are future directions that need plans or initiatives before implementation. Items with partial current
-coverage call out the implemented baseline so the backlog does not imply missing work where L1 already has a narrower
-surface.
+These items are future directions. Promoted work links to its active plans or initiatives; unpromoted items still need
+that lifecycle owner before implementation. Items with partial current coverage call out the implemented baseline so the
+backlog does not imply missing work where L1 already has a narrower surface.
 
 ### Language core
 
@@ -249,8 +265,10 @@ surface.
   marker shipped under Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. First-class,
   escape-restricted slice types `T[]`, `len`, and `slice` shipped through Feature
   [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices]. Dynamic buffers, shared buffers, address-of
-  (`&`), and broader pointer arithmetic remain backlog items. Current `std.array` / `std.vector` storage remains the
-  library-level dynamic/container layer rather than a replacement for `T[N]` or `T[]`.
+  (`&`), and broader pointer arithmetic were separate backlog items. Public dynamic byte buffers are now tracked by
+  Initiative [0005-filesystem-and-stream-io][filesystem-io]; shared buffers, address-of, and broader pointer arithmetic
+  remain unpromoted. Current `std.array` / `std.vector` storage remains the library-level dynamic/container layer rather
+  than a replacement for `T[N]` or `T[]`.
 - Anonymous embedded struct members remain unresolved design work tracked by Proposal
   [anonymous-embedded-struct-members][embedded-members]. `_ : StructType` is a candidate syntax, but construction,
   access, type conversion, ownership, layout, ABI, and interface semantics are not accepted. This proposal does not
@@ -265,11 +283,16 @@ surface.
 
 ### Standard library
 
-- File-handle I/O: `open`, incremental `read` / `write`, append, and seek. Whole-file `std.fs::read_file` /
-  `std.fs::write_file` and stdin/stdout byte helpers already exist.
-- Directory traversal APIs. Current `std.fs` exposes path metadata and `is_dir`, but not directory iteration.
-- Stream abstractions for files, standard streams, memory buffers, and later transport-backed endpoints.
-- Data-format modules such as JSON and IFF.
+- Filesystem, directory, byte-buffer, file-handle, stream, and file-watch work is tracked by Initiative
+  [0005-filesystem-and-stream-io][filesystem-io]. Whole-file `std.fs::read_file` / `std.fs::write_file` and stdin/stdout
+  byte helpers remain the implemented baseline.
+- Secure entropy, temporary objects, process spawning, anonymous pipes, and scheduling-time helpers are tracked by
+  Initiative [0006-process-and-host-services][host-services].
+- Blocking TCP, UDP, and DNS are tracked by Initiative [0007-blocking-networking][blocking-networking].
+- JSON and the unresolved roadmap `IFF` item are tracked by Initiative [0008-data-format-modules][data-formats].
+- Safe concurrency design is tracked by Initiative [0009-safe-concurrency][safe-concurrency].
+- Typed formatting is tracked by Feature [2026-08-30-typed-formatting-noref][typed-formatting], and the portable
+  capability/C99-family matrix by Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage].
 
 ### Runtime
 
@@ -292,9 +315,6 @@ These items are known explicit deferrals: these are not currently planned for L1
 update to be promoted to an initiative or plan:
 
 - Advanced floating-point modules and intrinsics beyond the `std.real` / `sys.real` surface.
-- File-watch APIs.
-- Networking APIs.
-- Concurrency runtime primitives, shared concurrent data structures, and CSP-style threads.
 - General RTTI/reflection.
 - Traits, interfaces, or mixins.
 - Macros.
@@ -305,6 +325,7 @@ update to be promoted to an initiative or plan:
 [arrays-unsafe]: ../work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md
 [artifact-graph]: ../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
+[blocking-networking]: ../work/initiatives/0007-blocking-networking.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
 [build-run]: ../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
@@ -319,13 +340,16 @@ update to be promoted to an initiative or plan:
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
 [cross-platform-ci]: ../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
 [cstr-proposal]: ../work/proposals/cstr-and-c-string-guards.md
+[data-formats]: ../work/initiatives/0008-data-format-modules.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
+[filesystem-io]: ../work/initiatives/0005-filesystem-and-stream-io.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
 [generated-c-foundation]: ../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
+[host-services]: ../work/initiatives/0006-process-and-host-services.md
 [interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
@@ -350,6 +374,7 @@ update to be promoted to an initiative or plan:
 [runtime-pointer-validation]: ../work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md
 [runtime-resplit]: ../work/plans/refactors/closed/2026-04-27-runtime-cu-resplit-noref.md
 [runtime-split]: ../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md
+[safe-concurrency]: ../work/initiatives/0009-safe-concurrency.md
 [scalar-const-flow]: ../work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md
 [separate-compilation]: ../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
@@ -357,12 +382,14 @@ update to be promoted to an initiative or plan:
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [stage1-source-decomposition]: ../work/plans/refactors/2026-07-08-stage1-source-decomposition-noref.md
 [stage2-self-hosting]: ../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
+[stdlib-coverage]: ../work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md
 [string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
 [toplet-diagnostic-recovery]: ../work/plans/bug-fixes/closed/2026-06-19-stage1-toplet-diagnostic-recovery-noref.md
 [toplet-initializer-typing]: ../work/plans/bug-fixes/closed/2026-06-18-stage1-toplet-initializer-typing-noref.md
+[typed-formatting]: ../work/plans/features/2026-08-30-typed-formatting-noref.md
 [unified-lbi-mangling]: ../work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md
 [variadic-functions]: ../work/plans/features/closed/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
