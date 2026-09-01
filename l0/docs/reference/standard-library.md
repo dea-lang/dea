@@ -1,6 +1,6 @@
 # The L0 Standard Library
 
-Version: 2026-08-29
+Version: 2026-09-01
 
 The standard library provides ergonomic L0 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -384,8 +384,16 @@ Shared integer helper module. Floating-point helpers stay out of `std.integer`.
 
 ### `sys.hash`
 
-Low-level runtime FFI for hashing raw values and pointers. Uses the siphash-1-3 algorithm. Used by `std.hashmap` and
-`std.hashset` for hash calculations.
+Low-level runtime FFI for hashing raw values and pointers. Uses the SipHash-1-3 algorithm. Used by `std.hashmap` and
+`std.hashset` for hash calculations. Equal optional scalar values hash identically across the C ABI: inactive payload
+bytes and wrapper padding do not contribute. Type tags and optional-state tags are intentional semantic inputs.
+Optional-string absence uses a distinct input domain from every present optional-string value, including `""`. Raw-data
+hashes require a non-null pointer even for a zero-byte extent, but a zero-byte hash reads no payload. Pointer hashing
+rejects null, including an empty optional pointer. Equal semantic values produce equal hashes, and repeated calls are
+deterministic within one runtime process. Ordinary 32-bit collisions remain possible and do not imply equality. Exact
+runtime hash values are not stable identifiers and must not be persisted or used as compatibility fingerprints; hash
+values and accidental collisions are not API guarantees across runtime versions, implementations, keys, or process
+executions.
 
 ### `sys.rt`
 
@@ -492,16 +500,16 @@ runtime release.
 
 These are runtime-backed hash externs declared directly in `sys.hash`.
 
-| Function             | Signature                             | Description                     |
-| -------------------- | ------------------------------------- | ------------------------------- |
-| `rt_hash_bool`       | `func(value: bool) -> int`            | Hashes a bool value.            |
-| `rt_hash_byte`       | `func(value: byte) -> int`            | Hashes a byte value.            |
-| `rt_hash_int`        | `func(value: int) -> int`             | Hashes an int value.            |
-| `rt_hash_string`     | `func(value: string) -> int`          | Hashes a string value.          |
-| `rt_hash_data`       | `func(data: void*, size: int) -> int` | Hashes raw byte data.           |
-| `rt_hash_opt_bool`   | `func(opt: bool?) -> int`             | Hashes an optional bool.        |
-| `rt_hash_opt_byte`   | `func(opt: byte?) -> int`             | Hashes an optional byte.        |
-| `rt_hash_opt_int`    | `func(opt: int?) -> int`              | Hashes an optional int.         |
-| `rt_hash_opt_string` | `func(opt: string?) -> int`           | Hashes an optional string.      |
-| `rt_hash_ptr`        | `func(ptr: void*) -> int`             | Hashes a raw pointer value.     |
-| `rt_hash_opt_ptr`    | `func(opt: void*?) -> int`            | Hashes an optional raw pointer. |
+| Function             | Signature                             | Description                                               |
+| -------------------- | ------------------------------------- | --------------------------------------------------------- |
+| `rt_hash_bool`       | `func(value: bool) -> int`            | Hashes a bool value.                                      |
+| `rt_hash_byte`       | `func(value: byte) -> int`            | Hashes a byte value.                                      |
+| `rt_hash_int`        | `func(value: int) -> int`             | Hashes an int value.                                      |
+| `rt_hash_string`     | `func(value: string) -> int`          | Hashes a string value.                                    |
+| `rt_hash_data`       | `func(data: void*, size: int) -> int` | Hashes non-null raw byte data.                            |
+| `rt_hash_opt_bool`   | `func(opt: bool?) -> int`             | Hashes a canonical optional bool.                         |
+| `rt_hash_opt_byte`   | `func(opt: byte?) -> int`             | Hashes a canonical optional byte.                         |
+| `rt_hash_opt_int`    | `func(opt: int?) -> int`              | Hashes a canonical optional int.                          |
+| `rt_hash_opt_string` | `func(opt: string?) -> int`           | Hashes contents with optional-presence domain separation. |
+| `rt_hash_ptr`        | `func(ptr: void*) -> int`             | Hashes a non-null raw pointer value.                      |
+| `rt_hash_opt_ptr`    | `func(opt: void*?) -> int`            | Hashes a present optional raw pointer.                    |

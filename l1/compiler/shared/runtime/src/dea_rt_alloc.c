@@ -5,6 +5,28 @@
 
 #include "../include/dea_rt.h"
 
+/* Keep retained quarantine payloads visible to AddressSanitizer as released
+ * storage. The tracker metadata remains accessible; only the user payload is
+ * poisoned until eviction hands it back to the C allocator. */
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define _RT_HAS_ADDRESS_SANITIZER 1
+#endif
+#endif
+#if defined(__SANITIZE_ADDRESS__)
+#define _RT_HAS_ADDRESS_SANITIZER 1
+#endif
+
+#if defined(_RT_HAS_ADDRESS_SANITIZER)
+void __asan_poison_memory_region(void const volatile *addr, size_t size);
+void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+#define _RT_ASAN_POISON(addr, size) __asan_poison_memory_region((addr), (size))
+#define _RT_ASAN_UNPOISON(addr, size) __asan_unpoison_memory_region((addr), (size))
+#else
+#define _RT_ASAN_POISON(addr, size) ((void)0)
+#define _RT_ASAN_UNPOISON(addr, size) ((void)0)
+#endif
+
 static void _rt_track_alloc_record(
     void *ptr,
     size_t size,
@@ -1061,6 +1083,7 @@ static void _rt_evict_quarantine(void) {
 #ifndef DEA_RT_CHECK_BASIC
         _rt_alloc_tree_remove(rec);
 #endif
+        _RT_ASAN_UNPOISON(rec->base, rec->size);
         free(rec->base);
         _rt_rec_recycle(rec);
     }
@@ -1071,6 +1094,7 @@ static void _rt_quarantine_alloc_record(_rt_alloc_record *rec, _rt_alloc_record_
     cold->drop_file = loc_file;
     cold->drop_line = loc_line;
     rec->q_next = NULL;
+    _RT_ASAN_POISON(rec->base, rec->size);
 
     if (_rt_quarantine_tail == NULL) {
         _rt_quarantine_head = rec;

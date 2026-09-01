@@ -683,6 +683,7 @@ dea_int rt_hash_data(void *data, dea_int size);
 dea_int rt_hash_opt_bool(dea_opt_bool opt);
 dea_int rt_hash_opt_byte(dea_opt_byte opt);
 dea_int rt_hash_opt_int(dea_opt_int opt);
+/** Hash an optional string value with presence-sensitive domain separation. */
 dea_int rt_hash_opt_string(dea_opt_string opt);
 dea_int rt_hash_ptr(void *ptr);
 dea_int rt_hash_opt_ptr(void *opt);

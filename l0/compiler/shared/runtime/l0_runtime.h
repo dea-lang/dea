@@ -42,6 +42,28 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+/* Keep retained quarantine payloads visible to AddressSanitizer as released
+ * storage. The tracker metadata remains accessible; only the user payload is
+ * poisoned until eviction hands it back to the C allocator. */
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define _RT_HAS_ADDRESS_SANITIZER 1
+#endif
+#endif
+#if defined(__SANITIZE_ADDRESS__)
+#define _RT_HAS_ADDRESS_SANITIZER 1
+#endif
+
+#if defined(_RT_HAS_ADDRESS_SANITIZER)
+void __asan_poison_memory_region(void const volatile *addr, size_t size);
+void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+#define _RT_ASAN_POISON(addr, size) __asan_poison_memory_region((addr), (size))
+#define _RT_ASAN_UNPOISON(addr, size) __asan_unpoison_memory_region((addr), (size))
+#else
+#define _RT_ASAN_POISON(addr, size) ((void)0)
+#define _RT_ASAN_UNPOISON(addr, size) ((void)0)
+#endif
+
 #ifndef DEA_RUNTIME_FCLOSE
 #define DEA_RUNTIME_FCLOSE fclose
 #endif
@@ -3628,6 +3650,7 @@ static void _rt_evict_quarantine(void) {
 #ifndef L0_RT_CHECK_BASIC
         _rt_alloc_tree_remove(rec);
 #endif
+        _RT_ASAN_UNPOISON(rec->base, rec->size);
         free(rec->base);
         _rt_rec_recycle(rec);
     }
@@ -3646,6 +3669,7 @@ static void _rt_quarantine_alloc_record(_rt_alloc_record *rec, _rt_alloc_record_
     cold->drop_file = loc_file;
     cold->drop_line = loc_line;
     rec->q_next = NULL;
+    _RT_ASAN_POISON(rec->base, rec->size);
 
     if (_rt_quarantine_tail == NULL) {
         _rt_quarantine_head = rec;
@@ -4133,6 +4157,7 @@ static const _rt_siphash_tag8_t _l0_sh_tag_data   = { 0, 'd', 'a', 't', 'a' };
 #define _L0_TAG_PTR 0x40    /* pointer */
 #define _L0_TAG_ENUM 0x20   /* enum */
 #define _L0_TAG_STRUCT 0x10 /* struct */
+#define _L0_TAG_ABSENT 0x08 /* absent optional */
 
 /**
  * Default (debug) SipHash key for L0 runtime.
@@ -4296,6 +4321,7 @@ l0_int rt_hash_data(void *data, l0_int size) {
 
 /**
  * Hash an optional boolean value.
+ * Semantic members are copied into a zeroed byte representation before hashing.
  * 
  * @param opt Optional bool.
  * @return 32-bit hash.
@@ -4303,12 +4329,19 @@ l0_int rt_hash_data(void *data, l0_int size) {
  * L0 signature: `extern func rt_hash_opt_bool(opt: bool?) -> int;` 
  */
 l0_int rt_hash_opt_bool(l0_opt_bool opt) {
+    uint8_t canonical[sizeof(l0_opt_bool)] = {0};
+    l0_bool has_value = opt.has_value ? 1 : 0;
+    memcpy(canonical + offsetof(l0_opt_bool, has_value), &has_value, sizeof(has_value));
+    if (has_value) {
+        memcpy(canonical + offsetof(l0_opt_bool, value), &opt.value, sizeof(opt.value));
+    }
     uint8_t flags = _L0_TAG_OPT;
-    return _rt_hash_data(&opt, sizeof(l0_opt_bool), flags);
+    return _rt_hash_data(canonical, sizeof(canonical), flags);
 }
 
 /**
  * Hash an optional byte value.
+ * Semantic members are copied into a zeroed byte representation before hashing.
  * 
  * @param opt Optional byte.
  * @return 32-bit hash.
@@ -4316,12 +4349,19 @@ l0_int rt_hash_opt_bool(l0_opt_bool opt) {
  * L0 signature: `extern func rt_hash_opt_byte(opt: byte?) -> int;` 
  */
 l0_int rt_hash_opt_byte(l0_opt_byte opt) {
+    uint8_t canonical[sizeof(l0_opt_byte)] = {0};
+    l0_bool has_value = opt.has_value ? 1 : 0;
+    memcpy(canonical + offsetof(l0_opt_byte, has_value), &has_value, sizeof(has_value));
+    if (has_value) {
+        memcpy(canonical + offsetof(l0_opt_byte, value), &opt.value, sizeof(opt.value));
+    }
     uint8_t flags = _L0_TAG_OPT;
-    return _rt_hash_data(&opt, sizeof(l0_opt_byte), flags);
+    return _rt_hash_data(canonical, sizeof(canonical), flags);
 }
 
 /**
  * Hash an optional integer value.
+ * Semantic members are copied into a zeroed byte representation before hashing.
  * 
  * @param opt Optional int.
  * @return 32-bit hash.
@@ -4329,13 +4369,20 @@ l0_int rt_hash_opt_byte(l0_opt_byte opt) {
  * L0 signature: `extern func rt_hash_opt_int(opt: int?) -> int;` 
  */
 l0_int rt_hash_opt_int(l0_opt_int opt) {
+    uint8_t canonical[sizeof(l0_opt_int)] = {0};
+    l0_bool has_value = opt.has_value ? 1 : 0;
+    memcpy(canonical + offsetof(l0_opt_int, has_value), &has_value, sizeof(has_value));
+    if (has_value) {
+        memcpy(canonical + offsetof(l0_opt_int, value), &opt.value, sizeof(opt.value));
+    }
     uint8_t flags = _L0_TAG_OPT;
-    return _rt_hash_data(&opt, sizeof(l0_opt_int), flags);
+    return _rt_hash_data(canonical, sizeof(canonical), flags);
 }
 
 /**
  * Hash an optional string value.
- * If opt is empty, hashes as an empty string with the optional flag.
+ * Optional presence participates in the hash input domain.
+ * An absent optional hashes empty contents with the optional and absent flags.
  * 
  * @param opt Optional string.
  * @return 32-bit hash.
@@ -4343,12 +4390,10 @@ l0_int rt_hash_opt_int(l0_opt_int opt) {
  * L0 signature: `extern func rt_hash_opt_string(opt: string?) -> int;` 
  */
 l0_int rt_hash_opt_string(l0_opt_string opt) {
-    uint8_t flags = _L0_TAG_OPT;
     if (opt.has_value) {
-        return _rt_hash_string(opt.value, flags);
-    } else {
-        return _rt_hash_string(L0_STRING_EMPTY, flags);
+        return _rt_hash_string(opt.value, _L0_TAG_OPT);
     }
+    return _rt_hash_string(L0_STRING_EMPTY, _L0_TAG_OPT | _L0_TAG_ABSENT);
 }
 
 /**

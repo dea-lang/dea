@@ -693,7 +693,7 @@ dea_int rt_hash_opt_byte(dea_opt_byte opt);
 dea_int rt_hash_opt_int(dea_opt_int opt);
 
 /**
- * Hash an optional string value.
+ * Hash an optional string value with presence-sensitive domain separation.
  *
  * @param opt Optional string.
  * @return 32-bit hash.

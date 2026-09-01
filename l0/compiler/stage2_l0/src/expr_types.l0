@@ -1183,11 +1183,10 @@ func etc_diag_type_ref_failure(self: ExpressionTypeChecker*, tref: TypeRef*, fal
  */
 func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type*? {
     if (expr.module_path == null) {
-        if (expr.text_value == "int") return type_builtin_int();
-        if (expr.text_value == "byte") return type_builtin_byte();
-        if (expr.text_value == "bool") return type_builtin_bool();
-        if (expr.text_value == "string") return type_builtin_string();
-        if (expr.text_value == "void") return type_builtin_void();
+        let builtin = type_builtin_from_name(expr.text_value);
+        if (builtin != null) {
+            return builtin;
+        }
 
         if (nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, expr.text_value)) {
             etc_diag_error(self, "TYP-0303",

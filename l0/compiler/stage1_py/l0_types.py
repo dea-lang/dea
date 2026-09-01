@@ -16,6 +16,12 @@ from typing import Tuple, Dict, Optional
 
 L0_PRIMITIVE_TYPES = ("bool", "byte", "int", "string", "void")
 
+
+def is_builtin_type_name(name: str) -> bool:
+    """Return whether ``name`` is in the canonical L0 primitive inventory."""
+    return name in L0_PRIMITIVE_TYPES
+
+
 class Type:
     """Base class for all semantic types.
 
@@ -111,7 +117,12 @@ def get_builtin_type(name: str) -> BuiltinType:
 
     Returns:
         The cached or new BuiltinType instance.
+
+    Raises:
+        ValueError: If ``name`` is not in the canonical primitive inventory.
     """
+    if not is_builtin_type_name(name):
+        raise ValueError(f"unknown L0 builtin type: {name}")
     if name not in _BUILTIN_CACHE:
         _BUILTIN_CACHE[name] = BuiltinType(name)
     return _BUILTIN_CACHE[name]

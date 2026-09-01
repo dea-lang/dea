@@ -1,6 +1,6 @@
 # L0 Compiler Architecture
 
-Version: 2026-07-29
+Version: 2026-09-01
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
@@ -110,6 +110,8 @@ filesystem primitives without extending the runtime or standard library.
 ### 2.1 Lexer (`l0_lexer.py`)
 
 - Converts UTF-8 source text to `Token` list.
+- Uses `l0_types.py`'s `L0_PRIMITIVE_TYPES` as the shared Stage 1 authority for builtin token reservation, parser type
+  lookahead, and semantic type construction. Native Stage 2 mirrors that authority in `builtin_types.l0`.
 - Tracks `line`/`column`; columns count Unicode code points.
 - Handles keywords, literals, operators, punctuation, and comment skipping.
 - Wraps recoverable lexer diagnostics in `LEXER_ERROR` tokens with optional logical recovery tokens. Invalid-character

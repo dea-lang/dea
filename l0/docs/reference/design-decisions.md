@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-08-29
+Version: 2026-09-01
 
 This document records rationale and policy decisions.
 
@@ -91,6 +91,9 @@ Key properties:
   use-after-drop is reported with allocation and release locations while the record is quarantined. Heap string blocks
   are untracked and freed immediately on final ARC release: a dangling `rt_string_bytes_ptr` pointer is reported as
   unregistered only until the address range is reused by a later allocation.
+- AddressSanitizer builds poison quarantined user payloads until eviction. Generated checked accesses can still consult
+  tracker metadata, while a direct stale C access remains sanitizer-visible; eviction unpoisons the range before
+  returning it to the C allocator.
 - Each generated checked access site keeps one static call-site cache; repeated access from the same site validates with
   a generation compare and a range check. Tracker lookups are O(1) amortized for allocation bases and O(log n) for
   interior pointers.
@@ -277,3 +280,18 @@ Rationale:
   to evolve dedup and arena strategies.
 - `rt_string_concat` centralizes allocation and copy behavior, so operator lowering and library helper composition share
   the same ARC ownership contract by construction.
+
+## 12. Runtime Hash Value Policy
+
+Runtime hashes represent semantic values rather than incidental C object representations. Equal semantic values must
+produce equal hashes; type tags and optional-state tags deliberately participate in the hash input domain. In
+particular, an ordinary `string`, a present `string?`, and an absent `string?` occupy distinct input domains. An absent
+optional string therefore does not feed SipHash the same tagged byte sequence as a present empty string.
+
+The result remains a 32-bit hash, so distinct values and domains may still collide. Exact numeric hashes are not stable
+identifiers and must not be persisted or used as compatibility fingerprints. Hash values and accidental collisions are
+not API guarantees across runtime versions, implementations, keys, or process executions. This policy does not change
+language equality or the separate compiler and object-metadata fingerprint paths.
+
+The shared contract is recorded in
+[ADR-0021](../../../docs/decisions/0021-runtime-hash-semantic-domains-and-stability.md).

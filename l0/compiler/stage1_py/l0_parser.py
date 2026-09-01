@@ -19,6 +19,7 @@ from l0_ast import (
     WithItem, WithStmt)
 from l0_diagnostics import Diagnostic
 from l0_lexer import TokenKind, Token, Lexer, is_reserved_keyword
+from l0_types import is_builtin_type_name
 
 
 # ==========================
@@ -1075,7 +1076,7 @@ class Parser:
         """Check if current token is a builtin type keyword."""
         if not self._check(TokenKind.IDENT):
             return False
-        return self._peek().text in ("int", "byte", "bool", "string", "void")
+        return is_builtin_type_name(self._peek().text)
 
     def _lookahead_is_type_suffix(self) -> bool:
         """Check if there's a '*' or '?' immediately after the current token."""

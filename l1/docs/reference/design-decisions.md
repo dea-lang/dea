@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-08-30
+Version: 2026-09-01
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -184,6 +184,10 @@ checks, double-drop and untracked-drop diagnostics, exact-base ARC/static string
 checks for hash-miss accesses while compiling out the interior-pointer treap. In `--unchecked` builds, pointer-access
 validations compile out and raw pointer indexing lowers to direct C pointer arithmetic and dereference; the
 `unsafe func` author is then solely responsible for the range/provenance proof.
+
+AddressSanitizer builds poison quarantined user payloads until eviction. Generated checked accesses retain the tracker
+metadata needed for Dea diagnostics, while direct stale C accesses remain sanitizer-visible; eviction unpoisons the
+range before returning it to the C allocator.
 
 The L1 runtime archives and tcc object variants use content-sensitive configuration stamps. Compiler selection, runtime
 flags, mode defines, and baked quarantine settings therefore trigger the necessary rebuilds, while repeating an
@@ -667,3 +671,18 @@ Equality on `bool` remains accepted, unchanged:
 Rationale:
 
 - The Dea policy prefers a compile-time rejection over a defined-but-misleading ordering
+
+## 19. Runtime Hash Value Policy
+
+Runtime hashes represent semantic values rather than incidental C object representations. Equal semantic values must
+produce equal hashes; type tags and optional-state tags deliberately participate in the hash input domain. In
+particular, an ordinary `string`, a present `string?`, and an absent `string?` occupy distinct input domains. An absent
+optional string therefore does not feed SipHash the same tagged byte sequence as a present empty string.
+
+The result remains a 32-bit hash, so distinct values and domains may still collide. Exact numeric hashes are not stable
+identifiers and must not be persisted or used as compatibility fingerprints. Hash values and accidental collisions are
+not API guarantees across runtime versions, implementations, keys, or process executions. This policy does not change
+language equality, L1 interface fingerprints, or object-metadata fingerprints.
+
+The shared contract is recorded in
+[ADR-0021](../../../docs/decisions/0021-runtime-hash-semantic-domains-and-stability.md).

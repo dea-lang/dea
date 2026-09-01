@@ -22,3 +22,4 @@
 | [0018](0018-shared-editor-tooling-level-identities-and-compiler-authority.md)     | Shared Editor Tooling, Level Identities, and Compiler Authority     | Accepted |
 | [0019](0019-shared-standard-library-naming-and-compatibility-policy.md)           | Shared Standard-Library Naming and Compatibility Policy             | Accepted |
 | [0020](0020-native-compiler-private-temporary-workspaces.md)                      | Native Compiler Private Temporary Workspaces                        | Accepted |
+| [0021](0021-runtime-hash-semantic-domains-and-stability.md)                       | Runtime Hash Semantic Domains and Stability                         | Accepted |

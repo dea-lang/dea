@@ -11,6 +11,7 @@ import std.text;
 import std.vector;
 
 import ast;
+import builtin_types;
 
 /**
  * Defines the TypeKind enumeration.
@@ -258,7 +259,20 @@ func type_is_builtin(self: Type*, name: string) -> bool {
  * @return `true` if `name` names a builtin type.
  */
 func type_is_builtin_name(name: string) -> bool {
-    return name == "bool" || name == "byte" || name == "int" || name == "string" || name == "void";
+    return builtin_type_name_is_known(name);
+}
+
+/**
+ * Create a builtin type descriptor from the shared builtin-name inventory.
+ *
+ * @param name Candidate builtin type name.
+ * @return New builtin type, or `null` when `name` is not builtin.
+ */
+func type_builtin_from_name(name: string) -> Type*? {
+    if (!builtin_type_name_is_known(name)) {
+        return null;
+    }
+    return type_new_builtin(name);
 }
 
 /**

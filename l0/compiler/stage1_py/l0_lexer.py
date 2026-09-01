@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List, Optional
 from l0_diagnostics import Diagnostic
+from l0_types import L0_PRIMITIVE_TYPES
 
 
 # ==========================
@@ -196,11 +197,6 @@ KEYWORDS = {
     "drop": TokenKind.DROP,
     "with": TokenKind.WITH,
     "cleanup": TokenKind.CLEANUP,
-    "void": TokenKind.IDENT,
-    "bool": TokenKind.IDENT,
-    "string": TokenKind.IDENT,
-    "int": TokenKind.IDENT,
-    "byte": TokenKind.IDENT,
     "tiny": TokenKind.FUTURE_EXTENSION,
     "short": TokenKind.FUTURE_EXTENSION,
     "long": TokenKind.FUTURE_EXTENSION,
@@ -213,6 +209,7 @@ KEYWORDS = {
     "in": TokenKind.FUTURE_EXTENSION,
     "const": TokenKind.FUTURE_EXTENSION,
 }
+KEYWORDS.update({name: TokenKind.IDENT for name in L0_PRIMITIVE_TYPES})
 
 
 def _is_ascii_ident_start(c: str) -> bool:

@@ -346,6 +346,41 @@ func test_emitter_expression_and_statement_helpers() {
     cem_free(emitter);
 }
 
+/** Tests exact runtime ABI arguments emitted by pointer and ownership helpers. */
+func test_emitter_runtime_call_contracts() {
+    let emitter = cem_create();
+    let direct = cem_emit_checked_ptr_access(
+        emitter, "ptr", "l0_int*", "sizeof(l0_int)", "_RT_ALIGNOF(l0_int)",
+        "_RT_ACCESS_READ");
+    let indexed = cem_emit_checked_ptr_index_access(
+        emitter, "base", "index", "l0_byte*", "sizeof(l0_byte)",
+        "_RT_ALIGNOF(l0_byte)", "_RT_ACCESS_WRITE");
+    let drop_begin = cem_emit_drop_begin_expr(
+        "owned", "struct l0_demo_Box*", "sizeof(struct l0_demo_Box)",
+        "_RT_ALIGNOF(struct l0_demo_Box)");
+    cem_emit_drop_finish_call(emitter, "checked_owned");
+    cem_emit_alloc_obj(emitter, "struct l0_demo_Box*", "struct l0_demo_Box", "allocated");
+
+    assert(direct ==
+        "((l0_int*)_rt_check_ptr_site(&l0_site_1, (void*)(ptr), (l0_int)(sizeof(l0_int)), (l0_int)(_RT_ALIGNOF(l0_int)), _RT_ACCESS_READ, __FILE__, __LINE__))",
+        "direct pointer runtime-call contract mismatch");
+    assert(indexed ==
+        "((l0_byte*)_rt_check_index_ptr_site(&l0_site_2, (void*)(base), (l0_int)(index), (l0_int)(sizeof(l0_byte)), (l0_int)(_RT_ALIGNOF(l0_byte)), _RT_ACCESS_WRITE, __FILE__, __LINE__))",
+        "indexed pointer runtime-call contract mismatch");
+    assert(drop_begin ==
+        "((struct l0_demo_Box*)_rt_drop_begin_impl((void*)(owned), (l0_int)(sizeof(struct l0_demo_Box)), (l0_int)(_RT_ALIGNOF(struct l0_demo_Box)), __FILE__, __LINE__))",
+        "drop begin runtime-call contract mismatch");
+
+    let text = cem_get_output(emitter);
+    assert(contains_s(text,
+        "_rt_drop_finish_impl((void*)(checked_owned), __FILE__, __LINE__);"),
+        "drop finish runtime-call contract mismatch");
+    assert(contains_s(text,
+        "struct l0_demo_Box* allocated = (struct l0_demo_Box*)_rt_alloc_obj((l0_int)sizeof(struct l0_demo_Box));"),
+        "new allocation runtime-call contract mismatch");
+    cem_free(emitter);
+}
+
 /**
  * Tests test_emitter_cleanup_and_switch_helpers.
  */
@@ -637,6 +672,7 @@ func main() {
     test_emitter_line_directives_escape_trigraphs();
     test_emitter_string_literals_use_l0_string_const();
     test_emitter_expression_and_statement_helpers();
+    test_emitter_runtime_call_contracts();
     test_emitter_cleanup_and_switch_helpers();
     test_emitter_forward_decls_follow_loaded_module_order();
     test_emitter_optional_wrappers_emit_early_then_late();

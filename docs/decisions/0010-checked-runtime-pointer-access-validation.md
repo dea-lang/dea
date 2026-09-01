@@ -1,7 +1,7 @@
 # ADR-0010: Checked Runtime Pointer Access Validation
 
 - Decision date: 2026-07-03
-- Last edited: 2026-07-16
+- Last edited: 2026-09-01
 - Status: Accepted
 
 ## Context
@@ -91,6 +91,8 @@ distinct full, basic, unchecked, and traced runtime archives independently.
 - Diagnostics for invalid pointer access are runtime diagnostics, not compiler diagnostic-code entries.
 - Temporal detection is bounded by quarantine retention and allocation-record tracking; unchecked builds make no
   temporal validation guarantee.
+- AddressSanitizer builds poison quarantined user payloads until eviction, preserving sanitizer visibility for direct
+  stale C accesses without making tracker metadata inaccessible. Eviction unpoisons each range before allocator release.
 - Basic checked builds preserve temporal diagnostics for exact base pointers while treating hash-miss interior pointers
   as untracked alignment-checked storage.
 - Level runtimes may keep different implementation layouts and symbol surfaces, but the default semantics remain shared.
@@ -140,6 +142,7 @@ distinct full, basic, unchecked, and traced runtime archives independently.
 - [work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md](../../work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md)
 - [work/plans/bug-fixes/closed/2026-07-13-shared-checked-runtime-contraction-alignof-noref.md](../../work/plans/bug-fixes/closed/2026-07-13-shared-checked-runtime-contraction-alignof-noref.md)
 - [work/plans/features/closed/2026-07-16-shared-compiler-runtime-check-basic-default-noref.md](../../work/plans/features/closed/2026-07-16-shared-compiler-runtime-check-basic-default-noref.md)
+- [work/plans/bug-fixes/closed/2026-09-01-shared-builtin-and-runtime-contract-observability-noref.md](../../work/plans/bug-fixes/closed/2026-09-01-shared-builtin-and-runtime-contract-observability-noref.md)
 
 ## Current Docs
 

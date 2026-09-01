@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module builtin_types;
+
+/**
+ * Check whether a name belongs to the L0 builtin type inventory.
+ *
+ * This predicate is the compiler-wide authority used by token reservation,
+ * parser type lookahead, and semantic type recognition.
+ *
+ * @param name Type name to inspect.
+ * @return `true` if `name` names an L0 builtin type.
+ */
+func builtin_type_name_is_known(name: string) -> bool {
+    return name == "bool" || name == "byte" || name == "int" ||
+           name == "string" || name == "void";
+}

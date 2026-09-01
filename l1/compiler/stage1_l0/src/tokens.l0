@@ -13,6 +13,7 @@ import std.text;
 import std.vector;
 import std.linear_map;
 
+import builtin_types;
 import util.numbers;
 
 /**
@@ -312,12 +313,7 @@ func token_logical_predecessor_ends_expression(token: Token, previous: bool) -> 
  * @return `true` if `word` is reserved and cannot be used as a plain identifier.
  */
 func is_reserved_ident_word(word: string) -> bool {
-    return word == "void" || word == "bool" || word == "string" ||
-           word == "tiny" || word == "short" || word == "int" ||
-           word == "byte" || word == "ushort" || word == "uint" ||
-           word == "byte" || word == "ushort" || word == "uint" ||
-           word == "long" || word == "ulong" ||
-           word == "float" || word == "double";
+    return builtin_type_name_is_known(word);
 }
 
 /**

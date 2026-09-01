@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-08-30
+Version: 2026-09-01
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -226,6 +226,8 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.1 Lexer (`lexer.l0`, `tokens.l0`)
 
 - Converts UTF-8 source text to token streams.
+- Uses `builtin_types.l0` as the compiler-wide authority for builtin token reservation, parser type lookahead, and
+  semantic type construction.
 - Tracks source locations for diagnostics; columns count Unicode code points.
 - Recognizes keywords, literals, punctuation, and operators.
 - Keeps string source-body spelling separate from the decoded token value. Scalar `\x`, `\u`, and `\U` escapes

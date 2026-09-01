@@ -12,6 +12,7 @@ import std.vector;
 
 import tokens;
 import ast;
+import builtin_types;
 import parser.shared;
 
 /* ---------------------------------
@@ -28,13 +29,7 @@ func ps_is_builtin_type_name(self: ParserState*) -> bool {
     if (!ps_check_ident(self)) {
         return false;
     }
-    let t = token_ident_text(ps_peek(self)) as string;
-    return t == "tiny" || t == "short" || t == "int" ||
-           t == "byte" || t == "ushort" || t == "uint" ||
-           t == "byte" || t == "ushort" || t == "uint" ||
-           t == "long" || t == "ulong" || t == "float" ||
-           t == "double" || t == "bool" ||
-           t == "string" || t == "void";
+    return builtin_type_name_is_known(token_ident_text(ps_peek(self)) as string);
 }
 
 /**

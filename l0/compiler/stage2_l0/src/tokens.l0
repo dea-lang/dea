@@ -14,6 +14,8 @@ import std.text;
 import std.vector;
 import std.linear_map;
 
+import builtin_types;
+
 /**
  * Non-recursive logical token payload used by lexer-error wrappers.
  */
@@ -287,8 +289,7 @@ func token_logical_predecessor_ends_expression(token: Token, previous: bool) -> 
  * @return `true` if `word` is reserved and cannot be used as a plain identifier.
  */
 func is_reserved_ident_word(word: string) -> bool {
-    return word == "void" || word == "bool" || word == "string" ||
-           word == "int" || word == "byte";
+    return builtin_type_name_is_known(word);
 }
 
 /**

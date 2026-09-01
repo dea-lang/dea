@@ -2061,41 +2061,12 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, driver_s
     }
 
     let base: Type*? = null;
-    if (tref.module_path == null && type_is_builtin_name(tref.name)) {
-        if (tref.name == "bool") {
-            base = type_builtin_bool();
-        } else if (tref.name == "tiny") {
-            base = type_builtin_tiny();
-        } else if (tref.name == "byte") {
-            base = type_builtin_byte();
-        } else if (tref.name == "short") {
-            base = type_builtin_short();
-        } else if (tref.name == "int") {
-            base = type_builtin_int();
-        } else if (tref.name == "ushort") {
-            base = type_builtin_ushort();
-        } else if (tref.name == "uint") {
-            base = type_builtin_uint();
-        } else if (tref.name == "long") {
-            base = type_builtin_long();
-        } else if (tref.name == "ulong") {
-            base = type_builtin_ulong();
-        } else if (tref.name == "float") {
-            base = type_builtin_float();
-        } else if (tref.name == "double") {
-            base = type_builtin_double();
-        } else if (tref.name == "uint") {
-            base = type_builtin_uint();
-        } else if (tref.name == "long") {
-            base = type_builtin_long();
-        } else if (tref.name == "ulong") {
-            base = type_builtin_ulong();
-        } else if (tref.name == "string") {
-            base = type_builtin_string();
-        } else {
-            base = type_builtin_void();
+    if (tref.module_path == null) {
+        base = type_builtin_from_name(tref.name);
+        if (base != null) {
+            return tr_apply_suffix(tables, nr, driver_state, env, base as Type*, tref, diags,
+                env.module_ptr.filename);
         }
-        return tr_apply_suffix(tables, nr, driver_state, env, base as Type*, tref, diags, env.module_ptr.filename);
     }
 
     if (tref.module_path == null && nr_module_env_is_ambiguous(env, tref.name)) {
