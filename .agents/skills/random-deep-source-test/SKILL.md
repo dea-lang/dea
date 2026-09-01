@@ -77,6 +77,13 @@ unverified, and state that causal link in the rationale.
 After reviewing every seed and one-hop body, list all scores below `100` in ascending order. Include the function
 identity, score, and concise reason.
 
+Keep the review and scoring focused on correctness. During the same white-box inspection, record an evidence-backed
+secondary observation only when it indicates a possible performance issue, vulnerability, serious readability or
+maintainability issue, or another non-correctness risk that merits focused investigation. Do not expand the bounded call
+graph or launch a separate audit solely to search for these issues. Do not lower a correctness score for a secondary
+observation unless it also creates a correctness concern. If it does, report it in both relevant findings tables and
+explain the correctness impact. Exclude routine style preferences, unsupported speculation, and minor nits.
+
 ## Write and run temporary probes
 
 1. Write and run one or more focused falsification probes for every sub-100 function. One probe may cover multiple
@@ -118,5 +125,17 @@ Report all of the following:
 - existing tests used as evidence; and
 - unresolved edges, unsupported harnesses, and other limits on the conclusion.
 
-Keep the worktree unchanged except for normal ignored build/cache artifacts. A review request does not authorize a
-tracked test, a code change, a commit, or any remote action.
+As the final step, end the response with these two separate tables:
+
+1. A correctness-defects table containing every confirmed or candidate correctness defect found anywhere in the review.
+   Include status (`confirmed` or `candidate`), affected function and location, defect, evidence and impact, and
+   possible remediation. Do not treat an evidence gap by itself as a defect. If no correctness defect was found, include
+   a single `None found` row.
+2. A further-investigation table containing every material secondary observation recorded during white-box inspection.
+   Include category, affected function and location, observation and evidence, why it merits investigation, and a
+   suggested next investigation. Keep this table separate from correctness defects. If no such observation was found,
+   include a single `None found` row.
+
+Possible remediation and investigation steps are report content only. Do not write bug-fix plans, issues, or any other
+documents unless the user explicitly asks for them. Keep the worktree unchanged except for normal ignored build/cache
+artifacts. A review request does not authorize a tracked test, a code change, a commit, or any remote action.
