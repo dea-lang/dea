@@ -33,11 +33,15 @@ does not belong in stable `docs/`; they remain in the category attachment direct
 links updated to the plan's new location. Do not commit raw benchmark samples, build logs, or binaries when a curated
 report is sufficient.
 
+Determine language-level ownership before counting compiler stages. If every target belongs to one language level, put
+the plan in that level's `work/` tree even when it coordinates multiple compiler stages or implementations. Single-level
+ownership takes precedence over cross-stage or seeded-port coordination.
+
 Use a root shared plan by default when any of these are true:
 
-- the same fix or refactor spans multiple levels or compiler stages
-- one implementation was seeded from another and the change should transfer
-- the design decision is shared even if code lands in more than one subtree
+- the same fix or refactor spans multiple language levels
+- an implementation in one language level was seeded from another level and the change should transfer between them
+- the design decision is shared across language levels even if code lands in more than one subtree
 
 Shared plans stay open until every in-scope target is implemented or explicitly deferred.
 

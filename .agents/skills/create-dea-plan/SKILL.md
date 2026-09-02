@@ -42,8 +42,9 @@ That means:
 1. **Stable current-state or normative content** belongs in `docs/`, not `work/`.
 2. **One bounded change or work item** belongs in a plan.
 3. **A coordinated multi-phase body of work whose phases will spawn future plans** belongs in an initiative instead.
-4. **Shared parity, seeded-port, or monorepo-wide work** should usually use one root-owned shared plan under `work/`,
-   not separate follow-up plans in multiple level subtrees.
+4. **Work spanning multiple language levels, or monorepo-wide work**, should usually use one root-owned shared plan
+   under `work/`, not separate follow-up plans in multiple level subtrees. Work confined to one language level remains
+   level-local even when it spans multiple compiler stages or implementations.
 
 Never place a lifecycle plan under `docs/`. Plans belong under the matching `work/` tree unless an explicit rule says
 otherwise.
@@ -52,11 +53,15 @@ otherwise.
 
 ### Root shared plans
 
+Determine language-level ownership before counting compiler stages. If every target belongs to one language level, use
+that level's `work/` tree even when the work spans multiple compiler stages or implementations. This single-level rule
+takes precedence over the cross-stage and seeded-port indicators below.
+
 Use the repository-root `work/` tree when any of these are true:
 
-- the same fix or refactor spans multiple levels or compiler stages
-- one implementation was seeded from another and the change should transfer
-- the design decision is shared even if code lands in more than one subtree
+- the same fix or refactor spans multiple language levels
+- an implementation in one language level was seeded from another level and the change should transfer between them
+- the design decision is shared across language levels even if code lands in more than one subtree
 - the work is monorepo-wide rather than owned by a single level
 
 Create the file under:
@@ -68,7 +73,9 @@ Create the file under:
 
 ### Level-local plans
 
-Use `<level>/work/plans/<kind>/` when the work is owned only by that subtree, for example:
+Use `<level>/work/plans/<kind>/` when the work is owned by one language-level subtree, including work that coordinates
+multiple compiler stages or implementations within that level. Single-level ownership takes precedence over the fact
+that the plan is cross-stage, parity-oriented, or a seeded port. For example:
 
 - `l0/work/plans/<kind>/`
 - `l1/work/plans/<kind>/`
