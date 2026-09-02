@@ -1,5 +1,7 @@
 _rt_alloc_obj
 _rt_alloc_string
+_rt_byte_span_offset
+_rt_byte_spans_overlap
 _rt_cast_dea_byte_from_signed
 _rt_cast_dea_byte_from_unsigned
 _rt_cast_dea_int_from_signed

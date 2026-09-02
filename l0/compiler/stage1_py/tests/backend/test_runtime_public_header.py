@@ -86,6 +86,15 @@ PUBLIC_RUNTIME_SIGNATURES = (
     ("dea_int", "rt_hash_opt_ptr", "void *", True),
 )
 
+PRIVATE_STDLIB_RUNTIME_SIGNATURES = (
+    ("dea_int", "_rt_byte_span_offset", "void *, dea_int, void *"),
+    (
+        "dea_bool",
+        "_rt_byte_spans_overlap",
+        "void *, dea_int, void *, dea_int",
+    ),
+)
+
 
 def _typed_symbol_references(*, portable_only: bool) -> str:
     """Return C definitions that type-check and retain every selected symbol."""
@@ -98,6 +107,15 @@ def _typed_symbol_references(*, portable_only: bool) -> str:
             f"{return_type} (*volatile dea_test_{name})({parameters}) = {name};"
         )
     return "\n".join(lines)
+
+
+def _typed_private_stdlib_symbol_references() -> str:
+    """Return C definitions that type-check private stdlib runtime helpers."""
+
+    return "\n".join(
+        f"{return_type} (*volatile dea_test_private_{name})({parameters}) = {name};"
+        for return_type, name, parameters in PRIVATE_STDLIB_RUNTIME_SIGNATURES
+    )
 
 
 def _compile_c(
@@ -281,6 +299,38 @@ def test_public_runtime_declarations_cover_l0_extern_functions(runtime_dir: Path
     expected_names = {name for _, name, _, _ in PUBLIC_RUNTIME_SIGNATURES}
 
     assert declaration_names == extern_names == expected_names
+
+
+def test_private_stdlib_runtime_declarations_match_l0_and_l1_headers(
+    temp_project: Path,
+    runtime_dir: Path,
+) -> None:
+    """Keep private stdlib helper signatures aligned without making them public API."""
+
+    l0_root = Path(__file__).resolve().parents[4]
+    include_dirs = {
+        "l0": runtime_dir,
+        "l1": l0_root.parent / "l1" / "compiler" / "shared" / "runtime" / "include",
+    }
+    declarations = temp_project / "private_stdlib_symbols.c"
+    declarations.write_text(
+        '#include "dea_rt.h"\n\n'
+        + _typed_private_stdlib_symbol_references()
+        + "\n",
+        encoding="utf-8",
+    )
+    for label, include_dir in include_dirs.items():
+        compiled = _compile_c(
+            declarations,
+            temp_project / f"private_stdlib_symbols_{label}.o",
+            include_dir,
+            link=False,
+        )
+        assert compiled.returncode == 0, compiled.stderr
+
+    public_names = {name for _, name, _, _ in PUBLIC_RUNTIME_SIGNATURES}
+    assert "_rt_byte_span_offset" not in public_names
+    assert "_rt_byte_spans_overlap" not in public_names
 
 
 def test_l1_compatible_subset_compiles_and_has_matching_layout(

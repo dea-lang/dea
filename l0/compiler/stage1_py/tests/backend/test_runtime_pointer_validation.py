@@ -44,6 +44,32 @@ def _run_l0_unchecked(
     return compile_and_run(c_code + "\n" + c_suffix, tmp_path)
 
 
+def _run_l0_runtime_mode(
+    analyze_single,
+    compile_and_run,
+    tmp_path,
+    src: str,
+    mode: str,
+):
+    """Compile and run one source under a selected runtime mode."""
+
+    result = analyze_single("main", src)
+    assert not result.has_errors(), result.diagnostics
+    if mode == "check-basic":
+        result.context.rt_check_basic = True
+    elif mode == "unchecked":
+        result.context.rt_unchecked = True
+    elif mode == "traced":
+        result.context.trace_memory = True
+    elif mode != "checked":
+        raise AssertionError(f"unknown runtime mode: {mode}")
+
+    from l0_backend import Backend
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    return compile_and_run(Backend(result).generate(), tmp_path)
+
+
 def _assert_runtime_failure(stderr: str, needle: str) -> None:
     assert "Software Failure:" in stderr
     assert needle in stderr
@@ -53,6 +79,90 @@ def _assert_accessed_at_line(stderr: str, expected_line: int) -> None:
     accessed_lines = [line for line in stderr.splitlines() if "accessed at:" in line]
     assert accessed_lines, stderr
     assert accessed_lines[-1].rstrip().endswith(f":{expected_line}"), stderr
+
+
+def test_byte_span_offset_contract_matches_all_runtime_modes(
+    analyze_single, compile_and_run, tmp_path
+):
+    source = """
+        module main;
+        import sys.memory;
+
+        func main() -> int {
+            let base: void* = rt_alloc(9) as void*;
+            let other: void* = rt_alloc(1) as void*;
+            let interior = rt_array_element(base, 1, 3);
+            let exact_end = rt_array_element(base, 1, 8);
+
+            if (_rt_byte_span_offset(base, 8, base) != 0) {
+                return 1;
+            }
+            if (_rt_byte_span_offset(base, 8, interior) != 3) {
+                return 2;
+            }
+            if (_rt_byte_span_offset(base, 8, exact_end) != -1) {
+                return 3;
+            }
+            if (_rt_byte_span_offset(base, 8, other) != -1) {
+                return 4;
+            }
+            if (_rt_byte_span_offset(null, 8, base) != -1) {
+                return 5;
+            }
+            if (_rt_byte_span_offset(base, 8, null) != -1) {
+                return 6;
+            }
+            if (_rt_byte_span_offset(base, 0, base) != -1) {
+                return 7;
+            }
+            if (_rt_byte_span_offset(base, -1, base) != -1) {
+                return 8;
+            }
+            if (!_rt_byte_spans_overlap(base, 8, base, 1)) {
+                return 9;
+            }
+            if (!_rt_byte_spans_overlap(base, 8, interior, 2)) {
+                return 10;
+            }
+            if (!_rt_byte_spans_overlap(interior, 2, base, 4)) {
+                return 11;
+            }
+            if (_rt_byte_spans_overlap(interior, 2, base, 3)) {
+                return 12;
+            }
+            if (_rt_byte_spans_overlap(base, 3, interior, 2)) {
+                return 13;
+            }
+            if (_rt_byte_spans_overlap(base, 8, other, 1)) {
+                return 14;
+            }
+            if (_rt_byte_spans_overlap(null, 8, base, 1)) {
+                return 15;
+            }
+            if (_rt_byte_spans_overlap(base, 8, null, 1)) {
+                return 16;
+            }
+            if (_rt_byte_spans_overlap(base, 0, base, 1)) {
+                return 17;
+            }
+            if (_rt_byte_spans_overlap(base, 8, base, -1)) {
+                return 18;
+            }
+
+            rt_free(other);
+            rt_free(base);
+            return 0;
+        }
+    """
+    for mode in ("checked", "check-basic", "traced", "unchecked"):
+        success, _stdout, stderr = _run_l0_runtime_mode(
+            analyze_single,
+            compile_and_run,
+            tmp_path / mode,
+            source,
+            mode,
+        )
+        assert success, f"{mode}: {stderr}"
 
 
 def test_callee_drop_then_field_access_reports_runtime_error(codegen_single, compile_and_run, tmp_path):

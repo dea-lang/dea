@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-09-01
+Version: 2026-09-02
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -105,12 +105,17 @@ succeeds only when both the write and stream close succeed.
 | `vec_capacity`               | `func(self: VectorBase*) -> int`                                | Returns current capacity.                       |
 | `vec_clear`                  | `func(self: VectorBase*) -> void`                               | Clears vector and resets backing capacity to 1. |
 | `vec_free`                   | `func(self: VectorBase*) -> void`                               | Frees vector storage.                           |
+| `vec_push_bytes`             | `func(self: VectorBase*, src: byte*, count: int) -> void`       | Bulk-appends bytes, including logical aliases.  |
 | `vec_push_int/byte/bool/ptr` | typed push helpers                                              | Push typed scalar/pointer values.               |
 | `vi_sort`                    | `func(self: VectorBase*) -> void`                               | Insertion sort for `int` vectors (ascending).   |
 | `StringVector`               | `type StringVector = VectorBase`                                | String-specialized vector alias.                |
 | `sv_*`                       | `sv_create/push/get/size/capacity/sort/clear/free`              | String vector API with ARC-aware clear/free.    |
 
 `vec_get` and the typed/string get helpers validate against logical length, never merely reserved capacity.
+`vec_push_bytes` accepts a source range wholly within the vector's current logical bytes, including base and interior
+aliases when growth moves the backing allocation. A backing-derived range that includes reserved but non-logical bytes
+is rejected before reserve, copy, or length mutation. A positive source range that starts below but crosses into the
+backing storage is also rejected defensively. Non-positive counts remain no-ops.
 
 ### `std.hashmap`
 

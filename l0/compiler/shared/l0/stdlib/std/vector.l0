@@ -190,7 +190,11 @@ func vec_push_byte(self: VectorBase*, val: byte) {
 
 /**
  * Bulk-push `count` bytes from `src` into a byte-element vector.
- * Reserves capacity in one step and copies with `rt_memcpy`.
+ * Reserves capacity in one step and copies with `rt_memcpy`. A source range
+ * wholly within the vector's current logical bytes may alias its backing
+ * storage, including when reserve moves that storage. Backing-derived ranges
+ * that include non-logical capacity are rejected, as are ranges that start
+ * below the backing storage but overlap it.
  *
  * @param self The pointer to the VectorBase (must have element_size == 1).
  * @param src Pointer to the source bytes.
@@ -201,10 +205,35 @@ func vec_push_bytes(self: VectorBase*, src: byte*, count: int) {
     if (count <= 0) {
         return;
     }
-    let needed = self.length + count;
+
+    let old_length = self.length;
+    let backing_bytes = self.arr.capacity;
+    if (backing_bytes == 0) {
+        /* `arr_create` retains one physical byte for zero logical capacity. */
+        backing_bytes = 1;
+    }
+    let source_offset = _rt_byte_span_offset(self.arr.data, backing_bytes, src as void*?);
+    if (source_offset >= 0) {
+        assert(
+            source_offset < old_length && count <= old_length - source_offset,
+            "Source range out of bounds in vec_push_bytes"
+        );
+    } else {
+        assert(
+            !_rt_byte_spans_overlap(self.arr.data, backing_bytes, src as void*?, count),
+            "Source range overlaps backing storage in vec_push_bytes"
+        );
+    }
+
+    let needed = old_length + count;
     vec_reserve(self, needed);
-    let dest = rt_array_element(self.arr.data, 1, self.length);
-    rt_memcpy(dest, src as void*, count);
+
+    let copy_src = src as void*;
+    if (source_offset >= 0) {
+        copy_src = rt_array_element(self.arr.data, 1, source_offset);
+    }
+    let dest = rt_array_element(self.arr.data, 1, old_length);
+    rt_memcpy(dest, copy_src, count);
     self.length = needed;
 }
 

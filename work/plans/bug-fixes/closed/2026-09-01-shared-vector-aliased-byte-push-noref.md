@@ -2,8 +2,8 @@
 
 ## Make bulk byte-vector pushes safe for backing-store aliases
 
-- Date: 2026-09-01
-- Status: Draft
+- Date: 2026-09-02
+- Status: Completed
 - Title: Make shared L0 and L1 bulk byte-vector pushes safe for backing-store aliases
 - Kind: Bug Fix
 - Scope: Shared
@@ -17,8 +17,8 @@
 - Porting rule: Settle the alias-offset and logical-source-range contract against the confirmed L1 failure, then port
   the runtime helper, vector change, and regression shape mechanically to L0.
 - Target status:
-  - L0 shared standard library and header runtime: Pending
-  - L1 shared standard library and archive runtime: Pending
+  - L0 shared standard library and header runtime: Completed
+  - L1 shared standard library and archive runtime: Completed
 - Subsystem: Standard-library vectors / raw-memory runtime / allocation lifetime
 - Modules:
   - `l0/compiler/shared/l0/stdlib/std/vector.l0`
@@ -120,19 +120,22 @@ Observed evidence:
    vector's current logical bytes `[0, length)`.
 3. When `src` starts in the backing allocation but the requested range reaches outside the current logical bytes, the
    operation fails its runtime contract before reserve, copy, or length mutation.
-4. `count <= 0` remains a no-op and does not inspect or classify `src`.
-5. A successful append preserves source-byte order and updates `length` only after the copy completes.
-6. Non-aliasing inputs retain the existing single reserve decision and single bulk copy. The fix must not copy every
+4. When a positive source range starts below the backing allocation but crosses into its physical span, the operation
+   rejects that unsupported overlap before reserve, copy, or length mutation.
+5. `count <= 0` remains a no-op and does not inspect or classify `src`.
+6. A successful append preserves source-byte order and updates `length` only after the copy completes.
+7. Non-aliasing inputs retain the existing single reserve decision and single bulk copy. The fix must not copy every
    input through temporary storage.
-7. Under the supported self-alias contract, the source range ends at or before the old logical length and the append
+8. Under the supported self-alias contract, the source range ends at or before the old logical length and the append
    destination begins at that length. The rebased ranges therefore do not overlap, so `rt_memcpy` remains valid and a
    new public `rt_memmove` operation is unnecessary.
 
 ## Scope of This Fix
 
-1. Add one implementation-private shared runtime operation that classifies a candidate pointer against a byte span and
-   returns its byte offset without dereferencing the candidate.
-2. Use the operation before reserve to distinguish an unrelated source from a source derived from the vector backing.
+1. Add implementation-private shared runtime operations that classify a candidate pointer against a byte span and test
+   two byte spans for overlap without dereferencing either pointer or computing potentially wrapping end addresses.
+2. Use the operations before reserve to distinguish an unrelated source from a source derived from or crossing into the
+   vector backing.
 3. Validate a backing-derived source against the old logical length, retain its offset, and reconstruct it from the
    post-reserve base.
 4. Apply the same runtime and standard-library behavior to L0 and L1.
@@ -150,21 +153,23 @@ Observed evidence:
 3. Retain an unrelated source allocation as a control so alias handling cannot perturb ordinary bulk appends.
 4. Add a contract-failure case for a source that begins in the backing allocation but extends beyond the current logical
    length; verify failure occurs before any copy or successful length update.
-5. Run each semantic case through the default checked and unchecked runtime modes. Reuse the ASan capability-selection
+5. Add a defensive contract-failure case for a positive source range that begins below the backing span and crosses into
+   it, using a valid containing allocation so the range can be represented without invalid pointer arithmetic.
+6. Run each semantic case through the default checked and unchecked runtime modes. Reuse the ASan capability-selection
    pattern from the existing L0 and L1 quarantine observability tests. On supported GCC or Clang hosts, require the
    pre-fix checked growth case to report `use-after-poison` and the pre-fix unchecked case to report
    `heap-use-after-free`; both sanitizer variants must exit cleanly after the fix.
 
-### Phase 2: Add the private byte-offset primitive
+### Phase 2: Add the private byte-span primitives
 
-1. Introduce the same private runtime helper in the L0 header runtime and L1 archive runtime. Give it a private `_rt_`
-   symbol and a narrow contract: return the candidate's offset when it is within a supplied half-open byte span;
-   otherwise return the non-alias sentinel.
-2. Implement classification with checked `uintptr_t` arithmetic. Do not form C pointers outside an allocation and do not
-   read through the candidate.
-3. Define null, negative-extent, zero-extent, exact-base, interior, exact-end, and disjoint behavior explicitly and test
-   it identically in checked, basic, traced, and unchecked runtime builds. Exact-end pointers are outside the half-open
-   span so an adjacent unrelated allocation cannot be misclassified as an alias.
+1. Introduce the same private runtime helpers in the L0 header runtime and L1 archive runtime. Give them private `_rt_`
+   symbols and narrow contracts: return the candidate's offset within one half-open byte span, and report whether two
+   positive half-open byte spans overlap.
+2. Implement classification with checked `uintptr_t` differences. Do not form C pointers outside an allocation, compute
+   wrapping end addresses, or read through either candidate.
+3. Define null, negative-extent, zero-extent, exact-base, interior, exact-end, left-overlap, and disjoint behavior
+   explicitly and test it identically in checked, basic, traced, and unchecked runtime builds. Exact-end ranges do not
+   overlap, so adjacent unrelated allocations remain external.
 4. Add the L1 archive symbols to both manifests and keep the L0 declaration-only header and implementation header
    signatures synchronized where applicable.
 5. Keep the helper implementation-private. Do not expose it as a new documented `sys.memory` capability beyond the
@@ -177,17 +182,18 @@ Observed evidence:
    capacity is zero so an invalid base-derived positive source is rejected before reserve.
 2. For a backing-derived source, require `offset < old_length` and `count <= old_length - offset`. Use subtraction-based
    bounds checks so the validation itself cannot overflow.
-3. Call `vec_reserve` only after alias classification and validation.
-4. Reconstruct an aliased source from the new backing base plus the saved offset; leave unrelated sources unchanged.
-5. Derive the append destination from the post-reserve base and old logical length, perform one `rt_memcpy`, and publish
+3. For a source starting outside the backing span, reject a positive source range that overlaps the backing span.
+4. Call `vec_reserve` only after alias classification and validation.
+5. Reconstruct an aliased source from the new backing base plus the saved offset; leave unrelated sources unchanged.
+6. Derive the append destination from the post-reserve base and old logical length, perform one `rt_memcpy`, and publish
    the new length only after the copy.
-6. Keep the L0 and L1 implementations mechanically aligned, including assertions, comments, and no-op behavior.
+7. Keep the L0 and L1 implementations mechanically aligned, including assertions, comments, and no-op behavior.
 
 ### Phase 4: Document and validate the repaired contract
 
 1. Add `vec_push_bytes` to the L0 and L1 standard-library tables and state that complete logical self-ranges are
    supported across growth while backing-derived non-logical ranges are rejected.
-2. Confirm runtime symbol/header checks cover the private helper without accidentally promoting it as a stable public
+2. Confirm runtime symbol/header checks cover the private helpers without accidentally promoting them as stable public
    API.
 3. Run focused normal, trace, unchecked, and sanitizer regressions for both levels.
 4. Run the repository-wide trace-inclusive validation because the change affects shared containers, allocation lifetime,
@@ -195,8 +201,8 @@ Observed evidence:
 
 ## Diagnostics
 
-No compiler diagnostic code is added or reassigned. Invalid backing-derived ranges remain runtime contract failures, and
-valid programs continue to compile with unchanged compiler diagnostics.
+No compiler diagnostic code is added or reassigned. Invalid backing-derived and backing-overlapping ranges remain
+runtime contract failures, and valid programs continue to compile with unchanged compiler diagnostics.
 
 ## Non-Goals
 
@@ -208,39 +214,35 @@ valid programs continue to compile with unchanged compiler diagnostics.
 5. Changing quarantine retention, checked-runtime pointer validation, or `rt_realloc` semantics.
 6. Auditing every unrelated `rt_memcpy` caller without separate evidence of an aliasing defect.
 
+## Outcome
+
+- Added the private `_rt_byte_span_offset` and `_rt_byte_spans_overlap` runtime helpers to the L0 header runtime and L1
+  archive runtime. They classify exact-base, interior, left-overlap, exact-end, and disjoint ranges with overflow-safe
+  `uintptr_t` differences, reject null and non-positive spans, and remain outside the documented public runtime API.
+- Updated both shared `vec_push_bytes` implementations to classify and validate aliases before reserve, preserve the
+  original byte offset, rebase valid logical sources after growth, copy once, and publish the new length only after the
+  copy. Non-positive counts remain no-ops, including for stale source pointers.
+- Added matching L0 and L1 coverage for base and interior aliases with and without growth, unrelated sources, zero-count
+  calls, non-logical backing ranges, left-overlapping ranges, zero-capacity backing, all runtime modes, and
+  checked/unchecked AddressSanitizer builds.
+- Updated both standard-library references with the supported logical self-alias contract and its rejection boundary. No
+  compiler diagnostics, container layouts, ownership rules, or public runtime APIs changed.
+
 ## Verification
 
-Focused checks:
-
-```bash
-../.venv/bin/python -m pytest -q l0/compiler/stage1_py/tests/backend/test_runtime_pointer_validation.py l0/compiler/stage1_py/tests/backend/test_runtime_public_header.py
-make -C l0 test-stage2 TESTS="vector_test vector_aliasing_test.py"
-make -C l0 test-stage2-trace TESTS="vector_test"
-make -C l1 test-stage1 TESTS="vector_aliasing_test.py runtime_pointer_validation_test.py runtime_symbol_manifest_test.py"
-make -C l1 test-stage1-trace TESTS="vector_test"
-python3 scripts/check_adr_impact.py --all-active
-```
-
-Full gate:
-
-```bash
-make test-all
-```
-
-The new subprocess regressions must themselves exercise checked, unchecked, checked-plus-AddressSanitizer, and
-unchecked-plus-AddressSanitizer program variants. Sanitizer execution may skip only when the host has no compatible GCC
-or Clang toolchain, and the skip must report that reason.
-
-## Verification Criteria
-
-1. Growth-triggering base and interior self-appends preserve the exact pre-growth bytes in both L0 and L1.
-2. Equivalent no-growth self-appends produce the same result without undefined overlap behavior.
-3. A backing-derived range outside the old logical length is rejected before reserve or copy.
-4. External-source bulk pushes preserve their one-reserve, one-copy behavior.
-5. Default checked and unchecked fixtures plus sanitizer-backed checked and unchecked fixtures all pass;
-   AddressSanitizer reports no invalid read, use-after-poison, use-after-free, or overlap violation.
-6. L0 and L1 runtime helper semantics, vector assertions, and source comments remain aligned.
-7. L1 normal, traced, basic, and unchecked runtime archives export the expected symbol set.
-8. The standard-library references describe the repaired alias contract without claiming spare-capacity bytes are
-   logical elements.
-9. Full L0 and L1 normal and trace validation passes.
+- The minimized pre-fix fixture reproduced checked-runtime `use-after-poison` and unchecked-runtime
+  `heap-use-after-free` failures under AddressSanitizer. The final checked and unchecked sanitizer fixtures pass for
+  both L0 and L1.
+- Focused L0 runtime signature and pointer-classification tests passed (`49 passed`); the focused native vector and
+  trace suites passed with zero leaks.
+- Focused L1 aliasing, pointer-classification, symbol-manifest, native vector, and trace suites passed with zero leaks.
+- The defensive left-overlap follow-up passed its checked and unchecked L0/L1 fixtures, the expanded private-helper
+  contract tests in all runtime modes, both symbol-manifest variants, and focused native vector traces with zero leaks.
+- Root `make clean test-all` passed: L0 passed `1507` Stage 1 tests, `58` Stage 2 suites, all example and workflow
+  checks, and `34` trace suites; L1 passed `73` normal suites, environment and example checks, and `45` trace suites.
+  The complete gate passed again after the defensive left-overlap follow-up, and every trace suite reported zero leaked
+  object and string pointers.
+- `python3 scripts/check_adr_impact.py --all-active` and `git diff --check` passed before plan closure.
+- Independent read-only review reported no actionable findings after checking the alias contract, pre-reserve logical
+  bounds, post-reserve rebasing, zero-capacity handling, L0/L1 parity, private symbol coverage, documentation, and
+  tests.

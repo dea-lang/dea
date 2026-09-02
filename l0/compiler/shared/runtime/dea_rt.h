@@ -589,6 +589,13 @@ void *rt_memset(void *dest, dea_int value, dea_int bytes);
 void *rt_memcpy(void *dest, void *src, dea_int bytes);
 
 /**
+ * Implementation-private address classifier used by the bundled standard
+ * library. This symbol is not part of the stable public runtime API.
+ */
+dea_int _rt_byte_span_offset(void *base, dea_int span_bytes, void *candidate);
+dea_bool _rt_byte_spans_overlap(void *first, dea_int first_bytes, void *second, dea_int second_bytes);
+
+/**
  * Compare two memory regions.
  *
  * @param a First pointer.

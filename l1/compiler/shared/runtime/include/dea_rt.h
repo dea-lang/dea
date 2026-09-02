@@ -645,6 +645,8 @@ void *_rt_calloc_impl(dea_int count, dea_int elem_size, const char *_loc_file, i
 void *rt_calloc(dea_int count, dea_int elem_size);
 void *rt_memset(void *dest, dea_int value, dea_int bytes);
 void *rt_memcpy(void *dest, void *src, dea_int bytes);
+dea_int _rt_byte_span_offset(void *base, dea_int span_bytes, void *candidate);
+dea_bool _rt_byte_spans_overlap(void *first, dea_int first_bytes, void *second, dea_int second_bytes);
 dea_int rt_memcmp(void *a, void *b, dea_int bytes);
 void *rt_array_element(void *array_data, dea_int element_size, dea_int index);
 void rt_register_foreign(void *ptr, dea_int bytes, dea_bool read_only);

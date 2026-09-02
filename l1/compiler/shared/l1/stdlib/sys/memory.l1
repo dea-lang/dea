@@ -23,6 +23,10 @@
  */
 module sys.memory;
 
+export rt_alloc, rt_calloc, rt_realloc, rt_free, rt_register_foreign, rt_unregister_foreign, rt_memcpy,
+    _rt_byte_span_offset, _rt_byte_spans_overlap, rt_memset, rt_memcmp, rt_array_element, rt_stdin_read, rt_stdout_write,
+    rt_stderr_write;
+
 /* =================================
    Memory operations
    ================================= */
@@ -94,6 +98,35 @@ unsafe extern func rt_unregister_foreign(ptr: void*) -> void;
  * @return The destination pointer.
  */
 unsafe extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;
+
+/**
+ * INTERNAL: Return `candidate`'s byte offset within the half-open span
+ * `[base, base + span_bytes)`, or `-1` when it is outside the span.
+ * This compares integer addresses without dereferencing either pointer.
+ * Null pointers and non-positive spans are outside the span.
+ *
+ * @param base Base address of the byte span.
+ * @param span_bytes Positive byte extent of the span.
+ * @param candidate Address to classify.
+ * @return Byte offset within the span, or `-1` when not contained.
+ */
+unsafe extern func _rt_byte_span_offset(base: void*?, span_bytes: int, candidate: void*?) -> int;
+
+/**
+ * INTERNAL: Return whether two positive half-open byte spans overlap.
+ * This compares integer addresses without dereferencing either pointer or
+ * computing an end address. Null pointers and non-positive spans do not
+ * overlap.
+ *
+ * @param first Base address of the first byte span.
+ * @param first_bytes Byte extent of the first span.
+ * @param second Base address of the second byte span.
+ * @param second_bytes Byte extent of the second span.
+ * @return Whether the two spans overlap.
+ */
+unsafe extern func _rt_byte_spans_overlap(
+    first: void*?, first_bytes: int, second: void*?, second_bytes: int
+) -> bool;
 
 /**
  * Set a block of memory to a specific byte value.

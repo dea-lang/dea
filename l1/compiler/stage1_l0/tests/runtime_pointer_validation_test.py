@@ -201,7 +201,99 @@ int32_t *foreign_value(void) { return &foreign_value_storage; }
 """
 
 
+def byte_span_offset_source(module_name: str) -> str:
+    """Return a fixture covering the private byte-span classifier contract."""
+
+    return f"""
+        module {module_name};
+        import sys.memory;
+
+        unsafe func classify() -> int {{
+            let base: void* = rt_alloc(9) as void*;
+            let other: void* = rt_alloc(1) as void*;
+            let interior = rt_array_element(base, 1, 3);
+            let exact_end = rt_array_element(base, 1, 8);
+
+            if (_rt_byte_span_offset(base, 8, base) != 0) {{
+                return 1;
+            }}
+            if (_rt_byte_span_offset(base, 8, interior) != 3) {{
+                return 2;
+            }}
+            if (_rt_byte_span_offset(base, 8, exact_end) != -1) {{
+                return 3;
+            }}
+            if (_rt_byte_span_offset(base, 8, other) != -1) {{
+                return 4;
+            }}
+            if (_rt_byte_span_offset(null, 8, base) != -1) {{
+                return 5;
+            }}
+            if (_rt_byte_span_offset(base, 8, null) != -1) {{
+                return 6;
+            }}
+            if (_rt_byte_span_offset(base, 0, base) != -1) {{
+                return 7;
+            }}
+            if (_rt_byte_span_offset(base, -1, base) != -1) {{
+                return 8;
+            }}
+            if (!_rt_byte_spans_overlap(base, 8, base, 1)) {{
+                return 9;
+            }}
+            if (!_rt_byte_spans_overlap(base, 8, interior, 2)) {{
+                return 10;
+            }}
+            if (!_rt_byte_spans_overlap(interior, 2, base, 4)) {{
+                return 11;
+            }}
+            if (_rt_byte_spans_overlap(interior, 2, base, 3)) {{
+                return 12;
+            }}
+            if (_rt_byte_spans_overlap(base, 3, interior, 2)) {{
+                return 13;
+            }}
+            if (_rt_byte_spans_overlap(base, 8, other, 1)) {{
+                return 14;
+            }}
+            if (_rt_byte_spans_overlap(null, 8, base, 1)) {{
+                return 15;
+            }}
+            if (_rt_byte_spans_overlap(base, 8, null, 1)) {{
+                return 16;
+            }}
+            if (_rt_byte_spans_overlap(base, 0, base, 1)) {{
+                return 17;
+            }}
+            if (_rt_byte_spans_overlap(base, 8, base, -1)) {{
+                return 18;
+            }}
+
+            rt_free(other);
+            rt_free(base);
+            return 0;
+        }}
+
+        func main() -> int {{
+            return classify();
+        }}
+    """
+
+
 def main() -> int:
+    for mode_name, mode_flags in (
+        ("checked", []),
+        ("check_basic", ["--check-basic"]),
+        ("traced", ["--trace-memory"]),
+        ("unchecked", ["--unchecked"]),
+    ):
+        module_name = f"byte_span_offset_{mode_name}"
+        require_run(
+            module_name,
+            byte_span_offset_source(module_name),
+            extra_flags=mode_flags,
+        )
+
     require_failure(
         "pointer_index_oob",
         """

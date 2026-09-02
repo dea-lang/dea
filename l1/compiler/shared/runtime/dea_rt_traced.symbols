@@ -3,6 +3,8 @@ _rt_alloc_obj
 _rt_alloc_obj_impl
 _rt_alloc_string
 _rt_alloc_string_impl
+_rt_byte_span_offset
+_rt_byte_spans_overlap
 _rt_calloc_impl
 _rt_cast_dea_byte_from_signed
 _rt_cast_dea_byte_from_unsigned

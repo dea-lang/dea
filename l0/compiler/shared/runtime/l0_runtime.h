@@ -2702,6 +2702,64 @@ void *rt_memcpy(void *dest, void *src, l0_int bytes) {
 }
 
 /**
+ * Return a candidate address's byte offset within a half-open byte span.
+ * Null pointers, non-positive spans, exact-end addresses, and disjoint
+ * addresses return the non-alias sentinel `-1`. This helper performs only
+ * checked integer-address arithmetic and never dereferences either pointer.
+ *
+ * @param base Base address of the byte span.
+ * @param span_bytes Positive extent of the span.
+ * @param candidate Address to classify.
+ * @return Byte offset within the span, or `-1` when not contained.
+ *
+ * L0 signature: `extern func _rt_byte_span_offset(base: void*?, span_bytes: int, candidate: void*?) -> int;`
+ */
+l0_int _rt_byte_span_offset(void *base, l0_int span_bytes, void *candidate) {
+    if (base == NULL || candidate == NULL || span_bytes <= 0) {
+        return -1;
+    }
+
+    uintptr_t base_addr = (uintptr_t)base;
+    uintptr_t candidate_addr = (uintptr_t)candidate;
+    if (candidate_addr < base_addr) {
+        return -1;
+    }
+
+    uintptr_t offset = candidate_addr - base_addr;
+    if (offset >= (uintptr_t)span_bytes) {
+        return -1;
+    }
+    return (l0_int)offset;
+}
+
+/**
+ * Return whether two positive half-open byte spans overlap.
+ * Address differences are compared against extents without computing either
+ * end address, so the classification cannot wrap around `UINTPTR_MAX`.
+ * Null pointers and non-positive spans do not overlap.
+ *
+ * @param first Base address of the first byte span.
+ * @param first_bytes Byte extent of the first span.
+ * @param second Base address of the second byte span.
+ * @param second_bytes Byte extent of the second span.
+ * @return Non-zero when the spans overlap.
+ *
+ * L0 signature: `extern func _rt_byte_spans_overlap(first: void*?, first_bytes: int, second: void*?, second_bytes: int) -> bool;`
+ */
+l0_bool _rt_byte_spans_overlap(void *first, l0_int first_bytes, void *second, l0_int second_bytes) {
+    if (first == NULL || second == NULL || first_bytes <= 0 || second_bytes <= 0) {
+        return 0;
+    }
+
+    uintptr_t first_addr = (uintptr_t)first;
+    uintptr_t second_addr = (uintptr_t)second;
+    if (first_addr <= second_addr) {
+        return (l0_bool)((second_addr - first_addr) < (uintptr_t)first_bytes);
+    }
+    return (l0_bool)((first_addr - second_addr) < (uintptr_t)second_bytes);
+}
+
+/**
  * Compare two memory regions.
  * Returns 0 if equal, <0 if a < b, >0 if a > b.
  * 
