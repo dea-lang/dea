@@ -89,7 +89,7 @@ jobs:
           touch build/docs/pages-site/.nojekyll
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: l0/build/docs/pages-site
 

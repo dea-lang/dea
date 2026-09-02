@@ -410,7 +410,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   publish-release:
     needs: [validate-release, build-dist, build-docs]
@@ -427,20 +427,20 @@ jobs:
           fetch-depth: 0
 
       - name: Download distribution artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: dea-l0-dist-*
           merge-multiple: true
           path: l0/build/release-assets
 
       - name: Download PDF artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: docs-pdf
           path: l0/build/release-assets
 
       - name: Download generated Markdown
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: docs-markdown
           path: l0/build/docs/markdown

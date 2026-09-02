@@ -214,7 +214,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   attach-release-assets:
     needs:
@@ -264,7 +264,7 @@ jobs:
           fi
 
       - name: Download PDF artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: docs-pdf
           path: l0/build/docs/pdf
@@ -293,7 +293,7 @@ jobs:
 
       - name: Download generated Markdown
         if: inputs.publish_blog
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: docs-markdown
           path: l0/build/docs/markdown
@@ -411,7 +411,7 @@ jobs:
           python-version: "3.14"
 
       - name: Download generated Markdown
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: docs-markdown
           path: l0/build/docs/markdown
