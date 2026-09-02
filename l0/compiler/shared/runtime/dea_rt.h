@@ -589,10 +589,30 @@ void *rt_memset(void *dest, dea_int value, dea_int bytes);
 void *rt_memcpy(void *dest, void *src, dea_int bytes);
 
 /**
- * Implementation-private address classifier used by the bundled standard
- * library. This symbol is not part of the stable public runtime API.
+ * Return a candidate address's offset within a half-open byte span.
+ *
+ * This implementation-private helper is used by the bundled standard library
+ * and is not part of the stable public runtime API.
+ *
+ * @param base Base address of the byte span.
+ * @param span_bytes Positive byte extent of the span.
+ * @param candidate Address to classify.
+ * @return Byte offset within the span, or `-1` when not contained.
  */
 dea_int _rt_byte_span_offset(void *base, dea_int span_bytes, void *candidate);
+
+/**
+ * Return whether two positive half-open byte spans overlap.
+ *
+ * This implementation-private helper is used by the bundled standard library
+ * and is not part of the stable public runtime API.
+ *
+ * @param first Base address of the first byte span.
+ * @param first_bytes Byte extent of the first span.
+ * @param second Base address of the second byte span.
+ * @param second_bytes Byte extent of the second span.
+ * @return Non-zero when the spans overlap.
+ */
 dea_bool _rt_byte_spans_overlap(void *first, dea_int first_bytes, void *second, dea_int second_bytes);
 
 /**
