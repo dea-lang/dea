@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Dea Plan"
+  short_description: "Create correctly placed Dea work plans"
+  default_prompt: "Use $create-dea-plan to create a Dea work plan with the correct scope, metadata, and lifecycle links."

@@ -60,7 +60,7 @@ When closing a plan, `git mv` it into the corresponding `closed/` subdirectory, 
 ```
 
 Every plan must contain exactly one `## ADR Impact` section using the complete schema and lifecycle rules in root
-`CLAUDE.md`. Repeat the record for independent architectural questions. Use `ADR not warranted` as the sole record when
+`AGENTS.md`. Repeat the record for independent architectural questions. Use `ADR not warranted` as the sole record when
 the plan contains no ADR-worthy decision.
 
 `Pending` is allowed while a plan is active, but it blocks closure. When closing a plan, resolve every record and

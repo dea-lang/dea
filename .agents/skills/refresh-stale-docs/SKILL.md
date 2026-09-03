@@ -1,8 +1,6 @@
 ---
 name: refresh-stale-docs
 description: Audit Dea live docs after feature or workflow changes and refresh stale content plus version metadata.
-model: sonnet
-effort: medium
 ---
 
 ### Refresh stale docs
@@ -19,8 +17,7 @@ Start with live docs only:
 - `l0/docs/**`
 - `l1/docs/**`
 - subtree `README.md` files
-- internal guidance files such as `CLAUDE.md`, `AGENTS.md`, and `.github/copilot-instructions.md` when the task includes
-  internal docs
+- internal guidance files such as `AGENTS.md` and `.github/copilot-instructions.md` when the task includes internal docs
 - `docs/decisions/INDEX.md`, `l0/docs/decisions/INDEX.md`, `l1/docs/decisions/INDEX.md`: verify each table row matches
   an ADR file present in the directory; flag any gap or orphan row
 - ADR `Related Plans` sections: verify newly closed source documents have resolvable links and their final ADR Impact
@@ -30,7 +27,7 @@ Do not sweep `work/plans/**` or archived docs unless the task explicitly asks fo
 
 ## Repo-specific workflow
 
-1. Read `CLAUDE.md` first. If the audit touches `l0/` or `l1/`, read the matching subtree `CLAUDE.md` too.
+1. Read `AGENTS.md` first. If the audit touches `l0/` or `l1/`, read the matching subtree `AGENTS.md` too.
 2. Inventory recent landed changes before editing docs. Prefer:
 
 - `git --no-pager log --since='<date>' --date=short --pretty=format:'%ad %h %s' --name-only -- '*.md' '.github/workflows/*'`
@@ -106,11 +103,11 @@ PY
 - guidance that still points at a superseded workflow
 
 7. When the task explicitly includes plans or initiatives, enforce the `## ADR Impact` lifecycle contract from root
-   `CLAUDE.md`. Run `python3 scripts/check_adr_impact.py --all-active` before staging and
+   `AGENTS.md`. Run `python3 scripts/check_adr_impact.py --all-active` before staging and
    `python3 scripts/check_adr_impact.py --staged` after staging. Do not close a document with `Pending` records or
    missing same-change ADR evidence.
 8. Keep docs honest about scope. If L1 is bootstrap-only or a library follow-up is still open, say so plainly.
-9. If you commit, follow the commit rules in `CLAUDE.md` and run pre-commit against the root config. Run from the
+9. If you commit, follow the commit rules in `AGENTS.md` and run pre-commit against the root config. Run from the
    monorepo root by default:
 
 ```bash

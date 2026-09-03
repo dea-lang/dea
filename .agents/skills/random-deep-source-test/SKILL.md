@@ -1,8 +1,6 @@
 ---
 name: random-deep-source-test
 description: Perform randomized deep white-box correctness reviews of Dea production sources by selecting files with `scripts/shuffle_sources.py`, examining every function plus its direct callers and callees, scoring risks, and running temporary falsification probes. Use for randomized source correctness testing, deep per-function reviews, or bounded one-hop call-graph reviews in the Dea monorepo.
-model: opus
-effort: high
 ---
 
 ### Run randomized deep source reviews
@@ -12,8 +10,8 @@ count of `1` with no level or stage scope.
 
 ## Select source files
 
-1. Read root `CLAUDE.md` first. After selection, read `l0/AGENTS.md` then `l0/CLAUDE.md` for every L0 source or test
-   route involved, and read `l1/AGENTS.md` then `l1/CLAUDE.md` for every L1 source or test route involved.
+1. Read root `AGENTS.md` first. After selection, read `l0/AGENTS.md` for every L0 source or test route involved, and
+   read `l1/AGENTS.md` for every L1 source or test route involved.
 2. Resolve an interpreter from the shared virtual environment (`.venv/bin/python` or `.venv/Scripts/python.exe`), then
    fall back to `python3`. Do not assume bare `python` is available.
 3. From the monorepo root, run:

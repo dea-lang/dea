@@ -13,7 +13,7 @@ Useful local documents:
 - [l1/docs/project-status.md][project-status] for the current L1 bootstrap implementation status
 - [l1/docs/roadmap.md][roadmap] for the live L1 direction document
 - [l1/docs/user/linking.md][linking] for external native-library and foreign-object linking
-- [l1/CLAUDE.md][claude] for repo-local AI guidance
+- [l1/AGENTS.md][agents] for repo-local AI guidance
 
 At the moment the Dea/L1 source surface is `.l1`, including the copied L1 stdlib under `compiler/shared/l1/stdlib/` and
 the L1-language fixture programs exercised by the bootstrap compiler tests. The `stage1_l0` compiler implementation and
@@ -42,7 +42,7 @@ l1c --version
 To use an explicit upstream L0 compiler instead of the repo-local default, set `L1_BOOTSTRAP_L0C=/path/to/l0c` when
 running `make build-stage1`.
 
-[claude]: CLAUDE.md
+[agents]: AGENTS.md
 [docs]: docs/
 [examples]: examples/
 [linking]: docs/user/linking.md

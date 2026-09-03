@@ -1,0 +1,4 @@
+interface:
+  display_name: "Show Open Plans"
+  short_description: "Group and summarize all open Dea plans"
+  default_prompt: "Use $show-open-plans to list all open Dea plans grouped by level and initiative."

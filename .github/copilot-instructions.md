@@ -1,8 +1,8 @@
 # Dea monorepo Copilot instructions
 
-Start by reading `CLAUDE.md` at the repository root. If you are changing a language subtree, then read that level's
-`CLAUDE.md` as well: `l0/CLAUDE.md` for Dea/L0 work or `l1/CLAUDE.md` for Dea/L1 work. Keep this file as a short router;
-use the `CLAUDE.md` files as the maintained source of detailed workflow and policy guidance.
+Start by reading `AGENTS.md` at the repository root. If you are changing a language subtree, then read that level's
+`AGENTS.md` as well: `l0/AGENTS.md` for Dea/L0 work or `l1/AGENTS.md` for Dea/L1 work. Keep this file as a short router;
+use the `AGENTS.md` files as the maintained source of detailed workflow and policy guidance.
 
 ## Build, test, and lint commands
 
@@ -100,7 +100,7 @@ policy, but real implementation workflows are level-local.
 
 For L0, the important big picture is the staged bootstrap chain: Stage 1 (Python) is the reference implementation and
 Stage 2 mirrors the same pass structure through code generation and driver execution, both ultimately targeting a single
-C99 translation unit. Use `l0/docs/reference/architecture.md` and `l0/CLAUDE.md` for the maintained pass-level details.
+C99 translation unit. Use `l0/docs/reference/architecture.md` and `l0/AGENTS.md` for the maintained pass-level details.
 
 ## Key conventions
 
@@ -112,5 +112,5 @@ C99 translation unit. Use `l0/docs/reference/architecture.md` and `l0/CLAUDE.md`
   corresponding subtree.
 - For `l1/`, do not rely on whichever `l0c` happens to be active on `PATH`; use the repo-local default or
   `L1_BOOTSTRAP_L0C`.
-- If a task changes behavior, commands, docs ownership, stdlib, runtime, or diagnostics, check the relevant `CLAUDE.md`
+- If a task changes behavior, commands, docs ownership, stdlib, runtime, or diagnostics, check the relevant `AGENTS.md`
   and referenced docs before editing.

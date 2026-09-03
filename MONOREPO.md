@@ -84,7 +84,7 @@ test, or docs commands.
 - Canonical L0 overview and quickstart: [`l0/README.md`](l0/README.md)
 - L0 contributor guidance: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Repository security policy: [`SECURITY.md`](SECURITY.md)
-- L0 AI guidance: [`l0/CLAUDE.md`](l0/CLAUDE.md)
+- L0 AI guidance: [`l0/AGENTS.md`](l0/AGENTS.md)
 
 For example:
 
@@ -104,7 +104,7 @@ Dea/L1 currently exists as a bootstrap compiler subtree inside [`l1/`](l1/). Fro
 running L1 bootstrap commands.
 
 - L1 subtree pointer: [`l1/README.md`](l1/README.md)
-- L1 AI guidance: [`l1/CLAUDE.md`](l1/CLAUDE.md)
+- L1 AI guidance: [`l1/AGENTS.md`](l1/AGENTS.md)
 
 Typical local bootstrap flow:
 

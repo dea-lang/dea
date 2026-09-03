@@ -1,8 +1,6 @@
 ---
 name: troubleshoot-trace-failures
 description: Diagnose Dea ARC and memory trace failures, fix ownership bugs, and validate against the subtree ownership rules.
-model: opus
-effort: high
 ---
 
 ### Troubleshoot tracing errors and leaks
@@ -28,9 +26,9 @@ Typical triggers:
 
 ## Repo-specific workflow
 
-1. Read `CLAUDE.md` first. Then read the subtree guide:
-   - `l0/CLAUDE.md` for L0 Stage 2 work
-   - `l1/CLAUDE.md` for L1 Stage 1 work
+1. Read `AGENTS.md` first. Then read the subtree guide:
+   - `l0/AGENTS.md` for L0 Stage 2 work
+   - `l1/AGENTS.md` for L1 Stage 1 work
 2. Read the ownership reference that governs the target subtree:
    - `l0/docs/reference/ownership.md` for L0 work
    - `l1/docs/reference/ownership.md` for L1 work

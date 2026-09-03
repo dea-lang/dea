@@ -1,7 +1,7 @@
 # ADR-0017: Documentation Publication Ownership and Cross-Repository Boundary
 
 - Decision date: 2026-07-13
-- Last edited: 2026-07-27
+- Last edited: 2026-09-03
 - Status: Accepted
 
 ## Context
@@ -85,8 +85,8 @@ policy.
 
 ## Current Docs
 
-- [CLAUDE.md](../../CLAUDE.md): authoritative remote and publication authorization policy
-- [AGENTS.md](../../AGENTS.md): agent-facing publication safeguards
+- [AGENTS.md](../../AGENTS.md): authoritative remote and publication authorization policy
+- [CLAUDE.md](../../CLAUDE.md): compatibility router that surfaces critical publication safeguards
 - [l0/docs/README.md](../../l0/docs/README.md): L0 documentation generation and publication surfaces
 - [.github/workflows/l0-docs-validate.yml](../../.github/workflows/l0-docs-validate.yml): non-publishing validation
   workflow

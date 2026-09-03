@@ -59,7 +59,7 @@ plan.
 ## ADR Impact
 
 Every plan must contain exactly one `## ADR Impact` section using the schema, scopes, dispositions, and closure rules in
-`CLAUDE.md`. Add one record per independent architectural question. Root plans normally use `Dea-wide`, `Shared`, or
+`AGENTS.md`. Add one record per independent architectural question. Root plans normally use `Dea-wide`, `Shared`, or
 `Repository/tooling`; they may use `L0`, `L1`, or a future `L<N>` for a targeted level decision. A plan with no
 ADR-worthy decision uses one `ADR not warranted` record.
 

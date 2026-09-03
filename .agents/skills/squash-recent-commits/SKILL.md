@@ -10,8 +10,8 @@ as part of that final tree, not as a reason to discard useful knowledge.
 
 ## Required context
 
-1. Read root `CLAUDE.md` and `AGENTS.md`.
-2. Read the level-local guides for every affected `l0/` or `l1/` subtree.
+1. Read root `AGENTS.md`.
+2. Read the level-local `AGENTS.md` guide for every affected `l0/` or `l1/` subtree.
 3. Read `.agents/skills/finalize-dea-work/SKILL.md` and follow its current history-rewrite validation, staged-check,
    pre-commit, and commit-message rules.
 4. Prefer repository instructions over this workflow when they are stricter.

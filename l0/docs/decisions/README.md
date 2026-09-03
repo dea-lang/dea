@@ -13,7 +13,7 @@ Valid `Status` values: `Accepted`, `Deprecated`, `Superseded by [ADR-NNNN](NNNN-
 ADR numbers are never reused. Superseded entries remain in place with their original number retired; the superseding ADR
 takes the next available number.
 
-Plans declare ADR work through the `## ADR Impact` contract in root `CLAUDE.md`. A `New ADR`, `Amend ADR`, or
+Plans declare ADR work through the `## ADR Impact` contract in root `AGENTS.md`. A `New ADR`, `Amend ADR`, or
 `Covered by ADR` disposition is completed in the same change that closes its source plan. The ADR's `Related Plans`
 section must contain a resolvable link to every newly closed source plan, and `INDEX.md` must contain every ADR in this
 directory.

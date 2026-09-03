@@ -1,0 +1,4 @@
+interface:
+  display_name: "Random Deep Source Test"
+  short_description: "Run randomized deep source correctness reviews"
+  default_prompt: "Use $random-deep-source-test to perform a randomized deep correctness review of Dea production sources."

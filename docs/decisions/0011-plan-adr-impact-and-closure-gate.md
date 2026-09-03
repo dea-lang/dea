@@ -1,7 +1,7 @@
 # ADR-0011: Plan ADR Impact and Closure Gate
 
 - Decision date: 2026-07-26
-- Last edited: 2026-08-24
+- Last edited: 2026-09-03
 - Status: Accepted
 
 ## Context
@@ -77,7 +77,7 @@ Untouched closed history is grandfathered; changing a historical document opts i
 
 ## Current Docs
 
-- [CLAUDE.md](../../CLAUDE.md): repository-wide ADR lifecycle policy
+- [AGENTS.md](../../AGENTS.md): repository-wide ADR lifecycle policy
 - [work/README.md](../../work/README.md): shared plan template and closure rules
 - [l0/work/README.md](../../l0/work/README.md): L0 plan template and closure rules
 - [l1/work/README.md](../../l1/work/README.md): L1 plan and initiative rules

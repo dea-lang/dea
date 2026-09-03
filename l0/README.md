@@ -469,7 +469,7 @@ Trace output contract: [l0/docs/specs/runtime/trace.md](docs/specs/runtime/trace
 See [CONTRIBUTING.md](../CONTRIBUTING.md). It is the source of truth for developer workflow, setup, and validation
 commands.
 
-For repo-local AI guidance, see [l0/CLAUDE.md](CLAUDE.md).
+For repo-local AI guidance, see [l0/AGENTS.md](AGENTS.md).
 
 ## License
 

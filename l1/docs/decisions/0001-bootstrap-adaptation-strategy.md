@@ -1,7 +1,7 @@
 # ADR-0001: Bootstrap Adaptation Strategy
 
 - Decision date: 2026-04-02
-- Last edited: 2026-05-20
+- Last edited: 2026-09-03
 - Status: Accepted
 
 ## Context
@@ -33,7 +33,7 @@ L1 starts as a retargeted copy of the L0 Stage 2 compiler rather than a greenfie
 ## Consequences
 
 - The L1 bootstrap depends on the upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`; the bootstrap
-  contract is recorded in `l1/CLAUDE.md`.
+  contract is recorded in `l1/AGENTS.md`.
 - L1-specific divergence from L0 semantics is documented in `l1/docs/reference/design-decisions.md` as it is introduced.
 - Shared plans at the root `work/` level own decisions that apply to both levels; L1-only plans stay in `l1/work/`.
 

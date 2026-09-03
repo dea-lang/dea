@@ -1,8 +1,6 @@
 ---
 name: finalize-dea-work
 description: Finalize Dea repo work by checking plans/docs/tests, staging only intended files, running level-appropriate validation and pre-commit, and committing with the required Dea L0/L1 message format.
-model: sonnet
-effort: medium
 ---
 
 ### Finalize and commit Dea work
@@ -12,9 +10,9 @@ work.
 
 ## Required context
 
-1. Read root `CLAUDE.md` first.
-2. If touched paths are under `l0/`, read `l0/CLAUDE.md`.
-3. If touched paths are under `l1/`, read `l1/CLAUDE.md`.
+1. Read root `AGENTS.md` first.
+2. If touched paths are under `l0/`, read `l0/AGENTS.md`.
+3. If touched paths are under `l1/`, read `l1/AGENTS.md`.
 4. Check `git status --short` before staging. Never stage unrelated user files.
 
 ## Authorization boundary
@@ -56,7 +54,7 @@ authorized follow-up.
 2a. Resolve ADR Impact before closure:
 
 Every plan and initiative being closed must contain exactly one valid `## ADR Impact` section following root
-`CLAUDE.md`. This is a hard closure gate, not a handoff warning:
+`AGENTS.md`. This is a hard closure gate, not a handoff warning:
 
 - reject closure while any record is `Pending`
 - resolve `New ADR` by creating the exact numbered ADR, adding its index row, and linking it to the closed document in
@@ -264,7 +262,7 @@ Implement L1 wide integer math follow-up.
 Rules:
 
 - Summary is sentence case and ends with a period.
-- Follow the "Level naming in summaries" rules in root `CLAUDE.md`.
+- Follow the "Level naming in summaries" rules in root `AGENTS.md`.
 - An example-only summary must name each affected level naturally.
 - Leave exactly one blank line between summary and bullets.
 - Body bullets start with `- `, are factual, sentence case, and end with a period.

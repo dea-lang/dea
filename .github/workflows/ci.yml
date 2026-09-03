@@ -12,6 +12,7 @@ on:
       - .agents/skills/**
       - .github/workflows/**
       - .pre-commit-config.yaml
+      - AGENTS.md
       - CLAUDE.md
       - CONTRIBUTING.md
       - Makefile
@@ -31,6 +32,7 @@ on:
       - .agents/skills/**
       - .github/workflows/**
       - .pre-commit-config.yaml
+      - AGENTS.md
       - CLAUDE.md
       - CONTRIBUTING.md
       - Makefile

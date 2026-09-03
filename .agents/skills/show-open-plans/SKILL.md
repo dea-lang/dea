@@ -1,8 +1,6 @@
 ---
 name: show-open-plans
 description: Show all open Dea plans grouped by level then by initiative, with status and location.
-model: haiku
-effort: low
 ---
 
 ### Show open plans
@@ -17,7 +15,7 @@ Do not use this skill for:
 
 ## Required context
 
-1. Read root `CLAUDE.md` first.
+1. Read root `AGENTS.md` first.
 2. For each level that has open plans, read that level's roadmap if it exists — these are the authoritative sources for
    initiative membership:
    - `l0/docs/roadmap.md` (if present)

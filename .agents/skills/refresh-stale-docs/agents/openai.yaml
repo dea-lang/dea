@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refresh Stale Docs"
+  short_description: "Audit and refresh stale Dea documentation"
+  default_prompt: "Use $refresh-stale-docs to audit Dea's live documentation and update content that has fallen behind implementation."

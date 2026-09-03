@@ -1,8 +1,6 @@
 ---
 name: create-dea-plan
 description: Create a new Dea plan in the correct work tree with the right category, filename, metadata, and required roadmap links.
-model: sonnet
-effort: medium
 ---
 
 ### Create a new Dea plan
@@ -22,15 +20,15 @@ otherwise.
 
 That means:
 
-- start from the root `CLAUDE.md` and the shared `work/README.md` policy first
+- start from the root `AGENTS.md` and the shared `work/README.md` policy first
 - assume the same category, filename, metadata, and lifecycle rules apply across levels by default
 - only introduce subtree-specific behavior when the relevant subtree docs explicitly define a narrower rule
 
 ## Required context
 
-1. Read root `CLAUDE.md` first.
+1. Read root `AGENTS.md` first.
 2. Read `work/README.md` when the work may be shared across levels or monorepo-owned.
-3. If the scope is subtree-local, read that subtree's `CLAUDE.md` and `work/README.md`.
+3. If the scope is subtree-local, read that subtree's `AGENTS.md` and `work/README.md`.
 4. Read additional subtree docs only when that subtree has an explicit local planning rule that affects placement,
    linking, or metadata.
 5. Inspect nearby active and closed plans in the target category before drafting so the new file matches current local
@@ -213,7 +211,7 @@ actually documenting already landed work.
 ## ADR Impact requirement
 
 Every new plan must contain exactly one `## ADR Impact` section. Follow the canonical schema, scopes, dispositions, and
-closure rules in root `CLAUDE.md`. Start with one record per independent architectural question:
+closure rules in root `AGENTS.md`. Start with one record per independent architectural question:
 
 ```markdown
 ## ADR Impact

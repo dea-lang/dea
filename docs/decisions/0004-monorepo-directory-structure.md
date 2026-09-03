@@ -1,7 +1,7 @@
 # ADR-0004: Monorepo Directory Structure
 
 - Decision date: 2026-03-27
-- Last edited: 2026-07-23
+- Last edited: 2026-09-03
 - Status: Accepted
 
 ## Context
@@ -57,5 +57,5 @@ directories. This rule is covered in detail in [ADR-0006](0006-docs-work-taxonom
 
 ## Current Docs
 
-- [CLAUDE.md](../../CLAUDE.md): Repository Structure table
+- [AGENTS.md](../../AGENTS.md): Repository Structure table
 - [MONOREPO.md](../../MONOREPO.md): human-facing monorepo guide

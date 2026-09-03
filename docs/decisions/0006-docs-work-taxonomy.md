@@ -1,7 +1,7 @@
 # ADR-0006: Docs/Work Taxonomy
 
 - Decision date: 2026-04-04
-- Last edited: 2026-07-11
+- Last edited: 2026-09-03
 - Status: Accepted
 
 ## Context
@@ -38,7 +38,7 @@ Placement rules:
 ## Consequences
 
 - Every new document must be placed under either `docs/` or `work/`, never in a mixed directory.
-- CLAUDE.md enforces this taxonomy in the "Documentation And Work Tracking" section.
+- AGENTS.md enforces this taxonomy in the "Documentation And Work Tracking" section.
 - Level-local plans that are actually shared work should be promoted to the root `work/` tree, not duplicated.
 
 ## Related Plans

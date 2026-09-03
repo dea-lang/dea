@@ -1,0 +1,4 @@
+interface:
+  display_name: "Finalize Dea Work"
+  short_description: "Validate, stage, and commit completed Dea work"
+  default_prompt: "Use $finalize-dea-work to validate, stage, and commit the completed Dea repository changes."

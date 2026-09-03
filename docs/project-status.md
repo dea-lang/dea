@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-08-30
+Version: 2026-09-03
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -110,7 +110,7 @@ The monorepo now has a small but real shared top-level layer:
 - root `docs/` for Dea-wide status and reference documents,
 - root `editors/` for distinct L0/L1 editor identities backed by shared TextMate, Vim, Emacs, Universal Ctags, and the
   in-repository `editors/tree-sitter-dea/` L1-superset grammar package,
-- root `CLAUDE.md` for monorepo-wide workflow policy,
+- root `AGENTS.md` for monorepo-wide workflow policy,
 - root `Makefile` for shared `help`, `venv`, normal `test`, full trace-inclusive `test-all`, `clean`, and `clean-all`,
 - root `scripts/dea_tooling/` for shared launcher/bootstrap helpers.
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Troubleshoot Trace Failures"
+  short_description: "Diagnose ARC and memory trace failures"
+  default_prompt: "Use $troubleshoot-trace-failures to diagnose and fix a Dea ARC or memory trace failure."

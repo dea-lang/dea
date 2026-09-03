@@ -68,7 +68,7 @@ grep for its filename across `l1/docs/`, `l1/work/`, and any shared root docs/wo
 ```
 
 Every plan and initiative must contain exactly one `## ADR Impact` section using the complete schema and lifecycle rules
-in root `CLAUDE.md`. Repeat the record for independent architectural questions. Use `ADR not warranted` as the sole
+in root `AGENTS.md`. Repeat the record for independent architectural questions. Use `ADR not warranted` as the sole
 record when the document contains no ADR-worthy decision.
 
 `Pending` is allowed while a document is active, but it blocks closure. When closing a plan or initiative, resolve every
