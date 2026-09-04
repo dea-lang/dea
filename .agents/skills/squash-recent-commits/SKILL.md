@@ -40,8 +40,11 @@ as part of that final tree, not as a reason to discard useful knowledge.
 6. Detect merge commits in the range. Stop unless the user explicitly authorizes flattening their topology into one
    ordinary commit.
 7. Check the configured upstream and locally known remote-tracking refs. If any selected commit is already reachable
-   from one of them, disclose that the rewrite affects published history and continue only after the user explicitly
-   confirms that consequence. Do not fetch merely to perform this check.
+   from one of them, disclose that the rewrite affects published history. When the current branch name starts with
+   `wip/` or is exactly `ci-probe`, continue without additional confirmation: these are working branches whose local
+   history may be rewritten under the user's squash authorization, even when already published. On all other branches,
+   continue only after the user explicitly confirms that consequence. This exception does not authorize a push or
+   force-push, widen the selected range, or waive other safety checks. Do not fetch merely to perform this check.
 
 ## 2. Define the cohesive final state
 
