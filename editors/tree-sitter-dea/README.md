@@ -1,7 +1,7 @@
 # tree-sitter-dea
 
-[Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the [Dea](https://github.com/googlielmo/dea-lang)
-L0 and L1 languages.
+[Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the [Dea](https://github.com/dea-lang/dea) L0 and
+L1 languages.
 
 The grammar name is `dea`. It maps both `.l0` and `.l1` files to one structural parser that accepts the richer L1
 syntactic superset. Hosts should keep their L0 and L1 language identities separate while reusing this parser.
@@ -56,7 +56,7 @@ major-mode variants with the `dea` grammar in `treesit-language-source-alist`.
 Remote integrations that support a grammar subdirectory should pin both the monorepo revision and this path:
 
 ```text
-repository: https://github.com/googlielmo/dea-lang
+repository: https://github.com/dea-lang/dea
 path: editors/tree-sitter-dea
 ```
 

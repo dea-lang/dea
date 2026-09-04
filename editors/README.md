@@ -120,7 +120,7 @@ vim.api.nvim_create_autocmd("User", {
   callback = function()
     require("nvim-treesitter.parsers").dea = {
       install_info = {
-        url = "https://github.com/googlielmo/dea-lang",
+        url = "https://github.com/dea-lang/dea",
         revision = "<monorepo-revision>",
         location = "editors/tree-sitter-dea",
         queries = "editors/tree-sitter-dea/queries",
@@ -159,7 +159,7 @@ grammar = "dea"
 
 [[grammar]]
 name = "dea"
-source = { git = "https://github.com/googlielmo/dea-lang", rev = "<monorepo-revision>", subpath = "editors/tree-sitter-dea" }
+source = { git = "https://github.com/dea-lang/dea", rev = "<monorepo-revision>", subpath = "editors/tree-sitter-dea" }
 ```
 
 ### Zed
@@ -181,7 +181,7 @@ On Emacs builds with Tree-sitter support, register and install the grammar:
 ```elisp
 (add-to-list
  'treesit-language-source-alist
- '(dea "https://github.com/googlielmo/dea-lang"
+ '(dea "https://github.com/dea-lang/dea"
        "<monorepo-revision>"
        "editors/tree-sitter-dea"))
 (treesit-install-language-grammar 'dea)

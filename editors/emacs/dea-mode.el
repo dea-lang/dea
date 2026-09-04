@@ -7,7 +7,7 @@
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages
-;; URL: https://github.com/googlielmo/dea-lang
+;; URL: https://github.com/dea-lang/dea
 
 ;;; Commentary:
 

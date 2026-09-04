@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 keywords = ["incremental", "parsing", "tree-sitter", "dea"]
 categories = ["parser-implementations", "parsing", "text-editors"]
-repository = "https://github.com/googlielmo/dea-lang"
+repository = "https://github.com/dea-lang/dea"
 edition = "2021"
 autoexamples = false
 

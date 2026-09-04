@@ -16,7 +16,7 @@ LINKS_NAVBAR1 = [
 
 LINKS_NAVBAR2 = [
     ('<a href="pdf/dea_l0_api_reference.pdf">PDF</a>', []),
-    ('<a href="https://github.com/googlielmo/dea-lang">GitHub</a>', []),
+    ('<a href="https://github.com/dea-lang/dea">GitHub</a>', []),
 ]
 
 SHOW_UNDOCUMENTED = True

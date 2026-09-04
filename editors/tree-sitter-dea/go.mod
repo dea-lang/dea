@@ -1,5 +1,7 @@
-module github.com/googlielmo/dea-lang/editors/tree-sitter-dea
+module github.com/dea-lang/dea/editors/tree-sitter-dea
 
 go 1.22
 
 require github.com/tree-sitter/go-tree-sitter v0.24.0
+
+require github.com/mattn/go-pointer v0.0.1 // indirect

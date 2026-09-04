@@ -67,6 +67,7 @@ def local_fallback_env() -> dict[str, str]:
     for name in (
         "DEA_BUILD_ID",
         "GITHUB_ACTIONS",
+        "GITHUB_REPOSITORY",
         "GITHUB_RUN_ID",
         "GITHUB_RUN_ATTEMPT",
         "GITHUB_JOB",
@@ -164,14 +165,34 @@ def main() -> int:
             "0123456789abcdef0123456789abcdef01234567",
             "0123456",
             "?? VERSION",
-            "https://github.com/googlielmo/dea-lang",
+            "https://github.com/dea-lang/dea",
         ],
-    ):
+    ) as git_output:
         clean_version_only, _ = collect_stage2_build_provenance(REPO_ROOT, env)
+    if git_output.call_args_list[-1].args[2:] != ("remote", "get-url", "origin"):
+        fail("expected provenance collection to inspect the conventional origin remote")
+    if clean_version_only.source_url != "https://github.com/dea-lang/dea":
+        fail(f"unexpected origin-derived source URL: {clean_version_only.source_url!r}")
     if clean_version_only.tree_state != "clean":
         fail(f"expected VERSION-only dirty state to be ignored, got {clean_version_only.tree_state!r}")
     if format_commit_for_version(clean_version_only.commit_full, clean_version_only.tree_state).endswith("+dirty"):
         fail("did not expect a workflow-injected VERSION file to mark the commit dirty")
+
+    github_env = env.copy()
+    github_env["GITHUB_REPOSITORY"] = "dea-lang/dea"
+    with patch(
+        "dist_tools_lib._git_output",
+        side_effect=[
+            "0123456789abcdef0123456789abcdef01234567",
+            "0123456",
+            "?? VERSION",
+        ],
+    ) as git_output:
+        github_provenance, _ = collect_stage2_build_provenance(REPO_ROOT, github_env)
+    if any(call.args[2:] == ("remote", "get-url", "origin") for call in git_output.call_args_list):
+        fail("expected GITHUB_REPOSITORY provenance to bypass the origin remote")
+    if github_provenance.source_url != "https://github.com/dea-lang/dea":
+        fail(f"unexpected GitHub Actions source URL: {github_provenance.source_url!r}")
 
     print("test_dist_tools_lib_fallback: PASS")
     return 0

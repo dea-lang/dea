@@ -1,7 +1,7 @@
 # ADR-0017: Release Identity, Integrity, and Immutable Publication
 
 - Decision date: 2026-03-16
-- Last edited: 2026-08-26
+- Last edited: 2026-09-04
 - Status: Accepted
 
 ## Context
@@ -19,8 +19,8 @@ after users begin relying on it.
 
 An official stable L0 release follows this contract:
 
-1. Its identity is a stable `l0-vX.Y.Z` tag in the public `googlielmo/dea-lang` repository. The private development
-   repository is not a second release target.
+1. Its identity is a stable `l0-vX.Y.Z` tag in the public `dea-lang/dea` repository. The private development repository
+   is not a second release target.
 2. The tag maps one-to-one to checked-in `l0/docs/releases/X.Y.Z.md` notes. The first heading must name the same
    version, and the workflow publishes that reviewed file unchanged as the release body.
 3. The exact tag target must pass the required validation before publication. Publication authorization is separate from

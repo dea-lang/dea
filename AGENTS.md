@@ -16,8 +16,8 @@ This is a monorepo for the Dea language family. Each language level is a self-co
 | `docs/`    | Dea-wide and monorepo-wide stable docs                |
 | `work/`    | Dea-wide and monorepo-wide plans/proposals            |
 
-The official public repository for Dea is [googlielmo/dea-lang](https://github.com/googlielmo/dea-lang). Use this
-canonical URL in every other technical file or document that links to Dea's public repository.
+The official public repository for Dea is [dea-lang/dea](https://github.com/dea-lang/dea). Use this canonical URL in
+every other technical file or document that links to Dea's public repository.
 
 ## Per-Level Guidance
 

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 project(tree-sitter-dea
         VERSION "0.1.0"
         DESCRIPTION "Tree-sitter grammar for the Dea L0 and L1 languages"
-        HOMEPAGE_URL "https://github.com/googlielmo/dea-lang"
+        HOMEPAGE_URL "https://github.com/dea-lang/dea"
         LANGUAGES C)
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" ON)

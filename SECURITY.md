@@ -9,8 +9,8 @@ the default branch.
 
 Please report security issues privately and do not open a public issue.
 
-Use GitHub's [private vulnerability reporting](https://github.com/googlielmo/dea-lang/security/advisories/new) or send
-an email to: googlielmo@gmail.com
+Use GitHub's [private vulnerability reporting](https://github.com/dea-lang/dea/security/advisories/new) or send an email
+to: googlielmo@gmail.com
 
 Include:
 
@@ -32,4 +32,4 @@ Examples of security-relevant issues:
 - Supply-chain issues in monorepo build scripts or release artifacts
 
 Non-security bugs (crashes without exploitability, miscompilations without a security angle, feature requests) should be
-filed as normal [GitHub issues](https://github.com/googlielmo/dea-lang/issues).
+filed as normal [GitHub issues](https://github.com/dea-lang/dea/issues).
