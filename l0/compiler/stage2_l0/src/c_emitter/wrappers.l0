@@ -1,0 +1,185 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Optional-wrapper collection and ordered definition emission. */
+module c_emitter.wrappers;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import ast;
+import types;
+import c_emitter.builder;
+import c_emitter.state;
+import c_emitter.names;
+import c_emitter.types;
+
+/**
+ * Record one optional-wrapper inner type if it was not already collected.
+ *
+ * @param self Emitter to update.
+ * @param inner Inner type to store.
+ */
+func cem_note_opt_wrapper(self: CEmitter*, inner: Type*) {
+    let name = cem_opt_wrapper_name_for_inner(inner);
+    if (spm_get(self.opt_wrappers, name) == null) {
+        spm_put(self.opt_wrappers, name, type_clone(inner) as void*);
+    }
+}
+
+/**
+ * Recursively collect optional-wrapper types reachable from one type.
+ *
+ * @param self Emitter to update.
+ * @param t Type to scan.
+ */
+func cem_collect_opt_wrappers_from_type(self: CEmitter*, t: Type*) {
+    if (ord(t.kind) == ord(TY_NULLABLE)) {
+        if (!cem_is_niche_nullable(t)) {
+            cem_note_opt_wrapper(self, t.inner as Type*);
+            cem_collect_opt_wrappers_from_type(self, t.inner as Type*);
+        } else {
+            cem_collect_opt_wrappers_from_type(self, t.inner as Type*);
+        }
+        return;
+    }
+
+    if (ord(t.kind) == ord(TY_POINTER)) {
+        cem_collect_opt_wrappers_from_type(self, t.inner as Type*);
+        return;
+    }
+
+    if (ord(t.kind) == ord(TY_FUNC)) {
+        let params = t.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            cem_collect_opt_wrappers_from_type(self, ptr_vec_get(params, i) as Type*);
+        }
+        cem_collect_opt_wrappers_from_type(self, t.result as Type*);
+    }
+}
+
+/**
+ * Return whether a wrapper inner type can be emitted before user type definitions.
+ *
+ * @param inner Inner wrapped type.
+ * @return `true` for builtin-only wrapper dependencies.
+ */
+func cem_is_early_inner(inner: Type*) -> bool {
+    if (ord(inner.kind) == ord(TY_BUILTIN)) {
+        return true;
+    }
+    if (ord(inner.kind) == ord(TY_NULLABLE) && !cem_is_niche_nullable(inner)) {
+        return cem_is_early_inner(inner.inner as Type*);
+    }
+    return false;
+}
+
+/**
+ * Emit one collected optional-wrapper typedef.
+ *
+ * @param self Emitter to update.
+ * @param name Wrapper typedef name.
+ * @param inner Inner wrapped type.
+ */
+func cem_emit_optional_wrapper(self: CEmitter*, name: string, inner: Type*) {
+    if (ss_has(self.opt_emitted, name)) {
+        return;
+    }
+
+    let guard = cem_upper_ascii(name) + "_DEFINED";
+    let c_inner = cem_emit_type(inner);
+    ccb_emit(self.out, "#ifndef " + guard);
+    ccb_emit(self.out, "#define " + guard);
+    ccb_emit(self.out, "typedef struct { l0_bool has_value; " + c_inner + " value; } " + name + ";");
+    ccb_emit(self.out, "#endif /* " + guard + " */");
+    ccb_emit(self.out, "");
+    ss_add(self.opt_emitted, name);
+}
+
+/**
+ * Emit the collected optional wrapper for a just-defined user type.
+ *
+ * @param self Emitter to update.
+ * @param inner Just-defined struct or enum type.
+ */
+func cem_emit_optional_wrapper_for_defined_type(self: CEmitter*, inner: Type*) {
+    let name = cem_opt_wrapper_name_for_inner(inner);
+    let stored = spm_get(self.opt_wrappers, name);
+    if (stored == null) {
+        return;
+    }
+    cem_emit_optional_wrapper(self, name, stored as Type*);
+}
+
+/**
+ * Scan analysis metadata and collect every needed optional wrapper.
+ *
+ * @param self Emitter to update.
+ */
+func cem_prepare_optional_wrappers(self: CEmitter*) {
+    cem_reset_optional_wrappers(self);
+    let analysis = cem_analysis(self);
+    if (analysis.signatures == null) {
+        return;
+    }
+
+    let tables = analysis.signatures as SignatureTables*;
+
+    for (let i = 0; i < spm_capacity(tables.func_types); i = i + 1) {
+        if (spm_slot_occupied(tables.func_types, i)) {
+            cem_collect_opt_wrappers_from_type(self, spm_slot_value(tables.func_types, i) as Type*);
+        }
+    }
+
+    for (let struct_info_i = 0; struct_info_i < spm_capacity(tables.struct_infos); struct_info_i = struct_info_i + 1) {
+        if (!spm_slot_occupied(tables.struct_infos, struct_info_i)) {
+            continue;
+        }
+        let info = spm_slot_value(tables.struct_infos, struct_info_i) as StructInfo*;
+        for (let j = 0; j < vec_size(info.fields); j = j + 1) {
+            let field_info = ptr_vec_get(info.fields, j) as StructFieldInfo*;
+            cem_collect_opt_wrappers_from_type(self, field_info.field_type);
+        }
+    }
+
+    for (let enum_info_i = 0; enum_info_i < spm_capacity(tables.enum_infos); enum_info_i = enum_info_i + 1) {
+        if (!spm_slot_occupied(tables.enum_infos, enum_info_i)) {
+            continue;
+        }
+        let enum_info = spm_slot_value(tables.enum_infos, enum_info_i) as EnumInfo*;
+        for (let j = 0; j < vec_size(enum_info.variants); j = j + 1) {
+            let variant_info = ptr_vec_get(enum_info.variants, j) as EnumVariantInfo*;
+            for (let k = 0; k < vec_size(variant_info.field_types); k = k + 1) {
+                cem_collect_opt_wrappers_from_type(self, ptr_vec_get(variant_info.field_types, k) as Type*);
+            }
+        }
+    }
+
+    for (let expr_type_i = 0; expr_type_i < spm_capacity(analysis.expr_types); expr_type_i = expr_type_i + 1) {
+        if (spm_slot_occupied(analysis.expr_types, expr_type_i)) {
+            cem_collect_opt_wrappers_from_type(self, spm_slot_value(analysis.expr_types, expr_type_i) as Type*);
+        }
+    }
+}
+
+/**
+ * Emit collected optional-wrapper typedefs for one phase.
+ *
+ * @param self Emitter to update.
+ * @param early `true` for builtin-only wrappers, `false` for user-defined wrappers.
+ */
+func cem_emit_optional_wrappers(self: CEmitter*, early: bool) {
+    with (let names = spm_keys(self.opt_wrappers) => sv_free(names)) {
+        sv_sort(names);
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let name = sv_get(names, i);
+            let inner = spm_get(self.opt_wrappers, name) as Type*;
+            if (cem_is_early_inner(inner) != early) {
+                continue;
+            }
+            cem_emit_optional_wrapper(self, name, inner);
+        }
+    }
+}

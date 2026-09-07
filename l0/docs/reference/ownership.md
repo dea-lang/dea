@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-08-29
+Version: 2026-09-07
 
 This document describes how ownership works in L0 today, covering:
 
@@ -310,15 +310,17 @@ Pass criteria:
 
 Primary source files:
 
-- `compiler/stage1_py/l0_backend.py`
-- `compiler/stage2_l0/src/backend.l0`
-- `compiler/stage2_l0/src/c_emitter.l0`
+- `l0/compiler/stage1_py/l0_backend_state.py`, `l0_backend_lifetime.py`, and `l0_backend_lowering.py`
+- `l0/compiler/stage1_py/l0_c_cleanup.py`
+- `l0/compiler/stage2_l0/src/backend/state.l0`, `backend/lifetime.l0`, and `backend/lowering.l0`
+- `l0/compiler/stage2_l0/src/c_emitter/state.l0` and `c_emitter/lifetime.l0`
 - `compiler/shared/l0/stdlib/std/vector.l0`
 - `compiler/shared/l0/stdlib/std/hashmap.l0`
 - `compiler/shared/l0/stdlib/std/hashset.l0`
 - `compiler/shared/l0/stdlib/std/linear_map.l0`
 - `compiler/shared/l0/stdlib/std/io.l0`
-- `compiler/stage2_l0/src/{tokens,lexer,parser,ast,expr_types,scope_context}.l0`
+- `l0/compiler/stage2_l0/src/expr_types/state.l0`, `expr_types/liveness.l0`, and `expr_types/flow.l0`
+- `compiler/stage2_l0/src/{tokens,lexer,parser,ast,scope_context}.l0`
 - `compiler/shared/runtime/dea_rt.h` (public C declarations)
 - `compiler/shared/runtime/l0_runtime.h`
 

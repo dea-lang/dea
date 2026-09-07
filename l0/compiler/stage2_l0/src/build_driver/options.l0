@@ -1,0 +1,156 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** C option tokenization, merging, display, and optimization policy. */
+module build_driver.options;
+
+import std.string;
+import std.system;
+import std.text;
+import std.vector;
+import util.strings;
+import cli_args.model;
+import build_driver.platform;
+
+/**
+ * Append whitespace-delimited C option words from one source string.
+ *
+ * @param dst Destination vector for parsed option words.
+ * @param raw Raw options string, or `null`.
+ */
+func bd_append_c_option_words(dst: StringVector*, raw: string?) {
+    if (raw == null) {
+        return;
+    }
+
+    with (let parts = us_split_is_space_non_empty(raw as string) => sv_free(parts)) {
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            sv_push(dst, sv_get(parts, i));
+        }
+    }
+}
+
+/**
+ * Merge C option words from environment and CLI with CLI-last precedence.
+ *
+ * @param env_opts Options from `L0_CFLAGS`.
+ * @param cli_opts Options from `--c-options`.
+ * @return Parsed option words in final order.
+ */
+func bd_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVector* {
+    let out = sv_create(4);
+    bd_append_c_option_words(out, env_opts);
+    bd_append_c_option_words(out, cli_opts);
+    return out;
+}
+
+/**
+ * Format option words using the Stage 1 verbose display contract.
+ *
+ * @param words Option vector to format.
+ * @return Python-list-style rendering for verbose logs.
+ */
+func bd_format_word_list(words: StringVector*) -> string {
+    if (sv_size(words) == 0) {
+        return "[]";
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "[");
+        for (let i = 0; i < sv_size(words); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, "'");
+            sb_append(sb, sv_get(words, i));
+            sb_append(sb, "'");
+        }
+        sb_append(sb, "]");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Resolve merged C option words from `L0_CFLAGS` and parsed CLI options.
+ *
+ * @param opts Parsed CLI options.
+ * @return Parsed option words in final order.
+ */
+func bd_collect_c_option_words(opts: CliOptions*) -> StringVector* {
+    return bd_merge_c_option_words(env_get("L0_CFLAGS"), opts.c_options);
+}
+
+/**
+ * Return whether the user already supplied an optimization flag.
+ *
+ * @param extra_opts Collected extra C compiler options.
+ * @return `true` when an explicit optimization flag is present.
+ */
+func bd_has_explicit_opt_flag(extra_opts: StringVector*) -> bool {
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        let opt = sv_get(extra_opts, i);
+        if (starts_with_s(opt, "-O") || starts_with_s(opt, "/O")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return whether the user supplied a debug flag.
+ *
+ * @param extra_opts Collected extra C compiler options.
+ * @return `true` when a debug flag is present.
+ */
+func bd_has_debug_flag(extra_opts: StringVector*) -> bool {
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        let opt = sv_get(extra_opts, i);
+        if (opt == "-g" || opt == "/Zi" || opt == "/Z7") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return the default optimization flag for a compiler family.
+ *
+ * @param family Compiler flag-family name.
+ * @param extra_opts Collected extra C compiler options.
+ * @return Optimization flag, or `null`.
+ */
+func bd_get_optimize_flag(family: string, extra_opts: StringVector*) -> string? {
+    if (bd_has_explicit_opt_flag(extra_opts)) {
+        return null;
+    }
+
+    if (bd_has_debug_flag(extra_opts)) {
+        if (family == "tcc") {
+            return "-O0";
+        }
+        if (family == "gcc") {
+            return "-Og";
+        }
+        if (family == "msvc") {
+            return "/Od";
+        }
+        return null;
+    }
+
+    // MinGW/GCC on Windows has shown optimizer-sensitive miscompiles in
+    // teardown-heavy traces. Keep the automatic default conservative there;
+    // users can still opt in explicitly with -O*.
+    if (bd_is_windows() && family == "gcc") {
+        return "-O0";
+    }
+
+    if (family == "gcc" || family == "tcc") {
+        return "-O1";
+    }
+    if (family == "msvc") {
+        return "/O1";
+    }
+    return null;
+}

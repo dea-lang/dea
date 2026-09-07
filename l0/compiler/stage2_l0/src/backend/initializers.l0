@@ -1,0 +1,287 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Static initializer classification and constructor lowering. */
+module backend.initializers;
+
+import std.vector;
+import ast;
+import c_emitter.state;
+import c_emitter.names;
+import c_emitter.types;
+import c_emitter.values;
+import signatures;
+import symbols;
+import types;
+import backend.state;
+import backend.lowering;
+
+/**
+ * Emit a bare zero-field enum variant as a static initializer.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Var-ref expression id.
+ * @param expected_type Resolved binding type.
+ * @return Static enum initializer, or an ICE string when invariants are broken.
+ */
+func be_emit_bare_variant_static_initializer(self: Backend*, expr_id: ExprId, expected_type: Type*) -> string {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) != ord(EX_VAR_REF)) {
+        return be_ice_string("[ICE-1034] bare variant helper requires var ref expression");
+    }
+    if (ord(expected_type.kind) != ord(TY_ENUM)) {
+        return be_ice_string("[ICE-1033] bare enum variant initializer expected enum type");
+    }
+
+    let sym = be_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+    if (sym == null) {
+        return be_ice_string("[ICE-1031] unknown bare variant name");
+    }
+    if (ord((sym as Symbol*).kind) != ord(SYM_ENUM_VARIANT)) {
+        return be_ice_string("[ICE-1034] var ref is not an enum variant constructor");
+    }
+
+    let target = sym as Symbol*;
+    if (target.module_name != expected_type.module_name || target.owner_name != expected_type.name) {
+        return be_ice_string("[ICE-1033] bare enum variant does not belong to expected enum type");
+    }
+
+    let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, expected_type.module_name, expected_type.name);
+    if (enum_info == null) {
+        return be_ice_string("[ICE-1050] missing EnumInfo for bare variant static initializer");
+    }
+    let variant_info = cem_find_enum_variant_info(enum_info as EnumInfo*, target.name);
+    if (variant_info == null) {
+        return be_ice_string("[ICE-1051] missing VariantInfo for bare variant static initializer");
+    }
+    if (vec_size((variant_info as EnumVariantInfo*).field_types) != 0) {
+        return be_ice_string("[ICE-1053] bare enum variant initializer requires zero payload fields");
+    }
+
+    with (let payload_inits = sv_create(0) => sv_free(payload_inits)) {
+        return cem_emit_variant_static_initializer_for_type(expected_type, target.name, payload_inits);
+    }
+}
+
+/**
+ * Check whether an expression belongs to the supported static-initializer subset.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression id to inspect.
+ * @return `true` when the expression can be emitted at C file scope.
+ */
+func be_is_static_let_initializer(self: Backend*, expr_id: ExprId) -> bool {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    match (expr.kind) {
+        EX_INT => { return true; }
+        EX_BYTE => { return true; }
+        EX_BOOL => { return true; }
+        EX_STRING => { return true; }
+        EX_NULL => { return true; }
+        EX_VAR_REF => {
+            let sym = be_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+            return sym != null && sig_symbol_is_zero_field_enum_variant(sym as Symbol*);
+        }
+        EX_CALL => {
+            let callee = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+            if (ord(callee.kind) != ord(EX_VAR_REF)) {
+                return false;
+            }
+            let args = expr.ids as VectorBase*;
+            let arg_count = 0;
+            if (args != null) arg_count = vec_size(args);
+            if (callee.text_value == "sizeof") {
+                return arg_count == 1;
+            }
+            if (callee.text_value == "ord") {
+                return arg_count == 1 && be_is_static_let_initializer(self, id_vec_get(args, 0));
+            }
+            let sym2 = be_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
+            if (sym2 == null) {
+                return false;
+            }
+            let target = sym2 as Symbol*;
+            let is_constructor = ord(target.kind) == ord(SYM_STRUCT) ||
+                ord(target.kind) == ord(SYM_ENUM_VARIANT) ||
+                (ord(target.kind) == ord(SYM_TYPE_ALIAS) && target.resolved_type != null &&
+                 ord((target.resolved_type as Type*).kind) == ord(TY_STRUCT));
+            if (!is_constructor) {
+                return false;
+            }
+            for (let i = 0; i < arg_count; i = i + 1) {
+                if (!be_is_static_let_initializer(self, id_vec_get(args, i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Resolve the enum-variant symbol named by one static constructor expression.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Bare or called variant constructor expression.
+ * @return Resolved variant symbol, or `null` when the expression is not a variant constructor.
+ */
+func be_static_variant_symbol(self: Backend*, expr_id: ExprId) -> Symbol*? {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    let name_expr = expr;
+    if (ord(expr.kind) == ord(EX_CALL)) {
+        name_expr = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+    }
+    if (ord(name_expr.kind) != ord(EX_VAR_REF)) {
+        return null;
+    }
+
+    let sym = be_lookup_symbol(self, name_expr.text_value, name_expr.module_path, name_expr.name_qualifier);
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_ENUM_VARIANT)) {
+        return null;
+    }
+    return sym as Symbol*;
+}
+
+/**
+ * Emit a file-scope `ord` initializer as a direct C enum-tag constant.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Static `ord` call expression.
+ * @return C99 constant expression for the resolved variant tag.
+ */
+func be_emit_static_ord_initializer(self: Backend*, expr_id: ExprId) -> string {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) != ord(EX_CALL) || expr.ids == null || vec_size(expr.ids as VectorBase*) != 1) {
+        return be_ice_string("[ICE-1181] unsupported top-level ord initializer");
+    }
+
+    let sym = be_static_variant_symbol(self, id_vec_get(expr.ids as VectorBase*, 0));
+    if (sym == null) {
+        return be_ice_string("[ICE-1181] unsupported top-level ord initializer");
+    }
+    let target = sym as Symbol*;
+    with (let enum_type = type_new_enum(target.module_name, target.owner_name) => type_free(enum_type)) {
+        return cem_emit_cast("l0_int", cem_emit_enum_tag(enum_type, target.name));
+    }
+}
+
+/**
+ * Emit a constant initializer for a top-level `let`.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression id to lower.
+ * @param expected_type Resolved `let` type.
+ * @return Constant initializer expression.
+ */
+func be_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type: Type*) -> string {
+    if (!be_is_static_let_initializer(self, expr_id)) {
+        return be_ice_string("[ICE-1181] unsupported top-level let initializer");
+    }
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) != ord(EX_NULL) && ord(expected_type.kind) == ord(TY_NULLABLE)) {
+        let inner = expected_type.inner as Type*;
+        let payload = be_emit_let_initializer(self, expr_id, inner);
+        if (cem_is_niche_nullable(expected_type)) {
+            return payload;
+        }
+        return "{.has_value = 1, .value = " + payload + "}";
+    }
+    match (expr.kind) {
+        EX_INT => { return cem_emit_int_literal(expr.int_value); }
+        EX_BYTE => { return cem_emit_byte_literal(expr.int_value as byte); }
+        EX_BOOL => { return cem_emit_const_bool_literal(expr.bool_value); }
+        EX_STRING => { return cem_emit_const_string_literal(expr.text_value); }
+        EX_NULL => { return cem_emit_null_literal(expected_type, true); }
+        EX_VAR_REF => { return be_emit_bare_variant_static_initializer(self, expr_id, expected_type); }
+        EX_CALL => {
+            let callee = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+            if (ord(callee.kind) == ord(EX_VAR_REF) && callee.text_value == "sizeof") {
+                return be_emit_call(self, expr_id);
+            }
+            if (ord(callee.kind) == ord(EX_VAR_REF) && callee.text_value == "ord") {
+                return be_emit_static_ord_initializer(self, expr_id);
+            }
+            return be_emit_const_constructor(self, expr_id, expected_type);
+        }
+        _ => {
+            return be_ice_string("[ICE-1181] unsupported top-level let initializer");
+        }
+    }
+}
+
+/**
+ * Emit a constant constructor initializer for a top-level `let`.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Call expression id.
+ * @param expected_type Expected constructed type.
+ * @return Constant initializer expression.
+ */
+func be_emit_const_constructor(self: Backend*, expr_id: ExprId, expected_type: Type*) -> string {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) != ord(EX_CALL)) {
+        return be_ice_string("[ICE-1034] constant constructor helper requires call expression");
+    }
+    let call = expr;
+    let callee = expr_arena_get(be_current_expr_arena(self), call.expr_a);
+    if (ord(callee.kind) != ord(EX_VAR_REF)) {
+        return be_ice_string("[ICE-1034] constant constructor callee must be a name");
+    }
+
+    let sym = be_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
+    if (sym == null) {
+        return be_ice_string("[ICE-1031] unknown constant constructor name");
+    }
+
+    if (ord(expected_type.kind) == ord(TY_STRUCT) &&
+        (ord((sym as Symbol*).kind) == ord(SYM_STRUCT) || ord((sym as Symbol*).kind) == ord(SYM_TYPE_ALIAS))) {
+        let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, expected_type.module_name, expected_type.name);
+        if (info == null) {
+            return be_ice_string("[ICE-1040] missing StructInfo for constant constructor");
+        }
+        with (let field_inits = sv_create(8) => sv_free(field_inits)) {
+            let struct_info = info as StructInfo*;
+            for (let i = 0; i < vec_size(struct_info.fields); i = i + 1) {
+                let field = ptr_vec_get(struct_info.fields, i) as StructFieldInfo*;
+                sv_push(field_inits, field.name);
+                sv_push(field_inits,
+                    be_emit_let_initializer(self, id_vec_get(call.ids as VectorBase*, i), field.field_type));
+            }
+            return cem_emit_struct_static_initializer_for_type(expected_type, field_inits);
+        }
+    }
+
+    if (ord((sym as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
+        if (ord(expected_type.kind) != ord(TY_ENUM)) {
+            return be_ice_string("[ICE-1033] enum variant constructor expected enum type");
+        }
+        let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, expected_type.module_name, expected_type.name);
+        if (enum_info == null) {
+            return be_ice_string("[ICE-1050] missing EnumInfo for constant constructor");
+        }
+        let variant_name = (sym as Symbol*).name;
+        let variant_info = cem_find_enum_variant_info(enum_info as EnumInfo*, variant_name);
+        if (variant_info == null) {
+            return be_ice_string("[ICE-1051] missing VariantInfo for constant constructor");
+        }
+        let variant_decl = be_find_variant_decl(self, expected_type.module_name, expected_type.name, variant_name);
+        if (variant_decl == null) {
+            return be_ice_string("[ICE-1052] missing EnumVariant decl for constant constructor");
+        }
+        with (let payload_inits = sv_create(8) => sv_free(payload_inits)) {
+            let info2 = variant_info as EnumVariantInfo*;
+            for (let i = 0; i < vec_size(info2.field_types); i = i + 1) {
+                let field_decl = ptr_vec_get((variant_decl as EnumVariant*).fields, i) as FieldDecl*;
+                sv_push(payload_inits, field_decl.name);
+                sv_push(payload_inits,
+                    be_emit_let_initializer(self, id_vec_get(call.ids as VectorBase*, i), ptr_vec_get(info2.field_types, i) as Type*));
+            }
+            return cem_emit_variant_static_initializer_for_type(expected_type, variant_name, payload_inits);
+        }
+    }
+
+    return be_ice_string("[ICE-1034] call expression is not a supported constant constructor");
+}

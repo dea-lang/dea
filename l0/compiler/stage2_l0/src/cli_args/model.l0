@@ -1,0 +1,156 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Canonical CLI options, parse results, and ownership lifecycle. */
+module cli_args.model;
+
+import std.vector;
+import util.diag;
+
+/**
+ * Defines the CliMode enumeration.
+ */
+enum CliMode {
+    CM_RUN;
+    CM_BUILD;
+    CM_COMPILE;
+    CM_GEN;
+    CM_CHECK;
+    CM_TOK;
+    CM_AST;
+    CM_SYM;
+    CM_TYPE;
+}
+
+/**
+ * Represents the CliOptions structure.
+ */
+struct CliOptions {
+    mode: CliMode;
+    mode_explicit: bool;
+
+    verbosity: int;
+    log: bool;
+
+    project_roots: StringVector*;
+    sys_roots: StringVector*;
+    interface_paths: StringVector*;
+
+    output: string?;
+    keep_c: bool;
+    c_compiler: string?;
+    c_options: string?;
+    c_sources: StringVector*;
+    runtime_include: string?;
+    runtime_lib: string?;
+
+    no_line_directives: bool;
+    trace_arc: bool;
+    trace_memory: bool;
+    unchecked: bool;
+    check_basic: bool;
+
+    all_modules: bool;
+    include_eof: bool;
+
+    entry_target: string?;
+    extra_target_count: int;
+    program_args: StringVector*;
+}
+
+/**
+ * Represents the CliParseResult structure.
+ */
+struct CliParseResult {
+    options: CliOptions*?;
+    diags: DiagCollector*;
+    help_requested: bool;
+    version_requested: bool;
+    verbosity: int;
+    rich_log: bool;
+}
+
+/**
+ * Create a `CliOptions` instance with default values.
+ *
+ * @return New CLI options object.
+ */
+func cli_options_create() -> CliOptions* {
+    return new CliOptions(
+        CM_BUILD,
+        false,
+        0,
+        false,
+        sv_create(2),
+        sv_create(2),
+        sv_create(2),
+        null,
+        false,
+        null,
+        null,
+        sv_create(2),
+        null,
+        null,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        null,
+        0,
+        sv_create(4)
+    );
+}
+
+/**
+ * Free a `CliOptions` instance.
+ *
+ * @param self CLI options to free.
+ */
+func cli_options_free(self: CliOptions*) {
+    sv_free(self.project_roots);
+    sv_free(self.sys_roots);
+    sv_free(self.interface_paths);
+    sv_free(self.c_sources);
+    sv_free(self.program_args);
+    drop self;
+}
+
+/**
+ * Free a nullable `CliOptions` instance when present.
+ *
+ * @param self Optional CLI options to free.
+ */
+func cli_options_free_opt(self: CliOptions*?) {
+    if (self != null) {
+        cli_options_free(self as CliOptions*);
+    }
+}
+
+/**
+ * Free a nullable diagnostic collector when present.
+ *
+ * @param self Optional diagnostic collector to free.
+ */
+func cli_diag_free_opt(self: DiagCollector*?) {
+    if (self != null) {
+        diag_free(self as DiagCollector*);
+    }
+}
+
+/**
+ * Free a CLI parse result and any owned options.
+ *
+ * @param self Parse result to free.
+ */
+func cli_parse_result_free(self: CliParseResult*) {
+    if (self.options != null) {
+        cli_options_free(self.options as CliOptions*);
+    }
+    diag_free(self.diags);
+    drop self;
+}

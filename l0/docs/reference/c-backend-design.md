@@ -1,35 +1,29 @@
 # L0 C Backend Design
 
-Version: 2026-08-29
+Version: 2026-09-07
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
 
 Related docs:
 
-- Architecture and pass flow: [reference/architecture.md](architecture.md)
-- Language/runtime rationale and future evolution: [reference/design-decisions.md](design-decisions.md)
-- Stage 1 contract/index: [specs/compiler/stage1-contract.md](../specs/compiler/stage1-contract.md)
-- Stage 2 contract/index: [specs/compiler/stage2-contract.md](../specs/compiler/stage2-contract.md)
+- Architecture and pass flow: [l0/docs/reference/architecture.md](architecture.md)
+- Language/runtime rationale and future evolution: [l0/docs/reference/design-decisions.md](design-decisions.md)
+- Stage 1 contract/index: [l0/docs/specs/compiler/stage1-contract.md](../specs/compiler/stage1-contract.md)
+- Stage 2 contract/index: [l0/docs/specs/compiler/stage2-contract.md](../specs/compiler/stage2-contract.md)
 
 ## Overview
 
-Current code generation is split into a backend-orchestration layer plus a C emitter layer:
-
-- Stage 1 reference implementation:
-  - `compiler/stage1_py/l0_backend.py`
-  - `compiler/stage1_py/l0_c_emitter.py`
-  - `compiler/stage1_py/l0_string_escape.py`
-- Stage 2 implementation:
-  - `compiler/stage2_l0/src/backend.l0`
-  - `compiler/stage2_l0/src/c_emitter.l0`
-  - `compiler/stage2_l0/src/string_escape.l0`
+Code generation separates semantic lowering from target-C syntax. Stage 1 `l0_backend.py` and `l0_c_emitter.py` assemble
+explicit collaborators under `l0/compiler/stage1_py/`. Stage 2 `backend.l0` coordinates the `backend.*` and
+`c_emitter.*` modules under `l0/compiler/stage2_l0/src/`; there is no root `c_emitter.l0` facade. The existing
+`l0_string_escape.py` / `string_escape.l0` modules remain the canonical literal encoding owners.
 
 Input is a fully-typed `AnalysisResult`. Output is one C99 translation unit.
 
 ## Responsibilities Split
 
-### Backend orchestration (`l0_backend.py`, `backend.l0`)
+### Backend orchestration and lowering
 
 - Validates generation preconditions (`CompilationUnit` exists, no semantic errors).
 - Orders type emission using a dependency graph + topological sort.
@@ -38,7 +32,7 @@ Input is a fully-typed `AnalysisResult`. Output is one C99 translation unit.
 - Handles retain-on-copy for ownership-sensitive assignments/initialization sites.
 - Emits function bodies and decides where cleanup runs on normal/early exits.
 
-### C emitter (`l0_c_emitter.py`, `c_emitter.l0`)
+### C emission
 
 - Emits C includes, declarations, definitions, and formatting.
 - Implements name mangling and identifier hygiene for C keywords.
@@ -48,6 +42,37 @@ Input is a fully-typed `AnalysisResult`. Output is one C99 translation unit.
   begin/finish).
 - Lowers string literals (const and non-const) through one canonical decode/encode path, emitted via
   `L0_STRING_CONST(...)`; C escaping neutralizes every historical trigraph spelling without changing runtime bytes.
+
+### Internal ownership and dependencies
+
+Stage 1 `Backend.generate()` delegates the complete translation-unit operation to `ModuleGeneration`; Stage 2
+`backend_generate` owns that operation and its `be_create` / `be_free` lifetime directly. Both use these boundaries:
+
+| Responsibility                                                                  | Stage 1 module            | Stage 2 module         |
+| ------------------------------------------------------------------------------- | ------------------------- | ---------------------- |
+| Current module/function, semantic queries, scopes, labels, and session lifetime | `l0_backend_state`        | `backend.state`        |
+| Pointer checks and expected-type conversion                                     | `l0_backend_convert`      | `backend.convert`      |
+| ARC temporary materialization, retention, value cleanup, and drop               | `l0_backend_lifetime`     | `backend.lifetime`     |
+| Type dependency ordering and definition emission                                | `l0_backend_ordering`     | `backend.ordering`     |
+| Static initializer classification and constructors                              | `l0_backend_initializers` | `backend.initializers` |
+| Function/module declarations and function lifecycle                             | `l0_backend_module`       | `backend.output`       |
+| Recursive expressions, statements, control flow, and scheduled cleanup          | `l0_backend_lowering`     | `backend.lowering`     |
+
+State sits below conversion and lifetime operations; recursive lowering calls those owners. Module generation calls
+ordering, initializers, and lowering. Stage 2 initializer emission retains its existing fallback into expression
+lowering. No lower-level owner calls module generation. Cleanup that executes source statements stays inside the
+lowering recursion; cleanup of an already-emitted value belongs to the lifetime owner.
+
+C syntax follows the same principle. Stage 1 `CEmitterState` owns analysis, output, current module, and the active
+source directive; `CNames` owns temporary numbering, and `CTypes` owns optional-wrapper registries. `CValues`,
+`CStatements`, `CCleanup`, and `CDeclarations` receive the lower-level collaborators they use. `CCodeBuilder` owns
+indentation and text assembly. There is no forwarding method for each syntax operation on `CEmitter`.
+
+Stage 2 `c_emitter.state` owns the canonical `CEmitter` model and lifecycle, including counters, wrapper registries, and
+source context. `c_emitter.builder` owns the builder model and lifecycle. The `names`, `types`, `wrappers`, `values`,
+`statements`, `lifetime`, and `declarations` modules operate on that state through an acyclic dependency graph. Backend
+and test consumers import the actual canonical owners, including state types, rather than relying on transitive imports.
+Type spelling remains below wrapper emission, and source-directive restoration remains below checked-pointer syntax.
 
 ## Generated Unit Layout
 
@@ -192,7 +217,7 @@ If entry module defines `main`, backend emits C wrapper:
   toggles consumed by `l0_runtime.h`.
 - Escape decoding used by `case` literal semantic checks is shared with codegen to avoid divergence.
 
-Tracing details and runtime log contract are specified in [specs/runtime/trace.md](../specs/runtime/trace.md).
+Tracing details and runtime log contract are specified in [l0/docs/specs/runtime/trace.md](../specs/runtime/trace.md).
 
 ## Current Constraints and Known Gaps
 

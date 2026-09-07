@@ -122,7 +122,8 @@ def test_missing_enum_info_ice(artifact_dir: Path) -> None:
         import std.vector;
 
         import ast;
-        import c_emitter;
+        import c_emitter.state;
+        import c_emitter.lifetime;
         import driver;
         import sem_context;
         import signatures;
@@ -156,7 +157,8 @@ def test_missing_struct_info_ice(artifact_dir: Path) -> None:
         import std.vector;
 
         import ast;
-        import c_emitter;
+        import c_emitter.state;
+        import c_emitter.lifetime;
         import driver;
         import sem_context;
         import signatures;

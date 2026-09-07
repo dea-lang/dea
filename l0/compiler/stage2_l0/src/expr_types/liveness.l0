@@ -1,0 +1,128 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Expression-only liveness, assignment revival, and try-operator inspection. */
+module expr_types.liveness;
+
+import std.vector;
+import ast;
+import driver;
+import sem_context;
+import types;
+import expr_types.state;
+import expr_types.lookup;
+
+/**
+ * Mark a simple local assignment target alive again.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Potential local-variable lvalue expression.
+ */
+func etc_alive_revive_assignment_target(self: ExpressionTypeChecker*, expr_id: ExprId) {
+    if (expr_id < 0 || self.current_unit == null) {
+        return;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_VAR_REF)) {
+        let local_ty = etc_lookup_local(self, expr.text_value);
+        if (local_ty != null) {
+            etc_alive_set(self, expr.text_value, true);
+            type_free(local_ty as Type*);
+        }
+    }
+}
+
+/**
+ * Return whether an expression contains postfix `?`.
+ *
+ * @param arena Expression arena to inspect.
+ * @param expr_id Expression id to walk.
+ * @return `true` when the expression tree contains `EX_TRY`.
+ */
+func etc_expr_contains_try(arena: ExprArena*, expr_id: ExprId) -> bool {
+    if (expr_id < 0) {
+        return false;
+    }
+    let expr = expr_arena_get(arena, expr_id);
+    if (ord(expr.kind) == ord(EX_TRY)) {
+        return true;
+    }
+    if (etc_expr_contains_try(arena, expr.expr_a)) return true;
+    if (etc_expr_contains_try(arena, expr.expr_b)) return true;
+    if (etc_expr_contains_try(arena, expr.expr_c)) return true;
+    if (expr.ids != null) {
+        let ids = expr.ids as VectorBase*;
+        for (let i = 0; i < vec_size(ids); i = i + 1) {
+            if (etc_expr_contains_try(arena, id_vec_get(ids, i))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Return whether a statement contains postfix `?`.
+ *
+ * @param unit Driver unit owning the statement.
+ * @param stmt_id Statement id to inspect.
+ * @return `true` when the statement contains `EX_TRY`.
+ */
+func etc_stmt_contains_try(unit: DriverUnit*, stmt_id: StmtId) -> bool {
+    if (stmt_id < 0) {
+        return false;
+    }
+    let stmt = stmt_arena_get(unit.parse_result.stmt_arena, stmt_id);
+    match (stmt.kind) {
+        ST_BLOCK => {
+            if (stmt.ids != null) {
+                let ids = stmt.ids as VectorBase*;
+                for (let i = 0; i < vec_size(ids); i = i + 1) {
+                    if (etc_stmt_contains_try(unit, id_vec_get(ids, i))) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        ST_LET => { return etc_expr_contains_try(unit.parse_result.expr_arena, stmt.expr_a); }
+        ST_ASSIGN => {
+            return etc_expr_contains_try(unit.parse_result.expr_arena, stmt.expr_a) ||
+                etc_expr_contains_try(unit.parse_result.expr_arena, stmt.expr_b);
+        }
+        ST_EXPR => { return etc_expr_contains_try(unit.parse_result.expr_arena, stmt.expr_a); }
+        ST_RETURN => { return etc_expr_contains_try(unit.parse_result.expr_arena, stmt.expr_a); }
+        _ => { return false; }
+    }
+}
+
+/** Replay local-variable use checks without repeating expression semantics. */
+func etc_check_expr_liveness(self: ExpressionTypeChecker*, expr_id: ExprId) {
+    if (expr_id < 0) {
+        return;
+    }
+    let unit = self.current_unit as DriverUnit*;
+    let expr = expr_arena_get(unit.parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_VAR_REF)) {
+        let resolution = analysis_get_var_ref_resolution(self.result, self.current_module, expr_id);
+        if (resolution != null && (resolution as int) == ord(VAR_RES_LOCAL)) {
+            let alive = etc_alive_lookup(self, expr.text_value);
+            if (alive != null && (alive as int) == 0) {
+                etc_diag_error(self, "TYP-0150", "use of dropped variable '" + expr.text_value + "'",
+                    unit.path, expr.span);
+            }
+        }
+        return;
+    }
+    etc_check_expr_liveness(self, expr.expr_a);
+    etc_check_expr_liveness(self, expr.expr_b);
+    etc_check_expr_liveness(self, expr.expr_c);
+    if (expr.ids != null) {
+        let ids = expr.ids as VectorBase*;
+        for (let i = 0; i < vec_size(ids); i = i + 1) {
+            etc_check_expr_liveness(self, id_vec_get(ids, i));
+        }
+    }
+}

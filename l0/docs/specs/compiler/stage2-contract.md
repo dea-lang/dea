@@ -1,14 +1,16 @@
 # L0 Stage 2 Compiler Contract
 
-Version: 2026-07-29
+Version: 2026-09-07
 
 This document covers Stage 2-specific guarantees not part of the shared CLI contract.
 
 Canonical ownership:
 
-- Shared CLI contract (mode flags, options, targets, identity, exit codes): [cli-contract.md](cli-contract.md)
-- Architecture and pass flow: [reference/architecture.md](../../reference/architecture.md)
-- Diagnostic code assignment and cross-stage parity: [diagnostic-code-policy.md](diagnostic-code-policy.md)
+- Shared CLI contract (mode flags, options, targets, identity, exit codes):
+  [l0/docs/specs/compiler/cli-contract.md](cli-contract.md)
+- Architecture and pass flow: [l0/docs/reference/architecture.md](../../reference/architecture.md)
+- Diagnostic code assignment and cross-stage parity:
+  [l0/docs/specs/compiler/diagnostic-code-policy.md](diagnostic-code-policy.md)
 
 ## 1. Scope
 
@@ -90,3 +92,27 @@ The Stage 2 binding has these concrete properties:
 - Cleanup is bounded and no-follow. It removes only registered regular children and then the empty real workspace
   directory. Unexpected or substituted contents cause `L0C-9514`, retain the workspace for inspection, and change
   success to status 1 without replacing an already nonzero primary result.
+
+## 4. Internal Module Ownership
+
+L0 imports open only names locally declared by the provider. Implementation consumers therefore import canonical owners
+explicitly; children never import a root facade, and the compiler import graph remains acyclic.
+
+- `cli_args` declares `cli_parse`; CLI option/result types and lifecycle belong to `cli_args.model`.
+- `build_driver` declares `bd_cmd_build` and `bd_cmd_run`, retaining each complete command workspace transaction.
+  Prepared input belongs to `build_driver.state`; source preparation, options, host policy, toolchain commands, and
+  compilation within the borrowed workspace have separate owners. `compiler_filesystem` retains workspace policy.
+- `expr_types` declares `expr_types_check`. Checker/flow types and construction/destruction belong to
+  `expr_types.state`. Lookup, compatibility, patterns, liveness, expression inference, statement/loop flow, and
+  top-level initializer traversal are explicit dependencies.
+- `backend` declares `backend_generate`, retaining translation-unit phase order and backend-session lifetime.
+  `backend.state` owns backend/loop types and lifecycle; ordering, initializers, output, conversions, value lifetime,
+  and recursive lowering have separate owners.
+- C emission has no root facade. `c_emitter.builder` owns `CCodeBuilder`; `c_emitter.state` owns `CEmitter` and its
+  lifecycle. Syntax consumers import the required `c_emitter.*` modules directly.
+
+The layout preserves diagnostic text/order/spans, target-C spelling, cleanup order, public CLI behavior, and bootstrap
+contracts. The source map is maintained in
+[l0/docs/reference/architecture.md](../../reference/architecture.md#5-filemodule-layout); lowering and syntax boundaries
+are detailed in
+[l0/docs/reference/c-backend-design.md](../../reference/c-backend-design.md#internal-ownership-and-dependencies).

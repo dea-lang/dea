@@ -1,0 +1,288 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** ARC temporary materialization, value retain/cleanup, and drop operations. */
+module backend.lifetime;
+
+import std.vector;
+import ast;
+import c_emitter.state;
+import c_emitter.names;
+import c_emitter.types;
+import c_emitter.lifetime;
+import c_emitter.values;
+import c_emitter.declarations;
+import c_emitter.statements;
+import sem_context;
+import signatures;
+import scope_context;
+import symbols;
+import types;
+import backend.state;
+import backend.convert;
+
+/**
+ * Report whether an expression is a borrowed cast from a place.
+ *
+ * Outer parentheses are ignored; owner-producing ARC value-optional wraps are excluded.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression to classify.
+ * @return `true` for a non-owner-producing cast whose source is a place expression.
+ */
+func be_is_unwrap_cast_from_place(self: Backend*, expr_id: ExprId) -> bool {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    while (ord(expr.kind) == ord(EX_PAREN)) {
+        expr_id = expr.expr_a;
+        expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    }
+    if (ord(expr.kind) != ord(EX_CAST)) {
+        return false;
+    }
+    with (let src_ty = be_expr_type(self, expr.expr_a) => type_free_opt(src_ty),
+          let dst_ty = be_expr_type(self, expr_id) => type_free_opt(dst_ty)) {
+        if (src_ty != null && dst_ty != null && ord((dst_ty as Type*).kind) == ord(TY_NULLABLE) &&
+            (dst_ty as Type*).inner != null &&
+            type_equals(src_ty as Type*, (dst_ty as Type*).inner as Type*) &&
+            !cem_is_niche_nullable(dst_ty as Type*) &&
+            analysis_has_arc_data(self.result, (dst_ty as Type*).inner as Type*)) {
+            return false;
+        }
+    }
+    return be_is_place_expr(self, expr.expr_a);
+}
+
+/**
+ * Report whether a non-place ARC rvalue needs temporary materialization.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression to classify.
+ * @return `true` when the expression should be hoisted into a cleanup temp.
+ */
+func be_needs_arc_temp(self: Backend*, expr_id: ExprId) -> bool {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    return ord(expr.kind) != ord(EX_STRING);
+}
+
+/**
+ * Report whether an expression should be materialized into a scope-owned temp.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression to classify.
+ * @param expr_type Inferred type of the expression.
+ * @return `true` when the expression carries ARC data and is not already a place.
+ */
+func be_should_materialize_arc_temp(self: Backend*, expr_id: ExprId, expr_type: Type*) -> bool {
+    return analysis_has_arc_data(self.result, expr_type) &&
+           !be_is_place_expr(self, expr_id) &&
+           !be_is_unwrap_cast_from_place(self, expr_id) &&
+           be_needs_arc_temp(self, expr_id);
+}
+
+/**
+ * Materialize one ARC rvalue into a scope-owned temporary.
+ *
+ * @param self Backend state to update.
+ * @param c_expr Lowered expression to store.
+ * @param expr_type Type of the stored expression.
+ * @return Temporary variable name.
+ */
+func be_materialize_arc_temp(self: Backend*, c_expr: string, expr_type: Type*) -> string {
+    if (self.current_scope == null) {
+        be_ice("[ICE-1311] ARC temp materialization requires an active scope");
+    }
+    let temp = cem_fresh_tmp(self.emitter, "arc");
+    cem_emit_temp_decl(self.emitter, cem_emit_type(expr_type), temp, c_expr);
+    sc_add_owned(self.current_scope as ScopeContext*, temp, expr_type);
+    return temp;
+}
+
+/**
+ * Emit retain operations for one copied owned value.
+ *
+ * @param self Backend state to update.
+ * @param c_expr Lowered expression containing the copied value.
+ * @param ty Type of the copied value.
+ */
+func be_emit_retain_for_copied_value(self: Backend*, c_expr: string, ty: Type*) {
+    if (analysis_is_arc_type(ty)) {
+        cem_emit_string_retain(self.emitter, c_expr);
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_NULLABLE)) {
+        if (cem_is_niche_nullable(ty) || !analysis_has_arc_data(self.result, ty.inner as Type*)) {
+            return;
+        }
+        cem_emit_if_header(self.emitter, cem_emit_optional_has_value(c_expr));
+        cem_emit_block_start(self.emitter);
+        be_emit_retain_for_copied_value(self, cem_emit_optional_value(c_expr), ty.inner as Type*);
+        cem_emit_block_end(self.emitter);
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_STRUCT)) {
+        let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, ty.module_name, ty.name);
+        if (info == null) {
+            return;
+        }
+        for (let i = 0; i < vec_size((info as StructInfo*).fields); i = i + 1) {
+            let field = ptr_vec_get((info as StructInfo*).fields, i) as StructFieldInfo*;
+            be_emit_retain_for_copied_value(self, cem_emit_field_access(c_expr, field.name, false), field.field_type);
+        }
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_ENUM)) {
+        let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, ty.module_name, ty.name);
+        let decl = be_find_enum_decl(self, ty.module_name, ty.name);
+        if (enum_info == null || decl == null) {
+            return;
+        }
+
+        cem_emit_switch_start(self.emitter, cem_emit_enum_tag_access(c_expr));
+        for (let i = 0; i < vec_size((decl as EnumDecl*).variants); i = i + 1) {
+            let variant = ptr_vec_get((decl as EnumDecl*).variants, i) as EnumVariant*;
+            let info2 = cem_find_enum_variant_info(enum_info as EnumInfo*, variant.name);
+            if (info2 == null) {
+                continue;
+            }
+            cem_emit_case_label(self.emitter, cem_emit_enum_tag(ty, variant.name));
+            cem_emit_block_start(self.emitter);
+            for (let j = 0; j < vec_size((info2 as EnumVariantInfo*).field_types); j = j + 1) {
+                let field_decl = ptr_vec_get(variant.fields, j) as FieldDecl*;
+                let field_ty = ptr_vec_get((info2 as EnumVariantInfo*).field_types, j) as Type*;
+                be_emit_retain_for_copied_value(self, cem_emit_enum_payload_field_access(c_expr, variant.name, field_decl.name), field_ty);
+            }
+            cem_emit_exit_switch(self.emitter);
+            cem_emit_block_end(self.emitter);
+        }
+        cem_emit_unreachable_marker(self.emitter, "retain");
+        cem_emit_switch_end(self.emitter);
+    }
+}
+
+/**
+ * Materialize one copied value into a temp and retain any owned fields.
+ *
+ * @param self Backend state to update.
+ * @param c_expr Lowered source expression.
+ * @param ty Type of the copied value.
+ * @return Lowered expression or new temp name when retain logic is needed.
+ */
+func be_emit_copy_expr_with_retains(self: Backend*, c_expr: string, ty: Type*) -> string {
+    if (!analysis_has_arc_data(self.result, ty)) {
+        return c_expr;
+    }
+
+    let temp = cem_fresh_tmp(self.emitter, "copy");
+    cem_emit_temp_decl(self.emitter, cem_emit_type(ty), temp, c_expr);
+    be_emit_retain_for_copied_value(self, temp, ty);
+    return temp;
+}
+
+/**
+ * Emit cleanup for one by-value expression.
+ *
+ * @param self Backend state to update.
+ * @param c_expr Lowered value expression.
+ * @param ty Type of the value.
+ */
+func be_emit_value_cleanup(self: Backend*, c_expr: string, ty: Type*) {
+    cem_emit_value_cleanup(self.emitter, c_expr, ty);
+}
+
+/**
+ * Emit cleanup for a pointer-to-struct expression.
+ *
+ * @param self Backend state to update.
+ * @param c_ptr_expr Lowered pointer expression.
+ * @param struct_type Struct type to clean.
+ */
+func be_emit_struct_cleanup(self: Backend*, c_ptr_expr: string, struct_type: Type*) {
+    cem_emit_struct_cleanup(self.emitter, c_ptr_expr, struct_type);
+}
+
+/**
+ * Emit cleanup for a pointer-to-enum expression.
+ *
+ * @param self Backend state to update.
+ * @param c_ptr_expr Lowered pointer expression.
+ * @param enum_type Enum type to clean.
+ */
+func be_emit_enum_cleanup(self: Backend*, c_ptr_expr: string, enum_type: Type*) {
+    cem_emit_enum_cleanup(self.emitter, c_ptr_expr, enum_type);
+}
+
+/**
+ * Emit cleanup for owned values declared in one scope.
+ *
+ * @param self Backend state to update.
+ * @param scope Scope to clean.
+ */
+func be_emit_cleanup_at_scope_exit(self: Backend*, scope: ScopeContext*) {
+    for (let i = vec_size(scope.owned_vars) - 1; i >= 0; i = i - 1) {
+        let item = ptr_vec_get(scope.owned_vars, i) as ScopeVar*;
+        if (analysis_has_arc_data(self.result, item.var_type)) {
+            be_emit_value_cleanup(self, item.name, item.var_type);
+        }
+    }
+}
+
+/**
+ * Emit a `drop` statement.
+ *
+ * @param self Backend state to update.
+ * @param stmt Parsed drop statement.
+ */
+func be_emit_drop_stmt(self: Backend*, stmt: StmtNode*) {
+    let c_name = cem_mangle_identifier(stmt.name);
+    let var_type = be_lookup_local_var_type(self, stmt.name);
+    if (var_type == null) {
+        let sym = be_lookup_symbol(self, stmt.name, null, null);
+        if (sym == null) {
+            be_ice("[ICE-1060] undefined variable in drop: " + stmt.name);
+        }
+        var_type = (sym as Symbol*).resolved_type;
+    }
+    if (var_type == null) {
+        be_ice("[ICE-1060] drop requires resolved variable type");
+    }
+
+    let ptr_type = be_pointer_type_or_null(var_type as Type*);
+    if (ptr_type == null) {
+        be_ice("[ICE-1061] drop requires pointer type, got '" + type_format(var_type as Type*) + "'");
+    }
+
+    let pointee = (ptr_type as Type*).inner as Type*;
+    let drop_tmp = cem_fresh_tmp(self.emitter, "drop");
+    let c_ptr_type = cem_emit_type(ptr_type as Type*);
+    cem_emit_temp_decl(
+        self.emitter,
+        c_ptr_type,
+        drop_tmp,
+        cem_emit_drop_begin_expr(
+            c_name,
+            c_ptr_type,
+            be_sizeof_expr_for_type(pointee),
+            be_alignof_expr_for_type(pointee)
+        )
+    );
+
+    if (ord(pointee.kind) == ord(TY_STRUCT)) {
+        be_emit_struct_cleanup(self, drop_tmp, pointee);
+    } else if (ord(pointee.kind) == ord(TY_ENUM)) {
+        be_emit_enum_cleanup(self, drop_tmp, pointee);
+    } else if (analysis_is_arc_type(pointee)) {
+        cem_emit_if_header(self.emitter, cem_emit_pointer_null_check(drop_tmp, "!="));
+        cem_emit_block_start(self.emitter);
+        cem_emit_string_release(self.emitter, "*" + drop_tmp);
+        cem_emit_block_end(self.emitter);
+    }
+
+    cem_emit_drop_finish_call(self.emitter, drop_tmp);
+    cem_emit_null_assignment(self.emitter, c_name);
+    self.next_stmt_unreachable = false;
+}

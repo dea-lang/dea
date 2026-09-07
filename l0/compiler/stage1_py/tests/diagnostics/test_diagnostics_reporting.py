@@ -7,7 +7,7 @@ from typing import Dict, List
 from l0_ast import Node
 from l0_diagnostics import Diagnostic, diag_from_node, diag_from_token
 from l0_parser import Parser, Span, Token, TokenKind
-from l0c import print_diagnostic_with_snippet
+from l0_cli_diagnostics import print_diagnostic_with_snippet
 
 
 # -------------------------

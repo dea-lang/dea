@@ -1,0 +1,241 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Value-type dependency collection, ordering, and definition emission. */
+module backend.ordering;
+
+import std.hashset;
+import std.string;
+import std.vector;
+import ast;
+import c_emitter.wrappers;
+import c_emitter.declarations;
+import driver;
+import signatures;
+import types;
+import backend.state;
+
+/**
+ * Add value-type dependencies for one field type.
+ *
+ * @param ty Type to inspect.
+ * @param deps Dependency set to update.
+ */
+func be_collect_value_type_dependencies(ty: Type*, deps: StringSet*) {
+    if (ord(ty.kind) == ord(TY_POINTER)) {
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_NULLABLE)) {
+        let inner = ty.inner as Type*;
+        if (ord(inner.kind) == ord(TY_POINTER)) {
+            return;
+        }
+        be_collect_value_type_dependencies(inner, deps);
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_STRUCT) || ord(ty.kind) == ord(TY_ENUM)) {
+        ss_add(deps, be_type_key(ty.module_name, ty.name));
+        return;
+    }
+}
+
+/**
+ * Collect the value-type dependencies for one user-defined type.
+ *
+ * @param self Backend state to inspect.
+ * @param type_key Type key to inspect.
+ * @param deps Destination set to populate.
+ * @return `true` when the type metadata was found.
+ */
+func be_collect_type_dependencies(self: Backend*, type_key: string, deps: StringSet*) -> bool {
+    if (self.result.signatures == null) {
+        return true;
+    }
+
+    let module_name = be_type_key_module(type_key);
+    let type_name = be_type_key_name(type_key);
+    if (is_empty_s(module_name) || is_empty_s(type_name)) {
+        return false;
+    }
+
+    let struct_info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, module_name, type_name);
+    if (struct_info != null) {
+        let info = struct_info as StructInfo*;
+        for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+            let field = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+            be_collect_value_type_dependencies(field.field_type, deps);
+        }
+        return true;
+    }
+
+    let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, module_name, type_name);
+    if (enum_info == null) {
+        return false;
+    }
+
+    let info2 = enum_info as EnumInfo*;
+    for (let i = 0; i < vec_size(info2.variants); i = i + 1) {
+        let variant = ptr_vec_get(info2.variants, i) as EnumVariantInfo*;
+        for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+            be_collect_value_type_dependencies(ptr_vec_get(variant.field_types, j) as Type*, deps);
+        }
+    }
+    return true;
+}
+
+/**
+ * Free a vector of dependency sets.
+ *
+ * @param sets Optional vector holding `StringSet*` entries.
+ */
+func be_dependency_sets_free(sets: VectorBase*?) {
+    if (sets == null) {
+        return;
+    }
+
+    let dep_sets = sets as VectorBase*;
+    for (let i = 0; i < vec_size(dep_sets); i = i + 1) {
+        ss_free(ptr_vec_get(dep_sets, i) as StringSet*);
+    }
+    vec_free(dep_sets);
+}
+
+/**
+ * Collect all user-defined types in stable source order.
+ *
+ * @param self Backend state to inspect.
+ * @return Ordered vector of type keys.
+ */
+func be_collect_type_keys(self: Backend*) -> StringVector* {
+    let out = sv_create(8);
+
+    for (let enum_unit_i = 0; enum_unit_i < driver_unit_count(self.result.driver_state); enum_unit_i = enum_unit_i + 1) {
+        let unit = driver_unit_get(self.result.driver_state, enum_unit_i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+
+        let root = unit.parse_result.root_module as Module*;
+        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+            let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+            if (ord(top.kind) == ord(TD_STRUCT)) {
+                let decl = top.data as StructDecl*;
+                sv_push(out, be_type_key(root.name, decl.name));
+            }
+        }
+    }
+
+    for (let i = 0; i < driver_unit_count(self.result.driver_state); i = i + 1) {
+        let unit = driver_unit_get(self.result.driver_state, i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+
+        let root = unit.parse_result.root_module as Module*;
+        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+            let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+            if (ord(top.kind) == ord(TD_ENUM)) {
+                let decl2 = top.data as EnumDecl*;
+                sv_push(out, be_type_key(root.name, decl2.name));
+            }
+        }
+    }
+    return out;
+}
+
+/**
+ * Emit user-defined types in dependency order.
+ *
+ * @param self Backend state to update.
+ */
+func be_emit_type_definitions(self: Backend*) {
+    if (self.result.signatures == null) {
+        return;
+    }
+
+    with (let keys = be_collect_type_keys(self) => sv_free(keys),
+          let ordered = sv_create(sv_size(keys)) => sv_free(ordered),
+          let queue = sv_create(sv_size(keys)) => sv_free(queue),
+          let dep_sets: VectorBase*? = ptr_vec_create(sv_size(keys)) => be_dependency_sets_free(dep_sets),
+          let in_degrees: VectorBase*? = id_vec_create(sv_size(keys)) => id_vec_free(in_degrees)) {
+        cem_emit_section_comment(self.emitter, "Type definitions (dependency-ordered)");
+
+        for (let i = 0; i < sv_size(keys); i = i + 1) {
+            let key = sv_get(keys, i);
+            let deps = ss_create();
+            if (!be_collect_type_dependencies(self, key, deps)) {
+                be_ice("[ICE-1341] missing dependency metadata for type key " + key);
+            }
+            ptr_vec_push(dep_sets as VectorBase*, deps as void*);
+
+            let in_degree = 0;
+            for (let j = 0; j < ss_capacity(deps); j = j + 1) {
+                if (ss_slot_occupied(deps, j)) {
+                    in_degree = in_degree + 1;
+                }
+            }
+            id_vec_push(in_degrees as VectorBase*, in_degree);
+            if (in_degree == 0) {
+                sv_push(queue, key);
+            }
+        }
+
+        let queue_index = 0;
+        while (queue_index < sv_size(queue)) {
+            let emitted_key = sv_get(queue, queue_index);
+            queue_index = queue_index + 1;
+            sv_push(ordered, emitted_key);
+
+            for (let i = 0; i < sv_size(keys); i = i + 1) {
+                let degree_ptr = vec_get(in_degrees as VectorBase*, i) as int*;
+                if (*degree_ptr <= 0) {
+                    continue;
+                }
+                let deps2 = ptr_vec_get(dep_sets as VectorBase*, i) as StringSet*;
+                if (!ss_has(deps2, emitted_key)) {
+                    continue;
+                }
+                *degree_ptr = *degree_ptr - 1;
+                if (*degree_ptr == 0) {
+                    sv_push(queue, sv_get(keys, i));
+                }
+            }
+        }
+
+        if (sv_size(ordered) != sv_size(keys)) {
+            be_ice("[ICE-1340] value-type cycle detected in type definitions");
+        }
+
+        for (let ordered_i = 0; ordered_i < sv_size(ordered); ordered_i = ordered_i + 1) {
+            let key = sv_get(ordered, ordered_i);
+            let module_name = be_type_key_module(key);
+            let type_name = be_type_key_name(key);
+
+            let struct_info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, module_name, type_name);
+            if (struct_info != null) {
+                let decl = be_find_struct_decl(self, module_name, type_name);
+                if (decl == null) {
+                    be_ice("[ICE-1040] missing StructDecl for " + module_name + "." + type_name);
+                }
+                self.current_module = module_name;
+                cem_emit_struct(self.emitter, module_name, decl as StructDecl*, struct_info as StructInfo*);
+                with (let emitted_ty = type_new_struct(module_name, type_name) => type_free(emitted_ty)) {
+                    cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty);
+                }
+            } else {
+                let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, module_name, type_name);
+                let enum_decl = be_find_enum_decl(self, module_name, type_name);
+                if (enum_info == null || enum_decl == null) {
+                    be_ice("[ICE-1050] missing EnumDecl/EnumInfo for " + module_name + "." + type_name);
+                }
+                self.current_module = module_name;
+                cem_emit_enum(self.emitter, module_name, enum_decl as EnumDecl*, enum_info as EnumInfo*);
+                with (let emitted_ty2 = type_new_enum(module_name, type_name) => type_free(emitted_ty2)) {
+                    cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty2);
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,389 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** C statement, control-flow, and initialization syntax. */
+module c_emitter.statements;
+
+import std.text;
+import std.vector;
+import types;
+import c_emitter.builder;
+import c_emitter.state;
+import c_emitter.names;
+import c_emitter.types;
+import c_emitter.values;
+
+/**
+ * Emit an expression statement.
+ *
+ * @param self Emitter to update.
+ * @param c_expr Lowered expression.
+ */
+func cem_emit_expr_stmt(self: CEmitter*, c_expr: string) {
+    ccb_emit(self.out, c_expr + ";");
+}
+
+/**
+ * Emit a return statement.
+ *
+ * @param self Emitter to update.
+ * @param c_value Lowered return value.
+ */
+func cem_emit_return_stmt(self: CEmitter*, c_value: string) {
+    ccb_emit(self.out, "return " + c_value + ";");
+}
+
+/**
+ * Emit a `return;` statement.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_return_void_stmt(self: CEmitter*) {
+    ccb_emit(self.out, "return;");
+}
+
+/**
+ * Emit a C label.
+ *
+ * @param self Emitter to update.
+ * @param label Label name.
+ */
+func cem_emit_label(self: CEmitter*, label: string) {
+    ccb_dedent(self.out);
+    ccb_emit(self.out, label + ":" + ";");
+    ccb_indent(self.out);
+}
+
+/**
+ * Emit a `goto` statement.
+ *
+ * @param self Emitter to update.
+ * @param label Target label.
+ */
+func cem_emit_goto(self: CEmitter*, label: string) {
+    ccb_emit(self.out, "goto " + label + ";");
+}
+
+/**
+ * Emit a block start.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_block_start(self: CEmitter*) {
+    ccb_emit(self.out, "{");
+    ccb_indent(self.out);
+}
+
+/**
+ * Emit a block end.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_block_end(self: CEmitter*) {
+    ccb_dedent(self.out);
+    ccb_emit(self.out, "}");
+}
+
+/**
+ * Emit a `while` header.
+ *
+ * @param self Emitter to update.
+ * @param c_cond Lowered condition expression.
+ */
+func cem_emit_while_header(self: CEmitter*, c_cond: string) {
+    ccb_emit(self.out, "while (" + c_cond + ")");
+}
+
+/**
+ * Emit an `if` header.
+ *
+ * @param self Emitter to update.
+ * @param c_cond Lowered condition expression.
+ */
+func cem_emit_if_header(self: CEmitter*, c_cond: string) {
+    ccb_emit(self.out, "if (" + c_cond + ")");
+}
+
+/**
+ * Emit an `else` keyword.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_else(self: CEmitter*) {
+    ccb_emit(self.out, "else");
+}
+
+/**
+ * Emit the Stage 1-shaped for-loop wrapper start.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_for_loop_start(self: CEmitter*) {
+    ccb_emit(self.out, "// for loop");
+    cem_emit_block_start(self);
+}
+
+/**
+ * Emit the Stage 1-shaped for-loop wrapper end.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_for_loop_end(self: CEmitter*) {
+    cem_emit_block_end(self);
+}
+
+/**
+ * Emit a local variable declaration.
+ *
+ * @param self Emitter to update.
+ * @param c_type Lowered C type.
+ * @param c_var_name Lowered variable name.
+ * @param c_init Lowered initializer.
+ */
+func cem_emit_let_decl(self: CEmitter*, c_type: string, c_var_name: string, c_init: string) {
+    ccb_emit(self.out, c_type + " " + c_var_name + " = " + c_init + ";");
+}
+
+/**
+ * Emit an assignment statement.
+ *
+ * @param self Emitter to update.
+ * @param c_target Lowered lvalue.
+ * @param c_value Lowered rvalue.
+ */
+func cem_emit_assignment(self: CEmitter*, c_target: string, c_value: string) {
+    ccb_emit(self.out, c_target + " = " + c_value + ";");
+}
+
+/**
+ * Emit a temporary declaration.
+ *
+ * @param self Emitter to update.
+ * @param c_type Lowered C type.
+ * @param c_temp_name Temporary identifier.
+ * @param c_value Lowered initializer.
+ */
+func cem_emit_temp_decl(self: CEmitter*, c_type: string, c_temp_name: string, c_value: string) {
+    ccb_emit(self.out, c_type + " " + c_temp_name + " = " + c_value + ";");
+}
+
+/**
+ * Emit a block comment.
+ *
+ * @param self Emitter to update.
+ * @param comment Comment text.
+ */
+func cem_emit_comment(self: CEmitter*, comment: string) {
+    ccb_emit(self.out, "/* " + comment + " */");
+}
+
+/**
+ * Emit a switch-exit `break;`.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_exit_switch(self: CEmitter*) {
+    ccb_emit(self.out, "break;");
+}
+
+/**
+ * Emit an assignment through a pointer.
+ *
+ * @param self Emitter to update.
+ * @param c_ptr_name C pointer expression.
+ * @param c_value Lowered value expression.
+ */
+func cem_emit_pointer_assignment(self: CEmitter*, c_ptr_name: string, c_value: string) {
+    ccb_emit(self.out, "*" + c_ptr_name + " = " + c_value + ";");
+}
+
+/**
+ * Emit an assignment through a runtime-checked object pointer.
+ *
+ * @param self Emitter to update.
+ * @param c_ptr_name C pointer expression.
+ * @param c_base_type Lowered pointee type.
+ * @param c_value Lowered value expression.
+ */
+func cem_emit_checked_pointer_assignment(self: CEmitter*, c_ptr_name: string, c_base_type: string, c_value: string) {
+    let checked = cem_emit_checked_ptr_access_for_base(self, c_ptr_name, c_base_type, "_RT_ACCESS_WRITE");
+    ccb_emit(self.out, "*" + checked + " = " + c_value + ";");
+}
+
+/**
+ * Emit the temporary scrutinee declaration used by `match`/`case`.
+ *
+ * @param self Emitter to update.
+ * @param c_type Lowered scrutinee type.
+ * @param c_expr Lowered scrutinee expression.
+ */
+func cem_emit_match_scrutinee_decl(self: CEmitter*, c_type: string, c_expr: string) {
+    ccb_emit(self.out, c_type + " _scrutinee = " + c_expr + ";");
+}
+
+/**
+ * Emit a `switch` header.
+ *
+ * @param self Emitter to update.
+ * @param c_expr Lowered switch expression.
+ */
+func cem_emit_switch_start(self: CEmitter*, c_expr: string) {
+    ccb_emit(self.out, "switch (" + c_expr + ")" + " {");
+}
+
+/**
+ * Emit the switch used for enum `match`.
+ *
+ * @param self Emitter to update.
+ * @param scrutinee_name Scrutinee variable name.
+ */
+func cem_emit_match_switch_start(self: CEmitter*, scrutinee_name: string) {
+    cem_emit_switch_start(self, cem_emit_enum_tag_access(scrutinee_name));
+}
+
+/**
+ * Emit the closing brace of a `switch`.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_switch_end(self: CEmitter*) {
+    ccb_emit(self.out, "}");
+}
+
+/**
+ * Emit a `case` label.
+ *
+ * @param self Emitter to update.
+ * @param c_value Lowered tag or literal.
+ */
+func cem_emit_case_label(self: CEmitter*, c_value: string) {
+    ccb_emit(self.out, "case " + c_value + ":");
+}
+
+/**
+ * Emit a `default:` label.
+ *
+ * @param self Emitter to update.
+ */
+func cem_emit_default_label(self: CEmitter*) {
+    ccb_emit(self.out, "default:");
+}
+
+/**
+ * Emit a NULL assignment.
+ *
+ * @param self Emitter to update.
+ * @param c_var Lowered lvalue expression.
+ */
+func cem_emit_null_assignment(self: CEmitter*, c_var: string) {
+    ccb_emit(self.out, c_var + " = NULL" + ";");
+}
+
+/**
+ * Emit one pointer-target aggregate initialization.
+ *
+ * @param self Emitter to update.
+ * @param c_temp_name Pointer temporary name.
+ * @param c_base_type Lowered base type.
+ * @param c_init_str Lowered initializer body without outer braces.
+ */
+func cem_emit_struct_init(self: CEmitter*, c_temp_name: string, c_base_type: string, c_init_str: string) {
+    let checked = cem_emit_checked_ptr_access_for_base(self, c_temp_name, c_base_type, "_RT_ACCESS_WRITE");
+    ccb_emit(self.out, "*" + checked + " = (" + c_base_type + "){ " + c_init_str + " };");
+}
+
+/**
+ * Emit one pointer-target struct initialization from field pairs.
+ *
+ * @param self Emitter to update.
+ * @param c_temp_name Pointer temporary name.
+ * @param base_type Struct type being initialized.
+ * @param field_inits Vector of alternating field-name and field-value strings.
+ */
+func cem_emit_struct_init_from_fields(self: CEmitter*, c_temp_name: string, base_type: Type*, field_inits: StringVector*) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(field_inits); i = i + 2) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, ".");
+            sb_append(sb, sv_get(field_inits, i));
+            sb_append(sb, " = ");
+            sb_append(sb, sv_get(field_inits, i + 1));
+        }
+        cem_emit_struct_init(self, c_temp_name, cem_emit_type(base_type), sb_to_string(sb));
+    }
+}
+
+/**
+ * Emit one pointer-target enum-variant initialization.
+ *
+ * @param self Emitter to update.
+ * @param c_temp_name Pointer temporary name.
+ * @param enum_type Enum type being initialized.
+ * @param variant_name Active variant name.
+ * @param payload_inits Vector of alternating field-name and field-value strings.
+ */
+func cem_emit_enum_variant_init(self: CEmitter*, c_temp_name: string, enum_type: Type*, variant_name: string,
+                                payload_inits: StringVector*) {
+    let tag_value = cem_emit_enum_tag(enum_type, variant_name);
+    if (sv_size(payload_inits) == 0) {
+        cem_emit_struct_init(self, c_temp_name, cem_emit_type(enum_type), ".tag = " + tag_value);
+        return;
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, ".tag = ");
+        sb_append(sb, tag_value);
+        sb_append(sb, ", .data = { .");
+        sb_append(sb, variant_name);
+        sb_append(sb, " = { ");
+        for (let i = 0; i < sv_size(payload_inits); i = i + 2) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, ".");
+            sb_append(sb, sv_get(payload_inits, i));
+            sb_append(sb, " = ");
+            sb_append(sb, sv_get(payload_inits, i + 1));
+        }
+        sb_append(sb, " } }");
+        cem_emit_struct_init(self, c_temp_name, cem_emit_type(enum_type), sb_to_string(sb));
+    }
+}
+
+/**
+ * Emit zero-initialization through a pointer.
+ *
+ * @param self Emitter to update.
+ * @param c_temp_name Pointer temporary name.
+ * @param c_base_type Lowered base type.
+ */
+func cem_emit_zero_init(self: CEmitter*, c_temp_name: string, c_base_type: string) {
+    let checked = cem_emit_checked_ptr_access_for_base(self, c_temp_name, c_base_type, "_RT_ACCESS_WRITE");
+    ccb_emit(self.out, "*" + checked + " = (" + c_base_type + "){ 0" + " }" + ";");
+}
+
+/**
+ * Emit the null-check used by `?` on niche optionals.
+ *
+ * @param self Emitter to update.
+ * @param c_tmp Temporary variable name.
+ * @param ret_none Lowered `none` return value.
+ */
+func cem_emit_try_check_niche(self: CEmitter*, c_tmp: string, ret_none: string) {
+    ccb_emit(self.out, "if " + cem_emit_pointer_null_check(c_tmp, "==") + " return " + ret_none + ";");
+}
+
+/**
+ * Emit the `has_value` check used by `?` on value optionals.
+ *
+ * @param self Emitter to update.
+ * @param c_tmp Temporary variable name.
+ * @param ret_none Lowered `none` return value.
+ */
+func cem_emit_try_check_value(self: CEmitter*, c_tmp: string, ret_none: string) {
+    ccb_emit(self.out, "if " + cem_emit_null_check_eq(c_tmp) + " return " + ret_none + ";");
+}

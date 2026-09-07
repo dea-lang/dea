@@ -1,0 +1,121 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Indented C output builder and its ownership lifecycle. */
+module c_emitter.builder;
+
+import std.string;
+import std.text;
+import std.vector;
+
+/**
+ * Represents a line-oriented C source builder with indentation tracking.
+ */
+struct CCodeBuilder {
+    lines: StringVector*;
+    indent_level: int;
+    indent_str: string;
+    cached_prefix: string;
+    cached_level: int;
+}
+
+/**
+ * Create a new code builder.
+ *
+ * @return New builder with four-space indentation.
+ */
+func ccb_create() -> CCodeBuilder* {
+    return new CCodeBuilder(sv_create(32), 0, "    ", "", 0);
+}
+
+/**
+ * Free a code builder.
+ *
+ * @param self Builder to free.
+ */
+func ccb_free(self: CCodeBuilder*) {
+    sv_free(self.lines);
+    drop self;
+}
+
+/**
+ * Increase indentation level by one.
+ *
+ * @param self Builder to update.
+ */
+func ccb_indent(self: CCodeBuilder*) {
+    self.indent_level = self.indent_level + 1;
+}
+
+/**
+ * Decrease indentation level by one.
+ *
+ * @param self Builder to update.
+ */
+func ccb_dedent(self: CCodeBuilder*) {
+    if (self.indent_level > 0) {
+        self.indent_level = self.indent_level - 1;
+    }
+}
+
+/**
+ * Build the current indentation prefix.
+ *
+ * @param self Builder to inspect.
+ * @return Indentation string for the current level.
+ */
+func ccb_prefix(self: CCodeBuilder*) -> string {
+    if (self.indent_level == self.cached_level) {
+        return self.cached_prefix;
+    }
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < self.indent_level; i = i + 1) {
+            sb_append(sb, self.indent_str);
+        }
+        self.cached_prefix = sb_to_string(sb);
+        self.cached_level = self.indent_level;
+        return self.cached_prefix;
+    }
+}
+
+/**
+ * Emit one line with indentation.
+ *
+ * @param self Builder to update.
+ * @param line Line text, or `""` for a blank line.
+ */
+func ccb_emit(self: CCodeBuilder*, line: string) {
+    if (is_empty_s(line)) {
+        sv_push(self.lines, "");
+        return;
+    }
+    sv_push(self.lines, ccb_prefix(self) + line);
+}
+
+/**
+ * Emit one line without indentation.
+ *
+ * @param self Builder to update.
+ * @param line Raw line text.
+ */
+func ccb_emit_raw(self: CCodeBuilder*, line: string) {
+    sv_push(self.lines, line);
+}
+
+/**
+ * Convert the accumulated lines to one source string with a trailing newline.
+ *
+ * @param self Builder to inspect.
+ * @return Combined source text.
+ */
+func ccb_to_string(self: CCodeBuilder*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(self.lines); i = i + 1) {
+            sb_append(sb, sv_get(self.lines, i));
+            sb_append(sb, "\n");
+        }
+        return sb_to_string(sb);
+    }
+}

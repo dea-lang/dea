@@ -17,7 +17,9 @@ import std.text;
 import std.vector;
 import util.diag;
 
-import build_driver;
+import build_driver.options;
+import build_driver.platform;
+import build_driver.toolchain;
 import compiler_filesystem;
 
 /**

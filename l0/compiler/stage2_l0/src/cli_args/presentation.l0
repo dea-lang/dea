@@ -1,0 +1,202 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Compiler identity, mode spelling, help, and version output. */
+module cli_args.presentation;
+
+import std.io;
+import build_info;
+import cli_args.model;
+
+/**
+ * Return the user-facing compiler identity/version text.
+ *
+ * @return Stable compiler identity text for help and `--version`.
+ */
+func cli_compiler_identity_text() -> string {
+    return "Dea language / L0 compiler";
+}
+
+/**
+ * Return the canonical long flag for a CLI mode.
+ *
+ * @param mode CLI mode to format.
+ * @return Long-form flag such as `--check`.
+ */
+func cli_mode_flag(mode: CliMode) -> string {
+    match (mode) {
+        CM_RUN => { return "--run"; }
+        CM_BUILD => { return "--build"; }
+        CM_COMPILE => { return "--compile"; }
+        CM_GEN => { return "--gen"; }
+        CM_CHECK => { return "--check"; }
+        CM_TOK => { return "--tok"; }
+        CM_AST => { return "--ast"; }
+        CM_SYM => { return "--sym"; }
+        CM_TYPE => { return "--type"; }
+    }
+}
+
+/**
+ * Return the short display name for a CLI mode.
+ *
+ * @param mode CLI mode to format.
+ * @return Short mode name such as `check`.
+ */
+func cli_mode_name(mode: CliMode) -> string {
+    match (mode) {
+        CM_RUN => { return "run"; }
+        CM_BUILD => { return "build"; }
+        CM_COMPILE => { return "compile"; }
+        CM_GEN => { return "gen"; }
+        CM_CHECK => { return "check"; }
+        CM_TOK => { return "tok"; }
+        CM_AST => { return "ast"; }
+        CM_SYM => { return "sym"; }
+        CM_TYPE => { return "type"; }
+    }
+}
+
+/**
+ * Print one CLI help/usage line to standard output or standard error.
+ *
+ * @param to_stderr Whether the text should be written to standard error.
+ * @param text Line text without a trailing newline.
+ */
+func cli_print_line(to_stderr: bool, text: string) {
+    if (to_stderr) {
+        err_printl_s(text);
+    } else {
+        printl_s(text);
+    }
+}
+
+/**
+ * Print a blank line to standard output or standard error.
+ *
+ * @param to_stderr Whether the newline should be written to standard error.
+ */
+func cli_print_blank_line(to_stderr: bool) {
+    if (to_stderr) {
+        err_printl();
+    } else {
+        printl_s("");
+    }
+}
+
+/**
+ * Print the short Stage 2 usage banner.
+ *
+ * @param to_stderr Whether the banner should be written to standard error.
+ */
+func cli_print_usage(to_stderr: bool) {
+    cli_print_line(to_stderr, "usage: l0c [-h] [-V] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT]");
+    cli_print_line(to_stderr, "           [--run | --build | --compile | --gen | --check | --tok | --ast | --sym | --type]");
+    cli_print_line(to_stderr, "           [-I INTERFACE_PATH] [--output OUTPUT]");
+    cli_print_line(to_stderr, "           [--c-compiler C_COMPILER] [--c-options C_OPTIONS] [--c-source PATH]");
+    cli_print_line(to_stderr, "           [--runtime-include RUNTIME_INCLUDE] [--runtime-lib RUNTIME_LIB]");
+    cli_print_line(to_stderr, "           [--no-line-directives] [-Va] [-Vm] [-Su] [-Sb]");
+    cli_print_line(to_stderr, "           [-Gk] [--all-modules] [--include-eof]");
+    cli_print_line(to_stderr, "           targets [targets ...]");
+}
+
+/**
+ * Print the full Stage 2 help text.
+ */
+func cli_print_help() {
+    cli_print_usage(false);
+    cli_print_blank_line(false);
+    cli_print_line(false, cli_compiler_identity_text());
+    cli_print_blank_line(false);
+    cli_print_line(false, "positional arguments:");
+    cli_print_line(false, "  targets               Target module/file name(s); currently exactly one");
+    cli_print_line(false, "                        target is supported");
+    cli_print_blank_line(false);
+    cli_print_line(false, "options:");
+    cli_print_line(false, "  -h, --help            show this help message and exit");
+    cli_print_line(false, "  -V, --version         show compiler version and exit");
+    cli_print_line(false, "  -v, --verbose         Increase verbosity: -v=INFO, -vvv=DEBUG");
+    cli_print_line(false, "  -Vl, --log            Enable rich log formatting (timestamps, levels)");
+    cli_print_line(false, "  -Rp, --project-root PROJECT_ROOT");
+    cli_print_line(false, "                        Add a project source root (can be passed multiple");
+    cli_print_line(false, "                        times)");
+    cli_print_line(false, "  -Rs, --sys-root SYS_ROOT");
+    cli_print_line(false, "                        Add a system/stdlib source root (can be passed");
+    cli_print_line(false, "                        multiple times; default: $L0_SYSTEM as colon-separated");
+    cli_print_line(false, "                        paths)");
+    cli_print_line(false, "  --run, -r             Build and run a module");
+    cli_print_line(false, "  --build               Build an executable (default mode)");
+    cli_print_line(false, "  -c, --compile         Reserve compile-only mode; artifact production is not");
+    cli_print_line(false, "                        implemented yet");
+    cli_print_line(false, "  -Gc, --gen, --codegen Generate C code");
+    cli_print_line(false, "  --check, --analyze    Parse and analyze a module");
+    cli_print_line(false, "  --tok, --tokens       Dump lexer tokens");
+    cli_print_line(false, "  --ast                 Pretty-print the AST");
+    cli_print_line(false, "  --sym, --symbols      Dump module-level symbols");
+    cli_print_line(false, "  --type, --types       Dump resolved types");
+    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--gen', '--run')");
+    cli_print_line(false, "  -I, --interface-path INTERFACE_PATH");
+    cli_print_line(false, "                        Add an interface search path (repeatable; valid in:");
+    cli_print_line(false, "                        '--compile'; interface loading is not implemented yet)");
+    cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");
+    cli_print_line(false, "                        C compiler to use (default: $L0_CC has highest");
+    cli_print_line(false, "                        precedence if set; then tcc, gcc, clang, cc from PATH,");
+    cli_print_line(false, "                        or $CC, in that order; valid in: '--build', '--run')");
+    cli_print_line(false, "  --c-options, -Co C_OPTIONS");
+    cli_print_line(false, "                        Extra options to pass to the C compiler (default");
+    cli_print_line(false, "                        prepends $L0_CFLAGS; options from --c-options are");
+    cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\";");
+    cli_print_line(false, "                        valid in: '--build', '--run')");
+    cli_print_line(false, "  --c-source, -Cs PATH  Additional C source to compile after generated C");
+    cli_print_line(false, "                        (repeatable; valid in: '--build', '--run')");
+    cli_print_line(false, "  --runtime-include, -Ri RUNTIME_INCLUDE");
+    cli_print_line(false, "                        Path to L0 runtime headers (default:");
+    cli_print_line(false, "                        $L0_RUNTIME_INCLUDE; valid in: '--build', '--run')");
+    cli_print_line(false, "  --runtime-lib, -Rl RUNTIME_LIB");
+    cli_print_line(false, "                        Path to L0 runtime library search directory (default:");
+    cli_print_line(false, "                        $L0_RUNTIME_LIB; valid in: '--build', '--run')");
+    cli_print_line(false, "  --no-line-directives, -NLD");
+    cli_print_line(false, "                        Disable #line directives in generated C code (valid");
+    cli_print_line(false, "                        in: '--build', '--run', '--gen')");
+    cli_print_line(false, "  -Va, --trace-arc      Enable ARC runtime tracing in generated C code (emits");
+    cli_print_line(false, "                        L0_TRACE_ARC; valid in: '--build', '--run', '--gen')");
+    cli_print_line(false, "  -Vm, --trace-memory   Enable memory runtime tracing in generated C code");
+    cli_print_line(false, "                        (emits L0_TRACE_MEMORY; valid in: '--build', '--run',");
+    cli_print_line(false, "                        '--gen')");
+    cli_print_line(false, "  -Su, --unchecked      Disable runtime pointer validation in generated C code");
+    cli_print_line(false, "                        (emits L0_RT_UNCHECKED; valid in: '--build', '--run',");
+    cli_print_line(false, "                        '--gen')");
+    cli_print_line(false, "  -Sb, --check-basic    Use basic checked runtime pointer validation in");
+    cli_print_line(false, "                        generated C code (emits L0_RT_CHECK_BASIC; valid in:");
+    cli_print_line(false, "                        '--build', '--run', '--gen')");
+    cli_print_line(false, "  -Gk, --keep-c         Keep generated C file (valid in: '--build', '--run';");
+    cli_print_line(false, "                        use with '--output' to specify C file path");
+    cli_print_line(false, "  --all-modules, -a     Process all modules in the compilation unit (valid in:");
+    cli_print_line(false, "                        '--tok', '--ast', '--sym', '--type')");
+    cli_print_line(false, "  --include-eof         Include the EOF token in output (valid in: '--tok')");
+    cli_print_line(false, "  -g                    Request debug information (recognized, not supported)");
+    cli_print_line(false, "  -S                    Request assembly output (recognized, not supported)");
+    cli_print_line(false, "  -L LIBRARY_PATH       Add an external-library search path (recognized, not");
+    cli_print_line(false, "                        supported; attached values are also accepted)");
+    cli_print_line(false, "  -l LIBRARY            Link an external library (recognized, not supported;");
+    cli_print_line(false, "                        attached values are also accepted)");
+    cli_print_blank_line(false);
+    cli_print_line(false, "Modes are selected with flags (default: --build). Use '--' to pass program");
+    cli_print_line(false, "arguments for --run.");
+    cli_print_line(false, "Namespaced value options accept a separate value or '=VALUE'; only -v may be");
+    cli_print_line(false, "clustered.");
+}
+
+/**
+ * Print the compiler identity/version text.
+ */
+func cli_print_version() {
+    let version_text = build_info_version_text(cli_compiler_identity_text());
+    if (version_text == null) {
+        printl_s(cli_compiler_identity_text());
+        return;
+    }
+    printl_s(version_text as string);
+}

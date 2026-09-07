@@ -190,7 +190,7 @@ class L0Driver:
         log_stage(self.context, "Type-checking expressions")
         etc = ExpressionTypeChecker(result)
         etc.check()
-        log_debug(self.context, f"Expression type checking produced {len(etc.diagnostics)} diagnostic(s)")
+        log_debug(self.context, f"Expression type checking produced {len(result.diagnostics)} diagnostic(s)")
 
         log_info(self.context,
                  f"Analysis complete: {len(result.diagnostics)} total diagnostic(s), {len([d for d in result.diagnostics if d.kind == 'error'])} error(s)")

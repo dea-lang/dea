@@ -1,18 +1,21 @@
 # L0 Stage 1 Compiler Contract
 
-Version: 2026-08-29
+Version: 2026-09-07
 
 This document is the compact Stage 1 contract and navigation index.
 
 Canonical ownership:
 
-- Shared CLI contract (mode flags, options, targets, identity, exit codes): [cli-contract.md](cli-contract.md)
-- Architecture and pass flow: [reference/architecture.md](../../reference/architecture.md)
-- C backend behavior and lowering details: [reference/c-backend-design.md](../../reference/c-backend-design.md)
-- Language/runtime rationale and future evolution: [reference/design-decisions.md](../../reference/design-decisions.md)
+- Shared CLI contract (mode flags, options, targets, identity, exit codes):
+  [l0/docs/specs/compiler/cli-contract.md](cli-contract.md)
+- Architecture and pass flow: [l0/docs/reference/architecture.md](../../reference/architecture.md)
+- C backend behavior and lowering details: [l0/docs/reference/c-backend-design.md](../../reference/c-backend-design.md)
+- Language/runtime rationale and future evolution:
+  [l0/docs/reference/design-decisions.md](../../reference/design-decisions.md)
 - Shared source-text and language-vocabulary policy:
   [docs/specs/language/source-text-and-language-vocabulary.md](../../../../docs/specs/language/source-text-and-language-vocabulary.md)
-- Diagnostic code assignment and cross-stage parity: [diagnostic-code-policy.md](diagnostic-code-policy.md)
+- Diagnostic code assignment and cross-stage parity:
+  [l0/docs/specs/compiler/diagnostic-code-policy.md](diagnostic-code-policy.md)
 
 ## 1. Scope
 
@@ -32,6 +35,19 @@ The end-to-end flow is:
 6. `ExpressionTypeChecker.check()`
 7. `Backend.generate()`
 
+### 1.1 Internal source ownership
+
+The coarse `ExpressionTypeChecker(analysis).check()` and `Backend(analysis).generate()` entrypoints retain their
+pipeline roles. Their implementation uses explicit state and collaborators in `l0_check_*` and `l0_backend_*`.
+`CEmitter` assembles the `l0_c_*` syntax owners. Compiler helpers belong to those owners rather than a compatibility
+forwarding surface on the old classes.
+
+`l0c.py` contains argument-parser invocation and coarse command dispatch. `l0_cli_args` owns grammar and validation,
+`l0_cli_diagnostics` owns presentation, `l0_cli_context` owns source/context preparation, `l0_cli_commands` owns
+analysis and dump commands, and `l0_cli_build` owns native build/run transactions. Internal callers and tests import or
+patch the owning module. This layout does not change the external CLI, diagnostic, generated-C, or runtime contracts.
+See [l0/docs/reference/architecture.md](../../reference/architecture.md#5-filemodule-layout) for the source map.
+
 ## 2. Stable External Interfaces
 
 ### 2.1 CLI
@@ -39,7 +55,7 @@ The end-to-end flow is:
 Entry point: `compiler/stage1_py/l0c.py`
 
 The shared CLI surface (mode flags, global options, mode-scoped options, target rules, identity strings, and exit codes)
-is normatively defined in [cli-contract.md](cli-contract.md).
+is normatively defined in [l0/docs/specs/compiler/cli-contract.md](cli-contract.md).
 
 Stage 1-specific notes:
 
@@ -76,8 +92,8 @@ Stage 1-specific notes:
   `l0_runtime.h`.
 - Generated C owns the header-only implementation through `l0_runtime.h`. Additional `--c-source` translation units use
   declaration-only `dea_rt.h`; they must not include `l0_runtime.h`.
-- Backend details are canonical in [reference/c-backend-design.md](../../reference/c-backend-design.md).
-- Trace details are canonical in [specs/runtime/trace.md](../runtime/trace.md).
+- Backend details are canonical in [l0/docs/reference/c-backend-design.md](../../reference/c-backend-design.md).
+- Trace details are canonical in [l0/docs/specs/runtime/trace.md](../runtime/trace.md).
 
 ## 3. Current Core Data Shapes (Exact Names)
 
@@ -146,9 +162,9 @@ Important exact field names:
 Use the narrowest canonical document for each question:
 
 - Pass sequencing, module ownership, and frontend architecture:
-  [reference/architecture.md](../../reference/architecture.md)
+  [l0/docs/reference/architecture.md](../../reference/architecture.md)
 - Lowering policy, generated C layout, ARC/cleanup behavior, runtime calls:
-  [reference/c-backend-design.md](../../reference/c-backend-design.md)
-- Trace flags and runtime trace behavior: [specs/runtime/trace.md](../runtime/trace.md)
+  [l0/docs/reference/c-backend-design.md](../../reference/c-backend-design.md)
+- Trace flags and runtime trace behavior: [l0/docs/specs/runtime/trace.md](../runtime/trace.md)
 - Pointer/nullability model rationale, integer model rationale, stage-2 design direction:
-  [reference/design-decisions.md](../../reference/design-decisions.md)
+  [l0/docs/reference/design-decisions.md](../../reference/design-decisions.md)

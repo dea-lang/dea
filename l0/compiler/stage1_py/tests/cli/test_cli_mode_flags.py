@@ -4,6 +4,7 @@
 import pytest
 
 import l0c
+import l0_cli_args
 
 
 def _patch_handlers(monkeypatch):
@@ -869,7 +870,7 @@ def test_option_looking_values_do_not_enable_fallback_verbosity(
 ):
     log_calls = []
     monkeypatch.setattr(
-        l0c,
+        l0_cli_args,
         "log_info",
         lambda context, message: log_calls.append((context, message)),
     )
@@ -887,7 +888,7 @@ def test_consumed_log_values_do_not_enable_rich_fallback_logging(
 ):
     log_calls = []
     monkeypatch.setattr(
-        l0c,
+        l0_cli_args,
         "log_info",
         lambda context, message: log_calls.append((context, message)),
     )
@@ -904,7 +905,7 @@ def test_consumed_log_values_do_not_enable_rich_fallback_logging(
 def test_real_verbosity_and_log_flags_enable_rich_fallback_logging(monkeypatch):
     log_calls = []
     monkeypatch.setattr(
-        l0c,
+        l0_cli_args,
         "log_info",
         lambda context, message: log_calls.append((context, message)),
     )

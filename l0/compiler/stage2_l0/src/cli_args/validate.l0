@@ -1,0 +1,160 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** CLI diagnostics, mode selection, and option compatibility. */
+module cli_args.validate;
+
+import std.vector;
+import util.diag;
+import cli_args.model;
+import cli_args.presentation;
+
+/**
+ * Emit a command-line diagnostic without source coordinates.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ */
+func cli_emit_error(diags: DiagCollector*, code: string, message: string) {
+    diag_error(diags, "l0c", code, message, "", 0, 0, 0, 0);
+}
+
+/**
+ * Emit the standard diagnostic for a recognized canonical option whose
+ * behavior is not implemented yet.
+ *
+ * @param diags Diagnostic collector.
+ * @param option Canonical short option.
+ * @param purpose Reserved option purpose.
+ */
+func cli_emit_reserved_option_error(diags: DiagCollector*, option: string, purpose: string) {
+    cli_emit_error(
+        diags,
+        "L0C-2032",
+        "option '" + option + "' is reserved for " + purpose + " and is not supported yet"
+    );
+}
+
+/**
+ * Return whether a diagnostic collector contains one diagnostic code.
+ *
+ * @param diags Diagnostic collector to inspect.
+ * @param code Diagnostic code to find.
+ * @return `true` when the code is present.
+ */
+func cli_has_diagnostic_code(diags: DiagCollector*, code: string) -> bool {
+    for (let i = 0; i < diag_count(diags); i = i + 1) {
+        if (diag_get(diags, i).code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Set the active CLI mode or emit an error for conflicting mode flags.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector.
+ * @param mode Mode requested by the current flag.
+ */
+func cli_try_set_mode(opts: CliOptions*, diags: DiagCollector*, mode: CliMode) {
+    if (!opts.mode_explicit) {
+        opts.mode = mode;
+        opts.mode_explicit = true;
+        return;
+    }
+
+    if (ord(opts.mode) != ord(mode)) {
+        cli_emit_error(
+            diags,
+            "L0C-2002",
+            "multiple mode flags provided: " + cli_mode_flag(opts.mode) + " conflicts with " + cli_mode_flag(mode)
+        );
+    }
+}
+
+/**
+ * Validate that mode-specific flags are used with compatible modes.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector for incompatibility errors.
+ */
+func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
+    let mode = opts.mode;
+
+    if (sv_size(opts.interface_paths) > 0 && ord(mode) != ord(CM_COMPILE)) {
+        cli_emit_error(diags, "L0C-2031", "option '--interface-path' is valid only with mode: --compile");
+    }
+
+    if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L0C-2010", "option '--output' is valid only with modes: --build, --gen, --run");
+    }
+
+    if (opts.keep_c && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L0C-2011", "option '--keep-c' is valid only with modes: --build, --run");
+    }
+
+    if (opts.c_compiler != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L0C-2012", "option '--c-compiler' is valid only with modes: --build, --run");
+    }
+
+    if (opts.c_options != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L0C-2013", "option '--c-options' is valid only with modes: --build, --run");
+    }
+
+    if (sv_size(opts.c_sources) > 0 && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L0C-2029", "option '--c-source' is valid only with modes: --build, --run");
+    }
+
+    if (opts.runtime_include != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L0C-2014", "option '--runtime-include' is valid only with modes: --build, --run");
+    }
+
+    if (opts.runtime_lib != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L0C-2015", "option '--runtime-lib' is valid only with modes: --build, --run");
+    }
+
+    if (opts.no_line_directives && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L0C-2016", "option '--no-line-directives' is valid only with modes: --build, --gen, --run");
+    }
+
+    if (opts.trace_arc && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L0C-2017", "option '--trace-arc' is valid only with modes: --build, --gen, --run");
+    }
+
+    if (opts.trace_memory && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L0C-2018", "option '--trace-memory' is valid only with modes: --build, --gen, --run");
+    }
+
+    if (opts.unchecked && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L0C-2025", "option '--unchecked' is valid only with modes: --build, --gen, --run");
+    }
+
+    if (opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L0C-2027", "option '--check-basic' is valid only with modes: --build, --gen, --run");
+    }
+
+    if (opts.all_modules &&
+        ord(mode) != ord(CM_TOK) &&
+        ord(mode) != ord(CM_AST) &&
+        ord(mode) != ord(CM_SYM) &&
+        ord(mode) != ord(CM_TYPE)) {
+        cli_emit_error(diags, "L0C-2019", "option '--all-modules' is valid only with modes: --ast, --sym, --tok, --type");
+    }
+
+    if (opts.include_eof && ord(mode) != ord(CM_TOK)) {
+        cli_emit_error(diags, "L0C-2020", "option '--include-eof' is valid only with modes: --tok");
+    }
+
+    if (opts.unchecked && (opts.trace_arc || opts.trace_memory)) {
+        cli_emit_error(diags, "L0C-2026", "option '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'");
+    }
+
+    if (opts.check_basic && (opts.unchecked || opts.trace_arc || opts.trace_memory)) {
+        cli_emit_error(diags, "L0C-2028", "option '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'");
+    }
+}

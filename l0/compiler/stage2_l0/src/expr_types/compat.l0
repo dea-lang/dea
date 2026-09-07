@@ -1,0 +1,228 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Assignment, contextual initializer compatibility, and explicit cast rules. */
+module expr_types.compat;
+
+import std.text;
+import ast;
+import driver;
+import types;
+import expr_types.state;
+
+/**
+ * Check whether a type is `void`.
+ *
+ * @param ty Type to inspect.
+ * @return `true` if `ty` is `void`.
+ */
+func etc_is_void(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "void");
+}
+
+/**
+ * Check whether a type behaves like an integer in arithmetic.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for `int` and `byte`.
+ */
+func etc_is_int(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "int") || type_is_builtin(ty as Type*, "byte");
+}
+
+/**
+ * Check whether a type is `bool`.
+ *
+ * @param ty Type to inspect.
+ * @return `true` if `ty` is `bool`.
+ */
+func etc_is_bool(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "bool");
+}
+
+/**
+ * Check whether a type is `string`.
+ *
+ * @param ty Type to inspect.
+ * @return `true` if `ty` is `string`.
+ */
+func etc_is_string(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "string");
+}
+
+/**
+ * Compare two types for equality in the expression checker.
+ *
+ * @param a First type.
+ * @param b Second type.
+ * @return `true` if the types are equal.
+ */
+func etc_types_equal(a: Type*?, b: Type*?) -> bool {
+    return type_equals(a, b);
+}
+
+/**
+ * Check whether a value of one type can be assigned to another.
+ *
+ * @param self Expression checker state.
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if assignment is allowed.
+ */
+func etc_can_assign(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> bool {
+    if (type_equals(dst, src)) return true;
+
+    if (ord(src.kind) == ord(TY_NULL) && ord(dst.kind) == ord(TY_NULLABLE)) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "byte")) return true;
+
+    if (ord(dst.kind) == ord(TY_NULLABLE)) {
+        return etc_can_assign(self, dst.inner as Type*, src);
+    }
+
+    if (ord(src.kind) == ord(TY_NULLABLE) && ord(dst.kind) == ord(TY_NULLABLE)) {
+        return etc_can_assign(self, dst.inner as Type*, src.inner as Type*);
+    }
+
+    if (ord(src.kind) == ord(TY_POINTER) && ord(dst.kind) == ord(TY_POINTER)) {
+        let dst_inner = dst.inner as Type*;
+        let src_inner = src.inner as Type*;
+        if (type_is_builtin(dst_inner, "void") || type_is_builtin(src_inner, "void")) {
+            return true;
+        }
+        return etc_can_assign(self, dst_inner, src_inner);
+    }
+
+    return false;
+}
+
+/**
+ * Check whether an expression is assignable in a typed context.
+ *
+ * Integer literals may narrow from their natural `int` type to `byte` when
+ * their compile-time value fits the destination range.
+ *
+ * @param self Expression checker state.
+ * @param dst Destination type.
+ * @param src Natural source type.
+ * @param expr_id Source expression id.
+ * @param filename Source filename.
+ * @param span Diagnostic span.
+ * @return Typed-context assignability result.
+ */
+func etc_check_assign_expr(self: ExpressionTypeChecker*, dst: Type*, src: Type*, expr_id: ExprId, filename: string,
+                           span: Span) -> AssignCheckResult {
+    if (ord(dst.kind) == ord(TY_NULLABLE)) {
+        let inner_result = etc_check_assign_expr(self, dst.inner as Type*, src, expr_id, filename, span);
+        if (ord(inner_result) != ord(ASSIGN_REJECT)) {
+            return inner_result;
+        }
+    }
+
+    if (etc_can_assign(self, dst, src)) {
+        return ASSIGN_ACCEPT;
+    }
+
+    if (type_is_builtin(dst, "byte") && type_is_builtin(src, "int")) {
+        let const_int = etc_cast_const_int(self, expr_id);
+        if (const_int != null) {
+            let value = const_int as int;
+            if (value >= 0 && value <= 255) {
+                return ASSIGN_ACCEPT;
+            }
+            etc_diag_error(self, "TYP-0700",
+                "integer literal " + int_to_string(value) +
+                " is outside 0..255 for target type 'byte'", filename, span);
+            return ASSIGN_REPORTED;
+        }
+    }
+
+    return ASSIGN_REJECT;
+}
+
+/**
+ * Check whether a value can be cast explicitly using Stage 1 parity rules.
+ *
+ * @param self Expression checker state.
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if the explicit cast is allowed.
+ */
+func etc_can_cast(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> bool {
+    if (etc_can_assign(self, dst, src)) {
+        return true;
+    }
+
+    if (type_is_builtin(dst, "byte") && type_is_builtin(src, "int")) {
+        return true;
+    }
+
+    if (ord(src.kind) == ord(TY_NULLABLE) && ord(dst.kind) != ord(TY_NULLABLE)) {
+        return etc_can_assign(self, dst, src.inner as Type*);
+    }
+
+    return false;
+}
+
+/**
+ * Extract a compile-time integer value from a cast operand when available.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Operand expression id.
+ * @return Integer value, or `null` when not a supported constant form.
+ */
+func etc_cast_const_int(self: ExpressionTypeChecker*, expr_id: ExprId) -> int? {
+    if (expr_id < 0 || self.current_unit == null) {
+        return null;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_INT)) {
+        return expr.int_value;
+    }
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return etc_cast_const_int(self, expr.expr_a);
+    }
+    if (ord(expr.kind) == ord(EX_UNARY) && expr.text_value == "-") {
+        let inner = etc_cast_const_int(self, expr.expr_a);
+        if (inner != null) {
+            return -(inner as int);
+        }
+    }
+    return null;
+}
+
+/**
+ * Check whether a cast operand is provably null at compile time.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Operand expression id.
+ * @return `true` if the operand is known-null.
+ */
+func etc_cast_is_const_null(self: ExpressionTypeChecker*, expr_id: ExprId) -> bool {
+    if (expr_id < 0 || self.current_unit == null) {
+        return false;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_NULL)) {
+        return true;
+    }
+    if (ord(expr.kind) == ord(EX_PAREN) || ord(expr.kind) == ord(EX_CAST)) {
+        return etc_cast_is_const_null(self, expr.expr_a);
+    }
+    return false;
+}
+
+/**
+ * Return whether a type is valid as a `case` scrutinee.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for `int`, `byte`, `bool`, and `string`.
+ */
+func etc_is_case_type(ty: Type*?) -> bool {
+    return etc_is_int(ty) || etc_is_bool(ty) || etc_is_string(ty);
+}

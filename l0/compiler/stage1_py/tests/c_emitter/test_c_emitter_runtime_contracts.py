@@ -10,14 +10,14 @@ def test_runtime_call_helpers_preserve_extent_alignment_and_ownership_arguments(
     """Runtime call text carries the complete checked-access and drop ABI."""
 
     emitter = CEmitter()
-    direct = emitter.emit_checked_ptr_access(
+    direct = emitter.values.emit_checked_ptr_access(
         "ptr",
         "l0_int*",
         "sizeof(l0_int)",
         "_RT_ALIGNOF(l0_int)",
         "_RT_ACCESS_READ",
     )
-    indexed = emitter.emit_checked_ptr_index_access(
+    indexed = emitter.values.emit_checked_ptr_index_access(
         "base",
         "index",
         "l0_byte*",
@@ -25,14 +25,14 @@ def test_runtime_call_helpers_preserve_extent_alignment_and_ownership_arguments(
         "_RT_ALIGNOF(l0_byte)",
         "_RT_ACCESS_WRITE",
     )
-    drop_begin = emitter.emit_drop_begin_expr(
+    drop_begin = emitter.values.emit_drop_begin_expr(
         "owned",
         "struct l0_demo_Box*",
         "sizeof(struct l0_demo_Box)",
         "_RT_ALIGNOF(struct l0_demo_Box)",
     )
-    emitter.emit_drop_finish_call("checked_owned")
-    emitter.emit_alloc_obj(
+    emitter.cleanup.emit_drop_finish_call("checked_owned")
+    emitter.cleanup.emit_alloc_obj(
         "struct l0_demo_Box*", "struct l0_demo_Box", "allocated"
     )
 

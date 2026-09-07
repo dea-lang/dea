@@ -13,7 +13,15 @@ import std.text;
 import std.vector;
 
 import ast;
-import c_emitter;
+import c_emitter.builder;
+import c_emitter.state;
+import c_emitter.names;
+import c_emitter.types;
+import c_emitter.wrappers;
+import c_emitter.lifetime;
+import c_emitter.values;
+import c_emitter.declarations;
+import c_emitter.statements;
 import codegen_options;
 import driver;
 import parser;

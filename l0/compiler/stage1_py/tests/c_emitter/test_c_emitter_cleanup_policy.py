@@ -14,7 +14,7 @@ def test_emit_enum_cleanup_ice_on_missing_enum_info():
     emitter.set_analysis(AnalysisResult())
 
     with pytest.raises(InternalCompilerError, match=r"\[ICE-1080\]"):
-        emitter.emit_enum_cleanup("p", EnumType("main", "Missing"))
+        emitter.cleanup.emit_enum_cleanup("p", EnumType("main", "Missing"))
 
 
 def test_emit_struct_cleanup_ice_on_missing_struct_info():
@@ -22,4 +22,4 @@ def test_emit_struct_cleanup_ice_on_missing_struct_info():
     emitter.set_analysis(AnalysisResult())
 
     with pytest.raises(InternalCompilerError, match=r"\[ICE-1270\]"):
-        emitter.emit_struct_cleanup("p", StructType("main", "Missing"))
+        emitter.cleanup.emit_struct_cleanup("p", StructType("main", "Missing"))

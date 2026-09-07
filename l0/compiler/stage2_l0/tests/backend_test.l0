@@ -14,6 +14,8 @@ import std.vector;
 import util.diag;
 
 import ast;
+import backend.state;
+import backend.lifetime;
 import backend;
 import codegen_options;
 import driver;

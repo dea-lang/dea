@@ -1,0 +1,236 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Compiler discovery, runtime paths, and native command construction. */
+module build_driver.toolchain;
+
+import sys.rt;
+import std.fs;
+import std.path;
+import std.string;
+import std.system;
+import std.vector;
+import util.diag;
+import cli_args.model;
+import build_driver.platform;
+
+/**
+ * Return the compiler flag-family name used by Stage 1.
+ *
+ * @param compiler Compiler command string.
+ * @return Flag-family tag.
+ */
+func bd_compiler_flag_family(compiler: string) -> string {
+    let base = basename(compiler);
+    if (base == "tcc" || base == "tcc.exe" || starts_with_s(base, "tcc-")) {
+        return "tcc";
+    }
+    if (base == "gcc" || base == "gcc.exe" || starts_with_s(base, "gcc-") ||
+        base == "clang" || base == "clang.exe" || starts_with_s(base, "clang-"))
+    {
+        return "gcc";
+    }
+    if (base == "cc" || base == "cc.exe") {
+        return "cc";
+    }
+    if (base == "cl" || base == "cl.exe") {
+        return "msvc";
+    }
+    return "unknown";
+}
+
+/**
+ * Return the best available C compiler command or `null`.
+ *
+ * @return Compiler command string, or `null`.
+ */
+func bd_find_c_compiler() -> string? {
+    let from_env = env_get("L0_CC");
+    if (from_env != null) {
+        return from_env as string;
+    }
+
+    with (let candidates = sv_create(4) => sv_free(candidates)) {
+        sv_push(candidates, "tcc");
+        sv_push(candidates, "gcc");
+        sv_push(candidates, "clang");
+        sv_push(candidates, "cc");
+        for (let i = 0; i < sv_size(candidates); i = i + 1) {
+            let candidate = sv_get(candidates, i);
+            let probe = "";
+            if (bd_is_windows()) {
+                probe = "where.exe " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
+            } else {
+                probe = "command -v " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
+            }
+            if (system(probe) == 0) {
+                return candidate;
+            }
+        }
+    }
+
+    let from_cc = env_get("CC");
+    if (from_cc != null) {
+        return from_cc as string;
+    }
+    return null;
+}
+
+/**
+ * Resolve the runtime include directory for build/run.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime include directory, or `null`.
+ */
+func bd_runtime_include_dir(opts: CliOptions*) -> string? {
+    if (opts.runtime_include != null) {
+        return opts.runtime_include as string;
+    }
+
+    let from_env = env_get("L0_RUNTIME_INCLUDE");
+    if (from_env != null) {
+        return from_env as string;
+    }
+
+    let home = env_get("L0_HOME");
+    if (home != null) {
+        return join(home as string, "shared/runtime");
+    }
+    return null;
+}
+
+/**
+ * Resolve the runtime library directory for build/run.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime library directory, or `null`.
+ */
+func bd_runtime_lib_dir(opts: CliOptions*) -> string? {
+    if (opts.runtime_lib != null) {
+        return opts.runtime_lib as string;
+    }
+    return env_get("L0_RUNTIME_LIB");
+}
+
+/**
+ * Validate that a runtime library directory exists.
+ *
+ * @param runtime_lib_path Path to validate.
+ * @param diags Diagnostic collector for failures.
+ * @return `true` on success.
+ */
+func bd_validate_runtime_lib(runtime_lib_path: string, diags: DiagCollector*) -> bool {
+    let info = rt_file_info(runtime_lib_path);
+    if (!info.exists || !info.is_dir) {
+        diag_error(
+            diags,
+            "l0c",
+            "L0C-0014",
+            "runtime library path '" + runtime_lib_path + "' does not exist or is not a directory",
+            "",
+            0,
+            0,
+            0,
+            0
+        );
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Push compiler-family standard flags into a command-word vector.
+ *
+ * @param words Command words to extend.
+ * @param family Compiler flag-family name.
+ */
+func bd_push_standard_flags(words: StringVector*, family: string) {
+    if (family == "tcc") {
+        sv_push(words, "-std=c99");
+        sv_push(words, "-Wall");
+        sv_push(words, "-pedantic");
+        return;
+    }
+    if (family == "gcc") {
+        sv_push(words, "-std=c99");
+        sv_push(words, "-Wall");
+        sv_push(words, "-Wextra");
+        sv_push(words, "-Wno-unused");
+        sv_push(words, "-Wno-unused-parameter");
+        sv_push(words, "-pedantic-errors");
+        return;
+    }
+    if (family == "msvc") {
+        sv_push(words, "/std:c11");
+        sv_push(words, "/W4");
+    }
+}
+
+/**
+ * Push compiler-family output-path flags into a command-word vector.
+ *
+ * @param words Command words to extend.
+ * @param family Compiler flag-family name.
+ * @param exe_path Output executable path.
+ */
+func bd_push_output_flags(words: StringVector*, family: string, exe_path: string) {
+    if (family == "msvc") {
+        sv_push(words, "/Fe:" + exe_path);
+        return;
+    }
+    sv_push(words, "-o");
+    sv_push(words, exe_path);
+}
+
+/**
+ * Push a C compiler invocation into a command-word vector.
+ *
+ * @param words Command words to extend.
+ * @param compiler C compiler executable.
+ * @param family Compiler flag-family name.
+ * @param extra_opts User C compiler option words.
+ * @param optimize Selected default optimization flag, or `null`.
+ * @param runtime_include Runtime header include path, or `null`.
+ * @param c_path Generated C input path.
+ * @param c_sources Additional C source input paths.
+ * @param exe_path Output executable path.
+ * @param runtime_lib Runtime library search path, or `null`.
+ */
+func bd_push_c_compile_command_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    extra_opts: StringVector*,
+    optimize: string?,
+    runtime_include: string?,
+    c_path: string,
+    c_sources: StringVector*,
+    exe_path: string,
+    runtime_lib: string?
+) {
+    sv_push(words, compiler);
+    for (let extra_i = 0; extra_i < sv_size(extra_opts); extra_i = extra_i + 1) {
+        sv_push(words, sv_get(extra_opts, extra_i));
+    }
+    bd_push_standard_flags(words, family);
+    if (optimize != null) {
+        sv_push(words, optimize as string);
+    }
+    if (runtime_include != null) {
+        sv_push(words, "-I");
+        sv_push(words, runtime_include as string);
+    }
+
+    sv_push(words, c_path);
+    for (let source_i = 0; source_i < sv_size(c_sources); source_i = source_i + 1) {
+        sv_push(words, sv_get(c_sources, source_i));
+    }
+    bd_push_output_flags(words, family, exe_path);
+
+    if (runtime_lib != null) {
+        sv_push(words, "-L");
+        sv_push(words, runtime_lib as string);
+    }
+}

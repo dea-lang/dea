@@ -9,10 +9,14 @@ import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 
-import l0c
+import l0_cli_build
+import l0_cli_commands
+import l0_driver
+import l0_paths
 import pytest
 from l0_driver import SourceEncodingError
-from l0c import cmd_ast, cmd_build, cmd_check, cmd_codegen, cmd_run, cmd_tok
+from l0_cli_build import cmd_build, cmd_run
+from l0_cli_commands import cmd_ast, cmd_check, cmd_codegen, cmd_tok
 
 
 def _write_module(root, module_name: str, source: str):
@@ -88,7 +92,7 @@ def test_build_fails_when_entry_main_missing(tmp_path, monkeypatch, capsys):
         func helper() -> int { return 0; }
         """,
     )
-    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
 
     rc = cmd_build(_build_args(tmp_path, "app.main"))
 
@@ -105,7 +109,7 @@ def test_build_main_return_warning_is_not_decorated_by_log(tmp_path, monkeypatch
         func main() -> string { return "ok"; }
         """,
     )
-    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
 
     default_rc = cmd_build(_build_args(tmp_path, "app.main"))
     default = capsys.readouterr()
@@ -142,7 +146,7 @@ def test_build_structured_duplicate_import_warning_is_not_decorated_by_log(tmp_p
         func main() -> int { return dep_value(); }
         """,
     )
-    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
 
     default_rc = cmd_build(_build_args(tmp_path, "app.main"))
     default = capsys.readouterr()
@@ -168,7 +172,7 @@ def test_build_rich_info_logs_remain_logger_controlled(tmp_path, monkeypatch, ca
         func main() -> int { return 0; }
         """,
     )
-    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
     monkeypatch.setattr("l0_logger.time.strftime", lambda *_args: "2042-01-02 03:04:05")
 
     rc = cmd_build(_build_args(tmp_path, "main", log=True, verbosity=1))
@@ -189,8 +193,8 @@ def test_codegen_stdout_preserves_single_trailing_newline(monkeypatch, capsys):
         def generate(self):
             return "line1\nline2\n"
 
-    monkeypatch.setattr("l0c._run_analysis", lambda args: (object(), object(), 0))
-    monkeypatch.setattr("l0c.Backend", _FakeBackend)
+    monkeypatch.setattr("l0_cli_commands._run_analysis", lambda args: (object(), object(), 0))
+    monkeypatch.setattr("l0_cli_commands.Backend", _FakeBackend)
 
     rc = cmd_codegen(argparse.Namespace(output=None))
 
@@ -251,7 +255,7 @@ def test_build_accepts_existing_runtime_lib_directory(tmp_path, monkeypatch):
         captured["cmd"] = cmd
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(_build_args(tmp_path, "main", runtime_lib=str(runtime_dir)))
 
@@ -278,7 +282,7 @@ def test_build_uses_l0_cflags_when_c_options_are_not_provided(tmp_path, monkeypa
 
     monkeypatch.setenv("L0_CFLAGS", "-g -DENV_FLAG")
     monkeypatch.delenv("L0_RUNTIME_LIB", raising=False)
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(_build_args(tmp_path, "main", c_compiler="gcc", c_options=None))
 
@@ -306,7 +310,7 @@ def test_build_merges_l0_cflags_and_cli_c_options_with_cli_last(tmp_path, monkey
 
     monkeypatch.setenv("L0_CFLAGS", "-DENV_ONE -DENV_TWO")
     monkeypatch.delenv("L0_RUNTIME_LIB", raising=False)
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(_build_args(tmp_path, "main", c_compiler="gcc", c_options="-DCLI_ONE -DCLI_TWO"))
 
@@ -330,7 +334,7 @@ def test_build_preserves_ordered_c_source_arguments(tmp_path, monkeypatch):
 
     sources = ["extra source.c", "quote'and\\backslash.c", "C:\\native\\unit.c"]
     monkeypatch.delenv("L0_RUNTIME_LIB", raising=False)
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(_build_args(tmp_path, "main", c_compiler="gcc", c_sources=sources))
 
@@ -354,8 +358,8 @@ def test_build_uses_a_exe_by_default_on_windows(tmp_path, monkeypatch):
         captured["cmd"] = cmd
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c._is_windows_host", lambda: True)
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build._is_windows_host", lambda: True)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
     monkeypatch.delenv("L0_RUNTIME_INCLUDE", raising=False)
     monkeypatch.delenv("L0_RUNTIME_LIB", raising=False)
 
@@ -388,7 +392,7 @@ def test_build_places_source_after_compiler_flags_for_tcc(tmp_path, monkeypatch)
     monkeypatch.delenv("L0_CFLAGS", raising=False)
     monkeypatch.delenv("L0_RUNTIME_INCLUDE", raising=False)
     monkeypatch.delenv("L0_RUNTIME_LIB", raising=False)
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(
         _build_args(
@@ -430,7 +434,7 @@ def test_build_uses_msvc_flag_forms_for_output_and_runtime_paths(tmp_path, monke
         captured["cmd"] = cmd
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(
         _build_args(
@@ -469,8 +473,8 @@ def test_build_writes_anonymous_c_through_reserved_descriptor_and_cleans_it(
         selected_temp.symlink_to(trusted_temp, target_is_directory=True)
 
     captured = {}
-    real_mkstemp = l0c.tempfile.mkstemp
-    real_fdopen = l0c.os.fdopen
+    real_mkstemp = l0_cli_build.tempfile.mkstemp
+    real_fdopen = l0_cli_build.os.fdopen
 
     def _tracked_mkstemp(*args, **kwargs):
         captured["mkstemp_dir"] = kwargs.get("dir")
@@ -493,11 +497,11 @@ def test_build_writes_anonymous_c_through_reserved_descriptor_and_cleans_it(
         return _RunResult(returncode=0)
 
     monkeypatch.setattr(
-        "l0c.tempfile.gettempdir", lambda: str(selected_temp)
+        "l0_cli_build.tempfile.gettempdir", lambda: str(selected_temp)
     )
-    monkeypatch.setattr("l0c.tempfile.mkstemp", _tracked_mkstemp)
-    monkeypatch.setattr("l0c.os.fdopen", _tracked_fdopen)
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.tempfile.mkstemp", _tracked_mkstemp)
+    monkeypatch.setattr("l0_cli_build.os.fdopen", _tracked_fdopen)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -531,8 +535,8 @@ def test_build_accepts_sticky_writable_temporary_directory(tmp_path, monkeypatch
         captured["c_path"] = Path(next(arg for arg in cmd if arg.endswith(".c")))
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(sticky_temp))
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.tempfile.gettempdir", lambda: str(sticky_temp))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -563,8 +567,8 @@ def test_build_rejects_nonsticky_writable_temporary_directory(
         compiler_invoked = True
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(unsafe_temp))
-    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+    monkeypatch.setattr("l0_cli_build.tempfile.gettempdir", lambda: str(unsafe_temp))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _unexpected_run)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -600,8 +604,8 @@ def test_build_rejects_nonsticky_writable_temporary_ancestor(
         compiler_invoked = True
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(nested_temp))
-    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+    monkeypatch.setattr("l0_cli_build.tempfile.gettempdir", lambda: str(nested_temp))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _unexpected_run)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -646,9 +650,9 @@ def test_build_rejects_temporary_directory_owned_by_untrusted_uid(
         compiler_invoked = True
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(compiler_temp))
+    monkeypatch.setattr("l0_cli_build.tempfile.gettempdir", lambda: str(compiler_temp))
     monkeypatch.setattr(Path, "stat", _stat_with_untrusted_temp_owner)
-    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _unexpected_run)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -670,7 +674,7 @@ def test_build_cleans_anonymous_c_after_compiler_failure(tmp_path, monkeypatch):
         """,
     )
     captured = {}
-    real_mkstemp = l0c.tempfile.mkstemp
+    real_mkstemp = l0_cli_build.tempfile.mkstemp
 
     def _tracked_mkstemp(*args, **kwargs):
         kwargs["dir"] = tmp_path
@@ -678,9 +682,9 @@ def test_build_cleans_anonymous_c_after_compiler_failure(tmp_path, monkeypatch):
         captured["c_path"] = Path(raw_path)
         return descriptor, raw_path
 
-    monkeypatch.setattr("l0c.tempfile.mkstemp", _tracked_mkstemp)
+    monkeypatch.setattr("l0_cli_build.tempfile.mkstemp", _tracked_mkstemp)
     monkeypatch.setattr(
-        "l0c.subprocess.run",
+        "l0_cli_build.subprocess.run",
         lambda *args, **kwargs: _RunResult(returncode=1, stderr="compiler failure"),
     )
 
@@ -717,8 +721,8 @@ def test_build_cleanup_failure_after_compiler_success_retains_executable(
             raise OSError("cannot remove generated C")
         return real_unlink(path, *args, **kwargs)
 
-    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(compiler_temp))
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.tempfile.gettempdir", lambda: str(compiler_temp))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
     monkeypatch.setattr(Path, "unlink", _cleanup_failure)
 
     rc = cmd_build(_build_args(tmp_path, "main", output=str(exe_path)))
@@ -758,8 +762,8 @@ def test_build_cleanup_failure_after_compiler_failure_reports_retained_path(
             raise OSError("cannot remove generated C")
         return real_unlink(path, *args, **kwargs)
 
-    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(compiler_temp))
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.tempfile.gettempdir", lambda: str(compiler_temp))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
     monkeypatch.setattr(Path, "unlink", _cleanup_failure)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
@@ -796,8 +800,8 @@ def test_build_temporary_source_creation_failure_reports_9511(
         compiler_invoked = True
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c.tempfile.mkstemp", _creation_failure)
-    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+    monkeypatch.setattr("l0_cli_build.tempfile.mkstemp", _creation_failure)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _unexpected_run)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -823,7 +827,7 @@ def test_build_write_and_cleanup_failures_report_9511_and_9512(
     compiler_temp = tmp_path / "compiler-temp"
     compiler_temp.mkdir(mode=0o700)
     captured = {}
-    real_mkstemp = l0c.tempfile.mkstemp
+    real_mkstemp = l0_cli_build.tempfile.mkstemp
     real_unlink = Path.unlink
     compiler_invoked = False
 
@@ -846,10 +850,10 @@ def test_build_write_and_cleanup_failures_report_9511_and_9512(
         compiler_invoked = True
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr("l0c.tempfile.gettempdir", lambda: str(compiler_temp))
-    monkeypatch.setattr("l0c.tempfile.mkstemp", _tracked_mkstemp)
-    monkeypatch.setattr("l0c.os.fdopen", _write_failure)
-    monkeypatch.setattr("l0c.subprocess.run", _unexpected_run)
+    monkeypatch.setattr("l0_cli_build.tempfile.gettempdir", lambda: str(compiler_temp))
+    monkeypatch.setattr("l0_cli_build.tempfile.mkstemp", _tracked_mkstemp)
+    monkeypatch.setattr("l0_cli_build.os.fdopen", _write_failure)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _unexpected_run)
     monkeypatch.setattr(Path, "unlink", _cleanup_failure)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
@@ -879,7 +883,7 @@ def test_build_temporary_source_write_failure_closes_and_removes_file(
         """,
     )
     captured = {}
-    real_mkstemp = l0c.tempfile.mkstemp
+    real_mkstemp = l0_cli_build.tempfile.mkstemp
 
     def _tracked_mkstemp(*args, **kwargs):
         kwargs["dir"] = tmp_path
@@ -891,8 +895,8 @@ def test_build_temporary_source_write_failure_closes_and_removes_file(
     def _write_failure(*args, **kwargs):
         raise OSError("cannot open descriptor stream")
 
-    monkeypatch.setattr("l0c.tempfile.mkstemp", _tracked_mkstemp)
-    monkeypatch.setattr("l0c.os.fdopen", _write_failure)
+    monkeypatch.setattr("l0_cli_build.tempfile.mkstemp", _tracked_mkstemp)
+    monkeypatch.setattr("l0_cli_build.os.fdopen", _write_failure)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -924,7 +928,7 @@ def test_build_rejects_dangling_symlink_temporary_name_collision(
     collision_name = "collision"
     reserved_name = "reserved"
     collision_path = tmp_path / (
-        f"{l0c.tempfile.gettempprefix()}{collision_name}.c"
+        f"{l0_cli_build.tempfile.gettempprefix()}{collision_name}.c"
     )
     collision_path.symlink_to(victim)
     names = iter((collision_name, reserved_name))
@@ -936,15 +940,15 @@ def test_build_rejects_dangling_symlink_temporary_name_collision(
         captured["c_source"] = c_path.read_text(encoding="utf-8")
         return _RunResult(returncode=0)
 
-    monkeypatch.setattr(l0c.tempfile, "tempdir", str(tmp_path))
-    monkeypatch.setattr(l0c.tempfile, "_get_candidate_names", lambda: names)
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr(l0_cli_build.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(l0_cli_build.tempfile, "_get_candidate_names", lambda: names)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
     assert rc == 0
     assert captured["c_path"].name == (
-        f"{l0c.tempfile.gettempprefix()}{reserved_name}.c"
+        f"{l0_cli_build.tempfile.gettempprefix()}{reserved_name}.c"
     )
     assert "int main" in captured["c_source"]
     assert collision_path.is_symlink()
@@ -974,9 +978,9 @@ def test_build_keep_c_preserves_c_path_without_temporary_parent_validation(
         return _RunResult(returncode=0)
 
     monkeypatch.setattr(
-        "l0c._validated_temporary_directory", _unexpected_validation
+        "l0_cli_build._validated_temporary_directory", _unexpected_validation
     )
-    monkeypatch.setattr("l0c.subprocess.run", _fake_run)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", _fake_run)
 
     rc = cmd_build(
         _build_args(tmp_path, "main", output=str(exe_path), keep_c=True)
@@ -998,19 +1002,19 @@ def test_run_uses_validated_resolved_directory_for_temporary_executable(
         selected_temp.symlink_to(trusted_temp, target_is_directory=True)
 
     captured = {}
-    real_named_temporary_file = l0c.tempfile.NamedTemporaryFile
+    real_named_temporary_file = l0_cli_build.tempfile.NamedTemporaryFile
 
     def _tracked_named_temporary_file(*args, **kwargs):
         captured["temp_dir"] = kwargs.get("dir")
         return real_named_temporary_file(*args, **kwargs)
 
     monkeypatch.setattr(
-        "l0c.tempfile.gettempdir", lambda: str(selected_temp)
+        "l0_cli_build.tempfile.gettempdir", lambda: str(selected_temp)
     )
     monkeypatch.setattr(
-        "l0c.tempfile.NamedTemporaryFile", _tracked_named_temporary_file
+        "l0_cli_build.tempfile.NamedTemporaryFile", _tracked_named_temporary_file
     )
-    monkeypatch.setattr("l0c.cmd_build", lambda args: 1)
+    monkeypatch.setattr("l0_cli_build.cmd_build", lambda args: 1)
 
     args = argparse.Namespace(
         entry="app.main",
@@ -1054,11 +1058,11 @@ def test_run_with_keep_c_rejects_unsafe_temporary_parent_before_creation(
         build_invoked = True
         return 0
 
-    monkeypatch.setattr("l0c._validated_temporary_directory", _unsafe_temp)
+    monkeypatch.setattr("l0_cli_build._validated_temporary_directory", _unsafe_temp)
     monkeypatch.setattr(
-        "l0c.tempfile.NamedTemporaryFile", _unexpected_named_temporary_file
+        "l0_cli_build.tempfile.NamedTemporaryFile", _unexpected_named_temporary_file
     )
-    monkeypatch.setattr("l0c.cmd_build", _unexpected_build)
+    monkeypatch.setattr("l0_cli_build.cmd_build", _unexpected_build)
 
     args = argparse.Namespace(
         entry="app.main",
@@ -1095,7 +1099,7 @@ def test_run_forwards_c_options_to_build(tmp_path, monkeypatch):
         captured["c_options"] = args.c_options
         return 1
 
-    monkeypatch.setattr("l0c.cmd_build", _fake_cmd_build)
+    monkeypatch.setattr("l0_cli_build.cmd_build", _fake_cmd_build)
 
     args = argparse.Namespace(
         entry="app.main",
@@ -1127,7 +1131,7 @@ def test_run_forwards_trace_flags_to_build(tmp_path, monkeypatch):
         captured["trace_memory"] = args.trace_memory
         return 1
 
-    monkeypatch.setattr("l0c.cmd_build", _fake_cmd_build)
+    monkeypatch.setattr("l0_cli_build.cmd_build", _fake_cmd_build)
 
     args = argparse.Namespace(
         entry="app.main",
@@ -1161,7 +1165,7 @@ def test_run_with_keep_c_uses_default_build_c_path_and_temp_exe(tmp_path, monkey
         captured["c_output_path"] = getattr(args, "c_output_path", None)
         return 1
 
-    monkeypatch.setattr("l0c.cmd_build", _fake_cmd_build)
+    monkeypatch.setattr("l0_cli_build.cmd_build", _fake_cmd_build)
 
     args = argparse.Namespace(
         entry="app.main",
@@ -1195,8 +1199,8 @@ def test_run_uses_exe_suffix_for_temp_output_on_windows(tmp_path, monkeypatch):
         captured["output"] = args.output
         return 1
 
-    monkeypatch.setattr("l0c._is_windows_host", lambda: True)
-    monkeypatch.setattr("l0c.cmd_build", _fake_cmd_build)
+    monkeypatch.setattr("l0_cli_build._is_windows_host", lambda: True)
+    monkeypatch.setattr("l0_cli_build.cmd_build", _fake_cmd_build)
 
     args = argparse.Namespace(
         entry="app.main",
@@ -1230,7 +1234,7 @@ def test_run_with_keep_c_and_output_uses_output_stem_for_c_path(tmp_path, monkey
         captured["c_output_path"] = getattr(args, "c_output_path", None)
         return 1
 
-    monkeypatch.setattr("l0c.cmd_build", _fake_cmd_build)
+    monkeypatch.setattr("l0_cli_build.cmd_build", _fake_cmd_build)
 
     args = argparse.Namespace(
         entry="app.main",
@@ -1262,7 +1266,7 @@ def test_run_output_warning_is_not_decorated_by_log(tmp_path, monkeypatch, capsy
     def _fake_cmd_build(args):
         return 1
 
-    monkeypatch.setattr("l0c.cmd_build", _fake_cmd_build)
+    monkeypatch.setattr("l0_cli_build.cmd_build", _fake_cmd_build)
 
     def _args(log: bool) -> argparse.Namespace:
         return argparse.Namespace(
@@ -1306,7 +1310,7 @@ def test_build_fails_when_no_c_compiler_is_available(tmp_path, monkeypatch, caps
         func main() -> int { return 0; }
         """,
     )
-    monkeypatch.setattr("l0c._find_cc", lambda: None)
+    monkeypatch.setattr("l0_cli_build._find_cc", lambda: None)
 
     rc = cmd_build(_build_args(tmp_path, "main", c_compiler=None))
 
@@ -1323,7 +1327,7 @@ def test_build_fails_when_c_compilation_fails(tmp_path, monkeypatch, capsys):
         func main() -> int { return 0; }
         """,
     )
-    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=1, stderr="cc failed"))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=1, stderr="cc failed"))
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -1341,7 +1345,7 @@ def test_build_fails_when_runtime_lib_path_is_not_a_directory(tmp_path, monkeypa
         """,
     )
     missing_dir = tmp_path / "missing_runtime_dir"
-    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
+    monkeypatch.setattr("l0_cli_build.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
 
     rc = cmd_build(_build_args(tmp_path, "main", runtime_lib=str(missing_dir)))
 
@@ -1358,15 +1362,15 @@ def test_build_fails_when_entry_main_type_info_is_missing(tmp_path, monkeypatch,
         func main() -> int { return 0; }
         """,
     )
-    orig_analyze = l0c.L0Driver.analyze
+    orig_analyze = l0_driver.L0Driver.analyze
 
     def _analyze_without_main_type(self, entry_module_name):
         result = orig_analyze(self, entry_module_name)
         result.func_types.pop((entry_module_name, "main"), None)
         return result
 
-    monkeypatch.setattr("l0c.L0Driver.analyze", _analyze_without_main_type)
-    monkeypatch.setattr("l0c.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
+    monkeypatch.setattr("l0_driver.L0Driver.analyze", _analyze_without_main_type)
+    monkeypatch.setattr("l0_cli_build.subprocess.run", lambda *args, **kwargs: _RunResult(returncode=0))
 
     rc = cmd_build(_build_args(tmp_path, "main"))
 
@@ -1378,7 +1382,7 @@ def test_ast_reports_compilation_unit_build_error(tmp_path, monkeypatch, capsys)
     def _boom(self, _entry):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("l0c.L0Driver.build_compilation_unit", _boom)
+    monkeypatch.setattr("l0_driver.L0Driver.build_compilation_unit", _boom)
 
     rc = cmd_ast(_inspect_args(tmp_path, "main"))
 
@@ -1388,7 +1392,7 @@ def test_ast_reports_compilation_unit_build_error(tmp_path, monkeypatch, capsys)
 
 def test_ast_reports_missing_entry_module_in_compilation_unit(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
-        "l0c.L0Driver.build_compilation_unit",
+        "l0_driver.L0Driver.build_compilation_unit",
         lambda self, _entry: SimpleNamespace(modules={"other": object()}),
     )
 
@@ -1407,7 +1411,7 @@ def test_tok_read_error_is_not_decorated_by_log(tmp_path, monkeypatch, capsys):
         func main() -> int { return 0; }
         """,
     )
-    monkeypatch.setattr("l0c.load_source_utf8", lambda _path: (_ for _ in ()).throw(OSError("read failed")))
+    monkeypatch.setattr("l0_cli_commands.load_source_utf8", lambda _path: (_ for _ in ()).throw(OSError("read failed")))
 
     default_rc = cmd_tok(_inspect_args(tmp_path, "main"))
     default = capsys.readouterr()
@@ -1430,7 +1434,7 @@ def test_tok_source_encoding_error_is_not_decorated_by_log(tmp_path, monkeypatch
         """,
     )
     monkeypatch.setattr(
-        "l0c.load_source_utf8",
+        "l0_cli_commands.load_source_utf8",
         lambda _path: (_ for _ in ()).throw(SourceEncodingError("main.l0", "invalid UTF-8")),
     )
 
@@ -1462,7 +1466,7 @@ def test_tok_unstructured_lexer_error_is_not_decorated_by_log(tmp_path, monkeypa
         def tokenize(self):
             raise RuntimeError("forced lexer failure")
 
-    monkeypatch.setattr("l0c.Lexer", _ExplodingLexer)
+    monkeypatch.setattr("l0_cli_commands.Lexer", _ExplodingLexer)
 
     default_rc = cmd_tok(_inspect_args(tmp_path, "main"))
     default = capsys.readouterr()
@@ -1479,7 +1483,7 @@ def test_tok_all_modules_reports_compilation_unit_build_error(tmp_path, monkeypa
     def _boom(self, _entry):
         raise RuntimeError("bad compilation unit")
 
-    monkeypatch.setattr("l0c.L0Driver.build_compilation_unit", _boom)
+    monkeypatch.setattr("l0_driver.L0Driver.build_compilation_unit", _boom)
 
     rc = cmd_tok(_inspect_args(tmp_path, "main", all_modules=True))
 
@@ -1489,14 +1493,14 @@ def test_tok_all_modules_reports_compilation_unit_build_error(tmp_path, monkeypa
 
 def test_tok_all_modules_reports_resolve_errors_per_module(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
-        "l0c.L0Driver.build_compilation_unit",
+        "l0_driver.L0Driver.build_compilation_unit",
         lambda self, _entry: SimpleNamespace(modules={"ghost": object()}),
     )
 
     def _missing(self, module_name):
         raise FileNotFoundError(f"missing module {module_name}")
 
-    monkeypatch.setattr("l0c.SourceSearchPaths.resolve", _missing)
+    monkeypatch.setattr("l0_paths.SourceSearchPaths.resolve", _missing)
 
     rc = cmd_tok(_inspect_args(tmp_path, "main", all_modules=True))
 

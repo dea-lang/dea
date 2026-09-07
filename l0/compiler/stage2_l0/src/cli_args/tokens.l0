@@ -1,0 +1,117 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Argument boundaries, option values, and positional target scanning. */
+module cli_args.tokens;
+
+import std.string;
+import std.vector;
+import util.diag;
+import cli_args.model;
+import cli_args.validate;
+
+/**
+ * Return the index of the `--` argument separator.
+ *
+ * @param argv Full argument vector.
+ * @return Separator index, or `-1` if `--` is not present.
+ */
+func cli_split_index(argv: StringVector*) -> int {
+    for (let i = 0; i < sv_size(argv); i = i + 1) {
+        if (sv_get(argv, i) == "--") {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Report whether the compiler CLI args explicitly request help output.
+ *
+ * Only tokens before the `--` separator count as compiler CLI arguments.
+ *
+ * @param argv Full argument vector excluding the executable name.
+ * @param cli_end Exclusive end index for compiler CLI arguments.
+ * @return `true` when `-h` or `--help` is present before `cli_end`.
+ */
+func cli_has_help_flag(argv: StringVector*, cli_end: int) -> bool {
+    for (let i = 0; i < cli_end; i = i + 1) {
+        let token = sv_get(argv, i);
+        if (token == "-h" || token == "--help") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Report whether the compiler CLI args explicitly request version output.
+ *
+ * Only tokens before the `--` separator count as compiler CLI arguments.
+ *
+ * @param argv Full argument vector excluding the executable name.
+ * @param cli_end Exclusive end index for compiler CLI arguments.
+ * @return `true` when `-V` or `--version` is present before `cli_end`.
+ */
+func cli_has_version_flag(argv: StringVector*, cli_end: int) -> bool {
+    for (let i = 0; i < cli_end; i = i + 1) {
+        let token = sv_get(argv, i);
+        if (token == "-V" || token == "--version") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Count verbosity flags in a short option cluster.
+ *
+ * @param token Argument token to inspect.
+ * @return Number of `v` characters in a token like `-vvv`, or `-1` if the token is not such a cluster.
+ */
+func cli_verbose_cluster_count(token: string) -> int {
+    if (len_s(token) < 2 || char_at_s(token, 0) != '-') {
+        return -1;
+    }
+
+    for (let i = 1; i < len_s(token); i = i + 1) {
+        if (char_at_s(token, i) != 'v') {
+            return -1;
+        }
+    }
+
+    return len_s(token) - 1;
+}
+
+/**
+ * Return the value following an option that requires one.
+ *
+ * @param argv Full argument vector.
+ * @param i Index of the option token.
+ * @param option Exact option token used in diagnostics.
+ * @param diags Diagnostic collector.
+ * @return Following argument value, or `null` after emitting a missing-value error.
+ */
+func cli_require_next_value(argv: StringVector*, i: int, option: string, diags: DiagCollector*) -> string? {
+    if (i + 1 >= sv_size(argv) || sv_get(argv, i + 1) == "--") {
+        cli_emit_error(diags, "L0C-2003", "missing value for option '" + option + "'");
+        return null;
+    }
+    return sv_get(argv, i + 1);
+}
+
+/**
+ * Assign a positional target argument.
+ *
+ * @param opts Parsed CLI options.
+ * @param token Positional argument to record.
+ */
+func cli_assign_target(opts: CliOptions*, token: string) {
+    if (opts.entry_target == null) {
+        opts.entry_target = token;
+    } else {
+        opts.extra_target_count = opts.extra_target_count + 1;
+    }
+}

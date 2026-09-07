@@ -1,0 +1,714 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Canonical backend models, lifecycle, scope stacks, and semantic queries. */
+module backend.state;
+
+import std.assert;
+import std.hashmap;
+import std.hashset;
+import std.string;
+import std.text;
+import std.vector;
+import ast;
+import c_emitter.state;
+import c_emitter.names;
+import codegen_options;
+import driver;
+import name_resolver;
+import sem_context;
+import scope_context;
+import symbols;
+import type_resolve;
+import types;
+import util.log;
+
+/**
+ * Represents one Stage 2 backend generation session.
+ */
+struct Backend {
+    result: AnalysisResult*;
+    opts: CodegenOptions*;
+    cfg: LogConfig*;
+    emitter: CEmitter*;
+    current_module: string?;
+    current_unit: DriverUnit*?;
+    current_env: ModuleEnv*?;
+    current_func_result: Type*?;
+    current_scope: ScopeContext*?;
+    scope_stack: VectorBase*;          // ScopeContext* (for final cleanup)
+    current_loop_labels: LoopLabels*?;
+    current_loop_cleanup_scopes: LoopCleanupScopes*?;
+    scope_counter: int;
+    label_counter: int;
+    next_stmt_unreachable: bool;
+}
+
+/**
+ * Represents one active loop label pair.
+ */
+struct LoopLabels {
+    parent: LoopLabels*?;
+    break_label: string;
+    continue_label: string;
+}
+
+/**
+ * Represents the cleanup targets for one active loop.
+ */
+struct LoopCleanupScopes {
+    parent: LoopCleanupScopes*?;
+    continue_scope: ScopeContext*;
+    break_scope: ScopeContext*;
+    continue_scope_id: int;
+    break_scope_id: int;
+}
+
+/**
+ * Abort on an internal backend error.
+ *
+ * @param message ICE message to report.
+ */
+func be_ice(message: string) {
+    assert(false, message);
+}
+
+/**
+ * Abort on an internal backend error from a string-returning helper.
+ *
+ * @param message ICE message to report.
+ * @return Dummy return used only to satisfy control-flow typing.
+ */
+func be_ice_string(message: string) -> string {
+    assert(false, message);
+    return "";
+}
+
+/**
+ * Create a backend state for one code-generation pass.
+ *
+ * @param result Borrowed semantic analysis result.
+ * @param opts Borrowed codegen options.
+ * @param cfg Borrowed log configuration.
+ * @return New backend state.
+ */
+func be_create(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogConfig*) -> Backend* {
+    let emitter = cem_create();
+    cem_set_analysis(emitter, result);
+    return new Backend(result, opts, cfg, emitter, null, null, null, null, null, ptr_vec_create(8), null, null, 0, 0,
+        false);
+}
+
+/**
+ * Free a backend state.
+ *
+ * @param self Backend state to free.
+ */
+func be_free(self: Backend*) {
+    for (let i = 0; i < vec_size(self.scope_stack); i = i + 1) {
+        sc_free(ptr_vec_get(self.scope_stack, i) as ScopeContext*);
+    }
+    let labels = self.current_loop_labels;
+    while (labels != null) {
+        let cur = labels as LoopLabels*;
+        labels = cur.parent;
+        drop cur;
+    }
+    let cleanup_scopes = self.current_loop_cleanup_scopes;
+    while (cleanup_scopes != null) {
+        let cur2 = cleanup_scopes as LoopCleanupScopes*;
+        cleanup_scopes = cur2.parent;
+        drop cur2;
+    }
+    vec_free(self.scope_stack);
+    cem_free(self.emitter);
+    drop self;
+}
+
+/**
+ * Build a stable key for one user-defined type.
+ *
+ * @param module_name Defining module name.
+ * @param type_name Struct or enum name.
+ * @return Key in `module::type` form.
+ */
+func be_type_key(module_name: string, type_name: string) -> string {
+    return module_name + "::" + type_name;
+}
+
+/**
+ * Return the module portion of a type key.
+ *
+ * @param key Type key in `module::type` form.
+ * @return Module-name portion of the key.
+ */
+func be_type_key_module(key: string) -> string {
+    let n = len_s(key);
+    for (let i = 0; i < n - 1; i = i + 1) {
+        if (char_at_s(key, i) == ':' && char_at_s(key, i + 1) == ':') {
+            return slice_s(key, 0, i);
+        }
+    }
+    return "";
+}
+
+/**
+ * Return the type-name portion of a type key.
+ *
+ * @param key Type key in `module::type` form.
+ * @return Type-name portion of the key.
+ */
+func be_type_key_name(key: string) -> string {
+    let n = len_s(key);
+    for (let i = 0; i < n - 1; i = i + 1) {
+        if (char_at_s(key, i) == ':' && char_at_s(key, i + 1) == ':') {
+            return slice_s(key, i + 2, n);
+        }
+    }
+    return "";
+}
+
+/**
+ * Return the current module environment.
+ *
+ * @param self Backend state to inspect.
+ * @return Borrowed module environment.
+ */
+func be_current_env(self: Backend*) -> ModuleEnv* {
+    if (self.current_env == null) {
+        be_ice("[ICE-9301] backend requires current module environment");
+    }
+    return self.current_env as ModuleEnv*;
+}
+
+/**
+ * Return the current unit.
+ *
+ * @param self Backend state to inspect.
+ * @return Borrowed driver unit.
+ */
+func be_current_unit(self: Backend*) -> DriverUnit* {
+    if (self.current_unit == null) {
+        be_ice("[ICE-9302] backend requires current driver unit");
+    }
+    return self.current_unit as DriverUnit*;
+}
+
+/**
+ * Return the current expression arena.
+ *
+ * @param self Backend state to inspect.
+ * @return Borrowed expression arena.
+ */
+func be_current_expr_arena(self: Backend*) -> ExprArena* {
+    return be_current_unit(self).parse_result.expr_arena;
+}
+
+/**
+ * Return the current statement arena.
+ *
+ * @param self Backend state to inspect.
+ * @return Borrowed statement arena.
+ */
+func be_current_stmt_arena(self: Backend*) -> StmtArena* {
+    return be_current_unit(self).parse_result.stmt_arena;
+}
+
+/**
+ * Return a loaded driver unit by module name.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Module to look up.
+ * @return Matching loaded unit, or `null` if absent.
+ */
+func be_find_unit(self: Backend*, module_name: string) -> DriverUnit*? {
+    return driver_find_unit(self.result.driver_state, module_name);
+}
+
+/**
+ * Return a module environment by name.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Module to look up.
+ * @return Matching module environment, or `null` if absent.
+ */
+func be_find_env(self: Backend*, module_name: string) -> ModuleEnv*? {
+    if (self.result.names == null) {
+        return null;
+    }
+    return nr_env_find(self.result.names as NameResolution*, module_name);
+}
+
+/**
+ * Resolve one parsed type reference in the current module environment.
+ *
+ * @param self Backend state to inspect.
+ * @param tref Parsed type reference.
+ * @return Resolved type, or `null` if resolution fails.
+ */
+func be_resolve_type_ref(self: Backend*, tref: TypeRef*) -> Type*? {
+    if (self.result.signatures == null || self.result.names == null) {
+        return null;
+    }
+    with (let seen = ss_create() => ss_free(seen)) {
+        return tr_resolve_type_ref(
+            self.result.signatures as SignatureTables*,
+            self.result.names as NameResolution*,
+            be_current_env(self),
+            tref,
+            self.result.diags,
+            seen
+        );
+    }
+}
+
+/**
+ * Look up a visible symbol from the current module.
+ *
+ * @param self Backend state to inspect.
+ * @param name Symbol name.
+ * @param module_path Optional explicit module path.
+ * @param name_qualifier Optional enum-name qualifier.
+ * @return Matching symbol, or `null` if absent.
+ */
+func be_lookup_symbol(self: Backend*, name: string, module_path: StringVector*?, name_qualifier: StringVector*?) -> Symbol*? {
+    if (self.result.names == null) {
+        return null;
+    }
+    return tr_symbol_lookup(self.result.names as NameResolution*, be_current_env(self), name, module_path, name_qualifier);
+}
+
+/**
+ * Return the inferred type of an expression.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression id to query.
+ * @return Cloned inferred type, or `null` if missing.
+ */
+func be_expr_type(self: Backend*, expr_id: ExprId) -> Type*? {
+    if (self.current_module == null) {
+        return null;
+    }
+    return analysis_get_expr_type(self.result, self.current_module as string, expr_id);
+}
+
+/**
+ * Free a temporary vector of optional owned `Type*` values.
+ *
+ * @param items Vector to free. Null entries are ignored.
+ */
+func be_type_ptr_vec_temp_free(items: VectorBase*?) {
+    if (items == null) {
+        return;
+    }
+    let vec = items as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let item = ptr_vec_get(vec, i);
+        if (item != null) {
+            type_free(item as Type*);
+        }
+    }
+    vec_free(vec);
+}
+
+/**
+ * Free a temporary map of owned `Type*` values.
+ *
+ * @param items Map to free.
+ */
+func be_type_ptr_map_temp_free(items: StringPtrMap*?) {
+    if (items == null) {
+        return;
+    }
+    let map = items as StringPtrMap*;
+    for (let i = 0; i < spm_capacity(map); i = i + 1) {
+        if (spm_slot_occupied(map, i)) {
+            type_free(spm_slot_value(map, i) as Type*);
+        }
+    }
+    spm_free(map);
+}
+
+/**
+ * Resolve the type of one local `let` declaration.
+ *
+ * @param self Backend state to inspect.
+ * @param stmt Parsed `let` statement.
+ * @return Resolved type.
+ */
+func be_resolve_let_type(self: Backend*, stmt: StmtNode*) -> Type* {
+    let var_ty: Type*? = null;
+    if (stmt.type_ref != null) {
+        var_ty = be_resolve_type_ref(self, stmt.type_ref as TypeRef*);
+    }
+    if (var_ty == null) {
+        var_ty = be_expr_type(self, stmt.expr_a);
+    }
+    if (var_ty == null) {
+        be_ice("[ICE-1170] missing inferred type for let initializer '" + stmt.name + "'");
+    }
+    return var_ty as Type*;
+}
+
+/**
+ * Return a fresh backend label name.
+ *
+ * @param self Backend state to update.
+ * @param prefix Label prefix.
+ * @return Unique label string.
+ */
+func be_fresh_label(self: Backend*, prefix: string) -> string {
+    self.label_counter = self.label_counter + 1;
+    return "__" + prefix + "_" + int_to_string(self.label_counter);
+}
+
+/**
+ * Push one lexical scope and make it current.
+ *
+ * @param self Backend state to update.
+ * @return New current scope.
+ */
+func be_push_scope(self: Backend*) -> ScopeContext* {
+    let scope = sc_create(self.current_scope);
+    self.scope_counter = self.scope_counter + 1;
+    scope.scope_id = self.scope_counter;
+    ptr_vec_push(self.scope_stack, scope as void*);
+    self.current_scope = scope;
+    return scope;
+}
+
+/**
+ * Pop the current lexical scope.
+ *
+ * @param self Backend state to update.
+ */
+func be_pop_scope(self: Backend*) {
+    if (self.current_scope == null) {
+        be_ice("[ICE-1330] scope underflow");
+    }
+    self.current_scope = (self.current_scope as ScopeContext*).parent;
+}
+
+/**
+ * Push one active loop-label frame.
+ *
+ * @param self Backend state to update.
+ * @param break_label Break target label.
+ * @param continue_label Continue target label.
+ */
+func be_push_loop_labels(self: Backend*, break_label: string, continue_label: string) {
+    self.current_loop_labels = new LoopLabels(self.current_loop_labels, break_label, continue_label);
+}
+
+/**
+ * Pop one active loop-label frame.
+ *
+ * @param self Backend state to update.
+ */
+func be_pop_loop_labels(self: Backend*) {
+    if (self.current_loop_labels == null) {
+        be_ice("[ICE-1020] break/continue outside of loop");
+    }
+    let top = self.current_loop_labels as LoopLabels*;
+    self.current_loop_labels = top.parent;
+    drop top;
+}
+
+/**
+ * Push one active loop-cleanup frame.
+ *
+ * @param self Backend state to update.
+ * @param continue_scope Scope to clean for `continue`.
+ * @param break_scope Scope to clean for `break`.
+ */
+func be_push_loop_cleanup_scopes(self: Backend*, continue_scope: ScopeContext*, break_scope: ScopeContext*) {
+    self.current_loop_cleanup_scopes = new LoopCleanupScopes(self.current_loop_cleanup_scopes, continue_scope, break_scope,
+        continue_scope.scope_id, break_scope.scope_id);
+}
+
+/**
+ * Pop one active loop-cleanup frame.
+ *
+ * @param self Backend state to update.
+ */
+func be_pop_loop_cleanup_scopes(self: Backend*) {
+    if (self.current_loop_cleanup_scopes == null) {
+        be_ice("[ICE-1020] break/continue outside of loop");
+    }
+    let top = self.current_loop_cleanup_scopes as LoopCleanupScopes*;
+    self.current_loop_cleanup_scopes = top.parent;
+    drop top;
+}
+
+/**
+ * Return the type of a declared local binding when present.
+ *
+ * @param self Backend state to inspect.
+ * @param var_name Source-level variable name.
+ * @return Borrowed declared type, or `null` if absent.
+ */
+func be_lookup_local_var_type(self: Backend*, var_name: string) -> Type*? {
+    return sc_lookup_declared_type(self.current_scope, cem_mangle_identifier(var_name));
+}
+
+/**
+ * Return the mangled name when a local variable is currently tracked as owned.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Variable-reference expression id.
+ * @return Mangled local name, or `null` when not owned by the current scope chain.
+ */
+func be_lookup_owned_local_name(self: Backend*, expr_id: ExprId) -> string? {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) != ord(EX_VAR_REF)) {
+        return null;
+    }
+
+    let resolution = analysis_get_var_ref_resolution(self.result, self.current_module as string, expr_id);
+    if (resolution == null || (resolution as int) != ord(VAR_RES_LOCAL)) {
+        return null;
+    }
+
+    let mangled_name = cem_mangle_identifier(expr.text_value);
+    let scope = self.current_scope;
+    while (scope != null) {
+        let cur = scope as ScopeContext*;
+        for (let i = 0; i < vec_size(cur.owned_vars); i = i + 1) {
+            let item = ptr_vec_get(cur.owned_vars, i) as ScopeVar*;
+            if (item.name == mangled_name) {
+                return mangled_name;
+            }
+        }
+        scope = cur.parent;
+    }
+    return null;
+}
+
+/**
+ * Report whether an expression refers to an existing place.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression to classify.
+ * @return `true` for local/module places, dereferences, indexes, and fields.
+ */
+func be_is_place_expr(self: Backend*, expr_id: ExprId) -> bool {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) == ord(EX_VAR_REF) || ord(expr.kind) == ord(EX_INDEX) || ord(expr.kind) == ord(EX_FIELD)) {
+        return true;
+    }
+    if (ord(expr.kind) == ord(EX_UNARY) && expr.text_value == "*") {
+        return true;
+    }
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return be_is_place_expr(self, expr.expr_a);
+    }
+    return false;
+}
+
+/**
+ * Report whether an expression may have side effects when evaluated.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Expression to classify.
+ * @return `true` when the expression should be cached before reuse.
+ */
+func be_has_side_effects(self: Backend*, expr_id: ExprId) -> bool {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    match (expr.kind) {
+        EX_INT => { return false; }
+        EX_BYTE => { return false; }
+        EX_STRING => { return false; }
+        EX_BOOL => { return false; }
+        EX_NULL => { return false; }
+        EX_VAR_REF => { return false; }
+        EX_CALL => { return true; }
+        EX_NEW => { return true; }
+        EX_UNARY => { return be_has_side_effects(self, expr.expr_a); }
+        EX_BINARY => { return be_has_side_effects(self, expr.expr_a) || be_has_side_effects(self, expr.expr_b); }
+        EX_CAST => { return be_has_side_effects(self, expr.expr_a); }
+        EX_PAREN => { return be_has_side_effects(self, expr.expr_a); }
+        EX_FIELD => { return be_has_side_effects(self, expr.expr_a); }
+        EX_INDEX => { return be_has_side_effects(self, expr.expr_a) || be_has_side_effects(self, expr.expr_b); }
+        EX_TRY => { return be_has_side_effects(self, expr.expr_a); }
+        EX_TYPE => { return false; }
+    }
+}
+
+/**
+ * Return the represented pointer type for pointer-shaped values.
+ *
+ * @param ty Type to inspect.
+ * @return Pointer type, or `null` when not pointer-shaped.
+ */
+func be_pointer_type_or_null(ty: Type*?) -> Type*? {
+    if (ty == null) {
+        return null;
+    }
+    let actual = ty as Type*;
+    if (ord(actual.kind) == ord(TY_POINTER)) {
+        return actual;
+    }
+    if (ord(actual.kind) == ord(TY_NULLABLE) && actual.inner != null &&
+            ord((actual.inner as Type*).kind) == ord(TY_POINTER)) {
+        return actual.inner as Type*;
+    }
+    return null;
+}
+
+/**
+ * Report whether any scope in the current chain has pending cleanup work.
+ *
+ * @param self Backend state to inspect.
+ * @return `true` when owned values or `with` cleanup are present.
+ */
+func be_scope_chain_has_cleanup(self: Backend*) -> bool {
+    let scope = self.current_scope;
+    while (scope != null) {
+        let cur = scope as ScopeContext*;
+        if (((cur.with_cleanup_block >= 0) || sc_has_inline_cleanup(cur)) && !cur.with_cleanup_in_progress) {
+            return true;
+        }
+        for (let i = 0; i < vec_size(cur.owned_vars); i = i + 1) {
+            let item = ptr_vec_get(cur.owned_vars, i) as ScopeVar*;
+            if (analysis_has_arc_data(self.result, item.var_type)) {
+                return true;
+            }
+        }
+        scope = cur.parent;
+    }
+    return false;
+}
+
+/**
+ * Return whether a type behaves like an integer.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for `int` and `byte`.
+ */
+func be_is_int_assignable(ty: Type*?) -> bool {
+    if (ty == null) {
+        return false;
+    }
+    return type_is_builtin(ty as Type*, "int") || type_is_builtin(ty as Type*, "byte");
+}
+
+/**
+ * Return the byte width of an integer builtin.
+ *
+ * @param ty Type to inspect.
+ * @return Byte width for supported integer types.
+ */
+func be_int_type_size(ty: Type*) -> int {
+    if (type_is_builtin(ty, "byte")) {
+        return 1;
+    }
+    if (type_is_builtin(ty, "int")) {
+        return 4;
+    }
+    return 0;
+}
+
+/**
+ * Free an optional cloned type.
+ *
+ * @param ty Optional type to free.
+ */
+func type_free_opt(ty: Type*?) {
+    if (ty != null) {
+        type_free(ty as Type*);
+    }
+}
+
+/**
+ * Look up a top-level struct declaration.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Defining module name.
+ * @param struct_name Struct name.
+ * @return Matching declaration, or `null` if absent.
+ */
+func be_find_struct_decl(self: Backend*, module_name: string, struct_name: string) -> StructDecl*? {
+    let unit = be_find_unit(self, module_name);
+    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
+        return null;
+    }
+
+    let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) == ord(TD_STRUCT)) {
+            let decl = top.data as StructDecl*;
+            if (decl.name == struct_name) {
+                return decl;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Look up a top-level enum declaration.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Defining module name.
+ * @param enum_name Enum name.
+ * @return Matching declaration, or `null` if absent.
+ */
+func be_find_enum_decl(self: Backend*, module_name: string, enum_name: string) -> EnumDecl*? {
+    let unit = be_find_unit(self, module_name);
+    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
+        return null;
+    }
+
+    let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) == ord(TD_ENUM)) {
+            let decl = top.data as EnumDecl*;
+            if (decl.name == enum_name) {
+                return decl;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Look up an enum variant declaration.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Defining module name.
+ * @param enum_name Enum name.
+ * @param variant_name Variant name.
+ * @return Matching variant declaration, or `null` if absent.
+ */
+func be_find_variant_decl(self: Backend*, module_name: string, enum_name: string, variant_name: string) -> EnumVariant*? {
+    let enum_decl = be_find_enum_decl(self, module_name, enum_name);
+    if (enum_decl == null) {
+        return null;
+    }
+
+    let decl = enum_decl as EnumDecl*;
+    for (let i = 0; i < vec_size(decl.variants); i = i + 1) {
+        let variant = ptr_vec_get(decl.variants, i) as EnumVariant*;
+        if (variant.name == variant_name) {
+            return variant;
+        }
+    }
+    return null;
+}
+
+/**
+ * Emit a `#line` directive for a declaration or statement when enabled.
+ *
+ * @param self Backend state to update.
+ * @param span Source span to report.
+ */
+func be_emit_line_directive(self: Backend*, span: Span) {
+    if (self.current_module == null) {
+        return;
+    }
+    cem_emit_line_directive(self.emitter, span.start_line, self.current_module as string, self.opts);
+}

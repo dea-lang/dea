@@ -1,18 +1,18 @@
 # L0 Compiler Architecture
 
-Version: 2026-09-01
+Version: 2026-09-07
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
 
 Related canonical docs:
 
-- Backend lowering and generated C details: [reference/c-backend-design.md](c-backend-design.md)
-- Language/runtime rationale and future evolution: [reference/design-decisions.md](design-decisions.md)
-- Compact contract/index: [specs/compiler/stage1-contract.md](../specs/compiler/stage1-contract.md)
+- Backend lowering and generated C details: [l0/docs/reference/c-backend-design.md](c-backend-design.md)
+- Language/runtime rationale and future evolution: [l0/docs/reference/design-decisions.md](design-decisions.md)
+- Compact contract/index: [l0/docs/specs/compiler/stage1-contract.md](../specs/compiler/stage1-contract.md)
 - Shared source-text policy:
   [docs/specs/language/source-text-and-language-vocabulary.md](../../../docs/specs/language/source-text-and-language-vocabulary.md)
-- Shared CLI contract: [specs/compiler/cli-contract.md](../specs/compiler/cli-contract.md)
+- Shared CLI contract: [l0/docs/specs/compiler/cli-contract.md](../specs/compiler/cli-contract.md)
 
 ## 1. High-Level Pipeline
 
@@ -72,7 +72,7 @@ locals.l0 -> FunctionEnv per function
 expr_types.l0 -> expression types + semantic diagnostics
   |
   v
-backend.l0 + c_emitter.l0 -> single C99 translation unit
+backend.l0 -> backend/* + c_emitter/* -> single C99 translation unit
   |
   v
 build_driver.l0 + compiler_filesystem.l0
@@ -156,11 +156,17 @@ filesystem primitives without extending the runtime or standard library.
 - Tracks expression types in `AnalysisResult.expr_types`.
 - Records variable-resolution origin in `AnalysisResult.var_ref_resolution`.
 - Appends semantic diagnostics.
+- `l0_expr_types.py` coordinates explicit `l0_check_*` collaborators; Stage 2 `expr_types.l0` coordinates `expr_types.*`
+  modules. State owns lexical/liveness stacks and diagnostic replay. Lookup, compatibility, pattern validation, and
+  expression liveness are lower-level responsibilities. Expression inference and statement/loop flow each retain their
+  mutually recursive algorithms.
+- Pattern validation precedes arm traversal; exhaustiveness reporting follows it. The split preserves diagnostic
+  ordering, source spans, and fixed-point liveness behavior.
 
-### 2.7 Backend (`l0_backend.py`, `l0_c_emitter.py`, `backend.l0`, `c_emitter.l0`)
+### 2.7 Backend and C emission
 
 - Consumes a typed `AnalysisResult` and emits C99.
-- Canonical backend details are maintained only in [reference/c-backend-design.md](c-backend-design.md).
+- Canonical backend details are maintained only in [l0/docs/reference/c-backend-design.md](c-backend-design.md).
 
 ### 2.8 Stage 2 Driver (`build_driver.l0`, `compiler_filesystem.l0`)
 
@@ -205,34 +211,36 @@ Compilation closure container: `CompilationUnit` (`l0_compilation.py`), containi
 
 ## 5. File/Module Layout
 
-Main Stage 1 modules under `compiler/stage1_py/`:
+Stage 1 sources live under `l0/compiler/stage1_py/`; Stage 2 sources live under `l0/compiler/stage2_l0/src/`. The lexer,
+parser, AST, name resolver, signature resolver, local-scope resolver, analysis tables, and driver keep their existing
+ownership. The decomposed subsystems have these navigation points:
 
-- `l0_lexer.py`
-- `l0_parser.py`
-- `l0_ast.py`
-- `l0_name_resolver.py`
-- `l0_signatures.py`
-- `l0_locals.py`
-- `l0_expr_types.py`
-- `l0_types.py`
-- `l0_resolve.py`
-- `l0_symbols.py`
-- `l0_analysis.py`
-- `l0_driver.py`
-- `l0_backend.py`
-- `l0_c_emitter.py`
-- `l0_string_escape.py`
-- `l0_diagnostics.py`
-- `l0_context.py`
-- `l0_paths.py`
-- `l0_compilation.py`
+| Responsibility                      | Stage 1 owners                                                                                                               | Stage 2 owners                                                                                                                             |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| CLI grammar and dispatch            | `l0c.py` dispatches; `l0_cli_args.py` parses; `l0_cli_diagnostics.py` renders diagnostics                                    | `cli_args.l0` parses; `cli_args.model`, `presentation`, `tokens`, and `validate` own options/lifecycle and parsing policy                  |
+| Analysis commands and native builds | `l0_cli_context.py`, `l0_cli_commands.py`, `l0_cli_build.py`                                                                 | `l0c_lib.l0`; `build_driver.l0` coordinates `build_driver.state`, `input`, `options`, `platform`, `toolchain`, and `workspace`             |
+| Expression and statement typing     | `l0_expr_types.py` assembles `l0_check_state`, `lookup`, `compat`, `patterns`, `liveness`, `expr`, and `flow`                | `expr_types.l0` coordinates the corresponding `expr_types.*` owners plus top-level `initializers`                                          |
+| Backend generation                  | `l0_backend.py` assembles `l0_backend_state`, `convert`, `lifetime`, `initializers`, `ordering`, `lowering`, and `module`    | `backend.l0` coordinates `backend.state`, `convert`, `lifetime`, `initializers`, `ordering`, `lowering`, and `output`                      |
+| C syntax and output                 | `l0_c_emitter.py` assembles `l0_c_builder`, `state`, `names`, `types`, `values`, `statements`, `cleanup`, and `declarations` | `c_emitter.builder`, `state`, `names`, `types`, `wrappers`, `values`, `statements`, `lifetime`, and `declarations`; no root emitter facade |
 
-The Stage 2 native driver boundary under `compiler/stage2_l0/` includes:
+In each table cell, abbreviated suffixes share the first module prefix. Stage 1 uses explicit collaborators with only
+their actual dependencies. Stage 2 uses acyclic imports and canonical type owners:
 
-- `src/build_driver.l0` for build/run orchestration and host-command construction
-- `src/compiler_filesystem.l0` for compiler-private workspace policy and lifecycle
-- `support/compiler_filesystem.c` for actual-host canonicalization, trust validation, exclusive creation, no-follow
-  classification, and bounded removal primitives
+- `cli_args.model` declares `CliMode`, `CliOptions`, and `CliParseResult` and owns their lifecycle.
+- `build_driver.state` declares prepared input and owns its release operations.
+- `expr_types.state` declares checker/flow models and owns checker construction, stacks, and destruction.
+- `backend.state` declares backend/loop models and owns backend construction and destruction.
+- `c_emitter.builder` owns `CCodeBuilder`; `c_emitter.state` owns `CEmitter` and its lifetime.
+
+Consumers import these owners directly because L0 imports do not re-export names. Implementation children never import
+their root facade. Root `cli_args`, `build_driver`, `expr_types`, and `backend` declare only coarse pass/command
+entrypoints. Recursive lowering stays together: scheduled cleanup can lower statements, and expression lowering can emit
+control flow. The larger lowering modules therefore represent one algorithm rather than unrelated responsibilities.
+
+`build_driver.l0` retains the complete build/run workspace transaction and cleanup epilogue. Host command construction
+belongs to `build_driver.toolchain`, and native compilation within a borrowed workspace belongs to
+`build_driver.workspace`. `compiler_filesystem.l0` remains the canonical compiler-private workspace-policy owner;
+`support/compiler_filesystem.c` provides actual-host filesystem primitives.
 
 ## 6. Host/Toolchain Assumptions
 

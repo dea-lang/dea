@@ -1,0 +1,252 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Host path, executable, and shell-token spelling. */
+module build_driver.platform;
+
+import std.path;
+import std.string;
+import std.system;
+import std.text;
+import std.vector;
+
+/**
+ * Replace or add a `.c` suffix on a path string.
+ *
+ * @param path Path to rewrite.
+ * @return Path with `.c` suffix.
+ */
+func bd_find_last_sep(path: string) -> int {
+    let last = -1;
+    for (let i = 0; i < len_s(path); i = i + 1) {
+        if (is_sep(char_at_s(path, i))) {
+            last = i;
+        }
+    }
+    return last;
+}
+
+/**
+ * Replace or add a `.c` suffix on a path string.
+ *
+ * @param path Path to rewrite.
+ * @return Path with `.c` suffix.
+ */
+func bd_with_c_suffix(path: string) -> string {
+    let last_sep = bd_find_last_sep(path);
+    let last_dot = find_last_s(path, ".");
+    if (last_dot > last_sep + 1) {
+        return slice_s(path, 0, last_dot) + ".c";
+    }
+    return path + ".c";
+}
+
+/**
+ * Return whether the current host should use Windows command behavior.
+ *
+ * @return `true` when Windows shell rules should apply.
+ */
+func bd_is_windows() -> bool {
+    let platform_override = env_get("L0_PLATFORM");
+    if (platform_override != null) {
+        let lowered = to_lower_s(platform_override as string);
+        if (lowered == "windows" || lowered == "win32") {
+            return true;
+        }
+        if (lowered == "posix" || lowered == "unix") {
+            return false;
+        }
+    }
+
+    let os_name = env_get("OS");
+    if (os_name != null && os_name as string == "Windows_NT") {
+        return true;
+    }
+
+    let msystem = env_get("MSYSTEM");
+    return msystem != null && !is_empty_s(msystem as string);
+}
+
+/**
+ * Return the executable suffix for the current host.
+ *
+ * @return `.exe` on Windows, otherwise `.out`.
+ */
+func bd_exe_suffix() -> string {
+    if (bd_is_windows()) {
+        return ".exe";
+    }
+    return ".out";
+}
+
+/**
+ * Return the default build output name for the current host.
+ *
+ * @return `a.exe` on Windows, otherwise `a.out`.
+ */
+func bd_default_exe_name() -> string {
+    if (bd_is_windows()) {
+        return "a.exe";
+    }
+    return "a.out";
+}
+
+/**
+ * Return the shell null device for the current host shell.
+ *
+ * @return `NUL` on Windows, otherwise `/dev/null`.
+ */
+func bd_null_device() -> string {
+    if (bd_is_windows()) {
+        return "NUL";
+    }
+    return "/dev/null";
+}
+
+/**
+ * Quote one shell token for POSIX `system()` execution.
+ *
+ * @param arg Raw token.
+ * @return Safely single-quoted token.
+ */
+func bd_shell_quote_posix(arg: string) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "'");
+        for (let i = 0; i < len_s(arg); i = i + 1) {
+            let c = char_at_s(arg, i);
+            if (c == '\'') {
+                sb_append(sb, "'");
+                sb_append(sb, "\\");
+                sb_append(sb, "'");
+                sb_append(sb, "'");
+            } else {
+                sb_append_byte(sb, c);
+            }
+        }
+        sb_append(sb, "'");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Quote one shell token for Windows `system()` execution.
+ *
+ * @param arg Raw token.
+ * @return Safely double-quoted token.
+ */
+func bd_shell_quote_windows(arg: string) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "\"");
+        for (let i = 0; i < len_s(arg); i = i + 1) {
+            let c = char_at_s(arg, i);
+            if (c == '"') {
+                sb_append(sb, "\\");
+                sb_append(sb, "\"");
+            } else {
+                sb_append_byte(sb, c);
+            }
+        }
+        sb_append(sb, "\"");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Quote one shell token for the active host shell.
+ *
+ * @param arg Raw token.
+ * @return Safely quoted token.
+ */
+func bd_shell_quote(arg: string) -> string {
+    if (bd_is_windows()) {
+        return bd_shell_quote_windows(arg);
+    }
+    return bd_shell_quote_posix(arg);
+}
+
+/**
+ * Return whether one Windows shell token can remain unquoted.
+ *
+ * @param arg Raw token.
+ * @return `true` when cmd.exe-safe token text needs no surrounding quotes.
+ */
+func bd_windows_token_is_plain(arg: string) -> bool {
+    if (is_empty_s(arg)) {
+        return false;
+    }
+    for (let i = 0; i < len_s(arg); i = i + 1) {
+        let c = char_at_s(arg, i);
+        if (c == ' ' || c == '\t' || c == '"' || c == '&' || c == '(' || c == ')' ||
+            c == '<' || c == '>' || c == '|' || c == '^')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Normalize one Windows executable token for `cmd.exe`.
+ *
+ * Relative `./...` command paths are valid under POSIX shells but `cmd.exe`
+ * interprets the leading `./` as a command named `.`. Rewriting the slash
+ * separators to `.\...` keeps caller-selected relative executables runnable.
+ *
+ * @param arg Raw executable token.
+ * @return Command token with cmd.exe-safe relative separators.
+ */
+func bd_windows_exec_token(arg: string) -> string {
+    if (!starts_with_s(arg, ".")) {
+        return arg;
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < len_s(arg); i = i + 1) {
+            let c = char_at_s(arg, i);
+            if (c == '/') {
+                sb_append(sb, "\\");
+            } else {
+                sb_append_byte(sb, c);
+            }
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Join command words into one shell command line.
+ *
+ * @param words Command words to quote and join.
+ * @return One shell command line.
+ */
+func bd_join_shell_words(words: StringVector*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(words); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, " ");
+            }
+            let word = sv_get(words, i);
+            if (bd_is_windows() && i == 0) {
+                word = bd_windows_exec_token(word);
+            }
+            if (bd_is_windows() && i == 0 && bd_windows_token_is_plain(word)) {
+                sb_append(sb, word);
+            } else {
+                sb_append(sb, bd_shell_quote(word));
+            }
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Join command words into the Stage 1 visible command-line form.
+ *
+ * @param words Command words to join.
+ * @return Space-delimited command line without shell quoting.
+ */
+func bd_join_display_words(words: StringVector*) -> string {
+    return join_s(words, " ");
+}

@@ -1,0 +1,202 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Generated-C compilation inside a caller-owned workspace. */
+module build_driver.workspace;
+
+import std.fs;
+import std.string;
+import std.system;
+import std.vector;
+import util.diag;
+import util.log;
+import backend;
+import sem_context;
+import cli_args.model;
+import codegen_options;
+import compiler_filesystem;
+import diag_print;
+import build_driver.options;
+import build_driver.platform;
+import build_driver.toolchain;
+
+/**
+ * Replay compiler output captured into temp files.
+ *
+ * @param cfg Logging configuration.
+ * @param stdout_path Captured stdout path.
+ * @param stderr_path Captured stderr path.
+ * @param failed Whether compilation failed.
+ */
+func bd_replay_compile_output(cfg: LogConfig*, stdout_path: string, stderr_path: string, failed: bool) {
+    let stderr_text = read_file(stderr_path);
+    let stdout_text = read_file(stdout_path);
+
+    if (failed) {
+        if (stderr_text != null && !is_empty_s(stderr_text as string)) {
+            log_error(cfg, stderr_text as string);
+        }
+        if (stdout_text != null && !is_empty_s(stdout_text as string)) {
+            log_error(cfg, stdout_text as string);
+        }
+        return;
+    }
+
+    if (stderr_text != null && !is_empty_s(stderr_text as string)) {
+        log_error(cfg, stderr_text as string);
+    }
+}
+
+/**
+ * Emit one Stage 2-only write-file diagnostic.
+ *
+ * @param diags Diagnostic collector.
+ * @param path Path that could not be written.
+ */
+func bd_emit_write_error(diags: DiagCollector*, path: string) {
+    diag_error(diags, "l0c", "L0C-9511", "cannot write output file: " + path, path, 0, 0, 0, 0);
+}
+
+/**
+ * Build an executable using one command-owned workspace.
+ *
+ * The caller owns `result` and `workspace`, including the single cleanup
+ * epilogue. This helper only registers and uses its fixed scratch children.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @param result Validated analysis result.
+ * @param workspace Command-owned workspace.
+ * @param exe_path Output executable path.
+ * @param keep_c_path Optional kept-C output path.
+ * @return Process-style status code.
+ */
+func bd_build_to_exe(
+    opts: CliOptions*,
+    cfg: LogConfig*,
+    result: AnalysisResult*,
+    workspace: CompilerWorkspace*,
+    exe_path: string,
+    keep_c_path: string?
+) -> int {
+    with (let cmd_diags = diag_create() => diag_free(cmd_diags)) {
+        with (
+            let cg_opts = cg_options_create() => cg_options_free(cg_opts),
+            let env_opts = sv_create(4) => sv_free(env_opts),
+            let cli_opts = sv_create(4) => sv_free(cli_opts),
+            let extra_opts = sv_create(4) => sv_free(extra_opts),
+            let command_words = sv_create(16) => sv_free(command_words)
+        ) {
+            bd_append_c_option_words(env_opts, env_get("L0_CFLAGS"));
+            bd_append_c_option_words(cli_opts, opts.c_options);
+            for (let i = 0; i < sv_size(env_opts); i = i + 1) {
+                sv_push(extra_opts, sv_get(env_opts, i));
+            }
+            for (let cli_i = 0; cli_i < sv_size(cli_opts); cli_i = cli_i + 1) {
+                sv_push(extra_opts, sv_get(cli_opts, cli_i));
+            }
+
+            cg_opts.emit_line_directives = !opts.no_line_directives;
+            cg_opts.trace_arc = opts.trace_arc;
+            cg_opts.trace_memory = opts.trace_memory;
+            cg_opts.rt_unchecked = opts.unchecked;
+            cg_opts.rt_check_basic = opts.check_basic;
+
+            let c_code = backend_generate(result, cg_opts, cfg);
+            let c_path = keep_c_path;
+            if (c_path == null) {
+                c_path = cfs_workspace_child(
+                    workspace, "generated.c");
+            }
+            let stdout_path = cfs_workspace_child(
+                workspace, "compiler.stdout");
+            let stderr_path = cfs_workspace_child(
+                workspace, "compiler.stderr");
+
+            if (write_file(c_path as string, c_code) == null) {
+                bd_emit_write_error(cmd_diags, c_path as string);
+                dp_print_collector(cmd_diags);
+                return 1;
+            }
+            log_info(cfg, "Generated C code: " + c_path as string);
+
+            let compiler = opts.c_compiler;
+            if (compiler == null) {
+                compiler = bd_find_c_compiler();
+            }
+            if (compiler == null) {
+                diag_error(
+                    cmd_diags,
+                    "l0c",
+                    "L0C-0009",
+                    "no C compiler found: use '--c-compiler' to specify one or set the L0_CC environment variable",
+                    "",
+                    0,
+                    0,
+                    0,
+                    0
+                );
+                dp_print_collector(cmd_diags);
+                return 1;
+            }
+            log_info(cfg, "Using C compiler: " + compiler as string);
+
+            let family = bd_compiler_flag_family(compiler as string);
+            log_info(cfg, "Detected compiler flag family: " + family);
+            if (sv_size(env_opts) > 0) {
+                log_info(cfg, "C compiler options from $L0_CFLAGS: " + bd_format_word_list(env_opts));
+            }
+            if (sv_size(cli_opts) > 0) {
+                log_info(cfg, "C compiler options from --c-options: " + bd_format_word_list(cli_opts));
+            }
+            if (sv_size(extra_opts) > 0) {
+                log_info(cfg, "Extra C compiler options: " + bd_format_word_list(extra_opts));
+            }
+            let runtime_lib = bd_runtime_lib_dir(opts);
+            if (runtime_lib != null && !bd_validate_runtime_lib(runtime_lib as string, cmd_diags)) {
+                dp_print_collector(cmd_diags);
+                return 1;
+            }
+
+            if (family == "unknown") {
+                log_warning(cfg, "Unsupported compiler '" + compiler as string + "' (flag family '" + family + "'): not adding standard flags");
+            }
+
+            let optimize = bd_get_optimize_flag(family, extra_opts);
+            if (optimize != null) {
+                log_info(cfg, "Adding optimization flag: " + optimize as string);
+            }
+            bd_push_c_compile_command_words(
+                command_words,
+                compiler as string,
+                family,
+                extra_opts,
+                optimize,
+                bd_runtime_include_dir(opts),
+                c_path as string,
+                opts.c_sources,
+                exe_path,
+                runtime_lib
+            );
+            log_info(cfg, "Compiling:");
+            log_info(cfg, bd_join_display_words(command_words));
+
+            let compile_cmd = bd_join_shell_words(command_words) + " > " + bd_shell_quote(stdout_path) + " 2> " + bd_shell_quote(stderr_path);
+            let compile_rc = system(compile_cmd);
+            let compile_failed = compile_rc != 0;
+            if (compile_failed) {
+                diag_error(cmd_diags, "l0c", "L0C-0010", "C compilation failed:", "", 0, 0, 0, 0);
+                dp_print_collector(cmd_diags);
+            }
+            bd_replay_compile_output(cfg, stdout_path, stderr_path, compile_failed);
+
+            if (compile_failed) {
+                return 1;
+            }
+            log_info(cfg, "Built executable: " + exe_path);
+            return 0;
+        }
+    }
+}

@@ -1,0 +1,223 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Canonical emitter state, analysis queries, source locations, and ownership lifecycle. */
+module c_emitter.state;
+
+import std.assert;
+import std.hashmap;
+import std.hashset;
+import std.string;
+import std.text;
+import std.vector;
+import ast;
+import codegen_options;
+import driver;
+import sem_context;
+import string_escape;
+import types;
+import c_emitter.builder;
+
+/**
+ * Represents the Stage 2 C emitter state.
+ */
+struct CEmitter {
+    analysis: AnalysisResult*?;
+    current_module: string?;
+    out: CCodeBuilder*;
+    tmp_counter: int;
+    active_line_directive: string;
+    opt_wrappers: StringPtrMap*; // wrapper name -> Type*
+    opt_emitted: StringSet*;
+}
+
+/**
+ * Abort on an internal code-emission error.
+ *
+ * @param message ICE message to report.
+ */
+func cem_ice(message: string) {
+    assert(false, message);
+}
+
+/**
+ * Abort on an internal code-emission error from a string-returning helper.
+ *
+ * @param message ICE message to report.
+ * @return Dummy return used only to satisfy control-flow typing.
+ */
+func cem_ice_string(message: string) -> string {
+    assert(false, message);
+    return "";
+}
+
+/**
+ * Free every collected optional-wrapper inner type.
+ *
+ * @param items Wrapper map to free.
+ */
+func cem_opt_wrapper_map_free(items: StringPtrMap*) {
+    for (let i = 0; i < spm_capacity(items); i = i + 1) {
+        if (spm_slot_occupied(items, i)) {
+            type_free(spm_slot_value(items, i) as Type*);
+        }
+    }
+    spm_free(items);
+}
+
+/**
+ * Create a Stage 2 C emitter.
+ *
+ * @return New emitter.
+ */
+func cem_create() -> CEmitter* {
+    return new CEmitter(null, null, ccb_create(), 0, "", spm_create(), ss_create());
+}
+
+/**
+ * Clear every collected optional-wrapper entry.
+ *
+ * @param self Emitter to update.
+ */
+func cem_reset_optional_wrappers(self: CEmitter*) {
+    cem_opt_wrapper_map_free(self.opt_wrappers);
+    ss_free(self.opt_emitted);
+    self.opt_wrappers = spm_create();
+    self.opt_emitted = ss_create();
+}
+
+/**
+ * Free a Stage 2 C emitter.
+ *
+ * @param self Emitter to free.
+ */
+func cem_free(self: CEmitter*) {
+    cem_opt_wrapper_map_free(self.opt_wrappers);
+    ss_free(self.opt_emitted);
+    ccb_free(self.out);
+    drop self;
+}
+
+/**
+ * Attach analysis data to an emitter.
+ *
+ * @param self Emitter to update.
+ * @param analysis Analysis result to borrow.
+ */
+func cem_set_analysis(self: CEmitter*, analysis: AnalysisResult*) {
+    self.analysis = analysis;
+}
+
+/**
+ * Return the borrowed analysis result.
+ *
+ * @param self Emitter to inspect.
+ * @return Borrowed analysis result.
+ */
+func cem_analysis(self: CEmitter*) -> AnalysisResult* {
+    if (self.analysis == null) {
+        cem_ice("[ICE-9300] C emitter requires attached analysis");
+    }
+    return self.analysis as AnalysisResult*;
+}
+
+/**
+ * Return the generated C source text.
+ *
+ * @param self Emitter to inspect.
+ * @return Complete source text.
+ */
+func cem_get_output(self: CEmitter*) -> string {
+    return ccb_to_string(self.out);
+}
+
+/**
+ * Return the source filename for a loaded module.
+ *
+ * @param self Emitter to inspect.
+ * @param module_name Loaded module name.
+ * @return Source filename when available.
+ */
+func cem_module_filename(self: CEmitter*, module_name: string) -> string {
+    let unit = driver_find_unit(cem_analysis(self).driver_state, module_name);
+    if (unit == null) {
+        return module_name + ".l0";
+    }
+    /* Normalize backslashes to forward slashes so that #line directives are
+       deterministic regardless of how the path was provided. */
+    return replace_s((unit as DriverUnit*).path, "\\", "/");
+}
+
+/**
+ * Emit a `#line` directive when enabled.
+ *
+ * @param self Emitter to update.
+ * @param line One-based source line.
+ * @param current_module Current source module.
+ * @param opts Codegen options controlling line directives.
+ */
+func cem_emit_line_directive(self: CEmitter*, line: int, current_module: string, opts: CodegenOptions*) {
+    if (!opts.emit_line_directives || line <= 0) {
+        self.active_line_directive = "";
+        return;
+    }
+    self.active_line_directive = "#line " + int_to_string(line) + " \"" +
+        se_encode_c_string_bytes(cem_module_filename(self, current_module)) + "\"";
+    ccb_emit(self.out, self.active_line_directive);
+}
+
+/**
+ * Re-emit the current source line directive after generated helper lines.
+ *
+ * @param self Emitter to update.
+ */
+func cem_restore_active_line_directive(self: CEmitter*) {
+    if (!is_empty_s(self.active_line_directive)) {
+        ccb_emit(self.out, self.active_line_directive);
+    }
+}
+
+/**
+ * Look up enum payload metadata by variant name.
+ *
+ * @param enum_info Enum metadata to inspect.
+ * @param variant_name Variant name to search for.
+ * @return Matching variant metadata, or `null` if missing.
+ */
+func cem_find_enum_variant_info(enum_info: EnumInfo*, variant_name: string) -> EnumVariantInfo*? {
+    for (let i = 0; i < vec_size(enum_info.variants); i = i + 1) {
+        let info = ptr_vec_get(enum_info.variants, i) as EnumVariantInfo*;
+        if (info.name == variant_name) {
+            return info;
+        }
+    }
+    return null;
+}
+
+/**
+ * Look up a loaded enum declaration by module and name.
+ *
+ * @param self Emitter to inspect.
+ * @param module_name Defining module name.
+ * @param enum_name Enum name.
+ * @return Matching declaration, or `null` if absent.
+ */
+func cem_find_enum_decl(self: CEmitter*, module_name: string, enum_name: string) -> EnumDecl*? {
+    let unit = driver_find_unit(cem_analysis(self).driver_state, module_name);
+    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
+        return null;
+    }
+    let root = ((unit as DriverUnit*).parse_result.root_module as Module*);
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let decl = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(decl.kind) == ord(TD_ENUM)) {
+            let ed = decl.data as EnumDecl*;
+            if (ed.name == enum_name) {
+                return ed;
+            }
+        }
+    }
+    return null;
+}

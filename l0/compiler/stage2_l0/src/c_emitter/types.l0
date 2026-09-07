@@ -1,0 +1,176 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** C type spelling and nullable value representation. */
+module c_emitter.types;
+
+import types;
+import c_emitter.state;
+import c_emitter.names;
+
+/**
+ * Emit C code for `sizeof(<type>)`.
+ *
+ * @param typ Type to measure.
+ * @return Casted `sizeof` expression.
+ */
+func cem_emit_sizeof_type(typ: Type*) -> string {
+    return "((l0_int)sizeof(" + cem_emit_type(typ) + "))";
+}
+
+/**
+ * Emit a pointer type from a base type.
+ *
+ * @param base_type Base type to wrap.
+ * @return Pointer type spelling.
+ */
+func cem_emit_pointer_type(base_type: Type*) -> string {
+    return cem_emit_type(base_type) + "*";
+}
+
+/**
+ * Return whether a nullable type uses pointer-shaped niche encoding.
+ *
+ * @param t Nullable type to inspect.
+ * @return `true` when `null` lowers to `NULL`.
+ */
+func cem_is_niche_nullable(t: Type*) -> bool {
+    return ord(t.kind) == ord(TY_NULLABLE) && (ord((t.inner as Type*).kind) == ord(TY_POINTER));
+}
+
+/**
+ * Produce the stable wrapper-key suffix for an optional inner type.
+ *
+ * @param t Inner type to encode.
+ * @return Stable wrapper-key suffix.
+ */
+func cem_opt_key_for_type(t: Type*) -> string {
+    if (ord(t.kind) == ord(TY_BUILTIN)) {
+        return t.name;
+    }
+    if (ord(t.kind) == ord(TY_STRUCT)) {
+        return "s_" + cem_mangle_struct_name(t.module_name, t.name);
+    }
+    if (ord(t.kind) == ord(TY_ENUM)) {
+        return "e_" + cem_mangle_enum_name(t.module_name, t.name);
+    }
+    if (ord(t.kind) == ord(TY_POINTER)) {
+        return "p_" + cem_opt_key_for_type(t.inner as Type*);
+    }
+    if (ord(t.kind) == ord(TY_NULLABLE)) {
+        return "n_" + cem_opt_key_for_type(t.inner as Type*);
+    }
+    if (ord(t.kind) == ord(TY_FUNC)) {
+        return "fn";
+    }
+    return "unk";
+}
+
+/**
+ * Return the wrapper typedef name used for a non-pointer nullable type.
+ *
+ * @param inner Inner type of the nullable wrapper.
+ * @return Wrapper typedef name.
+ */
+func cem_opt_wrapper_name_for_inner(inner: Type*) -> string {
+    return "l0_opt_" + cem_opt_key_for_type(inner);
+}
+
+/**
+ * Emit an L0 type as a C type spelling.
+ *
+ * @param typ Type to lower.
+ * @return C spelling for `typ`.
+ */
+func cem_emit_type(typ: Type*) -> string {
+    if (type_is_builtin(typ, "int")) {
+        return "l0_int";
+    }
+    if (type_is_builtin(typ, "byte")) {
+        return "l0_byte";
+    }
+    if (type_is_builtin(typ, "bool")) {
+        return "l0_bool";
+    }
+    if (type_is_builtin(typ, "string")) {
+        return "l0_string";
+    }
+    if (type_is_builtin(typ, "void")) {
+        return "void";
+    }
+
+    if (ord(typ.kind) == ord(TY_STRUCT)) {
+        return "struct " + cem_mangle_struct_name(typ.module_name, typ.name);
+    }
+    if (ord(typ.kind) == ord(TY_ENUM)) {
+        return "struct " + cem_mangle_enum_name(typ.module_name, typ.name);
+    }
+    if (ord(typ.kind) == ord(TY_POINTER)) {
+        return cem_emit_type(typ.inner as Type*) + "*";
+    }
+    if (ord(typ.kind) == ord(TY_NULLABLE)) {
+        if (cem_is_niche_nullable(typ)) {
+            return cem_emit_type(typ.inner as Type*);
+        }
+        return cem_opt_wrapper_name_for_inner(typ.inner as Type*);
+    }
+    if (ord(typ.kind) == ord(TY_FUNC)) {
+        return cem_ice_string("[ICE-1291] function pointer type emission not implemented");
+    }
+    if (ord(typ.kind) == ord(TY_BUILTIN)) {
+        return cem_ice_string("[ICE-1290] unknown builtin type '" + type_format(typ) + "'");
+    }
+
+    return cem_ice_string("[ICE-9299] unknown type kind for type emission: " + type_format(typ));
+}
+
+/**
+ * Emit a `none` value for a non-pointer nullable type.
+ *
+ * @param t Nullable type to lower.
+ * @return C initializer/value for `null`.
+ */
+func cem_emit_none_value_for_nullable(t: Type*) -> string {
+    let inner = t.inner as Type*;
+    if (ord(inner.kind) == ord(TY_POINTER)) {
+        return "NULL";
+    }
+    return "((" + cem_opt_wrapper_name_for_inner(inner) + "){.has_value = 0" + "})";
+}
+
+/**
+ * Emit a wrapped `some` value for a non-pointer nullable type.
+ *
+ * @param t Nullable type to lower.
+ * @param c_inner_expr C expression for the inner value.
+ * @return Wrapper construction expression.
+ */
+func cem_emit_some_value_for_nullable(t: Type*, c_inner_expr: string) -> string {
+    let inner = t.inner as Type*;
+    if (ord(inner.kind) == ord(TY_POINTER)) {
+        return c_inner_expr;
+    }
+    return "((" + cem_opt_wrapper_name_for_inner(inner) + "){.has_value = 1, .value = " + c_inner_expr + "})";
+}
+
+/**
+ * Emit a `null` literal for the expected type.
+ *
+ * @param expected_type Expected target type.
+ * @param for_initializer Whether the literal is used in static initialization.
+ * @return C spelling for the literal.
+ */
+func cem_emit_null_literal(expected_type: Type*, for_initializer: bool) -> string {
+    if (ord(expected_type.kind) == ord(TY_POINTER) || ord(expected_type.kind) == ord(TY_NULLABLE)) {
+        if (ord(expected_type.kind) == ord(TY_POINTER) || cem_is_niche_nullable(expected_type)) {
+            return "NULL";
+        }
+        if (for_initializer) {
+            return "{0}";
+        }
+        return cem_emit_none_value_for_nullable(expected_type);
+    }
+    return cem_ice_string("[ICE-1292] invalid expected type for null literal: '" + type_format(expected_type) + "'");
+}

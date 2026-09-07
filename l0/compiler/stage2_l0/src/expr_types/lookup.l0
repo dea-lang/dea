@@ -1,0 +1,381 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Name/type lookup, visible declarations, and qualifier diagnostics. */
+module expr_types.lookup;
+
+import std.hashmap;
+import std.hashset;
+import std.text;
+import std.vector;
+import util.intset;
+import ast;
+import driver;
+import locals;
+import name_resolver;
+import symbols;
+import type_resolve;
+import types;
+import expr_types.state;
+
+/**
+ * Format the full display form for one nested symbol path expression.
+ *
+ * @param expr Variable-reference expression carrying module and qualifier segments.
+ * @return Full nested path such as `color::Color::Red`.
+ */
+func etc_nested_symbol_path_full(expr: ExprNode*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        if (expr.module_path != null) {
+            let mp = expr.module_path as StringVector*;
+            for (let i = 0; i < sv_size(mp); i = i + 1) {
+                if (i > 0) {
+                    sb_append(sb, ".");
+                }
+                sb_append(sb, sv_get(mp, i));
+            }
+            if (sv_size(mp) > 0) {
+                sb_append(sb, "::");
+            }
+        }
+        if (expr.name_qualifier != null) {
+            let nq = expr.name_qualifier as StringVector*;
+            for (let i = 0; i < sv_size(nq); i = i + 1) {
+                sb_append(sb, sv_get(nq, i));
+                sb_append(sb, "::");
+            }
+        }
+        sb_append(sb, expr.text_value);
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Format the direct symbol suggestion for one nested symbol path expression.
+ *
+ * @param expr Variable-reference expression carrying module and qualifier segments.
+ * @return Simplified path such as `color::Red`.
+ */
+func etc_nested_symbol_path_simple(expr: ExprNode*) -> string {
+    if (expr.module_path == null) {
+        return expr.text_value;
+    }
+    return tr_module_from_path(expr.module_path as StringVector*) + "::" + expr.text_value;
+}
+
+/**
+ * Build the `TYP-0158` message for one nested symbol path expression.
+ *
+ * @param expr Variable-reference expression carrying module and qualifier segments.
+ * @return Diagnostic text matching the shared nested-path wording.
+ */
+func etc_nested_symbol_path_message(expr: ExprNode*) -> string {
+    let full = etc_nested_symbol_path_full(expr);
+    let simple = etc_nested_symbol_path_simple(expr);
+    return "nested symbol path '" + full + "': paths must have the form 'module::symbol' (did you mean '" + simple + "'?)";
+}
+
+/**
+ * Check whether an outer declaration-tracking scope contains a name.
+ *
+ * The current innermost scope is skipped because duplicate checks inspect it
+ * separately.
+ *
+ * @param self Expression checker state.
+ * @param name Local name to look up.
+ * @return `true` when an outer scope already declares `name`.
+ */
+func etc_decl_outer_has(self: ExpressionTypeChecker*, name: string) -> bool {
+    if (self.decl_scopes == null) {
+        return false;
+    }
+    let scopes = self.decl_scopes as VectorBase*;
+    for (let i = vec_size(scopes) - 2; i >= 0; i = i - 1) {
+        if (sim_has(ptr_vec_get(scopes, i) as StringIntMap*, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Validate a local declaration name before binding it in the current scope.
+ *
+ * Reports duplicate local errors and shadowing warnings for outer locals, enum
+ * variants, and imported symbols.
+ *
+ * @param self Expression checker state.
+ * @param name Local name being declared.
+ * @param span Source span to report for diagnostics.
+ */
+func etc_check_local_declaration(self: ExpressionTypeChecker*, name: string, span: Span) {
+    let current = etc_decl_scope_current(self);
+    if (current == null) {
+        return;
+    }
+    let unit = self.current_unit as DriverUnit*;
+    if (sim_has(current as StringIntMap*, name)) {
+        etc_diag_error(self, "TYP-0020", "local variable '" + name + "' already declared in this scope",
+            unit.path, span);
+        return;
+    }
+    if (etc_decl_outer_has(self, name)) {
+        etc_diag_warn(self, "TYP-0021", "local variable '" + name + "' shadows an outer local",
+            unit.path, span);
+    }
+    if (self.current_env != null) {
+        let env = self.current_env as ModuleEnv*;
+        if (nr_module_env_is_ambiguous(env, name)) {
+            etc_diag_warn(self, "TYP-0024", "local variable '" + name + "' shadows an ambiguous import",
+                unit.path, span);
+        } else {
+            let sym = nr_module_env_all(env, name);
+            if (sym != null) {
+                let s = sym as Symbol*;
+                if (ord(s.kind) == ord(SYM_ENUM_VARIANT)) {
+                    if (s.module_name == self.current_module) {
+                        etc_diag_warn(self, "TYP-0022", "local variable '" + name + "' shadows an enum variant", unit.path, span);
+                    } else {
+                        etc_diag_warn(self, "TYP-0023", "local variable '" + name + "' shadows an imported enum variant", unit.path, span);
+                    }
+                } else {
+                    etc_diag_warn(self, "TYP-0025", "local variable '" + name + "' shadows a top-level symbol", unit.path, span);
+                }
+            }
+        }
+    }
+    sim_put(current as StringIntMap*, name, 1);
+}
+
+/**
+ * Return whether the current cleanup-block guard stack marks the visible local as maybe uninitialized.
+ *
+ * @param self Expression checker state.
+ * @param name Variable name to inspect.
+ * @return `true` when the visible local binding matches a guarded header declaration.
+ */
+func etc_is_guarded_cleanup_header_local(self: ExpressionTypeChecker*, name: string) -> bool {
+    if (self.cleanup_header_guard_stack == null || self.current_scope == null) {
+        return false;
+    }
+    let local = etc_lookup_visible_local_symbol(self, name);
+    if (local == null) {
+        return false;
+    }
+    let symbol = local as LocalSymbol*;
+    if (ord(symbol.kind) != ord(LK_LOCAL)) {
+        return false;
+    }
+    let guards = self.cleanup_header_guard_stack;
+    while (guards != null) {
+        let guard_node = guards as CleanupHeaderGuard*;
+        if (iset_has(guard_node.guarded_decl_ids, symbol.decl_id)) {
+            return true;
+        }
+        guards = guard_node.parent;
+    }
+    return false;
+}
+
+/**
+ * Resolve the type of a local binding visible in the current scope.
+ *
+ * @param self Expression checker state.
+ * @param name Local name to look up.
+ * @return Resolved type, or `null` if the name is not a visible local.
+ */
+func etc_lookup_visible_local_symbol(self: ExpressionTypeChecker*, name: string) -> LocalSymbol*? {
+    if (self.decl_scopes == null || self.decl_scope_defs == null) {
+        return null;
+    }
+    let maps = self.decl_scopes as VectorBase*;
+    let defs = self.decl_scope_defs as VectorBase*;
+    for (let scope_index = vec_size(maps) - 1; scope_index >= 0; scope_index = scope_index - 1) {
+        let current = ptr_vec_get(defs, scope_index) as Scope*;
+        let visible = ptr_vec_get(maps, scope_index) as StringIntMap*;
+        if (sim_has(visible, name)) {
+            let local = spm_get(current.symbols, name);
+            if (local != null) {
+                return local as LocalSymbol*;
+            }
+        }
+    }
+    return null;
+}
+
+/** Resolve the type represented by one exact local symbol. */
+func etc_local_symbol_type(self: ExpressionTypeChecker*, l: LocalSymbol*) -> Type*? {
+    match (l.kind) {
+        LK_PARAM => {
+            let p = l.decl_ptr as Param*;
+            with (let seen = ss_create() => ss_free(seen)) {
+                return tr_resolve_type_ref(self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
+                    self.current_env as ModuleEnv*, p.type_ref, self.result.diags, seen);
+            }
+        }
+        LK_LOCAL => {
+            let s = l.decl_ptr as StmtNode*;
+            if (s.type_ref != null) {
+                with (let seen2 = ss_create() => ss_free(seen2)) {
+                    return tr_resolve_type_ref(self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
+                        self.current_env as ModuleEnv*, s.type_ref as TypeRef*, self.result.diags, seen2);
+                }
+            }
+            let key = etc_key(self.current_module, s.expr_a);
+            let val_ty = spm_get(self.result.expr_types, key);
+            if (val_ty != null) {
+                return type_clone(val_ty as Type*);
+            }
+        }
+        LK_PATTERN_VAR => {
+            return etc_get_pattern_var_type(self, l.decl_id, l.binding_slot);
+        }
+    }
+    return null;
+}
+
+/**
+ * Resolve the type of a local binding visible at the current statement position.
+ *
+ * @param self Expression checker state.
+ * @param name Local name to look up.
+ * @return Resolved type, or `null` if the name is not a visible local.
+ */
+func etc_lookup_local(self: ExpressionTypeChecker*, name: string) -> Type*? {
+    let local = etc_lookup_visible_local_symbol(self, name);
+    if (local == null) {
+        return null;
+    }
+    return etc_local_symbol_type(self, local as LocalSymbol*);
+}
+
+/**
+ * Resolve a visible symbol from the current expression-checking environment.
+ *
+ * @param self Expression checker state.
+ * @param name Unqualified symbol name.
+ * @param module_path Optional parsed module path for cross-module lookups.
+ * @param name_qualifier Optional enum-variant qualifier.
+ * @return Resolved symbol, or `null` if lookup fails.
+ */
+func etc_lookup_symbol(self: ExpressionTypeChecker*, name: string, module_path: StringVector*?,
+                        name_qualifier: StringVector*?) -> Symbol*? {
+    return tr_symbol_lookup(self.result.names as NameResolution*, self.current_env as ModuleEnv*, name, module_path,
+        name_qualifier);
+}
+
+/**
+ * Resolve a visible symbol as a type usable by `sizeof`.
+ *
+ * @param self Expression checker state.
+ * @param sym Symbol to interpret as a type.
+ * @return Resolved type, or `null` when the symbol is not a type name.
+ */
+func etc_symbol_as_type(self: ExpressionTypeChecker*, sym: Symbol*) -> Type*? {
+    match (sym.kind) {
+        SYM_STRUCT => { return type_new_struct(sym.module_name, sym.name); }
+        SYM_ENUM => { return type_new_enum(sym.module_name, sym.name); }
+        SYM_TYPE_ALIAS => {
+            if (sym.resolved_type != null) {
+                return type_clone(sym.resolved_type as Type*);
+            }
+            with (let seen = ss_create() => ss_free(seen)) {
+                return tr_resolve_alias(self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
+                    self.current_env as ModuleEnv*, sym, self.result.diags, seen);
+            }
+        }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Emit the most specific diagnostic for a failed type-reference resolution.
+ *
+ * Special cases preserve shared diagnostic codes for nullable `void`, ambiguous
+ * names, unresolved aliases, and value symbols used as types. Other failures use
+ * `fallback_code` so callers can keep context-specific unknown-type codes.
+ *
+ * @param self Expression checker state.
+ * @param tref Type reference that failed to resolve.
+ * @param fallback_code Diagnostic code for generic unknown-type failures.
+ * @param span Source span to report for diagnostics.
+ */
+func etc_diag_type_ref_failure(self: ExpressionTypeChecker*, tref: TypeRef*, fallback_code: string, span: Span) {
+    let unit = self.current_unit as DriverUnit*;
+    if (tref.is_nullable && tref.pointer_depth == 0 && tref.module_path == null && tref.name == "void") {
+        etc_diag_error(self, "TYP-0278", "type 'void' cannot be nullable", unit.path, span);
+        return;
+    }
+    if (tref.module_path == null && nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, tref.name)) {
+        etc_diag_error(self, "TYP-0279", "ambiguous type name '" + tref.name + "'", unit.path, span);
+        return;
+    }
+    let sym = etc_lookup_symbol(self, tref.name, tref.module_path, null);
+    if (sym != null) {
+        let s = sym as Symbol*;
+        if (ord(s.kind) == ord(SYM_TYPE_ALIAS)) {
+            etc_diag_error(self, "TYP-0270", "type alias '" + tref.name + "' does not have a resolved type",
+                unit.path, span);
+        } else if (ord(s.kind) != ord(SYM_STRUCT) && ord(s.kind) != ord(SYM_ENUM)) {
+            etc_diag_error(self, "TYP-0271", "symbol '" + tref.name + "' is not a type", unit.path, span);
+        } else {
+            etc_diag_error(self, fallback_code, "unknown type '" + tref.name + "'", unit.path, span);
+        }
+    } else {
+        etc_diag_error(self, fallback_code, "unknown type '" + tref.name + "'", unit.path, span);
+    }
+}
+
+/**
+ * Try to resolve one identifier expression as a type name for intrinsics.
+ *
+ * @param self Expression checker state.
+ * @param expr Identifier expression to interpret as a type.
+ * @return Resolved type, or `null` when the identifier should be treated as a value expression.
+ */
+func etc_try_resolve_type_name(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type*? {
+    if (expr.module_path == null) {
+        let builtin = type_builtin_from_name(expr.text_value);
+        if (builtin != null) {
+            return builtin;
+        }
+
+        if (nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, expr.text_value)) {
+            etc_diag_error(self, "TYP-0303",
+                "ambiguous identifier '" + expr.text_value + "'; use a module-qualified name",
+                (self.current_unit as DriverUnit*).path, expr.span);
+            return null;
+        }
+
+        let sym = nr_module_env_all(self.current_env as ModuleEnv*, expr.text_value);
+        if (sym == null) {
+            return null;
+        }
+        return etc_symbol_as_type(self, sym as Symbol*);
+    }
+
+    let target_module = tr_module_from_path(expr.module_path as StringVector*);
+    if (target_module != (self.current_env as ModuleEnv*).module_name &&
+        !nr_module_env_imports_module(self.current_env as ModuleEnv*, target_module)) {
+        etc_diag_error(self, "TYP-0301",
+            "unknown type '" + target_module + "::" + expr.text_value + "' (module '" + target_module + "' not imported)",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return null;
+    }
+
+    let target_env = nr_env_find(self.result.names as NameResolution*, target_module);
+    if (target_env == null) {
+        etc_diag_error(self, "TYP-0300",
+            "unknown type '" + target_module + "::" + expr.text_value + "' (unknown module '" + target_module + "')",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return null;
+    }
+
+    let sym2 = nr_module_env_local(target_env as ModuleEnv*, expr.text_value);
+    if (sym2 == null) {
+        return null;
+    }
+    return etc_symbol_as_type(self, sym2 as Symbol*);
+}

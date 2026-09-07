@@ -1,0 +1,205 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Source preparation and entry-point validation before workspace creation. */
+module build_driver.input;
+
+import std.hashmap;
+import std.vector;
+import util.diag;
+import util.log;
+import util.strings;
+import source_paths;
+import analysis;
+import sem_context;
+import name_resolver;
+import signatures;
+import symbols;
+import types;
+import cli_args.model;
+import diag_print;
+import build_driver.state;
+
+/**
+ * Log the effective system and project roots for build/run commands.
+ *
+ * @param cfg Logging configuration.
+ * @param sys_roots Effective system-root vector.
+ * @param project_roots Effective project-root vector.
+ */
+func bd_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_roots: StringVector*) {
+    log_info(cfg, "System root(s): " + sp_format_root_list(sys_roots));
+    log_info(cfg, "Project root(s): " + sp_format_root_list(project_roots));
+}
+
+/**
+ * Normalize CLI target input into an entry module and source search paths.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector for normalization failures.
+ * @param cfg Logging configuration.
+ * @return Prepared input bundle, or `null` on failure.
+ */
+func bd_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*) -> BuildPreparedInput*? {
+    with (
+        let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
+        let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
+    ) {
+        sp_apply_default_sys_roots(sys_roots);
+
+        let entry_target = opts.entry_target as string;
+        let entry_module = sp_normalize_entry_target(entry_target, project_roots, diags)?;
+        sp_apply_default_project_roots(project_roots);
+        bd_log_effective_roots(cfg, sys_roots, project_roots);
+        let sp = sp_build_from_roots(project_roots, sys_roots);
+        return new BuildPreparedInput(entry_module, sp);
+    }
+}
+
+/**
+ * Validate the entry module `main` function for build/run.
+ *
+ * @param result Analysis result to inspect.
+ * @param entry_module Entry module name.
+ * @param diags Diagnostic collector for failures and warnings.
+ * @return `true` when the entry `main` is acceptable.
+ */
+func bd_validate_entry_main(result: AnalysisResult*, entry_module: string, diags: DiagCollector*) -> bool {
+    if (result.names == null) {
+        diag_error(
+            diags,
+            "l0c",
+            "L0C-0012",
+            "entry module '" + entry_module + "' must define a 'main' function for build/run",
+            "",
+            0,
+            0,
+            0,
+            0
+        );
+        return false;
+    }
+
+    let entry_env = nr_env_find(result.names as NameResolution*, entry_module);
+    if (entry_env == null) {
+        diag_error(diags, "l0c", "L0C-0012", "entry module '" + entry_module + "' not found in analysis result",
+            "", 0, 0, 0, 0);
+        return false;
+    }
+
+    let main_symbol = spm_get((entry_env as ModuleEnv*).locals, "main");
+    if (main_symbol == null || ord((main_symbol as Symbol*).kind) != ord(SYM_FUNC)) {
+        diag_error(
+            diags,
+            "l0c",
+            "L0C-0012",
+            "entry module '" + entry_module + "' must define a 'main' function for build/run",
+            "",
+            0,
+            0,
+            0,
+            0
+        );
+        return false;
+    }
+
+    if (result.signatures == null) {
+        diag_error(
+            diags,
+            "l0c",
+            "L0C-0016",
+            "missing type information for entry function '" + entry_module + "::" + "main" + "'",
+            "",
+            0,
+            0,
+            0,
+            0
+        );
+        return false;
+    }
+
+    let main_type = sig_lookup_func_type(result.signatures as SignatureTables*, entry_module, "main");
+    if (main_type == null) {
+        diag_error(
+            diags,
+            "l0c",
+            "L0C-0016",
+            "missing type information for entry function '" + entry_module + "::" + "main" + "'",
+            "",
+            0,
+            0,
+            0,
+            0
+        );
+        return false;
+    }
+
+    let ret_name = type_format((main_type as Type*).result as Type*);
+    if (ret_name != "void" && ret_name != "int" && ret_name != "bool") {
+        diag_warn(
+            diags,
+            "l0c",
+            "L0C-0013",
+            "entry 'main' returns '" + ret_name + "' (preferred: void/int/bool); generated C entry wrapper will ignore the return value",
+            "",
+            0,
+            0,
+            0,
+            0
+        );
+    }
+    return true;
+}
+
+/**
+ * Analyze and validate one build/run entry before workspace creation.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Validated analysis result, or `null` on failure.
+ */
+func bd_prepare_build_result(
+    opts: CliOptions*,
+    cfg: LogConfig*
+) -> AnalysisResult*? {
+    with (
+        let validate_diags = diag_create() => diag_free(validate_diags),
+        let cmd_diags = diag_create() => diag_free(cmd_diags)
+    ) {
+        let prepared = bd_prepare_input(opts, cmd_diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(cmd_diags);
+            return null;
+        }
+
+        let prep = prepared as BuildPreparedInput*;
+        let result = analysis_analyze_entry(
+            prep.search_paths, prep.entry_module, cfg);
+        bd_prepared_input_free(prep);
+
+        dp_print_collector_with_sources(
+            result.diags,
+            analysis_source_names(result),
+            analysis_source_texts(result)
+        );
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            return null;
+        }
+
+        if (!bd_validate_entry_main(
+                result,
+                result.driver_state.entry_module,
+                validate_diags)) {
+            dp_print_collector(validate_diags);
+            analysis_result_free(result);
+            return null;
+        }
+        if (diag_count(validate_diags) > 0) {
+            dp_print_collector(validate_diags);
+        }
+        return result;
+    }
+}

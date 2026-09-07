@@ -66,3 +66,24 @@ def test_match_on_non_enum_type_rejected(tmp_path):
 
     result = _analyze_single(tmp_path, "main", src)
     assert result.has_errors()
+
+
+def test_pattern_errors_precede_arm_errors_and_exhaustiveness(tmp_path):
+    """Pattern validation runs before bodies; coverage reporting runs afterward."""
+    result = _analyze_single(tmp_path, "main", """
+        module main;
+        enum Flag { On(); Off(); }
+        func check_flag(flag: Flag) {
+            match (flag) {
+                Maybe() => { let value = missing; }
+                On() => { }
+            }
+        }
+    """)
+
+    assert [diag.message.split("]", 1)[0] + "]" for diag in result.diagnostics] == [
+        "[TYP-0102]",
+        "[TYP-0159]",
+        "[TYP-0051]",
+        "[TYP-0104]",
+    ]

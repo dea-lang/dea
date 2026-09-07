@@ -1,0 +1,56 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Module-scope initializer traversal before function-body checking. */
+module expr_types.initializers;
+
+import std.vector;
+import ast;
+import name_resolver;
+import signatures;
+import symbols;
+import types;
+import expr_types.state;
+import expr_types.expr;
+
+/**
+ * Type-check module-scope `let` initializer expressions.
+ *
+ * Signature resolution owns top-level binding type resolution. This pass
+ * checks every successfully resolved binding and records expression metadata
+ * required by backend lowering.
+ *
+ * @param self Expression checker state.
+ * @param root Module whose top-level declarations should be checked.
+ */
+func etc_check_top_level_initializers(self: ExpressionTypeChecker*, root: Module*) {
+    let sigs = self.result.signatures as SignatureTables*;
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) != ord(TD_LET)) {
+            continue;
+        }
+        let decl = top.data as LetDecl*;
+        let canonical_sym = nr_module_env_local(self.current_env as ModuleEnv*, decl.name);
+        if (canonical_sym != null) {
+            let canonical_span = (canonical_sym as Symbol*).span;
+            if (canonical_span.start_line != decl.span.start_line ||
+                canonical_span.start_column != decl.span.start_column ||
+                canonical_span.end_line != decl.span.end_line ||
+                canonical_span.end_column != decl.span.end_column) {
+                continue;
+            }
+        }
+        let expected = sig_lookup_let_type(sigs, root.name, decl.name);
+        if (expected == null) {
+            continue;
+        }
+        if (type_is_builtin(expected as Type*, "void")) {
+            etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", root.filename, decl.span);
+            continue;
+        }
+        etc_check_initializer_expr(self, expected as Type*, decl.value, decl.name, root.filename, decl.span);
+    }
+}

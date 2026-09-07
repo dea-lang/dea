@@ -1,0 +1,1864 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2025-2026 gwz
+
+from dataclasses import dataclass, field
+from typing import List, Optional, Dict, Tuple, Any, Callable
+from l0_analysis import VarRefResolution
+from l0_ast import Stmt, Block, LetStmt, AssignStmt, ExprStmt, IfStmt, WhileStmt, ReturnStmt, DropStmt, MatchStmt, CaseStmt, Expr, IntLiteral, StringLiteral, BoolLiteral, VarRef, UnaryOp, BinaryOp, CallExpr, IndexExpr, FieldAccessExpr, ParenExpr, CastExpr, VariantPattern, WildcardPattern, NullLiteral, TryExpr, NewExpr, BreakStmt, ContinueStmt, ForStmt, ByteLiteral, WithStmt
+from l0_name_resolver import SymbolKind
+from l0_scope_context import ScopeContext
+from l0_types import Type, BuiltinType, StructType, EnumType, PointerType, NullableType, FuncType, format_type
+from l0_backend_convert import OwnershipConversion
+from l0_backend_lifetime import ValueLifetime
+from l0_backend_state import BackendState
+
+
+@dataclass
+class Lowering:
+    """Mutually recursive expression, statement, control-flow, and scheduled cleanup lowering."""
+
+    convert: OwnershipConversion
+    lifetime: ValueLifetime
+    state: BackendState
+
+    def _emit_cleanup_for_return(self, returned_var: Optional[str] = None) -> None:
+        """Emit cleanup logic for a return statement.
+
+        Walks up scope chain, executes any with-statement cleanup data,
+        then cleans ALL owned variables (except return value).
+        The with-cleanup runs first because user cleanup code may reference
+        variables whose owned resources (e.g. string refcounts) are released
+        by the automatic owned-var cleanup.
+
+        Args:
+            returned_var: Mangled name of variable being returned (to skip cleanup).
+        """
+        scope = self.state._current_scope
+        while scope is not None:
+            if (
+                    (scope.with_cleanup_block is not None or scope.with_cleanup_inline)
+                    and not scope.with_cleanup_in_progress
+            ):
+                scope.with_cleanup_in_progress = True
+                try:
+                    self._emit_with_cleanup_from_scope(scope, self.state.current_module)
+                finally:
+                    scope.with_cleanup_in_progress = False
+            for var_name, var_type in reversed(scope.owned_vars):
+                if var_name == returned_var:
+                    continue  # Don't clean the return value
+                if self.state.analysis.has_arc_data(var_type):
+                    self.lifetime._emit_value_cleanup(var_name, var_type)
+            scope = scope.parent
+
+    def _emit_cleanup_for_loop_exit(self, *, is_break: bool) -> None:
+        """Emit cleanup for break/continue.
+
+        Walks from current scope up to and including the innermost loop cleanup target,
+        executing any with-statement cleanup data along the way.
+        The with-cleanup runs before owned-var cleanup (see
+        ``_emit_cleanup_for_return`` for rationale).
+
+        Args:
+            is_break: True if cleaning for 'break', False for 'continue'.
+
+        Raises:
+            InternalCompilerError: If called outside of a loop.
+        """
+        if not self.state._loop_cleanup_scope_stack:
+            # Shouldn't happen if semantic analysis caught it
+            self.state.ice("[ICE-1020] break/continue outside of loop")
+
+        continue_scope, break_scope = self.state._loop_cleanup_scope_stack[-1]
+        target_scope = break_scope if is_break else continue_scope
+
+        scope = self.state._current_scope
+        while scope is not None:
+            if (
+                    (scope.with_cleanup_block is not None or scope.with_cleanup_inline)
+                    and not scope.with_cleanup_in_progress
+            ):
+                scope.with_cleanup_in_progress = True
+                try:
+                    self._emit_with_cleanup_from_scope(scope, self.state.current_module)
+                finally:
+                    scope.with_cleanup_in_progress = False
+            for var_name, var_type in reversed(scope.owned_vars):
+                if self.state.analysis.has_arc_data(var_type):
+                    self.lifetime._emit_value_cleanup(var_name, var_type)
+
+            if scope is target_scope:
+                break  # Stop after cleaning the selected loop scope itself
+
+            scope = scope.parent
+
+    def _emit_with_cleanup_from_scope(self, scope: ScopeContext, module_name: str) -> None:
+        """Emit with-statement cleanup for a scope.
+
+        Args:
+            scope: The scope containing cleanup logic.
+            module_name: Name of current module.
+        """
+        if scope.with_cleanup_block is None and not scope.with_cleanup_inline:
+            return
+
+        old_with_cleanup_in_progress = scope.with_cleanup_in_progress
+        scope.with_cleanup_in_progress = True
+        try:
+            # Wrap in a nested block so cleanup declarations get their own C scope
+            # (mirrors L0 scoping rules and isolates inline cleanup statements).
+            self.state.emitter.statements.emit_block_start()
+            cleanup_scope = self.state._push_scope()
+            if scope.with_cleanup_block is not None:
+                self._emit_block_sequence(scope.with_cleanup_block, module_name)
+            else:
+                for stmt in scope.with_cleanup_inline or []:
+                    self._emit_stmt(stmt, module_name)
+            if not self.state._next_stmt_unreachable:
+                self.lifetime._emit_cleanup_at_scope_exit(cleanup_scope)
+            self.state._pop_scope()
+            self.state.emitter.statements.emit_block_end()
+        finally:
+            scope.with_cleanup_in_progress = old_with_cleanup_in_progress
+
+    def _emit_block_sequence(self, block: Block, module_name: str) -> None:
+        """Emit statements in a block.
+
+        Args:
+            block: The Block AST node.
+            module_name: Name of current module.
+        """
+        for stmt in block.stmts:
+            self._emit_stmt(stmt, module_name)
+
+        return None
+
+    def _emit_stmt(self, stmt: Stmt, module_name: str) -> None:
+        """Emit a single statement.
+
+        Args:
+            stmt: The Stmt AST node.
+            module_name: Name of current module.
+
+        Raises:
+            InternalCompilerError: If statement type is unsupported.
+        """
+
+        self.state._emit_line_directive(stmt)
+
+        if self.state._next_stmt_unreachable:
+            self.state.emitter.declarations.emit_unreachable_comment()
+
+        # Handle different statement types:
+        if isinstance(stmt, LetStmt):
+            # let name: Type = expr; | let name = expr;
+            return self._emit_let(stmt, module_name)
+
+        elif isinstance(stmt, AssignStmt):
+            # target = expr;
+            return self._emit_reassignment(stmt)
+
+        elif isinstance(stmt, ExprStmt):
+            # expr;
+            c_expr = self._emit_expr(stmt.expr, is_statement=True)
+            if c_expr:  # Only emit if not empty (empty for no-op comments)
+                expr_ty = self.state.analysis.expr_types.get(id(stmt.expr))
+                if expr_ty and self.lifetime._should_materialize_arc_temp(stmt.expr, expr_ty):
+                    self.lifetime._materialize_arc_temp(c_expr, expr_ty)
+                else:
+                    self.state.emitter.statements.emit_expr_stmt(c_expr)
+            return None
+
+        elif isinstance(stmt, IfStmt):
+            # if (expr) stmt [else stmt]
+            return self._emit_if_else(stmt, module_name)
+
+
+        elif isinstance(stmt, WhileStmt):
+            # while (expr) { stmt... }
+            return self._emit_while(stmt, module_name)
+
+        elif isinstance(stmt, ForStmt):
+            # for (init; cond; update) { stmt... }
+            return self._emit_for(stmt, module_name)
+
+        elif isinstance(stmt, ReturnStmt):
+            # return [expr];
+            return self._emit_return(stmt)
+
+        elif isinstance(stmt, DropStmt):
+            self.lifetime._emit_drop(stmt, module_name)
+            return None
+
+        elif isinstance(stmt, MatchStmt):
+            self._emit_match(stmt, module_name)
+            return None
+
+        elif isinstance(stmt, WithStmt):
+            self._emit_with(stmt, module_name)
+            return None
+
+        elif isinstance(stmt, CaseStmt):
+            self._emit_case(stmt, module_name)
+            return None
+
+        elif isinstance(stmt, Block):
+            # { stmt... }
+            return self._emit_block(stmt, module_name)
+
+        elif isinstance(stmt, BreakStmt):
+            # break;
+            self._emit_cleanup_for_loop_exit(is_break=True)
+            break_label, _ = self.state._loop_label_stack[-1]
+            self.state.emitter.statements.emit_goto(break_label)
+            self.state._next_stmt_unreachable = True
+            return None
+
+        elif isinstance(stmt, ContinueStmt):
+            # continue;
+            self._emit_cleanup_for_loop_exit(is_break=False)
+            _, continue_label = self.state._loop_label_stack[-1]
+            self.state.emitter.statements.emit_goto(continue_label)
+            self.state._next_stmt_unreachable = True
+            return None
+
+        else:
+            self.state.ice(f"[ICE-1250] unsupported statement type for code generation: {type(stmt).__name__}", node=stmt)
+
+    def _emit_block(self, stmt: Block, module_name: str) -> Any:
+        """Emit a block statement with its own scope.
+
+        Args:
+            stmt: The Block AST node.
+            module_name: Name of current module.
+        """
+        self.state.emitter.statements.emit_block_start()
+
+        block_scope = self.state._push_scope()
+        self._emit_block_sequence(stmt, module_name)
+
+        # Emit cleanup only if code is reachable
+        if not self.state._next_stmt_unreachable:
+            self.lifetime._emit_cleanup_at_scope_exit(block_scope)
+
+        self.state._pop_scope()
+        self.state.emitter.statements.emit_block_end()
+        return None
+
+    def _emit_return(self, stmt: ReturnStmt, before_cleanup: Optional[Callable[[], None]] = None) -> Any:
+        """Emit a return statement with cleanup.
+
+        Args:
+            stmt: The ReturnStmt AST node.
+            before_cleanup: Optional hook to run after the return value is
+                evaluated and before scope cleanup is emitted.
+        """
+        if stmt.value is None:
+            if before_cleanup is not None:
+                before_cleanup()
+            if self.state._current_scope is not None:
+                self._emit_cleanup_for_return()
+            self.state.emitter.statements.emit_return_stmt(None)
+        else:
+            returned_var = None
+            use_move_return = False
+            if isinstance(stmt.value, VarRef):
+                returned_var = self.state._lookup_owned_local_name(stmt.value)
+                use_move_return = returned_var is not None
+
+            emit_return_value = (
+                self._emit_expr_with_expected_type
+                if use_move_return
+                else self._emit_owned_expr_with_expected_type
+            )
+
+            # Evaluate return expression first so ARC temps materialized during
+            # expression emission are visible to cleanup scheduling.
+            c_value = emit_return_value(stmt.value, self.state._current_func_result)
+
+            if before_cleanup is not None:
+                before_cleanup()
+
+            needs_cleanup = (self.state._current_scope is not None
+                             and self.state._scope_chain_has_cleanup())
+            if needs_cleanup:
+                # Keep return value alive across cleanup to avoid use-after-free.
+                ret_tmp = self.state.emitter.names.fresh_tmp("ret")
+                c_ret_type = self.state.emitter.types.emit_type(self.state._current_func_result)
+                self.state.emitter.statements.emit_temp_decl(c_ret_type, ret_tmp, c_value)
+                self._emit_cleanup_for_return(returned_var)
+                self.state.emitter.statements.emit_return_stmt(ret_tmp)
+            else:
+                self.state.emitter.statements.emit_return_stmt(c_value)
+
+        # Mark subsequent code as unreachable
+        self.state._next_stmt_unreachable = True
+        return None
+
+    def _register_inline_with_cleanup(self, scope: ScopeContext, item: "WithItem") -> None:
+        """Register one inline with-item cleanup in LIFO order."""
+        if item.cleanup is None:
+            return
+        assert scope.with_cleanup_inline is not None
+        scope.with_cleanup_inline.insert(0, item.cleanup)
+
+    def _emit_inline_with_header_item(self, item: "WithItem", module_name: str, scope: ScopeContext) -> None:
+        """Emit one inline with header item and register its cleanup at the committed point."""
+        if item.cleanup is None:
+            self._emit_stmt(item.init, module_name)
+            return
+
+        if isinstance(item.init, ReturnStmt):
+            self._emit_return(item.init, before_cleanup=lambda: self._register_inline_with_cleanup(scope, item))
+            return
+
+        if isinstance(item.init, (BreakStmt, ContinueStmt)):
+            self._register_inline_with_cleanup(scope, item)
+            self._emit_stmt(item.init, module_name)
+            return
+
+        self._emit_stmt(item.init, module_name)
+        self._register_inline_with_cleanup(scope, item)
+
+    def _emit_condition_branch(self, expr: Expr, true_label: str, false_label: str) -> None:
+        """Emit control flow for one condition expression with short-circuit semantics.
+
+        This path is used only for statement conditions so ARC temps emitted by
+        expression lowering stay inside the correct structural block instead of
+        being hoisted into an enclosing `if (...)` or `while (...)` header.
+
+        Args:
+            expr: Condition expression to lower.
+            true_label: Jump target when the condition is true.
+            false_label: Jump target when the condition is false.
+        """
+        if isinstance(expr, ParenExpr):
+            self._emit_condition_branch(expr.inner, true_label, false_label)
+            return
+
+        if isinstance(expr, BinaryOp) and expr.op == "&&":
+            rhs_label = self.state._fresh_label("cond_rhs")
+            self._emit_condition_branch(expr.left, rhs_label, false_label)
+            self.state.emitter.statements.emit_label(rhs_label)
+            self._emit_condition_branch(expr.right, true_label, false_label)
+            return
+
+        if isinstance(expr, BinaryOp) and expr.op == "||":
+            rhs_label = self.state._fresh_label("cond_rhs")
+            self._emit_condition_branch(expr.left, true_label, rhs_label)
+            self.state.emitter.statements.emit_label(rhs_label)
+            self._emit_condition_branch(expr.right, true_label, false_label)
+            return
+
+        self.state.emitter.statements.emit_block_start()
+        leaf_scope = self.state._push_scope()
+        c_cond = self._emit_condition_expr(expr)
+        self.state.emitter.statements.emit_if_header(c_cond)
+        self.state.emitter.statements.emit_block_start()
+        self.lifetime._emit_cleanup_at_scope_exit(leaf_scope)
+        self.state.emitter.statements.emit_goto(true_label)
+        self.state.emitter.statements.emit_block_end()
+        self.lifetime._emit_cleanup_at_scope_exit(leaf_scope)
+        self.state._pop_scope()
+        self.state.emitter.statements.emit_block_end()
+        self.state.emitter.statements.emit_goto(false_label)
+
+    def _emit_condition_expr(self, expr: Expr) -> str:
+        """Emit a top-level condition expression for direct statement headers."""
+        if isinstance(expr, ParenExpr):
+            return self._emit_condition_expr(expr.inner)
+        if isinstance(expr, BinaryOp):
+            return self._emit_binary_op(expr, expr.op, expr.left, expr.right, for_condition=True)
+        return self._emit_expr(expr)
+
+    def _emit_condition_value(self, expr: Expr) -> str:
+        """Evaluate a statement condition into a stable boolean temporary.
+
+        The returned temp is safe to reference from an `if`/`while` header
+        because any ARC temps created while evaluating the condition are scoped
+        to the emitted condition block and cleaned before control continues.
+
+        Args:
+            expr: Condition expression to lower.
+
+        Returns:
+            Name of the generated boolean temp.
+        """
+        cond_tmp = self.state.emitter.names.fresh_tmp("cond")
+        self.state.emitter.statements.emit_temp_decl(
+            self.state.emitter.types.emit_type(BuiltinType("bool")),
+            cond_tmp,
+            self.state.emitter.values.emit_bool_literal(False),
+        )
+
+        true_label = self.state._fresh_label("cond_true")
+        false_label = self.state._fresh_label("cond_false")
+        end_label = self.state._fresh_label("cond_end")
+
+        self.state.emitter.statements.emit_block_start()
+        self._emit_condition_branch(expr, true_label, false_label)
+        self.state.emitter.statements.emit_label(true_label)
+        self.state.emitter.statements.emit_assignment(cond_tmp, self.state.emitter.values.emit_bool_literal(True))
+        self.state.emitter.statements.emit_goto(end_label)
+        self.state.emitter.statements.emit_label(false_label)
+        self.state.emitter.statements.emit_label(end_label)
+        self.state.emitter.statements.emit_block_end()
+        return cond_tmp
+
+    def _emit_while(self, stmt: WhileStmt, module_name: str) -> Any:
+        """Emit a while loop.
+
+        Args:
+            stmt: The WhileStmt AST node.
+            module_name: Name of current module.
+        """
+        break_label = self.state._fresh_label("lbrk")
+        continue_label = self.state._fresh_label("lcont")
+        self.state._loop_label_stack.append((break_label, continue_label))
+
+        self.state.emitter.statements.emit_while_header(self.state.emitter.values.emit_bool_literal(True))
+        self.state.emitter.statements.emit_block_start()
+
+        c_cond = self._emit_condition_value(stmt.cond)
+        self.state.emitter.statements.emit_if_header(self.state.emitter.values.emit_negated_condition(c_cond))
+        self.state.emitter.statements.emit_block_start()
+        self.state.emitter.statements.emit_goto(break_label)
+        self.state.emitter.statements.emit_block_end()
+
+        loop_scope = self.state._push_scope()
+        self.state._loop_cleanup_scope_stack.append((loop_scope, loop_scope))
+
+        self._emit_block_sequence(stmt.body, module_name)
+
+        if not self.state._next_stmt_unreachable:
+            self.lifetime._emit_cleanup_at_scope_exit(loop_scope)
+
+        self.state.emitter.statements.emit_label(continue_label)
+
+        self.state._loop_cleanup_scope_stack.pop()
+        self.state._pop_scope()
+        self.state.emitter.statements.emit_block_end()
+
+        self.state.emitter.statements.emit_label(break_label)
+        self.state._loop_label_stack.pop()
+        self.state._next_stmt_unreachable = False
+        return None
+
+    def _emit_for(self, stmt: ForStmt, module_name: str) -> Any:
+        """Emit a for loop.
+
+        Args:
+            stmt: The ForStmt AST node.
+            module_name: Name of current module.
+        """
+        break_label = self.state._fresh_label("lbrk")
+        continue_label = self.state._fresh_label("lcont")
+
+        outer_scope = self.state._push_scope()
+
+        self.state.emitter.statements.emit_for_loop_start()
+
+        # The initialization clause belongs to the enclosing loop context,
+        # not to the loop being initialized.
+        if stmt.init:
+            self._emit_stmt(stmt.init, module_name)
+
+        self.state._loop_label_stack.append((break_label, continue_label))
+        self.state.emitter.statements.emit_while_header(self.state.emitter.values.emit_bool_literal(True))
+
+        self.state.emitter.statements.emit_block_start()
+        if stmt.cond:
+            c_cond = self._emit_condition_value(stmt.cond)
+            self.state.emitter.statements.emit_if_header(self.state.emitter.values.emit_negated_condition(c_cond))
+            self.state.emitter.statements.emit_block_start()
+            self.state.emitter.statements.emit_goto(break_label)
+            self.state.emitter.statements.emit_block_end()
+        self.state.emitter.statements.emit_block_start()
+        loop_scope = self.state._push_scope()
+        # Body break/continue clean the iteration scope.  The shared break
+        # label below cleans the initialization scope exactly once.
+        self.state._loop_cleanup_scope_stack.append((loop_scope, loop_scope))
+
+        self._emit_block_sequence(stmt.body, module_name)
+        body_fallthrough_reachable = not self.state._next_stmt_unreachable
+        if body_fallthrough_reachable:
+            self.lifetime._emit_cleanup_at_scope_exit(loop_scope)
+
+        self.state._loop_cleanup_scope_stack.pop()
+        self.state._pop_scope()  # Pop loop_scope
+        self.state.emitter.statements.emit_block_end()
+
+        self.state._next_stmt_unreachable = False
+        self.state.emitter.statements.emit_label(continue_label)
+
+        # The update clause also belongs to the enclosing loop context.  A
+        # break/continue here therefore targets an outer loop, when present.
+        self.state._loop_label_stack.pop()
+        if stmt.update:
+            self._emit_stmt(stmt.update, module_name)
+
+        self.state.emitter.statements.emit_block_end()
+
+        self.state._next_stmt_unreachable = False
+        self.state.emitter.statements.emit_label(break_label)
+        self.lifetime._emit_cleanup_at_scope_exit(outer_scope)
+
+        self.state._pop_scope()  # Pop outer_scope
+        self.state.emitter.statements.emit_for_loop_end()
+
+        self.state._next_stmt_unreachable = False
+        return None
+
+    def _emit_if_else(self, stmt: IfStmt, module_name: str) -> Any:
+        """Emit an if-else statement.
+
+        Args:
+            stmt: The IfStmt AST node.
+            module_name: Name of current module.
+        """
+        c_cond = self._emit_condition_value(stmt.cond)
+        self.state.emitter.statements.emit_if_header(c_cond)
+
+        self.state._next_stmt_unreachable = False  # Each branch starts reachable
+        then_unreachable = self._gen_if_else_branch(stmt.then_stmt, module_name)
+
+        if stmt.else_stmt:
+            self.state.emitter.statements.emit_else()
+            self.state._next_stmt_unreachable = False  # Each branch starts reachable
+            else_unreachable = self._gen_if_else_branch(stmt.else_stmt, module_name)
+            # Unreachable after if-else only if BOTH branches are unreachable
+            self.state._next_stmt_unreachable = then_unreachable and else_unreachable
+
+        else:
+            # No else: code after is always reachable (condition could be false)
+            self.state._next_stmt_unreachable = False
+
+        return None
+
+    def _gen_if_else_branch(self, stmt: Stmt, module_name: str) -> bool:
+        """Emit a branch of an if/else.
+
+        Args:
+            stmt: The statement in the branch.
+            module_name: Name of current module.
+
+        Returns:
+            True if branch is unreachable at end.
+        """
+        if isinstance(stmt, Block):
+            self._emit_block(stmt, module_name)
+        else:
+            wrapped = Block(stmts=[stmt], span=stmt.span)
+            self._emit_block(wrapped, module_name)
+
+        return self.state._next_stmt_unreachable
+
+    def _emit_reassignment(self, stmt: AssignStmt) -> None:
+        """Emit an assignment statement.
+
+        Args:
+            stmt: The AssignStmt AST node.
+
+        Raises:
+            InternalCompilerError: If types are missing or emission fails.
+        """
+        # Resolve source and destination types
+        src_ty = self.state.analysis.expr_types.get(id(stmt.value))
+        dst_ty = self.state.analysis.expr_types.get(id(stmt.target))
+
+        if src_ty is None or dst_ty is None:
+            self.state.ice("[ICE-1240] missing inferred type for assignment", node=stmt)
+
+        # Handle complex lvalues: if the target contains side effects (like function calls),
+        # we must evaluate the pointer/object/index part ONCE to avoid multiple evaluation
+        # during the release/assign/retain sequence for ARC types.
+        c_target = self._emit_lvalue_with_caching(stmt.target)
+
+        # Use _emit_expr_with_expected_type for type conversion
+        c_value = self._emit_owned_expr_with_expected_type(stmt.value, dst_ty)
+        if c_target is None or c_value is None:
+            self.state.ice("[ICE-1241] failed to emit assignment", node=stmt)
+
+        if self.state.analysis.has_arc_data(dst_ty):
+            temp = self.state.emitter.names.fresh_tmp("tmp")
+            self.state.emitter.statements.emit_temp_decl(self.state.emitter.types.emit_type(dst_ty), temp, c_value)
+            self.lifetime._emit_value_cleanup(c_target, dst_ty)
+            self.state.emitter.statements.emit_assignment(c_target, temp)
+        else:
+            self.state.emitter.statements.emit_assignment(c_target, c_value)
+
+        return None
+
+    def _emit_lvalue_with_caching(self, target: Expr) -> str:
+        """Emit an lvalue expression, caching sub-expressions with side effects.
+
+        For targets like `*(func_call())`, the pointer expression `func_call()` must
+        be evaluated exactly once, not multiple times during release/assign/retain.
+
+        Args:
+            target: The lvalue expression.
+
+        Returns:
+            A C lvalue expression string.
+
+        Raises:
+            InternalCompilerError: If types are missing for complex lvalues.
+        """
+        # Case 1: Dereference with side effects in operand
+        if isinstance(target, UnaryOp) and target.op == "*":
+            if self.state._has_side_effects(target.operand):
+                # Evaluate pointer expression once into a temporary
+                ptr_ty = self.state.analysis.expr_types.get(id(target.operand))
+                if ptr_ty is None:
+                    self.state.ice("[ICE-1242] missing type for dereference operand", node=target.operand)
+                ptr_temp = self.state.emitter.names.fresh_tmp("ptr")
+                c_ptr_expr = self._emit_expr(target.operand)
+                self.state.emitter.statements.emit_temp_decl(self.state.emitter.types.emit_type(ptr_ty), ptr_temp, c_ptr_expr)
+                checked_ptr = self.convert._emit_checked_pointer_expr(ptr_temp, ptr_ty, target.operand, "_RT_ACCESS_WRITE")
+                return self.state.emitter.values.emit_deref_lvalue(checked_ptr)
+            ptr_ty = self.state.analysis.expr_types.get(id(target.operand))
+            if ptr_ty is None:
+                self.state.ice("[ICE-1242] missing type for dereference operand", node=target.operand)
+            checked_ptr = self.convert._emit_checked_pointer_expr(
+                self._emit_expr(target.operand), ptr_ty, target.operand, "_RT_ACCESS_WRITE"
+            )
+            return self.state.emitter.values.emit_deref_lvalue(checked_ptr)
+
+        # Case 2: Field access
+        if isinstance(target, FieldAccessExpr):
+            obj_ty = self.state.analysis.expr_types.get(id(target.obj))
+            if obj_ty is None:
+                self.state.ice("[ICE-1243] missing type for field access object", node=target.obj)
+            obj_ptr_ty = self.state._pointer_type_or_none(obj_ty)
+            if obj_ptr_ty is None and self.state._is_place_expr(target.obj):
+                # The store lands inside the object's own storage, so the object
+                # must be emitted as an lvalue: inner pointer accesses keep
+                # write mode and no struct temp copy is introduced.
+                c_obj_expr = self._emit_lvalue_with_caching(target.obj)
+                return self.state.emitter.values.emit_field_lvalue(c_obj_expr, target.field, False)
+            if self.state._has_side_effects(target.obj):
+                obj_temp = self.state.emitter.names.fresh_tmp("obj")
+                c_obj_expr = self._emit_expr(target.obj)
+                self.state.emitter.statements.emit_temp_decl(self.state.emitter.types.emit_type(obj_ty), obj_temp, c_obj_expr)
+                if obj_ptr_ty is not None:
+                    checked_obj = self.convert._emit_checked_pointer_expr(obj_temp, obj_ptr_ty, target.obj, "_RT_ACCESS_WRITE")
+                    return self.state.emitter.values.emit_field_lvalue(checked_obj, target.field, True)
+                return self.state.emitter.values.emit_field_lvalue(obj_temp, target.field, False)
+            c_obj_expr = self._emit_expr(target.obj)
+            if obj_ptr_ty is not None:
+                c_obj_expr = self.convert._emit_checked_pointer_expr(
+                    c_obj_expr, obj_ptr_ty, target.obj, "_RT_ACCESS_WRITE"
+                )
+                return self.state.emitter.values.emit_field_lvalue(c_obj_expr, target.field, True)
+            return self.state.emitter.values.emit_field_lvalue(c_obj_expr, target.field, False)
+
+        # Case 3: Index access with side effects in index expression
+        if isinstance(target, IndexExpr):
+            base_has_effects = self.state._has_side_effects(target.array)
+            index_has_effects = self.state._has_side_effects(target.index)
+
+            if base_has_effects or index_has_effects:
+                c_base = self._emit_expr(target.array)
+                c_index = self._emit_expr(target.index)
+
+                if base_has_effects:
+                    base_ty = self.state.analysis.expr_types.get(id(target.array))
+                    if base_ty is None:
+                        self.state.ice("[ICE-1244] missing type for index base", node=target.array)
+                    base_temp = self.state.emitter.names.fresh_tmp("base")
+                    self.state.emitter.statements.emit_temp_decl(self.state.emitter.types.emit_type(base_ty), base_temp, c_base)
+                    c_base = base_temp
+
+                if index_has_effects:
+                    idx_temp = self.state.emitter.names.fresh_tmp("idx")
+                    self.state.emitter.statements.emit_temp_decl("l0_int", idx_temp, c_index)
+                    c_index = idx_temp
+
+                base_ty = self.state.analysis.expr_types.get(id(target.array))
+                if base_ty is not None and self.state._pointer_type_or_none(base_ty) is not None:
+                    return self.convert._emit_pointer_index_lvalue(c_base, c_index, base_ty, target)
+
+                return self.state.emitter.values.emit_index_lvalue(c_base, c_index)
+            c_base = self._emit_expr(target.array)
+            c_index = self._emit_expr(target.index)
+            base_ty = self.state.analysis.expr_types.get(id(target.array))
+            if base_ty is not None and self.state._pointer_type_or_none(base_ty) is not None:
+                return self.convert._emit_pointer_index_lvalue(c_base, c_index, base_ty, target)
+            return self.state.emitter.values.emit_index_lvalue(c_base, c_index)
+
+        # Case 4: Parenthesized expression - unwrap and recurse
+        if isinstance(target, ParenExpr):
+            return self._emit_lvalue_with_caching(target.inner)
+
+        # Default: no side effects, use normal emission
+        return self._emit_expr(target)
+
+    def _emit_let(self, stmt: LetStmt, module_name: str) -> Any:
+        """Emit a local 'let' declaration.
+
+        Args:
+            stmt: The LetStmt AST node.
+            module_name: Name of current module.
+
+        Raises:
+            InternalCompilerError: If type cannot be inferred.
+        """
+        # Resolve declared type (if any) or use inferred type
+        var_ty = None
+        if stmt.type is not None:
+            var_ty = self.state._resolve_type_ref(stmt.type, module_name)
+        if var_ty is None:
+            var_ty = self.state.analysis.expr_types.get(id(stmt.value))
+
+        if var_ty is None:
+            self.state.ice(f"[ICE-1170] missing inferred type for let initializer '{stmt.name}'", node=stmt.value)
+
+        c_var_name = self.state.emitter.names.mangle_identifier(stmt.name)
+        c_type = self.state.emitter.types.emit_type(var_ty)
+
+        # Use _emit_expr_with_expected_type for type conversion
+        c_init = self._emit_owned_expr_with_expected_type(stmt.value, var_ty)
+        self.state.emitter.statements.emit_let_decl(c_type, c_var_name, c_init)
+
+        # Track ALL variables in scope
+        if self.state._current_scope is not None:
+            self.state._current_scope.add_owned(c_var_name, var_ty)
+        return None
+
+    def _emit_with_cleanup_header_let_predecl(self, stmt: LetStmt, module_name: str) -> Optional[Type]:
+        """Predeclare a nullable `with`-header let for cleanup-block form.
+
+        Nullable lets are predeclared as `null` so cleanup code can
+        reference them on header `?` failure paths.
+
+        Non-nullable lets use the normal declaration+initializer path and return None here.
+
+        Args:
+            stmt: The LetStmt AST node.
+            module_name: Name of current module.
+
+        Returns:
+            The Type if it was a nullable let, otherwise None.
+        """
+        var_ty = self.state._resolve_let_type(stmt, module_name)
+        if not isinstance(var_ty, NullableType):
+            return None
+
+        c_var_name = self.state.emitter.names.mangle_identifier(stmt.name)
+        c_type = self.state.emitter.types.emit_type(var_ty)
+        c_zero = self.state.emitter.types.emit_null_literal(var_ty, for_initializer=True)
+        self.state.emitter.statements.emit_let_decl(c_type, c_var_name, c_zero)
+
+        if self.state._current_scope is not None:
+            self.state._current_scope.add_owned(c_var_name, var_ty)
+
+        return var_ty
+
+    def _emit_with_cleanup_header_let_assign(self, stmt: LetStmt, var_ty: Type) -> None:
+        """Emit initializer assignment for a predeclared cleanup-block let.
+
+        Args:
+            stmt: The LetStmt AST node.
+            var_ty: The resolved type of the let.
+        """
+        c_var_name = self.state.emitter.names.mangle_identifier(stmt.name)
+        c_value = self._emit_owned_expr_with_expected_type(stmt.value, var_ty)
+        self.state.emitter.statements.emit_assignment(c_var_name, c_value)
+
+    def _emit_match(self, stmt: MatchStmt, module_name: str) -> None:
+        """Emit a match statement as a switch on the tag field.
+
+        Args:
+            stmt: The MatchStmt AST node.
+            module_name: Name of current module.
+
+        Raises:
+            InternalCompilerError: If types or patterns are unsupported.
+        """
+        scrutinee_expr_type = self.state.analysis.expr_types.get(id(stmt.expr))
+        if not scrutinee_expr_type:
+            self.state.ice("[ICE-1190] missing inferred type for match scrutinee", node=stmt.expr)
+
+        c_scrutinee_type = self.state.emitter.types.emit_type(scrutinee_expr_type)
+        c_scrutinee_expr = self._emit_expr(stmt.expr)
+
+        self.state.emitter.statements.emit_block_start()
+        outer_scope = self.state._push_scope()
+        self.state.emitter.statements.emit_match_scrutinee_decl(c_scrutinee_type, c_scrutinee_expr)
+        if self.lifetime._is_unwrap_cast_from_place(stmt.expr) and self.state.analysis.has_arc_data(scrutinee_expr_type):
+            self.lifetime._emit_retain_for_copied_value("_scrutinee", scrutinee_expr_type)
+
+        # Track _scrutinee for cleanup only for rvalue expressions with owned types
+        if not self.state._is_place_expr(stmt.expr):
+            if self.state.analysis.has_arc_data(scrutinee_expr_type):
+                outer_scope.add_owned("_scrutinee", scrutinee_expr_type)
+
+        self.state._switch_depth += 1
+        self.state.emitter.statements.emit_match_switch_start("_scrutinee")
+
+        arms_unreachable = 0
+
+        for arm in stmt.arms:
+            # Emit case label
+            if isinstance(arm.pattern, WildcardPattern):
+                self.state.emitter.statements.emit_default_label()
+            elif isinstance(arm.pattern, VariantPattern):
+                if isinstance(scrutinee_expr_type, EnumType):
+                    tag_value = self.state.emitter.names.emit_enum_tag(scrutinee_expr_type, arm.pattern.name)
+                    self.state.emitter.statements.emit_case_label(tag_value)
+                else:
+                    self.state.ice("[ICE-1191] match arm cannot be lowered to a C switch case", node=arm.pattern)
+            else:
+                self.state.ice("[ICE-1192] unsupported match pattern", node=arm.pattern)
+
+            self.state.emitter.statements.emit_block_start()
+
+            # Create scope for arm (pattern variables + body locals)
+            arm_scope = self.state._push_scope()
+            self.state._next_stmt_unreachable = False
+
+            # Bind pattern variables inside the arm scope
+            if isinstance(arm.pattern, VariantPattern) and isinstance(scrutinee_expr_type, EnumType):
+                self._emit_pattern_bindings(arm.pattern, scrutinee_expr_type, arm_scope)
+
+            # Emit arm body
+            self._emit_block_sequence(arm.body, module_name)
+
+            # Cleanup if arm didn't terminate
+            if not self.state._next_stmt_unreachable:
+                self.lifetime._emit_cleanup_at_scope_exit(arm_scope)
+                self.state.emitter.statements.emit_exit_switch()
+
+            if self.state._next_stmt_unreachable:
+                arms_unreachable += 1
+
+            self.state._pop_scope()
+
+            self.state.emitter.statements.emit_block_end()
+
+        self.state.emitter.statements.emit_switch_end()
+        self.state._switch_depth -= 1
+
+        # Code after match is unreachable only if ALL arms are unreachable
+        self.state._next_stmt_unreachable = (arms_unreachable == len(stmt.arms))
+
+        if self.state._next_stmt_unreachable:
+            self.state.emitter.declarations.emit_unreachable_marker("'match'")
+        else:
+            self.lifetime._emit_cleanup_at_scope_exit(outer_scope)
+
+        self.state._pop_scope()
+        self.state.emitter.statements.emit_block_end()
+
+    def _emit_case(self, stmt: CaseStmt, module_name: str) -> None:
+        """Emit a case statement as a scalar switch or string if/else chain.
+
+        Args:
+            stmt: The CaseStmt AST node.
+            module_name: Name of current module.
+
+        Raises:
+            InternalCompilerError: If types or literals are unsupported.
+        """
+        scrutinee_expr_type = self.state.analysis.expr_types.get(id(stmt.expr))
+        if not scrutinee_expr_type:
+            self.state.ice("[ICE-1193] missing inferred type for case scrutinee", node=stmt.expr)
+
+        c_scrutinee_type = self.state.emitter.types.emit_type(scrutinee_expr_type)
+        c_scrutinee_expr = self._emit_expr(stmt.expr)
+
+        total_arms = len(stmt.arms) + (1 if stmt.else_arm is not None else 0)
+        arms_unreachable = 0
+
+        self.state.emitter.statements.emit_block_start()
+        outer_scope = self.state._push_scope()
+        self.state.emitter.statements.emit_match_scrutinee_decl(c_scrutinee_type, c_scrutinee_expr)
+        if self.lifetime._is_unwrap_cast_from_place(stmt.expr) and self.state.analysis.has_arc_data(scrutinee_expr_type):
+            self.lifetime._emit_retain_for_copied_value("_scrutinee", scrutinee_expr_type)
+
+        # Track _scrutinee for cleanup only for rvalue expressions with owned types
+        if not self.state._is_place_expr(stmt.expr):
+            if self.state.analysis.has_arc_data(scrutinee_expr_type):
+                outer_scope.add_owned("_scrutinee", scrutinee_expr_type)
+
+        if isinstance(scrutinee_expr_type, BuiltinType) and scrutinee_expr_type.name == "string":
+            if not stmt.arms and stmt.else_arm is not None:
+                arm_scope = self.state._push_scope()
+                self.state._next_stmt_unreachable = False
+                self._emit_stmt(stmt.else_arm.body, module_name)
+
+                if not self.state._next_stmt_unreachable:
+                    self.lifetime._emit_cleanup_at_scope_exit(arm_scope)
+
+                if self.state._next_stmt_unreachable:
+                    arms_unreachable += 1
+
+                self.state._pop_scope()
+            else:
+                for index, arm in enumerate(stmt.arms):
+                    c_literal = self._emit_case_literal(arm.literal)
+                    condition = self.state.emitter.values.emit_string_equals_call("_scrutinee", c_literal)
+                    if index == 0:
+                        self.state.emitter.statements.emit_if_header(condition)
+                    else:
+                        self.state.emitter.statements.emit_else()
+                        self.state.emitter.statements.emit_if_header(condition)
+
+                    self.state.emitter.statements.emit_block_start()
+
+                    arm_scope = self.state._push_scope()
+                    self.state._next_stmt_unreachable = False
+                    self._emit_stmt(arm.body, module_name)
+
+                    if not self.state._next_stmt_unreachable:
+                        self.lifetime._emit_cleanup_at_scope_exit(arm_scope)
+
+                    if self.state._next_stmt_unreachable:
+                        arms_unreachable += 1
+
+                    self.state._pop_scope()
+
+                    self.state.emitter.statements.emit_block_end()
+
+                if stmt.else_arm is not None:
+                    self.state.emitter.statements.emit_else()
+                    self.state.emitter.statements.emit_block_start()
+
+                    arm_scope = self.state._push_scope()
+                    self.state._next_stmt_unreachable = False
+                    self._emit_stmt(stmt.else_arm.body, module_name)
+
+                    if not self.state._next_stmt_unreachable:
+                        self.lifetime._emit_cleanup_at_scope_exit(arm_scope)
+
+                    if self.state._next_stmt_unreachable:
+                        arms_unreachable += 1
+
+                    self.state._pop_scope()
+
+                    self.state.emitter.statements.emit_block_end()
+        else:
+            self.state._switch_depth += 1
+            self.state.emitter.statements.emit_switch_start("_scrutinee")
+
+            for arm in stmt.arms:
+                self.state.emitter.statements.emit_case_label(self._emit_case_literal(arm.literal))
+                self.state.emitter.statements.emit_block_start()
+
+                arm_scope = self.state._push_scope()
+                self.state._next_stmt_unreachable = False
+                self._emit_stmt(arm.body, module_name)
+
+                if not self.state._next_stmt_unreachable:
+                    self.lifetime._emit_cleanup_at_scope_exit(arm_scope)
+                    self.state.emitter.statements.emit_exit_switch()
+
+                if self.state._next_stmt_unreachable:
+                    arms_unreachable += 1
+
+                self.state._pop_scope()
+
+                self.state.emitter.statements.emit_block_end()
+
+            if stmt.else_arm is not None:
+                self.state.emitter.statements.emit_default_label()
+                self.state.emitter.statements.emit_block_start()
+
+                arm_scope = self.state._push_scope()
+                self.state._next_stmt_unreachable = False
+                self._emit_stmt(stmt.else_arm.body, module_name)
+
+                if not self.state._next_stmt_unreachable:
+                    self.lifetime._emit_cleanup_at_scope_exit(arm_scope)
+                    self.state.emitter.statements.emit_exit_switch()
+
+                if self.state._next_stmt_unreachable:
+                    arms_unreachable += 1
+
+                self.state._pop_scope()
+
+                self.state.emitter.statements.emit_block_end()
+
+            self.state.emitter.statements.emit_switch_end()
+            self.state._switch_depth -= 1
+
+        if total_arms == 0:
+            self.state._next_stmt_unreachable = False
+        else:
+            # Without else, some value may not match any arm, so code after is always reachable
+            self.state._next_stmt_unreachable = (
+                    stmt.else_arm is not None
+                    and arms_unreachable == total_arms
+            )
+
+        if self.state._next_stmt_unreachable:
+            self.state.emitter.declarations.emit_unreachable_marker("'case'")
+        else:
+            self.lifetime._emit_cleanup_at_scope_exit(outer_scope)
+
+        self.state._pop_scope()
+        self.state.emitter.statements.emit_block_end()
+
+    def _emit_case_literal(self, expr: Expr) -> str:
+        """Emit a constant literal for a case statement.
+
+        Args:
+            expr: The literal expression.
+
+        Returns:
+            A C constant string.
+
+        Raises:
+            InternalCompilerError: If literal type is unsupported.
+        """
+        if isinstance(expr, IntLiteral):
+            return self.state.emitter.values.emit_int_literal(expr.value)
+        if isinstance(expr, ByteLiteral):
+            return self.state.emitter.values.emit_byte_literal(expr.value)
+        if isinstance(expr, BoolLiteral):
+            return self.state.emitter.values.emit_bool_literal(expr.value)
+        if isinstance(expr, StringLiteral):
+            return self.state.emitter.values.emit_string_literal(expr.value)
+
+        self.state.ice("[ICE-1194] unsupported case literal type", node=expr)
+
+    def _emit_pattern_bindings(
+            self,
+            pattern: VariantPattern,
+            enum_type: EnumType,
+            arm_scope: ScopeContext
+    ) -> None:
+        """Emit pattern variable bindings and add them to arm scope.
+
+        Args:
+            pattern: The variant pattern.
+            enum_type: The enum type.
+            arm_scope: The scope for the match arm.
+
+        Raises:
+            InternalCompilerError: If variant decl is missing.
+        """
+        variant_decl = self.state.find_variant_decl(
+            enum_type.module,
+            enum_type.name,
+            pattern.name
+        )
+        if not variant_decl:
+            return
+
+        enum_info = self.state.analysis.enum_infos.get((enum_type.module, enum_type.name))
+        if not enum_info:
+            return
+
+        variant_info = enum_info.variants.get(pattern.name)
+        if not variant_info:
+            return
+
+        if len(pattern.vars) != len(variant_decl.fields):
+            return  # Arity mismatch caught by type checker
+
+        for pat_var, field_decl, field_type in zip(
+                pattern.vars,
+                variant_decl.fields,
+                variant_info.field_types
+        ):
+            c_ftype = self.state.emitter.types.emit_type(field_type)
+            c_pat_var = self.state.emitter.names.mangle_identifier(pat_var)
+
+            # Delegate C-specific pattern binding syntax to emitter
+            c_init = self.state.emitter.values.emit_pattern_binding_init("_scrutinee", pattern.name, field_decl.name)
+            self.state.emitter.statements.emit_let_decl(c_ftype, c_pat_var, c_init)
+
+            # Add to scope for type lookup.
+            # Pattern variables are borrowed from scrutinee, not owned,
+            # thus add_declared() is used, not add_owned().
+            arm_scope.add_declared(c_pat_var, field_type)
+
+    def _emit_with(self, stmt: WithStmt, module_name: str) -> None:
+        """Emit a with statement.
+
+        Inline => form (LIFO cleanup):
+            Emit init statements, then body, then cleanup statements in reverse order.
+
+        Cleanup block form:
+            Emit init statements, then body, then cleanup block statements.
+
+        Cleanup is emitted at block end and before every early exit
+        (return, break, continue). The scope stores cleanup data so
+        ``_emit_cleanup_for_return`` and ``_emit_cleanup_for_loop_exit``
+        can emit it before leaving.
+
+        The body and cleanup block are each emitted as real nested C blocks
+        so that any declarations inside them do not collide with the header
+        scope (e.g., legal L0 shadowing like ``let x`` in both the header
+        and body).
+
+        Args:
+            stmt: The WithStmt AST node.
+            module_name: Name of current module.
+        """
+        self.state.emitter.statements.emit_block_start()
+        with_scope = self.state._push_scope()
+
+        if stmt.cleanup_body is not None:
+            with_scope.with_cleanup_block = stmt.cleanup_body
+        else:
+            # Register inline cleanup incrementally so a TryExpr (`?`) failure
+            # in header item N can still clean up items 0..N-1.
+            with_scope.with_cleanup_inline = []
+
+        predeclared_nullable_lets: Dict[int, Type] = {}
+        if stmt.cleanup_body is not None:
+            # First pass: predeclare nullable lets so cleanup on early header
+            # failure can reference all nullable header names.
+            for item in stmt.items:
+                if isinstance(item.init, LetStmt):
+                    predecl_ty = self._emit_with_cleanup_header_let_predecl(item.init, module_name)
+                    if predecl_ty is not None:
+                        predeclared_nullable_lets[id(item.init)] = predecl_ty
+
+        # Emit all init statements in the header scope.
+        for item in stmt.items:
+            if stmt.cleanup_body is not None and isinstance(item.init, LetStmt):
+                predecl_ty = predeclared_nullable_lets.get(id(item.init))
+                if predecl_ty is not None:
+                    self._emit_with_cleanup_header_let_assign(item.init, predecl_ty)
+                else:
+                    self._emit_let(item.init, module_name)
+            else:
+                if stmt.cleanup_body is None:
+                    self._emit_inline_with_header_item(item, module_name, with_scope)
+                else:
+                    self._emit_stmt(item.init, module_name)
+
+        # Emit body as a nested block so its declarations get their own
+        # C scope (mirrors L0 scoping rules).
+        self.state.emitter.statements.emit_block_start()
+        body_scope = self.state._push_scope()
+        self._emit_block_sequence(stmt.body, module_name)
+        if not self.state._next_stmt_unreachable:
+            self.lifetime._emit_cleanup_at_scope_exit(body_scope)
+        body_unreachable = self.state._next_stmt_unreachable
+        self.state._pop_scope()
+        self.state.emitter.statements.emit_block_end()
+
+        # Emit cleanup at normal exit (only if code is reachable).
+        # User cleanup runs before automatic owned-var cleanup so that
+        # cleanup code can still reference the with-header variables.
+        if not body_unreachable:
+            self._emit_with_cleanup_from_scope(with_scope, module_name)
+            self.lifetime._emit_cleanup_at_scope_exit(with_scope)
+
+        self.state._pop_scope()
+        self.state.emitter.statements.emit_block_end()
+
+    def _try_emit_intrinsic(self, expr: CallExpr) -> Optional[str]:
+        """Expand compiler intrinsics inline.
+
+        Args:
+            expr: The call expression to check.
+
+        Returns:
+            C code string if it is an intrinsic, otherwise None.
+        """
+        if not isinstance(expr.callee, VarRef):
+            return None
+
+        name = expr.callee.name
+
+        if name == "sizeof":
+            return self.convert._emit_sizeof_intrinsic(expr)
+
+        if name == "ord":
+            return self._emit_ord_intrinsic(expr)
+
+        # Not an intrinsic
+        return None
+
+    def _emit_ord_intrinsic(self, expr: CallExpr) -> str:
+        """Emit ord(enum_value) intrinsic.
+
+        Returns 0-based ordinal of enum variant.
+
+        Args:
+            expr: The ord call expression.
+
+        Returns:
+            A C expression string for the ordinal value.
+
+        Raises:
+            InternalCompilerError: If argument count is incorrect.
+        """
+        if len(expr.args) != 1:
+            self.state.ice("[ICE-1121] ord expects exactly 1 argument", node=expr)
+
+        arg = expr.args[0]
+        c_arg = self._emit_expr(arg)
+
+        return self.state.emitter.values.emit_ord(c_arg)
+
+    def _try_emit_constructor(self, expr: CallExpr) -> Optional[str]:
+        """Check if expr is a constructor call and emit appropriate initialization.
+
+        Struct: Point(1, 2) -> { .x = 1, .y = 2 }
+        Enum: Int(42) -> { .tag = Expr_Int, .data = { .Int = { .value = 42 } } }
+
+        Args:
+            expr: The call expression to check.
+
+        Returns:
+            C code string if this is a constructor, otherwise None.
+        """
+        assert isinstance(expr.callee, VarRef)
+        name = expr.callee.name
+
+        # Look up the symbol to check if this is actually a constructor
+        if self.state.current_module:
+            sym = self.state._lookup_symbol(name, self.state.current_module, module_path=expr.callee.module_path)
+            if sym is None:
+                return None
+
+            # Only treat as constructor if the symbol is a struct (or type alias to one), or enum variant
+            if sym.kind is SymbolKind.STRUCT or (
+                    sym.kind is SymbolKind.TYPE_ALIAS and isinstance(sym.type, StructType)):
+                # Get the struct type from expression type
+                expr_type = self.state.analysis.expr_types.get(id(expr))
+                if isinstance(expr_type, StructType):
+                    return self._emit_struct_constructor(expr, expr_type)
+
+            elif sym.kind == SymbolKind.ENUM_VARIANT:
+                # Get the enum type from expression type
+                expr_type = self.state.analysis.expr_types.get(id(expr))
+                if isinstance(expr_type, EnumType):
+                    return self._emit_variant_constructor(expr, expr_type)
+
+        # Not a constructor
+        return None
+
+    def _emit_struct_constructor(self, expr: CallExpr, struct_type: StructType) -> str:
+        """Emit struct constructor as C designated initializer.
+
+        Point(1, 2) -> (struct l0_modulename_Point){ .x = 1, .y = 2 }
+
+        Args:
+            expr: The constructor call expression.
+            struct_type: The struct type.
+
+        Returns:
+            A C struct initializer expression string.
+
+        Raises:
+            InternalCompilerError: If struct info is missing or argument count mismatches.
+        """
+        # Look up struct info to get field names
+        info = self.state.analysis.struct_infos.get((struct_type.module, struct_type.name))
+        if info is None:
+            self.state.ice(f"[ICE-1280] missing StructInfo for {struct_type.module}.{struct_type.name}", node=expr)
+        if len(info.fields) != len(expr.args):
+            self.state.ice(
+                f"[ICE-1281] argument count mismatch in struct constructor for {struct_type.module}.{struct_type.name}: "
+                f"expected {len(info.fields)}, got {len(expr.args)}", node=expr)
+
+        # Prepare field initializers as (name, value) tuples
+        field_inits = []
+        for field, arg in zip(info.fields, expr.args):
+            c_arg = self._emit_owned_expr_with_expected_type(arg, field.type)
+            field_inits.append((field.name, c_arg))
+
+        # Delegate C-specific formatting to emitter
+        return self.state.emitter.values.emit_struct_constructor_for_type(struct_type, field_inits)
+
+    def _emit_variant_constructor(self, expr: CallExpr, enum_type: EnumType) -> str:
+        """Emit enum variant constructor as C tagged union initializer.
+
+        Example:
+            Int(42) -> (struct l0_modulename_Int){ .tag = l0_modulename_Int_Int, .data.Int.value = 42 }
+
+        Args:
+            expr: The variant call expression.
+            enum_type: The enum type.
+
+        Returns:
+            A C variant initializer expression string.
+
+        Raises:
+            InternalCompilerError: If variant info or declaration is missing.
+        """
+        assert isinstance(expr.callee, VarRef)
+        variant_name = expr.callee.name
+
+        # Look up variant info to get field names
+        enum_info = self.state.analysis.enum_infos.get((enum_type.module, enum_type.name))
+        if enum_info is None:
+            self.state.ice(f"[ICE-1300] missing EnumInfo for {enum_type.module}.{enum_type.name}", node=expr)
+
+        variant_info = enum_info.variants.get(variant_name)
+        if variant_info is None:
+            self.state.ice(f"[ICE-1301] missing VariantInfo for {variant_name}", node=expr)
+
+        # Empty payload variant
+        if len(variant_info.field_types) == 0:
+            return self.state.emitter.values.emit_variant_constructor_for_type(enum_type, variant_name, [])
+
+        # Get field names from AST
+        variant_decl = self.state.find_variant_decl(enum_type.module, enum_type.name, variant_name)
+        if variant_decl is None:
+            self.state.ice(f"[ICE-1302] missing variant decl for {enum_type.module}.{enum_type.name}.{variant_name}",
+                     node=expr)
+        if len(variant_decl.fields) != len(expr.args):
+            self.state.ice(f"[ICE-1303] arity mismatch in variant constructor {variant_name}", node=expr)
+
+        # Prepare payload initializers as (name, value) tuples
+        payload_inits = []
+        for idx, (field, arg) in enumerate(zip(variant_decl.fields, expr.args)):
+            c_arg = self._emit_owned_expr_with_expected_type(arg, variant_info.field_types[idx])
+            payload_inits.append((field.name, c_arg))
+
+        # Delegate C-specific formatting to emitter
+        return self.state.emitter.values.emit_variant_constructor_for_type(enum_type, variant_name, payload_inits)
+
+    def _emit_new_expr(self, expr: NewExpr) -> str:
+        """Emit a heap allocation `new` expression.
+
+        Args:
+            expr: The NewExpr AST node.
+
+        Returns:
+            A C expression string for the newly allocated pointer.
+
+        Raises:
+            InternalCompilerError: If type or symbol resolution fails, or if args mismatch.
+        """
+        # Allocate and return a non-null heap pointer for a single object.
+        new_ty = self.state.analysis.expr_types.get(id(expr))
+        if new_ty is None or not isinstance(new_ty, PointerType):
+            self.state.ice("[ICE-1200] missing inferred pointer type for new expression", node=expr)
+
+        base_ty = new_ty.inner
+        c_base = self.state.emitter.types.emit_type(base_ty)
+        c_ptr_ty = self.state.emitter.types.emit_pointer_type(base_ty)
+        tmp = self.state.emitter.names.fresh_tmp("new")
+
+        # Allocate memory
+        self.state.emitter.cleanup.emit_alloc_obj(c_ptr_ty, c_base, tmp)
+
+        # If no args and not an enum variant, zero-initialize
+        # (Enum variants need proper tag initialization even with no payload)
+        if not expr.args and not isinstance(base_ty, EnumType):
+            self.state.emitter.statements.emit_zero_init(tmp, c_base)
+            return tmp
+
+        # Initialize when needed
+        if isinstance(base_ty, StructType):
+            info = self.state.analysis.struct_infos.get((base_ty.module, base_ty.name))
+            if info is None:
+                self.state.ice(f"[ICE-1210] missing StructInfo for {base_ty.module}.{base_ty.name}", node=expr)
+            # Designated init by field order (positional args)
+            inits: List[Tuple[str, str]] = []
+            for field, arg in zip(info.fields, expr.args):
+                c_arg = self._emit_owned_expr_with_expected_type(arg, field.type)
+                inits.append((field.name, c_arg))
+            self.state.emitter.statements.emit_struct_init_from_fields(tmp, base_ty, inits)
+
+        elif isinstance(base_ty, EnumType):
+            # `new` for enums is only allowed via a variant constructor name.
+            assert self.state.current_module is not None
+            variant_name = expr.type_ref.name
+            sym = self.state._lookup_symbol(variant_name, self.state.current_module, module_path=expr.type_ref.module_path)
+            if sym is None or sym.kind != SymbolKind.ENUM_VARIANT:
+                self.state.ice("[ICE-1220] new enum allocation missing variant symbol (type checker invariant violated)",
+                         node=expr)
+
+            enum_info = self.state.analysis.enum_infos.get((base_ty.module, base_ty.name))
+            if enum_info is None:
+                self.state.ice(f"[ICE-1221] missing EnumInfo for {base_ty.module}.{base_ty.name}", node=expr)
+
+            vinfo = enum_info.variants.get(variant_name)
+            if vinfo is None:
+                self.state.ice(f"[ICE-1222] unknown enum variant '{variant_name}' for {base_ty.module}.{base_ty.name}",
+                         node=expr)
+
+            # Empty payload variant
+            if len(vinfo.field_types) == 0:
+                self.state.emitter.statements.emit_enum_variant_init(tmp, base_ty, variant_name, [])
+            else:
+                # Get field names from AST
+                variant_decl = self.state.find_variant_decl(base_ty.module, base_ty.name, variant_name)
+                if variant_decl is None:
+                    self.state.ice(f"[ICE-1223] missing variant decl for {base_ty.module}.{base_ty.name}.{variant_name}",
+                             node=expr)
+                if len(variant_decl.fields) != len(expr.args):
+                    self.state.ice(
+                        f"[ICE-1224] arity mismatch in new {variant_name}: expected {len(variant_decl.fields)}, got {len(expr.args)}",
+                        node=expr)
+                payload_inits: List[Tuple[str, str]] = []
+                for idx, (field, arg) in enumerate(zip(variant_decl.fields, expr.args)):
+                    c_arg = self._emit_owned_expr_with_expected_type(arg, vinfo.field_types[idx])
+                    payload_inits.append((field.name, c_arg))
+                self.state.emitter.statements.emit_enum_variant_init(tmp, base_ty, variant_name, payload_inits)
+
+        elif isinstance(base_ty, BuiltinType):
+            if len(expr.args) == 1:
+                c_arg = self._emit_expr(expr.args[0])
+                self.state.emitter.statements.emit_checked_pointer_assignment(tmp, c_base, c_arg)
+            else:
+                self.state.ice(
+                    f"[ICE-1230] new expression with multiple args not supported for builtin type '{format_type(base_ty)}'",
+                    node=expr)
+
+        else:
+            if len(expr.args) == 1:
+                c_arg = self._emit_expr(expr.args[0])
+                self.state.emitter.statements.emit_checked_pointer_assignment(tmp, c_base, c_arg)
+            else:
+                # multiple args not supported for other types
+                self.state.ice(
+                    f"[ICE-1231] new expression with multiple args not supported for type '{format_type(base_ty)}'",
+                    node=expr)
+
+        return tmp
+
+    def _emit_expr_with_expected_type(self, e: Expr, expected: Type) -> str:
+        """Emit expression with implicit type conversion to expected type.
+
+        Args:
+            e: The expression to emit.
+            expected: The expected type.
+
+        Returns:
+            A C expression string.
+
+        Raises:
+            InternalCompilerError: If null literal is assigned to invalid type.
+        """
+
+        # Special case: null literal
+        if isinstance(e, NullLiteral):
+            if isinstance(expected, (NullableType, PointerType)):
+                return self.state.emitter.types.emit_null_literal(expected)
+            self.state.ice(f"[ICE-1090] invalid expected type for null literal: '{format_type(expected)}'", node=e)
+
+        natural_ty = self.state.analysis.expr_types.get(id(e))
+        c_expr = self._emit_expr(e)
+        return self.convert._convert_expr_with_expected_type(c_expr, natural_ty, expected)
+
+    def _emit_owned_expr_with_expected_type(self, e: Expr, expected: Type) -> str:
+        """Emit expression for contexts that create a new owner.
+
+        This applies retain-on-copy when a place expression is copied into an
+        owned destination, while delegating regular type conversion to
+        `_emit_expr_with_expected_type`.
+
+        Args:
+            e: The expression to emit.
+            expected: The expected type.
+
+        Returns:
+            A C expression string.
+        """
+        natural_ty = self.state.analysis.expr_types.get(id(e))
+
+        if isinstance(e, NullLiteral):
+            return self._emit_expr_with_expected_type(e, expected)
+
+        c_expr = self._emit_expr(e)
+        place_like = self.state._is_place_expr(e) or self.lifetime._is_unwrap_cast_from_place(e)
+
+        if natural_ty is None or not place_like:
+            return self.convert._convert_expr_with_expected_type(c_expr, natural_ty, expected)
+
+        if self.state._types_equal(natural_ty, expected):
+            return self.lifetime._emit_copy_expr_with_retains(c_expr, expected)
+
+        if isinstance(expected, NullableType) and self.state._types_equal(expected.inner, natural_ty):
+            if self.state.emitter.types.is_niche_nullable(expected):
+                return c_expr
+            retained_inner = self.lifetime._emit_copy_expr_with_retains(c_expr, natural_ty)
+            return self.state.emitter.types.emit_some_value_for_nullable(expected, retained_inner)
+
+        return self.convert._convert_expr_with_expected_type(c_expr, natural_ty, expected)
+
+    def _emit_expr(self, expr: Expr, *, is_statement: bool = False) -> str:
+        """Emit an expression and return the C code.
+
+        Args:
+            expr: The expression to emit.
+            is_statement: True if the expression is used as a statement.
+
+        Returns:
+            A C expression string, or empty string if used as a statement and no-op.
+
+        Raises:
+            InternalCompilerError: If expression type is unsupported or resolution fails.
+        """
+        if isinstance(expr, IntLiteral):
+            if is_statement:
+                self.state.emitter.statements.emit_comment(f"int literal {expr.value}")
+                return ""
+            return self.state.emitter.values.emit_int_literal(expr.value)
+
+        if isinstance(expr, ByteLiteral):
+            if is_statement:
+                self.state.emitter.statements.emit_comment(f"byte literal {expr.value}")
+                return ""
+            return self.state.emitter.values.emit_byte_literal(expr.value)
+
+        elif isinstance(expr, StringLiteral):
+            if is_statement:
+                self.state.emitter.statements.emit_comment(f'string literal "{expr.value}"')
+                return ""
+            return self.state.emitter.values.emit_string_literal(expr.value)
+
+        elif isinstance(expr, BoolLiteral):
+            if is_statement:
+                self.state.emitter.statements.emit_comment(f"bool literal {expr.value}")
+                return ""
+            return self.state.emitter.values.emit_bool_literal(expr.value)
+
+        elif isinstance(expr, NullLiteral):
+            if is_statement:
+                self.state.emitter.statements.emit_comment("null literal")
+                return ""
+            # null literal handling in expression context depends on expected type
+            expected_ty = self.state.analysis.expr_types.get(id(expr))
+            if expected_ty is None:
+                self.state.ice("[ICE-1091] missing expected type for null literal", node=expr)
+            if isinstance(expected_ty, (NullableType, PointerType)):
+                return self.state.emitter.types.emit_null_literal(expected_ty)
+            self.state.ice(f"[ICE-1090] invalid expected type for null literal: '{format_type(expected_ty)}'", node=expr)
+
+        elif isinstance(expr, VarRef):
+            # Check if this is a function or top-level let reference and use mangled name
+            # CRITICAL: extern functions are NOT mangled (FFI boundary)
+            resolution = self.state.analysis.var_ref_resolution.get(id(expr))
+            if resolution is None:
+                self.state.ice(f"[ICE-1102] missing VarRef resolution for '{expr.name}'", node=expr)
+            if resolution is VarRefResolution.LOCAL:
+                if is_statement:
+                    self.state.emitter.statements.emit_comment(f"var ref {expr.name}")
+                    return ""
+                return self.state.emitter.values.emit_var_ref(self.state.emitter.names.mangle_identifier(expr.name))
+            if self.state.current_module:
+                sym = self.state._lookup_symbol(expr.name, self.state.current_module, module_path=expr.module_path)
+                if sym and sym.kind == SymbolKind.FUNC:
+                    if self.state._is_extern_function(sym):
+                        # Don't mangle extern functions
+                        return self.state.emitter.values.emit_var_ref(expr.name)
+                    else:
+                        # Mangle regular L0 functions
+                        return self.state.emitter.values.emit_var_ref(self.state.emitter.names.mangle_function_name(sym.module.name, expr.name))
+                elif sym and sym.kind == SymbolKind.LET:
+                    # Mangle top-level let bindings
+                    return self.state.emitter.values.emit_var_ref(self.state.emitter.names.mangle_let_name(sym.module.name, expr.name))
+                elif sym and sym.kind == SymbolKind.ENUM_VARIANT:
+                    # Bare zero-arg variant constructor (e.g. `Red` as alias for `Red()`)
+                    expr_type = self.state.analysis.expr_types.get(id(expr))
+                    if isinstance(expr_type, EnumType):
+                        return self.state.emitter.values.emit_variant_constructor_for_type(expr_type, expr.name, [])
+            self.state.ice(f"[ICE-1103] unresolved VarRef '{expr.name}' after type checking", node=expr)
+
+        elif isinstance(expr, UnaryOp):
+            c_operand = self._emit_expr(expr.operand)
+            if expr.op == "*":
+                operand_ty = self.state.analysis.expr_types.get(id(expr.operand))
+                if operand_ty is None:
+                    self.state.ice("[ICE-1247] missing type for dereference operand", node=expr.operand)
+                c_operand = self.convert._emit_checked_pointer_expr(c_operand, operand_ty, expr.operand)
+            return self.state.emitter.values.emit_unary_op(expr.op, c_operand)
+
+        elif isinstance(expr, BinaryOp):
+            return self._emit_binary_op(expr, expr.op, expr.left, expr.right)
+
+        elif isinstance(expr, CallExpr):
+
+            if isinstance(expr.callee, VarRef):
+                # Check for intrinsic first
+                intrinsic_result = self._try_emit_intrinsic(expr)
+                if intrinsic_result is not None:
+                    return intrinsic_result
+
+                # Check for constructor call (struct or enum variant)
+                constructor_init = self._try_emit_constructor(expr)
+                if constructor_init is not None:
+                    return constructor_init
+
+                # Regular function call - look up and mangle the name
+                # CRITICAL: extern functions are NOT mangled (FFI boundary)
+                if self.state.current_module:
+                    sym = self.state._lookup_symbol(expr.callee.name, self.state.current_module,
+                                              module_path=expr.callee.module_path)
+                    if sym and sym.kind == SymbolKind.FUNC:
+                        if self.state._is_extern_function(sym):
+                            # Don't mangle extern functions
+                            c_func_name = expr.callee.name
+                        else:
+                            # Mangle regular L0 functions
+                            c_func_name = self.state.emitter.names.mangle_function_name(sym.module.name, expr.callee.name)
+
+                        func_ty = sym.type if isinstance(sym.type, FuncType) else None
+                        if func_ty and len(func_ty.params) == len(expr.args):
+                            c_arg_parts = []
+                            for a, p in zip(expr.args, func_ty.params):
+                                c_a = self._emit_expr_with_expected_type(a, p)
+                                a_ty = self.state.analysis.expr_types.get(id(a))
+                                if a_ty and self.lifetime._should_materialize_arc_temp(a, a_ty):
+                                    c_a = self.lifetime._materialize_arc_temp(c_a, a_ty)
+                                c_arg_parts.append(c_a)
+                            c_args = ", ".join(c_arg_parts)
+                        else:
+                            c_arg_parts = []
+                            for a in expr.args:
+                                c_a = self._emit_expr(a)
+                                a_ty = self.state.analysis.expr_types.get(id(a))
+                                if a_ty and self.lifetime._should_materialize_arc_temp(a, a_ty):
+                                    c_a = self.lifetime._materialize_arc_temp(c_a, a_ty)
+                                c_arg_parts.append(c_a)
+                            c_args = ", ".join(c_arg_parts)
+                        return self.state.emitter.values.emit_function_call(c_func_name, c_args)
+
+                self.state.ice("[ICE-1100] unresolved function call target after type checking", node=expr)
+            else:
+                # Complex callee expression
+                c_callee = self._emit_expr(expr.callee)
+                c_arg_parts = []
+                for a in expr.args:
+                    c_a = self._emit_expr(a)
+                    a_ty = self.state.analysis.expr_types.get(id(a))
+                    if a_ty and self.lifetime._should_materialize_arc_temp(a, a_ty):
+                        c_a = self.lifetime._materialize_arc_temp(c_a, a_ty)
+                    c_arg_parts.append(c_a)
+                c_args = ", ".join(c_arg_parts)
+                return self.state.emitter.values.emit_function_call(f"({c_callee})", c_args)
+
+        elif isinstance(expr, IndexExpr):
+            base_ty = self.state.analysis.expr_types.get(id(expr.array))
+            if base_ty is None:
+                self.state.ice("[ICE-1898] missing type for index base", node=expr.array)
+
+            c_base = self._emit_expr(expr.array)
+            c_index = self._emit_expr(expr.index)
+            if self.state._pointer_type_or_none(base_ty) is not None:
+                return self.convert._emit_pointer_index_lvalue(c_base, c_index, base_ty, expr, "_RT_ACCESS_READ")
+
+            self.state.ice("[ICE-1899] IndexExpr not yet implemented", node=expr)
+
+        elif isinstance(expr, FieldAccessExpr):
+            c_obj = self._emit_expr(expr.obj)
+            # Determine if we need . or ->
+            obj_type = self.state.analysis.expr_types.get(id(expr.obj))
+            obj_ptr_ty = self.state._pointer_type_or_none(obj_type)
+            is_pointer = obj_ptr_ty is not None
+            if obj_ptr_ty is not None:
+                c_obj = self.convert._emit_checked_pointer_expr(c_obj, obj_ptr_ty, expr.obj)
+            return self.state.emitter.values.emit_field_access(c_obj, expr.field, is_pointer)
+
+        elif isinstance(expr, ParenExpr):
+            c_inner = self._emit_expr(expr.inner)
+            return self.state.emitter.values.emit_paren_expr(c_inner)
+
+
+        elif isinstance(expr, CastExpr):
+            # Emit inner expression first
+            c_inner = self._emit_expr(expr.expr)
+
+            assert self.state.current_module is not None
+            # Resolve source and destination types
+            src_ty = self.state.analysis.expr_types.get(id(expr.expr))
+            dst_ty = self.state._resolve_type_ref(expr.target_type, self.state.current_module)
+            if dst_ty is None:
+                self.state.ice("[ICE-1110] failed to resolve cast target type", node=expr.target_type)
+            c_dst = self.state.emitter.types.emit_type(dst_ty)
+
+            if src_ty == dst_ty:
+                return c_inner
+
+            # Checked narrowing cast (T -> T_small): emit runtime check + abort on overflow.
+            if (self.state._is_int_assignable(src_ty) and self.state._is_int_assignable(dst_ty) and
+                    self.state._int_type_size(src_ty) > self.state._int_type_size(dst_ty)):
+                return self.state.emitter.values.emit_checked_narrow_cast(c_dst, c_inner)
+
+            # Checked wrap cast (T -> T?): emit appropriate optional construction.
+            if isinstance(dst_ty, NullableType):
+                # Pointer-shaped optionals (niche): construct pointer or NULL.
+                if self.state.emitter.types.is_niche_nullable(dst_ty):
+                    return self.state.emitter.values.emit_cast(c_dst, c_inner)
+
+                # value-optional: construct wrapper
+                if isinstance(expr.expr, NullLiteral):
+                    return self.state.emitter.types.emit_null_literal(dst_ty)
+                if self.state._is_place_expr(expr.expr) and self.state.analysis.has_arc_data(dst_ty.inner):
+                    retained = self.lifetime._emit_copy_expr_with_retains(c_inner, dst_ty.inner)
+                    return self.state.emitter.types.emit_some_value_for_nullable(dst_ty, retained)
+                return self.state.emitter.types.emit_some_value_for_nullable(dst_ty, c_inner)
+
+            # Checked unwrap cast (T? -> T): emit a runtime check + abort on empty.
+            if isinstance(src_ty, NullableType) and dst_ty == src_ty.inner:
+                return self.convert._emit_unwrap(c_dst, c_inner, src_ty)
+
+            # Default: plain C cast
+            return self.state.emitter.values.emit_cast(c_dst, c_inner)
+
+        elif isinstance(expr, NewExpr):
+            return self._emit_new_expr(expr)
+
+        elif isinstance(expr, TryExpr):
+            c_inner = self._emit_expr(expr.expr)
+            src_ty = self.state.analysis.expr_types.get(id(expr.expr))
+
+            if not isinstance(src_ty, NullableType):
+                self.state.ice("[ICE-1130] TryExpr operand is not nullable (type checker invariant violated)", node=expr)
+
+            tmp = self.state.emitter.names.fresh_tmp("try")
+            c_tmp_ty = self.state.emitter.types.emit_type(src_ty)
+            self.state.emitter.statements.emit_temp_decl(c_tmp_ty, tmp, c_inner)
+
+            # Build the "return none" for the *enclosing* function.
+            if not isinstance(self.state._current_func_result, NullableType):
+                self.state.ice("[ICE-1131] TryExpr used in non-nullable function (type checker invariant violated)",
+                         node=expr)
+
+            ret_none = self.state.emitter.types.emit_null_literal(self.state._current_func_result)
+
+            needs_cleanup = (self.state._current_scope is not None
+                             and self.state._scope_chain_has_cleanup())
+
+            if self.state.emitter.types.is_niche_nullable(src_ty):
+                if needs_cleanup:
+                    self.state.emitter.statements.emit_if_header(self.state.emitter.values.emit_condition_pointer_null_check(tmp, "=="))
+                    self.state.emitter.statements.emit_block_start()
+                    self._emit_cleanup_for_return()
+                    self.state.emitter.statements.emit_return_stmt(ret_none)
+                    self.state.emitter.statements.emit_block_end()
+                else:
+                    self.state.emitter.statements.emit_try_check_niche(tmp, ret_none)
+                return tmp  # unwraps to the pointer itself
+
+            if needs_cleanup:
+                self.state.emitter.statements.emit_if_header(self.state.emitter.values.emit_null_check_eq(tmp))
+                self.state.emitter.statements.emit_block_start()
+                self._emit_cleanup_for_return()
+                self.state.emitter.statements.emit_return_stmt(ret_none)
+                self.state.emitter.statements.emit_block_end()
+            else:
+                self.state.emitter.statements.emit_try_check_value(tmp, ret_none)
+            extracted = self.state.emitter.statements.emit_try_extract_value(tmp)
+            if is_statement:
+                # In statement context, ARC payloads must remain a real value expression
+                # so ExprStmt can materialize/release them correctly.
+                if self.state.analysis.has_arc_data(src_ty.inner):
+                    return extracted
+                return self.state.emitter.values.emit_discard_expr(extracted)
+            return extracted
+
+        self.state.ice(f"[ICE-9149] unknown expression type: {type(expr).__name__}", node=expr)
+
+    def _emit_binary_op(
+            self, expr_node: Expr, expr_op: str, expr_left: Expr, expr_right: Expr, *, for_condition: bool = False
+    ) -> str:
+        """Emit code for a binary operation.
+
+        Args:
+            expr_node: The BinaryOp AST node.
+            expr_op: The operator string.
+            expr_left: The left operand.
+            expr_right: The right operand.
+            for_condition: Whether to preserve condition-context code generation.
+
+        Returns:
+            C code string for the operation.
+
+        Raises:
+            InternalCompilerError: If types are missing, mismatch, or operation is unsupported.
+        """
+        if expr_op in ("&&", "||"):
+            return self._emit_condition_value(expr_node)
+
+        # Special-case: nullable wrapper compared with null
+        if expr_op in ("==", "!=") and (isinstance(expr_left, NullLiteral) or isinstance(expr_right, NullLiteral)):
+            other = expr_right if isinstance(expr_left, NullLiteral) else expr_left
+            other_ty = self.state.analysis.expr_types.get(id(other))
+            c_other = self._emit_expr(other)
+
+            if isinstance(other_ty, NullableType) and not self.state.emitter.types.is_niche_nullable(other_ty):
+                # value-optional: (opt == null) <=> !opt.has_value
+                if expr_op == "==":
+                    return self.state.emitter.values.emit_null_check_eq(c_other)
+                else:  # expr_op == "!="
+                    return self.state.emitter.values.emit_null_check_ne(c_other)
+
+            # sanity check: should be pointer or pointer-optional
+            if not isinstance(other_ty, (PointerType, NullableType)):
+                self.state.ice(f"[ICE-1010] invalid null comparison: {c_other} {expr_op} NULL")
+
+            # pointer / pointer-optional: compare with NULL
+            if for_condition:
+                return self.state.emitter.values.emit_condition_pointer_null_check(c_other, expr_op)
+            return self.state.emitter.values.emit_pointer_null_check(c_other, expr_op)
+
+        c_left = self._emit_expr(expr_left)
+        c_right = self._emit_expr(expr_right)
+
+        left_ty = self.state.analysis.expr_types.get(id(expr_left))
+        right_ty = self.state.analysis.expr_types.get(id(expr_right))
+
+        if left_ty is None or right_ty is None:
+            self.state.ice("[ICE-1013] missing inferred type for binary operation", node=expr_node)
+
+        # String equality/relational lowering via runtime helpers.
+        if (
+                isinstance(left_ty, BuiltinType) and left_ty.name == "string"
+                and isinstance(right_ty, BuiltinType) and right_ty.name == "string"
+        ):
+            if self.lifetime._should_materialize_arc_temp(expr_left, left_ty):
+                c_left = self.lifetime._materialize_arc_temp(c_left, left_ty)
+            if self.lifetime._should_materialize_arc_temp(expr_right, right_ty):
+                c_right = self.lifetime._materialize_arc_temp(c_right, right_ty)
+            if expr_op in ("==", "!="):
+                c_cmp = self.state.emitter.values.emit_string_equals_call(c_left, c_right)
+                if expr_op == "!=":
+                    return self.state.emitter.values.emit_unary_op("!", c_cmp)
+                return c_cmp
+            if expr_op == "+":
+                return self.state.emitter.values.emit_string_concat_call(c_left, c_right)
+            if expr_op in ("<", "<=", ">", ">="):
+                if for_condition:
+                    return self.state.emitter.values.emit_condition_string_compare_call(expr_op, c_left, c_right)
+                return self.state.emitter.values.emit_string_compare_call(expr_op, c_left, c_right)
+
+        # UB-free integer operators
+        if expr_op in ("/", "%", "*", "+", "-"):
+            if not (self.state._is_int_assignable(left_ty) and self.state._is_int_assignable(right_ty)):
+                self.state.ice(f"[ICE-1011] non-int {expr_op} lowering not implemented")
+            if expr_op == "/":
+                return self.state.emitter.values.emit_checked_int_div(c_left, c_right)
+            elif expr_op == "%":
+                return self.state.emitter.values.emit_checked_int_mod(c_left, c_right)
+            elif expr_op == "*":
+                return self.state.emitter.values.emit_checked_int_mul(c_left, c_right)
+            elif expr_op == "+":
+                return self.state.emitter.values.emit_checked_int_add(c_left, c_right)
+            elif expr_op == "-":
+                return self.state.emitter.values.emit_checked_int_sub(c_left, c_right)
+            else:
+                return self.state.ice(f"[ICE-1012] {expr_op} lowering not implemented")
+
+        # Typechecker allows mixed int/byte for numeric comparisons and equality.
+        # Lower those directly instead of tripping the strict same-type ICE guard.
+        if (
+                expr_op in ("<", "<=", ">", ">=", "==", "!=")
+                and self.state._is_int_assignable(left_ty)
+                and self.state._is_int_assignable(right_ty)
+        ):
+            if for_condition:
+                return self.state.emitter.values.emit_condition_binary_op(expr_op, c_left, c_right)
+            return self.state.emitter.values.emit_binary_op(expr_op, c_left, c_right)
+
+        if left_ty != right_ty:
+            self.state.ice("[ICE-1014] type mismatch in binary operation", node=expr_node)
+
+        if not self.state._is_binary_op_enabled(left_ty):
+            self.state.ice(f"[ICE-1015] {expr_op} lowering not implemented for type '{format_type(left_ty)}'", node=expr_node)
+
+        if for_condition:
+            return self.state.emitter.values.emit_condition_binary_op(expr_op, c_left, c_right)
+        return self.state.emitter.values.emit_binary_op(expr_op, c_left, c_right)

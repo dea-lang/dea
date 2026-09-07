@@ -1,0 +1,159 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** C identifiers, enum tags, and temporary-name sequencing. */
+module c_emitter.names;
+
+import std.string;
+import std.text;
+import types;
+import c_emitter.state;
+
+/**
+ * Build an all-uppercase ASCII variant of an identifier-like string.
+ *
+ * @param text Input text.
+ * @return Uppercased ASCII text.
+ */
+func cem_upper_ascii(text: string) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        for (let i = 0; i < len_s(text); i = i + 1) {
+            let c = char_at_s(text, i);
+            if (c >= 'a' && c <= 'z') {
+                cb_append(cb, (c - 'a' + 'A') as byte);
+            } else {
+                cb_append(cb, c);
+            }
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Return whether a name conflicts with a C keyword or restricted identifier.
+ *
+ * @param name Identifier text to inspect.
+ * @return `true` if the name must be mangled.
+ */
+func cem_is_c_keyword(name: string) -> bool {
+    return name == "auto" || name == "break" || name == "case" || name == "char" ||
+           name == "const" || name == "continue" || name == "default" || name == "do" ||
+           name == "double" || name == "else" || name == "enum" || name == "extern" ||
+           name == "float" || name == "for" || name == "goto" || name == "if" ||
+           name == "inline" || name == "int" || name == "long" || name == "register" ||
+           name == "restrict" || name == "return" || name == "short" || name == "signed" ||
+           name == "sizeof" || name == "static" || name == "struct" || name == "switch" ||
+           name == "typedef" || name == "union" || name == "unsigned" || name == "void" ||
+           name == "volatile" || name == "while" || name == "alignas" || name == "alignof" ||
+           name == "atomic" || name == "bool" || name == "complex" || name == "imaginary" ||
+           name == "NULL" || name == "null" || name == "true" || name == "false" ||
+           name == "asm" || name == "offsetof" || name == "typeof";
+}
+
+/**
+ * Replace dots with underscores for C symbol names.
+ *
+ * @param module_name Module name to sanitize.
+ * @return C-safe module spelling.
+ */
+func cem_mangle_module(module_name: string) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        for (let i = 0; i < len_s(module_name); i = i + 1) {
+            let c = char_at_s(module_name, i);
+            if (c == '.') {
+                cb_append(cb, '_');
+            } else {
+                cb_append(cb, c);
+            }
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Mangle a struct name.
+ *
+ * @param module_name Defining module name.
+ * @param struct_name Struct name.
+ * @return Mangled C struct name.
+ */
+func cem_mangle_struct_name(module_name: string, struct_name: string) -> string {
+    return "l0_" + cem_mangle_module(module_name) + "_" + struct_name;
+}
+
+/**
+ * Mangle an enum name.
+ *
+ * @param module_name Defining module name.
+ * @param enum_name Enum name.
+ * @return Mangled C enum name.
+ */
+func cem_mangle_enum_name(module_name: string, enum_name: string) -> string {
+    return "l0_" + cem_mangle_module(module_name) + "_" + enum_name;
+}
+
+/**
+ * Mangle a function name.
+ *
+ * @param module_name Defining module name.
+ * @param func_name Function name.
+ * @return Mangled C function name.
+ */
+func cem_mangle_function_name(module_name: string, func_name: string) -> string {
+    return "l0_" + cem_mangle_module(module_name) + "_" + func_name;
+}
+
+/**
+ * Mangle a top-level let name.
+ *
+ * @param module_name Defining module name.
+ * @param let_name Let name.
+ * @return Mangled C identifier.
+ */
+func cem_mangle_let_name(module_name: string, let_name: string) -> string {
+    let safe = let_name;
+    if (cem_is_c_keyword(let_name)) {
+        safe = "l0_kw_" + let_name;
+    }
+    return "l0_" + cem_mangle_module(module_name) + "_" + safe;
+}
+
+/**
+ * Mangle a local identifier when needed.
+ *
+ * @param name Identifier to inspect.
+ * @return Original or suffixed identifier.
+ */
+func cem_mangle_identifier(name: string) -> string {
+    if (cem_is_c_keyword(name) || ends_with_s(name, "__v") || starts_with_s(name, "l0_") || starts_with_s(name, "L0_") ||
+        starts_with_s(name, "_")) {
+        return name + "__v";
+    }
+    return name;
+}
+
+/**
+ * Produce a fresh temporary identifier.
+ *
+ * @param self Emitter to update.
+ * @param kind Temp-kind prefix.
+ * @return Unique temp identifier.
+ */
+func cem_fresh_tmp(self: CEmitter*, kind: string) -> string {
+    self.tmp_counter = self.tmp_counter + 1;
+    return "l0_" + kind + "_" + int_to_string(self.tmp_counter);
+}
+
+/**
+ * Emit the C tag constant for an enum variant.
+ *
+ * @param enum_type Enum type to inspect.
+ * @param variant_name Variant name.
+ * @return Mangled enum-tag identifier.
+ */
+func cem_emit_enum_tag(enum_type: Type*, variant_name: string) -> string {
+    let c_enum_name = cem_mangle_enum_name(enum_type.module_name, enum_type.name);
+    return c_enum_name + "_" + variant_name;
+}

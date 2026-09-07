@@ -1,0 +1,38 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Prepared source input and its ownership lifecycle. */
+module build_driver.state;
+
+import source_paths;
+
+/**
+ * Prepared input bundle for build/run commands.
+ */
+struct BuildPreparedInput {
+    entry_module: string;
+    search_paths: SourceSearchPaths*;
+}
+
+/**
+ * Free a prepared input bundle.
+ *
+ * @param self Prepared input to free.
+ */
+func bd_prepared_input_free(self: BuildPreparedInput*) {
+    sp_free(self.search_paths);
+    drop self;
+}
+
+/**
+ * Free an optional prepared input bundle.
+ *
+ * @param self Optional prepared input.
+ */
+func bd_prepared_input_free_opt(self: BuildPreparedInput*?) {
+    if (self != null) {
+        bd_prepared_input_free(self as BuildPreparedInput*);
+    }
+}
