@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-09-01
+Version: 2026-09-07
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -686,3 +686,14 @@ language equality, L1 interface fingerprints, or object-metadata fingerprints.
 
 The shared contract is recorded in
 [ADR-0021](../../../docs/decisions/0021-runtime-hash-semantic-domains-and-stability.md).
+
+## Filesystem Metadata Width
+
+`std.fs::FileInfo` and `sys.rt::RtFileInfo` expose `long?` file sizes and modification seconds. `file_size` and
+`mtime_sec` return `long?` as well. Persistent host metadata must not inherit the 32-bit length limit of an in-memory
+string. Normalized modification nanoseconds remain `int?`, and whole-file string helpers and individual buffer transfers
+retain their existing `int` bounds.
+
+See [l1/docs/decisions/0037-wide-filesystem-metadata.md][filesystem-width].
+
+[filesystem-width]: ../decisions/0037-wide-filesystem-metadata.md

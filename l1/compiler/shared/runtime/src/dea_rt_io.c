@@ -152,11 +152,11 @@ struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path) {
     out.is_file = (st.st_mode & _S_IFREG) ? 1 : 0;
     out.is_dir = (st.st_mode & _S_IFDIR) ? 1 : 0;
 
-    if (st.st_size >= 0 && (__int64)(dea_int)st.st_size == st.st_size) {
-        out.size = (dea_opt_int){ .has_value = 1, .value = (dea_int)st.st_size };
+    if (st.st_size >= 0 && (__int64)(dea_long)st.st_size == st.st_size) {
+        out.size = (dea_opt_long){ .has_value = 1, .value = (dea_long)st.st_size };
     }
-    if ((time_t)(dea_int)st.st_mtime == st.st_mtime) {
-        out.mtime_sec = (dea_opt_int){ .has_value = 1, .value = (dea_int)st.st_mtime };
+    if ((time_t)(dea_long)st.st_mtime == st.st_mtime) {
+        out.mtime_sec = (dea_opt_long){ .has_value = 1, .value = (dea_long)st.st_mtime };
     }
     return out;
 #else
@@ -169,11 +169,11 @@ struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path) {
     out.is_file = S_ISREG(st.st_mode) ? 1 : 0;
     out.is_dir = S_ISDIR(st.st_mode) ? 1 : 0;
 
-    if (st.st_size >= 0 && (off_t)(dea_int)st.st_size == st.st_size) {
-        out.size = (dea_opt_int){ .has_value = 1, .value = (dea_int)st.st_size };
+    if (st.st_size >= 0 && (off_t)(dea_long)st.st_size == st.st_size) {
+        out.size = (dea_opt_long){ .has_value = 1, .value = (dea_long)st.st_size };
     }
-    if ((time_t)(dea_int)st.st_mtime == st.st_mtime) {
-        out.mtime_sec = (dea_opt_int){ .has_value = 1, .value = (dea_int)st.st_mtime };
+    if ((time_t)(dea_long)st.st_mtime == st.st_mtime) {
+        out.mtime_sec = (dea_opt_long){ .has_value = 1, .value = (dea_long)st.st_mtime };
 #if defined(__APPLE__)
         if ((long)(dea_int)st.st_mtimespec.tv_nsec == st.st_mtimespec.tv_nsec) {
             out.mtime_nsec = (dea_opt_int){ .has_value = 1, .value = (dea_int)st.st_mtimespec.tv_nsec };

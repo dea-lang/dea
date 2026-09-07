@@ -2,8 +2,8 @@
 
 ## Widen L1 filesystem metadata
 
-- Date: 2026-08-30
-- Status: Draft
+- Date: 2026-09-07
+- Status: Completed
 - Title: Widen L1 filesystem metadata to 64-bit extents and timestamp seconds
 - Kind: Feature
 - Severity: High
@@ -20,12 +20,11 @@
   - `l1/docs/reference/design-decisions.md`
   - `l1/docs/project-status.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/compiler_filesystem_test.l0`
-  - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py`
-  - `l1/compiler/stage1_l0/tests/l0c_lib_test.l0`
+  - `l1/compiler/stage1_l0/tests/io_runtime_test.py`
+  - `l1/compiler/stage1_l0/tests/fixtures/io_runtime/fs_metadata_main.l1`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
-- Repro: `make -C l1 test-stage1 TESTS="compiler_filesystem_test l0c_lib_test"`
+- Repro: `make -C l1 test-stage1 TESTS="io_runtime_test"`
 
 ## Summary
 
@@ -33,7 +32,7 @@ Correct the inherited L0-era width leak in L1 file metadata before the API harde
 become `long?`; normalized modification nanoseconds remain `int?`. Whole-file string helpers and individual buffer
 transfer counts remain intentionally `int`-bounded.
 
-## Current State
+## Original State
 
 `sys.rt::RtFileInfo` and `std.fs::FileInfo` use `int?` for `size` and `mtime_sec`. The runtime already receives wider
 host values through `off_t` or `_stat64`, then discards values that do not round-trip through `dea_int`. L1 itself has
@@ -62,7 +61,7 @@ native `long`, and no L0 file-handle ABI constrains the L1 surface.
   transfer quantities `int`-sized.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0037-wide-filesystem-metadata.md`
   - Rationale: L1 has native 64-bit integers, host files commonly exceed 2 GiB, and the current narrowing is an
     inherited bootstrap limitation rather than a compatibility contract.
 
@@ -74,3 +73,22 @@ native `long`, and no L0 file-handle ABI constrains the L1 surface.
 4. Nanoseconds remain normalized and `int?`.
 5. Whole-file reads still reject files that cannot fit in one Dea string through a structured error path once that
    consumer adopts the shared error model.
+
+## Completion Notes
+
+- Widened runtime and public metadata fields plus convenience accessors to `long?`; the C ABI now uses `dea_opt_long`.
+- Added compiled L1 coverage in `io_runtime_test.py` and `fs_metadata_main.l1` for exact sparse extents beyond 4 GiB,
+  pre-epoch and post-2038 timestamps, normalized nanoseconds, nullable missing metadata, and oversized read rejection.
+  Unsupported host extents and timestamp ranges are explicitly skipped. Windows pre-epoch fixtures are skipped because
+  the runtime's `_stat64` API supports 1970 through 3000, even though Python's Win32 FILETIME API can represent earlier
+  dates. Post-2038 coverage remains enabled on Windows.
+- Corrected the original test targets: compiler filesystem support uses the bootstrap L0 API; the user-facing L1
+  contract is exercised through compiled L1 runtime fixtures instead.
+- Whole-file reads still return `null` when the file exceeds `INT32_MAX`; structured errors remain owned by the separate
+  OS error and I/O results plan.
+- Updated current documentation and recorded the width decision in
+  [l1/docs/decisions/0037-wide-filesystem-metadata.md][metadata-adr].
+- Validation: `make -C l1 test-all` after `make -C l1 clean`, including the I/O runtime regressions and dedicated trace
+  sweep; staged ADR Impact, whitespace, and root pre-commit checks are required before committing.
+
+[metadata-adr]: ../../../../docs/decisions/0037-wide-filesystem-metadata.md

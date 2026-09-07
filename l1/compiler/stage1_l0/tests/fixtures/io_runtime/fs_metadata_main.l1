@@ -1,0 +1,45 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module fs_metadata_main;
+
+import sys.rt;
+import std.assert;
+import std.fs;
+import std.io;
+import std.system;
+
+/**
+ * Report host metadata through the runtime and public wide signatures.
+ */
+func main() -> int {
+    let path = argv(1);
+    let raw = rt_file_info(path);
+    let info = stat(path);
+    let size: long? = file_size(path);
+    let seconds: long? = mtime_sec(path);
+    let nanos: int? = info.mtime_nsec;
+    assert(info.exists && info.is_file && !info.is_dir, "regular file metadata");
+    assert(raw.size == size && info.size == size, "wide size wrappers");
+    assert(raw.mtime_sec == seconds && info.mtime_sec == seconds, "wide time wrappers");
+    assert(raw.mtime_nsec == nanos, "nanosecond wrapper");
+    assert(size != null && seconds != null, "representable metadata");
+    printl_l(size as long);
+    printl_l(seconds as long);
+    if (nanos != null) {
+        let ns = nanos as int;
+        assert(ns >= 0 && ns < 1000000000, "normalized nanoseconds");
+        printl_i(ns);
+    } else {
+        printl_i(-1);
+    }
+    if ((size as long) > 2147483647) {
+        assert(read_file(path) == null, "whole-file strings remain int-bounded");
+    }
+    let missing = stat(path + ".missing");
+    assert(!missing.exists && missing.size == null && missing.mtime_sec == null,
+           "missing metadata remains nullable");
+    return 0;
+}

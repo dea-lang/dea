@@ -23,8 +23,8 @@ struct RtFileInfo {
     exists: bool;
     is_file: bool;
     is_dir: bool;
-    size: int?;
-    mtime_sec: int?;
+    size: long?;
+    mtime_sec: long?;
     mtime_nsec: int?;
 }
 

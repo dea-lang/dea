@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-09-02
+Version: 2026-09-07
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -73,18 +73,26 @@ abstraction used by existing containers and raw-memory helpers; it is not the re
 
 **Imports:** `sys.rt`, `std.unit`
 
-| Type/Function | Signature                                                                                                       | Description                                             |
-| ------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `FileInfo`    | `struct FileInfo { exists: bool; is_file: bool; is_dir: bool; size: int?; mtime_sec: int?; mtime_nsec: int?; }` | Public file-metadata wrapper type.                      |
-| `exists`      | `func(path: string) -> bool`                                                                                    | Returns whether any filesystem object exists at `path`. |
-| `stat`        | `func(path: string) -> FileInfo`                                                                                | Returns path metadata with nullable size/timestamps.    |
-| `is_file`     | `func(path: string) -> bool`                                                                                    | Returns whether path exists and is a regular file.      |
-| `is_dir`      | `func(path: string) -> bool`                                                                                    | Returns whether path exists and is a directory.         |
-| `file_size`   | `func(path: string) -> int?`                                                                                    | Returns file size in bytes when available.              |
-| `mtime_sec`   | `func(path: string) -> int?`                                                                                    | Returns modification time in Unix seconds if available. |
-| `delete_file` | `func(path: string) -> Unit?`                                                                                   | Deletes a file; returns `null` on failure.              |
-| `read_file`   | `func(path: string) -> string?`                                                                                 | Reads entire file; `null` on error.                     |
-| `write_file`  | `func(path: string, data: string) -> Unit?`                                                                     | Writes entire file; `null` on error.                    |
+| Type/Function | Signature                                                                                                         | Description                                             |
+| ------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `FileInfo`    | `struct FileInfo { exists: bool; is_file: bool; is_dir: bool; size: long?; mtime_sec: long?; mtime_nsec: int?; }` | Public file-metadata wrapper type.                      |
+| `exists`      | `func(path: string) -> bool`                                                                                      | Returns whether any filesystem object exists at `path`. |
+| `stat`        | `func(path: string) -> FileInfo`                                                                                  | Returns path metadata with nullable size/timestamps.    |
+| `is_file`     | `func(path: string) -> bool`                                                                                      | Returns whether path exists and is a regular file.      |
+| `is_dir`      | `func(path: string) -> bool`                                                                                      | Returns whether path exists and is a directory.         |
+| `file_size`   | `func(path: string) -> long?`                                                                                     | Returns file size in bytes when available.              |
+| `mtime_sec`   | `func(path: string) -> long?`                                                                                     | Returns modification time in Unix seconds if available. |
+| `delete_file` | `func(path: string) -> Unit?`                                                                                     | Deletes a file; returns `null` on failure.              |
+| `read_file`   | `func(path: string) -> string?`                                                                                   | Reads entire file; `null` on error.                     |
+| `write_file`  | `func(path: string, data: string) -> Unit?`                                                                       | Writes entire file; `null` on error.                    |
+
+File sizes and modification seconds use nullable signed 64-bit `long` values. Modification nanoseconds remain `int?` in
+the normalized range 0 through 999,999,999 when supplied by the host. Whole-file reads remain bounded by `INT32_MAX`
+bytes and return `null` for oversized files; string lengths and buffer transfer counts remain `int`.
+
+Timestamp range also depends on the native metadata API. Windows uses `_stat64`, whose supported date range is 1970
+through 3000; pre-epoch timestamps are not supported by that API. POSIX hosts can preserve pre-epoch values when their
+`stat` implementation and filesystem support them.
 
 All path-taking operations treat an empty path as failure without invoking host filesystem APIs. A whole-file write
 succeeds only when both the write and stream close succeed.
@@ -627,7 +635,7 @@ executions.
 
 Low-level runtime FFI for strings, I/O, process/system, time, and errors. Also defines `RtTimeParts`
 (`struct RtTimeParts { sec: int; nsec: int; }`) and `RtFileInfo`
-(`struct RtFileInfo { exists: bool; is_file: bool; is_dir: bool; size: int?; mtime_sec: int?; mtime_nsec: int?; }`).
+(`struct RtFileInfo { exists: bool; is_file: bool; is_dir: bool; size: long?; mtime_sec: long?; mtime_nsec: int?; }`).
 
 ### `sys.real`
 

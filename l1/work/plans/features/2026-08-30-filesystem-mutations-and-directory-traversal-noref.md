@@ -25,7 +25,7 @@
   - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
-  - `l1/work/plans/features/2026-08-30-wide-filesystem-metadata-noref.md`
+  - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
   - `l1/work/plans/features/2026-08-30-os-error-and-io-results-noref.md`
 - Repro: `make -C l1 test-stage1 TESTS="filesystem_runtime_test directory_runtime_test"`
 

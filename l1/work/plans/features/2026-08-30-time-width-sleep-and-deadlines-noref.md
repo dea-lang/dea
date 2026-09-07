@@ -25,7 +25,7 @@
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l1/work/initiatives/0007-blocking-networking.md`
-  - `l1/work/plans/features/2026-08-30-wide-filesystem-metadata-noref.md`
+  - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
 - Repro: `make -C l1 test-stage1 TESTS="time_runtime_test l0c_lib_test"`
 
 ## Summary

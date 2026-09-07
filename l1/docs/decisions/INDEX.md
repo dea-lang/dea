@@ -38,3 +38,4 @@
 | [0034](0034-multi-unit-generated-c-retention-tree.md)                          | Multi-Unit Generated-C Retention Tree                          | Accepted   |
 | [0035](0035-cross-mode-generated-c-byte-identity.md)                           | Cross-Mode Generated-C Byte Identity                           | Accepted   |
 | [0036](0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md) | Ordered External Link Inputs and CLI-Only Dependency Ownership | Accepted   |
+| [0037](0037-wide-filesystem-metadata.md)                                       | Wide Filesystem Metadata                                       | Accepted   |

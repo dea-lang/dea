@@ -306,8 +306,8 @@ struct __deaM3sys2rtS10RtFileInfo {
     dea_bool exists;
     dea_bool is_file;
     dea_bool is_dir;
-    dea_opt_int size;
-    dea_opt_int mtime_sec;
+    dea_opt_long size;
+    dea_opt_long mtime_sec;
     dea_opt_int mtime_nsec;
 };
 #endif

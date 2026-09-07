@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-08-30
+Version: 2026-09-07
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -206,6 +206,10 @@ checks, including:
 - checked allocation provenance for raw, `new`, ARC, static, and explicitly registered foreign storage; generated drop
   cleanup is extent-aware, raw/new releases cannot be mixed, and `sys.memory` exposes unsafe foreign lifetime
   registration without transferring ownership
+
+Filesystem metadata now exposes `long?` sizes and modification seconds through `std.fs` and `sys.rt`, including
+host-supported sparse extents beyond 2 GiB and timestamps outside the 32-bit seconds range. Nanoseconds remain `int?`;
+whole-file string reads remain `int`-bounded and return `null` for oversized files.
 
 The stdlib currently includes the core bootstrap modules for I/O, strings, text, paths, filesystem access, time,
 randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.integer`, L1-only

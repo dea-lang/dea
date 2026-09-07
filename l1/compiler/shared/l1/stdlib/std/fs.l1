@@ -16,8 +16,8 @@ struct FileInfo {
     exists: bool;
     is_file: bool;
     is_dir: bool;
-    size: int?;
-    mtime_sec: int?;
+    size: long?;
+    mtime_sec: long?;
     mtime_nsec: int?;
 }
 
@@ -79,7 +79,7 @@ func is_dir(path: string) -> bool {
  * @param path Filesystem path to inspect.
  * @return File size in bytes, or `null` when unavailable.
  */
-func file_size(path: string) -> int? {
+func file_size(path: string) -> long? {
     return stat(path).size;
 }
 
@@ -89,7 +89,7 @@ func file_size(path: string) -> int? {
  * @param path Filesystem path to inspect.
  * @return Unix modification time in seconds, or `null` when unavailable.
  */
-func mtime_sec(path: string) -> int? {
+func mtime_sec(path: string) -> long? {
     return stat(path).mtime_sec;
 }
 

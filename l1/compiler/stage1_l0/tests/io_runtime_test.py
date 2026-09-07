@@ -209,8 +209,66 @@ def require_failure(mode: str, stdin_text: str, stderr_needle: str) -> None:
     assert stderr_needle in completed.stderr, f"{mode} stderr mismatch: {completed.stderr!r}"
 
 
+def require_wide_filesystem_metadata() -> None:
+    """Verify real host extents and timestamps through compiled L1 wrappers.
+
+    Unsupported sparse extents or timestamp ranges are reported as skips; all
+    successful host fixtures must round-trip exactly through L1.
+
+    Raises:
+        AssertionError: Compilation, execution, or metadata comparison fails.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "metadata.bin"
+        path.write_bytes(b"abc")
+
+        def check_metadata() -> None:
+            """Compare the compiled L1 metadata with the host's actual stat."""
+            host = path.stat()
+            completed = subprocess.run(
+                [str(compiler_path()), "--project-root",
+                 "compiler/stage1_l0/tests/fixtures/io_runtime",
+                 "--run", "fs_metadata_main", "--", str(path)],
+                cwd=L1_ROOT, capture_output=True, text=True, check=False,
+            )
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            values = [int(value) for value in completed.stdout.splitlines()]
+            assert values[:2] == [host.st_size, host.st_mtime_ns // 1_000_000_000], values
+            assert len(values) == 3, values
+            if values[2] != -1:
+                assert values[2] == host.st_mtime_ns % 1_000_000_000, values
+
+        check_metadata()
+        # Extending a file with truncate creates a sparse extent on supported hosts.
+        try:
+            with path.open("r+b") as stream:
+                stream.truncate((1 << 32) + 123)
+        except (OSError, OverflowError) as error:
+            print(f"SKIP sparse extent: {error}")
+        else:
+            assert path.stat().st_size == (1 << 32) + 123
+            check_metadata()
+        for seconds in (-2_208_988_800, 4_102_444_800):
+            # Python uses Win32 FILETIME, whose range exceeds the runtime's
+            # _stat64 API (1970 through 3000). Keep the post-2038 probe on Windows.
+            if os.name == "nt" and seconds < 0:
+                print(f"SKIP timestamp {seconds}: Windows _stat64 cannot represent pre-epoch dates")
+                continue
+            timestamp = seconds * 1_000_000_000 + 123_456_789
+            try:
+                os.utime(path, ns=(timestamp, timestamp))
+            except (OSError, OverflowError) as error:
+                print(f"SKIP timestamp {seconds}: {error}")
+                continue
+            if path.stat().st_mtime_ns // 1_000_000_000 != seconds:
+                print(f"SKIP timestamp {seconds}: host clamped the value")
+                continue
+            check_metadata()
+
+
 def main() -> int:
     require_filesystem_close_failure_contract()
+    require_wide_filesystem_metadata()
     require_run("delim", ",alpha beta;gamma", "\nalpha\nbeta\ngamma\n")
     require_run(
         "reads",

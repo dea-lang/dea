@@ -1,17 +1,17 @@
 # L1 Initiative 0005 - Filesystem and Stream I/O
 
-- Version: 2026-08-30
+- Version: 2026-09-07
 - Status: Active
 - Kind: Initiative
 - Open plans:
   - `l1/work/plans/features/2026-08-30-os-error-and-io-results-noref.md`
-  - `l1/work/plans/features/2026-08-30-wide-filesystem-metadata-noref.md`
   - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md`
   - `l1/work/plans/features/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md`
   - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
   - `l1/work/plans/features/2026-08-30-file-watch-api-design-noref.md`
-- Closed plans: (none)
+- Closed plans:
+  - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
 
 ## Summary
 
@@ -30,7 +30,8 @@ runtime boundary. It is not a literal mirror of C99 or of any one host API. This
 - `std.fs` exposes metadata, whole-file string reads and writes, and file deletion.
 - `std.io` exposes standard-stream byte transfers whose buffer indexes and counts are `int`.
 - L1 has no general file-handle API, so there is no legacy 32-bit offset contract to preserve.
-- `std.fs::FileInfo` and `sys.rt::RtFileInfo` still use `int?` for file size and modification seconds.
+- `std.fs::FileInfo` and `sys.rt::RtFileInfo` use `long?` for file size and modification seconds; normalized nanoseconds
+  remain `int?`.
 - Whole-file helpers are necessarily bounded by the `int` length of a Dea string.
 - `ByteArray` is fixed-sized, and general mutable growth is exposed only through lower-level `VectorBase` operations.
 - Filesystem failures currently collapse into `null`, `false`, or `-1`, losing operation-specific error information.
@@ -157,4 +158,4 @@ Spawned plan: [file-watch API design].
 [l1 roadmap]: ../../docs/roadmap.md
 [os errors and i/o results]: ../plans/features/2026-08-30-os-error-and-io-results-noref.md
 [streams and buffering]: ../plans/features/2026-08-30-streams-and-buffering-noref.md
-[wide filesystem metadata]: ../plans/features/2026-08-30-wide-filesystem-metadata-noref.md
+[wide filesystem metadata]: ../plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md
