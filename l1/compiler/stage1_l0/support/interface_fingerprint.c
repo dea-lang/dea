@@ -24,7 +24,7 @@ void l1c_interface_fingerprint_sip13_hex(
 void l1c_interface_fingerprint_sip13_hex_bytes(
     uint8_t *data,
     int32_t len,
-    uint8_t out_hex[16]
+    uint8_t *out_hex
 ) {
     l1c_interface_fingerprint_sip13_hex(data, len, out_hex);
 }

@@ -247,11 +247,12 @@ expressible in both L0 and L1:
 
 ```c
 void l1c_interface_fingerprint_sip13_hex_bytes(
-    uint8_t *data, int32_t len, uint8_t out_hex[16]);
+    uint8_t *data, int32_t len, uint8_t *out_hex);
 ```
 
-The adapter never modifies input bytes. It delegates to the existing const-input C bridge, which remains available to C
-callers:
+Both adapter buffer parameters use pointer spelling to match generated extern declarations under strict GCC
+array-parameter diagnostics. The caller must still provide storage for 16 output bytes. The adapter never modifies input
+bytes. It delegates to the existing const-input C bridge, which remains available to C callers:
 
 ```c
 void l1c_interface_fingerprint_sip13_hex(

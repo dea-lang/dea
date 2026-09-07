@@ -209,6 +209,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   repairs the compiler-private fingerprint declaration and splits Stage 1 fingerprint support from common filesystem and
   process support. The filename-only port now builds and runs with Clang. Committed Stage 2 delivery and the strict
   self-hosting fixed point remain pending in the self-hosting plan.
+- Bug Fix [2026-09-07-fingerprint-adapter-gcc-array-parameter-noref][fingerprint-gcc] aligns the fingerprint adapter
+  output declaration with generated C to repair strict GCC compilation on Linux and Windows.
 
 </details>
 
@@ -355,6 +357,7 @@ update to be promoted to an initiative or plan:
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [filesystem-io]: ../work/initiatives/0005-filesystem-and-stream-io.md
 [fingerprint-blocker]: ../work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
+[fingerprint-gcc]: ../work/plans/bug-fixes/closed/2026-09-07-fingerprint-adapter-gcc-array-parameter-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md

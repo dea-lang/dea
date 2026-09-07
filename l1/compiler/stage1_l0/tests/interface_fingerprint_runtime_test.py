@@ -278,7 +278,7 @@ void l1c_interface_fingerprint_sip13_hex(
     int32_t len,
     uint8_t out_hex[16]
 );
-void {bridge_name}(uint8_t *data, int32_t len, uint8_t out_hex[16]);
+void {bridge_name}(uint8_t *data, int32_t len, uint8_t *out_hex);
 
 {bridge_vectors(bridge_name)}
 
