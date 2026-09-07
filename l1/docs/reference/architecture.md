@@ -431,10 +431,13 @@ re-enter expression lowering. Splitting that group would require an algorithm ch
 remain below it; function-body setup and output orchestration enter it from above. `cleanup` and `module` are reserved
 L0 words, so those module responsibilities use the names `lifetime` and `output`.
 
-The L1-owned Stage 1 support translation unit under `compiler/stage1_l0/support/` supplies the small compiler-private C
-ABIs used for interface fingerprinting, canonical native temporary-parent validation, build/run workspace operations,
-compile-only publication, and standalone-link transaction filesystem operations. `compiler_filesystem.l0` is the single
-compiler-facing wrapper for the filesystem primitives; none of them extends the public runtime or standard library.
+The L1-owned support directory under `compiler/stage1_l0/support/` separates two compiler-private C translation units.
+`interface_fingerprint.c` supplies the fingerprint bridge for the L0-built Stage 1; an L1-built compiler obtains those
+symbols from the runtime archive. `compiler_support.c` supplies filesystem and process helpers for both stages,
+including canonical native temporary-parent validation, build/run workspaces, compile-only publication, and standalone
+link transactions. Stage 1 links both source files; an L1-built compiler links only common support alongside the
+runtime. `compiler_filesystem.l0` is the single compiler-facing wrapper for the filesystem primitives; none of them
+extends the public runtime or standard library.
 
 ## 6. Host and Toolchain Assumptions
 

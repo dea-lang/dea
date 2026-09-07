@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-08-23
+Version: 2026-09-07
 
 Status: Finalized
 
@@ -242,7 +242,16 @@ private implementation, tool metadata, and native-object contents. The exact rec
 Every `require` and `link` record stores the provider module's tagged whole-module fingerprint, repeated for each used
 provider symbol. These dependency values do not participate in the consumer's own digest.
 
-The Stage 1 compiler reaches the 64-bit SipHash implementation through the compiler-private C bridge:
+The compiler reaches the 64-bit SipHash implementation through a compiler-private adapter whose pointer types are
+expressible in both L0 and L1:
+
+```c
+void l1c_interface_fingerprint_sip13_hex_bytes(
+    uint8_t *data, int32_t len, uint8_t out_hex[16]);
+```
+
+The adapter never modifies input bytes. It delegates to the existing const-input C bridge, which remains available to C
+callers:
 
 ```c
 void l1c_interface_fingerprint_sip13_hex(
@@ -252,6 +261,12 @@ void l1c_interface_fingerprint_sip13_hex(
 The bridge writes exactly 16 lowercase digest bytes to caller-owned storage, with no NUL terminator or allocation. It is
 available in each L1 runtime variant for bootstrap/compiler parity but adds no L1 source-language or standard-library
 API.
+
+An L0-built Stage 1 links the bridge from `compiler/stage1_l0/support/interface_fingerprint.c` and the shared filesystem
+and process helpers from `compiler/stage1_l0/support/compiler_support.c`. An L1-built source port links only the common
+support unit and obtains fingerprinting from the L1 runtime archive. Source-file selection gives each bridge symbol one
+owner without conditional compilation. Both fingerprint implementations use the same const-input internal hashing
+helper, fixed key, and output encoding.
 
 ## Standalone Link Authority and Native Payloads
 

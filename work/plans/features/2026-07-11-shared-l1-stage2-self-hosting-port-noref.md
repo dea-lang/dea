@@ -39,7 +39,7 @@
   - `docs/decisions/0001-two-stage-architecture.md`
   - `l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md`
   - `l1/docs/roadmap.md`
-  - [l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
+  - [l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
 - Repro: `make -C l1 triple-test`
 
 ## Summary
@@ -61,7 +61,8 @@ implementation.
 1. `l1/compiler/stage1_l0/` is the only committed L1 compiler implementation. Its production sources are written in L0
    and built by the upstream L0 Stage 2 compiler.
 2. `l1/compiler/stage2_l1/` contains only a placeholder README.
-3. The settled 2026-09-07 Stage 1 production source tree contains 49,757 lines of `.l0` across 116 compiler modules.
+3. The settled 2026-09-07 Stage 1 production source tree contains 49,758 lines of `.l0` across 116 compiler modules,
+   including the fingerprint bridge repair.
 4. A 2026-07-11 feasibility audit copied that source tree into an ignored build directory, changed only the source
    suffixes from `.l0` to `.l1`, and compiled it through the repo-local L1 Stage 1 compiler without a language or source
    rewrite.
@@ -73,10 +74,10 @@ implementation.
    self-hosted fixed point. The initial Stage 2 compiler retains the current per-module C99 backend, source/interface
    import model, and multi-unit linking workflow.
 
-The historical audit established language expressiveness for bootstrapping. The current filename-only semantic check
-also passes, but the native support-ABI blocker below must be resolved before claiming a new native fixed point. The
-remaining work includes source lifecycle, stage identity, artifact construction, test ownership, deterministic
-fixed-point validation, CI, and documentation.
+The historical audit established language expressiveness for bootstrapping. The current filename-only source port again
+passes semantic checks and a native Clang build after the fingerprint bridge repair. The remaining work includes source
+lifecycle, stage identity, artifact construction, test ownership, deterministic fixed-point validation, CI, and
+documentation. A runnable native feasibility compiler does not establish a current self-hosting fixed point.
 
 ## Settled Stage 1 Source Baseline
 
@@ -89,14 +90,17 @@ L0 reserves `cleanup` and `module`, so the settled module names use `lifetime` a
 helper is `ld_prepare_verified_plan`; its former leading underscore would exclude it from L1 default exports. These
 source-layout details are part of the baseline and require no port-specific rewrite. A filename-only copy of all 116
 modules passes L1 semantic checking using the `l1c`, `util.demangler`, and `util.path` roots. The demangler retains its
-existing local-shadowing warning. The native Clang probe fails at `interface_fingerprint.c`: generated extern
-declarations use `dea_byte*` for the input, while `l1/compiler/shared/runtime/include/dea_rt.h` declares
-`const uint8_t*` for `l1c_interface_fingerprint_sip13_hex`. The same failure was reproduced by generating and compiling
-that module from the original pre-decomposition source tree, so this is an existing private C-support compatibility
-blocker. Its bounded repair is tracked by
-[l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker].
-Complete that prerequisite before the first native Stage 2 build, then resume the native build and fixed-point checks in
-this plan. The completed decomposition refactor does not claim a current native Stage 2 build or fixed point.
+existing local-shadowing warning. The private fingerprint bridge declaration conflict found by the decomposition probe
+is repaired by
+[l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker].
+The compiler-facing `_bytes` adapter has compatible generated extern declarations, while separate fingerprint and
+common-support translation units give each bridge symbol one owner. Stage 1 links both support sources; the L1-built
+port links only `compiler_support.c` and obtains fingerprinting from the runtime archive.
+
+The 2026-09-07 post-repair Clang build produces a runnable native compiler. Its `--version`, `--help`, `--check` of
+`hello`, and `--run` of `hello` pass; the run prints all 25 expected greetings. This clears the native-build
+prerequisite. The committed Stage 2 snapshot, stage identity, self-builds, and strict fixed point remain pending under
+this plan.
 
 ## Defaults Chosen
 
@@ -163,9 +167,10 @@ This plan adds no install, distribution, release, or docs-publishing interface.
 
 1. Use the completed Stage 1 source-decomposition plan and its recorded full validation as the port baseline.
 2. Record the settled production module and line-count inventory in this plan's implementation notes.
-3. Complete
-   [l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker],
-   then re-run the filename-only `.l1` native feasibility probe against the settled tree before committing the port.
+3. Retain the repair recorded in
+   [l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker],
+   including explicit support-source selection. Its filename-only native probe passes; repeat the probe if subsequent
+   source changes affect the baseline before committing the port.
 4. Confirm `make -C l1 test-all` passes and the worktree contains no generated source artifacts.
 
 ### Phase 2: Seed the Stage 2 source tree
@@ -185,7 +190,9 @@ This plan adds no install, distribution, release, or docs-publishing interface.
    behavior rather than introducing a parallel artifact layout.
 2. Make `build-stage2` depend on a current repo-local Stage 1 compiler and the L1 runtime archives.
 3. Invoke `l1c-stage1 --build -Rp compiler/stage2_l1/src -o <build>/bin/l1c-stage2.native l1c`, adding `--keep-c` when
-   requested.
+   requested. Compile `l1/compiler/stage1_l0/support/compiler_support.c` and pass its object through `--foreign-object`:
+   the runtime archive supplies both fingerprint bridge symbols, while common support supplies compiler-private
+   filesystem and process helpers. The Stage 1-only `support/interface_fingerprint.c` is excluded from the Stage 2 link.
 4. Generate POSIX and Windows Stage 2 wrappers that set repo-relative `L1_HOME` and `L1_BUILD_DIR` consistently with
    Stage 1.
 5. Add stage-aware alias selection so `use-dev-stage2` points `l1c` at `l1c-stage2` and `use-dev-stage1` remains the
@@ -317,7 +324,7 @@ The plan closes only when all of the following are true:
 5. Productization may proceed independently, but this plan does not depend on it.
 
 [architecture]: ../../../l1/docs/reference/architecture.md
-[fingerprint-blocker]: ../../../l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
+[fingerprint-blocker]: ../../../l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
 [l0-triple-bootstrap]: ../../../l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md
 [project-status]: ../../../l1/docs/project-status.md
 [roadmap]: ../../../l1/docs/roadmap.md

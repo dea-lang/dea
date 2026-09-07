@@ -56,6 +56,15 @@ void l1c_interface_fingerprint_sip13_hex(
     _dea_l1_interface_fingerprint_sip13_hex(data, len, out_hex);
 }
 
+/** Compiler-facing pointer adapter; input bytes remain read-only. */
+void l1c_interface_fingerprint_sip13_hex_bytes(
+    uint8_t *data,
+    int32_t len,
+    uint8_t out_hex[16]
+) {
+    l1c_interface_fingerprint_sip13_hex(data, len, out_hex);
+}
+
 /* Type tags for L1 runtime type identification */
 static const _rt_siphash_tag8_t _dea_sh_tag_bool   = { 0, 'b', 'o', 'o', 'l' };
 static const _rt_siphash_tag8_t _dea_sh_tag_byte   = { 0, 'i', 'n', 't', 8 };

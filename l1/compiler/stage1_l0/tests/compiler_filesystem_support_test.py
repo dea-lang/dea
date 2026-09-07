@@ -4,7 +4,7 @@
 # Copyright (c) 2026 gwz
 #
 
-"""Direct ABI coverage for the L1 Stage 1 compiler filesystem support."""
+"""Direct ABI coverage for the common L1 compiler filesystem support."""
 
 from __future__ import annotations
 
@@ -17,11 +17,8 @@ import tempfile
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 L1_ROOT = REPO_ROOT / "l1"
-RUNTIME_ROOT = L1_ROOT / "compiler" / "shared" / "runtime"
-RUNTIME_INCLUDE = RUNTIME_ROOT / "include"
-RUNTIME_INTERNAL = RUNTIME_ROOT / "internal"
-STAGE1_SUPPORT = (
-    L1_ROOT / "compiler" / "stage1_l0" / "support" / "interface_fingerprint.c"
+COMMON_SUPPORT = (
+    L1_ROOT / "compiler" / "stage1_l0" / "support" / "compiler_support.c"
 )
 
 
@@ -58,10 +55,8 @@ def compile_harness(compiler: str, source: Path, output: Path) -> None:
         "-Wextra",
         "-Werror",
         "-pedantic",
-        f"-I{RUNTIME_INCLUDE}",
-        f"-I{RUNTIME_INTERNAL}",
         str(source),
-        str(STAGE1_SUPPORT),
+        str(COMMON_SUPPORT),
         "-o",
         str(output),
     ]
@@ -83,14 +78,11 @@ def compile_harness(compiler: str, source: Path, output: Path) -> None:
 def harness_source() -> str:
     """Return the strict-C99 filesystem ABI harness source."""
 
-    return r'''#define SIPHASH_IMPLEMENTATION
-#include <stdint.h>
+    return r'''#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-
-#include "dea_siphash.h"
 
 #if defined(_WIN32)
 #define PATH_SEPARATOR "\\"

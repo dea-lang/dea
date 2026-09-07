@@ -40,7 +40,7 @@
   - `l1/docs/roadmap.md`
   - `l1/compiler/stage1_l0/README.md`
   - `work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md`
-  - [l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
+  - [l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
 - Repro: `make -C l1 test-all`
 
 ## Summary
@@ -464,9 +464,15 @@ reached per-module C compilation but failed on conflicting declarations of `l1c_
 generated extern uses `dea_byte*`, while the existing L1 runtime header uses `const uint8_t*`. Generating and compiling
 `interface_fingerprint` from the original pre-refactor source copy reproduced the same diagnostic at the same C
 declaration. This existing Stage 2 support-ABI blocker is tracked separately in
-[l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]. The
-required feasibility rerun is complete; this decomposition plan remains completed. Native Stage 2 delivery and runtime
-changes remain outside this refactor.
+[l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker].
+The required feasibility rerun is complete; this decomposition plan remains completed. Native Stage 2 delivery and
+runtime changes remain outside this refactor.
+
+The subsequent fingerprint bridge repair resolves both the declaration mismatch and duplicate bridge ownership at native
+link time. A fresh filename-only source copy now builds with Clang using common compiler support plus the L1 runtime
+archive, and the resulting compiler passes version/help, example analysis, and example execution checks. This clears the
+native feasibility blocker; committed Stage 2 delivery and a current self-hosting fixed point remain in the shared
+self-hosting plan.
 
 An independent review confirmed the export refinement and the pre-existing native blocker. Its documentation findings
 were accepted: the shared Stage 2 plan now describes the current per-module C backend and multi-unit linking, and the
@@ -525,4 +531,4 @@ matched again. Closure links and Markdown formatting require the staged document
 gates. All source snapshots, probes, inventories, and generated artifacts remain temporary or ignored; no Stage 2 source
 snapshot is committed by this plan.
 
-[fingerprint-blocker]: ../../bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
+[fingerprint-blocker]: ../../bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md

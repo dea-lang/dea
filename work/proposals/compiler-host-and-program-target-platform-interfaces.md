@@ -1,6 +1,6 @@
 # Compiler-Host and Program-Target Platform Interfaces Proposal
 
-Version: 2026-07-26
+Version: 2026-09-07
 
 Status: Proposed
 
@@ -41,8 +41,8 @@ belongs at a C runtime boundary. The implementation does not consistently provid
   hosted and OS headers and exposes private implementation types such as `FILE *` and `time_t`.
 - L0 Stage 2 and L1 Stage 1 build drivers encode temporary-root discovery, PID/time-based names, POSIX and `cmd.exe`
   quoting, executable lookup, null-device names, suffixes, and compiler-family argument conventions.
-- L1 compile-only adds four narrow filesystem operations in `l1/compiler/stage1_l0/support/interface_fingerprint.c`;
-  that translation unit selects Win32 or an unconditional POSIX branch and has no third provider.
+- L1 compiler filesystem and process operations live in `l1/compiler/stage1_l0/support/compiler_support.c`; that
+  translation unit selects Win32 or an unconditional POSIX branch and has no third provider.
 - L1 compile-only can inspect relocatable ELF, Mach-O, and selected PE/COFF objects. A target using another container
   cannot complete the current object-validation path even if its C compiler can consume generated source.
 

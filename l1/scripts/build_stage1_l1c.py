@@ -44,9 +44,10 @@ L0_RT_CHECK_BASIC_DEFINE = "L0_RT_CHECK_BASIC"
 L0_RT_UNCHECKED_DEFINE = "L0_RT_UNCHECKED"
 RT_QUARANTINE_MAX_BYTES_DEFINE = "_RT_QUARANTINE_MAX_BYTES"
 RT_QUARANTINE_MAX_COUNT_DEFINE = "_RT_QUARANTINE_MAX_COUNT"
-STAGE1_SUPPORT_SOURCE = (
-    REPO_ROOT / "compiler" / "stage1_l0" / "support" / "interface_fingerprint.c"
-).resolve()
+STAGE1_SUPPORT_SOURCES = tuple(
+    (REPO_ROOT / "compiler" / "stage1_l0" / "support" / name).resolve()
+    for name in ("interface_fingerprint.c", "compiler_support.c")
+)
 
 
 @dataclass(frozen=True)
@@ -131,9 +132,9 @@ def stage1_support_build_env(source_env: Mapping[str, str]) -> dict[str, str]:
 
 
 def stage1_support_args() -> list[str]:
-    """Return structured compiler arguments for the Stage 1 support source."""
+    """Return structured compiler arguments for both Stage 1 support units."""
 
-    return ["--c-source", str(STAGE1_SUPPORT_SOURCE)]
+    return [arg for source in STAGE1_SUPPORT_SOURCES for arg in ("--c-source", str(source))]
 
 
 def _has_c_define(cflags: str, name: str) -> bool:

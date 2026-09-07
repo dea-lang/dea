@@ -26,7 +26,7 @@ from build_stage1_l1c import (  # noqa: E402
     L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV,
     L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
     L1_COMPILER_RT_UNCHECKED_ENV,
-    STAGE1_SUPPORT_SOURCE,
+    STAGE1_SUPPORT_SOURCES,
     compiler_runtime_build_env,
     stage1_support_args,
     stage1_support_build_env,
@@ -167,9 +167,9 @@ def require_build_env_cases() -> None:
 
 
 def require_support_source_composition() -> None:
-    """Require compiler and test builds to link the support source exactly once."""
+    """Require compiler and test builds to link both support units exactly once."""
 
-    support_source = str(STAGE1_SUPPORT_SOURCE)
+    support_sources = [str(path) for path in STAGE1_SUPPORT_SOURCES]
     source = {"L0_CFLAGS": "-O2"}
     source_before = dict(source)
     result = stage1_support_build_env(source)
@@ -179,10 +179,11 @@ def require_support_source_composition() -> None:
         raise AssertionError("support-source composition changed C compiler options")
 
     test_env = build_repo_test_env("build/dea", L1_ROOT / "build" / "dea")
-    if support_source in test_env.get("L0_CFLAGS", "").split():
+    if any(path in test_env.get("L0_CFLAGS", "").split() for path in support_sources):
         raise AssertionError("Stage 1 test environment injected the support source into L0_CFLAGS")
-    if stage1_support_args() != ["--c-source", support_source]:
-        raise AssertionError("support source was not represented as one structured compiler argument")
+    expected_args = [arg for path in support_sources for arg in ("--c-source", path)]
+    if stage1_support_args() != expected_args:
+        raise AssertionError("support sources were not represented as structured compiler arguments")
 
 
 def require_make_help_parity() -> None:

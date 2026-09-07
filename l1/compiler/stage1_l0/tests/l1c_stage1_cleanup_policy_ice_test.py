@@ -19,7 +19,11 @@ import textwrap
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 L1_ROOT = REPO_ROOT / "l1"
-STAGE1_SUPPORT_SOURCE = L1_ROOT / "compiler" / "stage1_l0" / "support" / "interface_fingerprint.c"
+SCRIPTS_ROOT = L1_ROOT / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from build_stage1_l1c import stage1_support_args  # noqa: E402
 
 
 class CleanupPolicyIceFailure(RuntimeError):
@@ -85,8 +89,7 @@ def run_ice_case(case_name: str, source: str, expected_ice: str, artifact_dir: P
             "--project-root",
             "compiler/stage1_l0/src",
             "--run",
-            "--c-source",
-            str(STAGE1_SUPPORT_SOURCE),
+            *stage1_support_args(),
             str(source_path),
         ],
         cwd=L1_ROOT,

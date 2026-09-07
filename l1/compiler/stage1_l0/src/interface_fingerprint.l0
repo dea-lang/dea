@@ -27,12 +27,13 @@ import types;
 /**
  * Fill a caller-owned 16-byte buffer with the lowercase SipHash-1-3 digest
  * for the fixed L1 interface-fingerprint key.
+ * The compiler-facing adapter accepts L0/L1 pointer types and never modifies data.
  *
  * @param data Canonical bytes to hash.
  * @param len Canonical byte count.
  * @param out_hex Caller-owned 16-byte lowercase hexadecimal output buffer.
  */
-extern func l1c_interface_fingerprint_sip13_hex(data: byte*, len: int, out_hex: byte*) -> void;
+extern func l1c_interface_fingerprint_sip13_hex_bytes(data: byte*, len: int, out_hex: byte*) -> void;
 
 /** Canonical serialization domain. */
 let IFP_DOMAIN: string = "l1-interface-fingerprint-v1\n";
@@ -839,7 +840,7 @@ func ifp_hash_canonical_bytes(canonical: string) -> string {
         for (let i = 0; i < 16; i = i + 1) {
             cb_append(out, '0');
         }
-        l1c_interface_fingerprint_sip13_hex(
+        l1c_interface_fingerprint_sip13_hex_bytes(
             rt_string_bytes_ptr(canonical), len_s(canonical),
             vec_get(out.chars, 0) as byte*
         );

@@ -203,8 +203,12 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   earlier invalid arm.
 - Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] organized Stage 1 into 116
   modules with explicit state ownership and an acyclic import graph. Full normal and trace validation passed. The
-  filename-only `.l1` semantic checks pass; the existing private fingerprint-support C declaration mismatch is tracked
-  by Bug Fix [2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref][fingerprint-blocker].
+  filename-only `.l1` semantic checks pass.
+- Bug Fix
+  [l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
+  repairs the compiler-private fingerprint declaration and splits Stage 1 fingerprint support from common filesystem and
+  process support. The filename-only port now builds and runs with Clang. Committed Stage 2 delivery and the strict
+  self-hosting fixed point remain pending in the self-hosting plan.
 
 </details>
 
@@ -236,8 +240,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
-- Bug Fix [2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref][fingerprint-blocker] repairs the existing
-  compiler-private fingerprint C declaration conflict blocking native compilation of the filename-only Stage 2 port.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
@@ -352,7 +354,7 @@ update to be promoted to an initiative or plan:
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [filesystem-io]: ../work/initiatives/0005-filesystem-and-stream-io.md
-[fingerprint-blocker]: ../work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
+[fingerprint-blocker]: ../work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
