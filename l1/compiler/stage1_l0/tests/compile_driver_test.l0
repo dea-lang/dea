@@ -11,8 +11,10 @@ import std.io;
 import std.string;
 import std.vector;
 
-import cli_args;
-import compile_driver;
+import cli_args.model;
+import compile_driver.compile;
+import compile_driver.toolchain;
+import compile_driver.transaction;
 import compiler_filesystem;
 import interface_emitter;
 import interface_fingerprint;

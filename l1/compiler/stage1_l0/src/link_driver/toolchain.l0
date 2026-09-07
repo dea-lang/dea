@@ -1,0 +1,643 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver.toolchain;
+
+import std.assert;
+import std.fs;
+import std.path;
+import std.string;
+import std.system;
+import std.text;
+import std.vector;
+import util.diag;
+import util.log;
+import build_driver;
+import cli_args.model;
+import compile_driver.toolchain;
+import compiler_filesystem;
+import wrapper_emitter;
+import link_driver.model;
+import link_driver.transaction;
+
+/** Resolved wrapper include directory and exact public runtime header. */
+struct LinkRuntimeInclude {
+    directory: string;
+    header_path: string;
+}
+
+/** Free a resolved runtime include bundle. */
+func ld_runtime_include_free(runtime_include: LinkRuntimeInclude*) {
+    drop runtime_include;
+}
+
+/** Resolve and validate the runtime include directory and public header. */
+func ld_runtime_include(
+    opts: CliOptions*,
+    diags: DiagCollector*
+) -> LinkRuntimeInclude*? {
+    let include_opt = bd_runtime_include_dir(opts);
+    if (include_opt == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "cannot resolve the L1 runtime include directory for standalone linking",
+            ""
+        );
+        return null;
+    }
+    let include_dir = include_opt as string;
+    let header_path = join(include_dir, "dea_rt.h");
+    if (cfs_path_kind_follow(include_dir) != CFS_PATH_DIRECTORY ||
+        cfs_path_kind_follow(header_path) != CFS_PATH_REGULAR) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "runtime include directory '" + include_dir +
+                "' does not contain a readable regular 'dea_rt.h'",
+            include_dir
+        );
+        return null;
+    }
+    /* Bind the optional so a successful readability probe has an ARC owner. */
+    let header_text = read_file(header_path);
+    if (header_text == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "runtime include directory '" + include_dir +
+                "' does not contain a readable regular 'dea_rt.h'",
+            include_dir
+        );
+        return null;
+    }
+    return new LinkRuntimeInclude(include_dir, header_path);
+}
+
+/** Resolve and validate the selected runtime archive by exact path. */
+func ld_runtime_archive(
+    opts: CliOptions*,
+    diags: DiagCollector*
+) -> string? {
+    let library_opt = bd_runtime_lib_dir(opts);
+    if (library_opt == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "cannot resolve the L1 runtime library directory for standalone linking",
+            ""
+        );
+        return null;
+    }
+    let library_dir = library_opt as string;
+    let archive_path = join(library_dir, bd_runtime_archive_filename(opts));
+    if (cfs_path_kind_follow(library_dir) != CFS_PATH_DIRECTORY ||
+        cfs_path_kind_follow(archive_path) != CFS_PATH_REGULAR) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "selected runtime archive is not a regular file: " +
+                archive_path,
+            archive_path
+        );
+        return null;
+    }
+    return archive_path;
+}
+
+/**
+ * Resolve and validate the runtime inputs for the selected compiler family.
+ *
+ * Normal compiler families receive the selected archive as one exact path.
+ * TinyCC receives the repo-local variant-matched raw-object set when present,
+ * preserving the accepted cross-format compatibility boundary.
+ */
+func ld_runtime_link_inputs(
+    opts: CliOptions*,
+    compiler: string,
+    diags: DiagCollector*
+) -> StringVector*? {
+    let family = bd_compiler_flag_family(compiler);
+    if (family == "tcc") {
+        let runtime_objects = bd_runtime_object_paths(opts);
+        if (runtime_objects != null &&
+            bd_runtime_object_paths_exist(runtime_objects as StringVector*)) {
+            let valid_objects = true;
+            for (let i = 0; i < sv_size(runtime_objects as StringVector*);
+                 i = i + 1) {
+                let object_path = sv_get(
+                    runtime_objects as StringVector*, i);
+                if (cfs_path_kind_follow(object_path) != CFS_PATH_REGULAR) {
+                    ld_error(
+                        diags,
+                        "L1C-2106",
+                        "selected TinyCC runtime object is not a regular file: " +
+                            object_path,
+                        object_path
+                    );
+                    valid_objects = false;
+                }
+            }
+            if (valid_objects) {
+                return runtime_objects as StringVector*;
+            }
+            bd_runtime_object_paths_free(runtime_objects);
+            return null;
+        }
+        bd_runtime_object_paths_free(runtime_objects);
+    }
+
+    let archive = ld_runtime_archive(opts, diags);
+    if (archive == null) {
+        return null;
+    }
+    let result = sv_create(1);
+    sv_push(result, archive as string);
+    return result;
+}
+
+/** Resolve the selected host compiler before scratch allocation. */
+func ld_take_compiler(opts: CliOptions*, diags: DiagCollector*) -> string? {
+    let compiler = bd_take_c_compiler(opts);
+    if (compiler == null) {
+        ld_error(
+            diags,
+            "L1C-2106",
+            "no C compiler found for standalone linking: use '--c-compiler' or set L1_CC",
+            ""
+        );
+        return null;
+    }
+    return compiler;
+}
+
+/**
+ * Validate compiler-dependent external-link controls before native work.
+ *
+ * Library names and search paths retain the canonical compiler-driver
+ * spellings where supported; MSVC requires a different command layout and is
+ * rejected. Runtime search paths need a documented family-specific lowering
+ * and are deliberately unavailable on Windows.
+ */
+func ld_validate_external_link_operands(
+    operands: VectorBase*,
+    compiler: string,
+    diags: DiagCollector*
+) -> bool {
+    let family = bd_compiler_flag_family(compiler);
+    let supported_rpath_family = family == "gcc" || family == "cc" ||
+        family == "tcc";
+    let ok = true;
+    for (let i = 0; i < cli_link_operands_count(operands); i = i + 1) {
+        let operand = cli_link_operands_get(operands, i);
+        if (family == "msvc" &&
+            (ord(operand.kind) == ord(LOK_LIBRARY) ||
+             ord(operand.kind) == ord(LOK_LIBRARY_SEARCH))) {
+            ld_error(
+                diags,
+                "L1C-2072",
+                "canonical '-l' and '-L' external-library controls are " +
+                    "unsupported by the selected MSVC driver family",
+                operand.value
+            );
+            ok = false;
+            continue;
+        }
+        if (ord(operand.kind) != ord(LOK_RPATH)) {
+            continue;
+        }
+        if (bd_is_windows()) {
+            ld_error(
+                diags,
+                "L1C-2072",
+                "runtime library search paths are unsupported on Windows: " +
+                    operand.value,
+                operand.value
+            );
+            ok = false;
+            continue;
+        }
+        if (!supported_rpath_family) {
+            ld_error(
+                diags,
+                "L1C-2072",
+                "runtime library search path requires a recognized GCC/Clang, " +
+                    "exact 'cc', or TinyCC driver; selected compiler family is '" +
+                    family + "': " + operand.value,
+                operand.value
+            );
+            ok = false;
+            continue;
+        }
+        if (family == "tcc" && contains_s(operand.value, ",")) {
+            ld_error(
+                diags,
+                "L1C-2072",
+                "TinyCC cannot preserve a comma inside a runtime library " +
+                    "search path: " + operand.value,
+                operand.value
+            );
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+/**
+ * Return a host-driver argument that is unambiguously a filesystem path.
+ *
+ * Prefixing relative option/response-shaped names preserves the selected file
+ * while preventing the host driver from reinterpreting it. MSVC receives
+ * rooted forward-slash paths with native separators so `/path` is not parsed
+ * as an option.
+ */
+func ld_host_input_path(path: string, family: string) -> string {
+    if (family == "msvc" && len_s(path) > 0 &&
+        char_at_s(path, 0) == '/') {
+        return replace_s(path, "/", "\\");
+    }
+    if (!is_absolute(path) && len_s(path) > 0 &&
+        (char_at_s(path, 0) == '-' || char_at_s(path, 0) == '@')) {
+        return join(".", path);
+    }
+    return path;
+}
+
+/** Return whether one word is stable through the Windows `system()` shell. */
+func ld_windows_shell_word_safe(word: string) -> bool {
+    return bd_windows_shell_word_safe(word);
+}
+
+/** Validate exact Windows host-command words with one diagnostic contract. */
+func ld_validate_windows_shell_words(
+    words: StringVector*,
+    code: string,
+    message: string,
+    diags: DiagCollector*
+) -> bool {
+    return bd_validate_windows_shell_words(
+        words, code, message, diags);
+}
+
+/** Validate standalone values before Windows shell-backed scratch work. */
+func ld_validate_windows_shell_values(
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    runtime_inputs: StringVector*,
+    output_path: string,
+    plan: LinkPlan*,
+    diags: DiagCollector*
+) -> bool {
+    with (let values = sv_create(
+              8 + sv_size(extra_opts) + sv_size(runtime_inputs) +
+                  vec_size(plan.inputs)) =>
+              sv_free(values)) {
+        sv_push(values, compiler);
+        sv_push(values, runtime_include);
+        sv_push(values, output_path);
+        for (let option_i = 0; option_i < sv_size(extra_opts);
+             option_i = option_i + 1) {
+            sv_push(values, sv_get(extra_opts, option_i));
+        }
+        for (let i = 0; i < sv_size(runtime_inputs); i = i + 1) {
+            sv_push(values, sv_get(runtime_inputs, i));
+        }
+        for (let input_i = 0; input_i < vec_size(plan.inputs);
+             input_i = input_i + 1) {
+            sv_push(values, ld_plan_input_get(plan, input_i).value);
+        }
+        return ld_validate_windows_shell_words(
+            values,
+            "L1C-2106",
+            "host linking does not support '%', '!', double quotes, " +
+                "or line breaks in Windows host-command values",
+            diags
+        );
+    }
+}
+
+/** Validate build/run values that are known before source compilation. */
+func ld_validate_windows_build_run_values(
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    runtime_inputs: StringVector*,
+    output_path: string,
+    operands: VectorBase*,
+    diags: DiagCollector*
+) -> bool {
+    with (let values = sv_create(
+              8 + sv_size(extra_opts) + sv_size(runtime_inputs) +
+                  cli_link_operands_count(operands)) =>
+              sv_free(values)) {
+        sv_push(values, compiler);
+        sv_push(values, runtime_include);
+        sv_push(values, output_path);
+        for (let option_i = 0; option_i < sv_size(extra_opts);
+             option_i = option_i + 1) {
+            sv_push(values, sv_get(extra_opts, option_i));
+        }
+        for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
+             runtime_i = runtime_i + 1) {
+            sv_push(values, sv_get(runtime_inputs, runtime_i));
+        }
+        for (let operand_i = 0;
+             operand_i < cli_link_operands_count(operands);
+             operand_i = operand_i + 1) {
+            let operand = cli_link_operands_get(operands, operand_i);
+            /* The source target is replaced by generated object paths later. */
+            if (ord(operand.kind) != ord(LOK_DEA_OBJECT)) {
+                sv_push(values, operand.value);
+            }
+        }
+        return ld_validate_windows_shell_words(
+            values,
+            "L1C-2106",
+            "host linking does not support '%', '!', double quotes, " +
+                "or line breaks in Windows host-command values",
+            diags
+        );
+    }
+}
+
+/** Push the wrapper-only host compilation command. */
+func ld_push_wrapper_compile_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    extra_opts: StringVector*,
+    optimize: string?,
+    runtime_include: string,
+    wrapper_c: string,
+    wrapper_object: string
+) {
+    cd_push_object_compile_words(
+        words,
+        compiler,
+        family,
+        "unknown",
+        extra_opts,
+        optimize,
+        runtime_include,
+        "",
+        ld_host_input_path(wrapper_c, family),
+        ld_host_input_path(wrapper_object, family)
+    );
+}
+
+/** Push the final host-link command while retaining typed input order. */
+func ld_push_final_link_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    wrapper_object: string,
+    plan: LinkPlan*,
+    runtime_archive: string,
+    output_path: string
+) {
+    with (let runtime_inputs = sv_create(1) => sv_free(runtime_inputs)) {
+        sv_push(runtime_inputs, runtime_archive);
+        ld_push_final_link_words_with_runtime_inputs(
+            words,
+            compiler,
+            family,
+            wrapper_object,
+            plan,
+            runtime_inputs,
+            output_path
+        );
+    }
+}
+
+/** Push the final host-link command with prevalidated runtime inputs. */
+func ld_push_final_link_words_with_runtime_inputs(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    wrapper_object: string,
+    plan: LinkPlan*,
+    runtime_inputs: StringVector*,
+    output_path: string
+) {
+    sv_push(words, compiler);
+    /*
+     * Raw C options are intentionally wrapper-compile-only in link mode.
+     * Forwarding them here would let response files, object paths, library
+     * flags, or linker pass-through options bypass the typed input boundary.
+     */
+    sv_push(words, ld_host_input_path(wrapper_object, family));
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let input = ld_plan_input_get(plan, input_i);
+        if (ld_input_is_native(input)) {
+            sv_push(words, ld_host_input_path(
+                ld_input_link_path(input), family));
+        } else if (ord(input.kind) == ord(LOK_LIBRARY)) {
+            sv_push(words, "-l" + input.value);
+        } else if (ord(input.kind) == ord(LOK_LIBRARY_SEARCH)) {
+            sv_push(words, "-L" + input.value);
+        } else if (ord(input.kind) == ord(LOK_RPATH)) {
+            if (family == "tcc") {
+                sv_push(words, "-Wl,-rpath=" + input.value);
+            } else {
+                sv_push(words, "-Xlinker");
+                sv_push(words, "-rpath");
+                sv_push(words, "-Xlinker");
+                sv_push(words, input.value);
+            }
+        } else {
+            assert(ord(input.kind) == ord(LOK_LINK_ARG),
+                "[ICE-2114] unknown typed link input kind");
+            sv_push(words, input.value);
+        }
+    }
+    for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
+         runtime_i = runtime_i + 1) {
+        sv_push(words, ld_host_input_path(
+            sv_get(runtime_inputs, runtime_i), family));
+    }
+    if (family != "msvc") {
+        /*
+         * The authoritative sibling interface intentionally excludes private
+         * implementation use of `sys.real`. Supplying the host math library
+         * unconditionally keeps such separately compiled modules linkable.
+         */
+        sv_push(words, "-lm");
+    }
+    bd_push_output_flags(words, family, output_path);
+}
+
+/**
+ * Add the platform transport quoting required by `system()`.
+ *
+ * Windows `system()` delegates to `cmd.exe /c`. The extra outer quote pair
+ * lets cmd.exe consume that transport layer while preserving the inner quote
+ * pair around a compiler executable path that contains spaces.
+ */
+func ld_wrap_system_command(command: string, windows: bool) -> string {
+    if (windows) {
+        return "\"" + command + "\"";
+    }
+    return command;
+}
+
+/** Execute one captured host command and preserve its output. */
+func ld_run_host_command(
+    words: StringVector*,
+    stdout_path: string,
+    stderr_path: string,
+    code: string,
+    failure_message: string,
+    cfg: LogConfig*,
+    diags: DiagCollector*
+) -> bool {
+    if (bd_is_windows()) {
+        with (let shell_values = sv_create(sv_size(words) + 2) =>
+                  sv_free(shell_values)) {
+            for (let i = 0; i < sv_size(words); i = i + 1) {
+                sv_push(shell_values, sv_get(words, i));
+            }
+            sv_push(shell_values, stdout_path);
+            sv_push(shell_values, stderr_path);
+            if (!ld_validate_windows_shell_words(
+                    shell_values,
+                    code,
+                    failure_message +
+                        ": unsupported Windows shell expansion or quote character",
+                    diags)) {
+                return false;
+            }
+        }
+    }
+    log_info(cfg, bd_join_display_words(words));
+    let command = ld_wrap_system_command(
+        bd_join_shell_words(words) + " > " +
+            bd_shell_quote(stdout_path) + " 2> " +
+            bd_shell_quote(stderr_path),
+        bd_is_windows()
+    );
+    let rc = system(command);
+    let failed = rc != 0;
+    if (failed) {
+        ld_error(diags, code, failure_message, "");
+    }
+    bd_replay_compile_output(cfg, stdout_path, stderr_path, failed);
+    return !failed;
+}
+
+/** Validate the no-follow wrapper object endpoint before final linking. */
+func ld_validate_wrapper_object(
+    wrapper_path: string,
+    diags: DiagCollector*
+) -> bool {
+    if (cfs_path_kind(wrapper_path) != CFS_PATH_REGULAR) {
+        ld_error(
+            diags,
+            "L1C-2108",
+            "wrapper compiler did not produce a no-follow regular object: " +
+                wrapper_path,
+            wrapper_path
+        );
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Compile and link one verified plan through caller-supplied scratch paths.
+ *
+ * This common executor never allocates or cleans the transaction that owns
+ * `scratch`; standalone CLI orchestration and later build/run orchestration
+ * retain that responsibility.
+ */
+func ld_execute_plan(
+    plan: LinkPlan*,
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    runtime_inputs: StringVector*,
+    output_path: string,
+    scratch: LinkTransaction*,
+    cfg: LogConfig*,
+    diags: DiagCollector*
+) -> bool {
+    let wrapper_source = we_emit_wrapper(
+        plan.lifecycle_order, plan.entry_module);
+    if (write_file(scratch.wrapper_c, wrapper_source) == null) {
+        ld_error(
+            diags,
+            "L1C-2107",
+            "cannot write standalone-link wrapper: " + scratch.wrapper_c,
+            scratch.wrapper_c
+        );
+        return false;
+    }
+
+    with (
+        let compile_words = sv_create(20) => sv_free(compile_words),
+        let link_words = sv_create(20 + vec_size(plan.inputs)) =>
+            sv_free(link_words)
+    ) {
+        let family = bd_compiler_flag_family(compiler);
+        let optimize = bd_get_optimize_flag(family, extra_opts);
+        ld_push_wrapper_compile_words(
+            compile_words,
+            compiler,
+            family,
+            extra_opts,
+            optimize,
+            runtime_include,
+            scratch.wrapper_c,
+            scratch.wrapper_object
+        );
+        log_info(cfg, "Compiling standalone-link wrapper:");
+        if (!ld_run_host_command(
+                compile_words,
+                scratch.compile_stdout,
+                scratch.compile_stderr,
+                "L1C-2108",
+                "standalone-link wrapper compilation failed",
+                cfg,
+                diags)) {
+            return false;
+        }
+        if (!ld_validate_wrapper_object(scratch.wrapper_object, diags)) {
+            return false;
+        }
+
+        ld_push_final_link_words_with_runtime_inputs(
+            link_words,
+            compiler,
+            family,
+            scratch.wrapper_object,
+            plan,
+            runtime_inputs,
+            output_path
+        );
+        log_info(cfg, "Linking standalone executable:");
+        if (!ld_run_host_command(
+                link_words,
+                scratch.link_stdout,
+                scratch.link_stderr,
+                "L1C-2109",
+                "standalone host link failed",
+                cfg,
+                diags)) {
+            return false;
+        }
+    }
+
+    if (cfs_path_kind(output_path) != CFS_PATH_REGULAR) {
+        ld_error(
+            diags,
+            "L1C-2109",
+            "host linker did not produce a regular executable: " + output_path,
+            output_path
+        );
+        return false;
+    }
+    return true;
+}

@@ -1,0 +1,172 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver.model;
+
+import std.hashmap;
+import std.text;
+import std.vector;
+import util.diag;
+import cli_args.model;
+import mi_utils;
+import module_interface;
+
+/** One typed standalone-link input with optional verified Dea authority. */
+struct LinkInput {
+    kind: LinkOperandKind;
+    value: string;
+    interface_path: string?;
+    interface: ModuleInterface*?;
+    visit_state: int;
+}
+
+/** Verified standalone link set and its deterministic lifecycle order. */
+struct LinkPlan {
+    inputs: VectorBase*; /* LinkInput* in CLI encounter order */
+    modules_by_name: StringPtrMap*; /* module name -> borrowed LinkInput* */
+    lifecycle_order: StringVector*;
+    entry_module: string;
+}
+
+/** One explicit dependency-walk frame. */
+struct LinkVisitFrame {
+    input: LinkInput*;
+    next_import: int;
+}
+
+/** Create one pointer-element vector. */
+func ld_ptr_vec_create(capacity: int) -> VectorBase* {
+    return vec_create(sizeof(void*), capacity);
+}
+
+/** Append one pointer to a pointer-element vector. */
+func ld_ptr_vec_push(values: VectorBase*, value: void*) {
+    vec_push_ptr(values, value);
+}
+
+/** Read one pointer from a pointer-element vector. */
+func ld_ptr_vec_get(values: VectorBase*, index: int) -> void* {
+    return *(vec_get(values, index) as void**);
+}
+
+/** Free an owned vector of dependency-walk frames. */
+func ld_visit_frames_free(frames: VectorBase*) {
+    for (let i = 0; i < vec_size(frames); i = i + 1) {
+        let frame = ld_ptr_vec_get(frames, i) as LinkVisitFrame*;
+        drop frame;
+    }
+    vec_free(frames);
+}
+
+/** Remove and release the final string-vector entry. */
+func ld_string_vector_pop(values: StringVector*) {
+    let last = sv_size(values) - 1;
+    let slot = vec_get(values, last) as string*;
+    *slot = "";
+    values.length = last;
+}
+
+/** Emit one link-driver diagnostic without source coordinates. */
+func ld_error(diags: DiagCollector*, code: string, message: string, path: string) {
+    diag_error(diags, "l1c", code, message, path, 0, 0, 0, 0);
+}
+
+/** Create one typed link input, taking ownership of its optional interface. */
+func ld_input_create(
+    kind: LinkOperandKind,
+    value: string,
+    interface_path: string?,
+    interface: ModuleInterface*?
+) -> LinkInput* {
+    return new LinkInput(kind, value, interface_path, interface, 0);
+}
+
+/** Create one opaque foreign input. */
+func ld_foreign_input_create(object_path: string) -> LinkInput* {
+    return ld_input_create(LOK_FOREIGN_OBJECT, object_path, null, null);
+}
+
+/** Return the verified interface owned by one Dea input. */
+func ld_input_interface(input: LinkInput*) -> ModuleInterface* {
+    return input.interface as ModuleInterface*;
+}
+
+/** Free one typed link input. */
+func ld_input_free(input: LinkInput*) {
+    if (input.interface != null) {
+        mi_free(input.interface as ModuleInterface*);
+    }
+    drop input;
+}
+
+/** Free an owned vector of typed link inputs. */
+func ld_inputs_free(inputs: VectorBase*) {
+    for (let i = 0; i < vec_size(inputs); i = i + 1) {
+        ld_input_free(ld_ptr_vec_get(inputs, i) as LinkInput*);
+    }
+    vec_free(inputs);
+}
+
+/** Free a verified link plan and every typed input it owns. */
+func ld_plan_free(plan: LinkPlan*) {
+    ld_inputs_free(plan.inputs);
+    spm_free(plan.modules_by_name);
+    sv_free(plan.lifecycle_order);
+    drop plan;
+}
+
+/** Return one verified input by its encounter index. */
+func ld_plan_input_get(plan: LinkPlan*, index: int) -> LinkInput* {
+    return ld_ptr_vec_get(plan.inputs, index) as LinkInput*;
+}
+
+/** Return whether one typed link input names a caller-selected native file. */
+func ld_input_is_native(input: LinkInput*) -> bool {
+    return ord(input.kind) == ord(LOK_DEA_OBJECT) ||
+        ord(input.kind) == ord(LOK_FOREIGN_OBJECT);
+}
+
+/** Return the original caller-selected native path used by the host linker. */
+func ld_input_link_path(input: LinkInput*) -> string {
+    return input.value;
+}
+
+/** Join canonical module names for deterministic diagnostics. */
+func ld_join_module_names(names: StringVector*) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            if (i > 0) {
+                cb_append_s(out, ", ");
+            }
+            cb_append_s(out, sv_get(names, i));
+        }
+        return cb_to_string(out);
+    }
+}
+
+/** Format the canonical cycle ending at `module_name`. */
+func ld_format_cycle(stack: StringVector*, module_name: string) -> string {
+    let start = 0;
+    for (let i = 0; i < sv_size(stack); i = i + 1) {
+        if (sv_get(stack, i) == module_name) {
+            start = i;
+            break;
+        }
+    }
+
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = start; i < sv_size(stack); i = i + 1) {
+            if (i > start) {
+                cb_append_s(out, " -> ");
+            }
+            cb_append_s(out, sv_get(stack, i));
+        }
+        if (sv_size(stack) > start) {
+            cb_append_s(out, " -> ");
+        }
+        cb_append_s(out, module_name);
+        return cb_to_string(out);
+    }
+}

@@ -1,0 +1,448 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module type_resolve.const_value;
+
+import std.hashset;
+import std.hashmap;
+import std.string;
+import std.text;
+import util.diag;
+import util.numbers;
+import ast;
+import driver.state;
+import name_resolver.state;
+import types;
+import type_resolve.lookup;
+
+/**
+ * Defines compile-time constant value kinds known to semantic resolution.
+ */
+enum ConstValueKind {
+    CV_INT;
+    CV_OTHER_INT;
+    CV_BIGINT;
+    CV_BYTE;
+    CV_BOOL;
+    CV_STRING;
+    CV_FLOAT;
+    CV_DOUBLE;
+    CV_NULL;
+}
+
+/**
+ * Represents one evaluated compile-time constant value.
+ */
+struct ConstValue {
+    kind: ConstValueKind;
+    int_value: int;
+    bool_value: bool;
+    text_value: string;
+    base_value: int;
+}
+
+/**
+ * Describes a precise failure encountered while evaluating a constant cast.
+ */
+struct ConstEvalFailure {
+    code: string;
+    message: string;
+    filename: string;
+    span: Span;
+}
+
+/**
+ * Carries semantic context and per-evaluation cache for const evaluation.
+ */
+struct ConstEvalContext {
+    driver_state: DriverState*;
+    tables: SignatureTables*;
+    nr: NameResolution*;
+    diags: DiagCollector*;
+    cache: StringPtrMap*;
+    visiting: StringSet*;
+    failure: ConstEvalFailure*?;
+}
+
+/**
+ * Create a compile-time constant value.
+ *
+ * @param kind Constant value kind.
+ * @param int_value Integer payload for integer-like values.
+ * @param bool_value Boolean payload.
+ * @param text_value Text payload for string, real, and bigint values.
+ * @param base_value Literal base for bigint values.
+ * @return New constant value.
+ */
+func tr_const_value_new(kind: ConstValueKind, int_value: int, bool_value: bool, text_value: string,
+                        base_value: int) -> ConstValue* {
+    return new ConstValue(kind, int_value, bool_value, text_value, base_value);
+}
+
+/**
+ * Clone a compile-time constant value.
+ *
+ * @param value Value to clone.
+ * @return New owned value with the same payload.
+ */
+func tr_const_value_clone(value: ConstValue*) -> ConstValue* {
+    return new ConstValue(value.kind, value.int_value, value.bool_value, value.text_value, value.base_value);
+}
+
+/**
+ * Free a compile-time constant value.
+ *
+ * @param value Value to release.
+ */
+func tr_const_value_free(value: ConstValue*) {
+    drop value;
+}
+
+/**
+ * Create a const-evaluation context.
+ *
+ * @param driver_state Parsed driver state.
+ * @param tables Signature tables available to semantic resolution.
+ * @param nr Name-resolution tables.
+ * @param diags Diagnostic collector.
+ * @return New const-evaluation context.
+ */
+func tr_const_eval_context_create(driver_state: DriverState*, tables: SignatureTables*, nr: NameResolution*,
+                                  diags: DiagCollector*) -> ConstEvalContext* {
+    return new ConstEvalContext(driver_state, tables, nr, diags, spm_create(), ss_create(), null);
+}
+
+/**
+ * Free a const-evaluation context and cached values.
+ *
+ * @param self Context to release.
+ */
+func tr_const_eval_context_free(self: ConstEvalContext*) {
+    for (let i = 0; i < spm_capacity(self.cache); i = i + 1) {
+        if (spm_slot_occupied(self.cache, i)) {
+            tr_const_value_free(spm_slot_value(self.cache, i) as ConstValue*);
+        }
+    }
+    spm_free(self.cache);
+    ss_free(self.visiting);
+    if (self.failure != null) {
+        let failure = self.failure as ConstEvalFailure*;
+        drop failure;
+    }
+    drop self;
+}
+
+/**
+ * Record the first precise constant-evaluation failure.
+ *
+ * @param self Evaluation context to update.
+ * @param code Diagnostic code, or empty when another declaration or resolver owns the diagnostic.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span.
+ */
+func tr_const_eval_set_failure(self: ConstEvalContext*, code: string, message: string, filename: string, span: Span) {
+    if (self.failure == null) {
+        self.failure = new ConstEvalFailure(code, message, filename, span);
+    }
+}
+
+/**
+ * Return whether constant evaluation encountered a precise invalid expression.
+ *
+ * @param self Evaluation context to inspect.
+ * @return `true` after an invalid cast or failed cast-target resolution.
+ */
+func tr_const_eval_failed(self: ConstEvalContext*) -> bool {
+    return self.failure != null;
+}
+
+/**
+ * Emit the precise failure retained by constant evaluation.
+ *
+ * @param self Evaluation context carrying the failure.
+ */
+func tr_const_eval_report_failure(self: ConstEvalContext*) {
+    if (self.failure == null) {
+        return;
+    }
+    let failure = self.failure as ConstEvalFailure*;
+    if (failure.code != "") {
+        tr_diag_error(self.diags, failure.code, failure.message, failure.filename, failure.span);
+    }
+}
+
+/**
+ * Return whether a constant value carries a 32-bit `int` payload.
+ *
+ * @param value Value to inspect.
+ * @return `true` for integer-like values.
+ */
+func tr_const_value_is_integer_like(value: ConstValue*) -> bool {
+    return ord(value.kind) == ord(CV_INT) || ord(value.kind) == ord(CV_BYTE) ||
+           ord(value.kind) == ord(CV_OTHER_INT);
+}
+
+/**
+ * Create a boolean constant value.
+ *
+ * @param value Boolean payload.
+ * @return New boolean constant value.
+ */
+func tr_const_bool_value(value: bool) -> ConstValue* {
+    return tr_const_value_new(CV_BOOL, 0, value, "", 0);
+}
+
+/**
+ * Create a default integer constant value.
+ *
+ * @param value Integer payload.
+ * @return New integer constant value.
+ */
+func tr_const_int_value(value: int) -> ConstValue* {
+    return tr_const_value_new(CV_INT, value, false, "", 0);
+}
+
+/**
+ * Return whether a constant value belongs to the builtin integer family.
+ *
+ * @param value Value to inspect.
+ * @return `true` for values backed by a 32-bit `int` payload or bigint text.
+ */
+func tr_const_value_is_integer(value: ConstValue*) -> bool {
+    return tr_const_value_is_integer_like(value) || ord(value.kind) == ord(CV_BIGINT);
+}
+
+/**
+ * Return whether a type is one of the builtin integer types.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for builtin integer types.
+ */
+func tr_type_is_integer(ty: Type*) -> bool {
+    return ord(ty.kind) == ord(TY_BUILTIN) &&
+        (ty.name == "tiny" || ty.name == "byte" || ty.name == "short" || ty.name == "ushort" ||
+         ty.name == "int" || ty.name == "uint" || ty.name == "long" || ty.name == "ulong");
+}
+
+/**
+ * Return a human-readable builtin integer range.
+ *
+ * @param ty Integer type.
+ * @return Inclusive range text.
+ */
+func tr_builtin_int_range(ty: Type*) -> string {
+    if (ty.name == "tiny") return "-128..127";
+    if (ty.name == "byte") return "0..255";
+    if (ty.name == "short") return "-32768..32767";
+    if (ty.name == "ushort") return "0..65535";
+    if (ty.name == "int") return "-2147483648..2147483647";
+    if (ty.name == "uint") return "0..4294967295";
+    if (ty.name == "long") return "-9223372036854775808..9223372036854775807";
+    if (ty.name == "ulong") return "0..18446744073709551615";
+    return "int";
+}
+
+/**
+ * Format an integer constant value for diagnostics.
+ *
+ * @param value Integer constant value.
+ * @return Source-like value text.
+ */
+func tr_const_integer_text(value: ConstValue*) -> string {
+    if (ord(value.kind) == ord(CV_BIGINT)) {
+        return bigint_to_string(value.text_value, value.base_value);
+    }
+    return int_to_string(value.int_value);
+}
+
+/**
+ * Return whether an integer constant fits a target integer type.
+ *
+ * @param value Integer constant value.
+ * @param target Target integer type.
+ * @return `true` when the value is representable by `target`.
+ */
+func tr_const_integer_fits(value: ConstValue*, target: Type*) -> bool {
+    if (ord(value.kind) == ord(CV_BIGINT)) {
+        return bigint_fits_builtin(target, value.text_value, value.base_value);
+    }
+    return int_value_fits_builtin(target, value.int_value);
+}
+
+/**
+ * Reclassify a checked integer value for its cast target.
+ *
+ * @param value Source integer value known to fit.
+ * @param target Target integer type.
+ * @return Target-typed constant value.
+ */
+func tr_const_integer_for_target(value: ConstValue*, target: Type*) -> ConstValue* {
+    if (ord(value.kind) == ord(CV_BIGINT)) {
+        return tr_const_value_clone(value);
+    }
+    if (target.name == "int") {
+        return tr_const_value_new(CV_INT, value.int_value, false, "", 0);
+    }
+    if (target.name == "byte") {
+        return tr_const_value_new(CV_BYTE, value.int_value, false, "", 0);
+    }
+    return tr_const_value_new(CV_OTHER_INT, value.int_value, false, target.name, 0);
+}
+
+/**
+ * Normalize real-literal spelling for a target real type.
+ *
+ * @param text Canonical source spelling.
+ * @param target_name `float` or `double`.
+ * @return Spelling carrying the target type's suffix convention.
+ */
+func tr_real_text_for_target(text: string, target_name: string) -> string {
+    if (target_name == "float") {
+        if (ends_with_s(text, "f")) {
+            return text;
+        }
+        return text + "f";
+    }
+    if (ends_with_s(text, "f")) {
+        return slice_s(text, 0, len_s(text) - 1);
+    }
+    return text;
+}
+
+/**
+ * Reclassify a raw initializer value using a resolved declaration type.
+ *
+ * @param value Raw evaluated initializer value.
+ * @param ty Resolved declaration type.
+ * @return New value adjusted to the declared scalar kind, or `null` when not representable.
+ */
+func tr_const_value_for_type(value: ConstValue*, ty: Type*) -> ConstValue*? {
+    if (ord(ty.kind) != ord(TY_BUILTIN)) {
+        return null;
+    }
+    if (ty.name == "int") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_INT, value.int_value, false, "", 0);
+        }
+    } else if (ty.name == "byte") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_BYTE, value.int_value, false, "", 0);
+        }
+    } else if (ty.name == "tiny" || ty.name == "short" || ty.name == "ushort" ||
+               ty.name == "uint" || ty.name == "long" || ty.name == "ulong") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_OTHER_INT, value.int_value, false, ty.name, 0);
+        }
+        if (ord(value.kind) == ord(CV_BIGINT) && bigint_fits_builtin(ty, value.text_value, value.base_value)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (ty.name == "bool") {
+        if (ord(value.kind) == ord(CV_BOOL)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (ty.name == "string") {
+        if (ord(value.kind) == ord(CV_STRING)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (ty.name == "float") {
+        if (ord(value.kind) == ord(CV_FLOAT)) {
+            return tr_const_value_clone(value);
+        }
+        if (ord(value.kind) == ord(CV_DOUBLE)) {
+            return tr_const_value_new(CV_FLOAT, 0, false, tr_real_text_for_target(value.text_value, "float"), 0);
+        }
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_FLOAT, 0, false, int_to_string(value.int_value), 0);
+        }
+    } else if (ty.name == "double") {
+        if (ord(value.kind) == ord(CV_DOUBLE) || ord(value.kind) == ord(CV_FLOAT)) {
+            return tr_const_value_new(CV_DOUBLE, 0, false, tr_real_text_for_target(value.text_value, "double"), 0);
+        }
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_DOUBLE, 0, false, int_to_string(value.int_value), 0);
+        }
+    }
+    return null;
+}
+
+/**
+ * Return the simple builtin type name from a const declaration annotation.
+ *
+ * @param decl Const declaration to inspect.
+ * @return Builtin type name, or empty string when the annotation is not simple.
+ */
+func tr_const_decl_builtin_name(decl: LetDecl*) -> string {
+    if (decl.type_ref == null) {
+        return "";
+    }
+    let tref = decl.type_ref as TypeRef*;
+    if (tref.module_path != null || tref.name_qualifier != null || tref.func_params != null ||
+        tref.func_result != null || tref.suffixes != null || tref.pointer_depth != 0 || tref.is_nullable) {
+        return "";
+    }
+    if (type_is_builtin_name(tref.name)) {
+        return tref.name;
+    }
+    return "";
+}
+
+/**
+ * Reclassify a raw initializer value using its const declaration annotation.
+ *
+ * @param value Raw evaluated initializer value.
+ * @param decl Const declaration carrying the explicit type annotation.
+ * @return New value adjusted to the declared scalar kind, or `null` when not representable.
+ */
+func tr_const_value_for_decl(value: ConstValue*, decl: LetDecl*) -> ConstValue*? {
+    let builtin = tr_const_decl_builtin_name(decl);
+    if (builtin == "int") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_INT, value.int_value, false, "", 0);
+        }
+    } else if (builtin == "byte") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_BYTE, value.int_value, false, "", 0);
+        }
+    } else if (builtin == "tiny" || builtin == "short" || builtin == "ushort" ||
+               builtin == "uint" || builtin == "long" || builtin == "ulong") {
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_OTHER_INT, value.int_value, false, builtin, 0);
+        }
+        if (ord(value.kind) == ord(CV_BIGINT)) {
+            with (let builtin_ty = type_new_builtin(builtin) => type_free(builtin_ty)) {
+                if (bigint_fits_builtin(builtin_ty, value.text_value, value.base_value)) {
+                    return tr_const_value_clone(value);
+                }
+            }
+        }
+    } else if (builtin == "bool") {
+        if (ord(value.kind) == ord(CV_BOOL)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (builtin == "string") {
+        if (ord(value.kind) == ord(CV_STRING)) {
+            return tr_const_value_clone(value);
+        }
+    } else if (builtin == "float") {
+        if (ord(value.kind) == ord(CV_FLOAT)) {
+            return tr_const_value_clone(value);
+        }
+        if (ord(value.kind) == ord(CV_DOUBLE)) {
+            return tr_const_value_new(CV_FLOAT, 0, false, tr_real_text_for_target(value.text_value, "float"), 0);
+        }
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_FLOAT, 0, false, int_to_string(value.int_value), 0);
+        }
+    } else if (builtin == "double") {
+        if (ord(value.kind) == ord(CV_DOUBLE) || ord(value.kind) == ord(CV_FLOAT)) {
+            return tr_const_value_new(CV_DOUBLE, 0, false, tr_real_text_for_target(value.text_value, "double"), 0);
+        }
+        if (tr_const_value_is_integer_like(value)) {
+            return tr_const_value_new(CV_DOUBLE, 0, false, int_to_string(value.int_value), 0);
+        }
+    }
+    return null;
+}

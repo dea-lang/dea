@@ -8,11 +8,10 @@ module build_driver_test;
 import std.assert;
 import std.io;
 import std.path;
-import std.string;
 import std.vector;
 
 import build_driver;
-import cli_args;
+import cli_args.model;
 
 /**
  * Tests test_shell_quote_posix_handles_spaces_and_quotes.

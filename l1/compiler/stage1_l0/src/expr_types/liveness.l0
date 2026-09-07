@@ -1,0 +1,531 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module expr_types.liveness;
+
+import std.hashmap;
+import std.vector;
+import ast;
+import driver.state;
+import locals;
+import name_resolver.query;
+import name_resolver.state;
+import sem_context;
+import symbols;
+import types;
+import expr_types.lookup;
+import expr_types.state;
+
+/**
+ * Free a stack of liveness maps.
+ *
+ * @param stack Optional vector of `StringIntMap*`.
+ */
+func etc_alive_scope_stack_free(stack: VectorBase*?) {
+    if (stack == null) {
+        return;
+    }
+    let scopes = stack as VectorBase*;
+    for (let i = 0; i < vec_size(scopes); i = i + 1) {
+        sim_free(ptr_vec_get(scopes, i) as StringIntMap*);
+    }
+    vec_free(scopes);
+}
+
+/**
+ * Clone one liveness map.
+ *
+ * @param src Source map.
+ * @return Deep copy of `src`.
+ */
+func etc_alive_scope_clone(src: StringIntMap*) -> StringIntMap* {
+    let clone = sim_create_with_capacity(sim_capacity(src));
+    for (let i = 0; i < sim_capacity(src); i = i + 1) {
+        if (sim_slot_occupied(src, i)) {
+            sim_put(clone, sim_slot_key(src, i), sim_slot_value(src, i));
+        }
+    }
+    return clone;
+}
+
+/**
+ * Clone a stack of liveness maps.
+ *
+ * @param stack Source vector of `StringIntMap*`.
+ * @return Deep copy of `stack`.
+ */
+func etc_alive_scope_stack_clone(stack: VectorBase*) -> VectorBase* {
+    let clone = ptr_vec_create(vec_size(stack));
+    for (let i = 0; i < vec_size(stack); i = i + 1) {
+        ptr_vec_push(clone, etc_alive_scope_clone(ptr_vec_get(stack, i) as StringIntMap*) as void*);
+    }
+    return clone;
+}
+
+/**
+ * Meet two definite-liveness stacks.
+ *
+ * A binding remains alive only when both incoming states keep it alive.
+ */
+func etc_alive_scope_stack_meet(left: VectorBase*, right: VectorBase*) -> VectorBase* {
+    let merged = etc_alive_scope_stack_clone(left);
+    for (let i = 0; i < vec_size(merged); i = i + 1) {
+        let merged_map = ptr_vec_get(merged, i) as StringIntMap*;
+        let right_map: StringIntMap*? = null;
+        if (i < vec_size(right)) {
+            right_map = ptr_vec_get(right, i) as StringIntMap*;
+        }
+        with (let keys = sim_keys(merged_map) => sv_free(keys)) {
+            for (let j = 0; j < sv_size(keys); j = j + 1) {
+                let name = sv_get(keys, j);
+                let left_value = sim_get(merged_map, name);
+                let right_value: int? = null;
+                if (right_map != null) {
+                    right_value = sim_get(right_map as StringIntMap*, name);
+                }
+                if (left_value == null || right_value == null ||
+                    (left_value as int) == 0 || (right_value as int) == 0) {
+                    sim_put(merged_map, name, 0);
+                }
+            }
+        }
+    }
+    return merged;
+}
+
+/** Return whether two definite-liveness stacks contain the same state. */
+func etc_alive_scope_stack_equal(left: VectorBase*, right: VectorBase*) -> bool {
+    if (vec_size(left) != vec_size(right)) {
+        return false;
+    }
+    for (let i = 0; i < vec_size(left); i = i + 1) {
+        let left_map = ptr_vec_get(left, i) as StringIntMap*;
+        let right_map = ptr_vec_get(right, i) as StringIntMap*;
+        with (let keys = sim_keys(left_map) => sv_free(keys)) {
+            for (let j = 0; j < sv_size(keys); j = j + 1) {
+                let name = sv_get(keys, j);
+                let left_value = sim_get(left_map, name);
+                let right_value = sim_get(right_map, name);
+                if (left_value == null || right_value == null ||
+                    (left_value as int) != (right_value as int)) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+/** Replace the checker's liveness stack with a deep copy of one state. */
+func etc_alive_scope_stack_restore(self: ExpressionTypeChecker*, state: VectorBase*) {
+    etc_alive_scope_stack_free(self.alive_scopes);
+    self.alive_scopes = etc_alive_scope_stack_clone(state);
+}
+
+/** Free a vector of liveness-stack states. */
+func etc_alive_state_vec_free(states: VectorBase*?) {
+    if (states == null) {
+        return;
+    }
+    let vec = states as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        etc_alive_scope_stack_free(ptr_vec_get(vec, i) as VectorBase*);
+    }
+    vec_free(vec);
+}
+
+/** Push a deep copy of one liveness state. */
+func etc_alive_state_vec_push_clone(states: VectorBase*, state: VectorBase*) {
+    ptr_vec_push(states, etc_alive_scope_stack_clone(state) as void*);
+}
+
+/** Clone a vector of liveness-stack states. */
+func etc_alive_state_vec_clone(states: VectorBase*) -> VectorBase* {
+    let clone = ptr_vec_create(vec_size(states));
+    for (let i = 0; i < vec_size(states); i = i + 1) {
+        etc_alive_state_vec_push_clone(clone, ptr_vec_get(states, i) as VectorBase*);
+    }
+    return clone;
+}
+
+/** Meet one base state with every state in a vector. */
+func etc_alive_scope_stack_meet_many(base: VectorBase*, states: VectorBase*) -> VectorBase* {
+    let merged = etc_alive_scope_stack_clone(base);
+    for (let i = 0; i < vec_size(states); i = i + 1) {
+        let next = etc_alive_scope_stack_meet(merged, ptr_vec_get(states, i) as VectorBase*);
+        etc_alive_scope_stack_free(merged);
+        merged = next;
+    }
+    return merged;
+}
+
+/** Free one loop-flow capture and its owned state vectors. */
+func etc_loop_flow_capture_free(capture: LoopFlowCapture*?) {
+    if (capture == null) {
+        return;
+    }
+    let cap = capture as LoopFlowCapture*;
+    etc_alive_state_vec_free(cap.break_states);
+    etc_alive_state_vec_free(cap.continue_states);
+    drop cap;
+}
+
+/** Append one break state to the active loop capture. */
+func etc_capture_break_state(self: ExpressionTypeChecker*) {
+    if (self.loop_flow_capture_stack != null && self.alive_scopes != null) {
+        etc_alive_state_vec_push_clone(
+            (self.loop_flow_capture_stack as LoopFlowCapture*).break_states,
+            self.alive_scopes as VectorBase*
+        );
+    }
+}
+
+/** Append one continue state to the active loop capture. */
+func etc_capture_continue_state(self: ExpressionTypeChecker*) {
+    if (self.loop_flow_capture_stack != null && self.alive_scopes != null) {
+        etc_alive_state_vec_push_clone(
+            (self.loop_flow_capture_stack as LoopFlowCapture*).continue_states,
+            self.alive_scopes as VectorBase*
+        );
+    }
+}
+
+/**
+ * Return the innermost liveness map.
+ *
+ * @param self Expression checker state.
+ * @return Current `StringIntMap*`, or `null`.
+ */
+func etc_alive_scope_current(self: ExpressionTypeChecker*) -> StringIntMap*? {
+    if (self.alive_scopes == null || vec_size(self.alive_scopes as VectorBase*) == 0) {
+        return null;
+    }
+    let scopes = self.alive_scopes as VectorBase*;
+    return ptr_vec_get(scopes, vec_size(scopes) - 1) as StringIntMap*;
+}
+
+/**
+ * Push one new liveness map for a scope.
+ *
+ * Parameters and pattern variables start alive immediately; local `let`
+ * bindings become alive when their declaration is reached.
+ *
+ * @param self Expression checker state.
+ * @param scope Scope whose immediate bindings should seed the map.
+ */
+func etc_alive_scope_push(self: ExpressionTypeChecker*, scope: Scope*?) {
+    if (self.alive_scopes == null) {
+        self.alive_scopes = ptr_vec_create(4);
+    }
+    let map = sim_create();
+    if (scope != null) {
+        let scope2 = scope as Scope*;
+        for (let i = 0; i < spm_capacity(scope2.symbols); i = i + 1) {
+            if (spm_slot_occupied(scope2.symbols, i)) {
+                let local = spm_slot_value(scope2.symbols, i) as LocalSymbol*;
+                if (ord(local.kind) != ord(LK_LOCAL)) {
+                    sim_put(map, local.name, 1);
+                }
+            }
+        }
+    }
+    ptr_vec_push(self.alive_scopes as VectorBase*, map as void*);
+}
+
+/**
+ * Pop the innermost liveness map.
+ *
+ * @param self Expression checker state.
+ */
+func etc_alive_scope_pop(self: ExpressionTypeChecker*) {
+    if (self.alive_scopes == null || vec_size(self.alive_scopes as VectorBase*) == 0) {
+        return;
+    }
+    let scopes = self.alive_scopes as VectorBase*;
+    let last = vec_size(scopes) - 1;
+    sim_free(ptr_vec_get(scopes, last) as StringIntMap*);
+    scopes.length = scopes.length - 1;
+}
+
+/**
+ * Return the innermost declaration-tracking map.
+ *
+ * @param self Expression checker state.
+ * @return Current declaration map, or `null` when no scope is active.
+ */
+func etc_decl_scope_current(self: ExpressionTypeChecker*) -> StringIntMap*? {
+    if (self.decl_scopes == null || vec_size(self.decl_scopes as VectorBase*) == 0) {
+        return null;
+    }
+    let scopes = self.decl_scopes as VectorBase*;
+    return ptr_vec_get(scopes, vec_size(scopes) - 1) as StringIntMap*;
+}
+
+/**
+ * Push one declaration-tracking map for a scope.
+ *
+ * Parameters and pattern variables are predeclared so later local checks can
+ * reject duplicate names and warn about shadowing.
+ *
+ * @param self Expression checker state.
+ * @param scope Scope whose immediate non-local bindings should seed the map.
+ */
+func etc_decl_scope_push(self: ExpressionTypeChecker*, scope: Scope*) {
+    if (self.decl_scopes == null) {
+        self.decl_scopes = ptr_vec_create(4);
+    }
+    if (self.decl_scope_defs == null) {
+        self.decl_scope_defs = ptr_vec_create(4);
+    }
+    let map = sim_create();
+    for (let i = 0; i < spm_capacity(scope.symbols); i = i + 1) {
+        if (spm_slot_occupied(scope.symbols, i)) {
+            let local = spm_slot_value(scope.symbols, i) as LocalSymbol*;
+            if (ord(local.kind) != ord(LK_LOCAL)) {
+                sim_put(map, local.name, 1);
+            }
+        }
+    }
+    ptr_vec_push(self.decl_scopes as VectorBase*, map as void*);
+    ptr_vec_push(self.decl_scope_defs as VectorBase*, scope as void*);
+}
+
+/**
+ * Pop the innermost declaration-tracking map.
+ *
+ * @param self Expression checker state.
+ */
+func etc_decl_scope_pop(self: ExpressionTypeChecker*) {
+    if (self.decl_scopes == null || vec_size(self.decl_scopes as VectorBase*) == 0) {
+        return;
+    }
+    let scopes = self.decl_scopes as VectorBase*;
+    let last = vec_size(scopes) - 1;
+    sim_free(ptr_vec_get(scopes, last) as StringIntMap*);
+    scopes.length = scopes.length - 1;
+    if (self.decl_scope_defs != null) {
+        let defs = self.decl_scope_defs as VectorBase*;
+        defs.length = defs.length - 1;
+    }
+}
+
+/**
+ * Activate every missing lexical scope from the tracked scope to `target`.
+ *
+ * Synthetic single-statement scopes can sit between the currently active
+ * scope and a mapped loop or `with` header scope, so each ancestor must have
+ * its own declaration and liveness state.
+ *
+ * @return Number of scope states pushed.
+ */
+func etc_scope_chain_push(self: ExpressionTypeChecker*, target: Scope*) -> int {
+    let target_depth = 0;
+    let ancestor: Scope*? = target;
+    while (ancestor != null) {
+        target_depth = target_depth + 1;
+        ancestor = (ancestor as Scope*).parent;
+    }
+    let active_depth = 0;
+    if (self.decl_scope_defs != null) {
+        active_depth = vec_size(self.decl_scope_defs as VectorBase*);
+    }
+    let missing_count = target_depth - active_depth;
+    let missing = ptr_vec_create(4);
+    let cur: Scope*? = target;
+    for (let missing_i = 0; missing_i < missing_count; missing_i = missing_i + 1) {
+        let scope = cur as Scope*;
+        ptr_vec_push(missing, scope as void*);
+        cur = scope.parent;
+    }
+    let pushed = vec_size(missing);
+    for (let i = pushed - 1; i >= 0; i = i - 1) {
+        let scope2 = ptr_vec_get(missing, i) as Scope*;
+        etc_alive_scope_push(self, scope2);
+        etc_decl_scope_push(self, scope2);
+    }
+    vec_free(missing);
+    return pushed;
+}
+
+/**
+ * Check whether an outer declaration-tracking scope contains a name.
+ *
+ * The current innermost scope is skipped because duplicate checks inspect it
+ * separately.
+ *
+ * @param self Expression checker state.
+ * @param name Local name to look up.
+ * @return `true` when an outer scope already declares `name`.
+ */
+func etc_decl_outer_has(self: ExpressionTypeChecker*, name: string) -> bool {
+    if (self.decl_scopes == null) {
+        return false;
+    }
+    let scopes = self.decl_scopes as VectorBase*;
+    for (let i = vec_size(scopes) - 2; i >= 0; i = i - 1) {
+        if (sim_has(ptr_vec_get(scopes, i) as StringIntMap*, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Validate a local declaration name before binding it in the current scope.
+ *
+ * Reports duplicate local errors and shadowing warnings for outer locals, enum
+ * variants, and imported symbols.
+ *
+ * @param self Expression checker state.
+ * @param name Local name being declared.
+ * @param span Source span to report for diagnostics.
+ */
+func etc_check_local_declaration(self: ExpressionTypeChecker*, name: string, span: Span) {
+    let current = etc_decl_scope_current(self);
+    if (current == null) {
+        return;
+    }
+    let unit = self.current_unit as DriverUnit*;
+    if (sim_has(current as StringIntMap*, name)) {
+        etc_diag_error(self, "TYP-0020", "local variable '" + name + "' already declared in this scope",
+            unit.path, span);
+        return;
+    }
+    if (etc_decl_outer_has(self, name)) {
+        etc_diag_warn(self, "TYP-0021", "local variable '" + name + "' shadows an outer local",
+            unit.path, span);
+    }
+    if (self.current_env != null) {
+        let env = self.current_env as ModuleEnv*;
+        if (nr_module_env_is_ambiguous(env, name)) {
+            etc_diag_warn(self, "TYP-0024", "local variable '" + name + "' shadows an ambiguous import",
+                unit.path, span);
+        } else {
+            let sym = nr_module_env_all(env, name);
+            if (sym != null) {
+                let s = sym as Symbol*;
+                if (ord(s.kind) == ord(SYM_ENUM_VARIANT)) {
+                    if (s.module_name == self.current_module) {
+                        etc_diag_warn(self, "TYP-0022", "local variable '" + name + "' shadows an enum variant", unit.path, span);
+                    } else {
+                        etc_diag_warn(self, "TYP-0023", "local variable '" + name + "' shadows an imported enum variant", unit.path, span);
+                    }
+                } else {
+                    etc_diag_warn(self, "TYP-0025", "local variable '" + name + "' shadows a top-level symbol", unit.path, span);
+                }
+            }
+        }
+    }
+    sim_put(current as StringIntMap*, name, 1);
+}
+
+/**
+ * Look up definite liveness for a visible local.
+ *
+ * @param self Expression checker state.
+ * @param name Local name.
+ * @return `1` if alive, `0` if dropped, or `null` if not tracked.
+ */
+func etc_alive_lookup(self: ExpressionTypeChecker*, name: string) -> int? {
+    if (self.alive_scopes == null) {
+        return null;
+    }
+    let scopes = self.alive_scopes as VectorBase*;
+    for (let i = vec_size(scopes) - 1; i >= 0; i = i - 1) {
+        let scope_map = ptr_vec_get(scopes, i) as StringIntMap*;
+        let value = sim_get(scope_map, name);
+        if (value != null) {
+            return value;
+        }
+    }
+    return null;
+}
+
+/**
+ * Update definite liveness for the nearest tracked local binding.
+ *
+ * @param self Expression checker state.
+ * @param name Local name.
+ * @param alive `true` when usable, `false` after `drop`.
+ */
+func etc_alive_set(self: ExpressionTypeChecker*, name: string, alive: bool) {
+    if (self.alive_scopes == null) {
+        return;
+    }
+    let scopes = self.alive_scopes as VectorBase*;
+    for (let i = vec_size(scopes) - 1; i >= 0; i = i - 1) {
+        let scope_map = ptr_vec_get(scopes, i) as StringIntMap*;
+        if (sim_has(scope_map, name)) {
+            if (alive) {
+                sim_put(scope_map, name, 1);
+            } else {
+                sim_put(scope_map, name, 0);
+            }
+            return;
+        }
+    }
+}
+
+/**
+ * Declare the current-scope local as definitely alive.
+ *
+ * @param self Expression checker state.
+ * @param name Local name.
+ */
+func etc_alive_declare(self: ExpressionTypeChecker*, name: string) {
+    let current = etc_alive_scope_current(self);
+    if (current != null) {
+        sim_put(current as StringIntMap*, name, 1);
+    }
+}
+
+/**
+ * Mark a simple local assignment target alive again.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Potential local-variable lvalue expression.
+ */
+func etc_alive_revive_assignment_target(self: ExpressionTypeChecker*, expr_id: ExprId) {
+    if (expr_id < 0 || self.current_unit == null) {
+        return;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_VAR_REF)) {
+        let local_ty = etc_lookup_local(self, expr.text_value);
+        if (local_ty != null) {
+            etc_alive_set(self, expr.text_value, true);
+            type_free(local_ty as Type*);
+        }
+    }
+}
+
+/** Replay local-variable use checks without repeating expression semantics. */
+func etc_check_expr_liveness(self: ExpressionTypeChecker*, expr_id: ExprId) {
+    if (expr_id < 0) {
+        return;
+    }
+    let unit = self.current_unit as DriverUnit*;
+    let expr = expr_arena_get(unit.parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_VAR_REF)) {
+        let resolution = analysis_get_var_ref_resolution(self.result, self.current_module, expr_id);
+        if (resolution != null && (resolution as int) == ord(VAR_RES_LOCAL)) {
+            let alive = etc_alive_lookup(self, expr.text_value);
+            if (alive != null && (alive as int) == 0) {
+                etc_diag_error(self, "TYP-0150", "use of dropped variable '" + expr.text_value + "'",
+                    unit.path, expr.span);
+            }
+        }
+        return;
+    }
+    etc_check_expr_liveness(self, expr.expr_a);
+    etc_check_expr_liveness(self, expr.expr_b);
+    etc_check_expr_liveness(self, expr.expr_c);
+    if (expr.ids != null) {
+        let ids = expr.ids as VectorBase*;
+        for (let i = 0; i < vec_size(ids); i = i + 1) {
+            etc_check_expr_liveness(self, id_vec_get(ids, i));
+        }
+    }
+}

@@ -1,0 +1,294 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module cli_args.parse;
+
+import std.string;
+import std.vector;
+import util.diag;
+import cli_args.link;
+import cli_args.model;
+
+/**
+ * Set the active CLI mode or emit an error for conflicting mode flags.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector.
+ * @param mode Mode requested by the current flag.
+ */
+func cli_try_set_mode(opts: CliOptions*, diags: DiagCollector*, mode: CliMode) {
+    if (!opts.mode_explicit) {
+        opts.mode = mode;
+        opts.mode_explicit = true;
+        return;
+    }
+
+    if (ord(opts.mode) != ord(mode)) {
+        cli_emit_error(
+            diags,
+            "L1C-2002",
+            "multiple mode flags provided: " + cli_mode_flag(opts.mode) + " conflicts with " + cli_mode_flag(mode)
+        );
+    }
+}
+
+/**
+ * Return the index of the `--` argument separator.
+ *
+ * @param argv Full argument vector.
+ * @return Separator index, or `-1` if `--` is not present.
+ */
+func cli_split_index(argv: StringVector*) -> int {
+    for (let i = 0; i < sv_size(argv); i = i + 1) {
+        if (sv_get(argv, i) == "--") {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Report whether the compiler CLI args explicitly request help output.
+ *
+ * Only tokens before the `--` separator count as compiler CLI arguments.
+ *
+ * @param argv Full argument vector excluding the executable name.
+ * @param cli_end Exclusive end index for compiler CLI arguments.
+ * @return `true` when `-h` or `--help` is present before `cli_end`.
+ */
+func cli_has_help_flag(argv: StringVector*, cli_end: int) -> bool {
+    for (let i = 0; i < cli_end; i = i + 1) {
+        let token = sv_get(argv, i);
+        if (token == "-h" || token == "--help") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Report whether the compiler CLI args explicitly request version output.
+ *
+ * Only tokens before the `--` separator count as compiler CLI arguments.
+ *
+ * @param argv Full argument vector excluding the executable name.
+ * @param cli_end Exclusive end index for compiler CLI arguments.
+ * @return `true` when `-V` or `--version` is present before `cli_end`.
+ */
+func cli_has_version_flag(argv: StringVector*, cli_end: int) -> bool {
+    for (let i = 0; i < cli_end; i = i + 1) {
+        let token = sv_get(argv, i);
+        if (token == "-V" || token == "--version") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Count verbosity flags in a short option cluster.
+ *
+ * @param token Argument token to inspect.
+ * @return Number of `v` characters in a token like `-vvv`, or `-1` if the token is not such a cluster.
+ */
+func cli_verbose_cluster_count(token: string) -> int {
+    if (len_s(token) < 2 || char_at_s(token, 0) != '-') {
+        return -1;
+    }
+
+    for (let i = 1; i < len_s(token); i = i + 1) {
+        if (char_at_s(token, i) != 'v') {
+            return -1;
+        }
+    }
+
+    return len_s(token) - 1;
+}
+
+/**
+ * Return the value following an option that requires one.
+ *
+ * @param argv Full argument vector.
+ * @param i Index of the option token.
+ * @param option Exact option token used in diagnostics.
+ * @param diags Diagnostic collector.
+ * @return Following argument value, or `null` after emitting a missing-value error.
+ */
+func cli_require_next_value(argv: StringVector*, i: int, option: string, diags: DiagCollector*) -> string? {
+    if (i + 1 >= sv_size(argv) || sv_get(argv, i + 1) == "--") {
+        cli_emit_error(diags, "L1C-2003", "missing value for option '" + option + "'");
+        return null;
+    }
+    return sv_get(argv, i + 1);
+}
+
+/**
+ * Assign a positional target argument.
+ *
+ * @param opts Parsed CLI options.
+ * @param token Positional argument to record.
+ */
+func cli_assign_target(opts: CliOptions*, token: string) {
+    cli_link_operands_push(opts.link_operands, LOK_DEA_OBJECT, token);
+    if (opts.entry_target == null) {
+        opts.entry_target = token;
+    } else {
+        opts.extra_target_count = opts.extra_target_count + 1;
+    }
+}
+
+/**
+ * Validate that mode-specific flags are used with compatible modes.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector for incompatibility errors.
+ */
+func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
+    let mode = opts.mode;
+    let is_link = ord(mode) == ord(CM_LINK);
+    let is_build_run = ord(mode) == ord(CM_BUILD) ||
+        ord(mode) == ord(CM_RUN);
+
+    if (is_link && sv_size(opts.project_roots) > 0) {
+        cli_emit_error(
+            diags,
+            "L1C-2090",
+            "option '--project-root' is not valid with mode: --link"
+        );
+    }
+
+    if (is_link && sv_size(opts.sys_roots) > 0) {
+        cli_emit_error(
+            diags,
+            "L1C-2090",
+            "option '--sys-root' is not valid with mode: --link"
+        );
+    }
+
+    if (sv_size(opts.interface_paths) > 0 &&
+        ord(mode) != ord(CM_COMPILE) &&
+        ord(mode) != ord(CM_GEN) && !is_build_run) {
+        cli_emit_error(diags, "L1C-2031",
+            "option '--interface-path' is valid only with modes: --build, --compile, --gen, --run");
+    }
+
+    if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) &&
+        ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_EMIT_INTERFACE)) {
+        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --compile, --emit-interface, --gen, --link, --run");
+    }
+
+    if (opts.keep_c && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2011", "option '--keep-c' is valid only with modes: --build, --compile, --run");
+    }
+
+    if (opts.c_compiler != null && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2012", "option '--c-compiler' is valid only with modes: --build, --compile, --link, --run");
+    }
+
+    if (opts.c_options != null && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2013", "option '--c-options' is valid only with modes: --build, --compile, --link, --run");
+    }
+
+    if (opts.runtime_include != null && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2014", "option '--runtime-include' is valid only with modes: --build, --compile, --link, --run");
+    }
+
+    if (opts.runtime_lib != null && ord(mode) != ord(CM_BUILD) &&
+        ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
+        cli_emit_error(diags, "L1C-2015", "option '--runtime-lib' is valid only with modes: --build, --link, --run");
+    }
+
+    if (opts.no_line_directives && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
+        cli_emit_error(diags, "L1C-2016", "option '--no-line-directives' is valid only with modes: --build, --compile, --gen, --run");
+    }
+
+    if (opts.trace_arc && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
+        cli_emit_error(diags, "L1C-2017", "option '--trace-arc' is valid only with modes: --build, --compile, --gen, --link, --run");
+    }
+
+    if (opts.trace_memory && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
+        cli_emit_error(diags, "L1C-2018", "option '--trace-memory' is valid only with modes: --build, --compile, --gen, --link, --run");
+    }
+
+    if (ord(mode) == ord(CM_GEN) && (opts.trace_arc || opts.trace_memory)) {
+        cli_emit_warning(
+            diags,
+            "L1C-0019",
+            "'--trace-arc'/'--trace-memory' under '--gen' produces traced-archive-compatible C; the caller must link against 'libdea_rt_traced.a' (or compile with -DDEA_TRACE_ARC / -DDEA_TRACE_MEMORY if linking the runtime sources directly)"
+        );
+    }
+
+    if (opts.unchecked && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
+        cli_emit_error(diags, "L1C-2025", "option '--unchecked' is valid only with modes: --build, --compile, --gen, --link, --run");
+    }
+
+    if (opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+        ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
+        cli_emit_error(diags, "L1C-2027", "option '--check-basic' is valid only with modes: --build, --compile, --gen, --link, --run");
+    }
+
+    if (opts.unchecked && (opts.trace_arc || opts.trace_memory)) {
+        cli_emit_error(diags, "L1C-2026", "option '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'");
+    }
+
+    if (opts.check_basic && (opts.unchecked || opts.trace_arc || opts.trace_memory)) {
+        cli_emit_error(diags, "L1C-2028", "option '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'");
+    }
+
+    if (ord(mode) == ord(CM_GEN) && opts.unchecked) {
+        cli_emit_warning(
+            diags,
+            "L1C-0020",
+            "'--unchecked' under '--gen' produces unchecked-runtime C; the caller should link against 'libdea_rt_unchecked.a' (or compile with -DDEA_RT_UNCHECKED if linking the runtime sources directly)"
+        );
+    }
+
+    if (ord(mode) == ord(CM_GEN) && opts.check_basic) {
+        cli_emit_warning(
+            diags,
+            "L1C-0021",
+            "'--check-basic' under '--gen' produces basic checked-runtime C; the caller should link against 'libdea_rt_check_basic.a' (or compile with -DDEA_RT_CHECK_BASIC if linking the runtime sources directly)"
+        );
+    }
+
+    if (opts.all_modules &&
+        ord(mode) != ord(CM_TOK) &&
+        ord(mode) != ord(CM_AST) &&
+        ord(mode) != ord(CM_SYM) &&
+        ord(mode) != ord(CM_TYPE)) {
+        cli_emit_error(diags, "L1C-2019", "option '--all-modules' is valid only with modes: --ast, --sym, --tok, --type");
+    }
+
+    if (opts.include_eof && ord(mode) != ord(CM_TOK)) {
+        cli_emit_error(diags, "L1C-2020", "option '--include-eof' is valid only with modes: --tok");
+    }
+
+    if (cli_count_link_operands(opts, LOK_FOREIGN_OBJECT) > 0 &&
+        !is_link && !is_build_run) {
+        cli_emit_error(diags, "L1C-2091",
+            "option '--foreign-object' is valid only with modes: --build, --link, --run");
+    }
+
+    if (cli_has_external_link_operands(opts) && !is_link && !is_build_run) {
+        cli_emit_error(
+            diags,
+            "L1C-2070",
+            "external-link options are valid only with modes: --build, --link, --run"
+        );
+    }
+
+    if (opts.entry_module != null && !is_link) {
+        cli_emit_error(diags, "L1C-2092", "option '--entry' is valid only with mode: --link");
+    }
+}

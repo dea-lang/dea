@@ -13,8 +13,9 @@ import std.assert;
 import std.vector;
 
 import analysis;
+import interface_projection;
 import ast;
-import driver;
+import driver.state;
 import interface_fingerprint;
 import mi_utils;
 import module_interface;

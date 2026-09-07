@@ -16,7 +16,7 @@ import analysis;
 import ast;
 import locals;
 import sem_context;
-import signatures;
+import signatures.tables;
 import source_paths;
 import types;
 import util.log;
@@ -1551,7 +1551,6 @@ func test_typing_nullable_identity_err() {
 /**
  * Main entry point for the module.
  */
-
 
 /**
  * Tests successful typing for string concatenation.

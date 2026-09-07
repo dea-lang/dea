@@ -1,0 +1,151 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module c_emitter.type_names;
+
+import std.string;
+import std.text;
+import std.vector;
+import ast;
+import types;
+import c_emitter.abi;
+
+/**
+ * Return whether a nullable type uses pointer-shaped niche encoding.
+ *
+ * @param t Nullable type to inspect.
+ * @return `true` when `null` lowers to `NULL`.
+ */
+func cem_is_niche_nullable(t: Type*) -> bool {
+    return type_is_nullable_pointer_type(t) ||
+        (ord(t.kind) == ord(TY_NULLABLE) && ord((t.inner as Type*).kind) == ord(TY_FUNC));
+}
+
+/**
+ * Produce the stable wrapper-key suffix for an optional inner type.
+ *
+ * @param t Inner type to encode.
+ * @return Stable wrapper-key suffix.
+ */
+func cem_opt_key_for_type(t: Type*) -> string {
+    if (ord(t.kind) == ord(TY_BUILTIN)) {
+        return t.name;
+    }
+    if (ord(t.kind) == ord(TY_STRUCT)) {
+        return "s_" + cem_mangle_struct_name(t.module_name, t.name);
+    }
+    if (ord(t.kind) == ord(TY_ENUM)) {
+        return "e_" + cem_mangle_enum_name(t.module_name, t.name);
+    }
+    if (ord(t.kind) == ord(TY_POINTER)) {
+        return "p_" + cem_opt_key_for_type(t.inner as Type*);
+    }
+    if (ord(t.kind) == ord(TY_NULLABLE)) {
+        return "n_" + cem_opt_key_for_type(t.inner as Type*);
+    }
+    if (ord(t.kind) == ord(TY_ARRAY)) {
+        return "a" + int_to_string(t.array_len) + "_" + cem_opt_key_for_type(t.inner as Type*);
+    }
+    if (ord(t.kind) == ord(TY_SLICE)) {
+        return "sl_" + cem_opt_key_for_type(t.inner as Type*);
+    }
+    if (ord(t.kind) == ord(TY_FUNC)) {
+        with (let sb = sb_create() => sb_free(sb)) {
+            sb_append(sb, cem_opt_key_for_type(t.result as Type*));
+            let params = t.params as VectorBase*;
+            for (let i = 0; i < vec_size(params); i = i + 1) {
+                sb_append(sb, "_");
+                sb_append(sb, cem_opt_key_for_type(ptr_vec_get(params, i) as Type*));
+            }
+            if (vec_size(params) == 0) {
+                sb_append(sb, "_void");
+            }
+            return sb_to_string(sb);
+        }
+    }
+    return "unk";
+}
+
+/**
+ * Return the typedef name used for a function pointer type.
+ *
+ * @param typ Function pointer type.
+ * @return Stable typedef name.
+ */
+func cem_func_ptr_name_for_type(typ: Type*) -> string {
+    return "dea_func_" + cem_opt_key_for_type(typ);
+}
+
+/**
+ * Return the ABI component for one type wrapper name.
+ *
+ * @param typ Type to encode.
+ * @return Stable ABI component text.
+ */
+func cem_type_component(typ: Type*) -> string {
+    if (type_is_builtin(typ, "bool")) return "b";
+    if (type_is_builtin(typ, "tiny")) return "t";
+    if (type_is_builtin(typ, "byte")) return "h";
+    if (type_is_builtin(typ, "short")) return "s";
+    if (type_is_builtin(typ, "int")) return "i";
+    if (type_is_builtin(typ, "ushort")) return "r";
+    if (type_is_builtin(typ, "uint")) return "u";
+    if (type_is_builtin(typ, "long")) return "l";
+    if (type_is_builtin(typ, "ulong")) return "m";
+    if (type_is_builtin(typ, "float")) return "f";
+    if (type_is_builtin(typ, "double")) return "d";
+    if (type_is_builtin(typ, "string")) return "c";
+    if (type_is_builtin(typ, "void")) return "v";
+    if (ord(typ.kind) == ord(TY_POINTER)) return "P" + cem_type_component(typ.inner as Type*);
+    if (ord(typ.kind) == ord(TY_NULLABLE)) return "Q" + cem_type_component(typ.inner as Type*);
+    if (ord(typ.kind) == ord(TY_ARRAY)) {
+        return "A" + int_to_string(typ.array_len) + "_" + cem_type_component(typ.inner as Type*);
+    }
+    if (ord(typ.kind) == ord(TY_SLICE)) {
+        return "W" + cem_type_component(typ.inner as Type*);
+    }
+    if (ord(typ.kind) == ord(TY_FUNC)) {
+        return cem_mangle_type_component(typ);
+    }
+    if (ord(typ.kind) == ord(TY_STRUCT)) {
+        return "M" + cem_mangle_module_path_components(typ.module_name) + "S" +
+            int_to_string(len_s(typ.name)) + typ.name;
+    }
+    if (ord(typ.kind) == ord(TY_ENUM)) {
+        return "M" + cem_mangle_module_path_components(typ.module_name) + "E" +
+            int_to_string(len_s(typ.name)) + typ.name;
+    }
+    return "X";
+}
+
+/**
+ * Return the wrapper typedef name used for an array type.
+ *
+ * @param typ Array type.
+ * @return Stable typedef name.
+ */
+func cem_array_wrapper_name_for_type(typ: Type*) -> string {
+    return "__dea" + cem_type_component(typ);
+}
+
+/**
+ * Return the wrapper typedef name used for a slice type.
+ *
+ * @param typ Slice type.
+ * @return Stable typedef name.
+ */
+func cem_slice_wrapper_name_for_type(typ: Type*) -> string {
+    return "__dea" + cem_type_component(typ);
+}
+
+/**
+ * Return the wrapper typedef name used for a non-pointer nullable type.
+ *
+ * @param inner Inner type of the nullable wrapper.
+ * @return Wrapper typedef name.
+ */
+func cem_opt_wrapper_name_for_inner(inner: Type*) -> string {
+    return "dea_opt_" + cem_opt_key_for_type(inner);
+}

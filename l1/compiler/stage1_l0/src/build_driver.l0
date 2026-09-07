@@ -6,7 +6,6 @@
 module build_driver;
 
 import std.fs;
-import std.hashmap;
 import std.path;
 import std.string;
 import std.system;
@@ -17,9 +16,8 @@ import util.log;
 
 import util.strings;
 import source_paths;
-import analysis;
 import sem_context;
-import cli_args;
+import cli_args.model;
 
 /**
  * Prepared input bundle for build/run commands.

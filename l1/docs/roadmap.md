@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-08-31
+Version: 2026-09-07
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -13,6 +13,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 - `compiler/stage1_l0/` is the only implemented L1 compiler today.
 - `compiler/stage2_l1/` is a placeholder for a future self-hosted L1 compiler.
+- Stage 1 uses 116 phase/ownership modules with explicit canonical state imports. The settled layout and its two
+  recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
 - `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` compile
   one translation unit per source-backed graph node and reuse the verified common linker.
@@ -199,6 +201,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Bug Fix [2026-08-25-stage1-case-stray-else-recovery-boundary-noref][case-else-recovery] preserved each rejected
   case-arm `else` as a synchronization boundary so L1 Stage 1 retains its dedicated `PAR-0123` diagnostic after an
   earlier invalid arm.
+- Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] organized Stage 1 into 116
+  modules with explicit state ownership and an acyclic import graph. Full normal and trace validation passed. The
+  filename-only `.l1` semantic checks pass; the existing private fingerprint-support C declaration mismatch is tracked
+  by Bug Fix [2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref][fingerprint-blocker].
 
 </details>
 
@@ -230,14 +236,14 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
+- Bug Fix [2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref][fingerprint-blocker] repairs the existing
+  compiler-private fingerprint C declaration conflict blocking native compilation of the filename-only Stage 2 port.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
   install/dist/product workflow.
 - Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
   1 runtime fixtures.
-- Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] decomposes oversized Stage 1
-  production source modules while preserving public root imports and current compiler behavior.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial
@@ -335,6 +341,7 @@ update to be promoted to an initiative or plan:
 [child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-foundation]: ../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [compile-only]: ../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[compiler-architecture]: reference/architecture.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
 [const-scalar-casts]: ../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
@@ -345,6 +352,7 @@ update to be promoted to an initiative or plan:
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [filesystem-io]: ../work/initiatives/0005-filesystem-and-stream-io.md
+[fingerprint-blocker]: ../work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
@@ -380,7 +388,7 @@ update to be promoted to an initiative or plan:
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
-[stage1-source-decomposition]: ../work/plans/refactors/2026-07-08-stage1-source-decomposition-noref.md
+[stage1-source-decomposition]: ../work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
 [stage2-self-hosting]: ../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [stdlib-coverage]: ../work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md
 [string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md

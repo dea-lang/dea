@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-01
+Version: 2026-09-07
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -183,7 +183,7 @@ It verifies unique modules, provider presence and public fingerprints, entry sel
 transitive lifecycle provenance for semantic providers. `require` and `link` never create lifecycle edges. Dea and
 foreign native bytes remain opaque; `--foreign-object` is a caller assertion rather than a content classification.
 
-After validation, `link_driver.l0` records one deterministic dependency-first lifecycle order through an explicit
+After validation, `link_driver/plan.l0` records one deterministic dependency-first lifecycle order through an explicit
 depth-first frame stack. It traverses the selected entry component first in interface import order, then visits
 unvisited explicitly supplied Dea roots in positional order without consuming the native call stack.
 `wrapper_emitter.l0` defines process `main`, initializes runtime arguments, calls every `I4init` in that order, calls
@@ -250,7 +250,7 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Populates selected provider environments from interfaces activated by the module graph.
 - Resolves opened imports and reports ambiguity diagnostics.
 
-### 2.4 Signature Resolution (`signatures.l0`, `type_resolve.l0`, `types.l0`)
+### 2.4 Signature Resolution (`signatures.l0`, `type_resolve/`, `types.l0`)
 
 - Resolves top-level type references.
 - Populates function, struct, enum, and top-level binding type tables.
@@ -273,7 +273,7 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
   while suppressing or deduplicating diagnostics during loop fixed-point and repeated ordinary inference.
 - Produces semantic diagnostics without crashing the compiler.
 
-### 2.7 Interface Projection (`interface_emitter.l0`, `interface_fingerprint.l0`, `interface_literal.l0`, `interface_order.l0`, `module_interface.l0`, `mi_utils.l0`)
+### 2.7 Interface Projection (`interface_projection.l0`, `interface_emitter.l0`, `interface_fingerprint.l0`, `interface_literal.l0`, `interface_order.l0`, `module_interface.l0`, `mi_utils.l0`)
 
 - Projects exported declarations from a completed analysis result.
 - Canonicalizes the exported surface and assigns its tagged whole-module fingerprint.
@@ -293,7 +293,7 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Emits deterministic textual `.l1m` artifacts through the internal `--emit-interface` mode.
 - Parses the constrained interface grammar and verifies operational inputs before graph-backed internal replay.
 
-### 2.8 Backend (`backend.l0`, `c_emitter.l0`, `string_escape.l0`)
+### 2.8 Backend (`backend.l0`, `backend/`, `c_emitter/`, `string_escape.l0`)
 
 - Consumes typed analysis results exclusively through the target-aware `backend_generate_module` API for every public
   generated-C, compile-only, build, and run path.
@@ -339,11 +339,11 @@ Primary aggregates in the current implementation include:
 - parsed AST nodes from `ast.l0`
 - parsed and active module interfaces from `module_interface.l0`
 - `ModuleGraph`, `ModuleGraphNode`, `ModuleOrigin`, `ModuleDependency`, and `ModuleArtifactPaths` from `module_graph.l0`
-- module and symbol environments from `name_resolver.l0`
-- typed semantic state from `analysis.l0`
+- module and symbol environments from `name_resolver/state.l0`
+- typed semantic state from `sem_context.l0`
 - projected module interfaces carrying `has_entry`, ordered `module_imports`, and populated `require` / `link` tiers
 - typed standalone inputs containing original native paths and optional verified sibling interfaces
-- checked scalar constant values evaluated through `type_resolve.l0`
+- checked scalar constant values owned by `type_resolve/const_value.l0` and evaluated through `type_resolve/ref.l0`
 
 Important analysis tables include:
 
@@ -395,49 +395,41 @@ Important analysis tables include:
 
 ## 5. File/Module Layout
 
-Main current compiler modules under `compiler/stage1_l0/src/`:
+The production tree under `l1/compiler/stage1_l0/src/` contains 116 modules and 49,757 lines. Modules are organized by
+owned state, compiler phase, and output contract. Imports expose only locally declared symbols: callers import a shared
+state/model owner explicitly, and implementation children never import their command/pass facade.
 
-- `analysis.l0`
-- `ast.l0`
-- `ast_printer.l0`
-- `backend.l0`
-- `build_driver.l0`
-- `build_info.l0`
-- `cli_args.l0`
-- `codegen_options.l0`
-- `compiler_filesystem.l0`
-- `dea_prelude.l0`
-- `diag_print.l0`
-- `driver.l0`
-- `expr_types.l0`
-- `interface_emitter.l0`
-- `interface_fingerprint.l0`
-- `interface_literal.l0`
-- `interface_order.l0`
-- `l1c.l0`
-- `l1c_lib.l0`
-- `lexer.l0`
-- `link_driver.l0`
-- `locals.l0`
-- `mi_utils.l0`
-- `module_lifecycle.l0`
-- `module_graph.l0`
-- `module_interface.l0`
-- `name_resolver.l0`
-- `parser.l0`
-- `parser/decl.l0`, `parser/expr.l0`, `parser/interface.l0`, `parser/shared.l0`, and `parser/stmt.l0`
-- `scope_context.l0`
-- `sem_context.l0`
-- `signatures.l0`
-- `source_paths.l0`
-- `string_escape.l0`
-- `symbols.l0`
-- `tokens.l0`
-- `type_resolve.l0`
-- `types.l0`
-- `wrapper_emitter.l0`
+| Family                        | Coarse entrypoints                 | Implementation owners                                                                                                                                             |
+| ----------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Analysis and interfaces       | `analysis.l0`                      | `interface_projection.l0`, `interface_emitter.l0`, `interface_fingerprint.l0`, `interface_literal.l0`, `interface_order.l0`, `module_interface.l0`, `mi_utils.l0` |
+| Parser                        | `parser.l0`, `parser/interface.l0` | `parser/{state,cursor,token_value,type_ref,decl,expr,stmt}.l0`; `parser/interface/{header,types,declarations,normalize}.l0`                                       |
+| Driver                        | `driver.l0`                        | `driver/state.l0` owns registry data and lifecycle; `driver/resolve.l0` owns graph resolution and activation                                                      |
+| Names                         | `name_resolver.l0`                 | `name_resolver/{state,query,collect,imports,interface}.l0`                                                                                                        |
+| Signatures                    | `signatures.l0`                    | `signatures/{tables,declarations,const_init,cycles,visibility,interface}.l0`; `types.l0` retains resolved type/table data and lifecycle                           |
+| Type references and constants | Direct owner imports               | `type_resolve/{lookup,const_value,const_eval,ref,materialize}.l0`                                                                                                 |
+| Expression typing             | `expr_types.l0`                    | `expr_types/{state,liveness,lookup,patterns,convert,expr,stmt}.l0`                                                                                                |
+| Backend                       | `backend.l0`                       | `backend/{state,coerce,types,expr,lifetime,lower,stmt,output}.l0`                                                                                                 |
+| C emitter                     | Direct owner imports               | `c_emitter/{state,abi,type_names,types,declarations,wrappers,expr,stmt,lifetime}.l0`                                                                              |
+| CLI                           | `cli_args.l0`                      | `cli_args/{model,help,link,parse}.l0`                                                                                                                             |
+| Compile                       | `compile_driver.l0`                | `compile_driver/{transaction,toolchain,compile}.l0`                                                                                                               |
+| Link/build/run                | `link_driver.l0`                   | `link_driver/{model,plan,provenance,inputs,transaction,toolchain,build,workspace}.l0`                                                                             |
 
-Shared support modules live under `compiler/stage1_l0/src/util/`.
+Other cohesive compiler modules include `ast.l0` (arenas and lifecycle), `lexer.l0`/`tokens.l0`/`builtin_types.l0`,
+`locals.l0`, `scope_context.l0`, `sem_context.l0`, `symbols.l0`, `source_paths.l0`, `module_graph.l0`,
+`module_lifecycle.l0`, `wrapper_emitter.l0`, `build_driver.l0`, `compiler_filesystem.l0`, `codegen_options.l0`,
+`dea_prelude.l0`, `ast_printer.l0`, `diag_print.l0`, `build_info.l0`, `l1c.l0`, `l1c_lib.l0`, and `string_escape.l0`.
+Shared support modules live under `util/`.
+
+The dependency graph is acyclic. `c_emitter.type_names` sits below type spelling and wrapper emission. Constant casts,
+array bounds, alias resolution, and nominal finalization form one recursive kernel in `type_resolve.ref`. Loop flow
+transfer stays with statement checking in `expr_types.stmt`, above reusable liveness snapshots.
+
+Only two modules exceed the 1500-line architectural review threshold: `expr_types/expr.l0` (1621 lines) retains the
+mutually recursive inference algorithm, and `backend/lower.l0` (2427 lines) retains expression/statement/cleanup
+recursion. In particular, lowering `try` can emit return cleanup, which can lower registered `with` statements and
+re-enter expression lowering. Splitting that group would require an algorithm change. Independent expression helpers
+remain below it; function-body setup and output orchestration enter it from above. `cleanup` and `module` are reserved
+L0 words, so those module responsibilities use the names `lifetime` and `output`.
 
 The L1-owned Stage 1 support translation unit under `compiler/stage1_l0/support/` supplies the small compiler-private C
 ABIs used for interface fingerprinting, canonical native temporary-parent validation, build/run workspace operations,

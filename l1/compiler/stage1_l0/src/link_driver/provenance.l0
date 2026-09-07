@@ -1,0 +1,322 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver.provenance;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import cli_args.model;
+import dea_prelude;
+import module_interface;
+import link_driver.model;
+
+/** One semantic provider and the consumers that require import reachability. */
+struct LinkProvenanceTarget {
+    provider_name: string;
+    consumers: StringVector*;
+    consumer_set: StringSet*;
+}
+
+/** Collect one unique non-virtual semantic provider name. */
+func ld_collect_provenance_provider(
+    providers: StringVector*,
+    seen: StringSet*,
+    provider_name: string
+) {
+    if (dea_is_virtual_module_name(provider_name) || ss_has(seen, provider_name)) {
+        return;
+    }
+    ss_add(seen, provider_name);
+    sv_push(providers, provider_name);
+}
+
+/** Collect unique semantic providers from both interface dependency tiers. */
+func ld_collect_interface_provenance_providers(
+    interface: ModuleInterface*,
+    providers: StringVector*,
+    seen: StringSet*
+) {
+    for (let req_i = 0; req_i < vec_size(interface.require_entries);
+         req_i = req_i + 1) {
+        let required = ld_ptr_vec_get(
+            interface.require_entries, req_i) as InterfaceDepEntry*;
+        ld_collect_provenance_provider(
+            providers, seen, required.provider_module);
+    }
+    for (let link_i = 0; link_i < vec_size(interface.link_entries);
+         link_i = link_i + 1) {
+        let linked = ld_ptr_vec_get(
+            interface.link_entries, link_i) as InterfaceDepEntry*;
+        ld_collect_provenance_provider(
+            providers, seen, linked.provider_module);
+    }
+}
+
+/** Free one semantic-provider target. */
+func ld_provenance_target_free(target: LinkProvenanceTarget*) {
+    sv_free(target.consumers);
+    ss_free(target.consumer_set);
+    drop target;
+}
+
+/** Free an owned pointer vector of semantic-provider targets. */
+func ld_provenance_targets_free(targets: VectorBase*) {
+    for (let i = 0; i < vec_size(targets); i = i + 1) {
+        ld_provenance_target_free(
+            ld_ptr_vec_get(targets, i) as LinkProvenanceTarget*);
+    }
+    vec_free(targets);
+}
+
+/** Return or create the target bucket for one semantic provider. */
+func ld_provenance_target_get_or_create(
+    targets: VectorBase*,
+    targets_by_provider: StringPtrMap*,
+    provider_name: string
+) -> LinkProvenanceTarget* {
+    let existing = spm_get(targets_by_provider, provider_name);
+    if (existing != null) {
+        return existing as LinkProvenanceTarget*;
+    }
+    let target = new LinkProvenanceTarget(
+        provider_name,
+        sv_create(2),
+        ss_create()
+    );
+    ld_ptr_vec_push(targets, target as void*);
+    spm_put(targets_by_provider, provider_name, target as void*);
+    return target;
+}
+
+/** Collect provider-grouped provenance queries in deterministic encounter order. */
+func ld_collect_provenance_targets(
+    plan: LinkPlan*,
+    targets: VectorBase*,
+    targets_by_provider: StringPtrMap*
+) {
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let consumer = ld_plan_input_get(plan, input_i);
+        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT)) {
+            continue;
+        }
+        let interface = ld_input_interface(consumer);
+        if (vec_size(interface.require_entries) == 0 &&
+            vec_size(interface.link_entries) == 0) {
+            continue;
+        }
+        with (
+            let providers = sv_create(4) => sv_free(providers),
+            let provider_seen = ss_create() => ss_free(provider_seen)
+        ) {
+            ld_collect_interface_provenance_providers(
+                interface, providers, provider_seen);
+            for (let provider_i = 0; provider_i < sv_size(providers);
+                 provider_i = provider_i + 1) {
+                let target = ld_provenance_target_get_or_create(
+                    targets,
+                    targets_by_provider,
+                    sv_get(providers, provider_i)
+                );
+                if (ss_add(target.consumer_set, interface.module_name)) {
+                    sv_push(target.consumers, interface.module_name);
+                }
+            }
+        }
+    }
+}
+
+/** Build reverse lifecycle-import adjacency for every registered Dea module. */
+func ld_build_reverse_imports(plan: LinkPlan*) -> StringPtrMap* {
+    let reverse = spm_create_with_capacity(vec_size(plan.inputs));
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let input = ld_plan_input_get(plan, input_i);
+        if (ord(input.kind) == ord(LOK_DEA_OBJECT)) {
+            let interface = ld_input_interface(input);
+            spm_put(reverse, interface.module_name, sv_create(2) as void*);
+        }
+    }
+
+    for (let input_i2 = 0; input_i2 < vec_size(plan.inputs);
+         input_i2 = input_i2 + 1) {
+        let consumer = ld_plan_input_get(plan, input_i2);
+        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT)) {
+            continue;
+        }
+        let interface2 = ld_input_interface(consumer);
+        for (let import_i = 0; import_i < vec_size(interface2.module_imports);
+             import_i = import_i + 1) {
+            let imported = ld_ptr_vec_get(
+                interface2.module_imports, import_i) as InterfaceModuleImport*;
+            let importers = spm_get(
+                reverse, imported.provider_module) as StringVector*;
+            sv_push(importers, interface2.module_name);
+        }
+    }
+    return reverse;
+}
+
+/** Free reverse adjacency vectors and their owning map. */
+func ld_reverse_imports_free(plan: LinkPlan*, reverse: StringPtrMap*) {
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let input = ld_plan_input_get(plan, input_i);
+        if (ord(input.kind) == ord(LOK_DEA_OBJECT)) {
+            let interface = ld_input_interface(input);
+            sv_free(spm_get(
+                reverse, interface.module_name) as StringVector*);
+        }
+    }
+    spm_free(reverse);
+}
+
+/** Return a collision-free key for one canonical consumer/provider query. */
+func ld_provenance_pair_key(consumer_name: string, provider_name: string) -> string {
+    return consumer_name + "\n" + provider_name;
+}
+
+/** Record every unreachable query for one provider through reverse imports. */
+func ld_collect_unreachable_target(
+    target: LinkProvenanceTarget*,
+    reverse: StringPtrMap*,
+    unreachable: StringSet*
+) {
+    with (
+        let visited = ss_create() => ss_free(visited),
+        let stack = sv_create(8) => sv_free(stack)
+    ) {
+        let remaining = sv_size(target.consumers);
+        let direct_importers = spm_get(
+            reverse, target.provider_name) as StringVector*;
+        for (let direct_i = 0; direct_i < sv_size(direct_importers);
+             direct_i = direct_i + 1) {
+            let direct_importer = sv_get(direct_importers, direct_i);
+            if (ss_add(visited, direct_importer)) {
+                if (ss_has(target.consumer_set, direct_importer)) {
+                    remaining = remaining - 1;
+                }
+                if (remaining > 0) {
+                    sv_push(stack, direct_importer);
+                }
+            }
+        }
+
+        while (sv_size(stack) > 0 && remaining > 0) {
+            let last = sv_size(stack) - 1;
+            let module_name = sv_get(stack, last);
+            ld_string_vector_pop(stack);
+            let importers = spm_get(reverse, module_name) as StringVector*;
+            for (let importer_i = 0; importer_i < sv_size(importers);
+                 importer_i = importer_i + 1) {
+                let importer = sv_get(importers, importer_i);
+                if (ss_add(visited, importer)) {
+                    if (ss_has(target.consumer_set, importer)) {
+                        remaining = remaining - 1;
+                    }
+                    if (remaining > 0) {
+                        sv_push(stack, importer);
+                    }
+                }
+            }
+        }
+
+        for (let consumer_i = 0; consumer_i < sv_size(target.consumers);
+             consumer_i = consumer_i + 1) {
+            let consumer_name = sv_get(target.consumers, consumer_i);
+            if (!ss_has(visited, consumer_name)) {
+                ss_add(unreachable, ld_provenance_pair_key(
+                    consumer_name, target.provider_name));
+            }
+        }
+    }
+}
+
+/** Emit unreachable-provider diagnostics in the original consumer order. */
+func ld_emit_unreachable_provenance(
+    plan: LinkPlan*,
+    unreachable: StringSet*,
+    diags: DiagCollector*
+) -> bool {
+    let ok = true;
+    for (let input_i = 0; input_i < vec_size(plan.inputs);
+         input_i = input_i + 1) {
+        let consumer = ld_plan_input_get(plan, input_i);
+        if (ord(consumer.kind) != ord(LOK_DEA_OBJECT)) {
+            continue;
+        }
+        let interface = ld_input_interface(consumer);
+        if (vec_size(interface.require_entries) == 0 &&
+            vec_size(interface.link_entries) == 0) {
+            continue;
+        }
+        with (
+            let providers = sv_create(4) => sv_free(providers),
+            let provider_seen = ss_create() => ss_free(provider_seen)
+        ) {
+            ld_collect_interface_provenance_providers(
+                interface, providers, provider_seen);
+            for (let provider_i = 0; provider_i < sv_size(providers);
+                 provider_i = provider_i + 1) {
+                let provider_name = sv_get(providers, provider_i);
+                if (ss_has(unreachable, ld_provenance_pair_key(
+                        interface.module_name, provider_name))) {
+                    ld_error(
+                        diags,
+                        "L1C-2111",
+                        "Dea module '" + interface.module_name +
+                            "' names semantic provider '" + provider_name +
+                            "' that is not transitively reachable through " +
+                            "'import module' records",
+                        consumer.interface_path as string
+                    );
+                    ok = false;
+                }
+            }
+        }
+    }
+    return ok;
+}
+
+/**
+ * Validate `require`/`link` provenance through existing lifecycle imports.
+ *
+ * Queries are grouped by provider and walked over reverse import edges. Each
+ * walk stops after reaching every interested consumer, so shared terminal
+ * providers and direct-provider workloads avoid one full forward walk per
+ * consumer without materializing a quadratic transitive-closure cache.
+ */
+func ld_validate_transitive_provenance(
+    plan: LinkPlan*,
+    diags: DiagCollector*
+) -> bool {
+    with (
+        let targets = ld_ptr_vec_create(8) => ld_provenance_targets_free(targets),
+        let targets_by_provider = spm_create() => spm_free(targets_by_provider)
+    ) {
+        ld_collect_provenance_targets(plan, targets, targets_by_provider);
+        if (vec_size(targets) == 0) {
+            return true;
+        }
+
+        with (
+            let reverse = ld_build_reverse_imports(plan) =>
+                ld_reverse_imports_free(plan, reverse),
+            let unreachable = ss_create() => ss_free(unreachable)
+        ) {
+            for (let target_i = 0; target_i < vec_size(targets);
+                 target_i = target_i + 1) {
+                ld_collect_unreachable_target(
+                    ld_ptr_vec_get(targets, target_i) as LinkProvenanceTarget*,
+                    reverse,
+                    unreachable
+                );
+            }
+            return ld_emit_unreachable_provenance(plan, unreachable, diags);
+        }
+    }
+}

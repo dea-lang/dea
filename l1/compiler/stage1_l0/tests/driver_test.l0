@@ -15,6 +15,7 @@ import std.vector;
 import ast;
 import source_paths;
 import driver;
+import driver.state;
 import module_graph;
 import util.log;
 

@@ -12,6 +12,7 @@ import std.assert;
 import util.diag;
 
 import cli_args;
+import cli_args.model;
 
 /**
  * Return whether a CLI parse result contains one diagnostic code.

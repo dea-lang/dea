@@ -6,7 +6,6 @@
 module type_resolve_test;
 
 import std.io;
-import std.string;
 import std.assert;
 import std.text;
 import std.vector;
@@ -16,12 +15,16 @@ import analysis;
 import sem_context;
 import source_paths;
 import ast;
-import type_resolve;
+import type_resolve.const_eval;
+import type_resolve.const_value;
+import type_resolve.lookup;
+import type_resolve.ref;
 import types;
 import symbols;
 import util.log;
 import util.numbers;
-import name_resolver;
+import name_resolver.query;
+import name_resolver.state;
 
 /**
  * Returns the root directory for test fixtures.

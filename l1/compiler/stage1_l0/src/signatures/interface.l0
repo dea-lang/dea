@@ -1,0 +1,276 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module signatures.interface;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import ast;
+import driver.state;
+import mi_utils;
+import module_graph;
+import module_interface;
+import name_resolver.query;
+import name_resolver.state;
+import types;
+import signatures.tables;
+
+/**
+ * Check interface slice placement after every semantic type has materialized.
+ *
+ * Source declarations are checked through their retained per-declaration type
+ * clones. This pass only covers active interface surfaces, whose semantic
+ * clones have no parsed declaration counterpart.
+ *
+ * @param nr Name-resolution data containing synthetic interface modules.
+ * @param driver_state Driver state containing finalized semantic interfaces.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_materialized_interface_shapes(nr: NameResolution*, driver_state: DriverState*,
+                                             diags: DiagCollector*) {
+    for (let iface_i = 0; iface_i < driver_interface_count(driver_state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(driver_state, iface_i);
+        let env_opt = nr_env_find(nr, mi.module_name);
+        if (env_opt == null) {
+            continue;
+        }
+        let env = env_opt as ModuleEnv*;
+        for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+            let info3 = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+            for (let field_i3 = 0; field_i3 < vec_size(info3.fields); field_i3 = field_i3 + 1) {
+                sig_reject_slice_escape((ptr_vec_get(info3.fields, field_i3) as StructFieldInfo*).field_type,
+                    "TYP-0811", "slice type may not be used as a struct field", diags,
+                    env.module_ptr.filename, info3.span);
+            }
+        }
+        for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+            let info4 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+            for (let variant_i2 = 0; variant_i2 < vec_size(info4.variants); variant_i2 = variant_i2 + 1) {
+                let variant2 = ptr_vec_get(info4.variants, variant_i2) as EnumVariantInfo*;
+                for (let field_i4 = 0; field_i4 < vec_size(variant2.field_types); field_i4 = field_i4 + 1) {
+                    sig_reject_slice_escape(ptr_vec_get(variant2.field_types, field_i4) as Type*, "TYP-0813",
+                        "slice type may not be used as an enum payload field", diags, env.module_ptr.filename,
+                        info4.span);
+                }
+            }
+        }
+        for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+            let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+            sig_reject_slice_escape(entry.ty.result as Type*, "TYP-0810",
+                "slice type may not be a function return type", diags, env.module_ptr.filename,
+                env.module_ptr.span);
+        }
+        for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+            let entry2 = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
+            sig_reject_slice_escape(entry2.ty, "TYP-0812", "slice type may not be used in a top-level let", diags,
+                env.module_ptr.filename, env.module_ptr.span);
+        }
+    }
+}
+
+/**
+ * Store an interface-backed struct signature.
+ *
+ * @param tables Signature tables receiving replayed metadata.
+ * @param info Interface struct metadata.
+ */
+func sig_replay_interface_struct(tables: SignatureTables*, info: StructInfo*) {
+    let cloned = miu_clone_struct_info(info);
+    spm_put(tables.struct_infos, cloned.key, cloned as void*);
+}
+
+/**
+ * Store an interface-backed enum signature.
+ *
+ * @param tables Signature tables receiving replayed metadata.
+ * @param info Interface enum metadata.
+ */
+func sig_replay_interface_enum(tables: SignatureTables*, info: EnumInfo*) {
+    let cloned = miu_clone_enum_info(info);
+    spm_put(tables.enum_infos, cloned.key, cloned as void*);
+}
+
+/**
+ * Store interface-backed function and binding signatures.
+ *
+ * @param tables Signature tables receiving replayed metadata.
+ * @param mi Interface metadata to replay.
+ */
+func sig_replay_interface_entries(tables: SignatureTables*, mi: ModuleInterface*) {
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+        spm_put(tables.func_types, sig_key(mi.module_name, entry.name), type_clone(entry.ty) as void*);
+    }
+
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        let entry2 = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
+        spm_put(tables.let_types, sig_key(mi.module_name, entry2.name), type_clone(entry2.ty) as void*);
+    }
+}
+
+/**
+ * Replay supplied module-interface signatures into semantic tables.
+ *
+ * @param tables Signature tables receiving replayed metadata.
+ * @param driver_state Driver state containing cloned interfaces.
+ */
+func sig_replay_interfaces(tables: SignatureTables*, driver_state: DriverState*) {
+    for (let iface_i = 0; iface_i < driver_interface_count(driver_state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(driver_state, iface_i);
+        for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+            sig_replay_interface_struct(tables, ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*);
+        }
+        for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+            sig_replay_interface_enum(tables, ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*);
+        }
+        sig_replay_interface_entries(tables, mi);
+    }
+}
+
+/**
+ * Check one raw interface type against its module's semantic closure.
+ *
+ * @param owner_module Interface module whose surface contains `ty`.
+ * @param ty Wire-preserving interface type to inspect.
+ * @param closure Semantic provider closure for `owner_module`.
+ * @param reported Provider modules already diagnosed for this interface.
+ * @param diags Diagnostic collector.
+ * @param filename Synthetic interface filename for diagnostics.
+ * @param span Interface span for diagnostics.
+ * @return `true` when every referenced provider is in `closure`.
+ */
+func sig_check_interface_closure_type(owner_module: string, ty: Type*, closure: StringSet*,
+                                      reported: StringSet*, diags: DiagCollector*, filename: string,
+                                      span: Span) -> bool {
+    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE) ||
+        ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_SLICE)) {
+        return sig_check_interface_closure_type(owner_module, ty.inner as Type*, closure, reported, diags,
+            filename, span);
+    }
+    if (ord(ty.kind) == ord(TY_FUNC)) {
+        let ok = true;
+        let params = ty.params as VectorBase*;
+        for (let param_i = 0; param_i < vec_size(params); param_i = param_i + 1) {
+            if (!sig_check_interface_closure_type(owner_module, ptr_vec_get(params, param_i) as Type*, closure,
+                reported, diags, filename, span)) {
+                ok = false;
+            }
+        }
+        if (!sig_check_interface_closure_type(owner_module, ty.result as Type*, closure, reported, diags,
+            filename, span)) {
+            ok = false;
+        }
+        return ok;
+    }
+    if (ord(ty.kind) != ord(TY_STRUCT) && ord(ty.kind) != ord(TY_ENUM)) {
+        return true;
+    }
+    if (ty.module_name == "" || ty.module_name == owner_module || ss_has(closure, ty.module_name)) {
+        return true;
+    }
+    if (!ss_has(reported, ty.module_name)) {
+        ss_add(reported, ty.module_name);
+        sig_diag_error(
+            diags,
+            "RES-0040",
+            "interface surface references a provider outside its semantic require closure",
+            filename,
+            span
+        );
+    }
+    return false;
+}
+
+/**
+ * Check every type-bearing declaration in one interface clone.
+ *
+ * @param mi Interface surface to inspect.
+ * @param closure Semantic provider closure for `mi`.
+ * @param reported Provider modules already diagnosed across interface clones.
+ * @param diags Diagnostic collector.
+ * @param filename Synthetic interface filename for diagnostics.
+ * @param default_span Fallback span for entries without declaration metadata.
+ */
+func sig_check_interface_closure_surface(mi: ModuleInterface*, closure: StringSet*, reported: StringSet*,
+                                         diags: DiagCollector*, filename: string, default_span: Span) {
+    for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+        for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+            sig_check_interface_closure_type(mi.module_name,
+                (ptr_vec_get(info.fields, field_i) as StructFieldInfo*).field_type, closure, reported, diags,
+                filename, info.span);
+        }
+    }
+    for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+        let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+        for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+            let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+            for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                sig_check_interface_closure_type(mi.module_name,
+                    ptr_vec_get(variant.field_types, field_i2) as Type*, closure, reported, diags, filename,
+                    info2.span);
+            }
+        }
+    }
+    for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
+        sig_check_interface_closure_type(mi.module_name,
+            (ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*).ty, closure, reported, diags, filename,
+            default_span);
+    }
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        sig_check_interface_closure_type(mi.module_name,
+            (ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*).ty, closure, reported, diags, filename,
+            default_span);
+    }
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        sig_check_interface_closure_type(mi.module_name,
+            (ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*).ty, closure, reported, diags, filename,
+            default_span);
+    }
+}
+
+/**
+ * Enforce semantic require closure for every resolved interface surface.
+ *
+ * Validation reads every selected raw graph interface, including link-only
+ * nodes that have no name-resolution environment. Active interfaces receive a
+ * second pass over their finalized semantic clone so providers exposed by
+ * transparent alias expansion are also checked.
+ *
+ * @param driver_state Driver state containing the graph and interface clones.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_interface_semantic_closures(driver_state: DriverState*, diags: DiagCollector*) {
+    let graph = driver_graph(driver_state);
+    with (let nodes = mg_nodes_sorted(graph) => vec_free(nodes)) {
+        for (let node_i = 0; node_i < vec_size(nodes); node_i = node_i + 1) {
+            let node = ptr_vec_get(nodes, node_i) as ModuleGraphNode*;
+            if (ord(node.state) != ord(MNS_RESOLVED) ||
+                (ord(node.origin.kind) != ord(MOK_INTERFACE) && ord(node.origin.kind) != ord(MOK_REGISTRY))) {
+                continue;
+            }
+            let raw_opt = driver_find_graph_interface(driver_state, node.module_name);
+            if (raw_opt == null) {
+                continue;
+            }
+            let raw = raw_opt as ModuleInterface*;
+            let filename = "<interface:" + node.module_name + ">";
+            if (node.origin.path != null) {
+                filename = node.origin.path as string;
+            }
+            with (let closure = mg_semantic_closure(graph, node.module_name) => ss_free(closure),
+                  let reported = ss_create() => ss_free(reported)) {
+                sig_check_interface_closure_surface(raw, closure, reported, diags, filename, Span(0, 0, 0, 0));
+                let semantic_opt = driver_find_interface(driver_state, node.module_name);
+                if (semantic_opt != null) {
+                    sig_check_interface_closure_surface(semantic_opt as ModuleInterface*, closure, reported, diags,
+                        filename, Span(0, 0, 0, 0));
+                }
+            }
+        }
+    }
+}

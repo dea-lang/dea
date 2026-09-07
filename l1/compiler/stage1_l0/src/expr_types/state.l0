@@ -1,0 +1,294 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module expr_types.state;
+
+import std.hashmap;
+import std.text;
+import std.vector;
+import util.diag;
+import util.intset;
+import ast;
+import driver.state;
+import locals;
+import name_resolver.state;
+import sem_context;
+import types;
+
+/**
+ * Represents the ExpressionTypeChecker structure.
+ */
+struct ExpressionTypeChecker {
+    result: AnalysisResult*;
+    current_module: string;
+    current_unit: DriverUnit*?;
+    current_env: ModuleEnv*?;
+    current_func: FunctionEnv*?;
+    current_ret_type: Type*?;
+    current_scope: Scope*?;
+    alive_scopes: VectorBase*?; // StringIntMap*
+    decl_scopes: VectorBase*?; // StringIntMap*
+    decl_scope_defs: VectorBase*?; // Scope*
+    loop_depth: int;
+    next_stmt_unreachable: bool;
+    suppress_diagnostics: bool;
+    suppress_liveness_diagnostics: bool;
+    liveness_diagnostics_only: bool;
+    loop_flow_capture_stack: LoopFlowCapture*?;
+    cleanup_header_guard_stack: CleanupHeaderGuard*?;
+}
+
+/**
+ * Describes whether a statement can reach the next statement.
+ */
+enum StmtFlowKind {
+    FLOW_FALLTHROUGH;
+    FLOW_RETURNS;
+    FLOW_STOPS;
+}
+
+/**
+ * Captured liveness states for loop-control exits from one loop body.
+ */
+struct LoopFlowCapture {
+    parent: LoopFlowCapture*?;
+    break_states: VectorBase*; // VectorBase* liveness stacks
+    continue_states: VectorBase*; // VectorBase* liveness stacks
+}
+
+/**
+ * Result of checking one loop iteration for liveness flow.
+ */
+struct LoopIterationFlow {
+    capture: LoopFlowCapture*;
+    backedge_states: VectorBase*; // VectorBase* liveness stacks
+    body_flow: StmtFlowKind;
+}
+
+/**
+ * Result of fixed-point liveness convergence for one loop.
+ */
+struct LoopFixedPointFlow {
+    head: VectorBase*; // liveness stack
+    capture: LoopFlowCapture*;
+    backedge_states: VectorBase*; // VectorBase* liveness stacks
+}
+
+/**
+ * Result of checking assignability in a typed expression context.
+ */
+enum AssignCheckResult {
+    ASSIGN_REJECT;
+    ASSIGN_ACCEPT;
+    ASSIGN_REPORTED;
+}
+
+/**
+ * Classification of a `case` arm literal against the scrutinee type.
+ */
+enum CaseLiteralClass {
+    CASE_LIT_POSSIBLE;        // The arm can compare equal under the same rules as `==`.
+    CASE_LIT_ALWAYS_FALSE;    // Well-formed literal family, but outside the scrutinee value domain.
+    CASE_LIT_MISMATCH;        // The literal family cannot be compared with the scrutinee type.
+    CASE_LIT_BIGINT_CONTEXT;  // Bigint literal needing contextual assignability checking.
+}
+
+/**
+ * Tri-state result for compile-time boolean flow tests.
+ */
+enum ConstBoolFlowKind {
+    CONST_BOOL_UNKNOWN;
+    CONST_BOOL_TRUE;
+    CONST_BOOL_FALSE;
+}
+
+/**
+ * Linked stack entry for guarded `with` header locals during cleanup-block checking.
+ */
+struct CleanupHeaderGuard {
+    parent: CleanupHeaderGuard*?;
+    guarded_decl_ids: IntSet*;
+}
+
+/**
+ * Emit a type-checking error for a source span.
+ *
+ * @param self Expression checker collecting diagnostics.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func etc_diag_error(self: ExpressionTypeChecker*, code: string, message: string, filename: string, span: Span) {
+    if (self.suppress_diagnostics) {
+        return;
+    }
+    if (self.suppress_liveness_diagnostics && (code == "TYP-0062" || code == "TYP-0150")) {
+        return;
+    }
+    if (self.liveness_diagnostics_only && code != "TYP-0062" && code != "TYP-0150") {
+        return;
+    }
+    if (self.liveness_diagnostics_only) {
+        for (let i = 0; i < diag_count(self.result.diags); i = i + 1) {
+            let existing = diag_get(self.result.diags, i);
+            if (existing.code == code && existing.message == message && existing.filename == filename &&
+                existing.line == span.start_line && existing.column == span.start_column &&
+                existing.line_end == span.end_line && existing.column_end == span.end_column) {
+                return;
+            }
+        }
+    }
+    diag_error(self.result.diags, "TypeChecker", code, message, filename, span.start_line, span.start_column,
+        span.end_line, span.end_column);
+}
+
+/**
+ * Emit a type-checking warning for a source span.
+ *
+ * @param self Expression checker collecting diagnostics.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func etc_diag_warn(self: ExpressionTypeChecker*, code: string, message: string, filename: string, span: Span) {
+    if (self.suppress_diagnostics || self.liveness_diagnostics_only) {
+        return;
+    }
+    diag_warn(self.result.diags, "TypeChecker", code, message, filename, span.start_line, span.start_column,
+        span.end_line, span.end_column);
+}
+
+/**
+ * Build the storage key used for per-expression analysis tables.
+ *
+ * @param module_name Owning module name.
+ * @param id Expression id.
+ * @return Key in `module::id` form.
+ */
+func etc_key(module_name: string, id: int) -> string {
+    return analysis_expr_key(module_name, id);
+}
+
+/**
+ * Record the inferred type for an expression.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Expression id.
+ * @param ty Type to store.
+ */
+func etc_set_expr_type(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*) {
+    if (self.liveness_diagnostics_only) {
+        return;
+    }
+    let key = etc_key(self.current_module, expr_id);
+    analysis_owned_type_map_put(self.result.expr_types, key, ty);
+}
+
+/**
+ * Build the type-map key for one exact pattern-bound variable.
+ *
+ * @param self Expression checker state.
+ * @param pattern_id Owning pattern id.
+ * @param binding_slot Binder position within the pattern.
+ * @return Stable binding-specific type-map key.
+ */
+func etc_pattern_var_key(self: ExpressionTypeChecker*, pattern_id: PatternId, binding_slot: int) -> string {
+    let function_key = self.current_module;
+    if (self.current_func != null) {
+        function_key = (self.current_func as FunctionEnv*).key;
+    }
+    return function_key + "::pattern::" + int_to_string(pattern_id) + "::" + int_to_string(binding_slot);
+}
+
+/**
+ * Record the inferred type for one exact pattern-bound variable.
+ *
+ * @param self Expression checker state.
+ * @param pattern_id Owning pattern id.
+ * @param binding_slot Binder position within the pattern.
+ * @param ty Type to store.
+ */
+func etc_set_pattern_var_type(self: ExpressionTypeChecker*, pattern_id: PatternId, binding_slot: int, ty: Type*) {
+    if (self.liveness_diagnostics_only) {
+        return;
+    }
+    let key = etc_pattern_var_key(self, pattern_id, binding_slot);
+    analysis_owned_type_map_put(self.result.expr_types, key, ty);
+}
+
+/**
+ * Return a cloned stored type for one exact pattern-bound variable.
+ *
+ * @param self Expression checker state.
+ * @param pattern_id Owning pattern id.
+ * @param binding_slot Binder position within the pattern.
+ * @return Cloned stored type, or `null` if absent.
+ */
+func etc_get_pattern_var_type(self: ExpressionTypeChecker*, pattern_id: PatternId,
+                              binding_slot: int) -> Type*? {
+    let key = etc_pattern_var_key(self, pattern_id, binding_slot);
+    let val = spm_get(self.result.expr_types, key);
+    if (val == null) return null;
+    return type_clone(val as Type*);
+}
+
+/**
+ * Record whether a variable reference resolved locally or at module scope.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Expression id.
+ * @param res Resolution kind to store.
+ */
+func etc_set_var_res(self: ExpressionTypeChecker*, expr_id: ExprId, res: VarRefResolution) {
+    if (self.liveness_diagnostics_only) {
+        return;
+    }
+    let key = etc_key(self.current_module, expr_id);
+    sim_put(self.result.var_ref_resolution, key, ord(res));
+}
+
+/**
+ * Record the target type of an intrinsic expression.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Expression id.
+ * @param ty Target type to store.
+ */
+func etc_set_intrinsic_target(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*) {
+    if (self.liveness_diagnostics_only) {
+        return;
+    }
+    let key = etc_key(self.current_module, expr_id);
+    analysis_owned_type_map_put(self.result.intrinsic_targets, key, ty);
+}
+
+/**
+ * Free a temporary cleanup-header guard stack.
+ *
+ * @param stack Linked guard stack to free.
+ */
+func etc_cleanup_header_guard_stack_free(stack: CleanupHeaderGuard*?) {
+    let cur = stack;
+    while (cur != null) {
+        let node = cur as CleanupHeaderGuard*;
+        let parent = node.parent;
+        iset_free(node.guarded_decl_ids);
+        drop node;
+        cur = parent;
+    }
+}
+
+/**
+ * Free an optional owned type.
+ *
+ * @param ty Optional type to free.
+ */
+func etc_type_free_opt(ty: Type*?) {
+    if (ty != null) {
+        type_free(ty as Type*);
+    }
+}

@@ -3,6 +3,7 @@
 ## Port the L1 compiler to self-hosted Stage 2
 
 - Date: 2026-07-11
+- Last reviewed: 2026-09-07
 - Status: Draft
 - Title: Port the L1 compiler to self-hosted Stage 2
 - Kind: Feature
@@ -34,10 +35,11 @@
   - `l1/compiler/stage2_l1/tests/`
   - `l1/tests/test_env_stackability.py`
 - Related:
-  - `l1/work/plans/refactors/2026-07-08-stage1-source-decomposition-noref.md`
+  - `l1/work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md`
   - `docs/decisions/0001-two-stage-architecture.md`
   - `l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md`
   - `l1/docs/roadmap.md`
+  - [l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
 - Repro: `make -C l1 triple-test`
 
 ## Summary
@@ -59,7 +61,7 @@ implementation.
 1. `l1/compiler/stage1_l0/` is the only committed L1 compiler implementation. Its production sources are written in L0
    and built by the upstream L0 Stage 2 compiler.
 2. `l1/compiler/stage2_l1/` contains only a placeholder README.
-3. The current Stage 1 production source tree contains 36,339 lines of `.l0` across the compiler modules.
+3. The settled 2026-09-07 Stage 1 production source tree contains 49,757 lines of `.l0` across 116 compiler modules.
 4. A 2026-07-11 feasibility audit copied that source tree into an ignored build directory, changed only the source
    suffixes from `.l0` to `.l1`, and compiled it through the repo-local L1 Stage 1 compiler without a language or source
    rewrite.
@@ -67,18 +69,41 @@ implementation.
    probe also checked a normal L1 example through the final compiler.
 6. The same audit ran the current L1 validation surface successfully: 47 normal Stage 1 tests, 36 default trace tests,
    environment-stackability validation, and four warning-free examples.
-7. Separate compilation, C FFI, generics, closures, address-of, dynamic buffers, and release productization are not
-   prerequisites for the first self-hosted fixed point. The initial Stage 2 compiler can retain the current
-   whole-program C99 backend and source-based import model.
+7. Generics, closures, address-of, dynamic buffers, and release productization are not prerequisites for the first
+   self-hosted fixed point. The initial Stage 2 compiler retains the current per-module C99 backend, source/interface
+   import model, and multi-unit linking workflow.
 
-These results remove language expressiveness as a bootstrap blocker. The work left in this plan is source lifecycle,
-stage identity, artifact construction, test ownership, deterministic fixed-point validation, CI, and documentation.
+The historical audit established language expressiveness for bootstrapping. The current filename-only semantic check
+also passes, but the native support-ABI blocker below must be resolved before claiming a new native fixed point. The
+remaining work includes source lifecycle, stage identity, artifact construction, test ownership, deterministic
+fixed-point validation, CI, and documentation.
+
+## Settled Stage 1 Source Baseline
+
+The 2026-09-07 decomposition establishes explicit canonical state/model imports and acyclic subsystem dependencies.
+`expr_types.expr` retains its recursive inference algorithm, while `backend.lower` retains the joint
+expression/statement/registered-cleanup kernel. All other production modules remain below 1500 lines. The module
+families and ownership boundaries are recorded in [l1/docs/reference/architecture.md][stage1-architecture].
+
+L0 reserves `cleanup` and `module`, so the settled module names use `lifetime` and `output`. The newly shared link-plan
+helper is `ld_prepare_verified_plan`; its former leading underscore would exclude it from L1 default exports. These
+source-layout details are part of the baseline and require no port-specific rewrite. A filename-only copy of all 116
+modules passes L1 semantic checking using the `l1c`, `util.demangler`, and `util.path` roots. The demangler retains its
+existing local-shadowing warning. The native Clang probe fails at `interface_fingerprint.c`: generated extern
+declarations use `dea_byte*` for the input, while `l1/compiler/shared/runtime/include/dea_rt.h` declares
+`const uint8_t*` for `l1c_interface_fingerprint_sip13_hex`. The same failure was reproduced by generating and compiling
+that module from the original pre-decomposition source tree, so this is an existing private C-support compatibility
+blocker. Its bounded repair is tracked by
+[l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker].
+Complete that prerequisite before the first native Stage 2 build, then resume the native build and fixed-point checks in
+this plan. The completed decomposition refactor does not claim a current native Stage 2 build or fixed point.
 
 ## Defaults Chosen
 
-01. Complete [l1/work/plans/refactors/2026-07-08-stage1-source-decomposition-noref.md][stage1-decomposition] before
-    taking the committed Stage 2 source snapshot. Porting first would either duplicate that broad refactor or force an
-    immediate two-tree synchronization exercise.
+01. Use the completed
+    [l1/work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md][stage1-decomposition] layout for
+    the committed Stage 2 source snapshot. Its settled boundaries avoid duplicating the broad refactor across both
+    compiler trees.
 02. Close this plan at the strict self-hosting fixed point. L1-native cleanup is a prioritized follow-up queue, not a
     closure requirement.
 03. Make the first source snapshot mechanical. Preserve module names, compiler passes, ownership, diagnostics, generated
@@ -136,9 +161,11 @@ This plan adds no install, distribution, release, or docs-publishing interface.
 
 ### Phase 1: Freeze the port baseline
 
-1. Complete the Stage 1 source-decomposition plan and its full validation.
+1. Use the completed Stage 1 source-decomposition plan and its recorded full validation as the port baseline.
 2. Record the settled production module and line-count inventory in this plan's implementation notes.
-3. Re-run the filename-only `.l1` feasibility probe against the settled tree before committing the port.
+3. Complete
+   [l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker],
+   then re-run the filename-only `.l1` native feasibility probe against the settled tree before committing the port.
 4. Confirm `make -C l1 test-all` passes and the worktree contains no generated source artifacts.
 
 ### Phase 2: Seed the Stage 2 source tree
@@ -286,12 +313,14 @@ The plan closes only when all of the following are true:
    diagnostics, runtime behavior, or bootstrap contracts.
 2. The existing L1 runtime archives and L1 stdlib remain sufficient to build the compiler workload.
 3. Stage 1 continues to build through the explicit upstream L0 Stage 2 contract documented by the L1 subtree.
-4. The current whole-program C99 backend remains acceptable for the initial Stage 2 compiler workload.
-5. Separate-compilation and productization plans may proceed independently, but this plan does not depend on them.
+4. The current per-module C99 backend and multi-unit linking workflow remain the initial Stage 2 compiler contract.
+5. Productization may proceed independently, but this plan does not depend on it.
 
 [architecture]: ../../../l1/docs/reference/architecture.md
+[fingerprint-blocker]: ../../../l1/work/plans/bug-fixes/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
 [l0-triple-bootstrap]: ../../../l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md
 [project-status]: ../../../l1/docs/project-status.md
 [roadmap]: ../../../l1/docs/roadmap.md
-[stage1-decomposition]: ../../../l1/work/plans/refactors/2026-07-08-stage1-source-decomposition-noref.md
+[stage1-architecture]: ../../../l1/docs/reference/architecture.md
+[stage1-decomposition]: ../../../l1/work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
 [two-stage-architecture]: ../../../docs/decisions/0001-two-stage-architecture.md

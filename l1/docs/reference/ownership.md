@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-08-25
+Version: 2026-09-07
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -249,9 +249,11 @@ python compiler/stage1_l0/scripts/run_trace_tests.py
 
 Primary implementation references:
 
-- `compiler/stage1_l0/src/backend.l0`
-- `compiler/stage1_l0/src/c_emitter.l0`
-- `compiler/stage1_l0/src/expr_types.l0`
+- `compiler/stage1_l0/src/backend/lower.l0`
+- `compiler/stage1_l0/src/backend/lifetime.l0`
+- `compiler/stage1_l0/src/c_emitter/lifetime.l0`
+- `compiler/stage1_l0/src/expr_types/liveness.l0`
+- `compiler/stage1_l0/src/expr_types/stmt.l0`
 - `compiler/stage1_l0/src/lexer.l0`
 - `compiler/stage1_l0/src/parser.l0`
 - `compiler/shared/l1/stdlib/std/vector.l1`

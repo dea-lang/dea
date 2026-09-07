@@ -5,14 +5,16 @@
 
 module parser.decl;
 
-import std.text;
 import std.vector;
 import util.diag;
 
 import tokens;
 import lexer;
 import ast;
-import parser.shared;
+import parser.cursor;
+import parser.state;
+import parser.token_value;
+import parser.type_ref;
 import parser.expr;
 import parser.stmt;
 

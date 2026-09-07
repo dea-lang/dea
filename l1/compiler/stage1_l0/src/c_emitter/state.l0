@@ -1,0 +1,434 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module c_emitter.state;
+
+import std.assert;
+import std.hashmap;
+import std.hashset;
+import std.string;
+import std.text;
+import std.vector;
+import name_resolver.query;
+import name_resolver.state;
+import sem_context;
+import types;
+
+/**
+ * Represents a line-oriented C source builder with indentation tracking.
+ */
+struct CCodeBuilder {
+    lines: StringVector*;
+    indent_level: int;
+    indent_str: string;
+    cached_prefix: string;
+    cached_level: int;
+}
+
+/**
+ * Represents the Stage 1 C emitter state.
+ */
+struct CEmitter {
+    analysis: AnalysisResult*?;
+    module_target: string?;
+    module_type_keys: StringSet*?; // borrowed required `module::type` keys
+    current_module: string?;
+    out: CCodeBuilder*;
+    tmp_counter: int;
+    active_line_directive: string;
+    opt_wrappers: StringPtrMap*; // wrapper name -> Type*
+    opt_emitted: StringSet*;
+    array_wrappers: StringPtrMap*; // wrapper name -> Type*
+    array_emitted: StringSet*;
+    func_ptrs: StringPtrMap*; // typedef name -> Type*
+    func_ptr_emitted: StringSet*;
+    slice_wrappers: StringPtrMap*; // wrapper name -> Type*
+    slice_emitted: StringSet*;
+    trace_arc: bool;
+    trace_memory: bool;
+}
+
+/**
+ * Abort on an internal code-emission error.
+ *
+ * @param message ICE message to report.
+ */
+func cem_ice(message: string) {
+    assert(false, message);
+}
+
+/**
+ * Abort on an internal code-emission error from a string-returning helper.
+ *
+ * @param message ICE message to report.
+ * @return Dummy return used only to satisfy control-flow typing.
+ */
+func cem_ice_string(message: string) -> string {
+    assert(false, message);
+    return "";
+}
+
+/**
+ * Free every collected optional-wrapper inner type.
+ *
+ * @param items Wrapper map to free.
+ */
+func cem_opt_wrapper_map_free(items: StringPtrMap*) {
+    for (let i = 0; i < spm_capacity(items); i = i + 1) {
+        if (spm_slot_occupied(items, i)) {
+            type_free(spm_slot_value(items, i) as Type*);
+        }
+    }
+    spm_free(items);
+}
+
+/**
+ * Free every collected function-pointer typedef type.
+ *
+ * @param items Typedef map to free.
+ */
+func cem_func_ptr_map_free(items: StringPtrMap*) {
+    for (let i = 0; i < spm_capacity(items); i = i + 1) {
+        if (spm_slot_occupied(items, i)) {
+            type_free(spm_slot_value(items, i) as Type*);
+        }
+    }
+    spm_free(items);
+}
+
+/**
+ * Create a new code builder.
+ *
+ * @return New builder with four-space indentation.
+ */
+func ccb_create() -> CCodeBuilder* {
+    return new CCodeBuilder(sv_create(32), 0, "    ", "", 0);
+}
+
+/**
+ * Free a code builder.
+ *
+ * @param self Builder to free.
+ */
+func ccb_free(self: CCodeBuilder*) {
+    sv_free(self.lines);
+    drop self;
+}
+
+/**
+ * Increase indentation level by one.
+ *
+ * @param self Builder to update.
+ */
+func ccb_indent(self: CCodeBuilder*) {
+    self.indent_level = self.indent_level + 1;
+}
+
+/**
+ * Decrease indentation level by one.
+ *
+ * @param self Builder to update.
+ */
+func ccb_dedent(self: CCodeBuilder*) {
+    if (self.indent_level > 0) {
+        self.indent_level = self.indent_level - 1;
+    }
+}
+
+/**
+ * Build the current indentation prefix.
+ *
+ * @param self Builder to inspect.
+ * @return Indentation string for the current level.
+ */
+func ccb_prefix(self: CCodeBuilder*) -> string {
+    if (self.indent_level == self.cached_level) {
+        return self.cached_prefix;
+    }
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < self.indent_level; i = i + 1) {
+            sb_append(sb, self.indent_str);
+        }
+        self.cached_prefix = sb_to_string(sb);
+        self.cached_level = self.indent_level;
+        return self.cached_prefix;
+    }
+}
+
+/**
+ * Emit one line with indentation.
+ *
+ * @param self Builder to update.
+ * @param line Line text, or `""` for a blank line.
+ */
+func ccb_emit(self: CCodeBuilder*, line: string) {
+    if (is_empty_s(line)) {
+        sv_push(self.lines, "");
+        return;
+    }
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, ccb_prefix(self));
+        sb_append(sb, line);
+        sv_push(self.lines, sb_to_string(sb));
+    }
+}
+
+/**
+ * Emit one line without indentation.
+ *
+ * @param self Builder to update.
+ * @param line Raw line text.
+ */
+func ccb_emit_raw(self: CCodeBuilder*, line: string) {
+    sv_push(self.lines, line);
+}
+
+/**
+ * Convert the accumulated lines to one source string with a trailing newline.
+ *
+ * @param self Builder to inspect.
+ * @return Combined source text.
+ */
+func ccb_to_string(self: CCodeBuilder*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(self.lines); i = i + 1) {
+            sb_append(sb, sv_get(self.lines, i));
+            sb_append(sb, "\n");
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Create a Stage 1 C emitter.
+ *
+ * @return New emitter.
+ */
+func cem_create() -> CEmitter* {
+    return new CEmitter(null, null, null, null, ccb_create(), 0, "", spm_create(), ss_create(), spm_create(), ss_create(),
+        spm_create(), ss_create(), spm_create(), ss_create(), false, false);
+}
+
+/**
+ * Clear every collected optional-wrapper entry.
+ *
+ * @param self Emitter to update.
+ */
+func cem_reset_optional_wrappers(self: CEmitter*) {
+    cem_opt_wrapper_map_free(self.opt_wrappers);
+    ss_free(self.opt_emitted);
+    self.opt_wrappers = spm_create();
+    self.opt_emitted = ss_create();
+}
+
+/**
+ * Clear every collected function-pointer typedef entry.
+ *
+ * @param self Emitter to update.
+ */
+func cem_reset_func_ptr_typedefs(self: CEmitter*) {
+    cem_func_ptr_map_free(self.func_ptrs);
+    ss_free(self.func_ptr_emitted);
+    self.func_ptrs = spm_create();
+    self.func_ptr_emitted = ss_create();
+}
+
+/**
+ * Clear every collected array-wrapper entry.
+ *
+ * @param self Emitter to update.
+ */
+func cem_reset_array_wrappers(self: CEmitter*) {
+    cem_func_ptr_map_free(self.array_wrappers);
+    ss_free(self.array_emitted);
+    self.array_wrappers = spm_create();
+    self.array_emitted = ss_create();
+}
+
+/**
+ * Clear every collected slice-wrapper entry.
+ *
+ * @param self Emitter to update.
+ */
+func cem_reset_slice_wrappers(self: CEmitter*) {
+    cem_func_ptr_map_free(self.slice_wrappers);
+    ss_free(self.slice_emitted);
+    self.slice_wrappers = spm_create();
+    self.slice_emitted = ss_create();
+}
+
+/**
+ * Free a Stage 1 C emitter.
+ *
+ * @param self Emitter to free.
+ */
+func cem_free(self: CEmitter*) {
+    cem_opt_wrapper_map_free(self.opt_wrappers);
+    ss_free(self.opt_emitted);
+    cem_func_ptr_map_free(self.array_wrappers);
+    ss_free(self.array_emitted);
+    cem_func_ptr_map_free(self.func_ptrs);
+    ss_free(self.func_ptr_emitted);
+    cem_func_ptr_map_free(self.slice_wrappers);
+    ss_free(self.slice_emitted);
+    ccb_free(self.out);
+    drop self;
+}
+
+/**
+ * Attach analysis data to an emitter.
+ *
+ * @param self Emitter to update.
+ * @param analysis Analysis result to borrow.
+ */
+func cem_set_analysis(self: CEmitter*, analysis: AnalysisResult*) {
+    self.analysis = analysis;
+}
+
+/**
+ * Restrict analysis-wide wrapper collection to one module output boundary.
+ *
+ * @param self Emitter to update.
+ * @param module_name Canonical target module name.
+ */
+func cem_set_module_target(self: CEmitter*, module_name: string) {
+    self.module_target = module_name;
+}
+
+/**
+ * Attach the nominal type surface required by module output.
+ *
+ * @param self Emitter to update.
+ * @param type_keys Borrowed `module::type` keys owned by the backend.
+ */
+func cem_set_module_type_keys(self: CEmitter*, type_keys: StringSet*) {
+    self.module_type_keys = type_keys;
+}
+
+/**
+ * Return the borrowed analysis result.
+ *
+ * @param self Emitter to inspect.
+ * @return Borrowed analysis result.
+ */
+func cem_analysis(self: CEmitter*) -> AnalysisResult* {
+    if (self.analysis == null) {
+        cem_ice("[ICE-9300] C emitter requires attached analysis");
+    }
+    return self.analysis as AnalysisResult*;
+}
+
+/**
+ * Return whether module output needs one value-signature table entry.
+ *
+ * Whole-program output keeps the analysis-wide scan. Module output keeps the
+ * target's own entries, virtual-prelude entries, and provider symbols that
+ * name resolution recorded as consumed by the target.
+ *
+ * @param self Emitter to inspect.
+ * @param key Signature key in `module::symbol` form.
+ * @return `true` when wrapper collection should inspect the entry.
+ */
+func cem_module_target_includes_value_key(self: CEmitter*, key: string) -> bool {
+    if (self.module_target == null) {
+        return true;
+    }
+    let target = self.module_target as string;
+    let target_prefix = target + "::";
+    if (starts_with_s(key, target_prefix) || starts_with_s(key, "dea::")) {
+        return true;
+    }
+    let analysis = cem_analysis(self);
+    if (analysis.names == null) {
+        return false;
+    }
+    let names = analysis.names as NameResolution*;
+    for (let i = 0; i < nr_resolved_symbol_count(names); i = i + 1) {
+        let resolved = nr_resolved_symbol_get(names, i);
+        let provider_prefix = resolved.provider_module + "::";
+        let resolved_key = provider_prefix + resolved.symbol_name;
+        if (resolved.consumer_module == target && key == resolved_key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return whether one analysis key belongs to the selected module.
+ *
+ * @param self Emitter to inspect.
+ * @param key Analysis key beginning with `module::`.
+ * @return `true` before target selection or for the selected module.
+ */
+func cem_module_target_includes_analysis_key(self: CEmitter*, key: string) -> bool {
+    if (self.module_target == null) {
+        return true;
+    }
+    let target = self.module_target as string;
+    let prefix = target + "::";
+    return starts_with_s(key, prefix);
+}
+
+/** Return whether one module belongs to the selected output boundary. */
+func cem_module_target_matches(self: CEmitter*, module_name: string) -> bool {
+    if (self.module_target == null) {
+        return true;
+    }
+    let target = self.module_target as string;
+    return target == module_name;
+}
+
+/**
+ * Return whether one nominal type belongs to module output's required surface.
+ *
+ * @param self Emitter to inspect.
+ * @param module_name Defining module name.
+ * @param type_name Nominal type name.
+ * @return `true` before target selection or for a required module-output type.
+ */
+func cem_module_target_includes_type(self: CEmitter*, module_name: string, type_name: string) -> bool {
+    if (self.module_target == null) {
+        return true;
+    }
+    if (self.module_type_keys == null) {
+        return false;
+    }
+    let key = module_name + "::" + type_name;
+    return ss_has(self.module_type_keys as StringSet*, key);
+}
+
+/**
+ * Return the generated C source text.
+ *
+ * @param self Emitter to inspect.
+ * @return Complete source text.
+ */
+func cem_get_output(self: CEmitter*) -> string {
+    return ccb_to_string(self.out);
+}
+
+/**
+ * Produce a fresh temporary identifier.
+ *
+ * @param self Emitter to update.
+ * @param kind Temp-kind prefix.
+ * @return Unique temp identifier.
+ */
+func cem_fresh_tmp(self: CEmitter*, kind: string) -> string {
+    self.tmp_counter = self.tmp_counter + 1;
+    return "dea_" + kind + "_" + int_to_string(self.tmp_counter);
+}
+
+/**
+ * Free an optional cloned type.
+ *
+ * @param ty Optional type to free.
+ */
+func cem_type_free_opt(ty: Type*?) {
+    if (ty != null) {
+        type_free(ty as Type*);
+    }
+}

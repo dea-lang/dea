@@ -14,12 +14,13 @@ import std.text;
 import std.vector;
 import util.diag;
 
-import analysis;
 import ast;
 import backend;
-import cli_args;
+import backend.lifetime;
+import backend.state;
+import cli_args.model;
 import codegen_options;
-import driver;
+import driver.state;
 import expr_types;
 import interface_fingerprint;
 import locals;
@@ -27,11 +28,14 @@ import mi_utils;
 import module_interface;
 import module_graph;
 import name_resolver;
+import name_resolver.query;
+import name_resolver.state;
 import parser;
 import parser.interface;
 import scope_context;
 import sem_context;
 import signatures;
+import signatures.tables;
 import types;
 import util.log;
 
@@ -2279,7 +2283,6 @@ func test_backend_generate_string_relational_ops() {
         analysis_result_free(result);
     }
 }
-
 
 /**
  * Tests string concatenation lowering through the runtime helper.

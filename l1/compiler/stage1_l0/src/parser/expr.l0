@@ -5,15 +5,16 @@
 
 module parser.expr;
 
-import std.string;
 
-import std.text;
 import std.vector;
 
 import tokens;
 import ast;
 import builtin_types;
-import parser.shared;
+import parser.cursor;
+import parser.state;
+import parser.token_value;
+import parser.type_ref;
 
 /* ---------------------------------
    Expression parsing

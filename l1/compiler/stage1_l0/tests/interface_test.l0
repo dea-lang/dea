@@ -8,7 +8,6 @@ module interface_test;
 import std.assert;
 import std.io;
 import std.string;
-import std.text;
 import std.vector;
 
 import analysis;
@@ -17,7 +16,8 @@ import interface_emitter;
 import interface_fingerprint;
 import mi_utils;
 import module_interface;
-import name_resolver;
+import name_resolver.query;
+import name_resolver.state;
 import parser.interface;
 import sem_context;
 import source_paths;

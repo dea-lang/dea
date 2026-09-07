@@ -6,14 +6,11 @@
 module locals;
 
 import std.hashmap;
-import std.string;
-import std.text;
 import std.vector;
 import util.diag;
-import util.strings;
 
 import ast;
-import driver;
+import driver.state;
 
 /**
  * Defines the LocalKind enumeration.

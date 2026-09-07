@@ -1,0 +1,332 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module cli_args.model;
+
+import std.vector;
+import util.diag;
+
+/**
+ * Defines the CliMode enumeration.
+ */
+enum CliMode {
+    CM_RUN;
+    CM_BUILD;
+    CM_COMPILE;
+    CM_LINK;
+    CM_EMIT_INTERFACE;
+    CM_GEN;
+    CM_CHECK;
+    CM_TOK;
+    CM_AST;
+    CM_SYM;
+    CM_TYPE;
+}
+
+/**
+ * Identifies how one standalone-link operand entered the CLI.
+ */
+enum LinkOperandKind {
+    LOK_DEA_OBJECT;
+    LOK_FOREIGN_OBJECT;
+    LOK_LIBRARY;
+    LOK_LIBRARY_SEARCH;
+    LOK_RPATH;
+    LOK_LINK_ARG;
+}
+
+/**
+ * Represents one ordered link input or host-driver control.
+ */
+struct LinkOperand {
+    kind: LinkOperandKind;
+    value: string;
+}
+
+/**
+ * Represents the CliOptions structure.
+ */
+struct CliOptions {
+    mode: CliMode;
+    mode_explicit: bool;
+
+    verbosity: int;
+    log: bool;
+
+    project_roots: StringVector*;
+    sys_roots: StringVector*;
+    interface_paths: StringVector*;
+
+    output: string?;
+    keep_c: bool;
+    c_compiler: string?;
+    c_options: string?;
+    runtime_include: string?;
+    runtime_lib: string?;
+
+    no_line_directives: bool;
+    trace_arc: bool;
+    trace_memory: bool;
+    unchecked: bool;
+    check_basic: bool;
+
+    all_modules: bool;
+    include_eof: bool;
+
+    link_operands: VectorBase*;
+    entry_module: string?;
+
+    entry_target: string?;
+    extra_target_count: int;
+    program_args: StringVector*;
+}
+
+/**
+ * Create an empty vector of owned link operands.
+ *
+ * @return New ordered link-operand vector.
+ */
+func cli_link_operands_create() -> VectorBase* {
+    return vec_create(sizeof(void*), 4);
+}
+
+/**
+ * Append one owned link operand.
+ *
+ * @param operands Ordered link-operand vector.
+ * @param kind Operand classification supplied by the CLI spelling.
+ * @param value Operand path, name, directory, or raw host-driver word.
+ */
+func cli_link_operands_push(operands: VectorBase*, kind: LinkOperandKind, value: string) {
+    vec_push_ptr(operands, new LinkOperand(kind, value) as void*);
+}
+
+/**
+ * Return the number of ordered link operands.
+ *
+ * @param operands Link-operand vector to inspect.
+ * @return Number of stored operands.
+ */
+func cli_link_operands_count(operands: VectorBase*) -> int {
+    return vec_size(operands);
+}
+
+/**
+ * Return one ordered link operand.
+ *
+ * @param operands Link-operand vector to inspect.
+ * @param index Zero-based operand index.
+ * @return Borrowed operand at `index`.
+ */
+func cli_link_operands_get(operands: VectorBase*, index: int) -> LinkOperand* {
+    return (*(vec_get(operands, index) as void**)) as LinkOperand*;
+}
+
+/**
+ * Free an ordered link-operand vector and its owned entries.
+ *
+ * @param operands Link-operand vector to free.
+ */
+func cli_link_operands_free(operands: VectorBase*) {
+    for (let i = 0; i < vec_size(operands); i = i + 1) {
+        let operand = cli_link_operands_get(operands, i);
+        drop operand;
+    }
+    vec_free(operands);
+}
+
+/**
+ * Represents the CliParseResult structure.
+ */
+struct CliParseResult {
+    options: CliOptions*?;
+    diags: DiagCollector*;
+    help_requested: bool;
+    version_requested: bool;
+    verbosity: int;
+    rich_log: bool;
+}
+
+/**
+ * Create a `CliOptions` instance with default values.
+ *
+ * @return New CLI options object.
+ */
+func cli_options_create() -> CliOptions* {
+    return new CliOptions(
+        CM_BUILD,
+        false,
+        0,
+        false,
+        sv_create(2),
+        sv_create(2),
+        sv_create(2),
+        null,
+        false,
+        null,
+        null,
+        null,
+        null,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        cli_link_operands_create(),
+        null,
+        null,
+        0,
+        sv_create(4)
+    );
+}
+
+/**
+ * Free a `CliOptions` instance.
+ *
+ * @param self CLI options to free.
+ */
+func cli_options_free(self: CliOptions*) {
+    sv_free(self.project_roots);
+    sv_free(self.sys_roots);
+    sv_free(self.interface_paths);
+    cli_link_operands_free(self.link_operands);
+    sv_free(self.program_args);
+    drop self;
+}
+
+/**
+ * Free a nullable `CliOptions` instance when present.
+ *
+ * @param self Optional CLI options to free.
+ */
+func cli_options_free_opt(self: CliOptions*?) {
+    if (self != null) {
+        cli_options_free(self as CliOptions*);
+    }
+}
+
+/**
+ * Free a nullable diagnostic collector when present.
+ *
+ * @param self Optional diagnostic collector to free.
+ */
+func cli_diag_free_opt(self: DiagCollector*?) {
+    if (self != null) {
+        diag_free(self as DiagCollector*);
+    }
+}
+
+/**
+ * Free a CLI parse result and any owned options.
+ *
+ * @param self Parse result to free.
+ */
+func cli_parse_result_free(self: CliParseResult*) {
+    if (self.options != null) {
+        cli_options_free(self.options as CliOptions*);
+    }
+    diag_free(self.diags);
+    drop self;
+}
+
+/**
+ * Emit a command-line diagnostic without source coordinates.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ */
+func cli_emit_error(diags: DiagCollector*, code: string, message: string) {
+    diag_error(diags, "l1c", code, message, "", 0, 0, 0, 0);
+}
+
+/**
+ * Emit the standard diagnostic for a recognized canonical option whose
+ * behavior is not implemented yet.
+ *
+ * @param diags Diagnostic collector.
+ * @param option Canonical short option.
+ * @param purpose Reserved option purpose.
+ */
+func cli_emit_reserved_option_error(diags: DiagCollector*, option: string, purpose: string) {
+    cli_emit_error(
+        diags,
+        "L1C-2032",
+        "option '" + option + "' is reserved for " + purpose + " and is not supported yet"
+    );
+}
+
+/**
+ * Return whether a diagnostic collector contains one diagnostic code.
+ *
+ * @param diags Diagnostic collector to inspect.
+ * @param code Diagnostic code to find.
+ * @return `true` when the code is present.
+ */
+func cli_has_diagnostic_code(diags: DiagCollector*, code: string) -> bool {
+    for (let i = 0; i < diag_count(diags); i = i + 1) {
+        if (diag_get(diags, i).code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Emit a command-line warning without source coordinates.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ */
+func cli_emit_warning(diags: DiagCollector*, code: string, message: string) {
+    diag_warn(diags, "l1c", code, message, "", 0, 0, 0, 0);
+}
+
+/**
+ * Return the canonical long flag for a CLI mode.
+ *
+ * @param mode CLI mode to format.
+ * @return Long-form flag such as `--check`.
+ */
+func cli_mode_flag(mode: CliMode) -> string {
+    match (mode) {
+        CM_RUN => { return "--run"; }
+        CM_BUILD => { return "--build"; }
+        CM_COMPILE => { return "--compile"; }
+        CM_LINK => { return "--link"; }
+        CM_EMIT_INTERFACE => { return "--emit-interface"; }
+        CM_GEN => { return "--gen"; }
+        CM_CHECK => { return "--check"; }
+        CM_TOK => { return "--tok"; }
+        CM_AST => { return "--ast"; }
+        CM_SYM => { return "--sym"; }
+        CM_TYPE => { return "--type"; }
+    }
+}
+
+/**
+ * Return the short display name for a CLI mode.
+ *
+ * @param mode CLI mode to format.
+ * @return Short mode name such as `check`.
+ */
+func cli_mode_name(mode: CliMode) -> string {
+    match (mode) {
+        CM_RUN => { return "run"; }
+        CM_BUILD => { return "build"; }
+        CM_COMPILE => { return "compile"; }
+        CM_LINK => { return "link"; }
+        CM_EMIT_INTERFACE => { return "emit-interface"; }
+        CM_GEN => { return "gen"; }
+        CM_CHECK => { return "check"; }
+        CM_TOK => { return "tok"; }
+        CM_AST => { return "ast"; }
+        CM_SYM => { return "sym"; }
+        CM_TYPE => { return "type"; }
+    }
+}

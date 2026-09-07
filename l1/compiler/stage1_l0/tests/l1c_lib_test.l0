@@ -19,7 +19,7 @@ import ast;
 import compiler_filesystem;
 import l1c_lib;
 import sem_context;
-import signatures;
+import signatures.tables;
 import source_paths;
 import types;
 import util.diag;
@@ -1067,7 +1067,6 @@ func test_run_string_relational_build_and_keep_c() {
     rt_delete_file(out_path);
     cleanup_retained_c_test_tree(c_path);
 }
-
 
 /**
  * Tests string concatenation build and keep-c: runtime correctness and lowered C contents.

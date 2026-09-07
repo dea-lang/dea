@@ -1,0 +1,489 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module expr_types.patterns;
+
+import std.hashset;
+import std.text;
+import std.vector;
+import util.numbers;
+import ast;
+import driver.state;
+import name_resolver.query;
+import name_resolver.state;
+import signatures.tables;
+import symbols;
+import type_resolve.const_value;
+import type_resolve.lookup;
+import type_resolve.ref;
+import types;
+import expr_types.convert;
+import expr_types.lookup;
+import expr_types.state;
+
+/**
+ * Bind enum payload types for variables introduced by a match pattern.
+ *
+ * @param self Expression checker state.
+ * @param match_ty Type of the matched expression.
+ * @param pattern_id Pattern whose variables should be bound.
+ */
+func etc_bind_pattern_types(self: ExpressionTypeChecker*, match_ty: Type*, pattern_id: PatternId) {
+    let unit = self.current_unit as DriverUnit*;
+    let pattern = pattern_arena_get(unit.parse_result.pattern_arena, pattern_id);
+    if (ord(pattern.kind) != ord(PT_VARIANT)) return;
+
+    if (ord(match_ty.kind) != ord(TY_ENUM)) return;
+
+    let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
+    if (info == null) return;
+
+    let variants = (info as EnumInfo*).variants;
+    for (let i = 0; i < vec_size(variants); i = i + 1) {
+        let v_info = ptr_vec_get(variants, i) as EnumVariantInfo*;
+        if (v_info.name == pattern.name) {
+            if (pattern.vars != null) {
+                let vars = pattern.vars as StringVector*;
+                for (let j = 0; j < sv_size(vars); j = j + 1) {
+                    if (j < vec_size(v_info.field_types)) {
+                        etc_set_pattern_var_type(self, pattern_id, j,
+                            ptr_vec_get(v_info.field_types, j) as Type*);
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+
+/**
+ * Find one enum-variant metadata entry by name.
+ *
+ * @param info Enum metadata to inspect.
+ * @param name Variant name to find.
+ * @return Matching variant metadata, or `null`.
+ */
+func etc_find_enum_variant_info(info: EnumInfo*, name: string) -> EnumVariantInfo*? {
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let variant = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        if (variant.name == name) {
+            return variant;
+        }
+    }
+    return null;
+}
+
+/**
+ * Format one pattern symbol name for diagnostics.
+ *
+ * @param pattern Pattern node to describe.
+ * @return Unqualified or module-qualified pattern name.
+ */
+func etc_pattern_symbol_name(pattern: PatternNode*) -> string {
+    if (pattern.module_path != null) {
+        return tr_module_from_path(pattern.module_path as StringVector*) + "::" + pattern.name;
+    }
+    if (pattern.name_qualifier != null && sv_size(pattern.name_qualifier as StringVector*) > 0) {
+        return sv_get(pattern.name_qualifier as StringVector*, 0) + "::" + pattern.name;
+    }
+    return pattern.name;
+}
+
+/**
+ * Build the `TYP-0158` message for one nested match-pattern path.
+ *
+ * @param pattern Variant pattern carrying module and qualifier segments.
+ * @return Diagnostic text matching expression nested-path diagnostics.
+ */
+func etc_nested_pattern_path_message(pattern: PatternNode*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        if (pattern.module_path != null) {
+            let mp = pattern.module_path as StringVector*;
+            for (let i = 0; i < sv_size(mp); i = i + 1) {
+                if (i > 0) {
+                    sb_append(sb, ".");
+                }
+                sb_append(sb, sv_get(mp, i));
+            }
+            if (sv_size(mp) > 0) {
+                sb_append(sb, "::");
+            }
+        }
+        let nq = pattern.name_qualifier as StringVector*;
+        for (let i = 0; i < sv_size(nq); i = i + 1) {
+            sb_append(sb, sv_get(nq, i));
+            sb_append(sb, "::");
+        }
+        sb_append(sb, pattern.name);
+        let full = sb_to_string(sb);
+        let simple = pattern.name;
+        if (pattern.module_path != null) {
+            simple = tr_module_from_path(pattern.module_path as StringVector*) + "::" + pattern.name;
+        }
+        return "nested symbol path '" + full + "': paths must have the form 'module::symbol' (did you mean '" + simple + "'?)";
+    }
+}
+
+/**
+ * Check whether one `match` arm pattern is valid for the matched enum type.
+ *
+ * @param self Expression checker state.
+ * @param match_ty Enum type of the scrutinee.
+ * @param pattern_id Pattern to validate.
+ * @return Canonical metadata for the validated variant, or `null`.
+ */
+func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, pattern_id: PatternId) -> EnumVariantInfo*? {
+    let unit = self.current_unit as DriverUnit*;
+    let pattern = pattern_arena_get(unit.parse_result.pattern_arena, pattern_id);
+    if (ord(pattern.kind) != ord(PT_VARIANT)) {
+        return null;
+    }
+
+    if (pattern.name_qualifier != null) {
+        etc_diag_error(self, "TYP-0158", etc_nested_pattern_path_message(pattern), unit.path, pattern.span);
+        return null;
+    }
+
+    let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
+    if (info == null) {
+        return null;
+    }
+
+    if (pattern.module_path != null) {
+        let target_module = tr_module_from_path(pattern.module_path as StringVector*);
+        let qualified = etc_pattern_symbol_name(pattern);
+        if (target_module != (self.current_env as ModuleEnv*).module_name &&
+            !nr_module_env_imports_module(self.current_env as ModuleEnv*, target_module)) {
+            etc_diag_error(
+                self,
+                "TYP-0102",
+                "unknown variant '" + qualified + "' for enum '" + type_format(match_ty) + "' (module '" + target_module + "' not imported)",
+                unit.path,
+                pattern.span
+            );
+            return null;
+        }
+        if (nr_env_find(self.result.names as NameResolution*, target_module) == null) {
+            etc_diag_error(
+                self,
+                "TYP-0102",
+                "unknown variant '" + qualified + "' for enum '" + type_format(match_ty) + "' (unknown module '" + target_module + "')",
+                unit.path,
+                pattern.span
+            );
+            return null;
+        }
+        let sym = tr_symbol_lookup(self.result.names as NameResolution*, self.current_env as ModuleEnv*, pattern.name,
+            pattern.module_path, pattern.name_qualifier);
+        if (sym == null ||
+            ord((sym as Symbol*).kind) != ord(SYM_ENUM_VARIANT) ||
+            (sym as Symbol*).module_name != match_ty.module_name ||
+            (sym as Symbol*).owner_name != match_ty.name) {
+            etc_diag_error(
+                self,
+                "TYP-0102",
+                "unknown variant '" + qualified + "' for enum '" + type_format(match_ty) + "'",
+                unit.path,
+                pattern.span
+            );
+            return null;
+        }
+    }
+
+    let variant = etc_find_enum_variant_info(info as EnumInfo*, pattern.name);
+    if (variant == null) {
+        etc_diag_error(
+            self,
+            "TYP-0102",
+            "unknown variant '" + etc_pattern_symbol_name(pattern) + "' for enum '" + type_format(match_ty) + "'",
+            unit.path,
+            pattern.span
+        );
+        return null;
+    }
+
+    let pattern_arity = 0;
+    if (pattern.vars != null) {
+        pattern_arity = sv_size(pattern.vars as StringVector*);
+    }
+    let variant_info = variant as EnumVariantInfo*;
+    let expected_arity = vec_size(variant_info.field_types);
+    if (pattern_arity != expected_arity) {
+        etc_diag_error(
+            self,
+            "TYP-0101",
+            "pattern variable count mismatch: variant '" + pattern.name + "' has " + int_to_string(expected_arity) +
+                " fields but pattern has " + int_to_string(pattern_arity) + " variables",
+            unit.path,
+            pattern.span
+        );
+        return null;
+    }
+
+    return variant_info;
+}
+
+/**
+ * Format the missing enum variants for a non-exhaustive `match`.
+ *
+ * @param info Enum metadata for the matched type.
+ * @param covered Covered variant-name set.
+ * @return Comma-separated missing variant names in enum declaration order.
+ */
+func etc_format_missing_match_variants(info: EnumInfo*, covered: StringSet*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        let first = true;
+        for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+            let variant = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+            if (ss_has(covered, variant.name)) {
+                continue;
+            }
+            if (!first) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, variant.name);
+            first = false;
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/** Return whether every declared enum variant is present in validated coverage. */
+func etc_match_variants_fully_covered(info: EnumInfo*, covered: StringSet*) -> bool {
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let variant = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        if (!ss_has(covered, variant.name)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Check whether an enum `match` covers all variants.
+ *
+ * @param self Expression checker state.
+ * @param match_ty Type of the matched expression.
+ * @param covered Canonical names from successfully validated variant patterns.
+ * @param wildcard_present Whether the match contains a wildcard arm.
+ * @param wildcard_is_unreachable Whether prior validated variants already cover the enum.
+ * @param span Source span for diagnostics.
+ * @return `true` if the match is exhaustive.
+ */
+func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type*, covered: StringSet*,
+                                    wildcard_present: bool, wildcard_is_unreachable: bool, span: Span) -> bool {
+    let unit = self.current_unit as DriverUnit*;
+    if (ord(match_ty.kind) != ord(TY_ENUM)) {
+        return false;
+    }
+
+    let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
+    if (info == null) {
+        etc_diag_error(
+            self,
+            "TYP-0103",
+            "no type information for enum '" + type_format(match_ty) + "'",
+            unit.path,
+            span
+        );
+        return false;
+    }
+
+    let fully_covered = etc_match_variants_fully_covered(info as EnumInfo*, covered);
+    if (wildcard_present && wildcard_is_unreachable) {
+        etc_diag_warn(
+            self,
+            "TYP-0105",
+            "unreachable wildcard pattern in match: all variants of enum '" + type_format(match_ty) + "' are already covered",
+            unit.path,
+            span
+        );
+        return true;
+    }
+
+    if (wildcard_present || fully_covered) {
+        return true;
+    }
+
+    etc_diag_error(
+        self,
+        "TYP-0104",
+        "non-exhaustive match: missing variants (" + etc_format_missing_match_variants(info as EnumInfo*, covered) + ") for enum '" + type_format(match_ty) + "'",
+        unit.path,
+        span
+    );
+    return false;
+}
+
+/** Return whether wildcard match arms are unreachable because variants cover the enum. */
+func etc_match_wildcard_is_unreachable(self: ExpressionTypeChecker*, match_ty: Type*, covered: StringSet*) -> bool {
+    if (ord(match_ty.kind) != ord(TY_ENUM)) return false;
+    let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
+    if (info == null) return false;
+    return etc_match_variants_fully_covered(info as EnumInfo*, covered);
+}
+
+/**
+ * Return whether a type is valid as a `case` scrutinee.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for `int`, `byte`, `bool`, and `string`.
+ */
+func etc_is_case_type(ty: Type*?) -> bool {
+    return etc_is_int(ty) || etc_is_bool(ty) || etc_is_string(ty) || etc_is_real(ty);
+}
+
+/**
+ * Classify a `case` arm literal against the scrutinee type using `==` comparability rules.
+ *
+ * @param self Expression checker state.
+ * @param scrut_ty Scrutinee type.
+ * @param literal_expr Arm literal expression id.
+ * @param lit_ty Already-inferred type of `literal_expr`; ownership stays with the caller.
+ * @return The classification of the literal against `scrut_ty`.
+ */
+func etc_classify_case_literal(self: ExpressionTypeChecker*, scrut_ty: Type*, literal_expr: ExprId,
+                               lit_ty: Type*) -> CaseLiteralClass {
+    if (etc_is_string(scrut_ty)) {
+        if (etc_is_string(lit_ty)) return CASE_LIT_POSSIBLE;
+    } else if (etc_is_bool(scrut_ty)) {
+        if (etc_is_bool(lit_ty)) return CASE_LIT_POSSIBLE;
+    } else if (etc_is_real(scrut_ty)) {
+        if (etc_is_real(lit_ty)) return CASE_LIT_POSSIBLE;
+    } else if (etc_is_int(scrut_ty)) {
+        if (etc_is_bigint_literal_type(lit_ty)) {
+            let text = etc_bigint_expr_text(self, literal_expr);
+            let base = etc_bigint_expr_base(self, literal_expr);
+            if (text != null && base != null && bigint_fits_builtin(scrut_ty, text as string, base as int)) {
+                etc_set_bigint_expr_type(self, literal_expr, scrut_ty);
+                return CASE_LIT_POSSIBLE;
+            }
+            return CASE_LIT_ALWAYS_FALSE;
+        }
+        if (etc_is_int(lit_ty)) {
+            let const_int = etc_cast_const_int(self, literal_expr);
+            if (const_int != null && !int_value_fits_builtin(scrut_ty, const_int as int)) {
+                return CASE_LIT_ALWAYS_FALSE;
+            }
+            return CASE_LIT_POSSIBLE;
+        }
+    }
+
+    // An unmatched bigint literal (for example in a non-int scrutinee context) defers to
+    // contextual assignability checking so it yields the precise bigint diagnostic.
+    if (etc_is_bigint_literal_type(lit_ty)) {
+        return CASE_LIT_BIGINT_CONTEXT;
+    }
+    return CASE_LIT_MISMATCH;
+}
+
+/**
+ * Build a stable duplicate-detection key for a `case` literal.
+ *
+ * @param expr Literal expression node.
+ * @return A type-prefixed key, or `null` if the expression is unsupported.
+ */
+func etc_case_literal_key(expr: ExprNode*) -> string? {
+    match (expr.kind) {
+        EX_INT => { return "int:" + int_to_string(expr.int_value); }
+        EX_BIGINT => { return "bigint:" + int_to_string(expr.base_value) + ":" + expr.text_value; }
+        EX_BYTE => { return "byte:" + int_to_string(expr.int_value); }
+        EX_FLOAT => { return "float:" + expr.text_value; }
+        EX_DOUBLE => { return "double:" + expr.text_value; }
+        EX_BOOL => {
+            if (expr.bool_value) return "bool:true";
+            return "bool:false";
+        }
+        EX_STRING => { return "string:" + expr.text_value; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Build a stable duplicate-detection key for an evaluated `case` arm value.
+ *
+ * @param value Evaluated compile-time constant value.
+ * @return Type-prefixed duplicate-detection key.
+ */
+func etc_case_const_value_key(value: ConstValue*) -> string {
+    match (value.kind) {
+        CV_INT => { return "int:" + int_to_string(value.int_value); }
+        CV_OTHER_INT => { return value.text_value + ":" + int_to_string(value.int_value); }
+        CV_BIGINT => { return "bigint:" + int_to_string(value.base_value) + ":" + value.text_value; }
+        CV_BYTE => { return "byte:" + int_to_string(value.int_value); }
+        CV_FLOAT => { return "float:" + value.text_value; }
+        CV_DOUBLE => { return "double:" + value.text_value; }
+        CV_BOOL => {
+            if (value.bool_value) return "bool:true";
+            return "bool:false";
+        }
+        CV_STRING => { return "string:" + value.text_value; }
+        CV_NULL => { return "null"; }
+    }
+}
+
+/**
+ * Evaluate a `case` arm value with local-name shadowing respected.
+ *
+ * @param self Expression checker state.
+ * @param ctx Const-evaluation context.
+ * @param expr_id Case arm expression id.
+ * @return Owned constant value, or `null` when not a visible const value.
+ */
+func etc_eval_case_const_value(self: ExpressionTypeChecker*, ctx: ConstEvalContext*, expr_id: ExprId) -> ConstValue*? {
+    if (expr_id < 0 || self.current_unit == null) {
+        return null;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return etc_eval_case_const_value(self, ctx, expr.expr_a);
+    }
+    if (ord(expr.kind) == ord(EX_VAR_REF) && expr.module_path == null && expr.name_qualifier == null) {
+        let local_ty = etc_lookup_local(self, expr.text_value);
+        if (local_ty != null) {
+            type_free(local_ty as Type*);
+            return null;
+        }
+    }
+    return tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr_id);
+}
+
+/**
+ * Report whether a `case` arm value names an aggregate const.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Case arm expression id.
+ * @return `true` for visible const values whose type is not allowed in scalar case arms.
+ */
+func etc_case_arm_is_aggregate_const(self: ExpressionTypeChecker*, expr_id: ExprId) -> bool {
+    if (expr_id < 0 || self.current_unit == null) {
+        return false;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return etc_case_arm_is_aggregate_const(self, expr.expr_a);
+    }
+    if (ord(expr.kind) != ord(EX_VAR_REF)) {
+        return false;
+    }
+    if (expr.module_path == null && expr.name_qualifier == null) {
+        let local_ty = etc_lookup_local(self, expr.text_value);
+        if (local_ty != null) {
+            type_free(local_ty as Type*);
+            return false;
+        }
+    }
+
+    let sym = etc_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || !(sym as Symbol*).is_const) {
+        return false;
+    }
+    let ty = sig_lookup_let_type(self.result.signatures as SignatureTables*, (sym as Symbol*).module_name,
+        (sym as Symbol*).name);
+    if (ty == null) {
+        return false;
+    }
+    return !etc_is_case_type(ty as Type*);
+}

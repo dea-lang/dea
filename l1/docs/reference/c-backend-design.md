@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-08-30
+Version: 2026-09-07
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -17,16 +17,17 @@ Related docs:
 
 Current code generation is implemented only in `compiler/stage1_l0/src/` and is split into:
 
-- backend orchestration in `backend.l0`
-- C emission in `c_emitter.l0`
+- the coarse generation API in `backend.l0` and implementation owners under `backend/`
+- C emission under `c_emitter/`
 - string literal escaping/encoding helpers in `string_escape.l0`
 
 The separate-compilation boundary adds:
 
-- authoritative interface projection and verification in `interface_emitter.l0`, `interface_fingerprint.l0`,
-  `module_interface.l0`, and `mi_utils.l0`
+- authoritative interface projection and verification in `interface_projection.l0`, `interface_emitter.l0`,
+  `interface_fingerprint.l0`, `module_interface.l0`, and `mi_utils.l0`
 - shared lifecycle symbol construction in `module_lifecycle.l0`
-- verified interface-graph preparation and opaque native host-link orchestration in `link_driver.l0`
+- verified interface-graph preparation in `link_driver/inputs.l0` and `link_driver/plan.l0`, with opaque native
+  host-link orchestration through `link_driver.l0` and its implementation children
 - process-wrapper C generation in `wrapper_emitter.l0`
 
 Input is a fully typed analysis result. The backend exposes one production boundary:
@@ -41,7 +42,7 @@ pure generation, compile-only retention, and build/run retention call the same m
 
 ## Responsibilities Split
 
-### Backend orchestration (`backend.l0`)
+### Backend orchestration (`backend.l0`, `backend/`)
 
 - validates generation preconditions
 - selects one canonical source-backed target module for every operational CLI path
@@ -50,13 +51,24 @@ pure generation, compile-only retention, and build/run retention call the same m
 - manages ownership-sensitive cleanup scheduling
 - emits function bodies and early-exit cleanup paths
 
-### C emitter (`c_emitter.l0`)
+### C emitter (`c_emitter/`)
 
 - emits includes, declarations, definitions, and formatting
 - maps semantic types to runtime/C representations
 - performs C identifier hygiene and name mangling
 - emits helper calls for checked arithmetic, allocation, retain/release, casts, and unwraps
 - C-escapes decoded string bytes while neutralizing every historical trigraph spelling without changing runtime bytes
+
+`backend.state` owns scopes and loop frames; `backend.types` owns target type closure and ordering; `backend.coerce`
+owns conversion; `backend.lifetime` owns independent retain/release and drop operations. `backend.lower` keeps the
+mutually recursive expression, statement, and registered-cleanup kernel together. `backend.stmt` sets up function
+bodies, and `backend.output` assembles the translation unit. `backend.expr` contains independent expression helpers and
+static-initializer recursion.
+
+Emitter consumers import `c_emitter.state` for buffers and lifecycle, `abi` for mangling, `types` for C spelling,
+`wrappers` for dependency-ordered wrapper definitions, and `declarations`, `expr`, `stmt`, or `lifetime` for their
+output contracts. `c_emitter.type_names` is a lower dependency shared by spelling and wrappers. These boundaries
+preserve all emitted text and ownership operations; no helper-forwarding facade is provided.
 
 ### Interface and lifecycle projection
 

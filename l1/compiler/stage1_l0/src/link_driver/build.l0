@@ -1,0 +1,317 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver.build;
+
+import std.hashset;
+import std.path;
+import std.vector;
+import util.diag;
+import util.log;
+import analysis;
+import build_driver;
+import cli_args.model;
+import compile_driver.compile;
+import compiler_filesystem;
+import diag_print;
+import module_graph;
+import sem_context;
+import link_driver.model;
+import link_driver.transaction;
+
+/** Visit one resolved module-graph node in dependency-first build order. */
+func ld_build_order_visit(
+    graph: ModuleGraph*,
+    node: ModuleGraphNode*,
+    visiting: StringSet*,
+    completed: StringSet*,
+    ordered: VectorBase*,
+    diags: DiagCollector*
+) -> bool {
+    if (ss_has(completed, node.module_name)) {
+        return true;
+    }
+    if (!ss_add(visiting, node.module_name)) {
+        ld_error(
+            diags,
+            "L1C-2130",
+            "build/run module ordering encountered a dependency cycle at '" +
+                node.module_name + "'",
+            ""
+        );
+        return false;
+    }
+
+    let ok = true;
+    if (ord(node.origin.kind) == ord(MOK_SOURCE)) {
+        for (let import_i = 0;
+             import_i < mg_node_direct_import_count(node);
+             import_i = import_i + 1) {
+            let imported = mg_find_node(
+                graph, mg_node_direct_import_get(node, import_i));
+            if (imported != null &&
+                !ld_build_order_visit(
+                    graph,
+                    imported as ModuleGraphNode*,
+                    visiting,
+                    completed,
+                    ordered,
+                    diags
+                )) {
+                ok = false;
+            }
+        }
+    } else {
+        for (let interface_i = 0;
+             interface_i < mg_node_interface_import_count(node);
+             interface_i = interface_i + 1) {
+            let imported2 = mg_find_node(
+                graph,
+                mg_node_interface_import_get(node, interface_i));
+            if (imported2 != null &&
+                !ld_build_order_visit(
+                    graph,
+                    imported2 as ModuleGraphNode*,
+                    visiting,
+                    completed,
+                    ordered,
+                    diags
+                )) {
+                ok = false;
+            }
+        }
+        for (let dep_i = 0;
+             dep_i < mg_node_dependency_count(node);
+             dep_i = dep_i + 1) {
+            let dependency = mg_node_dependency_get(node, dep_i);
+            let provider = mg_find_node(
+                graph, dependency.provider_module);
+            if (provider != null &&
+                !ld_build_order_visit(
+                    graph,
+                    provider as ModuleGraphNode*,
+                    visiting,
+                    completed,
+                    ordered,
+                    diags
+                )) {
+                ok = false;
+            }
+        }
+    }
+
+    ss_remove(visiting, node.module_name);
+    if (!ok) {
+        return false;
+    }
+    ss_add(completed, node.module_name);
+    ld_ptr_vec_push(ordered, node as void*);
+    return true;
+}
+
+/** Build the deterministic dependency-first order for one resolved graph. */
+func ld_build_order(
+    graph: ModuleGraph*,
+    entry_module: string,
+    diags: DiagCollector*
+) -> VectorBase*? {
+    let ordered = ld_ptr_vec_create(mg_node_count(graph));
+    with (
+        let visiting = ss_create() => ss_free(visiting),
+        let completed = ss_create() => ss_free(completed),
+        let names = mg_node_names_sorted(graph) => sv_free(names)
+    ) {
+        let entry = mg_find_node(graph, entry_module);
+        if (entry == null || !ld_build_order_visit(
+                graph,
+                entry as ModuleGraphNode*,
+                visiting,
+                completed,
+                ordered,
+                diags
+            )) {
+            vec_free(ordered);
+            return null;
+        }
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let node = mg_find_node(graph, sv_get(names, i));
+            if (node != null && !ld_build_order_visit(
+                    graph,
+                    node as ModuleGraphNode*,
+                    visiting,
+                    completed,
+                    ordered,
+                    diags
+                )) {
+                vec_free(ordered);
+                return null;
+            }
+        }
+    }
+    return ordered;
+}
+
+/** Register the common link scratch paths beneath a disjoint hidden directory. */
+func ld_build_run_transaction(
+    workspace: CompilerWorkspace*,
+    diags: DiagCollector*
+) -> LinkTransaction*? {
+    /* A leading dot cannot collide with a canonical Dea module segment. */
+    let scratch_root = join(workspace.root, ".link");
+    if (cfs_mkdir(scratch_root, 448) != 1) {
+        ld_error(
+            diags,
+            "L1C-2107",
+            "cannot create build/run link scratch directory: " +
+                scratch_root,
+            scratch_root
+        );
+        return null;
+    }
+    cfs_workspace_register_directory(workspace, scratch_root);
+    let wrapper_c = join(scratch_root, "__dea_wrapper.c");
+    let wrapper_object = join(scratch_root, "__dea_wrapper.o");
+    let compile_stdout = join(scratch_root, "wrapper-compile.stdout");
+    let compile_stderr = join(scratch_root, "wrapper-compile.stderr");
+    let link_stdout = join(scratch_root, "final-link.stdout");
+    let link_stderr = join(scratch_root, "final-link.stderr");
+    cfs_workspace_register_file(workspace, wrapper_c);
+    cfs_workspace_register_file(workspace, wrapper_object);
+    cfs_workspace_register_file(workspace, compile_stdout);
+    cfs_workspace_register_file(workspace, compile_stderr);
+    cfs_workspace_register_file(workspace, link_stdout);
+    cfs_workspace_register_file(workspace, link_stderr);
+    return new LinkTransaction(
+        scratch_root,
+        wrapper_c,
+        wrapper_object,
+        compile_stdout,
+        compile_stderr,
+        link_stdout,
+        link_stderr
+    );
+}
+
+/** Compile every source-backed node in deterministic dependency order. */
+func ld_compile_source_nodes(
+    opts: CliOptions*,
+    cfg: LogConfig*,
+    prepared: BuildPreparedInput*,
+    ordered: VectorBase*,
+    workspace: CompilerWorkspace*,
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    diags: DiagCollector*
+) -> bool {
+    with (let interface_roots = sv_create(
+            sv_size(opts.interface_paths) + 1) =>
+            sv_free(interface_roots)) {
+        /* Preserve authoritative -I precedence, then expose staged providers. */
+        for (let root_i = 0;
+             root_i < sv_size(opts.interface_paths);
+             root_i = root_i + 1) {
+            sv_push(interface_roots, sv_get(opts.interface_paths, root_i));
+        }
+        sv_push(interface_roots, workspace.root);
+
+        for (let i = 0; i < vec_size(ordered); i = i + 1) {
+            let node = ld_ptr_vec_get(ordered, i) as ModuleGraphNode*;
+            if (ord(node.origin.kind) != ord(MOK_SOURCE)) {
+                continue;
+            }
+            if (node.artifacts == null) {
+                ld_error(
+                    diags,
+                    "L1C-2131",
+                    "source-backed build/run module has no private artifact association: " +
+                        node.module_name,
+                    ""
+                );
+                return false;
+            }
+
+            /*
+             * Re-enter the one-module semantic boundary. The entry itself is
+             * always loaded from source, while every non-virtual dependency
+             * must resolve through an authoritative or already staged .l1m.
+             */
+            let unit_result = analysis_analyze_entry_with_resolution(
+                prepared.search_paths,
+                node.module_name,
+                interface_roots,
+                MRP_REQUIRE_INTERFACE,
+                workspace.root,
+                cfg
+            );
+            if (analysis_diag_count(unit_result) > 0) {
+                dp_print_collector_with_sources(
+                    unit_result.diags,
+                    analysis_source_names(unit_result),
+                    analysis_source_texts(unit_result)
+                );
+            }
+            if (analysis_has_errors(unit_result)) {
+                analysis_result_free(unit_result);
+                return false;
+            }
+            let compiled = cd_compile_analyzed_to_workspace(
+                opts,
+                cfg,
+                unit_result,
+                node.module_name,
+                node.artifacts as ModuleArtifactPaths*,
+                workspace,
+                compiler,
+                extra_opts,
+                runtime_include,
+                diags
+            );
+            analysis_result_free(unit_result);
+            if (!compiled) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/** Inject the graph Dea set where the source target occurred in CLI order. */
+func ld_build_run_operands(
+    cli_operands: VectorBase*,
+    ordered: VectorBase*
+) -> VectorBase* {
+    let operands = cli_link_operands_create();
+    for (let cli_i = 0;
+         cli_i < cli_link_operands_count(cli_operands);
+         cli_i = cli_i + 1) {
+        let cli_operand = cli_link_operands_get(
+            cli_operands, cli_i);
+        if (ord(cli_operand.kind) != ord(LOK_DEA_OBJECT)) {
+            cli_link_operands_push(
+                operands, cli_operand.kind, cli_operand.value);
+            continue;
+        }
+
+        for (let node_i = 0;
+             node_i < vec_size(ordered);
+             node_i = node_i + 1) {
+            let node = ld_ptr_vec_get(
+                ordered, node_i) as ModuleGraphNode*;
+            if (ord(node.origin.kind) != ord(MOK_SOURCE) &&
+                ord(node.origin.kind) != ord(MOK_INTERFACE)) {
+                continue;
+            }
+            if (node.artifacts != null) {
+                cli_link_operands_push(
+                    operands,
+                    LOK_DEA_OBJECT,
+                    (node.artifacts as ModuleArtifactPaths*).object_path
+                );
+            }
+        }
+    }
+    return operands;
+}

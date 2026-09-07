@@ -11,10 +11,10 @@ import std.vector;
 import util.diag;
 
 import ast;
-import driver;
+import driver.state;
 import locals;
-import name_resolver;
-import signatures;
+import name_resolver.state;
+
 import types;
 
 /**

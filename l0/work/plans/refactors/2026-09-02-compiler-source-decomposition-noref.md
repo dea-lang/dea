@@ -50,7 +50,7 @@
   - `l0/docs/reference/c-backend-design.md`
   - `l0/docs/specs/compiler/stage1-contract.md`
   - `l0/docs/specs/compiler/stage2-contract.md`
-  - `l1/work/plans/refactors/2026-07-08-stage1-source-decomposition-noref.md`
+  - `l1/work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md`
 - Repro: `make -C l0 test`
 
 ## Summary

@@ -9,7 +9,7 @@ import lexer;
 import tokens;
 import ast;
 import util.diag;
-import parser.shared;
+import parser.state;
 import parser.decl;
 
 /**

@@ -1,0 +1,1621 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module expr_types.expr;
+
+import std.hashset;
+import std.string;
+import std.text;
+import std.vector;
+import util.numbers;
+import ast;
+import dea_prelude;
+import driver.state;
+import name_resolver.query;
+import name_resolver.state;
+import sem_context;
+import signatures.tables;
+import symbols;
+import type_resolve.ref;
+import types;
+import expr_types.convert;
+import expr_types.liveness;
+import expr_types.lookup;
+import expr_types.state;
+
+/**
+ * Infer the type of one `sizeof` intrinsic call.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Call expression id.
+ * @param expr Call expression node.
+ * @return `int`, with the target type recorded for backend use.
+ */
+func etc_infer_sizeof_intrinsic(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNode*) -> Type* {
+    let args = expr.ids as VectorBase*;
+    let arg_count = 0;
+    if (args != null) arg_count = vec_size(args);
+    if (arg_count != 1) {
+        etc_diag_error(self, "TYP-0241", "sizeof expects exactly 1 argument",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return type_builtin_int();
+    }
+
+    let arg_id = id_vec_get(args, 0);
+    let arg = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, arg_id);
+
+    if (ord(arg.kind) == ord(EX_TYPE) && arg.type_ref != null) {
+        with (let seen = ss_create() => ss_free(seen)) {
+            let target_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
+                self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
+                arg.type_ref as TypeRef*, self.result.diags, seen);
+            if (target_ty == null) {
+                return type_builtin_int();
+            }
+            etc_check_imported_opaque_layout_type(
+                self, target_ty as Type*, (self.current_unit as DriverUnit*).path, expr.span);
+            if (etc_is_void(target_ty as Type*)) {
+                etc_diag_error(self, "TYP-0240", "cannot take sizeof(void)",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+            }
+            etc_set_intrinsic_target(self, expr_id, target_ty as Type*);
+            type_free(target_ty as Type*);
+            return type_builtin_int();
+        }
+    }
+
+    let type_expr_ty = etc_try_resolve_sizeof_type_expr(self, arg_id);
+    if (type_expr_ty != null) {
+        etc_check_imported_opaque_layout_type(
+            self, type_expr_ty as Type*, (self.current_unit as DriverUnit*).path, expr.span);
+        if (etc_is_void(type_expr_ty as Type*)) {
+            etc_diag_error(self, "TYP-0240", "cannot take sizeof(void)",
+                (self.current_unit as DriverUnit*).path, expr.span);
+        }
+        etc_set_intrinsic_target(self, expr_id, type_expr_ty as Type*);
+        type_free(type_expr_ty as Type*);
+        return type_builtin_int();
+    }
+
+    let arg_ty2 = etc_infer_expr(self, arg_id);
+    if (arg_ty2 == null) {
+        return type_builtin_int();
+    }
+    etc_check_imported_opaque_layout_type(
+        self, arg_ty2 as Type*, (self.current_unit as DriverUnit*).path, expr.span);
+    if (etc_is_void(arg_ty2 as Type*)) {
+        etc_diag_error(self, "TYP-0240", "cannot take sizeof(void)",
+            (self.current_unit as DriverUnit*).path, expr.span);
+    }
+    etc_set_intrinsic_target(self, expr_id, arg_ty2 as Type*);
+    type_free(arg_ty2 as Type*);
+    return type_builtin_int();
+}
+
+/**
+ * Infer the type of one `ord` intrinsic call.
+ *
+ * @param self Expression checker state.
+ * @param expr Call expression node.
+ * @return `int`, or `int` after reporting an error.
+ */
+func etc_infer_ord_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type* {
+    let args = expr.ids as VectorBase*;
+    let arg_count = 0;
+    if (args != null) arg_count = vec_size(args);
+    if (arg_count != 1) {
+        etc_diag_error(self, "TYP-0242", "ord expects exactly 1 argument",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return type_builtin_int();
+    }
+
+    let arg_ty = etc_infer_expr(self, id_vec_get(args, 0));
+    if (arg_ty == null) {
+        return type_builtin_int();
+    }
+    if (ord((arg_ty as Type*).kind) != ord(TY_ENUM)) {
+        etc_diag_error(self, "TYP-0243", "ord expects an enum value, got '" + type_format(arg_ty as Type*) + "'",
+            (self.current_unit as DriverUnit*).path, expr.span);
+    }
+    type_free(arg_ty as Type*);
+    return type_builtin_int();
+}
+
+/**
+ * Infer the type of one `is` intrinsic call.
+ *
+ * @param self Expression checker state.
+ * @param expr Call expression node.
+ * @return `bool`, or `bool` after reporting an error.
+ */
+func etc_infer_is_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type* {
+    let args = expr.ids as VectorBase*;
+    let arg_count = 0;
+    if (args != null) arg_count = vec_size(args);
+    if (arg_count != 2) {
+        etc_diag_error(self, "TYP-0245", "is expects exactly 2 arguments",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return type_builtin_bool();
+    }
+
+    let value_ty = etc_infer_expr(self, id_vec_get(args, 0));
+    let variant_expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, id_vec_get(args, 1));
+    let variant_sym = etc_try_resolve_enum_variant_symbol(self, variant_expr);
+
+    if (value_ty == null) {
+        if (variant_sym == null) {
+            etc_diag_error(self, "TYP-0247", "is expects an enum variant reference as its second argument",
+                (self.current_unit as DriverUnit*).path, variant_expr.span);
+        }
+        return type_builtin_bool();
+    }
+
+    if (ord((value_ty as Type*).kind) != ord(TY_ENUM)) {
+        etc_diag_error(self, "TYP-0246",
+            "is expects an enum value as its first argument, got '" + type_format(value_ty as Type*) + "'",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        if (variant_sym == null) {
+            etc_diag_error(self, "TYP-0247", "is expects an enum variant reference as its second argument",
+                (self.current_unit as DriverUnit*).path, variant_expr.span);
+        }
+        type_free(value_ty as Type*);
+        return type_builtin_bool();
+    }
+
+    if (variant_sym == null) {
+        etc_diag_error(self, "TYP-0247", "is expects an enum variant reference as its second argument",
+            (self.current_unit as DriverUnit*).path, variant_expr.span);
+        type_free(value_ty as Type*);
+        return type_builtin_bool();
+    }
+
+    let value_enum_ty = value_ty as Type*;
+    let variant = variant_sym as Symbol*;
+    if (variant.module_name != value_enum_ty.module_name || variant.owner_name != value_enum_ty.name) {
+        etc_diag_error(self, "TYP-0248",
+            "is expects a variant of enum '" + type_format(value_enum_ty) + "'",
+            (self.current_unit as DriverUnit*).path, variant_expr.span);
+    }
+
+    type_free(value_enum_ty);
+    return type_builtin_bool();
+}
+
+/**
+ * Infer the type of one `len` intrinsic call.
+ *
+ * @param self Expression checker state.
+ * @param expr Call expression node.
+ * @return `int`, or `int` after reporting an error.
+ */
+func etc_infer_len_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type* {
+    let args = expr.ids as VectorBase*;
+    let arg_count = 0;
+    if (args != null) arg_count = vec_size(args);
+    if (arg_count != 1) {
+        etc_diag_error(self, "TYP-0809", "len expects exactly 1 argument",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return type_builtin_int();
+    }
+
+    let arg_ty = etc_infer_expr(self, id_vec_get(args, 0));
+    if (arg_ty == null) {
+        return type_builtin_int();
+    }
+    if (ord((arg_ty as Type*).kind) != ord(TY_ARRAY) && ord((arg_ty as Type*).kind) != ord(TY_SLICE) &&
+        !etc_is_string(arg_ty as Type*)) {
+        etc_diag_error(self, "TYP-0808",
+            "len expects a fixed array, slice, or string, got '" + type_format(arg_ty as Type*) + "'",
+            (self.current_unit as DriverUnit*).path, expr.span);
+    }
+    type_free(arg_ty as Type*);
+    return type_builtin_int();
+}
+
+/**
+ * Infer the type of one `slice` intrinsic call.
+ *
+ * @param self Expression checker state.
+ * @param expr Call expression node.
+ * @return The resulting slice type, or `null` after reporting an error.
+ */
+func etc_infer_slice_intrinsic(self: ExpressionTypeChecker*, expr: ExprNode*) -> Type*? {
+    let args = expr.ids as VectorBase*;
+    let arg_count = 0;
+    if (args != null) arg_count = vec_size(args);
+    if (arg_count < 1 || arg_count > 3) {
+        etc_diag_error(self, "TYP-0809", "slice expects 1 to 3 arguments",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        return null;
+    }
+
+    let src_ty = etc_infer_expr(self, id_vec_get(args, 0));
+    if (src_ty == null) {
+        return null;
+    }
+    let src = src_ty as Type*;
+    if (ord(src.kind) != ord(TY_ARRAY) && ord(src.kind) != ord(TY_SLICE)) {
+        etc_diag_error(self, "TYP-0808",
+            "slice expects a fixed array or slice, got '" + type_format(src) + "'",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        type_free(src);
+        return null;
+    }
+
+    for (let i = 1; i < arg_count; i = i + 1) {
+        let extra_ty = etc_infer_expr(self, id_vec_get(args, i));
+        if (extra_ty != null) {
+            if (!etc_is_int(extra_ty as Type*)) {
+                etc_diag_error(self, "TYP-0210",
+                    "slice index expects int, got " + type_format(extra_ty as Type*),
+                    (self.current_unit as DriverUnit*).path, expr.span);
+            }
+            type_free(extra_ty as Type*);
+        }
+    }
+
+    let result = type_new_slice(type_clone(src.inner as Type*));
+    type_free(src);
+    return result;
+}
+
+/**
+ * Infers the type for a unary.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Unary expression id.
+ * @param expr Unary expression node.
+ * @return The inferred or resolved type, or null on error.
+ */
+func etc_infer_unary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNode*) -> Type*? {
+    let sub_ty = etc_infer_expr(self, expr.expr_a);
+    if (sub_ty == null) return null;
+    let s_ty = sub_ty as Type*;
+
+    if (expr.text_value == "-") {
+        if (etc_is_bigint_literal_type(s_ty)) {
+            return s_ty;
+        }
+        if (!etc_is_numeric(s_ty)) {
+            etc_diag_error(self, "TYP-0160", "unary '-' expects numeric type, got " + type_format(s_ty),
+                (self.current_unit as DriverUnit*).path, expr.span);
+        }
+        return s_ty;
+    } else if (expr.text_value == "!") {
+        if (!etc_is_bool(s_ty)) {
+            etc_diag_error(self, "TYP-0161", "unary '!' expects bool, got " + type_format(s_ty),
+                (self.current_unit as DriverUnit*).path, expr.span);
+        }
+        return s_ty;
+    } else if (expr.text_value == "~") {
+        if (!etc_is_int(s_ty)) {
+            etc_diag_error(self, "TYP-0170", "unary '~' expects int, got " + type_format(s_ty),
+                (self.current_unit as DriverUnit*).path, expr.span);
+        }
+        return s_ty;
+    } else if (expr.text_value == "*") {
+        if (ord(s_ty.kind) != ord(TY_POINTER)) {
+            etc_diag_error(self, "TYP-0162", "dereference '*' expects pointer, got " + type_format(s_ty),
+                (self.current_unit as DriverUnit*).path, expr.span);
+            return s_ty;
+        }
+        let res = type_clone(s_ty.inner as Type*);
+        type_free(s_ty);
+        return res;
+    } else if (expr.text_value == "&") {
+        let res2 = type_new_pointer(type_clone(s_ty));
+        type_free(s_ty);
+        return res2;
+    }
+
+    type_free(s_ty);
+    return null;
+}
+
+/**
+ * Infers the type for a binary.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Binary expression id.
+ * @param expr Binary expression node.
+ * @return The inferred or resolved type, or null on error.
+ */
+func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNode*) -> Type*? {
+    let left_ty = etc_infer_expr(self, expr.expr_a);
+    let right_ty = etc_infer_expr(self, expr.expr_b);
+    if (left_ty == null || right_ty == null) {
+        if (left_ty != null) type_free(left_ty as Type*);
+        if (right_ty != null) type_free(right_ty as Type*);
+        return null;
+    }
+    let l_ty = left_ty as Type*;
+    let r_ty = right_ty as Type*;
+
+    if (etc_is_bigint_literal_type(l_ty) || etc_is_bigint_literal_type(r_ty)) {
+        if (etc_is_bigint_literal_type(l_ty)) {
+            etc_diag_bigint_requires_context(self, expr.expr_a, (self.current_unit as DriverUnit*).path);
+        } else {
+            etc_diag_bigint_requires_context(self, expr.expr_b, (self.current_unit as DriverUnit*).path);
+        }
+        type_free(l_ty);
+        type_free(r_ty);
+        return null;
+    }
+
+    let common_int_ty: Type*? = null;
+    if (etc_is_int(l_ty) && etc_is_int(r_ty)) {
+        if ((type_is_builtin(l_ty, "tiny") || type_is_builtin(l_ty, "byte") || type_is_builtin(l_ty, "short") ||
+             type_is_builtin(l_ty, "ushort") || type_is_builtin(l_ty, "int")) &&
+            (type_is_builtin(r_ty, "tiny") || type_is_builtin(r_ty, "byte") || type_is_builtin(r_ty, "short") ||
+             type_is_builtin(r_ty, "ushort") || type_is_builtin(r_ty, "int"))) {
+            common_int_ty = type_builtin_int();
+        } else if ((type_is_builtin(l_ty, "byte") || type_is_builtin(l_ty, "ushort") || type_is_builtin(l_ty, "uint")) &&
+            (type_is_builtin(r_ty, "byte") || type_is_builtin(r_ty, "ushort") || type_is_builtin(r_ty, "uint"))) {
+            common_int_ty = type_builtin_uint();
+        } else if ((type_is_builtin(l_ty, "tiny") || type_is_builtin(l_ty, "byte") || type_is_builtin(l_ty, "short") ||
+             type_is_builtin(l_ty, "ushort") || type_is_builtin(l_ty, "int") || type_is_builtin(l_ty, "uint") ||
+             type_is_builtin(l_ty, "long")) &&
+            (type_is_builtin(r_ty, "tiny") || type_is_builtin(r_ty, "byte") || type_is_builtin(r_ty, "short") ||
+             type_is_builtin(r_ty, "ushort") || type_is_builtin(r_ty, "int") || type_is_builtin(r_ty, "uint") ||
+             type_is_builtin(r_ty, "long"))) {
+            common_int_ty = type_builtin_long();
+        } else if ((type_is_builtin(l_ty, "byte") || type_is_builtin(l_ty, "ushort") || type_is_builtin(l_ty, "uint") ||
+             type_is_builtin(l_ty, "ulong")) &&
+            (type_is_builtin(r_ty, "byte") || type_is_builtin(r_ty, "ushort") || type_is_builtin(r_ty, "uint") ||
+             type_is_builtin(r_ty, "ulong"))) {
+            common_int_ty = type_builtin_ulong();
+        }
+    }
+
+    let op = expr.text_value;
+    // string + string -> string (must precede int/real branches)
+    if (op == "+" &&
+        type_is_builtin(l_ty, "string") && type_is_builtin(r_ty, "string")) {
+        let result = type_builtin_string();
+        type_free(l_ty);
+        type_free(r_ty);
+        if (common_int_ty != null) type_free(common_int_ty as Type*);
+        return result;
+    }
+    if (op == "+" || op == "-" || op == "*" || op == "/") {
+        if (etc_is_int(l_ty) && etc_is_int(r_ty)) {
+            if (common_int_ty == null) {
+                etc_diag_error(self, "TYP-0170", "binary '" + op + "' has no supported common integer type for '" + type_format(l_ty) +
+                        "' and '" + type_format(r_ty) + "'",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+            }
+            type_free(l_ty);
+            type_free(r_ty);
+            if (common_int_ty != null) {
+                return common_int_ty;
+            }
+            return type_builtin_int();
+        }
+
+        let real_result = etc_real_binary_result_type(l_ty, r_ty);
+        if (real_result != null) {
+            type_free(l_ty);
+            type_free(r_ty);
+            if (common_int_ty != null) type_free(common_int_ty as Type*);
+            return real_result;
+        }
+
+        let recovery = type_builtin_int();
+        if (etc_is_real(l_ty) || etc_is_real(r_ty)) {
+            type_free(recovery);
+            if (type_is_builtin(l_ty, "double") || type_is_builtin(r_ty, "double")) {
+                recovery = type_builtin_double();
+            } else {
+                recovery = type_builtin_float();
+            }
+        }
+
+        etc_diag_error(self, "TYP-0170",
+            "binary '" + op + "' expects matching numeric operands, got " + type_format(l_ty) + " and " + type_format(r_ty),
+            (self.current_unit as DriverUnit*).path, expr.span);
+        type_free(l_ty);
+        type_free(r_ty);
+        if (common_int_ty != null) type_free(common_int_ty as Type*);
+        return recovery;
+    } else if (op == "%" || op == "&" || op == "|" || op == "^" || op == "<<" || op == ">>") {
+        if (!etc_is_int(l_ty) || !etc_is_int(r_ty)) {
+            etc_diag_error(self, "TYP-0170", "binary '" + op + "' expects int, got " + type_format(l_ty),
+                (self.current_unit as DriverUnit*).path, expr.span);
+        } else if (common_int_ty == null) {
+            etc_diag_error(self, "TYP-0170", "binary '" + op + "' has no supported common integer type for '" + type_format(l_ty) +
+                    "' and '" + type_format(r_ty) + "'",
+                (self.current_unit as DriverUnit*).path, expr.span);
+        }
+        type_free(l_ty);
+        type_free(r_ty);
+        if (common_int_ty != null) {
+            return common_int_ty;
+        }
+        return type_builtin_int();
+    } else if (op == "==" || op == "!=") {
+        let is_null_check = false;
+        let comparable = false;
+        if (etc_types_equal(l_ty, r_ty)) {
+            if (etc_is_nullable(l_ty)) {
+                let inner = etc_nullable_inner(l_ty);
+                if (etc_supports_equality(inner)) {
+                    comparable = true;
+                }
+            } else {
+                comparable = etc_supports_equality(l_ty);
+            }
+        } else if (etc_is_real(l_ty) && etc_is_real(r_ty)) {
+            comparable = true;
+        }
+
+        if (!comparable) {
+            if (ord(l_ty.kind) == ord(TY_NULL) && (ord(r_ty.kind) == ord(TY_POINTER) || ord(r_ty.kind) == ord(TY_NULLABLE))) {
+                is_null_check = true;
+            }
+            if (ord(r_ty.kind) == ord(TY_NULL) && (ord(l_ty.kind) == ord(TY_POINTER) || ord(l_ty.kind) == ord(TY_NULLABLE))) {
+                is_null_check = true;
+            }
+            if (!is_null_check && common_int_ty != null) {
+                is_null_check = true;
+            }
+
+            if (!is_null_check) {
+                if (etc_types_equal(l_ty, r_ty)) {
+                    etc_diag_error(self, "TYP-0173",
+                        "equality not supported for type '" + type_format(l_ty) + "'",
+                        (self.current_unit as DriverUnit*).path, expr.span);
+                } else {
+                    let msg = "binary '" + op + "' type mismatch: " + type_format(l_ty) + " and " + type_format(r_ty);
+                    if ((etc_is_nullable(l_ty) && etc_types_equal(etc_nullable_inner(l_ty), r_ty)) ||
+                        (etc_is_nullable(r_ty) && etc_types_equal(etc_nullable_inner(r_ty), l_ty))) {
+                        msg = msg + "; use 'as' to cast for same-type nullable equality";
+                    }
+                    etc_diag_error(self, "TYP-0172", msg,
+                        (self.current_unit as DriverUnit*).path, expr.span);
+                }
+            }
+        }
+        type_free(l_ty);
+        type_free(r_ty);
+        if (common_int_ty != null) type_free(common_int_ty as Type*);
+        return type_builtin_bool();
+    } else if (op == "<" || op == "<=" || op == ">" || op == ">=") {
+        let real_cmp = etc_real_binary_result_type(l_ty, r_ty);
+        let string_cmp = etc_is_string(l_ty) && etc_is_string(r_ty);
+        if (!string_cmp && ((!etc_is_int(l_ty) || !etc_is_int(r_ty)) && real_cmp == null)) {
+            etc_diag_error(self, "TYP-0170",
+                "binary '" + op + "' expects matching numeric operands, got " + type_format(l_ty) + " and " + type_format(r_ty),
+                (self.current_unit as DriverUnit*).path, expr.span);
+        } else if (etc_is_int(l_ty) && etc_is_int(r_ty) && common_int_ty == null) {
+            etc_diag_error(self, "TYP-0170", "binary '" + op + "' has no supported common integer type for '" + type_format(l_ty) +
+                    "' and '" + type_format(r_ty) + "'",
+                (self.current_unit as DriverUnit*).path, expr.span);
+        }
+        if (real_cmp != null) type_free(real_cmp as Type*);
+        type_free(l_ty);
+        type_free(r_ty);
+        if (common_int_ty != null) type_free(common_int_ty as Type*);
+        return type_builtin_bool();
+    } else if (op == "&&" || op == "||") {
+        if (!etc_is_bool(l_ty) || !etc_is_bool(r_ty)) {
+            etc_diag_error(self, "TYP-0171", "binary '" + op + "' expects bool, got " + type_format(l_ty),
+                (self.current_unit as DriverUnit*).path, expr.span);
+        }
+        type_free(r_ty);
+        if (common_int_ty != null) type_free(common_int_ty as Type*);
+        return l_ty;
+    }
+
+    type_free(l_ty);
+    type_free(r_ty);
+    if (common_int_ty != null) type_free(common_int_ty as Type*);
+    return null;
+}
+
+/**
+ * Infers the type for a call.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Call expression id.
+ * @param expr Call expression node.
+ * @return The inferred or resolved type, or null on error.
+ */
+func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNode*) -> Type*? {
+    let callee = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr.expr_a);
+    if (ord(callee.kind) == ord(EX_VAR_REF)) {
+        let callee_sym = etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
+        if (dea_is_intrinsic_symbol(callee_sym, "sizeof")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'sizeof' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return type_builtin_int();
+            }
+            return etc_infer_sizeof_intrinsic(self, expr_id, expr);
+        }
+        if (dea_is_intrinsic_symbol(callee_sym, "ord")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'ord' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return type_builtin_int();
+            }
+            return etc_infer_ord_intrinsic(self, expr);
+        }
+        if (dea_is_intrinsic_symbol(callee_sym, "is")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'is' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return type_builtin_bool();
+            }
+            return etc_infer_is_intrinsic(self, expr);
+        }
+        if (dea_is_intrinsic_symbol(callee_sym, "len")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'len' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return type_builtin_int();
+            }
+            return etc_infer_len_intrinsic(self, expr);
+        }
+        if (dea_is_intrinsic_symbol(callee_sym, "slice")) {
+            if (expr.arg_labels != null) {
+                etc_diag_error(self, "TYP-0760", "intrinsic 'slice' does not accept named arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                return null;
+            }
+            return etc_infer_slice_intrinsic(self, expr);
+        }
+        with (let local_callee_ty = etc_lookup_local(self, callee.text_value) => etc_type_free_opt(local_callee_ty)) {
+            if (local_callee_ty == null && callee_sym == null &&
+                callee.module_path == null && callee.name_qualifier == null &&
+                !nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, callee.text_value)) {
+                etc_diag_error(self, "TYP-0189", "unknown function '" + callee.text_value + "'",
+                    (self.current_unit as DriverUnit*).path, callee.span);
+                return null;
+            }
+        }
+    }
+
+    let callee_ty: Type*? = null;
+    if (ord(callee.kind) == ord(EX_VAR_REF)) {
+        let callee_sym2 = etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
+        if (callee_sym2 != null) {
+            let cs = callee_sym2 as Symbol*;
+            if (ord(cs.kind) == ord(SYM_STRUCT)) {
+                callee_ty = type_new_struct(cs.module_name, cs.name);
+            } else if (ord(cs.kind) == ord(SYM_ENUM)) {
+                callee_ty = type_new_enum(cs.module_name, cs.name);
+            } else if (ord(cs.kind) == ord(SYM_ENUM_VARIANT)) {
+                callee_ty = type_new_enum(cs.module_name, cs.owner_name);
+            } else if (ord(cs.kind) == ord(SYM_TYPE_ALIAS)) {
+                let alias_ty = etc_symbol_as_type(self, cs);
+                if (alias_ty != null && ord((alias_ty as Type*).kind) == ord(TY_STRUCT)) {
+                    callee_ty = alias_ty;
+                } else {
+                    if (alias_ty != null) {
+                        type_free(alias_ty as Type*);
+                    }
+                }
+            }
+        }
+    }
+    if (callee_ty == null) {
+        callee_ty = etc_infer_expr(self, expr.expr_a);
+    }
+    if (callee_ty == null) return null;
+    let c_ty = callee_ty as Type*;
+
+    if (ord(c_ty.kind) == ord(TY_FUNC)) {
+        let params = c_ty.params as VectorBase*;
+        let args = expr.ids as VectorBase*;
+        let arg_count = 0;
+        if (args != null) arg_count = vec_size(args);
+
+        if (c_ty.is_variadic && expr.arg_labels != null) {
+            etc_diag_error(self, "TYP-0744", "variadic calls do not accept named arguments",
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(c_ty);
+            return null;
+        }
+        if (!c_ty.is_variadic && expr.has_spread_arg) {
+            etc_diag_error(self, "TYP-0742", "spread argument requires a variadic callee",
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(c_ty);
+            return null;
+        }
+
+        let resolved_args: VectorBase*? = null;
+        if (expr.arg_labels != null && args != null) {
+            let expected_names = etc_get_call_param_names(self, callee);
+            if (expected_names == null) {
+                etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+                type_free(c_ty);
+                return null;
+            }
+            resolved_args = etc_resolve_named_args(self, expr.span, expected_names as StringVector*, expr.arg_labels as StringVector*, args);
+            sv_free_opt(expected_names);
+            if (resolved_args == null) {
+                type_free(c_ty);
+                return null;
+            }
+            args = resolved_args as VectorBase*;
+        }
+
+        if (c_ty.is_variadic) {
+            let fixed_count = vec_size(params) - 1;
+            let variadic_slice = ptr_vec_get(params, fixed_count) as Type*;
+            if (expr.has_spread_arg) {
+                if (arg_count != fixed_count + 1) {
+                    etc_diag_error(self, "TYP-0743",
+                        "spread argument must be the entire variadic tail",
+                        (self.current_unit as DriverUnit*).path, expr.span);
+                } else {
+                    for (let i_vf = 0; i_vf < fixed_count; i_vf = i_vf + 1) {
+                        let arg_id_vf = id_vec_get(args as VectorBase*, i_vf);
+                        let p_ty_vf = ptr_vec_get(params, i_vf) as Type*;
+                        if (ord(etc_check_expr_against_expected(self, p_ty_vf, arg_id_vf,
+                            (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                            etc_diag_error(self, "TYP-0312", "function call argument type mismatch",
+                                (self.current_unit as DriverUnit*).path, expr.span);
+                        }
+                    }
+                    let spread_id = id_vec_get(args as VectorBase*, fixed_count);
+                    if (ord(etc_check_expr_against_expected(self, variadic_slice, spread_id,
+                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                        etc_diag_error(self, "TYP-0743", "spread argument type mismatch",
+                            (self.current_unit as DriverUnit*).path, expr.span);
+                    }
+                }
+            } else if (arg_count < fixed_count) {
+                etc_diag_error(self, "TYP-0740", "variadic call is missing fixed-prefix arguments",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+            } else {
+                for (let i_v = 0; i_v < arg_count; i_v = i_v + 1) {
+                    let arg_id_v = id_vec_get(args as VectorBase*, i_v);
+                    let expected_v = variadic_slice.inner as Type*;
+                    if (i_v < fixed_count) {
+                        expected_v = ptr_vec_get(params, i_v) as Type*;
+                    }
+                    if (ord(etc_check_expr_against_expected(self, expected_v, arg_id_v,
+                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                        let code = "TYP-0741";
+                        let message = "variadic argument type mismatch";
+                        if (i_v < fixed_count) {
+                            code = "TYP-0312";
+                            message = "function call argument type mismatch";
+                        }
+                        etc_diag_error(self, code, message,
+                            (self.current_unit as DriverUnit*).path, expr.span);
+                    }
+                }
+            }
+        } else if (arg_count != vec_size(params)) {
+            etc_diag_error(self, "TYP-0183", "function call argument count mismatch",
+                (self.current_unit as DriverUnit*).path, expr.span);
+        } else {
+            for (let i = 0; i < arg_count; i = i + 1) {
+                let arg_id = id_vec_get(args as VectorBase*, i);
+                let p_ty = *(vec_get(params, i) as Type**);
+                if (ord(etc_check_expr_against_expected(self, p_ty, arg_id,
+                    (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                    etc_diag_error(self, "TYP-0312", "function call argument type mismatch",
+                        (self.current_unit as DriverUnit*).path, expr.span);
+                }
+            }
+        }
+        if (resolved_args != null) id_vec_free(resolved_args as VectorBase*);
+        let res = type_clone(c_ty.result as Type*);
+        type_free(c_ty);
+        return res;
+    }
+
+    if (ord(c_ty.kind) == ord(TY_STRUCT)) {
+        let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, c_ty.module_name, c_ty.name);
+        if (info != null) {
+            if (etc_is_imported_opaque_nominal(self, c_ty)) {
+                etc_diag_opaque_layout_use(self, c_ty, expr.span);
+                type_free(c_ty);
+                return null;
+            }
+            let fields = (info as StructInfo*).fields;
+            let args2 = expr.ids as VectorBase*;
+            let arg_count2 = 0;
+            if (args2 != null) arg_count2 = vec_size(args2);
+
+            let resolved_args2: VectorBase*? = null;
+            if (expr.arg_labels != null && args2 != null) {
+                let expected_names2 = etc_get_struct_field_names(self, c_ty);
+                if (expected_names2 == null) {
+                    etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                        (self.current_unit as DriverUnit*).path, expr.span);
+                    type_free(c_ty);
+                    return null;
+                }
+                resolved_args2 = etc_resolve_named_args(self, expr.span, expected_names2 as StringVector*, expr.arg_labels as StringVector*, args2);
+                sv_free_opt(expected_names2);
+                if (resolved_args2 == null) {
+                    type_free(c_ty);
+                    return null;
+                }
+                args2 = resolved_args2 as VectorBase*;
+            }
+
+            if (arg_count2 != vec_size(fields)) {
+                etc_diag_error(self, "TYP-0191", "struct constructor field count mismatch",
+                    (self.current_unit as DriverUnit*).path, expr.span);
+            } else {
+                for (let i = 0; i < arg_count2; i = i + 1) {
+                    let arg_id2 = id_vec_get(args2 as VectorBase*, i);
+                    let f_info = ptr_vec_get(fields, i) as StructFieldInfo*;
+                    if (ord(etc_check_expr_against_expected(self, f_info.field_type, arg_id2,
+                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                        etc_diag_error(self, "TYP-0313", "struct constructor field type mismatch",
+                            (self.current_unit as DriverUnit*).path, expr.span);
+                    }
+                }
+            }
+            if (resolved_args2 != null) id_vec_free(resolved_args2 as VectorBase*);
+        }
+        return c_ty;
+    }
+
+    if (ord(c_ty.kind) == ord(TY_ENUM)) {
+        let callee_expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr.expr_a);
+        let constructed_variant = false;
+        if (ord(callee_expr.kind) == ord(EX_VAR_REF)) {
+            let sym = etc_lookup_symbol(self, callee_expr.text_value, callee_expr.module_path, callee_expr.name_qualifier);
+            if (sym != null && ord((sym as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
+                constructed_variant = true;
+                let s = sym as Symbol*;
+                let info2 = sig_lookup_enum_info(self.result.signatures as SignatureTables*, s.module_name, s.owner_name);
+                if (info2 != null) {
+                    let variants = (info2 as EnumInfo*).variants;
+                    for (let i = 0; i < vec_size(variants); i = i + 1) {
+                        let v_info = ptr_vec_get(variants, i) as EnumVariantInfo*;
+                        if (v_info.name == s.name) {
+                            let fields2 = v_info.field_types;
+                            let args3 = expr.ids as VectorBase*;
+                            let arg_count3 = 0;
+                            if (args3 != null) arg_count3 = vec_size(args3);
+
+                            let resolved_args3: VectorBase*? = null;
+                            if (expr.arg_labels != null && args3 != null) {
+                                // Since we parsed callee_expr, we can just look up the target_ref from the AST or we can look up the EnumVariant field names
+                                let sym2 = etc_lookup_symbol(self, callee_expr.text_value, callee_expr.module_path, callee_expr.name_qualifier);
+                                let expected_names3: StringVector*? = null;
+                                if (sym2 != null && ord((sym2 as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
+                                    expected_names3 = etc_get_enum_variant_field_names_for_symbol(self, sym2 as Symbol*);
+                                }
+
+                                if (expected_names3 == null) {
+                                    etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                                        (self.current_unit as DriverUnit*).path, expr.span);
+                                    type_free(c_ty);
+                                    return null;
+                                }
+                                resolved_args3 = etc_resolve_named_args(self, expr.span, expected_names3 as StringVector*, expr.arg_labels as StringVector*, args3);
+                                sv_free(expected_names3 as StringVector*);
+                                if (resolved_args3 == null) {
+                                    type_free(c_ty);
+                                    return null;
+                                }
+                                args3 = resolved_args3 as VectorBase*;
+                            }
+
+                            if (arg_count3 != vec_size(fields2)) {
+                                etc_diag_error(self, "TYP-0201", "enum variant constructor field count mismatch",
+                                    (self.current_unit as DriverUnit*).path, expr.span);
+                            } else {
+                                for (let j = 0; j < arg_count3; j = j + 1) {
+                                    let arg_id3 = id_vec_get(args3 as VectorBase*, j);
+                                    let f_ty = ptr_vec_get(fields2, j) as Type*;
+                                    if (ord(etc_check_expr_against_expected(self, f_ty, arg_id3,
+                                        (self.current_unit as DriverUnit*).path, expr.span)) == ord(ASSIGN_REJECT)) {
+                                        etc_diag_error(self, "TYP-0314", "enum variant constructor field type mismatch",
+                                            (self.current_unit as DriverUnit*).path, expr.span);
+                                    }
+                                }
+                            }
+                            if (resolved_args3 != null) id_vec_free(resolved_args3 as VectorBase*);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if (!constructed_variant) {
+            etc_diag_error(self, "TYP-0181", "enum type is not callable; call a variant instead",
+                (self.current_unit as DriverUnit*).path, expr.span);
+        }
+        return c_ty;
+    }
+
+    if (ord(c_ty.kind) == ord(TY_ENUM)) {
+        etc_diag_error(self, "TYP-0181", "enum type is not callable; call a variant instead",
+            (self.current_unit as DriverUnit*).path, expr.span);
+    } else {
+        etc_diag_error(self, "TYP-0180", "expression is not callable",
+            (self.current_unit as DriverUnit*).path, expr.span);
+    }
+    type_free(c_ty);
+    return null;
+}
+
+/**
+ * Infers the type for a field.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Field-access expression id.
+ * @param expr Field-access expression node.
+ * @return The inferred or resolved type, or null on error.
+ */
+func etc_infer_field(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNode*) -> Type*? {
+    let left_ty = etc_infer_expr(self, expr.expr_a);
+    if (left_ty == null) return null;
+    let l_ty = left_ty as Type*;
+
+    if (ord(l_ty.kind) == ord(TY_NULLABLE) && ord((l_ty.inner as Type*).kind) == ord(TY_STRUCT)) {
+        etc_diag_error(self, "TYP-0220",
+            "cannot access field '" + expr.text_value + "' on nullable struct " + type_format(l_ty),
+            (self.current_unit as DriverUnit*).path, expr.span);
+        type_free(l_ty);
+        return null;
+    }
+
+    let base_ty = l_ty;
+    if (ord(l_ty.kind) == ord(TY_POINTER)) {
+        base_ty = l_ty.inner as Type*;
+    }
+
+    if (ord(base_ty.kind) == ord(TY_STRUCT)) {
+        if (etc_is_imported_opaque_nominal(self, base_ty)) {
+            etc_diag_opaque_layout_use(self, base_ty, expr.span);
+            type_free(l_ty);
+            return null;
+        }
+        let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, base_ty.module_name, base_ty.name);
+        if (info != null) {
+            let fields = (info as StructInfo*).fields;
+            for (let i = 0; i < vec_size(fields); i = i + 1) {
+                let f_info = ptr_vec_get(fields, i) as StructFieldInfo*;
+                if (f_info.name == expr.text_value) {
+                    type_free(l_ty);
+                    return type_clone(f_info.field_type);
+                }
+            }
+
+            etc_diag_error(self, "TYP-0221",
+                "struct " + type_format(base_ty) + " has no field '" + expr.text_value,
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(l_ty);
+            return null;
+        }
+    }
+
+    etc_diag_error(self, "TYP-0222",
+        "cannot access field '" + expr.text_value + "' on non-struct type " + type_format(l_ty),
+        (self.current_unit as DriverUnit*).path, expr.span);
+    type_free(l_ty);
+    return null;
+}
+
+/**
+ * Infers the type for a index.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Index expression id.
+ * @param expr Index expression node.
+ * @return The inferred or resolved type, or null on error.
+ */
+func etc_infer_index(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNode*) -> Type*? {
+    let left_ty = etc_infer_expr(self, expr.expr_a);
+    let index_ty = etc_infer_expr(self, expr.expr_b);
+    if (left_ty == null) {
+        if (index_ty != null) type_free(index_ty as Type*);
+        return null;
+    }
+    let l_ty = left_ty as Type*;
+
+    let index_valid = true;
+    if (index_ty != null) {
+        if (!etc_is_int(index_ty as Type*)) {
+            etc_diag_error(self, "TYP-0210", "index expects int, got " + type_format(index_ty as Type*),
+                (self.current_unit as DriverUnit*).path, expr.span);
+            index_valid = false;
+        }
+        type_free(index_ty as Type*);
+    }
+    if (!index_valid) {
+        type_free(l_ty);
+        return null;
+    }
+
+    if (ord(l_ty.kind) == ord(TY_NULLABLE)) {
+        etc_diag_error(self, "TYP-0211", "cannot index into a nullable pointer; unwrap it before indexing",
+            (self.current_unit as DriverUnit*).path, expr.span);
+        type_free(l_ty);
+        return null;
+    }
+
+    if (ord(l_ty.kind) == ord(TY_ARRAY) || ord(l_ty.kind) == ord(TY_SLICE)) {
+        let res = type_clone(l_ty.inner as Type*);
+        type_free(l_ty);
+        return res;
+    }
+
+    if (ord(l_ty.kind) != ord(TY_POINTER)) {
+        etc_diag_error(self, "TYP-0213", "cannot index into non-pointer type " + type_format(l_ty),
+            (self.current_unit as DriverUnit*).path, expr.span);
+        type_free(l_ty);
+        return null;
+    }
+
+    if (ord(l_ty.kind) == ord(TY_POINTER)) {
+        let pointee = l_ty.inner as Type*;
+        if (etc_is_void(pointee)) {
+            etc_diag_error(self, "TYP-0215", "cannot index through pointer to unsized type " + type_format(pointee),
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(l_ty);
+            return null;
+        }
+        if (!etc_in_unsafe_func(self)) {
+            etc_diag_error(self, "TYP-0214", "pointer indexing is allowed only inside an unsafe func body",
+                (self.current_unit as DriverUnit*).path, expr.span);
+            type_free(l_ty);
+            return null;
+        }
+        let res = type_clone(pointee);
+        type_free(l_ty);
+        return res;
+    }
+
+    type_free(l_ty);
+    return null;
+}
+
+/**
+ * Check an array literal against a contextual array target.
+ *
+ * @param self Expression checker state.
+ * @param dst Contextual array type.
+ * @param expr_id Array literal expression id.
+ * @param filename Source filename.
+ * @param span Diagnostic span.
+ * @return Assignability result.
+ */
+func etc_check_array_literal_expr(self: ExpressionTypeChecker*, dst: Type*, expr_id: ExprId, filename: string,
+                                  span: Span) -> AssignCheckResult {
+    return etc_check_array_literal_expr_mode(self, dst, expr_id, filename, span, true, true);
+}
+
+/**
+ * Check an expression against an expected typed context.
+ *
+ * Array literals are contextual only: fixed-size array expectations are
+ * checked before standalone inference, while every other expected type rejects
+ * the literal without materializing a temporary array. Parentheses are
+ * transparent for the contextual array check.
+ *
+ * @param self Expression checker state.
+ * @param expected Expected target type.
+ * @param expr_id Expression id to check.
+ * @param filename Source filename.
+ * @param span Diagnostic span.
+ * @return Assignability result for the typed context.
+ */
+func etc_check_expr_against_expected(self: ExpressionTypeChecker*, expected: Type*, expr_id: ExprId, filename: string,
+                                     span: Span) -> AssignCheckResult {
+    let unit = self.current_unit as DriverUnit*;
+    let literal_id = etc_unwrap_paren_expr_id(self, expr_id);
+    let expr = expr_arena_get(unit.parse_result.expr_arena, literal_id);
+    if (ord(expr.kind) == ord(EX_ARRAY_LITERAL)) {
+        if (ord(expected.kind) == ord(TY_ARRAY)) {
+            return etc_check_array_literal_expr(self, expected, literal_id, filename, expr.span);
+        }
+        etc_diag_error(self, "TYP-0801", "array literal requires a contextual array type", filename, expr.span);
+        return ASSIGN_REPORTED;
+    }
+
+    let actual = etc_infer_expr(self, expr_id);
+    if (actual == null) {
+        return ASSIGN_REPORTED;
+    }
+    let result = etc_check_assign_expr(self, expected, actual as Type*, expr_id, filename, span);
+    type_free(actual as Type*);
+    return result;
+}
+
+/**
+ * Check an array literal against a contextual array target.
+ *
+ * @param self Expression checker state.
+ * @param dst Contextual array type.
+ * @param expr_id Array literal expression id.
+ * @param filename Source filename.
+ * @param span Diagnostic span.
+ * @param report Whether to emit diagnostics for mismatches.
+ * @param record Whether to record the contextual type on accepted literals.
+ * @return Assignability result.
+ */
+func etc_check_array_literal_expr_mode(self: ExpressionTypeChecker*, dst: Type*, expr_id: ExprId, filename: string,
+                                       span: Span, report: bool, record: bool) -> AssignCheckResult {
+    let unit = self.current_unit as DriverUnit*;
+    let expr = expr_arena_get(unit.parse_result.expr_arena, expr_id);
+    if (ord(dst.kind) != ord(TY_ARRAY) || ord(expr.kind) != ord(EX_ARRAY_LITERAL)) {
+        return ASSIGN_REJECT;
+    }
+    let ids = expr.ids as VectorBase*;
+    if (vec_size(ids) > dst.array_len) {
+        if (report) {
+            etc_diag_error(self, "TYP-0802",
+                "array literal has " + int_to_string(vec_size(ids)) + " element(s), but target " + type_format(dst) +
+                " has length " + int_to_string(dst.array_len),
+                filename, span);
+        }
+        return ASSIGN_REPORTED;
+    }
+    let elem_ty = dst.inner as Type*;
+    for (let i = 0; i < vec_size(ids); i = i + 1) {
+        let elem_id = id_vec_get(ids, i);
+        let elem_expr = expr_arena_get(unit.parse_result.expr_arena, elem_id);
+        let elem_literal_id = etc_unwrap_paren_expr_id(self, elem_id);
+        let elem_literal_expr = expr_arena_get(unit.parse_result.expr_arena, elem_literal_id);
+        if (ord(elem_ty.kind) == ord(TY_ARRAY) && ord(elem_literal_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+            let nested = etc_check_array_literal_expr_mode(self, elem_ty, elem_literal_id, filename,
+                elem_literal_expr.span, report, record);
+            if (ord(nested) != ord(ASSIGN_ACCEPT)) {
+                return nested;
+            }
+            continue;
+        }
+        let actual = etc_infer_expr(self, elem_id);
+        if (actual != null) {
+            if (ord(etc_check_assign_expr(self, elem_ty, actual as Type*, elem_id, filename, elem_expr.span)) ==
+                ord(ASSIGN_REJECT)) {
+                if (report) {
+                    etc_diag_error(self, "TYP-0803",
+                        "array literal element type mismatch: expected " + type_format(elem_ty) +
+                        ", got " + type_format(actual as Type*),
+                        filename, elem_expr.span);
+                }
+                type_free(actual as Type*);
+                return ASSIGN_REPORTED;
+            }
+            type_free(actual as Type*);
+        }
+    }
+    if (record) {
+        etc_set_expr_type(self, expr_id, dst);
+    }
+    return ASSIGN_ACCEPT;
+}
+
+/**
+ * Check an initializer expression against its contextual binding type.
+ *
+ * @param self Expression checker state.
+ * @param expected Contextual binding type.
+ * @param expr_id Initializer expression id.
+ * @param name Binding name used in diagnostics.
+ * @param filename Source filename.
+ * @param span Declaration span for assignment diagnostics.
+ * @return `true` when the initializer is assignable.
+ */
+func etc_check_initializer_expr(self: ExpressionTypeChecker*, expected: Type*, expr_id: ExprId, name: string,
+                                filename: string, span: Span) -> bool {
+    let assign_result = etc_check_expr_against_expected(self, expected, expr_id, filename, span);
+    if (ord(assign_result) == ord(ASSIGN_REJECT)) {
+        etc_diag_error(self, "TYP-0310", "initializer for '" + name + "' type mismatch", filename, span);
+    }
+    return ord(assign_result) == ord(ASSIGN_ACCEPT);
+}
+
+/**
+ * Check the sole argument to an array constructor or array allocation.
+ *
+ * Literal arguments first try the outer array shape. If that fails and the
+ * element type is itself an array, the literal is treated as a value of the
+ * element type and broadcast across the outer array.
+ *
+ * @param self Expression checker state.
+ * @param target Target array type.
+ * @param arg_id Constructor/allocation argument expression.
+ * @param filename Source filename.
+ * @return `true` when the argument is valid.
+ */
+func etc_check_array_constructor_arg(self: ExpressionTypeChecker*, target: Type*, arg_id: ExprId,
+                                     filename: string) -> bool {
+    let unit = self.current_unit as DriverUnit*;
+    let literal_id = etc_unwrap_paren_expr_id(self, arg_id);
+    let arg_expr = expr_arena_get(unit.parse_result.expr_arena, literal_id);
+    if (ord(arg_expr.kind) == ord(EX_ARRAY_LITERAL)) {
+        let outer = etc_check_array_literal_expr_mode(self, target, literal_id, filename, arg_expr.span, false, false);
+        if (ord(outer) == ord(ASSIGN_ACCEPT)) {
+            etc_check_array_literal_expr_mode(self, target, literal_id, filename, arg_expr.span, true, true);
+            return true;
+        }
+        if (ord((target.inner as Type*).kind) == ord(TY_ARRAY)) {
+            let inner = etc_check_array_literal_expr_mode(self, target.inner as Type*, literal_id, filename,
+                arg_expr.span, true, true);
+            return ord(inner) == ord(ASSIGN_ACCEPT);
+        }
+        etc_check_array_literal_expr_mode(self, target, literal_id, filename, arg_expr.span, true, true);
+        return false;
+    }
+
+    let arg_ty = etc_infer_expr(self, arg_id);
+    if (arg_ty != null) {
+        if (ord(etc_check_assign_expr(self, target.inner as Type*, arg_ty as Type*, arg_id, filename, arg_expr.span)) ==
+            ord(ASSIGN_REJECT)) {
+            etc_diag_error(self, "TYP-0806",
+                "array fill value type mismatch: expected " +
+                type_format(target.inner as Type*) + ", got " + type_format(arg_ty as Type*),
+                filename, arg_expr.span);
+            type_free(arg_ty as Type*);
+            return false;
+        }
+        type_free(arg_ty as Type*);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Infers the type for a expr.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Expression id to inspect.
+ * @return The inferred or resolved type, or null on error.
+ */
+func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
+    if (expr_id < 0) {
+        return null;
+    }
+    if (self.liveness_diagnostics_only) {
+        etc_check_expr_liveness(self, expr_id);
+        return analysis_get_expr_type(self.result, self.current_module, expr_id);
+    }
+    let unit = self.current_unit as DriverUnit*;
+    let expr = expr_arena_get(unit.parse_result.expr_arena, expr_id);
+    let ty: Type*? = null;
+
+    match (expr.kind) {
+        EX_INT => { ty = type_builtin_int(); }
+        EX_BIGINT => { ty = type_new_builtin("__bigint_literal"); }
+        EX_FLOAT => { ty = type_builtin_float(); }
+        EX_DOUBLE => { ty = type_builtin_double(); }
+        EX_BYTE => { ty = type_builtin_byte(); }
+        EX_BOOL => { ty = type_builtin_bool(); }
+        EX_STRING => { ty = type_builtin_string(); }
+        EX_NULL => { ty = type_new_null(); }
+        EX_VAR_REF => {
+            if (contains_s(expr.text_value, "::")) {
+                etc_diag_error(self, "TYP-0158", etc_nested_symbol_path_message(expr),
+                    unit.path, expr.span);
+                return null;
+            }
+            if (expr.module_path == null && expr.name_qualifier == null && type_is_builtin_name(expr.text_value)) {
+                etc_diag_error(self, "TYP-0151", "type name '" + expr.text_value + "' cannot be used as a value",
+                    unit.path, expr.span);
+                return null;
+            }
+            let local_ty = etc_lookup_local(self, expr.text_value);
+            if (local_ty != null) {
+                if (etc_is_guarded_cleanup_header_local(self, expr.text_value)) {
+                    etc_diag_error(
+                        self,
+                        "TYP-0156",
+                        "'cleanup' block references 'with' header variable '" + expr.text_value + "' that may be uninitialized on '?' header-failure path; use nullable type or inline '=>'" + " cleanup",
+                        unit.path,
+                        expr.span
+                    );
+                }
+                let alive = etc_alive_lookup(self, expr.text_value);
+                if (alive != null && (alive as int) == 0) {
+                    etc_diag_error(self, "TYP-0150", "use of dropped variable '" + expr.text_value + "'",
+                        unit.path, expr.span);
+                }
+                etc_set_var_res(self, expr_id, VAR_RES_LOCAL);
+                ty = local_ty;
+            } else {
+                if (expr.name_qualifier != null) {
+                    etc_diag_error(self, "TYP-0158", etc_nested_symbol_path_message(expr),
+                        unit.path, expr.span);
+                } else {
+                    let sym = etc_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+                    if (sym != null) {
+                    let s = sym as Symbol*;
+                    if (ord(s.kind) == ord(SYM_STRUCT) || ord(s.kind) == ord(SYM_ENUM) ||
+                        ord(s.kind) == ord(SYM_TYPE_ALIAS)) {
+                        etc_diag_error(self, "TYP-0151", "type name '" + expr.text_value + "' cannot be used as a value", unit.path, expr.span);
+                    } else if (ord(s.kind) == ord(SYM_ENUM_VARIANT)) {
+                        let variant_has_fields = false;
+                        let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, s.module_name, s.owner_name);
+                        if (enum_info != null) {
+                            let variants = (enum_info as EnumInfo*).variants;
+                            for (let i = 0; i < vec_size(variants); i = i + 1) {
+                                let variant = ptr_vec_get(variants, i) as EnumVariantInfo*;
+                                if (variant.name == s.name && vec_size(variant.field_types) > 0) {
+                                    variant_has_fields = true;
+                                }
+                            }
+                        }
+                        if (variant_has_fields) {
+                            etc_diag_error(self, "TYP-0152", "enum variant '" + expr.text_value + "' requires constructor arguments", unit.path, expr.span);
+                        } else {
+                            etc_set_var_res(self, expr_id, VAR_RES_MODULE);
+                            ty = type_new_enum(s.module_name, s.owner_name);
+                        }
+                    } else if (ord(s.kind) == ord(SYM_FUNC) && dea_is_symbol(s)) {
+                        etc_diag_error(self, "TYP-0244",
+                            "intrinsic '" + s.module_name + "::" + s.name + "' may only be used in call position",
+                            unit.path, expr.span);
+                    } else {
+                        etc_set_var_res(self, expr_id, VAR_RES_MODULE);
+                        if (s.resolved_type != null) {
+                            ty = type_clone(s.resolved_type as Type*);
+                        } else if (ord(s.kind) == ord(SYM_FUNC)) {
+                            let ft = sig_lookup_func_type(self.result.signatures as SignatureTables*, s.module_name, s.name);
+                            if (ft != null) ty = type_clone(ft as Type*);
+                        } else if (ord(s.kind) == ord(SYM_LET)) {
+                            let lt = sig_lookup_let_type(self.result.signatures as SignatureTables*, s.module_name, s.name);
+                            if (lt != null) ty = type_clone(lt as Type*);
+                        } else if (ord(s.kind) == ord(SYM_ENUM_VARIANT)) {
+                            ty = type_new_enum(s.module_name, s.owner_name);
+                        }
+                    }
+                    } else {
+                        if (expr.module_path != null) {
+                            etc_diag_error(self, "TYP-0154", "module path for '" + expr.text_value + "' is not imported", unit.path, expr.span);
+                        } else if (expr.name_qualifier == null &&
+                            nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, expr.text_value)) {
+                            etc_diag_error(self, "TYP-0155", "ambiguous identifier '" + expr.text_value + "'",
+                                unit.path, expr.span);
+                        } else {
+                            etc_diag_error(self, "TYP-0159", "unknown identifier '" + expr.text_value + "'",
+                                unit.path, expr.span);
+                        }
+                    }
+                }
+            }
+        }
+        EX_UNARY => { ty = etc_infer_unary(self, expr_id, expr); }
+        EX_BINARY => { ty = etc_infer_binary(self, expr_id, expr); }
+        EX_CALL => { ty = etc_infer_call(self, expr_id, expr); }
+        EX_FIELD => { ty = etc_infer_field(self, expr_id, expr); }
+        EX_INDEX => { ty = etc_infer_index(self, expr_id, expr); }
+        EX_ARRAY_LITERAL => {
+            etc_diag_error(self, "TYP-0801", "array literal requires a contextual array type", unit.path, expr.span);
+        }
+        EX_ARRAY_CONSTRUCTOR => {
+            if (expr.type_ref != null) {
+                with (let seen_arr = ss_create() => ss_free(seen_arr)) {
+                    let target_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
+                        expr.type_ref as TypeRef*, self.result.diags, seen_arr);
+                    if (target_ty != null) {
+                        let target = target_ty as Type*;
+                        let arg_count = 0;
+                        if (expr.ids != null) {
+                            arg_count = vec_size(expr.ids as VectorBase*);
+                        }
+                        if (ord(target.kind) != ord(TY_ARRAY)) {
+                            etc_diag_error(self, "TYP-0804", "array constructor target must be an array type",
+                                unit.path, expr.span);
+                        } else if (arg_count != 1) {
+                            etc_diag_error(self, "TYP-0805", "array constructor or allocation has invalid arity",
+                                unit.path, expr.span);
+                        } else {
+                            let arg_id = id_vec_get(expr.ids as VectorBase*, 0);
+                            if (etc_check_array_constructor_arg(self, target, arg_id, unit.path)) {
+                                ty = target;
+                                target_ty = null;
+                            }
+                        }
+                        if (target_ty != null) {
+                            type_free(target_ty as Type*);
+                        }
+                    } else {
+                        etc_diag_type_ref_failure(self, expr.type_ref as TypeRef*, "TYP-0807",
+                            (expr.type_ref as TypeRef*).span);
+                    }
+                }
+            }
+        }
+        EX_CAST => {
+            let src_ty = etc_infer_expr(self, expr.expr_a);
+            if (src_ty != null && expr.type_ref != null) {
+                with (let seen = ss_create() => ss_free(seen)) {
+                    let target_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
+                        expr.type_ref as TypeRef*, self.result.diags, seen);
+                    if (target_ty != null) {
+                        let nullable_target_inner = etc_nullable_integer_inner(target_ty as Type*);
+                        if (etc_is_bigint_literal_type(src_ty as Type*)) {
+                            let bigint_target = target_ty as Type*;
+                            if (nullable_target_inner != null) {
+                                bigint_target = nullable_target_inner as Type*;
+                            }
+                            let cast_result = etc_check_assign_bigint_expr(self, bigint_target, expr.expr_a, unit.path);
+                            if (ord(cast_result) == ord(ASSIGN_ACCEPT)) {
+                                ty = target_ty;
+                                target_ty = null;
+                            }
+                        } else if (type_is_builtin(src_ty as Type*, "int") &&
+                            nullable_target_inner != null &&
+                            !type_is_builtin(nullable_target_inner as Type*, "int")) {
+                            let target_inner = nullable_target_inner as Type*;
+                            let const_int = etc_cast_const_int(self, expr.expr_a);
+                            if (const_int != null && !int_value_fits_builtin(target_inner, const_int as int)) {
+                                etc_diag_int_literal_range_error(self, const_int as int, target_inner, unit.path,
+                                    expr.span);
+                            } else if (etc_can_cast(self, target_inner, src_ty as Type*)) {
+                                ty = target_ty;
+                                target_ty = null;
+                            } else {
+                                etc_diag_error(self, "TYP-0230",
+                                    "cannot cast from '" + type_format(src_ty as Type*) + "' to '" + type_format(target_ty as Type*) + "'",
+                                    unit.path, expr.span);
+                            }
+                        } else if (type_is_builtin(src_ty as Type*, "int") && etc_is_int(target_ty as Type*) &&
+                            !type_is_builtin(target_ty as Type*, "int")) {
+                            let const_int = etc_cast_const_int(self, expr.expr_a);
+                            if (const_int != null && !int_value_fits_builtin(target_ty as Type*, const_int as int)) {
+                                etc_diag_int_literal_range_error(self, const_int as int, target_ty as Type*,
+                                    unit.path, expr.span);
+                            } else if (etc_can_cast(self, target_ty as Type*, src_ty as Type*)) {
+                                ty = target_ty;
+                                target_ty = null;
+                            } else {
+                                etc_diag_error(self, "TYP-0230",
+                                    "cannot cast from '" + type_format(src_ty as Type*) + "' to '" + type_format(target_ty as Type*) + "'",
+                                    unit.path, expr.span);
+                            }
+                        } else if (ord((src_ty as Type*).kind) == ord(TY_NULLABLE) &&
+                            ord(((src_ty as Type*).inner as Type*).kind) == ord(TY_POINTER) &&
+                            ord((target_ty as Type*).kind) == ord(TY_POINTER) &&
+                            etc_types_equal((target_ty as Type*), ((src_ty as Type*).inner as Type*)) &&
+                            etc_cast_is_const_null(self, expr.expr_a)) {
+                            etc_diag_error(self, "TYP-0701",
+                                "explicit cast from '" + type_format(src_ty as Type*) + "' to '" + type_format(target_ty as Type*) + "' is null at compile time",
+                                unit.path, expr.span);
+                        } else if (etc_can_cast(self, target_ty as Type*, src_ty as Type*)) {
+                            ty = target_ty;
+                            target_ty = null;
+                        } else {
+                            etc_diag_error(self, "TYP-0230",
+                                "cannot cast from '" + type_format(src_ty as Type*) + "' to '" + type_format(target_ty as Type*) + "'",
+                                unit.path, expr.span);
+                        }
+                        if (target_ty != null) type_free(target_ty as Type*);
+                    } else {
+                        etc_diag_type_ref_failure(self, expr.type_ref as TypeRef*, "TYP-0279",
+                            (expr.type_ref as TypeRef*).span);
+                    }
+                }
+            }
+            if (src_ty != null) type_free(src_ty as Type*);
+        }
+        EX_NEW => {
+            if (expr.type_ref != null) {
+                let target_ref = expr.type_ref as TypeRef*;
+                let arg_count = 0;
+                if (expr.ids != null) {
+                    arg_count = vec_size(expr.ids as VectorBase*);
+                }
+
+                let sym = etc_lookup_symbol(self, target_ref.name, target_ref.module_path, target_ref.name_qualifier);
+                if (sym != null &&
+                    ord((sym as Symbol*).kind) == ord(SYM_ENUM_VARIANT) &&
+                    target_ref.pointer_depth == 0 &&
+                    !target_ref.is_nullable) {
+                    let s = sym as Symbol*;
+                    let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, s.module_name, s.owner_name);
+                    if (enum_info != null) {
+                        let variants = (enum_info as EnumInfo*).variants;
+                        for (let i = 0; i < vec_size(variants); i = i + 1) {
+                            let variant = ptr_vec_get(variants, i) as EnumVariantInfo*;
+                            if (variant.name != s.name) {
+                                continue;
+                            }
+
+                            let field_count = vec_size(variant.field_types);
+
+                            let args = expr.ids as VectorBase*;
+                            let resolved_args: VectorBase*? = null;
+                            if (expr.arg_labels != null && args != null) {
+                                let expected_names = etc_get_enum_variant_field_names(self, target_ref);
+                                if (expected_names == null) {
+                                    etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                                        unit.path, expr.span);
+                                    return null;
+                                }
+                                resolved_args = etc_resolve_named_args(self, expr.span, expected_names as StringVector*, expr.arg_labels as StringVector*, args);
+                                sv_free_opt(expected_names);
+                                if (resolved_args == null) {
+                                    return null;
+                                }
+                                args = resolved_args as VectorBase*;
+                            }
+
+                            if (arg_count != field_count) {
+                                etc_diag_error(self, "TYP-0201",
+                                    "enum variant constructor field count mismatch",
+                                    unit.path, expr.span);
+                            }
+                            for (let j = 0; j < arg_count; j = j + 1) {
+                                let arg_id = id_vec_get(args as VectorBase*, j);
+                                if (j < field_count) {
+                                    let field_ty = ptr_vec_get(variant.field_types, j) as Type*;
+                                    if (ord(etc_check_expr_against_expected(self, field_ty, arg_id,
+                                        unit.path, expr.span)) == ord(ASSIGN_REJECT)) {
+                                        etc_diag_error(self, "TYP-0314",
+                                            "enum variant constructor field type mismatch",
+                                            unit.path, expr.span);
+                                    }
+                                }
+                            }
+                            if (resolved_args != null) id_vec_free(resolved_args as VectorBase*);
+                            break;
+                        }
+                    }
+                    ty = type_new_pointer(type_new_enum(s.module_name, s.owner_name));
+                } else {
+                with (let seen2 = ss_create() => ss_free(seen2)) {
+                    let base_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
+                        target_ref, self.result.diags, seen2);
+                    if (base_ty != null) {
+                        let base = base_ty as Type*;
+                        let is_opaque_nominal = etc_is_imported_opaque_nominal(self, base);
+                        if (ord(base.kind) == ord(TY_ARRAY)) {
+                            if (arg_count > 1) {
+                                etc_diag_error(self, "TYP-0805", "array constructor or allocation has invalid arity",
+                                    unit.path, expr.span);
+                            } else if (arg_count == 1) {
+                                let arg_id = id_vec_get(expr.ids as VectorBase*, 0);
+                                etc_check_array_constructor_arg(self, base, arg_id, unit.path);
+                            }
+                        } else if (ord(base.kind) == ord(TY_ENUM)) {
+                            if (is_opaque_nominal) {
+                                etc_diag_opaque_layout_use(self, base, expr.span);
+                            } else {
+                                etc_diag_error(self, "TYP-0281",
+                                    "cannot allocate enum type '" + type_format(base) + "' without a variant",
+                                    unit.path, expr.span);
+                            }
+                        } else if (ord(base.kind) == ord(TY_STRUCT)) {
+                            let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*,
+                                base.module_name, base.name);
+                            if (info == null) {
+                                etc_diag_error(self, "TYP-0282",
+                                    "missing struct info for " + base.module_name + "." + base.name,
+                                    unit.path, expr.span);
+                            } else if (is_opaque_nominal) {
+                                etc_diag_opaque_layout_use(self, base, expr.span);
+                            } else {
+                                let fields = (info as StructInfo*).fields;
+                                let field_count = vec_size(fields);
+
+                                let args2 = expr.ids as VectorBase*;
+                                let resolved_args2: VectorBase*? = null;
+                                if (expr.arg_labels != null && args2 != null) {
+                                    let expected_names2 = etc_get_struct_field_names(self, base);
+                                    if (expected_names2 == null) {
+                                        etc_diag_error(self, "TYP-0760", "cannot use named arguments with this callee",
+                                            unit.path, expr.span);
+                                        type_free(base);
+                                        return null;
+                                    }
+                                    resolved_args2 = etc_resolve_named_args(self, expr.span, expected_names2 as StringVector*, expr.arg_labels as StringVector*, args2);
+                                    sv_free_opt(expected_names2);
+                                    if (resolved_args2 == null) {
+                                        type_free(base);
+                                        return null;
+                                    }
+                                    args2 = resolved_args2 as VectorBase*;
+                                }
+
+                                if (arg_count > 0 && arg_count != field_count) {
+                                    etc_diag_error(self, "TYP-0283",
+                                        "struct '" + base.name + "' argument count mismatch",
+                                        unit.path, expr.span);
+                                }
+                                for (let i = 0; i < arg_count; i = i + 1) {
+                                    let arg_id2 = id_vec_get(args2 as VectorBase*, i);
+                                    if (i < field_count) {
+                                        let field = ptr_vec_get(fields, i) as StructFieldInfo*;
+                                        if (ord(etc_check_expr_against_expected(self, field.field_type, arg_id2,
+                                            unit.path, expr.span)) == ord(ASSIGN_REJECT)) {
+                                            etc_diag_error(self, "TYP-0316",
+                                                "field '" + field.name + "' of struct initializer type mismatch",
+                                                unit.path, expr.span);
+                                        }
+                                    }
+                                }
+                                if (resolved_args2 != null) id_vec_free(resolved_args2 as VectorBase*);
+                            }
+                        } else {
+                            if (arg_count > 1) {
+                                etc_diag_error(self, "TYP-0285",
+                                    "'new " + type_format(base) + "' expects at most 1 argument",
+                                    unit.path, expr.span);
+                            }
+                            for (let i = 0; i < arg_count; i = i + 1) {
+                                let arg_id3 = id_vec_get(expr.ids as VectorBase*, i);
+                                if (i == 0 && ord(etc_check_expr_against_expected(self, base, arg_id3,
+                                    unit.path, expr.span)) == ord(ASSIGN_REJECT)) {
+                                    etc_diag_error(self, "TYP-0286",
+                                        "cannot initialize '" + type_format(base) + "' from argument",
+                                        unit.path, expr.span);
+                                }
+                            }
+                        }
+
+                        if (is_opaque_nominal) {
+                            type_free(base);
+                        } else if (ord(base.kind) != ord(TY_ENUM)) {
+                            ty = type_new_pointer(base);
+                        } else {
+                            type_free(base);
+                        }
+                    } else {
+                        etc_diag_type_ref_failure(self, target_ref, "TYP-0280", target_ref.span);
+                    }
+                }
+                }
+            }
+        }
+        EX_PAREN => {
+            ty = etc_infer_expr(self, expr.expr_a);
+        }
+        EX_TRY => {
+            let inner_ty = etc_infer_expr(self, expr.expr_a);
+            if (inner_ty != null) {
+                let nullable_ty = inner_ty as Type*;
+                if (ord(nullable_ty.kind) != ord(TY_NULLABLE)) {
+                    etc_diag_error(self, "TYP-0250",
+                        "cannot apply '?' to non-nullable type '" + type_format(nullable_ty) + "'",
+                        unit.path, expr.span);
+                    type_free(nullable_ty);
+                } else if (self.current_ret_type == null || ord((self.current_ret_type as Type*).kind) != ord(TY_NULLABLE)) {
+                    etc_diag_error(self, "TYP-0251",
+                        "cannot use '?' in a function that does not return a nullable type (T?)",
+                        unit.path, expr.span);
+                    type_free(nullable_ty);
+                } else {
+                    ty = type_clone(nullable_ty.inner as Type*);
+                    type_free(nullable_ty);
+                }
+            }
+        }
+        EX_TYPE => {
+            etc_diag_error(self, "TYP-0290",
+                "type expression is only valid as an argument to type-accepting intrinsics",
+                unit.path, expr.span);
+            if (expr.type_ref != null) {
+                with (let seen3 = ss_create() => ss_free(seen3)) {
+                    ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
+                        expr.type_ref as TypeRef*, self.result.diags, seen3);
+                }
+            }
+        }
+    }
+
+    if (ty != null) {
+        // Expression results may not require an imported opaque layout.
+        // Pointer-frontier recursion preserves legal opaque handle flow.
+        let layout_visible = etc_check_imported_opaque_layout_type(
+            self, ty as Type*, unit.path, expr.span);
+        if (layout_visible) {
+            etc_set_expr_type(self, expr_id, ty as Type*);
+        } else {
+            type_free(ty as Type*);
+            ty = null;
+        }
+    }
+    return ty;
+}

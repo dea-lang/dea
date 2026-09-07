@@ -13,8 +13,9 @@ import std.text;
 import std.time;
 import std.vector;
 
-import cli_args;
-import link_driver;
+import cli_args.model;
+import link_driver.model;
+import link_driver.provenance;
 import module_interface;
 import util.diag;
 

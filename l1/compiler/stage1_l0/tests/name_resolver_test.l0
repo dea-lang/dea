@@ -10,7 +10,10 @@ import std.string;
 import std.assert;
 
 import driver;
+import driver.state;
 import name_resolver;
+import name_resolver.query;
+import name_resolver.state;
 import source_paths;
 import util.diag;
 import util.log;

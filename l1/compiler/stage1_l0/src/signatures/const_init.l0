@@ -1,0 +1,318 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module signatures.const_init;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import util.numbers;
+import ast;
+import driver.state;
+import name_resolver.query;
+import name_resolver.state;
+import symbols;
+import type_resolve.const_value;
+import type_resolve.lookup;
+import type_resolve.ref;
+import types;
+import signatures.tables;
+
+/**
+ * Infer a top-level literal initializer type without full expression checking.
+ *
+ * @param tables Signature tables available during signature resolution.
+ * @param nr Name-resolution data for symbol lookups.
+ * @param env Module environment owning the initializer.
+ * @param driver_state Driver state providing parsed ASTs.
+ * @param expr_id Expression id to inspect.
+ * @return Inferred literal type, or `null` when inference is not supported.
+ */
+func sig_infer_literal_type(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, driver_state: DriverState*,
+                            expr_id: ExprId) -> Type*? {
+    let unit = driver_find_unit(driver_state, env.module_name);
+    if (unit == null) {
+        return null;
+    }
+    let expr = expr_arena_get((unit as DriverUnit*).parse_result.expr_arena, expr_id);
+
+    if (ord(expr.kind) == ord(EX_INT)) {
+        return type_builtin_int();
+    }
+    if (ord(expr.kind) == ord(EX_BIGINT)) {
+        return null;
+    }
+    if (ord(expr.kind) == ord(EX_FLOAT)) {
+        return type_builtin_float();
+    }
+    if (ord(expr.kind) == ord(EX_DOUBLE)) {
+        return type_builtin_double();
+    }
+    if (ord(expr.kind) == ord(EX_BYTE)) {
+        return type_builtin_byte();
+    }
+    if (ord(expr.kind) == ord(EX_BOOL)) {
+        return type_builtin_bool();
+    }
+    if (ord(expr.kind) == ord(EX_STRING)) {
+        return type_builtin_string();
+    }
+    if (ord(expr.kind) == ord(EX_NULL)) {
+        return null;
+    }
+    if (ord(expr.kind) == ord(EX_VAR_REF)) {
+        let sym = tr_symbol_lookup(nr, env, expr.text_value, expr.module_path, expr.name_qualifier);
+        if (sym != null && sig_symbol_is_zero_field_enum_variant(tables, sym as Symbol*)) {
+            let target = sym as Symbol*;
+            return type_new_enum(target.module_name, target.owner_name);
+        }
+        return null;
+    }
+    if (ord(expr.kind) != ord(EX_CALL)) {
+        return null;
+    }
+
+    let callee = expr_arena_get((unit as DriverUnit*).parse_result.expr_arena, expr.expr_a);
+    if (ord(callee.kind) != ord(EX_VAR_REF)) {
+        return null;
+    }
+
+    let sym = tr_symbol_lookup(nr, env, callee.text_value, callee.module_path, callee.name_qualifier);
+    if (sym == null) {
+        return null;
+    }
+
+    let target = sym as Symbol*;
+    if (ord(target.kind) == ord(SYM_STRUCT)) {
+        return type_new_struct(target.module_name, target.name);
+    }
+    if (ord(target.kind) == ord(SYM_ENUM_VARIANT)) {
+        return type_new_enum(target.module_name, target.owner_name);
+    }
+    if (ord(target.kind) == ord(SYM_TYPE_ALIAS) && target.resolved_type != null) {
+        let alias_type = target.resolved_type as Type*;
+        if (ord(alias_type.kind) == ord(TY_STRUCT)) {
+            return type_clone(alias_type);
+        }
+    }
+    return null;
+}
+
+/**
+ * Report whether one symbol names a zero-field enum variant.
+ *
+ * @param sym Symbol to inspect.
+ * @return `true` when `sym` is a zero-field enum variant.
+ */
+func sig_symbol_is_zero_field_enum_variant(tables: SignatureTables*, sym: Symbol*) -> bool {
+    if (ord(sym.kind) != ord(SYM_ENUM_VARIANT)) {
+        return false;
+    }
+    if (sym.decl_ptr != null) {
+        let variant = sym.decl_ptr as EnumVariant*;
+        return vec_size(variant.fields) == 0;
+    }
+
+    let info_opt = sig_lookup_enum_info(tables, sym.module_name, sym.owner_name);
+    if (info_opt == null) {
+        return false;
+    }
+    let info = info_opt as EnumInfo*;
+    for (let i = 0; i < vec_size(info.variants); i = i + 1) {
+        let variant_info = ptr_vec_get(info.variants, i) as EnumVariantInfo*;
+        if (variant_info.name == sym.name) {
+            return vec_size(variant_info.field_types) == 0;
+        }
+    }
+    return false;
+}
+
+/**
+ * Check whether every constructor argument in a top-level binding initializer is constant.
+ *
+ * @param tables Signature tables available during signature resolution.
+ * @param nr Name-resolution data for symbol lookups.
+ * @param env Module environment owning the initializer.
+ * @param arena Expression arena that owns the arguments.
+ * @param args Optional vector of argument ids.
+ * @return `true` if every argument is constant.
+ */
+func sig_const_args_are_constant(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, arena: ExprArena*,
+                                 args: VectorBase*?) -> bool {
+    if (args == null) {
+        return true;
+    }
+    let ids = args as VectorBase*;
+    for (let i = 0; i < vec_size(ids); i = i + 1) {
+        if (!sig_expr_is_const_initializer(tables, nr, env, arena, id_vec_get(ids, i))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Check whether one top-level binding initializer stays inside the static-initializer subset.
+ *
+ * @param tables Signature tables available during signature resolution.
+ * @param nr Name-resolution data for symbol lookups.
+ * @param env Module environment owning the initializer.
+ * @param arena Expression arena that owns the expression.
+ * @param expr_id Expression id to inspect.
+ * @return `true` if the initializer is compile-time constant.
+ */
+func sig_expr_is_const_initializer(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, arena: ExprArena*,
+                                   expr_id: ExprId) -> bool {
+    if (expr_id < 0) {
+        return false;
+    }
+    let expr = expr_arena_get(arena, expr_id);
+    match (expr.kind) {
+        EX_INT => { return true; }
+        EX_BIGINT => { return true; }
+        EX_FLOAT => { return true; }
+        EX_DOUBLE => { return true; }
+        EX_BYTE => { return true; }
+        EX_STRING => { return true; }
+        EX_BOOL => { return true; }
+        EX_NULL => { return true; }
+        EX_ARRAY_LITERAL => {
+            let ids = expr.ids as VectorBase*;
+            for (let i = 0; i < vec_size(ids); i = i + 1) {
+                if (!sig_expr_is_const_initializer(tables, nr, env, arena, id_vec_get(ids, i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        EX_VAR_REF => {
+            let sym = tr_symbol_lookup(nr, env, expr.text_value, expr.module_path, expr.name_qualifier);
+            if (sym == null) {
+                return false;
+            }
+            return sig_symbol_is_zero_field_enum_variant(tables, sym as Symbol*);
+        }
+        EX_CALL => {
+            let callee = expr_arena_get(arena, expr.expr_a);
+            if (ord(callee.kind) != ord(EX_VAR_REF)) {
+                return false;
+            }
+
+            let sym = tr_symbol_lookup(nr, env, callee.text_value, callee.module_path, callee.name_qualifier);
+            if (sym == null) {
+                return false;
+            }
+
+            let target = sym as Symbol*;
+            if (ord(target.kind) == ord(SYM_STRUCT) || ord(target.kind) == ord(SYM_ENUM_VARIANT)) {
+                return sig_const_args_are_constant(tables, nr, env, arena, expr.ids);
+            }
+            if (ord(target.kind) == ord(SYM_TYPE_ALIAS) && target.resolved_type != null &&
+                ord((target.resolved_type as Type*).kind) == ord(TY_STRUCT)) {
+                return sig_const_args_are_constant(tables, nr, env, arena, expr.ids);
+            }
+            return false;
+        }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Resolve or infer the type of one top-level `let` binding.
+ *
+ * @param tables Signature tables receiving resolved `let` types.
+ * @param nr Name-resolution data for symbol lookups.
+ * @param env Module environment owning the declaration.
+ * @param driver_state Driver state providing parsed ASTs.
+ * @param decl `let` declaration to resolve.
+ * @param diags Diagnostic collector for resolution failures.
+ * @param pending_shapes Deferred per-declaration shape checks.
+ */
+func sig_resolve_let(tables: SignatureTables*, nr: NameResolution*, env: ModuleEnv*, driver_state: DriverState*,
+                     decl: LetDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
+    let let_type: Type*? = null;
+    if (decl.type_ref != null) {
+        with (let seen = ss_create() => ss_free(seen)) {
+            let_type = tr_resolve_type_ref(tables, nr, driver_state, env, decl.type_ref as TypeRef*, diags, seen);
+        }
+    } else {
+        let_type = sig_infer_literal_type(tables, nr, env, driver_state, decl.value);
+        if (let_type == null) {
+            let unit = driver_find_unit(driver_state, env.module_name);
+            if (unit != null) {
+                let expr = expr_arena_get((unit as DriverUnit*).parse_result.expr_arena, decl.value);
+                if (ord(expr.kind) == ord(EX_BIGINT)) {
+                    sig_diag_error(
+                        diags,
+                        "TYP-0702",
+                        "integer literal " + bigint_to_string(expr.text_value, expr.base_value) + " requires a contextual integer type",
+                        env.module_ptr.filename,
+                        expr.span
+                    );
+                    return;
+                }
+            }
+            sig_diag_error(
+                diags,
+                "SIG-0030",
+                "cannot infer type for let '" + decl.name + "' - type annotation required for non-literal initializers",
+                env.module_ptr.filename,
+                decl.span
+            );
+            return;
+        }
+    }
+
+    if (let_type == null) {
+        return;
+    }
+    sig_pending_shape_add(pending_shapes, env.module_name, let_type as Type*, "TYP-0812",
+        "slice type may not be used in a top-level let", env.module_ptr.filename, decl.span);
+
+    if (decl.is_const) {
+        let unit = driver_find_unit(driver_state, env.module_name);
+        let is_const_initializer = false;
+        let const_eval_failed = false;
+        if (unit != null) {
+            is_const_initializer = sig_expr_is_const_initializer(tables, nr, env,
+                (unit as DriverUnit*).parse_result.expr_arena, decl.value);
+            if (!is_const_initializer) {
+                with (let ctx = tr_const_eval_context_create(driver_state, tables, nr, diags) =>
+                      tr_const_eval_context_free(ctx)) {
+                    let const_value = tr_const_eval_expr(ctx, env, decl.value);
+                    if (const_value != null) {
+                        tr_const_value_free(const_value as ConstValue*);
+                        is_const_initializer = true;
+                    } else if (tr_const_eval_failed(ctx)) {
+                        tr_const_eval_report_failure(ctx);
+                        const_eval_failed = true;
+                    }
+                }
+            }
+        }
+        if (!is_const_initializer) {
+            type_free(let_type as Type*);
+            if (!const_eval_failed) {
+                sig_diag_error(
+                    diags,
+                    "SIG-0200",
+                    "initializer for const '" + decl.name + "' must be compile-time constant",
+                    env.module_ptr.filename,
+                    decl.span
+                );
+            }
+            return;
+        }
+    }
+
+    let key = sig_key(env.module_name, decl.name);
+    spm_put(tables.let_types, key, let_type as void*);
+    let sym_opt = nr_module_env_local(env, decl.name);
+    if (sym_opt != null) {
+        let sym = sym_opt as Symbol*;
+        symbol_set_type_clone(sym, let_type as Type*);
+    }
+}

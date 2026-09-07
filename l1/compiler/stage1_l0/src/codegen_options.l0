@@ -5,7 +5,7 @@
 
 module codegen_options;
 
-import cli_args;
+import cli_args.model;
 
 /**
  * Represents backend and emitter options that affect generated C text.

@@ -1,0 +1,187 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module backend.stmt;
+
+import std.vector;
+import ast;
+import c_emitter.abi;
+import c_emitter.declarations;
+import driver.state;
+import sem_context;
+import signatures.tables;
+import scope_context;
+import types;
+import backend.lifetime;
+import backend.lower;
+import backend.state;
+
+/**
+ * Check whether the statement sub-tree at `stmt_id` syntactically reassigns
+ * `param_name` via a bare `VarRef` target of an `ST_ASSIGN`. Used by the
+ * function-prologue emitter to decide whether to defensively retain an
+ * ARC-typed parameter on entry.
+ *
+ * @param self Backend state.
+ * @param stmt_id Root statement id, or negative when absent.
+ * @param param_name Source-level parameter name to match against assignment targets.
+ * @return `true` when any reachable `ST_ASSIGN` targets a bare `VarRef` with that name.
+ */
+func be_body_reassigns_param(self: Backend*, stmt_id: StmtId, param_name: string) -> bool {
+    if (stmt_id < 0) {
+        return false;
+    }
+    let stmt = stmt_arena_get(be_current_stmt_arena(self), stmt_id);
+    match (stmt.kind) {
+        ST_ASSIGN => {
+            let target = expr_arena_get(be_current_expr_arena(self), stmt.expr_a);
+            if (ord(target.kind) == ord(EX_VAR_REF) && target.text_value == param_name) {
+                return true;
+            }
+            return false;
+        }
+        ST_BLOCK => {
+            if (stmt.ids == null) {
+                return false;
+            }
+            let ids = stmt.ids as VectorBase*;
+            for (let i = 0; i < vec_size(ids); i = i + 1) {
+                if (be_body_reassigns_param(self, id_vec_get(ids, i), param_name)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        ST_IF => {
+            if (be_body_reassigns_param(self, stmt.stmt_a, param_name)) { return true; }
+            return be_body_reassigns_param(self, stmt.stmt_b, param_name);
+        }
+        ST_WHILE => {
+            return be_body_reassigns_param(self, stmt.stmt_a, param_name);
+        }
+        ST_FOR => {
+            if (be_body_reassigns_param(self, stmt.stmt_a, param_name)) { return true; }
+            if (be_body_reassigns_param(self, stmt.stmt_b, param_name)) { return true; }
+            return be_body_reassigns_param(self, stmt.stmt_c, param_name);
+        }
+        ST_MATCH => {
+            if (stmt.match_arms == null) {
+                return false;
+            }
+            let arms = stmt.match_arms as VectorBase*;
+            for (let i = 0; i < vec_size(arms); i = i + 1) {
+                let arm = ptr_vec_get(arms, i) as MatchArm*;
+                if (be_body_reassigns_param(self, arm.body, param_name)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        ST_CASE => {
+            if (stmt.case_arms != null) {
+                let arms = stmt.case_arms as VectorBase*;
+                for (let i = 0; i < vec_size(arms); i = i + 1) {
+                    let arm = ptr_vec_get(arms, i) as CaseArm*;
+                    if (be_body_reassigns_param(self, arm.body, param_name)) {
+                        return true;
+                    }
+                }
+            }
+            if (stmt.case_else != null) {
+                let else_arm = stmt.case_else as CaseElse*;
+                if (be_body_reassigns_param(self, else_arm.body, param_name)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        ST_WITH => {
+            if (stmt.with_items != null) {
+                let items = stmt.with_items as VectorBase*;
+                for (let i = 0; i < vec_size(items); i = i + 1) {
+                    let item = ptr_vec_get(items, i) as WithItem*;
+                    if (be_body_reassigns_param(self, item.init, param_name)) {
+                        return true;
+                    }
+                    if (item.has_cleanup && be_body_reassigns_param(self, item.cleanup_stmt, param_name)) {
+                        return true;
+                    }
+                }
+            }
+            if (be_body_reassigns_param(self, stmt.stmt_a, param_name)) { return true; }
+            return be_body_reassigns_param(self, stmt.stmt_b, param_name);
+        }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Emit all non-extern function definitions.
+ *
+ * @param self Backend state to update.
+ */
+func be_emit_function_definitions(self: Backend*) {
+    if (self.result.signatures == null) {
+        return;
+    }
+
+    cem_emit_section_comment(self.emitter, "Function definitions");
+    for (let i = 0; i < driver_unit_count(self.result.driver_state); i = i + 1) {
+        let unit = driver_unit_get(self.result.driver_state, i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+
+        let root = unit.parse_result.root_module as Module*;
+        if (!be_emits_module_definitions(self, root.name)) {
+            continue;
+        }
+        self.current_module = root.name;
+        self.current_unit = unit;
+        self.current_env = be_find_env(self, root.name);
+        cem_emit_module_separator(self.emitter, root.name);
+
+        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+            let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+            if (ord(top.kind) != ord(TD_FUNC)) {
+                continue;
+            }
+            let decl = top.data as FuncDecl*;
+            if (decl.is_extern) {
+                continue;
+            }
+
+            let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, root.name, decl.name);
+            if (func_type == null) {
+                be_ice("[ICE-1150] missing FuncType for " + root.name + "." + decl.name);
+            }
+
+            be_emit_line_directive(self, decl.span);
+            cem_emit_function_definition_header(self.emitter, root.name, decl, func_type as Type*,
+                be_is_symbol_exported(self, root.name, decl.name));
+            self.current_func_result = (func_type as Type*).result as Type*;
+            let func_scope = be_push_scope(self);
+            for (let p = 0; p < vec_size(decl.params); p = p + 1) {
+                let param_decl = ptr_vec_get(decl.params, p) as Param*;
+                let param_ty = ptr_vec_get((func_type as Type*).params as VectorBase*, p) as Type*;
+                let c_param_name = cem_mangle_identifier(param_decl.name);
+                if (analysis_has_arc_data(self.result, param_ty) &&
+                    be_body_reassigns_param(self, decl.body, param_decl.name)) {
+                    be_emit_retain_for_copied_value(self, c_param_name, param_ty);
+                    sc_add_owned(func_scope, c_param_name, param_ty);
+                } else {
+                    sc_add_declared(func_scope, c_param_name, param_ty);
+                }
+            }
+            be_emit_block_sequence(self, decl.body);
+            if (!self.next_stmt_unreachable) {
+                be_emit_cleanup_at_scope_exit(self, func_scope);
+            }
+            be_pop_scope(self);
+            self.current_func_result = null;
+            cem_emit_function_definition_footer(self.emitter);
+        }
+    }
+}

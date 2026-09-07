@@ -6,14 +6,13 @@
 module signatures_test;
 
 import std.io;
-import std.string;
 import std.assert;
 import std.vector;
 
 import analysis;
 import sem_context;
 import ast;
-import signatures;
+import signatures.tables;
 import source_paths;
 import types;
 import util.log;

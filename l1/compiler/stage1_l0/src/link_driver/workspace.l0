@@ -1,0 +1,516 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver.workspace;
+
+import std.fs;
+import std.path;
+import std.text;
+import std.vector;
+import util.diag;
+import util.log;
+import analysis;
+import build_driver;
+import cli_args.model;
+import compiler_filesystem;
+import diag_print;
+import driver.state;
+import module_graph;
+import sem_context;
+import link_driver.build;
+import link_driver.inputs;
+import link_driver.model;
+import link_driver.toolchain;
+import link_driver.transaction;
+
+/** Validate an absent retained-C tree destination before native work. */
+func ld_validate_retained_c_root(
+    root: string?,
+    diags: DiagCollector*
+) -> bool {
+    if (root == null) {
+        return true;
+    }
+    let path = root as string;
+    let parent_path = parent(path);
+    if (cfs_path_kind_follow(parent_path) != CFS_PATH_DIRECTORY) {
+        ld_error(
+            diags,
+            "L1C-2132",
+            "retained-C output parent does not exist or is not a directory: " +
+                parent_path,
+            parent_path
+        );
+        return false;
+    }
+    if (cfs_path_kind(path) != CFS_PATH_ABSENT) {
+        ld_error(
+            diags,
+            "L1C-2132",
+            "retained-C output path must be absent: " + path,
+            path
+        );
+        return false;
+    }
+    return true;
+}
+
+/** Reject canonical module paths that may alias the retained wrapper. */
+func ld_validate_retained_c_modules(
+    root: string?,
+    ordered: VectorBase*,
+    diags: DiagCollector*
+) -> bool {
+    if (root == null) {
+        return true;
+    }
+    for (let i = 0; i < vec_size(ordered); i = i + 1) {
+        let node = ld_ptr_vec_get(ordered, i) as ModuleGraphNode*;
+        if (ord(node.origin.kind) == ord(MOK_SOURCE) &&
+            to_lower_s(node.module_name) == "__dea_wrapper") {
+            let collision = join(
+                root as string, "__dea_wrapper.c");
+            ld_error(
+                diags,
+                "L1C-2132",
+                "retained-C module path collides with the generated wrapper: " +
+                    collision,
+                collision
+            );
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Create one retained-C directory and remember its cleanup order. */
+func ld_ensure_retained_c_directory(
+    root: string,
+    directory: string,
+    directories: StringVector*,
+    diags: DiagCollector*
+) -> bool {
+    if (directory == root) {
+        return true;
+    }
+    let directory_parent = parent(directory);
+    if (directory_parent == directory ||
+        !ld_ensure_retained_c_directory(
+            root, directory_parent, directories, diags)) {
+        return false;
+    }
+    let kind = cfs_path_kind(directory);
+    if (kind == CFS_PATH_ABSENT) {
+        if (cfs_mkdir(directory, 511) != 1) {
+            ld_error(
+                diags,
+                "L1C-2132",
+                "cannot create retained-C directory: " + directory,
+                directory
+            );
+            return false;
+        }
+        sv_push(directories, directory);
+        return true;
+    }
+    if (kind == CFS_PATH_DIRECTORY) {
+        return true;
+    }
+    ld_error(
+        diags,
+        "L1C-2132",
+        "retained-C path component is not a directory: " + directory,
+        directory
+    );
+    return false;
+}
+
+/** Remove one partially constructed retained-C tree. */
+func ld_cleanup_retained_c_tree(
+    root: string,
+    files: StringVector*,
+    directories: StringVector*
+) -> bool {
+    let ok = true;
+    for (let i = 0; i < sv_size(files); i = i + 1) {
+        if (cfs_remove_regular_file(sv_get(files, i)) < 0) {
+            ok = false;
+        }
+    }
+    for (let dir_i = sv_size(directories) - 1;
+         dir_i >= 0; dir_i = dir_i - 1) {
+        if (cfs_remove_empty_dir(sv_get(directories, dir_i)) < 0) {
+            ok = false;
+        }
+    }
+    if (cfs_remove_empty_dir(root) < 0) {
+        ok = false;
+    }
+    return ok;
+}
+
+/** Copy one generated C file without regeneration or rewriting. */
+func ld_copy_retained_c_file(
+    source: string,
+    destination: string,
+    files: StringVector*,
+    diags: DiagCollector*
+) -> bool {
+    let bytes = read_file(source);
+    sv_push(files, destination);
+    if (bytes == null ||
+        write_file(destination, bytes as string) == null) {
+        ld_error(
+            diags,
+            "L1C-2132",
+            "cannot copy retained generated C file to: " + destination,
+            destination
+        );
+        return false;
+    }
+    return true;
+}
+
+/** Publish the complete mirrored generated-C tree after a successful link. */
+func ld_retain_build_run_c(
+    root: string?,
+    ordered: VectorBase*,
+    wrapper_source: string,
+    cfg: LogConfig*,
+    diags: DiagCollector*
+) -> bool {
+    if (root == null) {
+        return true;
+    }
+    let retained_root = root as string;
+    if (cfs_mkdir(retained_root, 511) != 1) {
+        ld_error(
+            diags,
+            "L1C-2132",
+            "cannot create retained-C output tree: " + retained_root,
+            retained_root
+        );
+        return false;
+    }
+
+    with (
+        let files = sv_create(vec_size(ordered) + 1) => sv_free(files),
+        let directories = sv_create(4) => sv_free(directories)
+    ) {
+        let ok = true;
+        for (let i = 0; i < vec_size(ordered); i = i + 1) {
+            let node = ld_ptr_vec_get(
+                ordered, i) as ModuleGraphNode*;
+            if (ord(node.origin.kind) != ord(MOK_SOURCE)) {
+                continue;
+            }
+            let destination_opt = mg_artifacts_for_module(
+                retained_root, node.module_name, diags);
+            if (destination_opt == null) {
+                ok = false;
+                break;
+            }
+            let destination =
+                destination_opt as ModuleArtifactPaths*;
+            if (!ld_ensure_retained_c_directory(
+                    retained_root,
+                    parent(destination.c_path),
+                    directories,
+                    diags
+                ) ||
+                !ld_copy_retained_c_file(
+                    (node.artifacts as ModuleArtifactPaths*).c_path,
+                    destination.c_path,
+                    files,
+                    diags
+                )) {
+                ok = false;
+            }
+            mg_artifacts_free(destination);
+            if (!ok) {
+                break;
+            }
+        }
+
+        let wrapper_destination = join(
+            retained_root, "__dea_wrapper.c");
+        if (ok && !ld_copy_retained_c_file(
+                wrapper_source,
+                wrapper_destination,
+                files,
+                diags
+            )) {
+            ok = false;
+        }
+        if (!ok) {
+            if (!ld_cleanup_retained_c_tree(
+                    retained_root, files, directories)) {
+                ld_error(
+                    diags,
+                    "L1C-2132",
+                    "retained-C rollback failed; partial tree remains at: " +
+                        retained_root,
+                    retained_root
+                );
+            }
+            return false;
+        }
+    }
+    log_info(cfg, "Retained generated-C tree: " + retained_root);
+    return true;
+}
+
+/** Execute the selected temporary run program with exact argv forwarding. */
+func ld_run_built_program(
+    executable: string,
+    program_args: StringVector*,
+    cfg: LogConfig*,
+    diags: DiagCollector*
+) -> int {
+    with (
+        let words = sv_create(sv_size(program_args) + 1) =>
+            sv_free(words),
+        let status_box = vec_create(sizeof(int), 1) =>
+            vec_free(status_box)
+    ) {
+        sv_push(words, executable);
+        for (let i = 0; i < sv_size(program_args); i = i + 1) {
+            sv_push(words, sv_get(program_args, i));
+        }
+        log_info(cfg, "Running: " + bd_join_display_words(words));
+        vec_push_int(status_box, 0);
+        let program_status = vec_get(status_box, 0) as int*;
+        let launch = cfs_run_process(words, program_status);
+        if (launch != 1) {
+            ld_error(
+                diags,
+                "L1C-2133",
+                "failed to launch run-mode executable: " + executable,
+                executable
+            );
+            return 1;
+        }
+        return *program_status;
+    }
+}
+
+/** Complete multi-CU compilation, verified linking, retention, and execution. */
+func ld_build_run_in_workspace(
+    opts: CliOptions*,
+    cfg: LogConfig*,
+    prepared: BuildPreparedInput*,
+    workspace: CompilerWorkspace*,
+    executable: string,
+    retained_c_root: string?,
+    run_program: bool
+) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        if (!ld_validate_output(executable, diags) ||
+            !ld_validate_retained_c_root(retained_c_root, diags)) {
+            dp_print_collector(diags);
+            return 1;
+        }
+
+        let result = analysis_analyze_entry_with_resolution(
+            prepared.search_paths,
+            prepared.entry_module,
+            opts.interface_paths,
+            MRP_ALLOW_SOURCE_FALLBACK,
+            workspace.root,
+            cfg
+        );
+        if (analysis_diag_count(result) > 0) {
+            dp_print_collector_with_sources(
+                result.diags,
+                analysis_source_names(result),
+                analysis_source_texts(result)
+            );
+        }
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let ordered_opt = ld_build_order(
+            driver_graph(result.driver_state),
+            prepared.entry_module,
+            diags
+        );
+        if (ordered_opt == null) {
+            dp_print_collector(diags);
+            analysis_result_free(result);
+            return 1;
+        }
+        let ordered = ordered_opt as VectorBase*;
+        if (!ld_validate_retained_c_modules(
+                retained_c_root, ordered, diags)) {
+            dp_print_collector(diags);
+            vec_free(ordered);
+            analysis_result_free(result);
+            return 1;
+        }
+        let compiler = ld_take_compiler(opts, diags);
+        let extra_opts = bd_collect_c_option_words(opts);
+        let runtime_include = ld_runtime_include(opts, diags);
+        let runtime_inputs: StringVector*? = null;
+        let valid_external = true;
+        if (compiler != null) {
+            valid_external = ld_validate_external_link_operands(
+                opts.link_operands, compiler as string, diags);
+            runtime_inputs = ld_runtime_link_inputs(
+                opts, compiler as string, diags);
+        }
+        let valid_precompile_windows_values = true;
+        if (bd_is_windows() &&
+            compiler != null && runtime_include != null &&
+            runtime_inputs != null) {
+            valid_precompile_windows_values =
+                ld_validate_windows_build_run_values(
+                    compiler as string,
+                    extra_opts,
+                    (runtime_include as LinkRuntimeInclude*).directory,
+                    runtime_inputs as StringVector*,
+                    executable,
+                    opts.link_operands,
+                    diags
+                );
+        }
+        if (compiler == null || runtime_include == null ||
+            runtime_inputs == null || !valid_external ||
+            !valid_precompile_windows_values ||
+            !bd_validate_float_c_options(
+                result, extra_opts, diags)) {
+            dp_print_collector(diags);
+            if (runtime_inputs != null) {
+                sv_free(runtime_inputs as StringVector*);
+            }
+            if (runtime_include != null) {
+                ld_runtime_include_free(
+                    runtime_include as LinkRuntimeInclude*);
+            }
+            sv_free(extra_opts);
+            vec_free(ordered);
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let resolved_include = runtime_include as LinkRuntimeInclude*;
+        if (!ld_compile_source_nodes(
+                opts,
+                cfg,
+                prepared,
+                ordered,
+                workspace,
+                compiler as string,
+                extra_opts,
+                resolved_include.directory,
+                diags
+            )) {
+            dp_print_collector(diags);
+            sv_free(runtime_inputs as StringVector*);
+            ld_runtime_include_free(resolved_include);
+            sv_free(extra_opts);
+            vec_free(ordered);
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let operands = ld_build_run_operands(
+            opts.link_operands, ordered);
+        let plan = ld_prepare_cli_inputs(
+            operands, prepared.entry_module, diags);
+        cli_link_operands_free(operands);
+        if (plan == null) {
+            dp_print_collector(diags);
+            sv_free(runtime_inputs as StringVector*);
+            ld_runtime_include_free(resolved_include);
+            sv_free(extra_opts);
+            vec_free(ordered);
+            analysis_result_free(result);
+            return 1;
+        }
+        let verified = plan as LinkPlan*;
+
+        let valid_aliases = ld_validate_output_aliases(
+            executable,
+            verified,
+            runtime_inputs as StringVector*,
+            resolved_include.header_path,
+            diags
+        );
+        let valid_windows_values = true;
+        if (bd_is_windows()) {
+            valid_windows_values = ld_validate_windows_shell_values(
+                compiler as string,
+                extra_opts,
+                resolved_include.directory,
+                runtime_inputs as StringVector*,
+                executable,
+                verified,
+                diags
+            );
+        }
+        if (!valid_aliases || !valid_windows_values) {
+            dp_print_collector(diags);
+            ld_plan_free(verified);
+            sv_free(runtime_inputs as StringVector*);
+            ld_runtime_include_free(resolved_include);
+            sv_free(extra_opts);
+            vec_free(ordered);
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let scratch_opt = ld_build_run_transaction(
+            workspace, diags);
+        if (scratch_opt == null) {
+            dp_print_collector(diags);
+            ld_plan_free(verified);
+            sv_free(runtime_inputs as StringVector*);
+            ld_runtime_include_free(resolved_include);
+            sv_free(extra_opts);
+            vec_free(ordered);
+            analysis_result_free(result);
+            return 1;
+        }
+        let scratch = scratch_opt as LinkTransaction*;
+        let linked = ld_execute_plan(
+            verified,
+            compiler as string,
+            extra_opts,
+            resolved_include.directory,
+            runtime_inputs as StringVector*,
+            executable,
+            scratch,
+            cfg,
+            diags
+        );
+        let primary_status = 1;
+        if (linked && ld_retain_build_run_c(
+                retained_c_root,
+                ordered,
+                scratch.wrapper_c,
+                cfg,
+                diags
+            )) {
+            primary_status = 0;
+            if (run_program) {
+                primary_status = ld_run_built_program(
+                    executable, opts.program_args, cfg, diags);
+            }
+        }
+        if (diag_count(diags) > 0) {
+            dp_print_collector(diags);
+        }
+        ld_transaction_free(scratch);
+        ld_plan_free(verified);
+        sv_free(runtime_inputs as StringVector*);
+        ld_runtime_include_free(resolved_include);
+        sv_free(extra_opts);
+        vec_free(ordered);
+        analysis_result_free(result);
+        return primary_status;
+    }
+}

@@ -1,0 +1,220 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module name_resolver.state;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import ast;
+import symbols;
+
+/**
+ * Represents the ModuleEnv structure.
+ */
+struct ModuleEnv {
+    module_name: string;
+    module_ptr: Module*;
+    module_ptr_owned: bool;
+    locals: StringPtrMap*;           // string -> Symbol*
+    exports: StringPtrMap*;          // string -> Symbol* (non-owning)
+    opaque_exports: StringSet*;      // names exported opaquely
+    imported: StringPtrMap*;         // string -> Symbol* (non-owning)
+    all: StringPtrMap*;              // string -> Symbol* (non-owning for imported, owning via locals)
+    ambiguous_imports: StringSet*;
+    imported_modules: StringSet*;
+    qualified_modules: StringSet*;
+    open_import_modules: StringSet*;
+    alias_imports: StringPtrMap*;     // string -> ModuleEnv* (non-owning)
+    prelude_imported: StringSet*;
+    pending_extern_shadows: VectorBase*; // PendingExternShadow*
+}
+
+/**
+ * Deferred local/imported extern shadow check.
+ */
+struct PendingExternShadow {
+    local: Symbol*;          // non-owning
+    imported: Symbol*;       // non-owning
+    imported_module: string;
+    name: string;
+}
+
+/**
+ * Represents the NameResolution structure.
+ */
+struct NameResolution {
+    envs: VectorBase*;               // ModuleEnv*
+    by_name: StringPtrMap*;          // string -> ModuleEnv* (non-owning)
+    resolved_symbols: VectorBase*;   // ResolvedSymbolRef*
+    resolved_symbol_keys: StringSet*;
+}
+
+/**
+ * Represents one canonical cross-module symbol resolved from a consumer.
+ *
+ * Enum-variant lookups are normalized to their owning enum before entries are
+ * recorded. Same-module and compiler-synthesized virtual-module lookups never
+ * enter this ledger.
+ */
+struct ResolvedSymbolRef {
+    consumer_module: string;
+    provider_module: string;
+    symbol_name: string;
+}
+
+/**
+ * Emit a name-resolution error for a source span.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func nr_span_diag_error(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
+    diag_error(diags, "NameResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
+        span.end_column);
+}
+
+/**
+ * Emit a name-resolution warning for a source span.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func nr_span_diag_warn(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
+    diag_warn(diags, "NameResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
+        span.end_column);
+}
+
+/**
+ * Return a symbol from a string-pointer map when present.
+ *
+ * @param self Symbol map to inspect.
+ * @param name Symbol name to look up.
+ * @return Matching symbol, or `null` if absent.
+ */
+func nr_map_symbol_get(self: StringPtrMap*, name: string) -> Symbol*? {
+    let value = spm_get(self, name);
+    if (value == null) {
+        return null;
+    }
+    return value as Symbol*;
+}
+
+/**
+ * Build a fully qualified top-level symbol key.
+ *
+ * @param module_name Defining module name.
+ * @param name Symbol name.
+ * @return Key in `module::name` form.
+ */
+func nr_build_top_key(module_name: string, name: string) -> string {
+    return module_name + "::" + name;
+}
+
+/**
+ * Free a symbol map that owns its symbol values.
+ *
+ * @param self Symbol map to free.
+ */
+func nr_symbol_free_map(self: StringPtrMap*) {
+    for (let i = 0; i < spm_capacity(self); i = i + 1) {
+        if (spm_slot_occupied(self, i)) {
+            symbol_free(spm_slot_value(self, i) as Symbol*);
+        }
+    }
+    spm_free(self);
+}
+
+/**
+ * Free a module environment and its owned local symbols.
+ *
+ * @param self Module environment to free.
+ */
+func nr_module_env_free(self: ModuleEnv*) {
+    nr_symbol_free_map(self.locals);
+    spm_free(self.exports);
+    ss_free(self.opaque_exports);
+    spm_free(self.imported);
+    spm_free(self.all);
+    ss_free(self.ambiguous_imports);
+    ss_free(self.imported_modules);
+    ss_free(self.qualified_modules);
+    ss_free(self.open_import_modules);
+    spm_free(self.alias_imports);
+    ss_free(self.prelude_imported);
+    for (let shadow_i = 0; shadow_i < vec_size(self.pending_extern_shadows); shadow_i = shadow_i + 1) {
+        let shadow = ptr_vec_get(self.pending_extern_shadows, shadow_i) as PendingExternShadow*;
+        drop shadow;
+    }
+    vec_free(self.pending_extern_shadows);
+    if (self.module_ptr_owned) {
+        module_free(self.module_ptr);
+    }
+    drop self;
+}
+
+/**
+ * Free a complete name-resolution result.
+ *
+ * @param self Name-resolution result to free.
+ */
+func nr_free(self: NameResolution*) {
+    for (let i = 0; i < vec_size(self.envs); i = i + 1) {
+        nr_module_env_free(ptr_vec_get(self.envs, i) as ModuleEnv*);
+    }
+    vec_free(self.envs);
+    spm_free(self.by_name);
+    for (let ref_i = 0; ref_i < vec_size(self.resolved_symbols); ref_i = ref_i + 1) {
+        let resolved_ref = ptr_vec_get(self.resolved_symbols, ref_i) as ResolvedSymbolRef*;
+        drop resolved_ref;
+    }
+    vec_free(self.resolved_symbols);
+    ss_free(self.resolved_symbol_keys);
+    drop self;
+}
+
+/**
+ * Create an empty module environment for a parsed module.
+ *
+ * @param module_ptr Parsed module.
+ * @return New module environment for `module_ptr`.
+ */
+func nr_make_env(module_ptr: Module*) -> ModuleEnv* {
+    return nr_make_owned_env(module_ptr, false);
+}
+
+/**
+ * Create an empty module environment with explicit ownership for the backing module node.
+ *
+ * @param module_ptr Module node backing the environment.
+ * @param module_ptr_owned Whether `module_ptr` should be freed with the environment.
+ * @return New module environment.
+ */
+func nr_make_owned_env(module_ptr: Module*, module_ptr_owned: bool) -> ModuleEnv* {
+    return new ModuleEnv(
+        module_ptr.name,
+        module_ptr,
+        module_ptr_owned,
+        spm_create(),
+        spm_create(),
+        ss_create(),
+        spm_create(),
+        spm_create(),
+        ss_create(),
+        ss_create(),
+        ss_create(),
+        ss_create(),
+        spm_create(),
+        ss_create(),
+        ptr_vec_create(0)
+    );
+}

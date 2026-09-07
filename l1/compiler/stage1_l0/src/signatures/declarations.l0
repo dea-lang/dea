@@ -1,0 +1,205 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module signatures.declarations;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import ast;
+import driver.state;
+import name_resolver.query;
+import name_resolver.state;
+import symbols;
+import type_resolve.ref;
+import types;
+import signatures.tables;
+
+/**
+ * Resolve one struct declaration into stored signature metadata.
+ *
+ * @param tables Signature tables receiving resolved struct info.
+ * @param nr Name-resolution data for symbol lookups.
+ * @param env Module environment owning the declaration.
+ * @param decl Struct declaration to resolve.
+ * @param diags Diagnostic collector for resolution failures.
+ * @param pending_shapes Deferred per-declaration shape checks.
+ */
+func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                        decl: StructDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
+    with (let fields: VectorBase*? = ptr_vec_create(vec_size(decl.fields)) => sig_struct_field_vec_temp_free(fields),
+          let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
+        let ok = true;
+        for (let i = 0; i < vec_size(decl.fields); i = i + 1) {
+            let field_decl = ptr_vec_get(decl.fields, i) as FieldDecl*;
+            let field_type = tr_resolve_type_ref(tables, nr, driver_state, env, field_decl.type_ref, diags,
+                seen as StringSet*);
+            if (field_type == null) {
+                ok = false;
+                continue;
+            }
+            sig_pending_shape_add(pending_shapes, env.module_name, field_type as Type*, "TYP-0811",
+                "slice type may not be used as a struct field", env.module_ptr.filename, field_decl.type_ref.span);
+            ptr_vec_push(fields as VectorBase*, new StructFieldInfo(field_decl.name, field_type as Type*) as void*);
+        }
+
+        if (!ok) {
+            return;
+        }
+
+        let info = new StructInfo(
+            sig_key(env.module_name, decl.name),
+            env.module_name,
+            decl.name,
+            env.module_ptr.filename,
+            decl.span,
+            type_new_struct(env.module_name, decl.name),
+            fields as VectorBase*,
+            ss_has(env.opaque_exports, decl.name)
+        );
+        spm_put(tables.struct_infos, info.key, info as void*);
+        let sym_opt = nr_module_env_local(env, decl.name);
+        if (sym_opt == null) {
+            fields = null;
+            return;
+        }
+        let sym = sym_opt as Symbol*;
+        symbol_set_type_clone(sym, info.struct_type);
+        fields = null;
+    }
+}
+
+/**
+ * Resolve one enum declaration into stored signature metadata.
+ *
+ * @param tables Signature tables receiving resolved enum info.
+ * @param nr Name-resolution data for symbol lookups.
+ * @param env Module environment owning the declaration.
+ * @param decl Enum declaration to resolve.
+ * @param diags Diagnostic collector for resolution failures.
+ * @param pending_shapes Deferred per-declaration shape checks.
+ */
+func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                      decl: EnumDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
+    with (let variants: VectorBase*? = ptr_vec_create(vec_size(decl.variants)) => sig_enum_variant_vec_temp_free(variants),
+          let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
+        let ok = true;
+        for (let i = 0; i < vec_size(decl.variants); i = i + 1) {
+            let variant_decl = ptr_vec_get(decl.variants, i) as EnumVariant*;
+            let field_types = ptr_vec_create(vec_size(variant_decl.fields));
+            let field_names = sv_create(vec_size(variant_decl.fields));
+            for (let j = 0; j < vec_size(variant_decl.fields); j = j + 1) {
+                let field_decl = ptr_vec_get(variant_decl.fields, j) as FieldDecl*;
+                let field_type = tr_resolve_type_ref(tables, nr, driver_state, env, field_decl.type_ref, diags,
+                    seen as StringSet*);
+                if (field_type == null) {
+                    ok = false;
+                    continue;
+                }
+                sig_pending_shape_add(pending_shapes, env.module_name, field_type as Type*, "TYP-0813",
+                    "slice type may not be used as an enum payload field", env.module_ptr.filename,
+                    field_decl.type_ref.span);
+                ptr_vec_push(field_types, field_type as void*);
+                sv_push(field_names, field_decl.name);
+            }
+            ptr_vec_push(variants as VectorBase*, new EnumVariantInfo(variant_decl.name, field_types, field_names) as void*);
+        }
+
+        if (!ok) {
+            return;
+        }
+
+        let info = new EnumInfo(
+            sig_key(env.module_name, decl.name),
+            env.module_name,
+            decl.name,
+            env.module_ptr.filename,
+            decl.span,
+            type_new_enum(env.module_name, decl.name),
+            variants as VectorBase*,
+            ss_has(env.opaque_exports, decl.name)
+        );
+        spm_put(tables.enum_infos, info.key, info as void*);
+        let sym_opt = nr_module_env_local(env, decl.name);
+        if (sym_opt == null) {
+            variants = null;
+            return;
+        }
+        let sym = sym_opt as Symbol*;
+        symbol_set_type_clone(sym, info.enum_type);
+        variants = null;
+    }
+}
+
+/**
+ * Resolve one function declaration into a stored function type.
+ *
+ * @param tables Signature tables receiving resolved function types.
+ * @param nr Name-resolution data for symbol lookups.
+ * @param env Module environment owning the declaration.
+ * @param decl Function declaration to resolve.
+ * @param diags Diagnostic collector for resolution failures.
+ * @param pending_shapes Deferred per-declaration shape checks.
+ */
+func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                      decl: FuncDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
+    with (let params: VectorBase*? = ptr_vec_create(vec_size(decl.params)) => sig_type_vec_free_opt(params),
+          let seen: StringSet*? = ss_create() => sig_set_free_opt(seen)) {
+        let ok = true;
+        for (let i = 0; i < vec_size(decl.params); i = i + 1) {
+            let param = ptr_vec_get(decl.params, i) as Param*;
+            let param_type = tr_resolve_type_ref(tables, nr, driver_state, env, param.type_ref, diags,
+                seen as StringSet*);
+            if (param_type == null) {
+                ok = false;
+                continue;
+            }
+            ptr_vec_push(params as VectorBase*, param_type as void*);
+        }
+
+        let ret_type = tr_resolve_type_ref(tables, nr, driver_state, env, decl.return_type, diags,
+            seen as StringSet*);
+        if (ret_type == null) {
+            ok = false;
+        } else {
+            sig_pending_shape_add(pending_shapes, env.module_name, ret_type as Type*, "TYP-0810",
+                "slice type may not be a function return type", env.module_ptr.filename,
+                (decl.return_type as TypeRef*).span);
+        }
+
+        if (!ok) {
+            if (ret_type != null) {
+                type_free(ret_type as Type*);
+            }
+            return;
+        }
+
+        let is_variadic = vec_size(decl.params) > 0 &&
+            type_ref_is_variadic((ptr_vec_get(decl.params, vec_size(decl.params) - 1) as Param*).type_ref);
+        if (decl.is_extern && is_variadic) {
+            sig_diag_error(diags, "SIG-0220", "extern functions cannot be variadic",
+                env.module_ptr.filename, decl.span);
+            type_param_vec_free(params);
+            params = null;
+            type_free(ret_type as Type*);
+            return;
+        }
+        let func_type = type_new_func(params as VectorBase*, ret_type as Type*, decl.is_unsafe);
+        if (is_variadic) {
+            func_type.is_variadic = true;
+        }
+        let key = sig_key(env.module_name, decl.name);
+        spm_put(tables.func_types, key, func_type as void*);
+        let sym_opt = nr_module_env_local(env, decl.name);
+        if (sym_opt == null) {
+            params = null;
+            return;
+        }
+        let sym = sym_opt as Symbol*;
+        symbol_set_type_clone(sym, func_type);
+        params = null;
+    }
+}

@@ -1,0 +1,116 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser.state;
+
+import util.diag;
+import util.intset;
+import tokens;
+import ast;
+import parser.token_value;
+
+/**
+ * Represents the ImplParseResult structure.
+ */
+struct ImplParseResult {
+    root_module: Module*?;
+    expr_arena: ExprArena*;
+    stmt_arena: StmtArena*;
+    pattern_arena: PatternArena*;
+    diags: DiagCollector*;
+}
+
+/* ---------------------------------
+   Parser state
+   --------------------------------- */
+
+/**
+ * Represents the ParserState structure.
+ */
+struct ParserState {
+    tokens: TokenVector;
+    index: int;
+    last_token: Token;
+    filename: string;
+    diags: DiagCollector*;
+
+    expr_arena: ExprArena*;
+    stmt_arena: StmtArena*;
+    pattern_arena: PatternArena*;
+
+    /* Set once an unterminated block is detected at end-of-file. End-of-file is
+       terminal: the condition is reported once and every recovery loop then
+       stops instead of re-reporting it at each enclosing nesting level. */
+    eof_aborted: bool;
+
+    /* Token indices whose deferred lexer diagnostic was already emitted.
+       Backtracking restores `index`, so the cursor can re-cross a
+       TT_LEXER_ERROR token; the guard keeps the diagnostic single-shot. */
+    emitted_lex_errors: IntSet*;
+}
+
+/**
+ * Create a parser state for a token stream and source file.
+ *
+ * @param tokens Token stream to parse.
+ * @param filename Source filename used in diagnostics.
+ * @return A new parser state with fresh arenas and diagnostics.
+ */
+func ps_create(tokens: TokenVector, filename: string) -> ParserState* {
+    return new ParserState(
+        tokens,
+        0,
+        tv_get(tokens, 0),
+        filename,
+        diag_create(),
+        expr_arena_create(128),
+        stmt_arena_create(128),
+        pattern_arena_create(64),
+        false,
+        iset_create()
+    );
+}
+
+/**
+ * Release a parser state and its owned data.
+ *
+ * @param self Parser state to free.
+ */
+func ps_destroy(self: ParserState*) {
+    iset_free(self.emitted_lex_errors);
+    drop self;
+}
+
+/**
+ * Emit a parser diagnostic anchored to a token.
+ *
+ * @param self Parser state collecting diagnostics.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param tok Token whose span should be highlighted.
+ */
+func ps_emit_error(self: ParserState*, code: string, message: string, tok: Token) {
+    diag_error(
+        self.diags,
+        "Parser",
+        code,
+        message,
+        self.filename,
+        tok.line,
+        tok.column,
+        tok.line,
+        tok.column + token_width(tok)
+    );
+}
+
+/**
+ * Report whether the parser has recorded any errors.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if parser diagnostics contain an error.
+ */
+func ps_has_error(self: ParserState*) -> bool {
+    return diag_has_errors(self.diags);
+}

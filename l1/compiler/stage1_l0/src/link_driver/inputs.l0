@@ -1,0 +1,198 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver.inputs;
+
+import std.fs;
+import std.hashmap;
+import std.vector;
+import util.diag;
+import util.strings;
+import cli_args.model;
+import compiler_filesystem;
+import interface_fingerprint;
+import mi_utils;
+import module_graph;
+import module_interface;
+import parser.interface;
+import link_driver.model;
+import link_driver.plan;
+
+/** Copy parser diagnostics into the link-driver collector. */
+func ld_copy_interface_diags(
+    diags: DiagCollector*,
+    parsed: InterfaceParseResult*
+) {
+    for (let i = 0; i < diag_count(parsed.diags); i = i + 1) {
+        diag_copy(diags, diag_get(parsed.diags, i));
+    }
+}
+
+/** Read, decode, parse, and verify one authoritative sibling interface. */
+func ld_load_sibling_interface(
+    object_path: string,
+    interface_path: string,
+    diags: DiagCollector*
+) -> ModuleInterface*? {
+    let sibling_kind = cfs_path_kind_follow(interface_path);
+    if (sibling_kind == CFS_PATH_ABSENT) {
+        ld_error(
+            diags,
+            "DRV-0074",
+            "required sibling module interface was not found for object '" +
+                object_path + "': " + interface_path,
+            interface_path
+        );
+        return null;
+    }
+    if (sibling_kind != CFS_PATH_REGULAR) {
+        ld_error(
+            diags,
+            "DRV-0075",
+            "selected sibling module interface is not a readable regular file: " +
+                interface_path,
+            interface_path
+        );
+        return null;
+    }
+
+    let raw_opt = read_file(interface_path);
+    if (raw_opt == null) {
+        ld_error(
+            diags,
+            "DRV-0075",
+            "cannot read selected sibling module interface: " + interface_path,
+            interface_path
+        );
+        return null;
+    }
+    let raw = raw_opt as string;
+    if (!us_is_valid_utf8(raw)) {
+        ld_error(
+            diags,
+            "DRV-0076",
+            "selected sibling module interface is not valid UTF-8",
+            interface_path
+        );
+        return null;
+    }
+
+    let parsed = pi_parse_interface(us_strip_utf8_bom(raw), interface_path);
+    ld_copy_interface_diags(diags, parsed);
+    if (ipr_has_errors(parsed) || parsed.interface == null) {
+        ipr_free(parsed);
+        return null;
+    }
+    let interface = parsed.interface as ModuleInterface*;
+    parsed.interface = null;
+    ipr_free(parsed);
+    if (!ifp_verify(interface, diags, interface_path)) {
+        mi_free(interface);
+        return null;
+    }
+    return interface;
+}
+
+/** Validate original native paths and prepare their verified interface set. */
+func ld_prepare_cli_inputs(
+    operands: VectorBase*,
+    explicit_entry: string?,
+    diags: DiagCollector*
+) -> LinkPlan*? {
+    /* Path-only role validation must complete before any filesystem access. */
+    let ok = true;
+    for (let i = 0; i < cli_link_operands_count(operands); i = i + 1) {
+        let operand = cli_link_operands_get(operands, i);
+        if (ord(operand.kind) == ord(LOK_DEA_OBJECT)) {
+            let interface_path = mg_interface_path_from_object_path(operand.value);
+            if (interface_path == null) {
+                ld_error(
+                    diags,
+                    "L1C-2097",
+                    "positional Dea native input must have a nonempty basename stem " +
+                        "and exact terminal '.o' suffix: " + operand.value,
+                    operand.value
+                );
+                ok = false;
+            }
+        }
+    }
+    if (!ok) {
+        return null;
+    }
+
+    /* Validate every native endpoint before reading any sibling interface. */
+    let inputs = ld_ptr_vec_create(cli_link_operands_count(operands));
+    ok = true;
+    for (let i2 = 0; i2 < cli_link_operands_count(operands); i2 = i2 + 1) {
+        let operand2 = cli_link_operands_get(operands, i2);
+        let is_native = ord(operand2.kind) == ord(LOK_DEA_OBJECT) ||
+            ord(operand2.kind) == ord(LOK_FOREIGN_OBJECT);
+        if (!is_native) {
+            ld_ptr_vec_push(
+                inputs,
+                ld_input_create(
+                    operand2.kind, operand2.value, null, null) as void*
+            );
+            continue;
+        }
+
+        if (cfs_path_kind_follow(operand2.value) != CFS_PATH_REGULAR) {
+            ld_error(
+                diags,
+                "L1C-2097",
+                "standalone-link native input is missing or is not a regular file: " +
+                    operand2.value,
+                operand2.value
+            );
+            ok = false;
+            continue;
+        }
+
+        if (ord(operand2.kind) == ord(LOK_FOREIGN_OBJECT)) {
+            ld_ptr_vec_push(
+                inputs, ld_foreign_input_create(operand2.value) as void*);
+            continue;
+        }
+
+        let interface_path2 = mg_interface_path_from_object_path(operand2.value);
+        ld_ptr_vec_push(
+            inputs,
+            ld_input_create(
+                operand2.kind,
+                operand2.value,
+                interface_path2 as string,
+                null
+            ) as void*
+        );
+    }
+    if (!ok) {
+        ld_inputs_free(inputs);
+        return null;
+    }
+
+    /* Parse and verify the complete sibling set before graph registration. */
+    ok = true;
+    for (let input_i = 0; input_i < vec_size(inputs); input_i = input_i + 1) {
+        let input = ld_ptr_vec_get(inputs, input_i) as LinkInput*;
+        if (ord(input.kind) != ord(LOK_DEA_OBJECT)) {
+            continue;
+        }
+        let interface = ld_load_sibling_interface(
+            input.value, input.interface_path as string, diags);
+        if (interface == null) {
+            ok = false;
+            continue;
+        }
+        input.interface = interface as ModuleInterface*;
+    }
+    if (!ok) {
+        ld_inputs_free(inputs);
+        return null;
+    }
+
+    let plan = new LinkPlan(inputs, spm_create(), sv_create(vec_size(inputs)), "");
+    return ld_prepare_verified_plan(plan, explicit_entry, diags);
+}
