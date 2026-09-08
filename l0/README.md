@@ -165,6 +165,9 @@ For an optional reproducible Linux test environment, use the explicit Docker wra
 make docker CMD=test-all
 ```
 
+The image builds from the monorepo root and includes L1 sources and vendored tools used by L0's runtime compatibility,
+source-selection, and documentation tests. Host virtual environments and build outputs are excluded.
+
 For normal developer use, install the repo-local switchable `l0c` alias, choose the stage you want, and source the
 generated environment script:
 

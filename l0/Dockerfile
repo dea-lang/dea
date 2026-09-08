@@ -25,6 +25,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY Makefile /project/Makefile
 COPY scripts /project/scripts
 COPY l0 /project/l0
+# L0 tests exercise cross-level runtime compatibility and vendored doc tooling.
+COPY l1 /project/l1
+COPY tools /project/tools
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --all-groups
 
