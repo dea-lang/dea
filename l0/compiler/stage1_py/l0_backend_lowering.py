@@ -2,9 +2,10 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Tuple, Any, Callable
+from collections.abc import Callable
+from typing import Any
 from l0_analysis import VarRefResolution
-from l0_ast import Stmt, Block, LetStmt, AssignStmt, ExprStmt, IfStmt, WhileStmt, ReturnStmt, DropStmt, MatchStmt, CaseStmt, Expr, IntLiteral, StringLiteral, BoolLiteral, VarRef, UnaryOp, BinaryOp, CallExpr, IndexExpr, FieldAccessExpr, ParenExpr, CastExpr, VariantPattern, WildcardPattern, NullLiteral, TryExpr, NewExpr, BreakStmt, ContinueStmt, ForStmt, ByteLiteral, WithStmt
+from l0_ast import Stmt, Block, LetStmt, AssignStmt, ExprStmt, IfStmt, WhileStmt, ReturnStmt, DropStmt, MatchStmt, CaseStmt, Expr, IntLiteral, StringLiteral, BoolLiteral, VarRef, UnaryOp, BinaryOp, CallExpr, IndexExpr, FieldAccessExpr, ParenExpr, CastExpr, VariantPattern, WildcardPattern, NullLiteral, TryExpr, NewExpr, BreakStmt, ContinueStmt, ForStmt, ByteLiteral, WithStmt, WithItem
 from l0_name_resolver import SymbolKind
 from l0_scope_context import ScopeContext
 from l0_types import Type, BuiltinType, StructType, EnumType, PointerType, NullableType, FuncType, format_type
@@ -21,7 +22,7 @@ class Lowering:
     lifetime: ValueLifetime
     state: BackendState
 
-    def _emit_cleanup_for_return(self, returned_var: Optional[str] = None) -> None:
+    def _emit_cleanup_for_return(self, returned_var: str | None = None) -> None:
         """Emit cleanup logic for a return statement.
 
         Walks up scope chain, executes any with-statement cleanup data,
@@ -245,7 +246,7 @@ class Lowering:
         self.state.emitter.statements.emit_block_end()
         return None
 
-    def _emit_return(self, stmt: ReturnStmt, before_cleanup: Optional[Callable[[], None]] = None) -> Any:
+    def _emit_return(self, stmt: ReturnStmt, before_cleanup: Callable[[], None] | None = None) -> Any:
         """Emit a return statement with cleanup.
 
         Args:
@@ -295,14 +296,14 @@ class Lowering:
         self.state._next_stmt_unreachable = True
         return None
 
-    def _register_inline_with_cleanup(self, scope: ScopeContext, item: "WithItem") -> None:
+    def _register_inline_with_cleanup(self, scope: ScopeContext, item: WithItem) -> None:
         """Register one inline with-item cleanup in LIFO order."""
         if item.cleanup is None:
             return
         assert scope.with_cleanup_inline is not None
         scope.with_cleanup_inline.insert(0, item.cleanup)
 
-    def _emit_inline_with_header_item(self, item: "WithItem", module_name: str, scope: ScopeContext) -> None:
+    def _emit_inline_with_header_item(self, item: WithItem, module_name: str, scope: ScopeContext) -> None:
         """Emit one inline with header item and register its cleanup at the committed point."""
         if item.cleanup is None:
             self._emit_stmt(item.init, module_name)
@@ -725,7 +726,7 @@ class Lowering:
             self.state._current_scope.add_owned(c_var_name, var_ty)
         return None
 
-    def _emit_with_cleanup_header_let_predecl(self, stmt: LetStmt, module_name: str) -> Optional[Type]:
+    def _emit_with_cleanup_header_let_predecl(self, stmt: LetStmt, module_name: str) -> Type | None:
         """Predeclare a nullable `with`-header let for cleanup-block form.
 
         Nullable lets are predeclared as `null` so cleanup code can
@@ -1107,7 +1108,7 @@ class Lowering:
             # in header item N can still clean up items 0..N-1.
             with_scope.with_cleanup_inline = []
 
-        predeclared_nullable_lets: Dict[int, Type] = {}
+        predeclared_nullable_lets: dict[int, Type] = {}
         if stmt.cleanup_body is not None:
             # First pass: predeclare nullable lets so cleanup on early header
             # failure can reference all nullable header names.
@@ -1152,7 +1153,7 @@ class Lowering:
         self.state._pop_scope()
         self.state.emitter.statements.emit_block_end()
 
-    def _try_emit_intrinsic(self, expr: CallExpr) -> Optional[str]:
+    def _try_emit_intrinsic(self, expr: CallExpr) -> str | None:
         """Expand compiler intrinsics inline.
 
         Args:
@@ -1197,7 +1198,7 @@ class Lowering:
 
         return self.state.emitter.values.emit_ord(c_arg)
 
-    def _try_emit_constructor(self, expr: CallExpr) -> Optional[str]:
+    def _try_emit_constructor(self, expr: CallExpr) -> str | None:
         """Check if expr is a constructor call and emit appropriate initialization.
 
         Struct: Point(1, 2) -> { .x = 1, .y = 2 }
@@ -1354,7 +1355,7 @@ class Lowering:
             if info is None:
                 self.state.ice(f"[ICE-1210] missing StructInfo for {base_ty.module}.{base_ty.name}", node=expr)
             # Designated init by field order (positional args)
-            inits: List[Tuple[str, str]] = []
+            inits: list[tuple[str, str]] = []
             for field, arg in zip(info.fields, expr.args):
                 c_arg = self._emit_owned_expr_with_expected_type(arg, field.type)
                 inits.append((field.name, c_arg))
@@ -1391,7 +1392,7 @@ class Lowering:
                     self.state.ice(
                         f"[ICE-1224] arity mismatch in new {variant_name}: expected {len(variant_decl.fields)}, got {len(expr.args)}",
                         node=expr)
-                payload_inits: List[Tuple[str, str]] = []
+                payload_inits: list[tuple[str, str]] = []
                 for idx, (field, arg) in enumerate(zip(variant_decl.fields, expr.args)):
                     c_arg = self._emit_owned_expr_with_expected_type(arg, vinfo.field_types[idx])
                     payload_inits.append((field.name, c_arg))

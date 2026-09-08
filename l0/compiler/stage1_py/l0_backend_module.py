@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import Optional
 from l0_ast import FuncDecl, LetDecl, Stmt, Block, AssignStmt, IfStmt, WhileStmt, MatchStmt, CaseStmt, VarRef, ForStmt, WithStmt
 from l0_logger import log_debug, log_stage
 from l0_name_resolver import SymbolKind
@@ -229,7 +228,7 @@ class ModuleGeneration:
         # Delegate to emitter
         self.state.emitter.declarations.emit_main_wrapper(self.state.analysis.cu.entry_name, func_type)
 
-    def _iter_body_stmts(self, stmt: Optional[Stmt]):
+    def _iter_body_stmts(self, stmt: Stmt | None):
         """Yield every statement reachable from stmt, recursing into block-bearing nodes.
 
         Args:

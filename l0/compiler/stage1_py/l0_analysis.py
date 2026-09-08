@@ -3,14 +3,13 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
 
 from l0_compilation import CompilationUnit
 from l0_context import CompilationContext
 from l0_diagnostics import Diagnostic
 from l0_locals import FunctionEnv
 from l0_signatures import StructInfo, EnumInfo
-from l0_symbols import ModuleEnv
+from l0_symbols import SymbolKey, ModuleEnv
 from l0_types import Type, FuncType, BuiltinType, StructType, EnumType, NullableType, PointerType
 
 
@@ -38,28 +37,28 @@ class AnalysisResult:
         intrinsic_targets: Target types for intrinsic operations keyed by id(expr_node).
         diagnostics: List of all diagnostics accumulated during analysis.
     """
-    cu: Optional[CompilationUnit] = None
+    cu: CompilationUnit | None = None
     context: CompilationContext = field(default_factory=CompilationContext.default)
 
-    module_envs: Dict[str, ModuleEnv] = field(default_factory=dict)
+    module_envs: dict[str, ModuleEnv] = field(default_factory=dict)
 
     # Keys are (module_name, decl_name)
-    func_types: Dict[Tuple[str, str], FuncType] = field(default_factory=dict)
-    struct_infos: Dict[Tuple[str, str], StructInfo] = field(default_factory=dict)
-    enum_infos: Dict[Tuple[str, str], EnumInfo] = field(default_factory=dict)
-    func_envs: Dict[Tuple[str, str], FunctionEnv] = field(default_factory=dict)
-    let_types: Dict[Tuple[str, str], Type] = field(default_factory=dict)
+    func_types: dict[SymbolKey, FuncType] = field(default_factory=dict)
+    struct_infos: dict[SymbolKey, StructInfo] = field(default_factory=dict)
+    enum_infos: dict[SymbolKey, EnumInfo] = field(default_factory=dict)
+    func_envs: dict[SymbolKey, FunctionEnv] = field(default_factory=dict)
+    let_types: dict[SymbolKey, Type] = field(default_factory=dict)
 
     # Expression types keyed by id(expr_node)
-    expr_types: Dict[int, Type] = field(default_factory=dict)
+    expr_types: dict[int, Type] = field(default_factory=dict)
 
     # VarRef resolution keyed by id(expr_node): VarRefResolution.LOCAL or VarRefResolution.MODULE
-    var_ref_resolution: Dict[int, VarRefResolution] = field(default_factory=dict)
+    var_ref_resolution: dict[int, VarRefResolution] = field(default_factory=dict)
 
     # Intrinsic function/type targets keyed by intrinsic id(expr_node)
-    intrinsic_targets: Dict[int, Type] = field(default_factory=dict)
+    intrinsic_targets: dict[int, Type] = field(default_factory=dict)
 
-    diagnostics: List[Diagnostic] = field(default_factory=list)
+    diagnostics: list[Diagnostic] = field(default_factory=list)
 
     def has_errors(self) -> bool:
         """Check if any 'error' diagnostics were reported.

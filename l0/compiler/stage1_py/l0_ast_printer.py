@@ -4,7 +4,7 @@
 """AST pretty-printing utility for the L0 compiler."""
 
 from dataclasses import is_dataclass, fields
-from typing import List, Any
+from typing import Any
 
 from l0_ast import Span, Node, Module
 
@@ -24,7 +24,7 @@ def _format_span(span: Span | None) -> str:
     return f" @{span.start_line}:{span.start_column}-{span.end_line}:{span.end_column}"
 
 
-def format_node(node: Any, indent: int = 0) -> List[str]:
+def format_node(node: Any, indent: int = 0) -> list[str]:
     """Generic, reflection-based AST pretty-printer.
 
     This function recursively traverses an AST node (or a list of nodes) and
@@ -47,7 +47,7 @@ def format_node(node: Any, indent: int = 0) -> List[str]:
 
     # Lists: print each element at same indentation
     if isinstance(node, list):
-        lines: List[str] = []
+        lines: list[str] = []
         for elem in node:
             lines.extend(format_node(elem, indent))
         return lines
@@ -74,7 +74,7 @@ def format_node(node: Any, indent: int = 0) -> List[str]:
             header = f"{header}({inner})"
         header += _format_span(span)
 
-        lines: List[str] = [ind + header]
+        lines: list[str] = [ind + header]
 
         # Child fields on separate indented lines
         for name, value in child_fields:

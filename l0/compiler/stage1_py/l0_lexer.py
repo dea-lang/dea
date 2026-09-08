@@ -9,7 +9,6 @@ along with Token definitions and related utilities.
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import List, Optional
 from l0_diagnostics import Diagnostic
 from l0_types import L0_PRIMITIVE_TYPES
 
@@ -242,9 +241,9 @@ class Token:
     text: str
     line: int
     column: int
-    diagnostic: Optional[Diagnostic] = None
-    diagnostics: Optional[List[Diagnostic]] = None
-    recovery: Optional["Token"] = None
+    diagnostic: Diagnostic | None = None
+    diagnostics: list[Diagnostic] | None = None
+    recovery: Token | None = None
 
     def __repr__(self) -> str:
         """Returns a string representation of the token."""
@@ -302,7 +301,7 @@ class Lexer:
         diagnostics: List of collected diagnostics.
     """
 
-    def __init__(self, source: str, filename: str = "<input>", diagnostics: Optional[List[Diagnostic]] = None) -> None:
+    def __init__(self, source: str, filename: str = "<input>", diagnostics: list[Diagnostic] | None = None) -> None:
         """Initialize the lexer.
 
         Args:
@@ -320,7 +319,7 @@ class Lexer:
         self.diagnostics = diagnostics if diagnostics is not None else []
 
     @classmethod
-    def from_source(cls, source: str) -> "Lexer":
+    def from_source(cls, source: str) -> Lexer:
         """Create a lexer from a source string with default settings.
 
         Args:
@@ -337,8 +336,8 @@ class Lexer:
         """Add an error diagnostic."""
         self.diagnostics.append(Diagnostic(kind="error", message=message, filename=self.filename, line=line, column=column))
 
-    def _lexer_error_token(self, text: str, line: int, column: int, diagnostics: List[Diagnostic],
-                           recovery: Optional[Token] = None) -> Token:
+    def _lexer_error_token(self, text: str, line: int, column: int, diagnostics: list[Diagnostic],
+                           recovery: Token | None = None) -> Token:
         """Build a deferred lexer-error wrapper token."""
         first = diagnostics[0] if diagnostics else None
         return Token(
@@ -390,13 +389,13 @@ class Lexer:
 
     # --- main API ---
 
-    def tokenize(self) -> List[Token]:
+    def tokenize(self) -> list[Token]:
         """Perform tokenization of the source string.
 
         Returns:
             A list of all tokens, ending with an EOF token.
         """
-        tokens: List[Token] = []
+        tokens: list[Token] = []
         while True:
             tok = self._next_token()
             tokens.append(tok)
@@ -584,7 +583,7 @@ class Lexer:
 
     def _read_byte_literal(self, start_col: int, start_line: int) -> str:
         """Scan a byte/character literal."""
-        chars: List[str] = []
+        chars: list[str] = []
         ch = self._peek()
 
         if ch == "\0" or ch == "\n":
@@ -631,7 +630,7 @@ class Lexer:
 
     def _read_string_literal(self) -> str:
         """Scan a double-quoted string literal."""
-        chars: List[str] = []
+        chars: list[str] = []
         while True:
             ch = self._peek()
 
@@ -652,7 +651,7 @@ class Lexer:
 
     def _read_valid_char_escape(self) -> str:
         """Scan a single escape sequence."""
-        chars: List[str] = [self._advance()]
+        chars: list[str] = [self._advance()]
         esc = self._peek()
         if esc in ("\\", "'", '"', "?", "a", "b", "f", "n", "r", "t", "v"):
             chars.append(self._advance())  # valid escapes
@@ -766,7 +765,7 @@ class Lexer:
         The run stops at printable ASCII or whitespace, so a diagnostic span
         never crosses a line break.
         """
-        chars: List[str] = []
+        chars: list[str] = []
         while True:
             c = self._peek()
             if c == "\0" or c in ("\t", "\n", "\r") or (" " <= c <= "~"):

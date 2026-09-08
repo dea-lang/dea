@@ -56,7 +56,7 @@ class CompilationContext:
     log_level: LogLevel = LogLevel.WARNING
 
     @staticmethod
-    def default() -> 'CompilationContext':
+    def default() -> CompilationContext:
         """Create a CompilationContext with default settings.
 
         Returns:

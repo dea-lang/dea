@@ -9,10 +9,10 @@ local variables, function parameters, and pattern bindings.
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, Optional, Tuple
 
 from l0_ast import Node, TypeRef, FuncDecl, Module, Stmt, Block, LetStmt, IfStmt, WhileStmt, MatchArm, MatchStmt, \
     CaseArm, CaseElse, CaseStmt, Pattern, WildcardPattern, VariantPattern, WithStmt
+from l0_symbols import SymbolKey
 
 
 class LocalKind(Enum):
@@ -40,7 +40,7 @@ class LocalSymbol:
     """
     name: str
     kind: LocalKind
-    type_ref: Optional[TypeRef]
+    type_ref: TypeRef | None
     decl: Node
 
 
@@ -55,10 +55,10 @@ class Scope:
         parent: The enclosing scope, or None if this is a root scope.
         symbols: Mapping of names to LocalSymbol objects in this scope.
     """
-    parent: Optional["Scope"]
-    symbols: Dict[str, LocalSymbol] = field(default_factory=dict)
+    parent: Scope | None
+    symbols: dict[str, LocalSymbol] = field(default_factory=dict)
 
-    def lookup(self, name: str) -> Optional[LocalSymbol]:
+    def lookup(self, name: str) -> LocalSymbol | None:
         """Look up a name in this scope and all enclosing scopes.
 
         Args:
@@ -67,7 +67,7 @@ class Scope:
         Returns:
             The LocalSymbol if found, otherwise None.
         """
-        scope: Optional[Scope] = self
+        scope: Scope | None = self
         while scope is not None:
             sym = scope.symbols.get(name)
             if sym is not None:
@@ -110,7 +110,7 @@ class LocalScopeResolver:
         `get_block_scope` and `get_match_arm_scope` methods for retrieving scopes by AST node.
     """
 
-    def __init__(self, modules: Dict[str, Module]) -> None:
+    def __init__(self, modules: dict[str, Module]) -> None:
         """Initialize the local scope resolver.
 
         Args:
@@ -119,17 +119,17 @@ class LocalScopeResolver:
         self.modules = modules
 
         # (module_name, func_name) -> FunctionEnv
-        self.function_envs: Dict[Tuple[str, str], FunctionEnv] = {}
+        self.function_envs: dict[SymbolKey, FunctionEnv] = {}
 
         # Node id -> Scope
         # We avoid using AST nodes as dict keys directly because dataclasses
         # are unhashable by default.
-        self._block_scopes: Dict[int, Scope] = {}
-        self._match_arm_scopes: Dict[int, Scope] = {}
+        self._block_scopes: dict[int, Scope] = {}
+        self._match_arm_scopes: dict[int, Scope] = {}
 
     # --- public API ---
 
-    def resolve(self) -> Dict[Tuple[str, str], FunctionEnv]:
+    def resolve(self) -> dict[SymbolKey, FunctionEnv]:
         """Build scopes for all non-extern functions in the modules.
 
         Returns:
@@ -142,7 +142,7 @@ class LocalScopeResolver:
                     self.function_envs[(module_name, decl.name)] = fe
         return self.function_envs
 
-    def get_block_scope(self, block: Block) -> Optional[Scope]:
+    def get_block_scope(self, block: Block) -> Scope | None:
         """Get the lexical scope associated with a block.
 
         Args:
@@ -153,7 +153,7 @@ class LocalScopeResolver:
         """
         return self._block_scopes.get(id(block))
 
-    def get_match_arm_scope(self, arm: MatchArm) -> Optional[Scope]:
+    def get_match_arm_scope(self, arm: MatchArm) -> Scope | None:
         """Get the lexical scope associated with a match arm.
 
         Args:
@@ -303,7 +303,7 @@ class LocalScopeResolver:
             scope: Scope,
             name: str,
             kind: LocalKind,
-            type_ref: Optional[TypeRef],
+            type_ref: TypeRef | None,
             decl: Node,
     ) -> LocalSymbol:
         """Declare a local symbol in the given scope."""

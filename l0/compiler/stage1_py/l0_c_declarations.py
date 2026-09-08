@@ -2,7 +2,7 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import Callable
+from collections.abc import Callable
 from l0_ast import EnumDecl, Expr, FuncDecl, LetDecl, StructDecl
 from l0_signatures import EnumInfo, StructInfo
 from l0_string_escape import encode_c_string_bytes

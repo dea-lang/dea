@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import Optional
 from l0_ast import Expr, IntLiteral, NullLiteral, UnaryOp, ParenExpr, CastExpr
 from l0_types import Type, BuiltinType, PointerType, NullableType, NullType
 
@@ -62,11 +61,11 @@ class TypeCompatibility:
         """Check if type is nullable or a pointer."""
         return isinstance(t, (NullableType, PointerType))
 
-    def _is_int_assignable(self, typ: Optional[Type]) -> bool:
+    def _is_int_assignable(self, typ: Type | None) -> bool:
         """Check if type is 'int' or 'byte'."""
         return isinstance(typ, BuiltinType) and (typ.name == "int" or typ.name == "byte")
 
-    def _get_const_int_for_explicit_cast(self, expr: Expr) -> Optional[int]:
+    def _get_const_int_for_explicit_cast(self, expr: Expr) -> int | None:
         """Extract a compile-time integer value from a cast operand when available."""
         if isinstance(expr, IntLiteral):
             return expr.value
@@ -88,7 +87,7 @@ class TypeCompatibility:
             return self._is_const_null_for_explicit_cast(expr.expr)
         return False
 
-    def _is_bool(self, typ: Optional[Type]) -> bool:
+    def _is_bool(self, typ: Type | None) -> bool:
         """Check if type is 'bool'."""
         return isinstance(typ, BuiltinType) and typ.name == "bool"
 

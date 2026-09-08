@@ -2,7 +2,7 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import Callable, List, Tuple
+from collections.abc import Callable
 from l0_signatures import EnumInfo
 from l0_types import Type, StructType, EnumType, PointerType, NullableType
 from l0_c_names import CNames
@@ -135,8 +135,8 @@ class CCleanup:
         self,
         enum_type: EnumType,
         variant_name: str,
-        variant_field_types: List[Type],
-    ) -> List[Tuple[str, Type]]:
+        variant_field_types: list[Type],
+    ) -> list[tuple[str, Type]]:
         """Pair variant field names with their resolved field types.
 
         Args:

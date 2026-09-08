@@ -4,7 +4,6 @@
 """Internal Compiler Error (ICE) definitions for the L0 compiler."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 from l0_ast import Span
 
@@ -17,8 +16,8 @@ class ICELocation:
         filename: The path to the source file being processed.
         span: Optional source span information.
     """
-    filename: Optional[str]
-    span: Optional[Span]
+    filename: str | None
+    span: Span | None
 
 
 class InternalCompilerError(RuntimeError):

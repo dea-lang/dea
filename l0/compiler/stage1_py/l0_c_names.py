@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import Set
 from l0_types import EnumType
 
 
@@ -10,7 +9,7 @@ from l0_types import EnumType
 class CNames:
     """C identifiers and the session-local temporary-name sequence."""
 
-    C_KEYWORDS: Set[str] = field(default_factory=lambda: {
+    C_KEYWORDS: set[str] = field(default_factory=lambda: {
         # C89/C99 keywords
         'auto', 'break', 'case', 'char', 'const', 'continue', 'default', 'do',
         'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if',

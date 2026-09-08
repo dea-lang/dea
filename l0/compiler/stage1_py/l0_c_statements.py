@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 from l0_types import Type, EnumType
 from l0_c_names import CNames
 from l0_c_state import CEmitterState
@@ -27,7 +26,7 @@ class CStatements:
         """
         self.state.out.emit(f"{c_expr};")
 
-    def emit_return_stmt(self, c_value: Optional[str]) -> None:
+    def emit_return_stmt(self, c_value: str | None) -> None:
         """Emit a C return statement.
 
         Args:
@@ -216,7 +215,7 @@ class CStatements:
             self,
             c_temp_name: str,
             base_type: Type,
-            field_inits: List[Tuple[str, str]]
+            field_inits: list[tuple[str, str]]
     ) -> None:
         """Emit struct initialization using positional field values.
 
@@ -234,7 +233,7 @@ class CStatements:
             c_temp_name: str,
             enum_type: EnumType,
             variant_name: str,
-            payload_inits: List[Tuple[str, str]]
+            payload_inits: list[tuple[str, str]]
     ) -> None:
         """Emit enum variant initialization for a heap-allocated enum.
 

@@ -9,7 +9,6 @@ flags (verbosity and rich format).
 
 import sys
 import time
-from typing import Optional
 
 from l0_context import CompilationContext, LogLevel
 
@@ -76,7 +75,7 @@ def log_debug(context: CompilationContext, message: str) -> None:
     """
     log(context, LogLevel.DEBUG, message)
 
-def log_stage(context: CompilationContext, stage: str, module: Optional[str] = None) -> None:
+def log_stage(context: CompilationContext, stage: str, module: str | None = None) -> None:
     """Log the start or transition of a compilation stage.
 
     Args:

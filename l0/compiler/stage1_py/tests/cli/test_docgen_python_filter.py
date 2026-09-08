@@ -5,6 +5,35 @@
 from compiler.docgen.l0_docgen_python_filter import transform_python_for_doxygen
 
 
+def test_transform_python_for_doxygen_preserves_modern_type_annotations() -> None:
+    import ast
+
+    source = '''
+type SymbolKey = tuple[str, str]
+
+def find(keys: list[SymbolKey]) -> SymbolKey | None:
+    """Find the first key.
+
+    Args:
+        keys: Qualified symbol keys.
+
+    Returns:
+        The first key, if present.
+    """
+    match keys:
+        case [first, *_]:
+            return first
+        case _:
+            return None
+'''
+    transformed = transform_python_for_doxygen(source)
+    tree = ast.parse(transformed)
+    assert isinstance(tree.body[0], ast.TypeAlias)
+    assert ast.unparse(tree.body[1].returns) == "SymbolKey | None"
+    assert "# @param keys Qualified symbol keys." in transformed
+    assert "# @return The first key, if present." in transformed
+
+
 def test_transform_python_for_doxygen_rewrites_google_docstrings() -> None:
     source = '''
 def add(x: int, y: int) -> int:

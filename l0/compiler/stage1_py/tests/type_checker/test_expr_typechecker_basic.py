@@ -35,6 +35,30 @@ def test_add_function_ok(analyze_single):
     assert t.name == "int"
 
 
+def test_expression_dispatch_preserves_subclasses_cache_and_unknown_nodes(analyze_single):
+    from l0_ast import Expr, IntLiteral, ParenExpr
+    from l0_expr_types import ExpressionTypeChecker
+
+    class CustomIntLiteral(IntLiteral):
+        pass
+
+    analysis = analyze_single("main", "module main;")
+    checker = ExpressionTypeChecker(analysis)
+    literal = CustomIntLiteral(42)
+    wrapped = ParenExpr(literal)
+    unknown = Expr()
+
+    assert checker.expr._infer_expr(wrapped) == BuiltinType("int")
+    assert analysis.expr_types[id(literal)] == BuiltinType("int")
+    assert analysis.expr_types[id(wrapped)] == BuiltinType("int")
+    assert checker.expr._infer_expr(unknown) is None
+    assert id(unknown) not in analysis.expr_types
+
+    # Cached expression types continue to take precedence over node dispatch.
+    analysis.expr_types[id(wrapped)] = BuiltinType("byte")
+    assert checker.expr._infer_expr(wrapped) == BuiltinType("byte")
+
+
 def test_call_wrong_arity(analyze_single):
     result = analyze_single(
         "main",

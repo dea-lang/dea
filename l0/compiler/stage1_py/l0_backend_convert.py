@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import Optional
 from l0_ast import Node, CallExpr
 from l0_types import Type, BuiltinType, NullableType, format_type
 from l0_backend_state import BackendState
@@ -30,7 +29,7 @@ class OwnershipConversion:
         self,
         c_ptr_expr: str,
         ptr_ty: Type,
-        node: Optional[Node] = None,
+        node: Node | None = None,
         access_mode: str = "_RT_ACCESS_READ",
     ) -> str:
         """Emit a pointer expression checked for one pointee-sized access."""
@@ -48,7 +47,7 @@ class OwnershipConversion:
         c_base: str,
         c_index: str,
         base_ty: Type,
-        node: Optional[Node] = None,
+        node: Node | None = None,
         access_mode: str = "_RT_ACCESS_WRITE",
     ) -> str:
         """Emit a checked pointer-index lvalue expression."""
@@ -67,7 +66,7 @@ class OwnershipConversion:
         )
         return self.state.emitter.values.emit_deref_lvalue(checked)
 
-    def _convert_expr_with_expected_type(self, c_expr: str, natural_ty: Optional[Type], expected: Type) -> str:
+    def _convert_expr_with_expected_type(self, c_expr: str, natural_ty: Type | None, expected: Type) -> str:
         """Convert a pre-emitted expression into the expected type when required.
 
         Args:

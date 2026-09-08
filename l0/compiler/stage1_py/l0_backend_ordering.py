@@ -2,10 +2,10 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Set, Tuple
 from l0_ast import StructDecl, EnumDecl
 from l0_types import Type, BuiltinType, StructType, EnumType, PointerType, NullableType, FuncType
 from l0_backend_state import BackendState
+from l0_symbols import SymbolKey
 
 
 @dataclass
@@ -14,7 +14,7 @@ class TypeOrdering:
 
     state: BackendState
 
-    def _extract_value_type_dependencies(self, typ: Type) -> Set[Tuple[str, str]]:
+    def _extract_value_type_dependencies(self, typ: Type) -> set[SymbolKey]:
         """Extract type dependencies for VALUE fields only.
 
         Value-type fields create dependencies (types must be fully defined).
@@ -62,7 +62,7 @@ class TypeOrdering:
             # Unknown type - conservatively return no dependencies
             return set()
 
-    def _build_type_dependency_graph(self) -> Dict[Tuple[str, str], Set[Tuple[str, str]]]:
+    def _build_type_dependency_graph(self) -> dict[SymbolKey, set[SymbolKey]]:
         """Build dependency graph for type definitions.
 
         A type X depends on type Y if X has a VALUE field of type Y.
@@ -100,8 +100,8 @@ class TypeOrdering:
 
     def _find_cycle_details(
             self,
-            graph: Dict[Tuple[str, str], Set[Tuple[str, str]]],
-            unresolved: List[Tuple[str, str]]
+            graph: dict[SymbolKey, set[SymbolKey]],
+            unresolved: list[SymbolKey]
     ) -> str:
         """Find and format cycle details for error message.
 
@@ -126,8 +126,8 @@ class TypeOrdering:
 
     def _topological_sort(
             self,
-            graph: Dict[Tuple[str, str], Set[Tuple[str, str]]]
-    ) -> List[Tuple[str, str]]:
+            graph: dict[SymbolKey, set[SymbolKey]]
+    ) -> list[SymbolKey]:
         """Perform topological sort on type dependency graph using Kahn's algorithm.
 
         Args:
@@ -172,7 +172,7 @@ class TypeOrdering:
 
         return result
 
-    def _find_struct_decl(self, module_name: str, struct_name: str) -> Optional[StructDecl]:
+    def _find_struct_decl(self, module_name: str, struct_name: str) -> StructDecl | None:
         """Find the StructDecl AST node for a given struct.
 
         Args:
@@ -192,7 +192,7 @@ class TypeOrdering:
 
         return None
 
-    def _find_enum_decl(self, module_name: str, enum_name: str) -> Optional[EnumDecl]:
+    def _find_enum_decl(self, module_name: str, enum_name: str) -> EnumDecl | None:
         """Find the EnumDecl AST node for a given enum.
 
         Args:

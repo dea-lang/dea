@@ -8,7 +8,7 @@ into an abstract syntax tree (AST).
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, NoReturn
+from typing import NoReturn
 
 from l0_ast import (
     Span, TypeRef, Import, TopLevelDecl, Param, FuncDecl, FieldDecl, StructDecl, EnumVariant, EnumDecl,
@@ -61,8 +61,8 @@ class Parser:
         diagnostics: Collected list of parse errors and warnings.
     """
 
-    def __init__(self, tokens: List[Token], filename: Optional[str] = None,
-                 diagnostics: Optional[List[Diagnostic]] = None) -> None:
+    def __init__(self, tokens: list[Token], filename: str | None = None,
+                 diagnostics: list[Diagnostic] | None = None) -> None:
         """Initialize the parser.
 
         Args:
@@ -85,7 +85,7 @@ class Parser:
         self._last_token = tokens[0] if tokens else Token(TokenKind.EOF, "", 0, 0)
 
     @classmethod
-    def from_source(cls, source: str) -> "Parser":
+    def from_source(cls, source: str) -> Parser:
         """Create a parser from a source string.
 
         Args:
@@ -100,7 +100,7 @@ class Parser:
 
     # --- token utilities ---
 
-    def _error(self, message: str, token: Optional[Token] = None) -> None:
+    def _error(self, message: str, token: Token | None = None) -> None:
         """Add an error diagnostic.
 
         Args:
@@ -123,7 +123,7 @@ class Parser:
                 end_column=end_column,
             ))
 
-    def _error_bail(self, message: str, token: Optional[Token] = None) -> NoReturn:
+    def _error_bail(self, message: str, token: Token | None = None) -> NoReturn:
         """Report an error and raise a synchronization exception.
 
         Args:
@@ -229,7 +229,7 @@ class Parser:
             self._error_bail(f"{msg}, got {self._peek()} instead")
         return self._advance()
 
-    def _expect_semicolon(self, msg: Optional[str] = None) -> None:
+    def _expect_semicolon(self, msg: str | None = None) -> None:
         """Expect and consume a semicolon, reporting an error if missing."""
         if not self._match(TokenKind.SEMI):
             prev = self._last()
@@ -280,7 +280,7 @@ class Parser:
             parts.append(ident.text)
         return parts
 
-    def _try_parse_qualified_name(self) -> Optional[tuple[list[str], Optional[list[str]], Token]]:
+    def _try_parse_qualified_name(self) -> tuple[list[str], list[str] | None, Token] | None:
         """Try to parse a qualified name (e.g., mod::name).
 
         Returns:
@@ -309,7 +309,7 @@ class Parser:
 
     # --- entry point ---
 
-    def parse_module(self, filename: Optional[str] = None) -> Module:
+    def parse_module(self, filename: str | None = None) -> Module:
         """Parse a complete L0 module.
 
         Args:
@@ -332,7 +332,7 @@ class Parser:
             self._expect_semicolon("[PAR-0312] expected ';' after module name")
             module_name = ".".join(mod_parts)
 
-            imports: List[Import] = []
+            imports: list[Import] = []
             while self._check(TokenKind.IMPORT):
                 imp_start = self._span_start()
                 self._advance()
@@ -346,7 +346,7 @@ class Parser:
             self._emit_remaining_lexer_errors()
             return Module("unknown", [], [], span=self._extend_span(start), filename=filename)
 
-        decls: List[TopLevelDecl] = []
+        decls: list[TopLevelDecl] = []
         while not self._at_end() and not self.eof_aborted:
             try:
                 decl = self._parse_top_level_decl()
@@ -395,7 +395,7 @@ class Parser:
         self._expect(TokenKind.FUNC, "[PAR-0040] expected 'func'")
         name_tok = self._expect(TokenKind.IDENT, "[PAR-0041] expected function name")
         self._expect(TokenKind.LPAREN, "[PAR-0042] expected '('")
-        params: List[Param] = []
+        params: list[Param] = []
         if not self._check(TokenKind.RPAREN):
             while True:
                 param_name = self._expect(TokenKind.IDENT, "[PAR-0043] expected parameter name")
@@ -425,7 +425,7 @@ class Parser:
         self._expect(TokenKind.STRUCT, "[PAR-0050] expected 'struct'")
         name_tok = self._expect(TokenKind.IDENT, "[PAR-0051] expected struct name")
         self._expect(TokenKind.LBRACE, "[PAR-0052] expected '{' after struct name")
-        fields: List[FieldDecl] = []
+        fields: list[FieldDecl] = []
         while not self._check(TokenKind.RBRACE):
             field_name = self._expect(TokenKind.IDENT, "[PAR-0053] expected field name")
             self._expect(TokenKind.COLON, "[PAR-0054] expected ':' after field name")
@@ -441,10 +441,10 @@ class Parser:
         self._expect(TokenKind.ENUM, "[PAR-0060] expected 'enum'")
         name_tok = self._expect(TokenKind.IDENT, "[PAR-0061] expected enum name")
         self._expect(TokenKind.LBRACE, "[PAR-0062] expected '{' after enum name")
-        variants: List[EnumVariant] = []
+        variants: list[EnumVariant] = []
         while not self._check(TokenKind.RBRACE):
             var_name_tok = self._expect(TokenKind.IDENT, "[PAR-0063] expected variant name")
-            fields: List[FieldDecl] = []
+            fields: list[FieldDecl] = []
             if self._match(TokenKind.LPAREN):
                 if not self._check(TokenKind.RPAREN):
                     while True:
@@ -516,7 +516,7 @@ class Parser:
         """Parse a block of statements enclosed in braces."""
         start = self._span_start()
         self._expect(TokenKind.LBRACE, "[PAR-0090] expected '{' to start block")
-        stmts: List[Stmt] = []
+        stmts: list[Stmt] = []
         while not self._check(TokenKind.RBRACE) and not self._at_end() and not self.eof_aborted:
             try:
                 stmt = self._parse_stmt()
@@ -629,7 +629,7 @@ class Parser:
         cond = self._parse_expr()
         self._expect(TokenKind.RPAREN, "[PAR-0122] expected ')' after condition")
         then_stmt = self._parse_stmt()
-        else_stmt: Optional[Stmt] = None
+        else_stmt: Stmt | None = None
         if self._check(TokenKind.ELSE):
             self._advance()
             else_stmt = self._parse_stmt()
@@ -711,7 +711,7 @@ class Parser:
         expr = self._parse_expr()
         self._expect(TokenKind.RPAREN, "[PAR-0172] expected ')'")
         self._expect(TokenKind.LBRACE, "[PAR-0173] expected '{' after match expression")
-        arms: List[MatchArm] = []
+        arms: list[MatchArm] = []
 
         while not self._check(TokenKind.RBRACE):
             arm_start = self._span_start()
@@ -776,8 +776,8 @@ class Parser:
         expr = self._parse_expr()
         self._expect(TokenKind.RPAREN, "[PAR-0232] expected ')'")
         self._expect(TokenKind.LBRACE, "[PAR-0233] expected '{' after 'case' expression")
-        arms: List[CaseArm] = []
-        else_arm: Optional[CaseElse] = None
+        arms: list[CaseArm] = []
+        else_arm: CaseElse | None = None
         seen_default = False
 
         while not self._check(TokenKind.RBRACE) and not self._at_end():
@@ -890,7 +890,7 @@ class Parser:
                 module_path, name_qualifier, name_tok = qualified
             else:
                 name_tok = self._advance()
-            vars: List[str] = []
+            vars: list[str] = []
             if self._match(TokenKind.LPAREN):
                 if not self._check(TokenKind.RPAREN):
                     while True:
@@ -1029,7 +1029,7 @@ class Parser:
         expr = self._parse_primary_expr()
         while True:
             if self._match(TokenKind.LPAREN):
-                args: List[Expr] = []
+                args: list[Expr] = []
                 if not self._check(TokenKind.RPAREN):
                     while True:
                         args.append(self._parse_call_argument())  # account for type expressions in argument position
@@ -1131,7 +1131,7 @@ class Parser:
         # 'new' constructor
         if self._match(TokenKind.NEW):
             type_ref = self._parse_type()
-            args: List[Expr] = []
+            args: list[Expr] = []
             if self._match(TokenKind.LPAREN):
                 if not self._check(TokenKind.RPAREN):
                     while True:

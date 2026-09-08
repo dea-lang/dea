@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Set
 from l0_types import Type, BuiltinType, StructType, EnumType, PointerType, NullableType, FuncType, format_type
 from l0_c_names import CNames
 from l0_c_state import CEmitterState
@@ -14,8 +13,8 @@ class CTypes:
 
     names: CNames
     state: CEmitterState
-    _opt_wrappers: Dict[str, Type] = field(default_factory=dict)
-    _opt_emitted: Set[str] = field(default_factory=set)
+    _opt_wrappers: dict[str, Type] = field(default_factory=dict)
+    _opt_emitted: set[str] = field(default_factory=set)
 
     def emit_sizeof_type(self, typ: Type) -> str:
         """Emit C code for sizeof a given L0 type.
@@ -147,7 +146,7 @@ class CTypes:
         wrapper_name = self._opt_wrapper_name_for_inner(t.inner)
         return f"(({wrapper_name}){{.has_value = 1, .value = {c_inner_expr}}})"
 
-    def emit_null_literal(self, expected_type: Optional[Type], *, for_initializer: bool = False) -> str:
+    def emit_null_literal(self, expected_type: Type | None, *, for_initializer: bool = False) -> str:
         """Emit a null literal appropriate for the expected type.
 
         Args:

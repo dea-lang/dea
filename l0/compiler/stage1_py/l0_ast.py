@@ -4,7 +4,6 @@
 """AST definitions for the L0 compiler."""
 
 from dataclasses import dataclass, field
-from typing import Optional, List
 
 
 # ==========================
@@ -35,7 +34,7 @@ class Node:
     Attributes:
         span: Optional source span information.
     """
-    span: Optional[Span] = field(default=None, repr=False, compare=False, kw_only=True)
+    span: Span | None = field(default=None, repr=False, compare=False, kw_only=True)
 
 
 # --- types ---
@@ -54,8 +53,8 @@ class TypeRef(Node):
     name: str
     pointer_depth: int = 0
     is_nullable: bool = False
-    module_path: Optional[List[str]] = None
-    name_qualifier: Optional[List[str]] = None
+    module_path: list[str] | None = None
+    name_qualifier: list[str] | None = None
 
 
 # --- declarations ---
@@ -99,9 +98,9 @@ class FuncDecl(TopLevelDecl):
         is_extern: Whether the function is declared as 'extern'.
     """
     name: str
-    params: List[Param]
+    params: list[Param]
     return_type: TypeRef
-    body: "Block"
+    body: Block
     is_extern: bool = False
 
 
@@ -126,7 +125,7 @@ class StructDecl(TopLevelDecl):
         fields: List of field declarations.
     """
     name: str
-    fields: List[FieldDecl]
+    fields: list[FieldDecl]
 
 
 @dataclass
@@ -138,7 +137,7 @@ class EnumVariant(Node):
         fields: List of payload fields for the variant.
     """
     name: str
-    fields: List[FieldDecl]
+    fields: list[FieldDecl]
 
 
 @dataclass
@@ -150,7 +149,7 @@ class EnumDecl(TopLevelDecl):
         variants: List of enum variant declarations.
     """
     name: str
-    variants: List[EnumVariant]
+    variants: list[EnumVariant]
 
 
 @dataclass
@@ -175,8 +174,8 @@ class LetDecl(TopLevelDecl):
         value: The initialization expression.
     """
     name: str
-    type: Optional[TypeRef]
-    value: "Expr"
+    type: TypeRef | None
+    value: Expr
 
 
 @dataclass
@@ -190,9 +189,9 @@ class Module(Node):
         filename: Optional source file path.
     """
     name: str
-    imports: List[Import]
-    decls: List[TopLevelDecl]
-    filename: Optional[str] = field(default=None, repr=False, compare=False, kw_only=True)
+    imports: list[Import]
+    decls: list[TopLevelDecl]
+    filename: str | None = field(default=None, repr=False, compare=False, kw_only=True)
 
 
 # --- statements ---
@@ -210,7 +209,7 @@ class Block(Stmt):
     Attributes:
         stmts: List of statements in the block.
     """
-    stmts: List[Stmt]
+    stmts: list[Stmt]
 
 
 @dataclass
@@ -223,8 +222,8 @@ class LetStmt(Stmt):
         value: The initialization expression.
     """
     name: str
-    type: Optional[TypeRef]
-    value: "Expr"
+    type: TypeRef | None
+    value: Expr
 
 
 @dataclass
@@ -235,8 +234,8 @@ class AssignStmt(Stmt):
         target: The target expression (must be an l-value).
         value: The expression whose value is being assigned.
     """
-    target: "Expr"
-    value: "Expr"
+    target: Expr
+    value: Expr
 
 
 @dataclass
@@ -246,7 +245,7 @@ class ExprStmt(Stmt):
     Attributes:
         expr: The expression to execute.
     """
-    expr: "Expr"
+    expr: Expr
 
 
 @dataclass
@@ -258,9 +257,9 @@ class IfStmt(Stmt):
         then_stmt: The statement to execute if the condition is true.
         else_stmt: Optional statement to execute if the condition is false.
     """
-    cond: "Expr"
+    cond: Expr
     then_stmt: Stmt
-    else_stmt: Optional[Stmt]
+    else_stmt: Stmt | None
 
 
 @dataclass
@@ -271,7 +270,7 @@ class WhileStmt(Stmt):
         cond: The condition expression.
         body: The block to execute while the condition is true.
     """
-    cond: "Expr"
+    cond: Expr
     body: Block
 
 
@@ -285,9 +284,9 @@ class ForStmt(Stmt):
         update: Optional update statement.
         body: The loop body block.
     """
-    init: Optional[Stmt]
-    cond: Optional["Expr"]
-    update: Optional[Stmt]
+    init: Stmt | None
+    cond: Expr | None
+    update: Stmt | None
     body: Block
 
 
@@ -298,7 +297,7 @@ class ReturnStmt(Stmt):
     Attributes:
         value: Optional expression to return.
     """
-    value: Optional["Expr"]
+    value: Expr | None
 
 
 @dataclass
@@ -319,7 +318,7 @@ class MatchArm(Node):
         pattern: The pattern to match against.
         body: The block to execute if the pattern matches.
     """
-    pattern: "Pattern"
+    pattern: Pattern
     body: Block
 
 
@@ -331,8 +330,8 @@ class MatchStmt(Stmt):
         expr: The expression to match.
         arms: List of match arms.
     """
-    expr: "Expr"
-    arms: List[MatchArm]
+    expr: Expr
+    arms: list[MatchArm]
 
 
 @dataclass
@@ -344,7 +343,7 @@ class WithItem(Node):
         cleanup: Optional cleanup statement (mutually exclusive with a cleanup block in WithStmt).
     """
     init: Stmt
-    cleanup: Optional[Stmt]
+    cleanup: Stmt | None
 
 
 @dataclass
@@ -356,9 +355,9 @@ class WithStmt(Stmt):
         body: The main block of the statement.
         cleanup_body: Optional block to execute for cleanup (mutually exclusive with per-item cleanup statements).
     """
-    items: List["WithItem"]
+    items: list[WithItem]
     body: Block
-    cleanup_body: Optional[Block]
+    cleanup_body: Block | None
 
 
 @dataclass
@@ -369,7 +368,7 @@ class CaseArm(Node):
         literal: The constant expression to match.
         body: The statement to execute on match.
     """
-    literal: "Expr"
+    literal: Expr
     body: Stmt
 
 
@@ -392,9 +391,9 @@ class CaseStmt(Stmt):
         arms: List of constant arms.
         else_arm: Optional default arm.
     """
-    expr: "Expr"
-    arms: List[CaseArm]
-    else_arm: Optional[CaseElse]
+    expr: Expr
+    arms: list[CaseArm]
+    else_arm: CaseElse | None
 
 
 @dataclass
@@ -433,9 +432,9 @@ class VariantPattern(Pattern):
         name_qualifier: Optional extra name segments.
     """
     name: str
-    vars: List[str]
-    module_path: Optional[List[str]] = None
-    name_qualifier: Optional[List[str]] = None
+    vars: list[str]
+    module_path: list[str] | None = None
+    name_qualifier: list[str] | None = None
 
 
 # --- expressions ---
@@ -501,8 +500,8 @@ class VarRef(Expr):
         name_qualifier: Optional extra name segments.
     """
     name: str
-    module_path: Optional[List[str]] = None
-    name_qualifier: Optional[List[str]] = None
+    module_path: list[str] | None = None
+    name_qualifier: list[str] | None = None
 
 
 @dataclass
@@ -514,7 +513,7 @@ class NewExpr(Expr):
         args: List of constructor arguments.
     """
     type_ref: TypeRef
-    args: List[Expr]
+    args: list[Expr]
 
 
 @dataclass
@@ -552,7 +551,7 @@ class CallExpr(Expr):
         args: List of call arguments.
     """
     callee: Expr
-    args: List[Expr]
+    args: list[Expr]
 
 
 @dataclass

@@ -2,7 +2,7 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import NoReturn, Optional
+from typing import NoReturn
 from l0_analysis import AnalysisResult
 from l0_ast import EnumDecl, EnumVariant, Node
 from l0_internal_error import InternalCompilerError, ICELocation
@@ -16,14 +16,14 @@ from l0_c_builder import CCodeBuilder
 class CEmitterState:
     """Shared analysis, output, diagnostic context, and active source location."""
 
-    analysis: Optional[AnalysisResult] = None
-    current_module: Optional[str] = None
+    analysis: AnalysisResult | None = None
+    current_module: str | None = None
     out: CCodeBuilder = field(default_factory=CCodeBuilder)
-    _active_line_directive: Optional[str] = None
+    _active_line_directive: str | None = None
 
     def find_variant_decl(
             self, module_name: str, enum_name: str, variant_name: str
-    ) -> Optional[EnumVariant]:
+    ) -> EnumVariant | None:
         """Look up an enum variant's AST declaration.
 
         Args:
@@ -46,7 +46,7 @@ class CEmitterState:
                         return variant
         return None
 
-    def ice(self, message: str, node: Optional[object] = None) -> NoReturn:
+    def ice(self, message: str, node: object | None = None) -> NoReturn:
         """Raise an internal compiler error with context.
 
         Args:
@@ -94,7 +94,7 @@ class CEmitterState:
         if self._active_line_directive is not None:
             self.out.emit(self._active_line_directive)
 
-    def _get_struct_info(self, struct_type: StructType, *, strict: bool) -> Optional[StructInfo]:
+    def _get_struct_info(self, struct_type: StructType, *, strict: bool) -> StructInfo | None:
         """Look up resolved metadata for a struct type.
 
         Args:
@@ -112,7 +112,7 @@ class CEmitterState:
             self.ice(f"[ICE-1270] missing StructInfo for {struct_type.module}.{struct_type.name}", None)
         return info
 
-    def _get_enum_info(self, enum_type: EnumType, *, strict: bool) -> Optional[EnumInfo]:
+    def _get_enum_info(self, enum_type: EnumType, *, strict: bool) -> EnumInfo | None:
         """Look up resolved metadata for an enum type.
 
         Args:

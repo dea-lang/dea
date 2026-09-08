@@ -9,11 +9,12 @@ creating diagnostics from AST nodes and tokens.
 
 import os
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from l0_ast import Node
 
 if TYPE_CHECKING:
+    # The lexer imports diagnostics; keep token annotations quoted for runtime introspection.
     from l0_lexer import Token
 
 DIAGNOSTIC_CODE_FAMILIES = {
@@ -229,16 +230,16 @@ class Diagnostic:
     """
     kind: str
     message: str
-    module_name: Optional[str] = None
-    filename: Optional[str] = None
+    module_name: str | None = None
+    filename: str | None = None
 
     # Primary location (start of the span)
-    line: Optional[int] = None
-    column: Optional[int] = None
+    line: int | None = None
+    column: int | None = None
 
     # Optional end of span (exclusive)
-    end_line: Optional[int] = None
-    end_column: Optional[int] = None
+    end_line: int | None = None
+    end_column: int | None = None
 
     def format(self) -> str:
         """Format the diagnostic as a one-line string header.
@@ -264,9 +265,9 @@ def diag_from_node(
         kind: str,
         message: str,
         *,
-        module_name: Optional[str],
-        filename: Optional[str],
-        node: Optional[Node],
+        module_name: str | None,
+        filename: str | None,
+        node: Node | None,
 ) -> Diagnostic:
     """Create a Diagnostic from an AST node.
 
@@ -302,9 +303,9 @@ def diag_from_token(
         kind: str,
         message: str,
         *,
-        module_name: Optional[str],
-        filename: Optional[str],
-        token: Optional["Token"],
+        module_name: str | None,
+        filename: str | None,
+        token: "Token | None",
 ) -> Diagnostic:
     """Create a Diagnostic from a lexer token.
 

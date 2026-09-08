@@ -9,11 +9,14 @@ environments during name resolution and type checking.
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, List, Optional
 
 from l0_ast import Module
 from l0_diagnostics import Diagnostic
 from l0_types import Type
+
+
+# A top-level declaration identified by its defining module and name.
+type SymbolKey = tuple[str, str]
 
 
 class SymbolKind(Enum):
@@ -52,7 +55,7 @@ class Symbol:
     kind: SymbolKind
     module: Module
     node: object
-    type: Optional[Type] = None
+    type: Type | None = None
 
 
 @dataclass
@@ -70,11 +73,11 @@ class ModuleEnv:
         diagnostics: List of diagnostics collected during name resolution.
     """
     module: Module
-    locals: Dict[str, Symbol] = field(default_factory=dict)
-    imported: Dict[str, Symbol] = field(default_factory=dict)
-    all: Dict[str, Symbol] = field(default_factory=dict)
-    ambiguous_imports: Dict[str, List[str]] = field(default_factory=dict)
-    diagnostics: List[Diagnostic] = field(default_factory=list)
+    locals: dict[str, Symbol] = field(default_factory=dict)
+    imported: dict[str, Symbol] = field(default_factory=dict)
+    all: dict[str, Symbol] = field(default_factory=dict)
+    ambiguous_imports: dict[str, list[str]] = field(default_factory=dict)
+    diagnostics: list[Diagnostic] = field(default_factory=list)
 
     @property
     def name(self) -> str:

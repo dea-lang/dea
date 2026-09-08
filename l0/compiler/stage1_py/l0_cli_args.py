@@ -5,7 +5,7 @@
 
 import argparse
 import sys
-from typing import List, Optional, Sequence, Tuple
+from collections.abc import Sequence
 from l0_logger import log_info
 from l0_cli_context import _init_env_defaults, build_compilation_context
 
@@ -59,7 +59,7 @@ def compiler_identity_text() -> str:
     return "Dea language / L0 compiler (Stage 1)"
 
 
-def _scan_cli_presentation_options(argv: Sequence[str]) -> Tuple[int, bool]:
+def _scan_cli_presentation_options(argv: Sequence[str]) -> tuple[int, bool]:
     """Return fallback verbosity and rich-log settings before `--`.
 
     Values following value-taking options are skipped even when they resemble
@@ -201,7 +201,7 @@ def _add_codegen_arg(parser: argparse.ArgumentParser) -> None:
 
 def _split_cli_and_program_args(
     argv: Sequence[str],
-) -> Tuple[List[str], List[str], bool]:
+) -> tuple[list[str], list[str], bool]:
     """Split compiler CLI arguments from program arguments.
 
     Args:
@@ -219,7 +219,7 @@ def _split_cli_and_program_args(
 
 def _normalize_cli_argv(
     parser: argparse.ArgumentParser, argv: Sequence[str]
-) -> List[str]:
+) -> list[str]:
     """Normalize exact short-option spellings before passing them to argparse.
 
     Namespaced value options support a following value or `=VALUE`, but not a
@@ -299,8 +299,8 @@ def _normalize_cli_argv(
         "--types": "--type",
     }
 
-    normalized: List[str] = []
-    selected_mode: Optional[str] = None
+    normalized: list[str] = []
+    selected_mode: str | None = None
     i = 0
     while i < len(argv):
         token = argv[i]
@@ -457,7 +457,7 @@ def _validate_reserved_canonical_flags(
             parser.error(f"[L0C-2032] {message}")
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse and validate compiler arguments.
 
     Args:

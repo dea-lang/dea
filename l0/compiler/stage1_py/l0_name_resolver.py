@@ -7,7 +7,6 @@ This module provides the NameResolver class which builds module environments,
 collects top-level symbols, and handles import semantics.
 """
 
-from typing import Dict
 
 from l0_ast import Node, StructDecl, EnumVariant, EnumDecl, TypeAliasDecl, LetDecl
 from l0_compilation import CompilationUnit
@@ -38,10 +37,10 @@ class NameResolver:
             cu: The compilation unit to process.
         """
         self.cu = cu
-        self.module_envs: Dict[str, ModuleEnv] = {}
+        self.module_envs: dict[str, ModuleEnv] = {}
         self.diagnostics: list[Diagnostic] = []
 
-    def resolve(self) -> Dict[str, ModuleEnv]:
+    def resolve(self) -> dict[str, ModuleEnv]:
         """Resolve names for all modules in the compilation unit.
 
         Returns:

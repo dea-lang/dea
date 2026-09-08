@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import Optional, List, Set
 from l0_ast import Node, MatchStmt, Expr, IntLiteral, StringLiteral, BoolLiteral, VariantPattern, WildcardPattern, ByteLiteral
 from l0_resolve import resolve_symbol, ResolveErrorKind
 from l0_signatures import EnumInfo
@@ -17,9 +16,9 @@ from l0_check_state import CheckerState
 class MatchCoverage:
     """Pattern validation results shared with statement and liveness traversal."""
 
-    defined_variants: Set[str]
-    validated_variant_names: List[Optional[str]]
-    covered_variants: Set[str]
+    defined_variants: set[str]
+    validated_variant_names: list[str | None]
+    covered_variants: set[str]
     wildcard_is_unreachable: bool
     reachable_arm_count: int
 
@@ -31,7 +30,7 @@ class PatternAnalysis:
     lookup: SemanticLookup
     state: CheckerState
 
-    def _case_literal_info(self, expr: Expr) -> Optional[tuple[Type, object]]:
+    def _case_literal_info(self, expr: Expr) -> tuple[Type, object] | None:
         """Get type and value for a case arm literal."""
         if isinstance(expr, IntLiteral):
             return self.state.int_type, expr.value
@@ -50,7 +49,7 @@ class PatternAnalysis:
             return self.state.string_type, decoded
         return None
 
-    def _decode_escaped_bytes(self, text: str, node: Node) -> Optional[bytes]:
+    def _decode_escaped_bytes(self, text: str, node: Node) -> bytes | None:
         """Decode a string literal, reporting errors."""
         try:
             return decode_l0_string_token(text)
@@ -68,8 +67,8 @@ class PatternAnalysis:
             self,
             pattern: VariantPattern,
             scrutinee_ty: EnumType,
-            enum_info: Optional[EnumInfo],
-    ) -> Optional[str]:
+            enum_info: EnumInfo | None,
+    ) -> str | None:
         """Validate one match variant and return its canonical enum name."""
         if self.lookup._reject_name_qualifier(
                 pattern, pattern.name, pattern.name_qualifier, pattern.module_path
@@ -132,7 +131,7 @@ class PatternAnalysis:
         return variant_info.name
 
     def _match_coverage(self, stmt: MatchStmt, scrutinee_ty: EnumType,
-                        enum_info: Optional[EnumInfo]) -> MatchCoverage:
+                        enum_info: EnumInfo | None) -> MatchCoverage:
         """Validate patterns and compute coverage before traversing arm bodies.
 
         Args:
@@ -144,7 +143,7 @@ class PatternAnalysis:
             Validated variant names, wildcard reachability, and coverage sets.
         """
         defined_variants = set(enum_info.variants.keys()) if enum_info is not None else set()
-        validated_variant_names: List[Optional[str]] = []
+        validated_variant_names: list[str | None] = []
         for arm in stmt.arms:
             if isinstance(arm.pattern, VariantPattern):
                 validated_variant_names.append(
@@ -153,7 +152,7 @@ class PatternAnalysis:
             else:
                 validated_variant_names.append(None)
         covered_variants = {name for name in validated_variant_names if name is not None}
-        variants_before_wildcard: Set[str] = set()
+        variants_before_wildcard: set[str] = set()
         for arm, validated_name in zip(stmt.arms, validated_variant_names):
             if isinstance(arm.pattern, WildcardPattern):
                 break

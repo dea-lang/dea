@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import Optional, List
 from l0_ast import Node, Expr, VarRef, UnaryOp, IndexExpr, FieldAccessExpr, TypeAliasDecl
 from l0_logger import log_debug
 from l0_resolve import resolve_symbol, resolve_type_ref, TypeResolveErrorKind, ResolveErrorKind
@@ -77,14 +76,14 @@ class SemanticLookup:
         self.state._alive_scopes[-1][name] = True
         return None
 
-    def _lookup_local(self, name: str) -> Optional[Type]:
+    def _lookup_local(self, name: str) -> Type | None:
         """Look up a local variable's type in the scope stack."""
         for scope in reversed(self.state._local_scopes):
             if name in scope:
                 return scope[name]
         return None
 
-    def _lookup_local_scope_index(self, name: str) -> Optional[int]:
+    def _lookup_local_scope_index(self, name: str) -> int | None:
         """Return scope index where local resolves (nearest scope wins)."""
         for idx in range(len(self.state._local_scopes) - 1, -1, -1):
             if name in self.state._local_scopes[idx]:
@@ -95,9 +94,9 @@ class SemanticLookup:
             self,
             name: str,
             *,
-            node: Optional[Node] = None,
-            module_path: Optional[List[str]] = None,
-    ) -> Optional[Type]:
+            node: Node | None = None,
+            module_path: list[str] | None = None,
+    ) -> Type | None:
         """Try to resolve an identifier as a type name."""
         assert self.state._current_func_env is not None
         module_name = self.state._current_func_env.module_name
@@ -158,7 +157,7 @@ class SemanticLookup:
 
         return None
 
-    def _resolve_type_ref(self, tref) -> Optional[Type]:
+    def _resolve_type_ref(self, tref) -> Type | None:
         """Resolve a TypeRef to a semantic Type."""
         if self.state._current_func_env is None:
             return None
@@ -217,8 +216,8 @@ class SemanticLookup:
             self,
             node: Node,
             name: str,
-            name_qualifier: Optional[List[str]],
-            module_path: Optional[List[str]],
+            name_qualifier: list[str] | None,
+            module_path: list[str] | None,
     ) -> bool:
         """Check for and reject unsupported qualified name syntax (::)."""
         if name_qualifier is None:

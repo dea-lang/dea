@@ -8,7 +8,6 @@ L0 language, including primitives, pointers, optionals, and user-defined types.
 """
 
 from dataclasses import dataclass
-from typing import Tuple, Dict, Optional
 
 # ========================================
 # The current semantic type system for L0.
@@ -93,7 +92,7 @@ class FuncType(Type):
         params: Tuple of parameter Types.
         result: The return Type of the function.
     """
-    params: Tuple[Type, ...]
+    params: tuple[Type, ...]
     result: Type
 
 
@@ -105,7 +104,7 @@ class NullType(Type):
 
 # --- helpers for builtins ---
 
-_BUILTIN_CACHE: Dict[str, BuiltinType] = {}
+_BUILTIN_CACHE: dict[str, BuiltinType] = {}
 _NULL_TYPE = NullType()
 
 
@@ -138,7 +137,7 @@ def get_null_type() -> NullType:
 
 # --- type stringification for debugging ---
 
-def format_type(t: Optional[Type]) -> str:
+def format_type(t: Type | None) -> str:
     """Format a type into a human-readable string.
 
     Args:
@@ -147,23 +146,22 @@ def format_type(t: Optional[Type]) -> str:
     Returns:
         A string representation of the type (e.g., "int*", "std::Point?").
     """
-    if t is None:
-        return "<none>"
-    elif isinstance(t, BuiltinType):
-        return t.name
-    elif isinstance(t, StructType):
-        return f"{t.module}::{t.name}"
-    elif isinstance(t, EnumType):
-        return f"{t.module}::{t.name}"
-    elif isinstance(t, PointerType):
-        return f"{format_type(t.inner)}*"
-    elif isinstance(t, NullableType):
-        return f"{format_type(t.inner)}?"
-    elif isinstance(t, FuncType):
-        params_str = ", ".join(format_type(p) for p in t.params)
-        return f"func({params_str}) -> {format_type(t.result)}"
-    elif isinstance(t, NullType):
-        return "null"
-    else:
-        # Fallback (should not happen)
-        return repr(t)
+    match t:
+        case None:
+            return "<none>"
+        case BuiltinType(name=name):
+            return name
+        case StructType(module=module, name=name) | EnumType(module=module, name=name):
+            return f"{module}::{name}"
+        case PointerType(inner=inner):
+            return f"{format_type(inner)}*"
+        case NullableType(inner=inner):
+            return f"{format_type(inner)}?"
+        case FuncType(params=params, result=result):
+            params_str = ", ".join(format_type(p) for p in params)
+            return f"func({params_str}) -> {format_type(result)}"
+        case NullType():
+            return "null"
+        case _:
+            # Fallback (should not happen)
+            return repr(t)

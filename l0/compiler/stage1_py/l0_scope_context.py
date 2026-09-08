@@ -9,7 +9,6 @@ track variable lifetimes and schedule mandatory cleanups (ARC releases and
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
 
 from l0_types import Type
 from l0_ast import Block, Stmt
@@ -27,11 +26,11 @@ class ScopeContext:
         with_cleanup_block: Optional block for 'with ... cleanup { ... }'.
         with_cleanup_in_progress: Reentrancy guard for with-cleanup emission.
     """
-    owned_vars: List[Tuple[str, Type]] = field(default_factory=list)
-    declared_vars: List[Tuple[str, Type]] = field(default_factory=list)
-    parent: Optional['ScopeContext'] = None
-    with_cleanup_inline: Optional[List[Stmt]] = None
-    with_cleanup_block: Optional[Block] = None
+    owned_vars: list[tuple[str, Type]] = field(default_factory=list)
+    declared_vars: list[tuple[str, Type]] = field(default_factory=list)
+    parent: ScopeContext | None = None
+    with_cleanup_inline: list[Stmt] | None = None
+    with_cleanup_block: Block | None = None
     with_cleanup_in_progress: bool = False
 
     def add_owned(self, var_name: str, var_type: Type) -> None:

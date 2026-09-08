@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import List, Tuple
 from l0_string_escape import decode_l0_string_token, encode_c_string_bytes
 from l0_types import BuiltinType, StructType, EnumType, format_type
 from l0_c_names import CNames
@@ -393,7 +392,7 @@ class CValues:
         """Emit C code for an index lvalue: base[idx]."""
         return f"{base}[{index}]"
 
-    def emit_struct_constructor(self, c_struct_name: str, field_inits: List[Tuple[str, str]]) -> str:
+    def emit_struct_constructor(self, c_struct_name: str, field_inits: list[tuple[str, str]]) -> str:
         """Emit C code for a struct compound literal constructor.
 
         Args:
@@ -409,7 +408,7 @@ class CValues:
         inits_str = ", ".join(f".{name} = {value}" for name, value in field_inits)
         return f"(struct {c_struct_name}){{ {inits_str} }}"
 
-    def emit_struct_static_initializer(self, field_inits: List[Tuple[str, str]]) -> str:
+    def emit_struct_static_initializer(self, field_inits: list[tuple[str, str]]) -> str:
         """Emit a brace-only struct initializer for static storage duration."""
 
         if not field_inits:
@@ -418,7 +417,7 @@ class CValues:
         inits_str = ", ".join(f".{name} = {value}" for name, value in field_inits)
         return f"{{ {inits_str} }}"
 
-    def emit_struct_constructor_for_type(self, struct_type: StructType, field_inits: List[Tuple[str, str]]) -> str:
+    def emit_struct_constructor_for_type(self, struct_type: StructType, field_inits: list[tuple[str, str]]) -> str:
         """Emit a C struct constructor for an L0 struct type."""
         c_struct_name = self.names.mangle_struct_name(struct_type.module, struct_type.name)
         return self.emit_struct_constructor(c_struct_name, field_inits)
@@ -426,7 +425,7 @@ class CValues:
     def emit_struct_static_initializer_for_type(
             self,
             struct_type: StructType,
-            field_inits: List[Tuple[str, str]],
+            field_inits: list[tuple[str, str]],
     ) -> str:
         """Emit a static-storage struct initializer for an L0 struct type."""
 
@@ -438,7 +437,7 @@ class CValues:
             c_enum_name: str,
             variant_name: str,
             tag_value: str,
-            payload_inits: List[Tuple[str, str]]
+            payload_inits: list[tuple[str, str]]
     ) -> str:
         """Emit C code for an enum variant tagged union literal.
 
@@ -461,7 +460,7 @@ class CValues:
             self,
             variant_name: str,
             tag_value: str,
-            payload_inits: List[Tuple[str, str]],
+            payload_inits: list[tuple[str, str]],
     ) -> str:
         """Emit a brace-only enum tagged-union initializer for static storage duration."""
 
@@ -475,7 +474,7 @@ class CValues:
             self,
             enum_type: EnumType,
             variant_name: str,
-            payload_inits: List[Tuple[str, str]]
+            payload_inits: list[tuple[str, str]]
     ) -> str:
         """Emit a tagged union constructor for a given L0 enum type."""
         c_enum_name = self.names.mangle_enum_name(enum_type.module, enum_type.name)
@@ -486,7 +485,7 @@ class CValues:
             self,
             enum_type: EnumType,
             variant_name: str,
-            payload_inits: List[Tuple[str, str]],
+            payload_inits: list[tuple[str, str]],
     ) -> str:
         """Emit a static-storage tagged union initializer for a given L0 enum type."""
 

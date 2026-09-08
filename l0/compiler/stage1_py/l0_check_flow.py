@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass
-from typing import Dict, Optional, List, Set, Tuple
 from l0_ast import Stmt, Block, LetStmt, AssignStmt, ExprStmt, IfStmt, WhileStmt, ReturnStmt, MatchArm, MatchStmt, CaseStmt, Expr, VarRef, VariantPattern, DropStmt, WildcardPattern, BreakStmt, ContinueStmt, ForStmt, WithStmt
 from l0_locals import FunctionEnv
 from l0_resolve import resolve_symbol
@@ -82,9 +81,9 @@ class StatementFlow:
 
     def _check_update_from_backedge_states(
         self,
-        update: Optional[Stmt],
-        states: List[List[Dict[str, bool]]],
-    ) -> List[List[Dict[str, bool]]]:
+        update: Stmt | None,
+        states: list[list[dict[str, bool]]],
+    ) -> list[list[dict[str, bool]]]:
         """Check a for-update statement from all reachable body backedges."""
         if not states:
             if update is not None:
@@ -108,9 +107,9 @@ class StatementFlow:
         self,
         body: Block,
         *,
-        update: Optional[Stmt] = None,
+        update: Stmt | None = None,
         check_return_paths: bool = False,
-    ) -> Tuple[LoopFlowCapture, List[List[Dict[str, bool]]], StmtFlow]:
+    ) -> tuple[LoopFlowCapture, list[list[dict[str, bool]]], StmtFlow]:
         """Check one loop iteration and return captured flow states."""
         capture = LoopFlowCapture()
         self.state._loop_flow_capture_stack.append(capture)
@@ -129,12 +128,12 @@ class StatementFlow:
 
     def _loop_liveness_fixed_point(
         self,
-        pre_loop: List[Dict[str, bool]],
+        pre_loop: list[dict[str, bool]],
         body: Block,
         *,
-        cond: Optional[Expr] = None,
-        update: Optional[Stmt] = None,
-    ) -> Tuple[List[Dict[str, bool]], LoopFlowCapture, List[List[Dict[str, bool]]]]:
+        cond: Expr | None = None,
+        update: Stmt | None = None,
+    ) -> tuple[list[dict[str, bool]], LoopFlowCapture, list[list[dict[str, bool]]]]:
         """Converge loop-head liveness and diagnose later-iteration uses."""
         head = self.state._clone_alive_scopes()
         saved_unreachable = self.state._next_stmt_unreachable
@@ -384,7 +383,7 @@ class StatementFlow:
             else_returns = False
             else_unreachable = False
             else_flow = StmtFlow.FALLTHROUGH
-            fallthrough_states: List[List[Dict[str, bool]]] = []
+            fallthrough_states: list[list[dict[str, bool]]] = []
             if then_flow is StmtFlow.FALLTHROUGH:
                 fallthrough_states.append(then_alive)
             if stmt.else_stmt is not None:
@@ -518,12 +517,12 @@ class StatementFlow:
                 )
                 scrutinee_ty = None
 
-            seen_literals: Dict[object, Expr] = {}
+            seen_literals: dict[object, Expr] = {}
             all_arms_return = len(stmt.arms) + (1 if stmt.else_arm is not None else 0) > 0
             pre_case_alive = self.state._clone_alive_scopes()
             pre_case_unreachable = self.state._next_stmt_unreachable
             pre_case_return_paths = self.state._return_paths
-            fallthrough_states: List[List[Dict[str, bool]]] = []
+            fallthrough_states: list[list[dict[str, bool]]] = []
 
             for arm in stmt.arms:
                 literal_info = self.patterns._case_literal_info(arm.literal)
@@ -620,7 +619,7 @@ class StatementFlow:
             all_arms_return = coverage.reachable_arm_count > 0
             pre_match_alive = self.state._clone_alive_scopes()
             pre_match_unreachable = self.state._next_stmt_unreachable
-            fallthrough_states: List[List[Dict[str, bool]]] = []
+            fallthrough_states: list[list[dict[str, bool]]] = []
 
             # Check each arm with pattern variables in scope
             for arm_index, arm in enumerate(stmt.arms):
@@ -694,7 +693,7 @@ class StatementFlow:
             self.state._push_scope()
             try:
                 seen_header_try = False
-                maybe_uninit_nonnullable: Set[str] = set()
+                maybe_uninit_nonnullable: set[str] = set()
                 header_returns = False
 
                 for item_index, item in enumerate(stmt.items):

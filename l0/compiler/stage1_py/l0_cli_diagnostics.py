@@ -4,13 +4,12 @@
 """Diagnostic presentation and source snippets for compiler commands."""
 
 import sys
-from typing import Dict, List
 from l0_analysis import AnalysisResult
 from l0_diagnostics import Diagnostic
 from l0_driver import SourceEncodingError, load_source_utf8
 
 
-def _load_file_lines(path: str, cache: Dict[str, List[str]]) -> List[str]:
+def _load_file_lines(path: str, cache: dict[str, list[str]]) -> list[str]:
     """Load lines of a source file, using a cache to avoid redundant reads.
 
     Args:
@@ -44,20 +43,20 @@ def print_diagnostics(result: AnalysisResult) -> None:
     print_diagnostic_list(result.diagnostics)
 
 
-def print_diagnostic_list(diagnostics: List[Diagnostic]) -> None:
+def print_diagnostic_list(diagnostics: list[Diagnostic]) -> None:
     """Print a list of diagnostics, using a file cache for source snippets.
 
     Args:
         diagnostics: List of diagnostics to print.
     """
-    file_cache: Dict[str, List[str]] = {}
+    file_cache: dict[str, list[str]] = {}
 
     for diag in diagnostics:
         print_diagnostic_with_snippet(diag, file_cache)
 
 
 def print_diagnostic_with_snippet(
-    diag: Diagnostic, file_cache: Dict[str, List[str]]
+    diag: Diagnostic, file_cache: dict[str, list[str]]
 ) -> None:
     """Print a single diagnostic, including the source line and a caret.
 

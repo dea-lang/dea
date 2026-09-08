@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import List
 
 
 @dataclass
@@ -14,7 +13,7 @@ class CCodeBuilder:
         indent_level: Current indentation depth.
         indent_str: String used for a single level of indentation. Defaults to 4 spaces.
     """
-    lines: List[str] = field(default_factory=list)
+    lines: list[str] = field(default_factory=list)
     indent_level: int = 0
     indent_str: str = "    "  # 4 spaces
 

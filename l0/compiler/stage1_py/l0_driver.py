@@ -2,7 +2,6 @@
 #  Copyright (c) 2025-2026 gwz
 
 from pathlib import Path
-from typing import Dict, Set, List
 
 from l0_analysis import AnalysisResult
 from l0_ast import Module
@@ -102,11 +101,11 @@ class L0Driver:
         """
         self.search_paths = search_paths or SourceSearchPaths()
         self.context = context or CompilationContext.default()
-        self.diagnostics: List[Diagnostic] = []
+        self.diagnostics: list[Diagnostic] = []
         # Modules successfully loaded (by module name).
-        self.module_cache: Dict[str, Module] = {}
+        self.module_cache: dict[str, Module] = {}
         # Modules currently being loaded (for cycle detection).
-        self._loading: Set[str] = set()
+        self._loading: set[str] = set()
 
     # --- Public API ---
 
@@ -211,8 +210,8 @@ class L0Driver:
         """
         entry = self.load_module(entry_module_name)
 
-        visited: Set[str] = set()
-        collected: Dict[str, Module] = {}
+        visited: set[str] = set()
+        collected: dict[str, Module] = {}
 
         def visit(mod: Module) -> None:
             if mod.name in visited:

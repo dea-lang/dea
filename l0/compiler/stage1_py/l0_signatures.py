@@ -8,13 +8,12 @@ function parameters, return values, struct fields, enum payloads, and type alias
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
 
 from l0_ast import Node, TypeRef, FuncDecl, FieldDecl, StructDecl, EnumVariant, EnumDecl, TypeAliasDecl, LetDecl, \
     IntLiteral, BoolLiteral, ByteLiteral, StringLiteral, NullLiteral, CallExpr, VarRef, Expr
 from l0_compilation import CompilationUnit
 from l0_diagnostics import Diagnostic, diag_from_node
-from l0_symbols import ModuleEnv, SymbolKind, Symbol
+from l0_symbols import SymbolKey, ModuleEnv, SymbolKind, Symbol
 from l0_types import (
     L0_PRIMITIVE_TYPES,
     Type,
@@ -50,7 +49,7 @@ class StructInfo:
         fields: List of StructFieldInfo objects for all fields.
     """
     struct_type: StructType
-    fields: List[StructFieldInfo]
+    fields: list[StructFieldInfo]
 
 
 @dataclass
@@ -62,7 +61,7 @@ class EnumVariantInfo:
         field_types: List of resolved types for the variant's payload fields.
     """
     name: str
-    field_types: List[Type]
+    field_types: list[Type]
 
 
 @dataclass
@@ -74,7 +73,7 @@ class EnumInfo:
         variants: Mapping from variant names to their variant info.
     """
     enum_type: EnumType
-    variants: Dict[str, EnumVariantInfo]
+    variants: dict[str, EnumVariantInfo]
 
 
 class SignatureResolver:
@@ -99,7 +98,7 @@ class SignatureResolver:
         let_types: Resolved constant types keyed by (module, name).
     """
 
-    def __init__(self, cu: CompilationUnit, module_envs: Dict[str, ModuleEnv]):
+    def __init__(self, cu: CompilationUnit, module_envs: dict[str, ModuleEnv]):
         """Initialize the signature resolver.
 
         Args:
@@ -109,13 +108,13 @@ class SignatureResolver:
         self.cu = cu
         self.module_envs = module_envs
 
-        self.diagnostics: List[Diagnostic] = []
+        self.diagnostics: list[Diagnostic] = []
 
         # Side tables, keyed by (module_name, decl_name)
-        self.func_types: Dict[Tuple[str, str], FuncType] = {}
-        self.struct_infos: Dict[Tuple[str, str], StructInfo] = {}
-        self.enum_infos: Dict[Tuple[str, str], EnumInfo] = {}
-        self.let_types: Dict[Tuple[str, str], Type] = {}
+        self.func_types: dict[SymbolKey, FuncType] = {}
+        self.struct_infos: dict[SymbolKey, StructInfo] = {}
+        self.enum_infos: dict[SymbolKey, EnumInfo] = {}
+        self.let_types: dict[SymbolKey, Type] = {}
 
     def resolve(self) -> None:
         """Resolve all top-level signatures in the compilation unit.
@@ -156,8 +155,8 @@ class SignatureResolver:
             self,
             env: ModuleEnv,
             tref: TypeRef,
-            alias_stack: Optional[Set[Tuple[str, str]]] = None,
-    ) -> Optional[Type]:
+            alias_stack: set[SymbolKey] | None = None,
+    ) -> Type | None:
         """Resolve a TypeRef in the context of a module environment.
 
         Args:
@@ -263,8 +262,8 @@ class SignatureResolver:
             self,
             env: ModuleEnv,
             sym: Symbol,
-            alias_stack: Optional[Set[Tuple[str, str]]] = None,
-    ) -> Optional[Type]:
+            alias_stack: set[SymbolKey] | None = None,
+    ) -> Type | None:
         """Resolve a TYPE_ALIAS symbol to its target Type.
 
         Caches the result in `sym.type`. Detects recursive alias cycles.
@@ -340,7 +339,7 @@ class SignatureResolver:
         struct_ty = StructType(env.name, decl.name)
         struct_sym.type = struct_ty
 
-        fields_info: List[StructFieldInfo] = []
+        fields_info: list[StructFieldInfo] = []
 
         for field in decl.fields:
             assert isinstance(field, FieldDecl)
@@ -362,11 +361,11 @@ class SignatureResolver:
         enum_ty = EnumType(env.name, decl.name)
         enum_sym.type = enum_ty
 
-        variant_infos: Dict[str, EnumVariantInfo] = {}
+        variant_infos: dict[str, EnumVariantInfo] = {}
 
         for variant in decl.variants:
             assert isinstance(variant, EnumVariant)
-            field_types: List[Type] = []
+            field_types: list[Type] = []
             for field in variant.fields:
                 assert isinstance(field, FieldDecl)
                 ftype = self._resolve_type_ref(env, field.type)
@@ -394,7 +393,7 @@ class SignatureResolver:
         if func_sym is None:
             return
 
-        param_types: List[Type] = []
+        param_types: list[Type] = []
         ok = True
 
         for param in decl.params:
@@ -455,7 +454,7 @@ class SignatureResolver:
         key = (env.name, decl.name)
         self.let_types[key] = let_type
 
-    def _infer_literal_type(self, env: ModuleEnv, expr : Expr) -> Optional[Type]:
+    def _infer_literal_type(self, env: ModuleEnv, expr : Expr) -> Type | None:
         """Infer type from simple literal expressions and struct/enum construction."""
         if isinstance(expr, IntLiteral):
             return get_builtin_type("int")
@@ -509,7 +508,7 @@ class SignatureResolver:
             and len(sym.node.fields) == 0
         )
 
-    def _enum_type_for_variant_symbol(self, sym: Symbol) -> Optional[EnumType]:
+    def _enum_type_for_variant_symbol(self, sym: Symbol) -> EnumType | None:
         """Return the owning enum type for an enum variant symbol."""
         for decl in sym.module.decls:
             if isinstance(decl, EnumDecl):
@@ -518,7 +517,7 @@ class SignatureResolver:
                         return EnumType(sym.module.name, decl.name)
         return None
 
-    def _extract_value_type_dependencies(self, typ: Type) -> Set[Tuple[str, str]]:
+    def _extract_value_type_dependencies(self, typ: Type) -> set[SymbolKey]:
         """Extract type dependencies for value fields only (pointer-free)."""
         if isinstance(typ, PointerType):
             # Pointers don't create dependencies
@@ -555,7 +554,7 @@ class SignatureResolver:
         break such cycles.
         """
         # dependency graph maps (module, type) to the set of (module, type) it depends on for value fields
-        graph: Dict[Tuple[str, str], Set[Tuple[str, str]]] = {}
+        graph: dict[SymbolKey, set[SymbolKey]] = {}
 
         # Process all structs
         for (mod_name, struct_name), struct_info in self.struct_infos.items():

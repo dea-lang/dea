@@ -2,7 +2,6 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import Optional
 from l0_analysis import VarRefResolution
 from l0_ast import Expr, IntLiteral, StringLiteral, BoolLiteral, NullLiteral, VarRef, UnaryOp, BinaryOp, CallExpr, IndexExpr, FieldAccessExpr, ParenExpr, CastExpr, TryExpr, TypeExpr, NewExpr, ByteLiteral
 from l0_resolve import resolve_symbol, ResolveErrorKind
@@ -23,16 +22,16 @@ class ExpressionInference:
     lookup: SemanticLookup
     state: CheckerState
 
-    def _infer_type_expr(self, expr: TypeExpr) -> Optional[Type]:
+    def _infer_type_expr(self, expr: TypeExpr) -> Type | None:
         """TypeExpr is only valid as an argument to type-accepting intrinsics."""
         self.state._error(expr,
                     "[TYP-0290] type expression is only valid as argument to type-accepting intrinsics such as 'sizeof'")
         return None
 
-    def _infer_expr(self, expr: Optional[Expr], *,
-                    widening_type: Optional[Type] = None,
+    def _infer_expr(self, expr: Expr | None, *,
+                    widening_type: Type | None = None,
                     context_code: str = "TYP-0319",
-                    context_descriptor: str = "expression") -> Optional[Type]:
+                    context_descriptor: str = "expression") -> Type | None:
         """Infer the type of an expression.
 
         Args:
@@ -54,58 +53,59 @@ class ExpressionInference:
         if existing is not None:
             return existing
 
-        result: Optional[Type]
+        result: Type | None
 
-        if isinstance(expr, IntLiteral):
-            result = self.state.int_type
+        match expr:
+            case IntLiteral():
+                result = self.state.int_type
 
-        elif isinstance(expr, ByteLiteral):
-            result = self.state.byte_type
+            case ByteLiteral():
+                result = self.state.byte_type
 
-        elif isinstance(expr, StringLiteral):
-            result = self.state.string_type
+            case StringLiteral():
+                result = self.state.string_type
 
-        elif isinstance(expr, BoolLiteral):
-            result = self.state.bool_type
+            case BoolLiteral():
+                result = self.state.bool_type
 
-        elif isinstance(expr, NullLiteral):
-            result = self.state.null_type
+            case NullLiteral():
+                result = self.state.null_type
 
-        elif isinstance(expr, VarRef):
-            result = self._infer_var_ref(expr)
+            case VarRef():
+                result = self._infer_var_ref(expr)
 
-        elif isinstance(expr, UnaryOp):
-            result = self._infer_unary(expr)
+            case UnaryOp():
+                result = self._infer_unary(expr)
 
-        elif isinstance(expr, BinaryOp):
-            result = self._infer_binary(expr)
+            case BinaryOp():
+                result = self._infer_binary(expr)
 
-        elif isinstance(expr, CallExpr):
-            result = self._infer_call(expr)
+            case CallExpr():
+                result = self._infer_call(expr)
 
-        elif isinstance(expr, IndexExpr):
-            result = self._infer_index(expr)
+            case IndexExpr():
+                result = self._infer_index(expr)
 
-        elif isinstance(expr, FieldAccessExpr):
-            result = self._infer_field_access(expr)
+            case FieldAccessExpr():
+                result = self._infer_field_access(expr)
 
-        elif isinstance(expr, ParenExpr):
-            result = self._infer_expr(expr.inner)
+            case ParenExpr(inner=inner):
+                result = self._infer_expr(inner)
 
-        elif isinstance(expr, CastExpr):
-            result = self._infer_cast(expr)
+            case CastExpr():
+                result = self._infer_cast(expr)
 
-        elif isinstance(expr, NewExpr):
-            result = self._infer_new(expr)
+            case NewExpr():
+                result = self._infer_new(expr)
 
-        elif isinstance(expr, TypeExpr):
-            return self._infer_type_expr(expr)
+            case TypeExpr():
+                return self._infer_type_expr(expr)
 
-        elif isinstance(expr, TryExpr):
-            result = self._infer_try(expr)
+            case TryExpr():
+                result = self._infer_try(expr)
 
-        else:
-            result = None
+            case _:
+                result = None
 
         if result is not None and not self.state._liveness_diagnostics_only:
             self.state.expr_types[id(expr)] = result  # Always store natural type
@@ -122,7 +122,7 @@ class ExpressionInference:
 
         return result
 
-    def _infer_var_ref(self, expr: VarRef) -> Optional[Type]:
+    def _infer_var_ref(self, expr: VarRef) -> Type | None:
         """Infer type for a variable reference."""
         # Reject overqualified names early (e.g. color::Color::Red)
         if self.lookup._reject_name_qualifier(expr, expr.name, expr.name_qualifier, expr.module_path):
@@ -209,7 +209,7 @@ class ExpressionInference:
         self.state._error(expr, f"[TYP-0151] symbol '{expr.name}' is not a value")
         return None
 
-    def _infer_unary(self, expr: UnaryOp) -> Optional[Type]:
+    def _infer_unary(self, expr: UnaryOp) -> Type | None:
         """Infer type for a unary operation."""
         op = expr.op
         operand_ty = self._infer_expr(expr.operand)
@@ -250,7 +250,7 @@ class ExpressionInference:
 
         return operand_ty
 
-    def _infer_binary(self, expr: BinaryOp) -> Optional[Type]:
+    def _infer_binary(self, expr: BinaryOp) -> Type | None:
         """Infer type for a binary operation."""
         op = expr.op
         left_ty = self._infer_expr(expr.left)
@@ -283,8 +283,8 @@ class ExpressionInference:
         return None
 
     def _binary_expect_both_int(
-            self, expr: BinaryOp, left: Optional[Type], right: Optional[Type], result: Optional[Type]
-    ) -> Optional[Type]:
+            self, expr: BinaryOp, left: Type | None, right: Type | None, result: Type | None
+    ) -> Type | None:
         """Check that both operands of a binary op are int-assignable."""
         if self.compat._is_int_assignable(left) and self.compat._is_int_assignable(right):
             return result
@@ -297,8 +297,8 @@ class ExpressionInference:
         return None
 
     def _binary_expect_both_bool(
-            self, expr: BinaryOp, left: Optional[Type], right: Optional[Type], result: Optional[Type]
-    ) -> Optional[Type]:
+            self, expr: BinaryOp, left: Type | None, right: Type | None, result: Type | None
+    ) -> Type | None:
         """Check that both operands of a binary op are bool."""
         if self.compat._is_bool(left) and self.compat._is_bool(right):
             return result
@@ -311,8 +311,8 @@ class ExpressionInference:
         return None
 
     def _binary_equality(
-            self, expr: BinaryOp, left: Optional[Type], right: Optional[Type]
-    ) -> Optional[Type]:
+            self, expr: BinaryOp, left: Type | None, right: Type | None
+    ) -> Type | None:
         """Infer type for equality/inequality comparison."""
         if left is None or right is None:
             return None
@@ -344,7 +344,7 @@ class ExpressionInference:
 
         return self.state.bool_type
 
-    def _try_infer_intrinsic(self, expr: CallExpr) -> Optional[Type]:
+    def _try_infer_intrinsic(self, expr: CallExpr) -> Type | None:
         """Handle compiler intrinsics calls."""
         if not isinstance(expr.callee, VarRef):
             return None
@@ -418,7 +418,7 @@ class ExpressionInference:
 
         return self.state.int_type
 
-    def _infer_call(self, expr: CallExpr) -> Optional[Type]:
+    def _infer_call(self, expr: CallExpr) -> Type | None:
         """Infer type for a function or constructor call."""
         # Check for intrinsic calls first
         if isinstance(expr.callee, VarRef):
@@ -512,7 +512,7 @@ class ExpressionInference:
                                  context_descriptor=f"argument {index + 1} to function '{expr.callee.name}'")
         return callee_ty.result
 
-    def _infer_struct_constructor(self, expr: CallExpr, sym: Symbol) -> Optional[Type]:
+    def _infer_struct_constructor(self, expr: CallExpr, sym: Symbol) -> Type | None:
         """Infer type for a struct constructor call."""
         assert isinstance(expr.callee, VarRef)
         if sym.kind is SymbolKind.TYPE_ALIAS and isinstance(sym.type, StructType):
@@ -552,7 +552,7 @@ class ExpressionInference:
 
         return struct_type
 
-    def _infer_variant_constructor(self, expr: CallExpr, sym: Symbol) -> Optional[Type]:
+    def _infer_variant_constructor(self, expr: CallExpr, sym: Symbol) -> Type | None:
         """Infer type for an enum variant constructor call."""
         assert isinstance(expr.callee, VarRef)
         variant_name = expr.callee.name
@@ -591,7 +591,7 @@ class ExpressionInference:
 
         return enum_type
 
-    def _infer_index(self, expr: IndexExpr) -> Optional[Type]:
+    def _infer_index(self, expr: IndexExpr) -> Type | None:
         """Infer type for an indexing expression."""
         array_ty = self._infer_expr(expr.array)
         index_ty = self._infer_expr(expr.index)
@@ -617,7 +617,7 @@ class ExpressionInference:
 
         return None
 
-    def _infer_field_access(self, expr: FieldAccessExpr) -> Optional[Type]:
+    def _infer_field_access(self, expr: FieldAccessExpr) -> Type | None:
         """Infer type for a field access expression."""
         obj_ty = self._infer_expr(expr.obj)
 
@@ -655,7 +655,7 @@ class ExpressionInference:
 
         return None
 
-    def _infer_cast(self, expr: CastExpr) -> Optional[Type]:
+    def _infer_cast(self, expr: CastExpr) -> Type | None:
         """Infer type for a cast expression and validate compatibility."""
         expr_ty = self._infer_expr(expr.expr)
         if expr_ty is None:
@@ -700,7 +700,7 @@ class ExpressionInference:
             expr, f"[TYP-0230] cannot cast from '{format_type(expr_ty)}' to '{format_type(target_ty)}'"
         )
 
-    def _infer_try(self, expr: TryExpr) -> Optional[Type]:
+    def _infer_try(self, expr: TryExpr) -> Type | None:
         """Infer type for a '?' try operator expression."""
         if self.state._current_func_type is None:
             return None
@@ -719,7 +719,7 @@ class ExpressionInference:
 
         return inner_ty.inner
 
-    def _infer_new(self, expr: NewExpr) -> Optional[Type]:
+    def _infer_new(self, expr: NewExpr) -> Type | None:
         """Infer type for a 'new' heap allocation expression."""
         if self.state._current_func_env is None:
             return self.state._error(expr, f"[TYP-9288] internal error: 'new' outside function context")

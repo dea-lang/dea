@@ -6,7 +6,6 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import List
 from l0_ast_printer import format_module
 from l0_backend import Backend
 from l0_compilation import CompilationUnit
@@ -19,7 +18,7 @@ from l0_cli_diagnostics import _emit_diagnostic, print_diagnostic_list
 from l0_cli_context import _run_analysis, build_compilation_context, build_search_paths
 
 
-def _get_module_names(args: argparse.Namespace, cu: CompilationUnit) -> List[str]:
+def _get_module_names(args: argparse.Namespace, cu: CompilationUnit) -> list[str]:
     """Get the list of module names based on the `--all-modules` flag.
 
     Args:

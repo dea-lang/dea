@@ -9,7 +9,7 @@ lookup symbols and resolve AST type references into semantic types.
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Dict, List, Optional, Callable, Tuple
+from collections.abc import Callable
 
 from l0_ast import TypeRef
 from l0_symbols import ModuleEnv, Symbol, SymbolKind
@@ -56,11 +56,11 @@ class SymbolResolution:
         name: The name of the symbol being resolved.
         ambiguous_modules: Tuple of module names if resolution failed due to ambiguity.
     """
-    symbol: Optional[Symbol]
-    error: Optional[ResolveErrorKind]
+    symbol: Symbol | None
+    error: ResolveErrorKind | None
     module_name: str
     name: str
-    ambiguous_modules: Optional[Tuple[str, ...]] = None
+    ambiguous_modules: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -75,12 +75,12 @@ class TypeResolution:
         symbol: The Symbol object corresponding to the type, if applicable.
         ambiguous_modules: Tuple of module names if resolution failed due to ambiguity.
     """
-    type: Optional[Type]
-    error: Optional[TypeResolveErrorKind]
+    type: Type | None
+    error: TypeResolveErrorKind | None
     module_name: str
     name: str
-    symbol: Optional[Symbol] = None
-    ambiguous_modules: Optional[Tuple[str, ...]] = None
+    symbol: Symbol | None = None
+    ambiguous_modules: tuple[str, ...] | None = None
 
 
 def _is_imported(current_env: ModuleEnv, module_name: str) -> bool:
@@ -89,10 +89,10 @@ def _is_imported(current_env: ModuleEnv, module_name: str) -> bool:
 
 
 def resolve_symbol(
-        module_envs: Dict[str, ModuleEnv],
+        module_envs: dict[str, ModuleEnv],
         current_module: str,
         name: str,
-        module_path: Optional[List[str]] = None,
+        module_path: list[str] | None = None,
         *,
         require_import: bool = True,
 ) -> SymbolResolution:
@@ -138,12 +138,12 @@ def resolve_symbol(
 
 
 def resolve_type_ref(
-        module_envs: Dict[str, ModuleEnv],
+        module_envs: dict[str, ModuleEnv],
         current_module: str,
         tref: TypeRef,
-        module_path: Optional[List[str]] = None,
+        module_path: list[str] | None = None,
         *,
-        resolve_alias: Optional[Callable[[Symbol], Optional[Type]]] = None,
+        resolve_alias: Callable[[Symbol], Type | None] | None = None,
         require_import: bool = True,
 ) -> TypeResolution:
     """Resolve an AST TypeRef into a semantic Type.

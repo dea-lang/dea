@@ -11,7 +11,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 from re import search
-from typing import List, Optional
 from l0_analysis import AnalysisResult
 from l0_backend import Backend
 from l0_context import CompilationContext
@@ -24,7 +23,7 @@ from l0_cli_diagnostics import _emit_diagnostic, print_diagnostics
 from l0_cli_context import build_compilation_context, build_search_paths
 
 
-def _find_cc() -> Optional[str]:
+def _find_cc() -> str | None:
     """Find the best available C compiler.
 
     Used in codegen and build stages if the user didn't specify one explicitly.
@@ -280,7 +279,7 @@ def _validate_runtime_library_path(runtime_lib_path: str) -> bool:
     return True
 
 
-def _split_c_options(raw_options: Optional[str]) -> List[str]:
+def _split_c_options(raw_options: str | None) -> list[str]:
     """Split a raw C options string into individual compiler arguments.
 
     Args:
@@ -294,7 +293,7 @@ def _split_c_options(raw_options: Optional[str]) -> List[str]:
     return raw_options.split()
 
 
-def _get_optimize_flag(flag_family: str, extra_opts: List[str]) -> Optional[str]:
+def _get_optimize_flag(flag_family: str, extra_opts: list[str]) -> str | None:
     """Determine the appropriate optimization flag for the compiler family.
 
     Args:

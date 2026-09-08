@@ -4,7 +4,6 @@
 """Compilation unit definitions for the L0 compiler."""
 
 from dataclasses import dataclass
-from typing import Dict
 
 from l0_ast import Module
 
@@ -19,7 +18,7 @@ class CompilationUnit:
             imported modules, including the entry module.
     """
     entry_module: Module
-    modules: Dict[str, Module]
+    modules: dict[str, Module]
 
     @property
     def entry_name(self) -> str:

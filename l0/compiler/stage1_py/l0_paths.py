@@ -9,7 +9,6 @@ using configurable search roots.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
 
 
 @dataclass
@@ -22,8 +21,8 @@ class SourceSearchPaths:
         system_roots: List of paths for standard library and toolchain modules.
         project_roots: List of paths for user and project-specific modules.
     """
-    system_roots: List[Path] = field(default_factory=list)
-    project_roots: List[Path] = field(default_factory=list)
+    system_roots: list[Path] = field(default_factory=list)
+    project_roots: list[Path] = field(default_factory=list)
 
     def add_system_root(self, root: str | Path) -> None:
         """Add a path to the system search roots.

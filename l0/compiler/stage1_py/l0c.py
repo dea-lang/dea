@@ -3,13 +3,12 @@
 
 """Executable entrypoint and coarse compiler-command dispatch."""
 
-from typing import List, Optional
 from l0_cli_build import cmd_build, cmd_run
 from l0_cli_commands import cmd_ast, cmd_check, cmd_codegen, cmd_compile, cmd_sym, cmd_tok, cmd_type
 from l0_cli_args import parse_args
 
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     """Parse arguments, dispatch one compiler command, and exit.
 
     Args:

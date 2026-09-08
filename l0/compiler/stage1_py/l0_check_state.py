@@ -3,7 +3,6 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Optional, List, Set, Tuple
 from l0_analysis import AnalysisResult, VarRefResolution
 from l0_ast import Node, VarRef, CallExpr
 from l0_compilation import CompilationUnit
@@ -24,8 +23,8 @@ class StmtFlow(Enum):
 class LoopFlowCapture:
     """Liveness states for loop-control exits from one loop body."""
 
-    break_states: List[List[Dict[str, bool]]] = field(default_factory=list)
-    continue_states: List[List[Dict[str, bool]]] = field(default_factory=list)
+    break_states: list[list[dict[str, bool]]] = field(default_factory=list)
+    continue_states: list[list[dict[str, bool]]] = field(default_factory=list)
 
 @dataclass
 class CheckerState:
@@ -39,7 +38,7 @@ class CheckerState:
             raise ValueError("ExpressionTypeChecker requires a non-empty CompilationUnit")
 
         self.cu: CompilationUnit = self.analysis.cu
-        self.module_envs: Dict[str, ModuleEnv] = self.analysis.module_envs
+        self.module_envs: dict[str, ModuleEnv] = self.analysis.module_envs
         self.struct_infos = self.analysis.struct_infos
         self.enum_infos = self.analysis.enum_infos
         self.func_types = self.analysis.func_types
@@ -56,32 +55,32 @@ class CheckerState:
         self.null_type: NullType = get_null_type()
 
         # Per-function state (set in _check_function)
-        self._current_func_env: Optional[FunctionEnv] = None
-        self._current_func_type: Optional[FuncType] = None
-        self._local_scopes: List[Dict[str, Type]] = []
-        self._alive_scopes: List[Dict[str, bool]] = []  # definite liveness (True=usable)
+        self._current_func_env: FunctionEnv | None = None
+        self._current_func_type: FuncType | None = None
+        self._local_scopes: list[dict[str, Type]] = []
+        self._alive_scopes: list[dict[str, bool]] = []  # definite liveness (True=usable)
         self._return_paths: bool = False  # does current path guarantee a return?
         self._breakable_loop_depth: int = 0  # depth of loops allowing 'break'/'continue'
         self._next_stmt_unreachable: bool = False  # is next statement unreachable?
         self._suppress_diagnostics: bool = False
         self._suppress_liveness_diagnostics: bool = False
         self._liveness_diagnostics_only: bool = False
-        self._loop_flow_capture_stack: List[LoopFlowCapture] = []
+        self._loop_flow_capture_stack: list[LoopFlowCapture] = []
         # Stack of guards for cleanup-block references to header vars that may
         # be uninitialized on header `?` failure paths.
-        self._cleanup_header_ref_guard_stack: List[Tuple[int, Set[str]]] = []
+        self._cleanup_header_ref_guard_stack: list[tuple[int, set[str]]] = []
 
-    def _make_param_scope(self, func_env: FunctionEnv, func_type: FuncType) -> Dict[str, Type]:
+    def _make_param_scope(self, func_env: FunctionEnv, func_type: FuncType) -> dict[str, Type]:
         """Create a name-to-type mapping for function parameters."""
-        scope: Dict[str, Type] = {}
+        scope: dict[str, Type] = {}
         func = func_env.func
         for param, param_ty in zip(func.params, func_type.params):
             scope[param.name] = param_ty
         return scope
 
-    def _make_param_alive_scope(self, func_env: FunctionEnv) -> Dict[str, bool]:
+    def _make_param_alive_scope(self, func_env: FunctionEnv) -> dict[str, bool]:
         """Initialize liveness tracking for function parameters."""
-        scope: Dict[str, bool] = {}
+        scope: dict[str, bool] = {}
         func = func_env.func
         for param in func.params:
             scope[param.name] = True
@@ -105,7 +104,7 @@ class CheckerState:
                 return True
         return False
 
-    def _lookup_alive(self, name: str) -> Optional[bool]:
+    def _lookup_alive(self, name: str) -> bool | None:
         """Check if a variable is currently alive (not dropped)."""
         for scope in reversed(self._alive_scopes):
             if name in scope:
@@ -119,15 +118,15 @@ class CheckerState:
                 scope[name] = alive
                 return
 
-    def _clone_alive_scopes(self) -> List[Dict[str, bool]]:
+    def _clone_alive_scopes(self) -> list[dict[str, bool]]:
         """Clone the current definite-liveness stack."""
         return [dict(scope) for scope in self._alive_scopes]
 
-    def _meet_alive_scopes(self, *states: List[Dict[str, bool]]) -> None:
+    def _meet_alive_scopes(self, *states: list[dict[str, bool]]) -> None:
         """Keep a binding alive only when every incoming state keeps it alive."""
         self._alive_scopes = self._meet_alive_state(*states)
 
-    def _meet_alive_state(self, *states: List[Dict[str, bool]]) -> List[Dict[str, bool]]:
+    def _meet_alive_state(self, *states: list[dict[str, bool]]) -> list[dict[str, bool]]:
         """Return the definite-liveness meet of several states."""
         if not states:
             return self._clone_alive_scopes()
@@ -151,15 +150,15 @@ class CheckerState:
         if not self._liveness_diagnostics_only:
             self.analysis.intrinsic_targets[id(expr)] = target_ty
 
-    def _error(self, node: Optional[Node], message: str) -> None:
+    def _error(self, node: Node | None, message: str) -> None:
         """Report an error diagnostic."""
         self._diagnostic(node, message, kind="error")
 
-    def _warn(self, node: Optional[Node], message: str) -> None:
+    def _warn(self, node: Node | None, message: str) -> None:
         """Report a warning diagnostic."""
         self._diagnostic(node, message, kind="warning")
 
-    def _diagnostic(self, node: Optional[Node], message: str, kind: str = "info") -> None:
+    def _diagnostic(self, node: Node | None, message: str, kind: str = "info") -> None:
         """Internal helper to create and append a diagnostic."""
         if self._suppress_diagnostics:
             return

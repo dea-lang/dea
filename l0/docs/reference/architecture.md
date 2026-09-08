@@ -1,6 +1,6 @@
 # L0 Compiler Architecture
 
-Version: 2026-09-07
+Version: 2026-09-08
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
@@ -15,6 +15,19 @@ Related canonical docs:
 - Shared CLI contract: [l0/docs/specs/compiler/cli-contract.md](../specs/compiler/cli-contract.md)
 
 ## 1. High-Level Pipeline
+
+Stage 1 requires Python 3.14 or newer. Its annotations use built-in generic containers, union syntax, and native
+deferred evaluation. Quoted annotations remain at `TYPE_CHECKING`-only import-cycle boundaries so default signature
+introspection does not require unavailable runtime names. `l0_symbols.SymbolKey` names the
+`(module_name, declaration_name)` tuple used by semantic tables and type dependency graphs. It is an annotation alias;
+runtime keys remain ordinary tuples.
+
+Expression inference and semantic type formatting use structural pattern matching with keyword fields. These internal
+representations preserve the existing diagnostics, generated C, and Stage 2 parity contract. New generic abstractions or
+template-string processors are introduced only when a concrete compiler operation calls for them.
+
+Unified CI uses Python 3.14 for its validation matrix. Python 3.15 compatibility has been verified locally, with the
+Python 3.14 workspace minimum retained.
 
 ### 1.1 Stage 1 Reference Pipeline
 

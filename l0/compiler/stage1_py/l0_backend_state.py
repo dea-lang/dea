@@ -2,7 +2,7 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from typing import List, Optional, NoReturn, Tuple
+from typing import NoReturn
 from l0_analysis import AnalysisResult, VarRefResolution
 from l0_ast import Node, TypeRef, FuncDecl, EnumDecl, EnumVariant, LetStmt, Expr, IntLiteral, StringLiteral, BoolLiteral, VarRef, UnaryOp, BinaryOp, CallExpr, IndexExpr, FieldAccessExpr, ParenExpr, CastExpr, NullLiteral, TypeExpr, TryExpr, NewExpr, ByteLiteral
 from l0_c_emitter import CEmitter
@@ -21,17 +21,17 @@ class BackendState:
 
     emitter: CEmitter = field(default_factory=CEmitter)
 
-    current_module: Optional[str] = None
+    current_module: str | None = None
 
-    _current_func_result: Optional[Type] = None
+    _current_func_result: Type | None = None
 
-    _current_scope: Optional[ScopeContext] = None
+    _current_scope: ScopeContext | None = None
 
-    _loop_cleanup_scope_stack: List[Tuple[ScopeContext, ScopeContext]] = field(default_factory=list)
+    _loop_cleanup_scope_stack: list[tuple[ScopeContext, ScopeContext]] = field(default_factory=list)
 
     _switch_depth: int = 0
 
-    _loop_label_stack: List[Tuple[str, str]] = field(default_factory=list)
+    _loop_label_stack: list[tuple[str, str]] = field(default_factory=list)
 
     _label_counter: int = 0
 
@@ -198,7 +198,7 @@ class BackendState:
         # Default: treat as having side effects to be safe
         return True
 
-    def _pointer_type_or_none(self, ty: Optional[Type]) -> Optional[PointerType]:
+    def _pointer_type_or_none(self, ty: Type | None) -> PointerType | None:
         """Return the represented pointer type for pointer-shaped values."""
         if isinstance(ty, PointerType):
             return ty
@@ -206,7 +206,7 @@ class BackendState:
             return ty.inner
         return None
 
-    def _lookup_local_var_type(self, var_name: str) -> Optional[Type]:
+    def _lookup_local_var_type(self, var_name: str) -> Type | None:
         """Look up a local variable's type in the current scope chain.
 
         Searches declared_vars (includes both locals and parameters).
@@ -226,7 +226,7 @@ class BackendState:
             scope = scope.parent
         return None
 
-    def _lookup_owned_local_name(self, expr: VarRef) -> Optional[str]:
+    def _lookup_owned_local_name(self, expr: VarRef) -> str | None:
         """Return the mangled local name when a VarRef resolves to an owned local binding.
 
         Parameters are local VarRefs but are not owned by the callee, so they do not
@@ -251,7 +251,7 @@ class BackendState:
             scope = scope.parent
         return None
 
-    def ice(self, message: str, *, node: Optional[Node] = None) -> NoReturn:
+    def ice(self, message: str, *, node: Node | None = None) -> NoReturn:
         """Raise an internal compiler error.
 
         Args:
@@ -349,8 +349,7 @@ class BackendState:
         result = resolve_type_ref(self.analysis.module_envs, module_name, tref)
         return result.type
 
-    def _lookup_symbol(self, name: str, current_module_name: str, module_path: Optional[List[str]] = None) -> Optional[
-        Symbol]:
+    def _lookup_symbol(self, name: str, current_module_name: str, module_path: list[str] | None = None) -> Symbol | None:
         """Look up a symbol in the current module's environment.
 
         This is used to determine which module a function is defined in
@@ -382,7 +381,7 @@ class BackendState:
 
     def find_variant_decl(
             self, module_name: str, enum_name: str, variant_name: str
-    ) -> Optional[EnumVariant]:
+    ) -> EnumVariant | None:
         """Find the EnumVariant AST node for a given variant in an enum.
 
         This is needed to get field names when binding pattern variables,

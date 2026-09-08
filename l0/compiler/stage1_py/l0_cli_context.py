@@ -7,7 +7,6 @@ import argparse
 import os
 from pathlib import Path
 from re import fullmatch
-from typing import Optional
 from l0_analysis import AnalysisResult
 from l0_context import CompilationContext
 from l0_driver import L0Driver
@@ -44,7 +43,7 @@ def _is_valid_module_name(module_name: str) -> bool:
     return all(fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", part) for part in parts)
 
 
-def build_search_paths(context: CompilationContext, args: argparse.Namespace) -> Optional[SourceSearchPaths]:
+def build_search_paths(context: CompilationContext, args: argparse.Namespace) -> SourceSearchPaths | None:
     """Build source search paths from command-line arguments.
 
     Handles entry path parsing and default values from environment variables.
