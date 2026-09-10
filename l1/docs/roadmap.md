@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-07
+Version: 2026-09-10
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -254,10 +254,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   print-helper surface, using typed L1 variadics with shared string and writer formatting.
 - Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Priority 2 audit that records
   portable systems capability and C99-family coverage without promising literal C99 API parity.
-- Feature [2026-09-07-stdlib-runtime-preparation-and-cache-noref][stdlib-preparation] plans automatic stdlib/runtime
-  preparation, reusable compiler configurations, manual cache controls, and bootstrap prewarming.
-- Feature [2026-09-07-standalone-link-interface-discovery-noref][link-discovery] plans default managed stdlib discovery
-  during standalone linking, with additional provider roots through `-I`.
+- Feature [2026-09-07-stdlib-runtime-preparation-and-cache-noref][stdlib-preparation] is the phased plan for
+  standalone-link interface discovery, stdlib/runtime preparation and caching, scoped maintenance, managed-provider
+  integration, and bootstrap prewarming, with one integrated acceptance gate.
 
 ## Backlog
 
@@ -374,7 +373,6 @@ update to be promoted to an initiative or plan:
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
-[link-discovery]: ../work/plans/features/2026-09-07-standalone-link-interface-discovery-noref.md
 [link-set]: ../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
 [module-graph-invariant-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md
 [module-interface-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md

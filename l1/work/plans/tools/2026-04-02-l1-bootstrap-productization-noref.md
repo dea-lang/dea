@@ -3,7 +3,7 @@
 ## Define the first L1 install/dist/bootstrap-product workflow
 
 - Date: 2026-04-02
-- Last reviewed: 2026-09-08
+- Last reviewed: 2026-09-10
 - Status: Draft
 - Title: Define the first L1 install/dist/bootstrap-product workflow
 - Kind: Tooling
@@ -31,7 +31,6 @@
 - Related:
   - `work/plans/refactors/closed/2026-04-02-l1-bootstrap-scaffold-noref.md`
   - [l1/work/plans/features/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][stdlib-preparation]
-  - [l1/work/plans/features/2026-09-07-standalone-link-interface-discovery-noref.md][link-discovery]
   - [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows]
   - [MONOREPO.md][monorepo]
 
@@ -60,8 +59,9 @@ installed prefix, and packageable as a curated bootstrap archive with explicit u
    TinyCC may use matching raw runtime objects. Stdlib sources live under `compiler/shared/l1/stdlib/`.
 7. Shared tooling already has separate repo and prefix launcher/environment renderers. L1 currently uses the repo
    renderers; its build-layout validator deliberately rejects output directories outside the L1 source tree.
-8. Automatic stdlib/runtime preparation and standalone-link discovery are specified in the two related September plans,
-   but not implemented. Their installed-artifact support provides this plan's preparation and discovery service.
+8. Automatic stdlib/runtime preparation and standalone-link discovery are specified in the related phased
+   preparation/cache plan, but not implemented. Its installed-artifact support provides this plan's preparation and
+   discovery service.
 
 ## Defaults Chosen
 
@@ -81,9 +81,8 @@ installed prefix, and packageable as a curated bootstrap archive with explicit u
 
 The install layout and packaging helpers can be developed now. Completing install/dist depends on the preparation
 service and managed standalone-link integration from
-[l1/work/plans/features/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][stdlib-preparation] and
-[l1/work/plans/features/2026-09-07-standalone-link-interface-discovery-noref.md][link-discovery]. Those plans can
-validate installed lookup against fixtures without this installer, so there is no dependency cycle.
+[l1/work/plans/features/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][stdlib-preparation]. That phased plan
+can validate installed lookup against fixtures without this installer, so there is no dependency cycle.
 
 The preparation plan owns semantic/native identities, completion manifests, configuration matching, compilation,
 locking, and writable-cache selection. This plan owns which completed artifacts are shipped, their prefix anchor,
@@ -327,7 +326,6 @@ prepared configuration flags/artifacts, or compiler ownership, following the rep
 just-completed checks. This Draft-plan refresh requires documentation checks only.
 
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[link-discovery]: ../features/2026-09-07-standalone-link-interface-discovery-noref.md
 [monorepo]: ../../../../MONOREPO.md
 [release-workflows]: ../../../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
 [stdlib-preparation]: ../features/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
