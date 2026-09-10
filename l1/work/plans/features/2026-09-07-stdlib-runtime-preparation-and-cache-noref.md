@@ -54,7 +54,9 @@ inputs does not rebuild application or third-party objects supplied by the calle
 
 Managed stdlib discovery is enabled by default, independently of `-I`. The companion linking plan defines dependency
 discovery and precedence; this plan supplies the managed artifacts and their preparation lifecycle. Implement its
-interface-assisted discovery foundation first, then integrate the managed provider service specified here.
+interface-assisted discovery foundation first, then integrate the managed provider service specified here. The
+coordinated order is interface discovery, preparation, then managed-provider integration. Neither plan is complete or
+eligible for closure before the integrated acceptance criteria of both plans pass.
 
 ## Current State
 
@@ -106,14 +108,68 @@ cache. Application and third-party dependency sources are not implicitly compile
   `.o`/`.l1m` pairs, matching runtime headers, and runtime native inputs.
 - Identify Dea inputs by content, including private stdlib implementation changes, runtime sources/headers, and the Dea
   compiler build. Public interface fingerprints alone are insufficient cache identities.
-- Native identity additionally includes resolved C toolchain identity/version, target, effective native options,
-  relevant SDK configuration, and trace/checking mode.
-- Use conservative configuration matching. Exact preparation identity is a reuse policy, not a general proof that every
-  differing native configuration is ABI-incompatible. Do not introduce an ABI-compatibility inference engine.
+- A compiler implementation fingerprint identifies compiler contents and the implementation components discovered by its
+  supported toolchain adapter. Retain compiler family and full version/build information as readable metadata; neither
+  is sufficient for equality, including when different compiler contents report the same version.
+- A preparation fingerprint is a versioned hash of Dea compiler/source inputs, compiler implementation identity,
+  effective target, ordered effective native options, SDK/sysroot and relevant dependency inputs, and trace/checking
+  settings. Include fingerprint-schema and adapter revisions so changed identity rules invalidate earlier records.
+- Effective target includes architecture, OS/object format, ABI, and required CPU features. Host-dependent options such
+  as `-march=native` contribute their resolved meaning rather than only their literal spelling.
+- Compiler paths are discovery inputs, not substitutes for content identity. Preserve invocation aliases and account for
+  path-dependent component selection and behavior in the preparation fingerprint.
+- Use exact preparation matching. Different compiler implementations select separate native entries even when their ABIs
+  are compatible, including across major releases or between minor releases. This is a reuse policy, not a general proof
+  that differing configurations are ABI-incompatible. Do not introduce an ABI-compatibility inference engine.
+- Each supported toolchain adapter documents its component discovery, selection inputs, and detection limits. Cover
+  existing GCC, Clang/Apple Clang, and TinyCC workflows; this feature does not add MSVC support.
 - Opaque wrappers and undeclared external toolchain changes retain forced preparation and caller-managed artifacts as
-  recovery paths.
+  recovery paths. Do not claim complete identity detection for unsupported arrangements or add an identity-override CLI.
 - Retain different configurations so switching back reuses prior preparation. Do not add general project-output caching,
   physical interface deduplication machinery, or automatic cache pruning in this plan.
+
+### Machine-local identity memo and fast validation
+
+Keep a machine-local identity memo separate from the potentially shared artifact cache. The memo records discovered
+components, remembered content digests, and the local metadata used to validate those digests. Shared artifact selection
+uses content/configuration fingerprints; another machine's paths, file identities, or timestamps never establish a local
+memo hit. Selecting a shared artifact root does not make the identity memo portable.
+
+For each native-consuming command:
+
+1. Resolve compiler selection, effective options, relevant environment, and platform selection.
+2. Load the local identity record and validate its discovery dependencies, including invocation aliases and relevant
+   search/configuration changes. Validating yesterday's component files is insufficient if today's selection would find
+   a different component or an earlier search-path candidate.
+3. Rediscover components when selection dependencies change; otherwise reuse the recorded component inventory.
+4. Reuse each remembered content digest when file identity, size, and high-resolution modification/change timestamps
+   match. Hash new or changed components and check that their metadata did not change during hashing. Do not accept a
+   digest from an unstable read.
+5. Resolve effective target requirements, including native CPU features, and construct the preparation fingerprint.
+6. Select matching installed/cached artifacts or invoke preparation under the existing policy.
+
+Resolve the native preparation context once per command and pass it through preparation and provider selection. Use
+native metadata operations and streaming SHA-256; avoid shell hashing commands and per-module toolchain probes. Where
+selection requires a platform resolver query, include it in identity validation rather than trusting stale discovery.
+Compiler probes must have bounded execution and captured output. Probe failures must not authorize stale reuse.
+
+A missing or invalid memo triggers recomputation; validate memo records before reuse. Explicit `--force` bypasses
+remembered discovery and digests as well as rebuilding artifacts. Changes that preserve all checked metadata remain an
+explicit detection limitation; forced preparation is recovery, not automatic detection. Concurrent toolchain replacement
+is outside the supported preparation contract. Track relevant SDK/header dependencies and search changes without
+recursively scanning the entire SDK on every invocation.
+
+### Identity-validation performance
+
+Measure identity validation separately from full artifact validation and preparation. On designated local reference
+machines, target under 10 ms p95 for warm direct-toolchain identity validation and under 100 ms p95 when warm validation
+requires platform resolver queries. Unchanged warm validation performs no compiler-binary content reads, no recursive
+SDK scans, and no repeated probes per module.
+
+Record cold-discovery costs separately, including toolchain size and benchmark environment. A local feasibility
+measurement on 2026-09-09 hashed a 272 MB Apple Clang executable in about 1.1 seconds; it is not a portable guarantee or
+an end-to-end cache benchmark. Keep reference-machine timing measurements separate from ordinary CI correctness checks;
+CI verifies operation counts and behavior rather than enforcing noisy wall-clock thresholds.
 
 ### Ordinary writes and preparation coordination
 
@@ -178,11 +234,14 @@ cross-mode C-byte identity when using cached providers.
 ## Implementation Phases
 
 1. Build on the companion plan's provider-discovery foundation. Introduce semantic/native identities, managed artifact
-   lookup, completion state, and process-lifetime preparation coordination.
+   lookup, completion state, and process-lifetime preparation coordination. Implement supported toolchain adapters,
+   versioned preparation fingerprints, the machine-local identity memo, native metadata/digest support, and bounded
+   output-capturing probes.
 2. Implement the shared preparation operation and manual CLI. Reuse frontend interface emission, per-module compilation,
    runtime variants, and TinyCC handling; keep preparation inputs separate from ordinary provider discovery.
 3. Integrate automatic preparation and opt-outs into the applicable modes. Add stderr progress at the agreed verbosity
-   levels, actionable failures, and default stdlib discovery without `-I`.
+   levels, actionable failures, and default stdlib discovery without `-I`. Pass one resolved native preparation context
+   through managed stdlib and runtime selection rather than repeating compiler discovery per module.
 4. Invoke preparation from bootstrap, implement cache-root selection and read-only payload discovery, and preserve
    generated-C contracts. Define the packaging handoff without implementing installers or distributions here.
 5. Update the shared CLI contract and diagnostic catalog plus L1 bootstrap, separate-compilation, and runtime docs when
@@ -195,8 +254,15 @@ cross-mode C-byte identity when using cached providers.
   - Scope: L1
   - Disposition: New ADR
   - ADR: `l1/docs/decisions/`
-  - Rationale: Preparation defaults, configuration identity, cache ownership, verbosity, and concurrency behavior
-    establish a durable toolchain contract.
+  - Rationale: Preparation defaults, cache ownership, verbosity, and concurrency behavior establish a durable toolchain
+    contract.
+- Decision: Select exact preparation fingerprints and accelerate content-digest reuse through a machine-local,
+  metadata-validated identity memo.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Compiler implementation identity, effective target selection, adapter/schema revisions, and the explicit
+    metadata-detection limits define when managed native artifacts may be reused locally or across machines.
 - Decision: Select matching prepared runtime inputs across compiler configurations.
   - Scope: L1
   - Disposition: Amend ADR
@@ -253,6 +319,22 @@ linking plan uses this preparation area rather than reserving another cache bloc
     work. Clearing a writable cache permits automatic rebuilding and leaves the installed default intact.
 11. Explicit objects, ordered `-I` roots, custom system roots, and runtime overrides keep their authority. An invalid
     explicitly selected provider is not hidden by automatic preparation or a later managed provider.
+12. Different compiler contents reporting the same version, ABI-compatible major releases, and changed minor releases
+    select separate native entries while preserving matching semantic interfaces. Fingerprint-schema and adapter
+    revisions invalidate records created under earlier identity rules.
+13. File replacement, alias/symlink retargeting, changed subordinate tools, and selection of a different search-path
+    candidate invalidate the applicable memo discovery or digest state. SDK/header inputs, ordered options, target
+    architecture, ABI, and resolved native CPU features affect preparation selection.
+14. Shared artifact-cache fixtures use independent machine-local identity memos. Matching content/configuration may
+    reuse shared artifacts, but another machine's metadata cannot establish a memo hit or mask target differences.
+15. Missing or corrupt memo records recompute identity. Forced preparation refreshes discovery and digests, including
+    otherwise undetected metadata-preserving changes. Probe failure/timeout and files changing during hashing never
+    authorize stale or unstable reuse.
+16. Instrumented warm-path tests verify no compiler-binary content reads, recursive SDK scans, or repeated per-module
+    discovery. Reference-machine benchmarks report p95 identity-validation time against the stated targets, separately
+    from full artifact validation, preparation, and cold-discovery costs.
+17. Integrated cold/warm build, run, and standalone-link acceptance passes with interface reuse, matching managed
+    stdlib/runtime selection, and explicit-provider precedence before either coordinated plan closes.
 
 During implementation, run focused compiler/cache/bootstrap tests followed by L1 `make test-all`, ADR validation, and
 the required pre-commit checks. Recording this Draft plan requires documentation validation only.
