@@ -21,12 +21,16 @@ This repository is a monorepo hosting the Dea language family. Each level is a s
 
 | Level             | Directory    | Status                                                          |
 | ----------------- | ------------ | --------------------------------------------------------------- |
-| Dea/L<sub>0</sub> | [`l0/`](l0/) | **Released** (`l0-v2.0.0`), self-hosted; the current stable Dea |
+| Dea/L<sub>0</sub> | [`l0/`](l0/) | **Released** (`l0-v2.1.0`), self-hosted; the current stable Dea |
 | Dea/L<sub>1</sub> | [`l1/`](l1/) | **In bootstrap development**; the current Dea bleeding edge     |
 
 **Dea/L0** is a small, UB-free systems language, compiling to C99, sufficient to host its own compiler. It is
 self-hosted through its Stage 2 compiler and is the canonical user-facing toolchain today. Start at
 [l0/README.md](l0/README.md) for the L0 overview, quickstart, and language tour.
+
+L0 `2.1.0` adds a public C runtime header, repairs vector aliasing and optional hashes, improves sanitizer visibility,
+and reorganizes both compiler stages. See [l0/docs/releases/2.1.0.md](l0/docs/releases/2.1.0.md) for release notes and
+compatibility guidance.
 
 **Dea/L1** carries post-L0 language growth: wider fixed-width integer types, `float`/`double` with an explicit
 floating-point contract, bitwise operators, top-level `const`, function pointer types, the `unsafe` function marker,
@@ -38,16 +42,16 @@ consumes the L0 Stage 2 compiler as its upstream toolchain and is not yet a rele
 
 ## Stability and Evolution
 
-Dea is highly experimental, and the language itself is evolving daily. Dea/L0 `2.0.0` is the current stable release.
-This major line completes the coordinated short-option migration and the move to wildcard-only `case` defaults, while
-adding checked pointer validation modes and shared editor support. No level is immune from future breaking changes; when
-they land, they are incorporated into that level's semantic versioning.
+Dea is highly experimental, and the language itself is evolving daily. Dea/L0 `2.1.0` is the current stable release. The
+2.0.0 major release completed the coordinated short-option migration and the move to wildcard-only `case` defaults,
+while adding checked pointer validation modes and shared editor support. No level is immune from future breaking
+changes; when they land, they are incorporated into that level's semantic versioning.
 
 At any given moment:
 
 - the **bleeding edge** of Dea is the highest language level at its latest commit (today: Dea/L1 on the development
   branch);
-- the **stable** version of Dea is the highest released level/version (today: Dea/L0 `2.0.0`).
+- the **stable** version of Dea is the highest released level/version (today: Dea/L0 `2.1.0`).
 
 When Dea one day becomes production-ready, or at least reasonably stable, it will be announced. Until then, consider Dea
 in constant evolution, even though its shape is progressively emerging.
@@ -56,14 +60,14 @@ in constant evolution, even though its shape is progressively emerging.
 
 Versions are scoped to one language level, not to the project as a whole:
 
-- `l0-v2.0.0` is a release of **Dea/L0**. There is no "Dea 2.0.0"; a project-wide version number is intentionally not
+- `l0-v2.1.0` is a release of **Dea/L0**. There is no "Dea 2.1.0"; a project-wide version number is intentionally not
   defined.
 - Release tags are level-prefixed: `l0-vX.Y.Z` and `l0-snapshot-*` are active today; `l1-v*` and `l1-snapshot-*` are
   reserved but not yet active.
 - Pre-monorepo bare tags such as `v0.9.0` and `v0.9.1` remain valid historical references to early L0 development.
 
 The full release-tag and release-line gating policy lives in [MONOREPO.md](MONOREPO.md). Release-specific behavior and
-migration guidance are recorded in [l0/docs/releases/2.0.0.md](l0/docs/releases/2.0.0.md).
+migration guidance are recorded in [l0/docs/releases/2.1.0.md](l0/docs/releases/2.1.0.md).
 
 ## The Bootstrap Chain
 

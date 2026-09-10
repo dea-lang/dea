@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-09-03
+Version: 2026-09-10
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -16,6 +16,7 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 - [work/plans/](../work/plans/) for active and closed Dea-wide plans.
 - [l0/docs/project-status.md](../l0/docs/project-status.md) for the current L0 implementation and release status.
 - [l0/docs/releases/2.0.0.md](../l0/docs/releases/2.0.0.md) for L0 2.0.0 changes and migration guidance.
+- [l0/docs/releases/2.1.0.md](../l0/docs/releases/2.1.0.md) for the current L0 2.1.0 release and compatibility guidance.
 - [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 bootstrap implementation status.
 - [l1/README.md](../l1/README.md) for the current L1 bootstrap subtree entry point.
 - [docs/specs/compiler/cli-contract.md](specs/compiler/cli-contract.md) for the shared compiler CLI contract.
@@ -51,8 +52,12 @@ Its repository status today is:
 - the canonical public CLI and user documentation surface,
 - validated through the existing L0 test, bootstrap, packaging, and docs workflows,
 - versioned under the `l0-v*` / `l0-snapshot-*` release namespace,
-- stable at released version `2.0.0`, including its namespaced CLI aliases, wildcard-only `case` defaults, and checked
+- stable at released version `2.1.0`, retaining its namespaced CLI aliases, wildcard-only `case` defaults, and checked
   runtime pointer validation modes.
+
+L0 2.1.0 adds the installed public C runtime header, vector self-alias safety, semantic optional hashes,
+sanitizer-visible quarantine lifetimes, and cohesive compiler modules in both stages. Python 3.14 remains the Stage 1
+minimum. The existing L0 language and CLI contract is unchanged from 2.0.0.
 
 ### Dea/L1
 
@@ -119,7 +124,7 @@ by the relevant level subtree.
 
 ## Current Project Posture
 
-- Dea/L0 `2.0.0` is the stable release line. User-visible fixes and future compatibility changes remain governed by L0
+- Dea/L0 `2.1.0` is the stable release line. User-visible fixes and future compatibility changes remain governed by L0
   semantic versioning and Stage 1/Stage 2 parity.
 - Dea/L1 remains a bootstrap subtree rather than a release-bearing product. Its current direction is maintained in
   [l1/docs/roadmap.md](../l1/docs/roadmap.md).

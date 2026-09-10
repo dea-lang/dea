@@ -1,8 +1,8 @@
 # L0 Project Status
 
-Version: 2026-08-26
+Version: 2026-09-10
 
-This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.0.0`.
+This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.1.0`.
 
 L0 now lives as one language subtree inside the Dea monorepo; monorepo release tags use the `l0-vX.Y.Z` namespace while
 historical pre-monorepo tags remain legacy references. The monorepo also contains the active Dea/L1 bootstrap subtree
@@ -13,7 +13,8 @@ under `l1/`.
 Use this file as a status snapshot. For implementation details, use:
 
 - [docs/project-status.md](../../docs/project-status.md) for the Dea-wide monorepo status snapshot.
-- [l0/docs/releases/2.0.0.md](releases/2.0.0.md) for the current release body and migration guidance.
+- [l0/docs/releases/2.0.0.md](releases/2.0.0.md) for the previous major release and migration guidance.
+- [l0/docs/releases/2.1.0.md](releases/2.1.0.md) for the current release body and compatibility guidance.
 - [l0/docs/reference/architecture.md](reference/architecture.md) for pass structure and data flow.
 - [l0/docs/specs/compiler/stage1-contract.md](specs/compiler/stage1-contract.md) for external interfaces and guarantees.
 - [l0/docs/reference/c-backend-design.md](reference/c-backend-design.md) for backend lowering and generated C behavior.
@@ -24,6 +25,27 @@ Use this file as a status snapshot. For implementation details, use:
 - [l0/docs/specs/compiler/stage2-contract.md](specs/compiler/stage2-contract.md) for Stage 2 contract and provenance.
 
 ## Current Status
+
+### L0 2.1.0
+
+- The declaration-only public C header `dea_rt.h` is included in install prefixes and distributions. Additional C
+  translation units use it while generated L0 C owns the header-only runtime through `l0_runtime.h`.
+- Shared `dea_*` aliases, `DEA_*` value macros, and identically typed common `rt_*` functions provide a bounded C
+  source/representation compatibility surface with L1; runtime binaries and level-specific records are not
+  interchangeable.
+- Byte-vector self-appends remain valid across backing-store relocation. Optional scalar hashes ignore inactive payload
+  bytes and padding, while absent optional strings use a distinct input domain from present values. Exact runtime hashes
+  are not persistent identifiers or compatibility fingerprints.
+- AddressSanitizer can detect stale accesses to quarantined user storage. Generated Dea trace locations remain intact;
+  foreign-C runtime calls use the documented `<runtime>:0` fallback.
+- Both stages separate CLI, semantic, emitter, and backend responsibilities into cohesive modules with canonical state
+  owners. Stage 1 uses modern Python annotations and structural dispatch while retaining its Python 3.14 minimum; Python
+  3.15.0rc2 compatibility was also validated locally.
+- Unified CI validates strict generated documentation. Docker validation includes its required cross-level and vendored
+  inputs, and shared editors correctly handle wildcard-only `case` defaults.
+
+These changes preserve the 2.0.0 language, CLI, public L0 types, and diagnostic-code surface. The repeatable
+`--c-source` option predates this update; the supported runtime declaration header is new in 2.1.0.
 
 ### Stage 1
 
@@ -111,7 +133,7 @@ The current development support baseline remains:
 
 ## Known Limitations and Constraints
 
-These remain true in repository HEAD and in the released `2.0.0` line:
+These remain true in the current `2.1.0` release:
 
 1. Backend output is one C translation unit (no multi-object/header split pipeline yet).
 2. Arrays/slices are not implemented, and pointer indexing is not part of the current L0 language surface; indexing
