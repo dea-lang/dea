@@ -1,6 +1,6 @@
 # L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-08-30
+Version: 2026-09-11
 
 This document describes the implemented Dea/L1 Stage 1 path from per-module generated C and one-module compilation to an
 interface-authoritative executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
@@ -14,6 +14,7 @@ Related canonical documents:
 - textual interface format: [l1/docs/specs/compiler/module-interface-format.md][interface-format]
 - compiler pipeline and ownership: [l1/docs/reference/architecture.md][architecture]
 - generated-C and runtime-link details: [l1/docs/reference/c-backend-design.md][backend]
+- bundled semantic/native support: [l1/docs/reference/stdlib-preparation.md][preparation]
 - shared diagnostic meanings: [docs/specs/compiler/diagnostic-code-catalog.md][diagnostics]
 
 ## 1. Implemented Workflow
@@ -26,7 +27,9 @@ l1c --gen MODULE [-I INTERFACE_ROOT]... [-o EXACT_C_PATH]
 
 The target itself must resolve from source. A selected valid imported `.l1m` is sufficient without native siblings.
 Generation writes only stdout or the exact requested file, creates no companions, and never invokes a host compiler or
-linker.
+linker. Bundled providers use the bootstrap-owned semantic set under `$L1_BUILD_DIR/interfaces/`, at the canonical
+bundled system-root position. Explicit interfaces retain priority; system roots precede project roots and explicit
+`--sys-root` suppresses managed discovery there. `L1_SYSTEM` retains its source-root selection behavior.
 
 Compile each source-backed module against verified textual interfaces:
 
@@ -46,10 +49,12 @@ l1c --run MODULE [-I INTERFACE_ROOT]... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT].
 ```
 
 Both modes expand the requested source target under `MRP_ALLOW_SOURCE_FALLBACK`. The first selected interface is
-authoritative and contributes its original opaque sibling `.o`; otherwise a provider may fall back to source and is
-compiled once into the invocation workspace. Source nodes compile dependency-first with direct-import order as the
-deterministic tie-breaker. The requested target is the explicit link entry and must itself define an eligible bridge;
-`--entry` is invalid. Foreign objects are caller-asserted opaque inputs and retain their relative declaration order.
+authoritative. Explicit providers contribute their original opaque sibling `.o`; managed bundled providers materialize
+an exact copied semantic interface and matching native object from preparation. Otherwise a provider may fall back to
+source and is compiled once into the invocation workspace. Source nodes compile dependency-first with direct-import
+order as the deterministic tie-breaker. The requested target is the explicit link entry and must itself define an
+eligible bridge; `--entry` is invalid. Foreign objects are caller-asserted opaque inputs and retain their relative
+declaration order.
 
 Build writes the requested or default executable. Run writes a temporary executable, launches it directly with exact
 post-`--` arguments, returns its status, and cleans it. Build keep-C retains `OUTPUT.dea-c/`; run keep-C retains
@@ -62,10 +67,10 @@ outputs may claim the root wrapper path on case-insensitive filesystems.
 or `--link-arg` / `-Cl` form from the shared CLI contract. The source target expands into the dependency-ordered Dea set
 at its encounter position; every other item stays in relative order.
 
-Link an explicitly supplied object set:
+Link explicit objects with interface-assisted provider discovery:
 
 ```text
-l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT]... [-e MODULE] -o OUTPUT
+l1c -k DEA_OBJECT... [-I INTERFACE_ROOT]... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT]... [-e MODULE] -o OUTPUT
 ```
 
 `--link` / `-k` requires at least one positional Dea object and exactly one non-empty output path. Positional Dea paths
@@ -73,14 +78,20 @@ and repeatable `--foreign-object PATH` / `--foreign-object=PATH` / `-Cf PATH` / 
 encounter order. `--entry MODULE` / `--entry=MODULE` / `-e MODULE` is optional, accepts one canonical dotted module
 name, and may appear at most once.
 
-Source roots, system roots, interface roots, `--keep-c`, `--all-modules`, `--include-eof`, runtime arguments after `--`,
-and analysis-only options are not valid link inputs. Host compiler/options, runtime include/library paths, trace flags,
+Missing lifecycle-import providers are discovered through ordered `-I` roots, then known bundled managed modules.
+Explicit Dea objects have highest priority. Invalid selected providers fail without fallback; standalone link never
+resolves provider source. Discovered objects appear dependency-first immediately before the first explicit root needing
+them, while every explicit operand retains its relative position.
+
+Source roots, system roots, `--keep-c`, `--all-modules`, `--include-eof`, runtime arguments after `--`, and
+analysis-only options are not valid link inputs. Host compiler/options, runtime include/library paths, trace flags,
 `--unchecked`, and `--check-basic` remain valid because the wrapper must be compiled and the matching runtime variant
-must be linked. `L1_CFLAGS` and `--c-options` configure wrapper compilation and are never forwarded as final-link
-command words. The wrapper object is opaque, however, so caller-selected compiler options may encode toolchain-specific
-linker controls that the final linker honors. External controls enter the common typed stream instead: `-L` and `-l` use
-their canonical driver spellings, rpaths receive compiler-family lowering, and each raw link argument remains one
-unchanged host-driver word.
+must be linked. `--stdlib-cache` and `--no-auto-prepare` control bundled support. `L1_CFLAGS` and `--c-options`
+configure wrapper and managed bundled generated-C compilation and are never forwarded as final-link command words.
+Runtime implementation C uses separate compiler-owned flags. The wrapper object is opaque, however, so caller-selected
+compiler options may encode toolchain-specific linker controls that the final linker honors. External controls enter the
+common typed stream instead: `-L` and `-l` use their canonical driver spellings, rpaths receive compiler-family
+lowering, and each raw link argument remains one unchanged host-driver word.
 
 ## 2. Artifact Authority and Trusted Pair
 
@@ -113,19 +124,20 @@ terminal suffix `.o`. Replacing only that suffix with `.l1m` in the same directo
 symlinks are allowed when their targets are regular.
 
 The verified sibling is the sole Dea semantic and lifecycle authority. The pair's basename does not independently
-constrain module identity. All Dea objects remain explicit CLI operands: interface imports and dependencies validate the
-supplied set but never search for or add native paths.
+constrain module identity. Explicit objects keep priority over discovered providers. Only verified lifecycle imports
+expand discovery; `require` and `link` remain validation expectations and never add independent dependency edges.
 
-The pair is caller-trusted. No checksum, native symbol, data anchor, metadata section, or other mechanism binds its two
-files. Build systems and callers must create, copy, replace, invalidate, and keep the pair stable together from
+An explicit pair is caller-trusted. No checksum, native symbol, data anchor, metadata section, or other mechanism binds
+its two files. Build systems and callers must create, copy, replace, invalidate, and keep the pair stable together from
 selection through link submission. Concurrent target replacement is outside the contract for standalone link, build, and
 run. Mixed-generation pairs may fail interface validation, fail at the host link, or link successfully with incorrect
 native behavior.
 
 ## 3. Opaque Native Input Boundary
 
-Dea performs no Dea-side reads of caller Dea or foreign object bytes, compiled wrapper bytes, runtime archive bytes, or
-TinyCC runtime-object bytes during standalone link, build, or run.
+Dea does not inspect the native semantics of caller objects, compiled wrappers, or runtime inputs. Caller-owned native
+bytes are not read. Managed profile integrity hashes its own outputs and verifies exact semantic copies, without
+interpreting object format, symbols, or ABI compatibility.
 
 - A positional Dea `.o` is an opaque native payload paired with its verified interface.
 - `--foreign-object` asserts that one regular-file path names a host-compatible relocatable object. The foreign input
@@ -143,15 +155,16 @@ symbols are host-tool concerns. Their captured diagnostics are preserved under `
 
 ## 4. Interface Verification, Graph, and Entry Checks
 
-Before scratch allocation, the driver performs these phases in order:
+Before wrapper scratch allocation, the driver performs these phases in order. Managed preparation may own separate
+scratch while materializing validated bundled providers:
 
 1. validate CLI operand roles, reject object-suffixed library/raw inputs and opaque option-file indirection, validate
    exact positional `.o` suffixes, and check native-input regular-file status;
 2. derive, read, UTF-8 validate, parse, and run full interface verification on every sibling `.l1m`;
 3. reject the complete set if any interface fails, so unverified identities never enter graph state;
 4. register canonical module identities and reject duplicates;
-5. require every non-virtual provider named by `import module`, `require`, or `link` to be explicitly supplied and to
-   carry the exact expected verified public fingerprint;
+5. discover missing lifecycle-import providers through ordered interface roots and managed fallback, and require every
+   non-virtual provider named by `import module`, `require`, or `link` to carry the expected verified fingerprint;
 6. resolve explicit or inferred entry selection from `entry;` records;
 7. compute lifecycle order and reject lifecycle-import cycles in one iterative traversal; and
 8. require every non-virtual `require` / `link` provider to be transitively reachable from its consumer through a
@@ -201,7 +214,7 @@ their translation unit; they do not call dependency lifecycle functions themselv
 
 Before scratch allocation, the link driver resolves and validates the host compiler, parsed wrapper options, runtime
 include directory, exact public `dea_rt.h`, runtime native inputs, output path, and every original caller object path.
-Runtime archives and TinyCC runtime objects are checked as regular files rather than read.
+Explicit runtime inputs are checked as regular files. Managed runtime outputs also pass preparation integrity checks.
 
 The driver then:
 
@@ -209,8 +222,8 @@ The driver then:
 2. compiles it alone to `wrapper.o`;
 3. requires the compiler result to be a no-follow regular file;
 4. invokes the host driver with `wrapper.o`, every user Dea object, foreign object, library, search path, translated
-   rpath, and raw driver word in exact encounter order, then the selected runtime native inputs, the optional non-MSVC
-   math-library argument, and the output arguments; and
+   rpath, and raw driver word in exact encounter order with discovered providers inserted before their first consumer,
+   then the selected runtime native inputs, the optional non-MSVC math-library argument, and the output arguments; and
 5. requires the final output to be a regular file.
 
 There are no caller-input snapshots. "Original path" means the original caller-selected file rather than copied bytes;
@@ -226,7 +239,9 @@ Runtime mode selects `libdea_rt.a`, `libdea_rt_traced.a`, `libdea_rt_check_basic
 compiler families receive one exact archive path. Under ADR-0027, TinyCC receives the complete variant-matched raw
 runtime object set when available, with exact archive fallback. Native runtime inputs are opaque and the carve-out does
 not authorize arbitrary public raw runtime inputs. Because runtime inputs follow the user stream by exact path, `-L`
-cannot change which runtime is selected.
+cannot change which runtime is selected. Without an explicit runtime-library override, the driver obtains matching
+support through managed preparation. TinyCC managed profiles always contain the complete variant-matched raw set.
+`make runtime` developer products are not an implicit managed cache.
 
 Recognized GCC and Clang driver names plus exact `cc` lower each rpath as `-Xlinker -rpath -Xlinker VALUE`, which
 preserves commas inside the value. TinyCC receives its documented `-Wl,-rpath=VALUE` form; because that syntax splits
@@ -268,12 +283,13 @@ the legacy whole-program generator and backend-owned process wrapper have been r
 
 For identical source, resolved graph, verified interfaces, fingerprints, code-generation settings, and compiler version,
 `--gen`, compile-only keep-C, build keep-C, and run keep-C expose byte-identical module C. Build/run retention copies
-the exact compiler input after linking, interface/object providers require and produce no C, and `__dea_wrapper.c`
-remains outside module identity as a separate link-orchestration artifact.
+the exact command-generated compiler input after linking. Explicit interface/object providers require and produce no C;
+managed bundled providers regenerate canonical C from the selected toolchain inputs without requiring cached scratch.
+`__dea_wrapper.c` remains a separate link-orchestration artifact.
 
 Automatic host-dependency discovery, package or per-module library manifests, static/shared-library production, C++
-interoperation, and implicit object discovery remain outside the implemented surface. External host dependencies must be
-supplied by the CLI or an invoking build tool.
+interoperation, and arbitrary project/host dependency discovery remain outside the implemented surface. External host
+dependencies must be supplied by the CLI or an invoking build tool.
 
 [abi]: ../specs/compiler/abi.md
 [architecture]: architecture.md
@@ -281,3 +297,4 @@ supplied by the CLI or an invoking build tool.
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [diagnostics]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [interface-format]: ../specs/compiler/module-interface-format.md
+[preparation]: stdlib-preparation.md

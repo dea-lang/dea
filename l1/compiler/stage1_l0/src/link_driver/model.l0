@@ -20,11 +20,12 @@ struct LinkInput {
     interface_path: string?;
     interface: ModuleInterface*?;
     visit_state: int;
+    discovered: bool;
 }
 
 /** Verified standalone link set and its deterministic lifecycle order. */
 struct LinkPlan {
-    inputs: VectorBase*; /* LinkInput* in CLI encounter order */
+    inputs: VectorBase*; /* LinkInput* in native submission order */
     modules_by_name: StringPtrMap*; /* module name -> borrowed LinkInput* */
     lifecycle_order: StringVector*;
     entry_module: string;
@@ -80,7 +81,7 @@ func ld_input_create(
     interface_path: string?,
     interface: ModuleInterface*?
 ) -> LinkInput* {
-    return new LinkInput(kind, value, interface_path, interface, 0);
+    return new LinkInput(kind, value, interface_path, interface, 0, false);
 }
 
 /** Create one opaque foreign input. */

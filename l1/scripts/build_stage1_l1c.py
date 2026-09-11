@@ -15,6 +15,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS_ROOT) not in sys.path:
@@ -46,7 +47,7 @@ RT_QUARANTINE_MAX_BYTES_DEFINE = "_RT_QUARANTINE_MAX_BYTES"
 RT_QUARANTINE_MAX_COUNT_DEFINE = "_RT_QUARANTINE_MAX_COUNT"
 STAGE1_SUPPORT_SOURCES = tuple(
     (REPO_ROOT / "compiler" / "stage1_l0" / "support" / name).resolve()
-    for name in ("interface_fingerprint.c", "compiler_support.c")
+    for name in ("interface_fingerprint.c", "compiler_support.c", "preparation_support.c")
 )
 
 
@@ -260,10 +261,67 @@ def write_env_script(layout: L1BuildLayout) -> Path:
     return path
 
 
+def provide_public_headers(layout: L1BuildLayout) -> None:
+    """Provide toolchain headers independently of native program-runtime construction.
+
+    Args:
+        layout: Resolved build directories for this compiler.
+    """
+    destination = layout.build_dir / "include"
+    destination.mkdir(parents=True, exist_ok=True)
+    for name in ("dea_rt.h", "l1_real.h"):
+        shutil.copy2(REPO_ROOT / "compiler/shared/runtime/include" / name, destination / name)
+
+
+def build_semantic_interfaces(layout: L1BuildLayout, native_bin: Path) -> None:
+    """Generate and verify the full semantic set with the just-built frontend.
+
+    Args:
+        layout: Resolved compiler build directories.
+        native_bin: Newly built Stage 1 native compiler executable.
+
+    Raises:
+        RuntimeError: No canonical bundled modules were found.
+        subprocess.CalledProcessError: Interface generation or graph verification failed.
+    """
+    source_root = REPO_ROOT / "compiler/shared/l1/stdlib"
+    modules = sorted(path.relative_to(source_root).with_suffix("").as_posix().replace("/", ".")
+                     for path in source_root.rglob("*.l1"))
+    if not modules or any(not name.startswith(("std.", "sys.")) for name in modules):
+        raise RuntimeError("invalid canonical bundled module inventory")
+    env = dict(os.environ)
+    for name in ("L1_SYSTEM", "L1_CFLAGS", "L1_CC", "L1_STDLIB_CACHE", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB"):
+        env.pop(name, None)
+    env["L1_HOME"] = str(REPO_ROOT / "compiler")
+    env["L1_BUILD_DIR"] = str(layout.build_dir)
+    with tempfile.TemporaryDirectory(prefix="semantic-bootstrap-", dir=layout.build_dir) as temporary:
+        workspace = Path(temporary)
+        interfaces = workspace / "interfaces"
+        interfaces.mkdir()
+        for module in modules:
+            output = interfaces / (module.replace(".", "/") + ".l1m")
+            output.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run([str(native_bin), "--emit-interface", "--sys-root", str(source_root),
+                            "--project-root", str(workspace), module, "-o", str(output)],
+                           cwd=REPO_ROOT, env=env, check=True)
+        umbrella = workspace / "_dea_semantic_bootstrap.l1"
+        umbrella.write_text("module _dea_semantic_bootstrap;\n" +
+                            "".join(f"import {module};\n" for module in modules), encoding="utf-8")
+        subprocess.run([str(native_bin), "--gen", "--sys-root", str(source_root), "--project-root", str(workspace),
+                        "-I", str(interfaces), "_dea_semantic_bootstrap", "-o", str(workspace / "verify.c")],
+                       cwd=REPO_ROOT, env=env, check=True)
+        destination = layout.build_dir / "interfaces"
+        if destination.exists():
+            shutil.rmtree(destination)
+        interfaces.rename(destination)
+    print(f"build-stage1-l1c: verified {len(modules)} bundled interfaces under {destination}")
+
+
 def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], keep_c: bool) -> tuple[Path, Path, Path]:
     """Build the repo-local L1 Stage 1 compiler artifact."""
 
     layout.bin_dir.mkdir(parents=True, exist_ok=True)
+    provide_public_headers(layout)
 
     native_bin = layout.bin_dir / "l1c-stage1.native"
     c_output = layout.bin_dir / "l1c-stage1.c"
@@ -290,6 +348,7 @@ def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], k
     write_env_script(layout)
     native_bin.chmod(native_bin.stat().st_mode | 0o111)
     write_relative_alias(layout.bin_dir / "l1c", "l1c-stage1")
+    build_semantic_interfaces(layout, native_bin)
     return wrapper_bin, native_bin, c_output
 
 

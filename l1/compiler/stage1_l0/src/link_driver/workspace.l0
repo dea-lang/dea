@@ -12,6 +12,7 @@ import std.vector;
 import util.diag;
 import util.log;
 import analysis;
+import preparation.consumer;
 import build_driver;
 import cli_args.model;
 import compiler_filesystem;
@@ -68,7 +69,7 @@ func ld_validate_retained_c_modules(
     }
     for (let i = 0; i < vec_size(ordered); i = i + 1) {
         let node = ld_ptr_vec_get(ordered, i) as ModuleGraphNode*;
-        if (ord(node.origin.kind) == ord(MOK_SOURCE) &&
+        if ((ord(node.origin.kind) == ord(MOK_SOURCE) || node.managed) &&
             to_lower_s(node.module_name) == "__dea_wrapper") {
             let collision = join(
                 root as string, "__dea_wrapper.c");
@@ -203,7 +204,7 @@ func ld_retain_build_run_c(
         for (let i = 0; i < vec_size(ordered); i = i + 1) {
             let node = ld_ptr_vec_get(
                 ordered, i) as ModuleGraphNode*;
-            if (ord(node.origin.kind) != ord(MOK_SOURCE)) {
+            if (ord(node.origin.kind) != ord(MOK_SOURCE) && !node.managed) {
                 continue;
             }
             let destination_opt = mg_artifacts_for_module(
@@ -306,20 +307,21 @@ func ld_build_run_in_workspace(
     retained_c_root: string?,
     run_program: bool
 ) -> int {
-    with (let diags = diag_create() => diag_free(diags)) {
-        if (!ld_validate_output(executable, diags) ||
+    with (let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, true) => mp_free(managed)) {
+        if (!ld_validate_cli_before_preparation(opts, executable, false, diags) ||
+            !ld_validate_output(executable, diags) ||
             !ld_validate_retained_c_root(retained_c_root, diags)) {
             dp_print_collector(diags);
             return 1;
         }
 
-        let result = analysis_analyze_entry_with_resolution(
+        let result = mp_analyze(
+            managed,
             prepared.search_paths,
             prepared.entry_module,
-            opts.interface_paths,
             MRP_ALLOW_SOURCE_FALLBACK,
-            workspace.root,
-            cfg
+            workspace.root
         );
         if (analysis_diag_count(result) > 0) {
             dp_print_collector_with_sources(
@@ -346,6 +348,12 @@ func ld_build_run_in_workspace(
         let ordered = ordered_opt as VectorBase*;
         if (!ld_validate_retained_c_modules(
                 retained_c_root, ordered, diags)) {
+            dp_print_collector(diags);
+            vec_free(ordered);
+            analysis_result_free(result);
+            return 1;
+        }
+        if (!mp_runtime(managed, true, diags)) {
             dp_print_collector(diags);
             vec_free(ordered);
             analysis_result_free(result);

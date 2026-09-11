@@ -75,6 +75,33 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
         while (i < cli_end) {
             let token = sv_get(argv, i);
 
+            if (token == "--no-auto-prepare") {
+                (opts as CliOptions*).no_auto_prepare = true;
+                i = i + 1;
+                continue;
+            }
+            if (token == "--prepare-stdlib") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_PREPARE_STDLIB);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--force") {
+                (opts as CliOptions*).force = true;
+                i = i + 1;
+                continue;
+            }
+            if (token == "--stdlib-cache") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value != null) { (opts as CliOptions*).stdlib_cache = value; i = i + 1; }
+                i = i + 1;
+                continue;
+            }
+            if (starts_with_s(token, "--stdlib-cache=")) {
+                (opts as CliOptions*).stdlib_cache = slice_s(token, len_s("--stdlib-cache="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
             if (token == "--run" || token == "-r") {
                 cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_RUN);
                 i = i + 1;
@@ -697,6 +724,10 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                         "': expected a canonical dotted module name"
                     );
                 }
+            }
+        } else if (ord(parsed_opts.mode) == ord(CM_PREPARE_STDLIB)) {
+            if (parsed_opts.entry_target != null) {
+                cli_emit_error(diags as DiagCollector*, "L1C-2157", "mode '" + cli_mode_flag(parsed_opts.mode) + "' accepts no target");
             }
         } else if (parsed_opts.entry_target == null) {
             cli_emit_error(diags as DiagCollector*, "L1C-2021", "missing required target module/file name");

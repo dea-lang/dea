@@ -6,9 +6,14 @@ This directory contains the active `stage1_l0` bootstrap compiler for Dea/L1.
 retargeted to the Dea/L1 public interface.
 
 The driver currently provides per-module generated C, compile-only `.o + .l1m` artifacts, verified standalone linking,
-and multi-compilation-unit build/run, including ordered external-library inputs in every link-involving mode. See
-[`l1/docs/project-status.md`][project-status] for the complete current contract and [`l1/docs/user/linking.md`][linking]
-for the user workflow.
+ordered interface discovery, and multi-compilation-unit build/run, including ordered external-library inputs in every
+link-involving mode. See [`l1/docs/project-status.md`][project-status] for the complete current contract and
+[`l1/docs/user/linking.md`][linking] for the user workflow.
+
+`make build-stage1` uses the new compiler frontend to generate and verify the canonical bundled semantic interfaces,
+independently of native stdlib/runtime construction. The preparation driver and compiler-private C support provide
+on-demand native profiles, conservative toolchain reuse and one local cache. See
+[l1/docs/reference/stdlib-preparation.md][preparation] for the workflow and ownership boundaries.
 
 The implementation sources in this subtree remain `.l0`, and the copied implementation test suite is also `.l0`. Those
 tests are exercised through the upstream `l0c-stage2` bootstrap compiler rather than through `l1c` itself. The fixture
@@ -21,7 +26,7 @@ examples, and the dedicated ARC/memory trace suite. Generated-C identity is chec
 committed full-file generated-C golden files remain outside the current bootstrap contract.
 
 Production sources are organized into phase and ownership families. Coarse pass/command entrypoints remain at the root;
-shared state and helpers are imported directly from their canonical child modules. The 116-module layout and the two
+shared state and helpers are imported directly from their canonical child modules. The 120-module layout and the two
 retained recursive kernels are documented in [`l1/docs/reference/architecture.md`][architecture].
 
 Run the local bootstrap workflow from [`l1/`][l1-root]:
@@ -49,4 +54,5 @@ For a non-default upstream bootstrap compiler, set `L1_BOOTSTRAP_L0C=/path/to/l0
 [architecture]: ../../docs/reference/architecture.md
 [l1-root]: ../../README.md
 [linking]: ../../docs/user/linking.md
+[preparation]: ../../docs/reference/stdlib-preparation.md
 [project-status]: ../../docs/project-status.md

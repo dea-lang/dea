@@ -8,6 +8,7 @@ module compile_driver;
 import util.diag;
 import util.log;
 import analysis;
+import preparation.consumer;
 import build_driver;
 import cli_args.model;
 import diag_print;
@@ -18,7 +19,8 @@ import compile_driver.transaction;
 
 /** Execute Stage 1 compile-only mode for exactly one source module. */
 func cd_cmd_compile(opts: CliOptions*, cfg: LogConfig*) -> int {
-    with (let diags = diag_create() => diag_free(diags)) {
+    with (let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
         let prepared = bd_prepare_input(opts, diags, cfg);
         if (prepared == null) {
             dp_print_collector(diags);
@@ -34,13 +36,12 @@ func cd_cmd_compile(opts: CliOptions*, cfg: LogConfig*) -> int {
             return 1;
         }
         let artifacts = artifacts_opt as ModuleArtifactPaths*;
-        let result = analysis_analyze_entry_with_resolution(
+        let result = mp_analyze(
+            managed,
             prep.search_paths,
             entry_module,
-            opts.interface_paths,
             MRP_REQUIRE_INTERFACE,
-            null,
-            cfg
+            null
         );
         bd_prepared_input_free(prep);
         prepared = null;
@@ -54,7 +55,7 @@ func cd_cmd_compile(opts: CliOptions*, cfg: LogConfig*) -> int {
             mg_artifacts_free(artifacts);
             return 1;
         }
-        if (!cd_prepare_destinations(artifacts, opts.keep_c, diags)) {
+        if (!mp_runtime(managed, false, diags) || !cd_prepare_destinations(artifacts, opts.keep_c, diags)) {
             dp_print_collector(diags);
             analysis_result_free(result);
             mg_artifacts_free(artifacts);

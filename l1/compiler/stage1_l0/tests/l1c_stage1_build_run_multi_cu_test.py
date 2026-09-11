@@ -831,6 +831,8 @@ def main() -> int:
                 "--run",
                 status_root,
                 "status.main",
+                "--runtime-lib",
+                compiler.parent.parent / "lib",
             ),
             cwd=root,
             env=env,

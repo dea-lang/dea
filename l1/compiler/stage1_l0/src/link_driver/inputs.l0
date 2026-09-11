@@ -7,16 +7,21 @@ module link_driver.inputs;
 
 import std.fs;
 import std.hashmap;
+import std.hashset;
+import std.path;
 import std.vector;
 import util.diag;
 import util.strings;
 import cli_args.model;
 import compiler_filesystem;
+import dea_prelude;
 import interface_fingerprint;
 import mi_utils;
 import module_graph;
 import module_interface;
 import parser.interface;
+import source_paths;
+import preparation.consumer;
 import link_driver.model;
 import link_driver.plan;
 
@@ -96,9 +101,11 @@ func ld_load_sibling_interface(
 }
 
 /** Validate original native paths and prepare their verified interface set. */
-func ld_prepare_cli_inputs(
+func ld_prepare_cli_inputs_managed(
     operands: VectorBase*,
+    interface_paths: StringVector*,
     explicit_entry: string?,
+    managed: ManagedPreparation*?,
     diags: DiagCollector*
 ) -> LinkPlan*? {
     /* Path-only role validation must complete before any filesystem access. */
@@ -194,5 +201,168 @@ func ld_prepare_cli_inputs(
     }
 
     let plan = new LinkPlan(inputs, spm_create(), sv_create(vec_size(inputs)), "");
-    return ld_prepare_verified_plan(plan, explicit_entry, diags);
+    if (!ld_register_modules(plan, diags) ||
+        !ld_discover_providers(plan, interface_paths, managed, diags)) {
+        ld_plan_free(plan);
+        return null;
+    }
+    return ld_prepare_registered_plan(plan, explicit_entry, diags);
+}
+
+/** Preserve the explicit-provider API for caller-managed and unit-test workflows. */
+func ld_prepare_cli_inputs_with_paths(operands: VectorBase*, interface_paths: StringVector*,
+    explicit_entry: string?, diags: DiagCollector*) -> LinkPlan*? {
+    return ld_prepare_cli_inputs_managed(operands, interface_paths, explicit_entry, null, diags);
+}
+
+/** Prepare a caller-complete link set without additional provider roots. */
+func ld_prepare_cli_inputs(
+    operands: VectorBase*,
+    explicit_entry: string?,
+    diags: DiagCollector*
+) -> LinkPlan*? {
+    with (let paths = sv_create(0) => sv_free(paths)) {
+        return ld_prepare_cli_inputs_with_paths(
+            operands, paths, explicit_entry, diags);
+    }
+}
+
+/** Select the first authoritative interface and its opaque sibling object. */
+func ld_discover_provider(
+    module_name: string,
+    paths: StringVector*,
+    managed: ManagedPreparation*?,
+    diags: DiagCollector*
+) -> LinkInput*? {
+    let relative = sp_module_interface_relpath(module_name);
+    if (relative == null) {
+        return null;
+    }
+    for (let i = 0; i < sv_size(paths); i = i + 1) {
+        let candidate = join(sv_get(paths, i), relative as string);
+        /* A dangling symlink or inaccessible endpoint remains authoritative. */
+        if (cfs_path_kind(candidate) == CFS_PATH_ABSENT) {
+            continue;
+        }
+        let artifacts = mg_artifacts_from_interface(module_name, candidate, diags);
+        if (artifacts == null) {
+            return null;
+        }
+        let object_path = (artifacts as ModuleArtifactPaths*).object_path;
+        mg_artifacts_free(artifacts);
+        let interface = ld_load_sibling_interface(object_path, candidate, diags);
+        if (interface == null) {
+            return null;
+        }
+        let verified = interface as ModuleInterface*;
+        if (verified.module_name != module_name) {
+            ld_error(diags, "DRV-0020",
+                "module name mismatch: file " + candidate + " declares '" +
+                    verified.module_name + "' but was loaded as '" + module_name + "'",
+                candidate);
+            mi_free(verified);
+            return null;
+        }
+        if (cfs_path_kind_follow(object_path) != CFS_PATH_REGULAR) {
+            ld_error(diags, "L1C-2097",
+                "discovered provider object is missing or is not a regular file: " +
+                    object_path, object_path);
+            mi_free(verified);
+            return null;
+        }
+        let input = ld_input_create(LOK_DEA_OBJECT, object_path, candidate, verified);
+        input.discovered = true;
+        return input;
+    }
+    if (managed != null && mp_bundled_provider(managed as ManagedPreparation*, module_name)) {
+        let selected = managed as ManagedPreparation*;
+        if (!mp_ensure(selected, true, diags)) { return null; }
+        with (let prepared_paths = sv_create(1) => sv_free(prepared_paths)) {
+            sv_push(prepared_paths, join(selected.native_root as string, "modules"));
+            return ld_discover_provider(module_name, prepared_paths, null, diags);
+        }
+    }
+    return null;
+}
+
+/**
+ * Expand imports iteratively after explicit identity registration.
+ *
+ * The plan owns newly selected providers immediately, including on failure.
+ * Only discovered objects enter dependency order; explicit operands keep their
+ * relative order. Cycle and entry diagnostics remain with semantic planning.
+ */
+func ld_discover_providers(
+    plan: LinkPlan*,
+    paths: StringVector*,
+    managed: ManagedPreparation*?,
+    diags: DiagCollector*
+) -> bool {
+    let explicit_count = vec_size(plan.inputs);
+    let ordered = ld_ptr_vec_create(explicit_count);
+    with (
+        let explicit_names = ss_create() => ss_free(explicit_names),
+        let seen = ss_create() => ss_free(seen),
+        let frames = ld_ptr_vec_create(8) => ld_visit_frames_free(frames)
+    ) {
+        for (let i = 0; i < explicit_count; i = i + 1) {
+            let input = ld_plan_input_get(plan, i);
+            if (ord(input.kind) == ord(LOK_DEA_OBJECT)) {
+                ss_add(explicit_names, ld_input_interface(input).module_name);
+            }
+        }
+        for (let root_i = 0; root_i < explicit_count; root_i = root_i + 1) {
+            let root = ld_plan_input_get(plan, root_i);
+            if (ord(root.kind) == ord(LOK_DEA_OBJECT) &&
+                !ss_has(seen, ld_input_interface(root).module_name)) {
+                ss_add(seen, ld_input_interface(root).module_name);
+                ld_ptr_vec_push(frames, new LinkVisitFrame(root, 0) as void*);
+            }
+            while (vec_size(frames) > 0) {
+                let frame_i = vec_size(frames) - 1;
+                let frame = ld_ptr_vec_get(frames, frame_i) as LinkVisitFrame*;
+                let interface = ld_input_interface(frame.input);
+                if (frame.next_import < vec_size(interface.module_imports)) {
+                    let imported = ld_ptr_vec_get(interface.module_imports,
+                        frame.next_import) as InterfaceModuleImport*;
+                    frame.next_import = frame.next_import + 1;
+                    let name = imported.provider_module;
+                    if (dea_is_virtual_module_name(name) || ss_has(seen, name)) {
+                        continue;
+                    }
+                    ss_add(seen, name);
+                    let provider = spm_get(plan.modules_by_name, name);
+                    if (provider == null) {
+                        let previous_errors = diag_count(diags);
+                        let discovered = ld_discover_provider(name, paths, managed, diags);
+                        if (discovered == null) {
+                            if (diag_count(diags) == previous_errors) {
+                                ld_error(diags, "L1C-2101",
+                                    "Dea module '" + interface.module_name +
+                                        "' names missing provider module '" + name + "'",
+                                    frame.input.interface_path as string);
+                            }
+                            vec_free(ordered);
+                            return false;
+                        }
+                        provider = (discovered as LinkInput*) as void*;
+                        ld_ptr_vec_push(plan.inputs, provider as void*);
+                        spm_put(plan.modules_by_name, name, provider as void*);
+                    }
+                    ld_ptr_vec_push(frames,
+                        new LinkVisitFrame(provider as LinkInput*, 0) as void*);
+                    continue;
+                }
+                if (!ss_has(explicit_names, interface.module_name)) {
+                    ld_ptr_vec_push(ordered, frame.input as void*);
+                }
+                frames.length = frame_i;
+                drop frame;
+            }
+            ld_ptr_vec_push(ordered, root as void*);
+        }
+    }
+    vec_free(plan.inputs);
+    plan.inputs = ordered;
+    return true;
 }

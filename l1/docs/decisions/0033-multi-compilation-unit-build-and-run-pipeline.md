@@ -1,7 +1,7 @@
 # ADR-0033: Multi-Compilation-Unit Build and Run Pipeline
 
 - Decision date: 2026-08-23
-- Last edited: 2026-08-30
+- Last edited: 2026-09-11
 - Status: Accepted
 
 ## Context
@@ -16,12 +16,15 @@ L1 `--build` and `--run` use one source-rooted multi-compilation-unit pipeline:
 
 - The requested target resolves from source and expands through the canonical graph under `MRP_ALLOW_SOURCE_FALLBACK`.
   The first selected interface is authoritative; source fallback occurs only when no interface is selected.
+- Managed bundled providers occupy the canonical bundled system-root position after explicit interfaces, preserving
+  system-before-project order and explicit system-root suppression. They resolve semantically first and obtain exact
+  copied `.l1m` plus native objects from preparation before linking.
 - Every source-backed node is generated, fingerprinted, and compiled exactly once under canonical module-relative paths
   in the command-owned private workspace. Deterministic dependency-first order follows each node's ordered direct
   imports.
-- An interface-backed node contributes its verified `.l1m` and original opaque sibling `.o`. Dea verifies interface
-  identity, fingerprints, operational manifests, object regular-file status, and graph consistency but never reads or
-  binds the native bytes. The caller keeps the pair stable from selection through link submission.
+- An explicit interface-backed node contributes its verified `.l1m` and original opaque sibling `.o`. Dea verifies
+  interface identity, fingerprints, operational manifests, object regular-file status, and graph consistency but never
+  reads or binds the native bytes. The caller keeps the pair stable from selection through link submission.
 - The graph-expanded Dea object set is submitted to the common verified link planner at the requested source operand's
   typed-input position. Repeatable foreign objects remain caller-asserted opaque native inputs and preserve their
   relative declaration order.
@@ -40,6 +43,10 @@ L1 `--build` and `--run` use one source-rooted multi-compilation-unit pipeline:
 
 Any graph, analysis, generation, interface, object-compilation, or common-link validation failure prevents the final
 host link and flows through bounded command-workspace cleanup.
+
+Bundled native preparation owns only compiler support. It does not cache application objects or change their workspace
+ownership. Keep-C regenerates canonical managed C when needed, preserving cross-mode bytes independently of optional
+profile scratch. Explicit interface providers still require their original native siblings and no C.
 
 ## Rationale
 
@@ -62,18 +69,28 @@ host link and flows through bounded command-workspace cleanup.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
+
 - [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
   completed separate-compilation and external-linking initiative
+
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
+
 - [l1/work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md][completion]
+
 - [l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md][external-linking]
 
 ## Current Docs
 
+- [l1/docs/reference/stdlib-preparation.md](../reference/stdlib-preparation.md)
+
 - [docs/specs/compiler/cli-contract.md][cli]: public build/run modes, options, retention, execution, and workspace rules
+
 - [l1/docs/reference/separate-compilation.md][separate-compilation]: graph, provider, lifecycle, and native-input
   contract
+
 - [l1/docs/reference/architecture.md][architecture]: Stage 1 orchestration and ownership flow
+
 - [l1/docs/reference/c-backend-design.md][backend]: per-module generation and common wrapper boundary
 
 [architecture]: ../reference/architecture.md
@@ -83,4 +100,5 @@ host link and flows through bounded command-workspace cleanup.
 [completion]: ../../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [external-linking]: ../../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [external-linking-adr]: 0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md
+[preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

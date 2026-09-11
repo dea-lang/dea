@@ -165,25 +165,47 @@ def compiler_path() -> Path:
 
 
 def run_mode(mode: str, stdin_text: str = "", extra_flags: list[str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            str(compiler_path()),
-            "--project-root",
-            "compiler/stage1_l0/tests/fixtures/io_runtime",
-            *(extra_flags or []),
-            "--run",
-            "io_numeric_main",
-            "--",
-            mode,
-        ],
-        cwd=L1_ROOT,
-        input=stdin_text,
-        text=True,
-        encoding="utf-8",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    """Capture program I/O separately from cold native preparation progress.
+
+    Args:
+        mode: I/O fixture operation to execute.
+        stdin_text: Input supplied to the fixture program.
+        extra_flags: Compiler flags selecting generated code and runtime behavior.
+
+    Returns:
+        The failed compilation result or the completed program result.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        executable = Path(tmp) / ("io-probe.exe" if os.name == "nt" else "io-probe")
+        compiled = subprocess.run(
+            [
+                str(compiler_path()),
+                "--project-root",
+                "compiler/stage1_l0/tests/fixtures/io_runtime",
+                *(extra_flags or []),
+                "--build",
+                "io_numeric_main",
+                "-o",
+                str(executable),
+            ],
+            cwd=L1_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        if compiled.returncode != 0:
+            return compiled
+        return subprocess.run(
+            [str(executable), mode],
+            cwd=L1_ROOT,
+            input=stdin_text,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
 
 
 def require_run(
@@ -207,6 +229,35 @@ def require_failure(mode: str, stdin_text: str, stderr_needle: str) -> None:
     if completed.returncode == 0:
         raise AssertionError(f"{mode} unexpectedly succeeded")
     assert stderr_needle in completed.stderr, f"{mode} stderr mismatch: {completed.stderr!r}"
+
+
+def require_run_stdin_forwarding() -> None:
+    """Preserve stdin through cold native preparation and a warm direct run."""
+    with tempfile.TemporaryDirectory(prefix="l1-run-stdin-") as tmp:
+        env = dict(os.environ)
+        for name in ("L1_CFLAGS", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB"):
+            env.pop(name, None)
+        command = [
+            str(compiler_path()), "--project-root",
+            "compiler/stage1_l0/tests/fixtures/io_runtime",
+            "--c-compiler", runtime_c_compiler(), "--stdlib-cache", tmp,
+        ]
+        for warm in (False, True):
+            completed = subprocess.run(
+                [*command, *( ["--no-auto-prepare"] if warm else []),
+                 "--run", "io_numeric_main", "--", "delim"],
+                cwd=L1_ROOT, env=env, input=",alpha beta;gamma",
+                capture_output=True, text=True, encoding="utf-8", check=False,
+            )
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            assert completed.stdout == "\nalpha\nbeta\ngamma\n", completed.stdout
+            if warm:
+                assert completed.stderr == "", completed.stderr
+            else:
+                lines = completed.stderr.splitlines()
+                assert len(lines) == 2, completed.stderr
+                assert lines[0].startswith("Preparing stdlib and runtime with "), completed.stderr
+                assert lines[1].startswith("Prepared stdlib and runtime with "), completed.stderr
 
 
 def require_wide_filesystem_metadata() -> None:
@@ -268,6 +319,7 @@ def require_wide_filesystem_metadata() -> None:
 
 def main() -> int:
     require_filesystem_close_failure_contract()
+    require_run_stdin_forwarding()
     require_wide_filesystem_metadata()
     require_run("delim", ",alpha beta;gamma", "\nalpha\nbeta\ngamma\n")
     require_run(

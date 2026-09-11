@@ -2,9 +2,10 @@
 
 ## L1 standalone-link discovery and user stdlib/runtime preparation cache
 
-- Date: 2026-09-07
+- Date: 2026-09-11
+- Originally planned: 2026-09-07
 - Last edited: 2026-09-11
-- Status: Draft
+- Status: Completed
 - Title: L1 standalone-link discovery and user stdlib/runtime preparation cache
 - Kind: Feature
 - Severity: Medium
@@ -23,6 +24,11 @@
   - `l1/compiler/stage1_l0/src/module_interface.l0`
   - `l1/compiler/stage1_l0/src/interface_fingerprint.l0`
   - `l1/compiler/stage1_l0/src/compiler_filesystem.l0`
+  - `l1/compiler/stage1_l0/src/preparation.l0`
+  - `l1/compiler/stage1_l0/src/preparation/`
+  - `l1/compiler/stage1_l0/src/module_graph/order.l0`
+  - `l1/compiler/stage1_l0/support/preparation_support.c`
+  - `l1/compiler/stage1_l0/support/preparation/`
   - `l1/compiler/shared/l1/stdlib/`
   - `l1/compiler/shared/runtime/`
   - `l1/Makefile`
@@ -41,6 +47,15 @@
   - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_multi_cu_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_link_set_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_bootstrap_interfaces_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_managed_preparation_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_preparation_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_installed_preparation_test.py`
+  - `l1/compiler/stage1_l0/tests/preparation_support_test.py`
+  - `l1/compiler/stage1_l0/tests/preparation_identity_test.py`
+  - `l1/compiler/stage1_l0/tests/preparation_ownership_test.py`
+  - `l1/compiler/stage1_l0/tests/preparation_test.l0`
+  - `l1/compiler/stage1_l0/tests/io_runtime_test.py`
 - Related:
   - [l1/work/plans/features/closed/2026-09-07-standalone-link-interface-discovery-noref.md][link-discovery] (superseded)
   - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization]
@@ -83,8 +98,8 @@ migration, or general cache-management subsystem.
 This remains the authoritative plan for interface-assisted provider discovery and compiler-owned preparation. It absorbs
 the unimplemented scope of
 [l1/work/plans/features/closed/2026-09-07-standalone-link-interface-discovery-noref.md][link-discovery], which is closed
-as superseded, not as implemented. The commands below describe planned behavior, not currently available CLI
-capabilities.
+as superseded, not as implemented. Implementation and validation completed on 2026-09-11, with independent reviews of
+every phase and the complete unit.
 
 ## Design Principles
 
@@ -99,14 +114,15 @@ capabilities.
 8. A configuration may be compilable without being eligible for persistent cache reuse.
 9. Cache and memo formats are internal implementation formats, not distribution or interchange formats.
 
-## Current State
+## Baseline Before Implementation
 
-- `--link` rejects `-I` with `L1C-2031`.
-- The caller currently supplies the complete set of Dea objects explicitly, including required stdlib providers.
+- `--link` rejected `-I` with `L1C-2031`.
+- The caller supplied the complete set of Dea objects explicitly, including required stdlib providers.
 - The linker verifies sibling interfaces, module identities, fingerprints, entry selection, lifecycle ordering, and
   `require`/`link` provenance. Native objects remain opaque caller-trusted inputs.
 - Foreign objects and external libraries are explicitly owned by the CLI's ordered native-input stream.
-- Bootstrap builds the compiler and runtime support but does not prepare reusable stdlib `.o`/`.l1m` pairs.
+- Bootstrap built the compiler and native runtime support but did not supply bundled semantic interfaces or reusable
+  stdlib `.o`/`.l1m` pairs.
 - Build/run compile a source dependency closure in a private workspace; their temporary module artifacts are not a
   reusable stdlib cache.
 - Compile-only requires verified interfaces for non-virtual imports rather than falling back to their sources.
@@ -993,6 +1009,19 @@ planned surface is treated as available public behavior.
     system overrides suppress the implicit managed position. Materializing managed pairs preserves
     application/third-party compilation, source-target entry selection, workspaces, common linking, and generated-C
     contracts.
+- Decision: Retain canonical managed bundled C without making optional native-profile scratch an artifact authority.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0034-multi-unit-generated-c-retention-tree.md`
+  - Rationale: The mirrored tree and application/wrapper copy behavior remain unchanged. Managed nodes regenerate C
+    through the canonical module backend using selected toolchain inputs, so reusable profiles need not retain C.
+- Decision: Preserve cross-mode module C byte identity when managed support is reused without generated-C scratch.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0035-cross-mode-generated-c-byte-identity.md`
+  - Rationale: Managed regenerated C retains the identical-input byte guarantee. Explicit provider nodes still
+    contribute no C; application and wrapper retention still copies exact compiler inputs. Tests cover warm profiles
+    with missing and poisoned scratch as well as all producer modes.
 - Decision: Obtain matching bundled native runtime support on demand without requiring an installed default archive set.
   - Scope: L1
   - Disposition: Amend ADR
@@ -1014,7 +1043,7 @@ planned surface is treated as available public behavior.
   under one local managed cache root with a disposable Dea-owned subtree.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md`
   - Rationale: Bootstrap provides public headers and owns semantic-set generation/freshness from canonical bundled
     sources without requiring native L1 program-runtime artifacts. Installations ship those inputs and cannot become
     managed writable state through cache-root selection. One single-host cache uses per-user installed or build-local
@@ -1025,7 +1054,7 @@ planned surface is treated as available public behavior.
   persistent-reuse eligibility.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md`
   - Rationale: `D` and `N` separate semantic fingerprints from implementation inputs and the distinct stdlib/runtime
     native configurations, including archiver observation when archive production is used. Exact matching covers only
     inputs observed under the schema, adapter, and supported local change-detection contract. Non-cacheable
@@ -1033,11 +1062,12 @@ planned surface is treated as available public behavior.
     accelerate validation; no ABI inference, arbitrary host-toolchain proof, or cross-machine cache portability is
     established.
 
-## Diagnostic Planning
+## Diagnostic Assignments
 
-Retain the provisional reservation `L1C-2150` through `L1C-2169` for the preparation/managed-provider diagnostic area.
-Recheck [docs/specs/compiler/diagnostic-code-catalog.md][diagnostics] and active reservations at implementation time
-before assigning final numbers; choose another available block if needed. Use this area for:
+The live [docs/specs/compiler/diagnostic-code-catalog.md][diagnostics] and active reservations were rechecked during
+implementation. `L1C-2150` through `L1C-2159` now cover storage selection, compiler inputs, coordination, disabled
+preparation, toolchain/archiver selection, reuse eligibility, native commands, profile integrity, managed semantic
+artifacts and preparation-mode misuse. `L1C-2160` through `L1C-2169` remain reserved in this area. Coverage includes:
 
 - preparation-disabled misses;
 - missing/unusable native compiler inputs or an archiver required by the selected preparation route;
@@ -1169,6 +1199,22 @@ The feature is complete when all of the following hold.
     cache permits build/run and standalone link; `--no-auto-prepare` succeeds only after valid reusable preparation.
     Prewarming remains optional and is not tied to the installer's user context.
 
+## Previous Implementation Assessment
+
+The local `codex/stdlib-runtime-preparation` branch was inspected before porting. Components are classified by their
+responsibility under this revised plan:
+
+- Reusable unchanged: SHA-256 and JSON primitives, filesystem metadata and bounded subprocess helpers, process-lifetime
+  per-key locks, dependency ordering, explicit provider validation, transitive standalone discovery and operand
+  ordering.
+- Reusable after simplification: input/toolchain observation and digest memos, completion inventories and validation,
+  native compilation, runtime variants and TinyCC objects, command integration, diagnostics, concurrency and corruption
+  regressions. These now serve one native cache and bootstrap-owned semantic interfaces.
+- Obsolete: persistent semantic profiles, installed/system native lookup, separate state roots, host identity binding,
+  portable library-store assumptions, cleanup/scrub, cache scope, native profile import/export, and per-profile headers.
+
+Implementation is local to the present worktree, based on `codex/lean-l1-stdlib-cache-plan`.
+
 ## Implementation / Realignment Phases
 
 1. **Preserve provider-discovery semantics**
@@ -1217,6 +1263,65 @@ The feature is complete when all of the following hold.
      profiles or native-profile export/lookup machinery;
    - update diagnostics and acceptance tests to the simplified contract.
 
+## Implementation Results
+
+1. Bootstrap now supplies both public runtime headers and all 23 verified bundled semantic interfaces using the newly
+   built frontend. Standalone link discovers ordered providers without source fallback; source modes retain canonical
+   bundled-system placement, explicit-provider authority and source-target ownership.
+2. The private native service uses one `v1/` tree, exact semantic copies, complete artifact inventories,
+   process-lifetime per-key locks and completion-last publication. Installed payload aliases are protected; unavailable
+   implicit storage and corrupt completed profiles use bounded private recovery where allowed.
+3. Content-sensitive `D` and adapter-defined `N` retain separate generated-C and compiler-owned runtime configurations.
+   GCC, Clang/Apple Clang and TinyCC paths observe their required inputs or decline persistent reuse. Tests cover actual
+   runtime variants, target settings, archivers, response/config files, conditional headers, memo invalidation and quiet
+   warm reuse. Scratch regeneration cannot inherit stale quoted headers.
+4. The CLI exposes only preparation, cache-root selection, disabled automatic preparation and preparation-only force.
+   Mode tests reject removed/meaningless controls. Recovery guidance preserves effective options, including literal
+   Windows argument vectors; force does not override reuse eligibility.
+5. CLI, diagnostics, separate-compilation, runtime, architecture/status docs and productization handoff now describe the
+   simplified contract. Retained-C ADRs also distinguish application copying from canonical managed regeneration without
+   making profile scratch authoritative. Existing harnesses explicitly obtain developer runtime fixtures when testing
+   application-only host commands, and retain cold/warm stdin forwarding through `--run`.
+
+Each implementation phase received an independent read-only review. Valid findings were evaluated and fixed before the
+next phase. The independent complete-unit review also finished with no remaining actionable findings after the fixes
+below.
+
+The complete-unit review identified two additional implementation defects: malformed unreferenced bundled interfaces
+could escape preparation-time semantic checks, and unbound optional string results leaked during native selection.
+Preparation now validates the complete selected interface graph before reuse or miss decisions, including
+`--no-auto-prepare`. Owned local bindings restore normal cleanup of executable and runtime-override strings. Regression
+tests cover missing and malformed `std.types` interfaces, and a dedicated trace harness supplies controlled compiler and
+runtime-override inputs after the ordinary runner's environment sanitization.
+
+## Validation Results
+
+The `test-all` tier applies because this work changes native runtime configuration and allocation-bearing compiler
+control flow. All implementation and test inputs remained unchanged during final validation and subsequent documentation
+closure; their recorded content digests were rechecked before finalization.
+
+- From `l1/`, `L1_TEST_JOBS=6 make test-all L1_BUILD_DIR=build/stdlib-preparation-validation` with an explicit prepared
+  L0 Stage 2 compiler supplied through `L1_BOOTSTRAP_L0C` passed all 80 normal tests, environment stackability, all four
+  examples, and all 46 default dedicated ARC/memory trace checks. Every trace check reported zero object and string
+  leaks.
+- The additional `preparation_ownership_test.py` was introduced after aggregate discovery and passed separately with the
+  same build and bootstrap selections. Run it from `l1/` with
+  `L1_BUILD_DIR=build/stdlib-preparation-validation ../.venv/bin/python compiler/stage1_l0/tests/preparation_ownership_test.py`,
+  supplying the same `L1_BOOTSTRAP_L0C`. It forces automatic compiler discovery and an explicit runtime override after
+  test-environment sanitization, then requires zero trace errors and leaks.
+- Independent final-review probes rejected missing, malformed, and fingerprint-invalid `std.types` interfaces in all
+  four combinations of preparation, forced preparation, standalone link, and link with automatic preparation disabled.
+  All 12 probes produced bootstrap-repair guidance before native work or completion publication.
+- Focused service tests compiled the C support with strict warnings and covered identity, inventory integrity, storage,
+  coordination, runtime variants, adapters, overrides, and recovery. CLI and integration tests covered discovery,
+  precedence, retained C, corruption repair, and read-only installed payloads.
+- Live documentation links and active ADR Impact validation passed. Staged whitespace, staged ADR Impact validation, and
+  root pre-commit hooks form the final commit gates.
+
+Native execution was validated on macOS with Apple Clang 17 and TinyCC. Genuine GCC execution and Linux/Windows host
+execution were unavailable in this environment; those paths have adapter/fixture coverage and static review.
+Installation and distribution implementation remain owned by the separate bootstrap productization plan.
+
 ## Non-Goals
 
 - Application or third-party source dependency builds inside compile-only or standalone link.
@@ -1251,7 +1356,7 @@ The feature is complete when all of the following hold.
 
 ## Closure
 
-Close this plan only after:
+The following closure requirements were satisfied:
 
 - bootstrap independently provides public headers and owns semantic-set generation/freshness without mandatory native L1
   program-runtime preparation;
@@ -1261,24 +1366,24 @@ Close this plan only after:
 - the shared CLI contract reflects the final preparation surface;
 - standalone-link C-option semantics preserve separate generated-C and compiler-owned runtime configurations, selected
   target/ABI/sysroot settings, and archiver observation where required;
-- ADR-0027, ADR-0030, ADR-0033 and the new preparation/reuse ADRs are aligned, with ADR-0036's preserved contract and
-  Related Plans link recorded;
+- ADR-0027, ADR-0030, ADR-0033, ADR-0034, ADR-0035 and the new preparation/reuse ADRs are aligned, with ADR-0036's
+  preserved contract and Related Plans link recorded;
 - the bootstrap productization plan's payload, lookup, metadata, and acceptance requirements use semantic interfaces and
   rebuild inputs without installed native-profile machinery;
 - diagnostics and tests cover the verification criteria;
 - no removed system/shared-cache, cleaner, migration, or project-cache requirement remains as a closure dependency.
 
-During implementation, run focused CLI, graph, link, preparation/cache, and bootstrap checks followed by L1
-`make test-all`, ADR validation, and the required pre-commit checks. This Draft-plan revision requires documentation
-validation only.
+Validation includes focused CLI, graph, link, preparation/cache, bootstrap and installed-context checks followed by L1
+`make test-all`, ADR validation and the required pre-commit checks. Independent read-only reviews cover each phase and
+the complete unit before finalization.
 
-[backend]: ../../../docs/reference/c-backend-design.md
-[bootstrap-productization]: ../tools/2026-04-02-l1-bootstrap-productization-noref.md
-[build-run]: ../../../docs/decisions/0033-multi-compilation-unit-build-and-run-pipeline.md
-[cli-contract]: ../../../../docs/specs/compiler/cli-contract.md
-[diagnostics]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[external-inputs]: ../../../docs/decisions/0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md
-[interface-authority]: ../../../docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md
-[link-discovery]: closed/2026-09-07-standalone-link-interface-discovery-noref.md
-[runtime-selection]: ../../../docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md
-[separate-compilation]: ../../../docs/reference/separate-compilation.md
+[backend]: ../../../../docs/reference/c-backend-design.md
+[bootstrap-productization]: ../../tools/2026-04-02-l1-bootstrap-productization-noref.md
+[build-run]: ../../../../docs/decisions/0033-multi-compilation-unit-build-and-run-pipeline.md
+[cli-contract]: ../../../../../docs/specs/compiler/cli-contract.md
+[diagnostics]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[external-inputs]: ../../../../docs/decisions/0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md
+[interface-authority]: ../../../../docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md
+[link-discovery]: 2026-09-07-standalone-link-interface-discovery-noref.md
+[runtime-selection]: ../../../../docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md
+[separate-compilation]: ../../../../docs/reference/separate-compilation.md

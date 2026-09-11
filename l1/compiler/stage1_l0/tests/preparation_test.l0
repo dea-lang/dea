@@ -1,0 +1,54 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module preparation_test;
+
+import std.assert;
+import std.system;
+import std.vector;
+import build_driver;
+import cli_args.model;
+import preparation;
+import preparation.consumer;
+import util.diag;
+import util.log;
+
+/** Exercise optional executable results and configured runtime overrides under tracing. */
+func test_optional_native_selection_ownership() {
+    with (
+        let opts = cli_options_create() => cli_options_free(opts),
+        let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+        let diags = diag_create() => diag_free(diags)
+    ) {
+        for (let i = 0; i < 3; i = i + 1) {
+            let compiler = pr_compiler(opts);
+            assert(compiler != null, "automatic native compiler selection failed");
+        }
+        let runtime_override = env_get("L1_RUNTIME_LIB");
+        if (runtime_override != null) {
+            let objects = bd_runtime_object_paths(opts);
+            assert(objects == null, "explicit runtime override must suppress automatic raw objects");
+            bd_runtime_object_paths_free(objects);
+            with (let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
+                assert(mp_runtime(managed, true, diags), "runtime override unexpectedly required preparation");
+                assert(managed.native_root == null, "runtime override prepared unused native support");
+            }
+        }
+    }
+}
+
+/** Windows repair guidance preserves literal characters that cmd.exe would expand. */
+func main() {
+    test_optional_native_selection_ownership();
+    with (let words = sv_create(4) => sv_free(words)) {
+        sv_push(words, "l1c");
+        sv_push(words, "--stdlib-cache");
+        sv_push(words, "C:\\native %TEMP% !CACHE!\\O'Brien");
+        sv_push(words, "--c-options=-DNAME=\"quoted\"");
+        assert(pr_command_guidance(words, true) ==
+            "literal argv [\"l1c\", \"--stdlib-cache\", \"C:\\\\native %TEMP% !CACHE!\\\\O'Brien\", " +
+            "\"--c-options=-DNAME=\\\"quoted\\\"\"] (pass arguments literally, without cmd.exe expansion)", "literal Windows repair arguments changed");
+    }
+}

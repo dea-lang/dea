@@ -70,7 +70,7 @@ help:
 		'Targets:' \
 		'  venv               Delegate to the root `make venv` to create or sync the shared monorepo `../.venv`.' \
 		'  runtime            Build the repo-local L1 runtime archives (`libdea_rt.a`, traced, unchecked, and check-basic) and public headers under `$(L1_BUILD_DIR)`.' \
-		'  build-stage1       Build the native repo-local L1 Stage 1 compiler.' \
+		'  build-stage1       Build the L1 compiler, public headers, and verified bundled semantic interfaces.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  test               Run the default L1 validation suite without the dedicated trace sweep.' \
 		'  test-ci            Run hosted-CI validation with the full normal and default trace checks.' \
@@ -306,7 +306,7 @@ clean-all:
 	@$(MAKE) clean
 	@$(MAKE) clean-runtime
 
-build-stage1: venv runtime _ensure-bootstrap-l0-stage2
+build-stage1: venv $(RUNTIME_PUBLIC_HEADERS) _ensure-bootstrap-l0-stage2
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" \
 	L1_COMPILER_RT_CHECK_BASIC="$(L1_COMPILER_RT_CHECK_BASIC)" \
 	L1_COMPILER_RT_UNCHECKED="$(L1_COMPILER_RT_UNCHECKED)" \
@@ -375,16 +375,16 @@ _print-test-compiler-env:
 	print_cc_role L1_RUNTIME_CC "$$(configured_cc L1_RUNTIME_CC)" "$(L1_RUNTIME_CC)" \
 		'C compiler used for repo-local L1 runtime archives'
 
-test-stage1: venv build-stage1 _print-test-compiler-env
+test-stage1: venv build-stage1 runtime _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_tests.py $(TESTS)
 
-test-stage1-trace: venv build-stage1 _print-test-compiler-env
+test-stage1-trace: venv build-stage1 runtime _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py $(TESTS)
 
-test-stage1-trace-smoke: venv build-stage1 _print-test-compiler-env
+test-stage1-trace-smoke: venv build-stage1 runtime _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py $(TRACE_SMOKE_TESTS)
 
-test-stage1-trace-all: venv build-stage1 _print-test-compiler-env
+test-stage1-trace-all: venv build-stage1 runtime _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --include-slow $(TESTS)
 
 test-env: venv

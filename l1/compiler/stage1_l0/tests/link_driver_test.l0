@@ -1139,8 +1139,187 @@ func test_build_run_graph_order_and_operand_injection() {
     }
 }
 
+/** Write one opaque provider pair owned by a test workspace. */
+func ldt_write_provider(workspace: CompilerWorkspace*, interface: ModuleInterface*) -> string {
+    let object_path = cfs_workspace_child(workspace, interface.module_name + ".o");
+    let interface_path = cfs_workspace_child(workspace, interface.module_name + ".l1m");
+    assert(write_file(object_path, "opaque") != null, "write opaque provider");
+    assert(write_file(interface_path, ie_emit(interface)) != null, "write verified provider");
+    return object_path;
+}
+
+/** Exercise discovery ownership, shared dependencies, and explicit operand order. */
+func test_discovered_provider_ordering() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let workspace = cfs_workspace_create("discovery-test", diags) as CompilerWorkspace*;
+        let leaf = ldt_interface("leaf", false);
+        let dep = ldt_interface("dep", false);
+        ldt_add_import(dep, "leaf", leaf.fingerprint);
+        let entry = ldt_interface("main", true);
+        ldt_add_import(entry, "dep", dep.fingerprint);
+        ldt_add_import(entry, "leaf", leaf.fingerprint);
+        let spare = ldt_interface("spare", true);
+        let leaf_path = ldt_write_provider(workspace, leaf);
+        let dep_path = ldt_write_provider(workspace, dep);
+        let main_path = ldt_write_provider(workspace, entry);
+        ldt_write_provider(workspace, spare);
+        mi_free(leaf);
+        mi_free(dep);
+        mi_free(entry);
+        mi_free(spare);
+        with (let paths = sv_create(1) => sv_free(paths)) {
+            sv_push(paths, workspace.root);
+            for (let explicit_dep = 0; explicit_dep < 2; explicit_dep = explicit_dep + 1) {
+                let operands = cli_link_operands_create();
+                cli_link_operands_push(operands, LOK_LIBRARY_SEARCH, "before");
+                cli_link_operands_push(operands, LOK_DEA_OBJECT, main_path);
+                cli_link_operands_push(operands, LOK_LIBRARY, "middle");
+                if (explicit_dep == 1) {
+                    cli_link_operands_push(operands, LOK_DEA_OBJECT, dep_path);
+                }
+                cli_link_operands_push(operands, LOK_FOREIGN_OBJECT, leaf_path);
+                let plan = ld_prepare_cli_inputs_with_paths(operands, paths, null, diags);
+                assert(plan != null, "discovery should produce a verified plan");
+                let ready = plan as LinkPlan*;
+                assert(vec_size(ready.inputs) == 6, "shared providers included exactly once; spare excluded");
+                assert(ld_plan_input_get(ready, 0).value == "before", "leading explicit control retained");
+                assert(ld_plan_input_get(ready, 1).value == leaf_path, "transitive leaf inserted first");
+                if (explicit_dep == 0) {
+                    assert(ld_plan_input_get(ready, 2).value == dep_path, "discovered dependency precedes root");
+                    assert(ld_plan_input_get(ready, 3).value == main_path, "root follows discovered closure");
+                    assert(ld_plan_input_get(ready, 4).value == "middle", "middle control retained");
+                } else {
+                    assert(ld_plan_input_get(ready, 2).value == main_path, "explicit root stays before later provider");
+                    assert(ld_plan_input_get(ready, 3).value == "middle", "interleaved control retained");
+                    assert(ld_plan_input_get(ready, 4).value == dep_path, "later explicit provider stays in place");
+                }
+                assert(ld_plan_input_get(ready, 5).value == leaf_path, "foreign object retains final position");
+                assert(sv_get(ready.lifecycle_order, 0) == "leaf", "lifecycle remains dependency first");
+                ld_plan_free(ready);
+                cli_link_operands_free(operands);
+            }
+        }
+        assert(cfs_workspace_cleanup(workspace, diags), "discovery fixtures should clean");
+        cfs_workspace_free(workspace);
+    }
+}
+
+/** Keep the first selected interface authoritative across ordered roots. */
+func test_ordered_interface_roots() {
+    with (let cleanup_diags = diag_create() => diag_free(cleanup_diags)) {
+        let first = cfs_workspace_create("first-provider", cleanup_diags) as CompilerWorkspace*;
+        let second = cfs_workspace_create("second-provider", cleanup_diags) as CompilerWorkspace*;
+        let provider = ldt_interface("provider", false);
+        let entry = ldt_interface("main", true);
+        ldt_add_import(entry, "provider", provider.fingerprint);
+        let first_path = ldt_write_provider(first, provider);
+        ldt_write_provider(second, provider);
+        let main_path = ldt_write_provider(first, entry);
+        mi_free(entry);
+        with (let paths = sv_create(2) => sv_free(paths)) {
+            sv_push(paths, first.root);
+            sv_push(paths, second.root);
+            for (let scenario = 0; scenario < 3; scenario = scenario + 1) {
+                if (scenario == 1) { delete_file(first_path); }
+                if (scenario == 2) {
+                    ldt_write_provider(first, provider);
+                    write_file(join(first.root, "provider.l1m"), "malformed selected interface");
+                }
+                with (let diags = diag_create() => diag_free(diags)) {
+                    let operands = cli_link_operands_create();
+                    cli_link_operands_push(operands, LOK_DEA_OBJECT, main_path);
+                    let plan = ld_prepare_cli_inputs_with_paths(operands, paths, null, diags);
+                    if (scenario == 0) {
+                        assert(plan != null, "ordered discovery should succeed");
+                        assert(ld_plan_input_get(plan as LinkPlan*, 0).value == first_path,
+                            "first interface root must win over a distinct second provider path");
+                        ld_plan_free(plan as LinkPlan*);
+                    } else {
+                        assert(plan == null && diag_has_errors(diags),
+                            "invalid first provider must not fall through to the valid second root");
+                    }
+                    cli_link_operands_free(operands);
+                }
+            }
+        }
+        mi_free(provider);
+        assert(cfs_workspace_cleanup(first, cleanup_diags), "first provider fixtures should clean");
+        assert(cfs_workspace_cleanup(second, cleanup_diags), "second provider fixtures should clean");
+        cfs_workspace_free(first);
+        cfs_workspace_free(second);
+    }
+}
+
+/** Verify discovery preserves root traversal and subsequent semantic checks. */
+func test_discovery_semantic_validation() {
+    for (let scenario = 0; scenario < 5; scenario = scenario + 1) {
+        with (let diags = diag_create() => diag_free(diags)) {
+            let workspace = cfs_workspace_create("discovery-semantics", diags) as CompilerWorkspace*;
+            let entry = ldt_interface("entry", true);
+            let a = ldt_interface("a", scenario == 4);
+            let b = ldt_interface("b", false);
+            let c = ldt_interface("c", false);
+            if (scenario == 0) {
+                ldt_add_import(a, "b", b.fingerprint);
+                ldt_add_import(a, "c", c.fingerprint);
+            } else {
+                ldt_add_import(entry, "a", a.fingerprint);
+                if (scenario == 1) {
+                    ldt_add_import(a, "entry", entry.fingerprint);
+                } else if (scenario == 2 || scenario == 3) {
+                    ldt_add_link(a, "c", c.fingerprint);
+                    if (scenario == 3) {
+                        ldt_add_import(entry, "c", c.fingerprint);
+                    }
+                }
+            }
+            let entry_path = ldt_write_provider(workspace, entry);
+            let a_path = ldt_write_provider(workspace, a);
+            let b_path = ldt_write_provider(workspace, b);
+            ldt_write_provider(workspace, c);
+            mi_free(entry);
+            mi_free(a);
+            mi_free(b);
+            mi_free(c);
+            with (let paths = sv_create(1) => sv_free(paths)) {
+                sv_push(paths, workspace.root);
+                let operands = cli_link_operands_create();
+                cli_link_operands_push(operands, LOK_DEA_OBJECT, entry_path);
+                if (scenario == 0) {
+                    cli_link_operands_push(operands, LOK_DEA_OBJECT, a_path);
+                    cli_link_operands_push(operands, LOK_DEA_OBJECT, b_path);
+                }
+                let plan = ld_prepare_cli_inputs_with_paths(operands, paths, null, diags);
+                if (scenario == 0) {
+                    assert(plan != null, "disconnected explicit roots should discover dependencies");
+                    let ready = plan as LinkPlan*;
+                    assert(ld_plan_input_get(ready, 1).discovered, "discovered native input precedes explicit root");
+                    assert(sv_get(ready.lifecycle_order, 0) == "entry", "entry traversed first");
+                    assert(sv_get(ready.lifecycle_order, 1) == "b", "explicit root import order precedes native insertion order");
+                    assert(sv_get(ready.lifecycle_order, 2) == "c", "discovered lifecycle follows previous direct import");
+                    assert(sv_get(ready.lifecycle_order, 3) == "a", "consumer lifecycle follows its dependencies");
+                    ld_plan_free(ready);
+                } else {
+                    assert(plan == null, "invalid discovered graph must fail");
+                    let code = "L1C-2104";
+                    if (scenario == 1) { code = "L1C-2103"; }
+                    if (scenario == 2) { code = "L1C-2101"; }
+                    if (scenario == 3) { code = "L1C-2111"; }
+                    assert(ldt_has_code(diags, code), "discovery must preserve graph validation diagnostics");
+                }
+                cli_link_operands_free(operands);
+            }
+            assert(cfs_workspace_cleanup(workspace, diags), "semantic fixtures should clean");
+            cfs_workspace_free(workspace);
+        }
+    }
+}
+
 /** Main entry point. */
 func main() {
+    test_ordered_interface_roots();
+    test_discovery_semantic_validation();
+    test_discovered_provider_ordering();
     test_valid_mixed_plan_ordering();
     test_graph_failures();
     test_transitive_provenance();

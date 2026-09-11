@@ -1,0 +1,309 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module preparation;
+
+import sys.rt;
+import std.array;
+import std.io;
+import std.path;
+import std.string;
+import std.system;
+import std.text;
+import std.vector;
+import build_driver;
+import cli_args.model;
+import compiler_filesystem;
+import diag_print;
+import preparation.frontend;
+import util.diag;
+import util.log;
+
+/** Compiler-private context ABI: one owner and one resolved identity per command. */
+extern func l1c_prep_create(data: byte*, length: int) -> void*;
+extern func l1c_prep_free(context: void*);
+extern func l1c_prep_resolve(context: void*) -> int;
+extern func l1c_prep_find(context: void*) -> int;
+extern func l1c_prep_lock(context: void*) -> int;
+extern func l1c_prep_private(context: void*) -> int;
+extern func l1c_prep_unlock(context: void*);
+extern func l1c_prep_begin(context: void*) -> int;
+extern func l1c_prep_complete(context: void*) -> int;
+extern func l1c_prep_error_code(context: void*) -> int;
+extern func l1c_prep_get(context: void*, field: byte*, length: int, output: byte*?, capacity: int) -> int;
+
+/** Copy an internal UTF-8 context value into an owned Dea string. */
+func pr_get(context: void*, field: string) -> string {
+    let required = l1c_prep_get(context, rt_string_bytes_ptr(field), len_s(field), null, 0);
+    if (required <= 0) { return ""; }
+    with (let buffer = ba_create(required) => ba_free(buffer)) {
+        let actual = l1c_prep_get(context, rt_string_bytes_ptr(field), len_s(field),
+            buffer.storage.data as byte*, required);
+        if (actual != required) { return ""; }
+        return bytes_to_s(buffer.storage.data as byte*, actual);
+    }
+}
+
+/** Quote an arbitrary option/path as one JSON string, without shell interpretation. */
+func pr_json_string(value: string) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "\"");
+        for (let i = 0; i < len_s(value); i = i + 1) {
+            let ch = char_at_s(value, i);
+            if (ch == '"' || ch == '\\') {
+                sb_append(sb, "\\");
+                sb_append_byte(sb, ch);
+            } else if (ch < 32) {
+                sb_append(sb, "\\u00");
+                sb_append_byte(sb, bd_diagnostic_hex_digit(ch / 16));
+                sb_append_byte(sb, bd_diagnostic_hex_digit(ch % 16));
+            } else {
+                sb_append_byte(sb, ch);
+            }
+        }
+        sb_append(sb, "\"");
+        return sb_to_string(sb);
+    }
+}
+
+/** Add an optional string member to an existing JSON configuration object. */
+func pr_json_option(sb: StringBuffer*, name: string, value: string?) {
+    if (value != null) {
+        sb_append(sb, "," + pr_json_string(name) + ":" + pr_json_string(value as string));
+    }
+}
+
+/** Encode a boolean as a JSON number accepted by the private native ABI. */
+func pr_bool(value: bool) -> string {
+    if (value) { return "1"; }
+    return "0";
+}
+
+/** Select the same compiler precedence as ordinary builds without shell probes. */
+func pr_compiler(opts: CliOptions*) -> string? {
+    if (opts.c_compiler != null) { return opts.c_compiler; }
+    let configured = env_get("L1_CC");
+    if (configured != null) { return configured; }
+    with (let candidates = split_s("tcc,gcc,clang,cc", ",") => sv_free(candidates)) {
+        for (let i = 0; i < sv_size(candidates); i = i + 1) {
+            let candidate = sv_get(candidates, i);
+            /* Bind the optional string so the bootstrap compiler owns its cleanup. */
+            let resolved = cfs_resolve_executable(candidate);
+            if (resolved != null) { return candidate; }
+        }
+    }
+    return env_get("CC");
+}
+
+/** Create a context; semantic-only callers never select or invoke a C compiler. */
+func pr_create(opts: CliOptions*, native: bool) -> void* {
+    with (
+        let sb = sb_create() => sb_free(sb),
+        let words = bd_collect_c_option_words(opts) => sv_free(words)
+    ) {
+        sb_append(sb, "{\"verbosity\":" + int_to_string(opts.verbosity));
+        pr_json_option(sb, "home", env_get("L1_HOME"));
+        pr_json_option(sb, "build_dir", env_get("L1_BUILD_DIR"));
+        pr_json_option(sb, "cache", opts.stdlib_cache);
+        let runtime_include = opts.runtime_include;
+        if (runtime_include == null) { runtime_include = env_get("L1_RUNTIME_INCLUDE"); }
+        pr_json_option(sb, "runtime_include", runtime_include);
+        sb_append(sb, ",\"force\":" + pr_bool(opts.force));
+        let variant = "default";
+        if (opts.trace_arc || opts.trace_memory) { variant = "traced"; }
+        else if (opts.unchecked) { variant = "unchecked"; }
+        else if (opts.check_basic) { variant = "check_basic"; }
+        pr_json_option(sb, "variant", variant);
+        sb_append(sb, ",\"codegen\":{\"no_line_directives\":" + pr_bool(opts.no_line_directives) +
+            ",\"trace_arc\":" + pr_bool(opts.trace_arc) + ",\"trace_memory\":" + pr_bool(opts.trace_memory) +
+            ",\"unchecked\":" + pr_bool(opts.unchecked) + ",\"check_basic\":" + pr_bool(opts.check_basic) + "}");
+        if (native) {
+            let compiler = pr_compiler(opts);
+            pr_json_option(sb, "compiler", compiler);
+            if (compiler != null) {
+                let family = bd_compiler_flag_family(compiler as string);
+                let optimize = bd_get_optimize_flag(family, words);
+                bd_push_standard_flags(words, family);
+                if (optimize != null) { sv_push(words, optimize as string); }
+            }
+        }
+        sb_append(sb, ",\"options\":[");
+        for (let i = 0; i < sv_size(words); i = i + 1) {
+            if (i > 0) { sb_append(sb, ","); }
+            sb_append(sb, pr_json_string(sv_get(words, i)));
+        }
+        sb_append(sb, "]}");
+        let config = sb_to_string(sb);
+        return l1c_prep_create(rt_string_bytes_ptr(config), len_s(config));
+    }
+}
+
+/** Transfer a native-service error to the compiler's ordinary diagnostic stream. */
+func pr_report_error(context: void*, diags: DiagCollector*) {
+    let code = l1c_prep_error_code(context);
+    if (code != 0) {
+        cli_emit_error(diags, "L1C-" + int_to_string(code), pr_get(context, "error"));
+    }
+}
+
+/** Render guidance without letting Windows shell interpolation change literal arguments. */
+func pr_command_guidance(words: StringVector*, windows: bool) -> string {
+    if (!windows) { return bd_join_shell_words(words); }
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "literal argv [");
+        for (let i = 0; i < sv_size(words); i = i + 1) {
+            if (i > 0) { sb_append(sb, ", "); }
+            sb_append(sb, pr_json_string(sv_get(words, i)));
+        }
+        sb_append(sb, "] (pass arguments literally, without cmd.exe expansion)");
+        return sb_to_string(sb);
+    }
+}
+
+/** Construct matching persistent preparation guidance in the current invocation environment. */
+func pr_repair_command(context: void*, opts: CliOptions*, force: bool) -> string {
+    with (let words = sv_create(16) => sv_free(words)) {
+        sv_push(words, "l1c"); sv_push(words, "--prepare-stdlib");
+        if (force) { sv_push(words, "--force"); }
+        sv_push(words, "--stdlib-cache"); sv_push(words, pr_get(context, "local"));
+        sv_push(words, "--c-compiler"); sv_push(words, pr_get(context, "compiler"));
+        if (opts.c_options != null) { sv_push(words, "--c-options=" + (opts.c_options as string)); }
+        if (opts.runtime_include != null) { sv_push(words, "--runtime-include=" + (opts.runtime_include as string)); }
+        if (opts.no_line_directives) { sv_push(words, "--no-line-directives"); }
+        if (opts.trace_arc) { sv_push(words, "--trace-arc"); }
+        if (opts.trace_memory) { sv_push(words, "--trace-memory"); }
+        if (opts.unchecked) { sv_push(words, "--unchecked"); }
+        if (opts.check_basic) { sv_push(words, "--check-basic"); }
+        return pr_command_guidance(words, bd_is_windows());
+    }
+}
+
+/** Explain a disabled miss without suggesting force can override adapter eligibility. */
+func pr_report_disabled(context: void*, opts: CliOptions*, diags: DiagCollector*) {
+    let reason = pr_get(context, "ineligible");
+    if (reason != "") {
+        cli_emit_error(diags, "L1C-2159", "automatic preparation is disabled and persistent reuse is unavailable: " +
+            reason + "; enable automatic fresh preparation or select an eligible native configuration");
+    } else if (pr_get(context, "writable") != "1") {
+        cli_emit_error(diags, "L1C-2159", "managed support is unavailable and automatic preparation is disabled; " +
+            "select a writable --stdlib-cache PATH for --prepare-stdlib or enable automatic fresh preparation");
+    } else {
+        let unusable = pr_get(context, "unusable") != "";
+        let serialization = "";
+        if (unusable) { serialization = "; externally serialize forced replacement against consumers of this profile"; }
+        cli_emit_error(diags, "L1C-2159", "managed support is unavailable and automatic preparation is disabled; prepare with: " +
+            pr_repair_command(context, opts, unusable) + serialization);
+    }
+}
+
+/** Execute one selected destination through the common preparation pipeline. */
+func pr_build_selected(context: void*, opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> bool {
+    if (l1c_prep_begin(context) != 1) { return false; }
+    if (!pr_frontend_prepare(context, pr_get(context, "semantic_root"),
+        pr_get(context, "home"), pr_get(context, "modules"), opts, cfg, diags)) { return false; }
+    return l1c_prep_complete(context) == 1;
+}
+
+/** Resolve once, recheck under a per-key lock, and share one native preparation pipeline. */
+func pr_prepare(context: void*, explicit: bool, opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> bool {
+    if (l1c_prep_resolve(context) != 1) { return false; }
+    if (!pr_frontend_run(context, pr_get(context, "semantic_root"), pr_get(context, "home"),
+        pr_get(context, "modules"), opts, cfg, diags, false)) { return false; }
+    let ineligible = pr_get(context, "ineligible");
+    let writable = pr_get(context, "writable") == "1";
+    if (explicit && ineligible != "") {
+        cli_emit_error(diags, "L1C-2154", "persistent stdlib preparation is unavailable: " + ineligible +
+            "; use automatic preparation in build/run/link or select an eligible compiler; --force cannot override eligibility");
+        return false;
+    }
+    if (explicit && !writable) {
+        cli_emit_error(diags, "L1C-2150", "persistent preparation requires a usable cache destination; select --stdlib-cache PATH");
+        return false;
+    }
+    if (opts.verbosity >= 1) {
+        err_printl_s("Preparation selection: " + pr_get(context, "native_key") + "; cache " + pr_get(context, "local"));
+    }
+    let found = 0;
+    if (!opts.force) { found = l1c_prep_find(context); }
+    if (found < 0) { return false; }
+    if (found == 1) {
+        if (opts.verbosity >= 1) { err_printl_s("Reuse prepared profile: " + pr_get(context, "selected")); }
+        return true;
+    }
+    if (!explicit && opts.no_auto_prepare) { pr_report_disabled(context, opts, diags); return false; }
+    if (explicit && found == 2) {
+        cli_emit_error(diags, "L1C-2153", "completed profile is unusable; repair with " + pr_repair_command(context, opts, true) +
+            "; externally serialize forced replacement against consumers of this profile");
+        return false;
+    }
+    let private = ineligible != "" || !writable || found == 2;
+    if (!private) {
+        if (l1c_prep_lock(context) != 1) {
+            if (explicit || pr_get(context, "explicit_root") == "1") { return false; }
+            private = true;
+        }
+        if (!private && !opts.force) {
+            found = l1c_prep_find(context);
+            if (found == 1 || found < 0) { l1c_prep_unlock(context); return found == 1; }
+            if (found == 2) {
+                l1c_prep_unlock(context);
+                if (explicit) {
+                    cli_emit_error(diags, "L1C-2153", "completed profile is unusable; repair with " + pr_repair_command(context, opts, true) +
+                        "; externally serialize forced replacement against consumers of this profile");
+                    return false;
+                }
+                private = true;
+            }
+        }
+    }
+    if (found == 2) {
+        err_printl_s("Cached native profile is unusable: " + pr_get(context, "unusable"));
+        err_printl_s("Using fresh command-private support; repair with " + pr_repair_command(context, opts, true));
+        err_printl_s("Forced replacement requires external serialization against consumers of this profile.");
+    }
+    if (private) {
+        if (opts.verbosity >= 1 && ineligible != "") { err_printl_s("Fresh preparation: " + ineligible); }
+        if (l1c_prep_private(context) != 1) { return false; }
+    }
+    let label = "stdlib and runtime with " + pr_get(context, "compiler") + " for " + pr_get(context, "target");
+    err_printl_s("Preparing " + label + "...");
+    let ok = pr_build_selected(context, opts, cfg, diags);
+    let storage_error = l1c_prep_error_code(context);
+    if (!ok && !private && !explicit && pr_get(context, "explicit_root") == "0" &&
+        (storage_error == 2150 || storage_error == 2152)) {
+        l1c_prep_unlock(context);
+        err_printl_s("Default cache storage is unavailable; preparing fresh command-private support.");
+        ok = l1c_prep_private(context) == 1;
+        if (ok) { ok = pr_build_selected(context, opts, cfg, diags); }
+    }
+    l1c_prep_unlock(context);
+    if (ok) { err_printl_s("Prepared " + label + "."); }
+    else { err_printl_s("Preparation failed: " + label + "."); }
+    return ok;
+}
+
+/** Print one command's identity and validation statistics at debug verbosity. */
+func pr_log_context(context: void*, opts: CliOptions*) {
+    if (opts.verbosity >= 3) {
+        err_printl_s("Preparation Dea key: " + pr_get(context, "dea_key"));
+        err_printl_s("Preparation native key: " + pr_get(context, "native_key"));
+        err_printl_s("Preparation selected: " + pr_get(context, "selected"));
+        err_printl_s("Preparation Dea inputs: " + pr_get(context, "dea_identity"));
+        err_printl_s("Preparation native inputs: " + pr_get(context, "native_identity"));
+        err_printl_s("Preparation statistics: " + pr_get(context, "stats"));
+    }
+}
+
+/** Explicit preparation succeeds only with persistently reusable native support. */
+func pr_cmd_prepare(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let context = pr_create(opts, true) => l1c_prep_free(context),
+          let diags = diag_create() => diag_free(diags)) {
+        let ok = pr_prepare(context, true, opts, cfg, diags);
+        if (!ok) { pr_report_error(context, diags); }
+        pr_log_context(context, opts); dp_print_collector(diags);
+        if (ok) { return 0; }
+        return 1;
+    }
+}

@@ -22,6 +22,8 @@ import sem_context;
 import driver;
 import driver.state;
 import build_driver;
+import preparation;
+import preparation.consumer;
 import compile_driver;
 import link_driver;
 import build_info;
@@ -114,6 +116,12 @@ func l1c_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*
         sp_apply_default_project_roots(project_roots);
         l1c_log_effective_roots(cfg, sys_roots, project_roots);
         let sp = sp_build_from_roots(project_roots, sys_roots);
+        /* Source inspection needs complete bodies, including private declarations. */
+        if (ord(opts.mode) != ord(CM_TOK) && ord(opts.mode) != ord(CM_AST) && !opts.all_modules) {
+            with (let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
+                mp_source_paths(managed, sp);
+            }
+        }
         return new PreparedInput(entry_module, sp);
     }
 }
@@ -309,7 +317,8 @@ func l1c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
  * @return Process-style status code.
  */
 func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
-    with (let diags = diag_create() => diag_free(diags)) {
+    with (let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
         let prepared = l1c_prepare_input(opts, diags, cfg);
         if (prepared == null) {
             dp_print_collector(diags);
@@ -317,13 +326,12 @@ func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
         }
         let prep = prepared as PreparedInput*;
         let entry_module = prep.entry_module;
-        let result = analysis_analyze_entry_with_resolution(
+        let result = mp_analyze(
+            managed,
             prep.search_paths,
             entry_module,
-            opts.interface_paths,
             MRP_ALLOW_SOURCE_FALLBACK,
-            null,
-            cfg
+            null
         );
         prepared_input_free(prep);
         prepared = null;
@@ -334,6 +342,11 @@ func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
             return 1;
         }
 
+        if (!mp_runtime(managed, false, diags)) {
+            dp_print_collector(diags);
+            analysis_result_free(result);
+            return 1;
+        }
         with (let cg_opts = cg_options_from_cli(opts) => cg_options_free(cg_opts)) {
             let c_code = backend_generate_module(result, entry_module, cg_opts, cfg);
             if (opts.output != null) {
@@ -860,6 +873,9 @@ func run_with_argv(argv: StringVector*) -> int {
 
         let rc = 1;
         match (opts.mode) {
+            CM_PREPARE_STDLIB => {
+                rc = pr_cmd_prepare(opts, cfg);
+            }
             CM_CHECK => {
                 rc = l1c_cmd_check(opts, cfg);
             }

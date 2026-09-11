@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-07
+Version: 2026-09-11
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -10,9 +10,9 @@ Today there is one implemented compiler pipeline:
 - `compiler/stage2_l1/` is reserved for the future self-hosted compiler and is not implemented yet.
 - `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/` are the current copied stdlib/runtime source inputs
   consumed by the bootstrap toolchain.
-- `build/dea/include/` and `build/dea/lib/` are the repo-local runtime delivery outputs consumed by Stage 1.
-  Compile-only needs the headers but does not link the runtime archive; standalone link needs the public header and
-  selected runtime link inputs.
+- `$L1_BUILD_DIR/include/` and `$L1_BUILD_DIR/interfaces/` contain bootstrap-owned public headers and verified bundled
+  semantic interfaces. Native stdlib/runtime support is derived on demand in one local cache; `make runtime` is a
+  separate developer workflow.
 
 Related canonical docs:
 
@@ -20,6 +20,7 @@ Related canonical docs:
 - Separate-compilation and standalone-link behavior:
   [l1/docs/reference/separate-compilation.md](separate-compilation.md)
 - Language/runtime rationale and policy: [design-decisions.md](design-decisions.md)
+- Bundled support and reuse: [l1/docs/reference/stdlib-preparation.md](stdlib-preparation.md)
 - Bootstrap status snapshot: [l1/docs/project-status.md](../project-status.md)
 - Shared CLI behavior: [docs/specs/compiler/cli-contract.md](../../../docs/specs/compiler/cli-contract.md)
 - External native-library workflow: [l1/docs/user/linking.md](../user/linking.md)
@@ -95,6 +96,9 @@ derive sibling foo.l1m --> UTF-8 parse + ifp_verify
 verified identity + entry + ordered lifecycle imports + provider expectations
   |
   v
+missing lifecycle providers --> ordered -I roots --> bundled managed interfaces
+  |
+  v
 link_driver.l0 --> graph/fingerprint/entry/provenance validation --> wrapper_emitter.l0
                                                         |
                                                         v
@@ -104,7 +108,9 @@ link_driver.l0 --> graph/fingerprint/entry/provenance validation --> wrapper_emi
 Internal analysis entry points can build a deterministic `ModuleGraph` from an entry source, ordered interface roots, a
 resolution policy, and an optional artifact root. The entry stays source-backed. Imported modules prefer the first
 matching `.l1m`; `MRP_REQUIRE_INTERFACE` rejects a missing interface, while `MRP_ALLOW_SOURCE_FALLBACK` retains the
-existing source-root precedence when no interface exists. Programmatic interface registries use the same graph model.
+existing source-root precedence when no interface exists. Bundled semantic interfaces occupy only the canonical
+compiler-owned system-root position; explicit system-root configuration can suppress that position, while project roots
+retain lower precedence. Programmatic interface registries use the same graph model.
 
 The driver closes over both interface dependency tiers. `require` providers are activated for semantic replay, while
 `link` providers remain graph obligations without entering the consumer's semantic environment. Source nodes retain
@@ -115,16 +121,17 @@ first-occurrence, virtual-filtered ordered lifecycle-import view. Build/run expa
 Ordinary `--build` and `--run` validate the source target before reserving one command-owned temporary workspace, then
 analyze the complete graph with workspace-backed canonical artifacts. Source-backed nodes compile once in deterministic
 dependency order. Before generation, each source node is re-analyzed as a one-module entry with non-virtual imports
-required to resolve from the original authoritative interface roots or already staged workspace `.l1m` files.
-Interface-backed nodes contribute verified manifests plus original opaque sibling objects. The driver registers
-generated C, objects, interfaces, captures, wrapper artifacts, and the temporary run executable, and keeps the workspace
-alive through child execution. Caller-selected executables and retained `.dea-c` trees remain outside. Bounded no-follow
-cleanup removes only registered regular files and known nested directories; unexpected or substituted contents retain
-the workspace and report `L1C-9514`. Temporary-parent inspection, setup, canonical trust, or exclusive-reservation
-failure reports `L1C-9513` and does not fall through to a later candidate. Cleanup changes success to status 1 but
-preserves an already nonzero compilation, launch, or child-program result. Workspace and fixed-child construction uses
-an actual-host filesystem primitive, so POSIX treats a trailing `\` in the canonical parent as a literal filename byte
-rather than as permission to allocate a sibling path.
+required to resolve from the original authoritative interface roots or already staged workspace `.l1m` files. Explicit
+interface-backed nodes contribute verified manifests plus original opaque sibling objects. Bundled managed nodes
+initially use semantic-only interfaces and obtain exact copied interface/object pairs from native preparation. The
+driver registers generated C, objects, interfaces, captures, wrapper artifacts, and the temporary run executable, and
+keeps the workspace alive through child execution. Caller-selected executables and retained `.dea-c` trees remain
+outside. Bounded no-follow cleanup removes only registered regular files and known nested directories; unexpected or
+substituted contents retain the workspace and report `L1C-9514`. Temporary-parent inspection, setup, canonical trust, or
+exclusive-reservation failure reports `L1C-9513` and does not fall through to a later candidate. Cleanup changes success
+to status 1 but preserves an already nonzero compilation, launch, or child-program result. Workspace and fixed-child
+construction uses an actual-host filesystem primitive, so POSIX treats a trailing `\` in the canonical parent as a
+literal filename byte rather than as permission to allocate a sibling path.
 
 The internal module-generation branch selects one canonical source-backed target from the completed analysis result. It
 emits target definitions, external declarations for provider-owned source and interface values and functions consumed by
@@ -331,6 +338,19 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
   ordered link stream.
 - Produces generated C, module artifacts, built executables, or direct runs depending on CLI mode.
 
+### 2.11 Bundled Preparation (`preparation.l0`, `preparation/` and private C support)
+
+- `preparation/frontend.l0` analyzes canonical bundled sources in dependency order and uses the shared per-module
+  generator. Bootstrap emits/verifies the semantic set; native preparation copies the selected `.l1m` bytes exactly.
+- `preparation/consumer.l0` preserves explicit provider requirements and semantic validation before lazily obtaining
+  managed native pairs for build/run/link. Native preparation context is resolved once per command.
+- `preparation.l0` owns frontend/native orchestration, progress, repair guidance, per-key preparation and finalization.
+- `preparation_support.c` and `support/preparation/` implement one local cache, installed-payload protection,
+  compiler-input identity, conservative native adapters, process locks, complete inventories and digest memoization.
+- Completed corruption never triggers automatic persistent replacement. Eligible ordinary consumers prepare privately;
+  explicit `--prepare-stdlib --force` requires external serialization and recomputes validation.
+- Semantic-only commands use bundled interfaces without native cache access, toolchain probing or source-tree hashing.
+
 ## 3. Core Data Flow
 
 Primary aggregates in the current implementation include:
@@ -372,8 +392,8 @@ Important analysis tables include:
     handling is out of scope for this contract.
 05. Semantic failures are reported as diagnostics rather than internal crashes on normal invalid input paths.
 06. Build/run, `--gen`, and compile-only use the same internal module API. Build/run emits one translation unit per
-    source-backed graph node in one private command-lifetime workspace; standalone link consumes explicit objects plus
-    their required sibling interfaces.
+    source-backed graph node in one private command-lifetime workspace; standalone link consumes explicit and discovered
+    objects with their required sibling interfaces. Managed native pairs copy toolchain-owned semantic bytes exactly.
 07. Interface emission, graph enumeration, and artifact association are deterministic. Direct source-import edges
     preserve declaration order and duplicates.
 08. An interface is registered or cached only after its declared identity and whole-module fingerprint are verified.
@@ -395,7 +415,7 @@ Important analysis tables include:
 
 ## 5. File/Module Layout
 
-The production tree under `l1/compiler/stage1_l0/src/` contains 116 modules and 49,757 lines. Modules are organized by
+The production tree under `l1/compiler/stage1_l0/src/` contains 120 modules and 50,800 lines. Modules are organized by
 owned state, compiler phase, and output contract. Imports expose only locally declared symbols: callers import a shared
 state/model owner explicitly, and implementation children never import their command/pass facade.
 
@@ -404,6 +424,7 @@ state/model owner explicitly, and implementation children never import their com
 | Analysis and interfaces       | `analysis.l0`                      | `interface_projection.l0`, `interface_emitter.l0`, `interface_fingerprint.l0`, `interface_literal.l0`, `interface_order.l0`, `module_interface.l0`, `mi_utils.l0` |
 | Parser                        | `parser.l0`, `parser/interface.l0` | `parser/{state,cursor,token_value,type_ref,decl,expr,stmt}.l0`; `parser/interface/{header,types,declarations,normalize}.l0`                                       |
 | Driver                        | `driver.l0`                        | `driver/state.l0` owns registry data and lifecycle; `driver/resolve.l0` owns graph resolution and activation                                                      |
+| Preparation                   | `preparation.l0`                   | `preparation/{frontend,consumer}.l0`; `module_graph/order.l0` supplies deterministic preparation order                                                            |
 | Names                         | `name_resolver.l0`                 | `name_resolver/{state,query,collect,imports,interface}.l0`                                                                                                        |
 | Signatures                    | `signatures.l0`                    | `signatures/{tables,declarations,const_init,cycles,visibility,interface}.l0`; `types.l0` retains resolved type/table data and lifecycle                           |
 | Type references and constants | Direct owner imports               | `type_resolve/{lookup,const_value,const_eval,ref,materialize}.l0`                                                                                                 |
@@ -431,13 +452,15 @@ re-enter expression lowering. Splitting that group would require an algorithm ch
 remain below it; function-body setup and output orchestration enter it from above. `cleanup` and `module` are reserved
 L0 words, so those module responsibilities use the names `lifetime` and `output`.
 
-The L1-owned support directory under `compiler/stage1_l0/support/` separates two compiler-private C translation units.
+The L1-owned support directory under `compiler/stage1_l0/support/` separates three compiler-private C translation units.
 `interface_fingerprint.c` supplies the fingerprint bridge for the L0-built Stage 1; an L1-built compiler obtains those
 symbols from the runtime archive. `compiler_support.c` supplies filesystem and process helpers for both stages,
 including canonical native temporary-parent validation, build/run workspaces, compile-only publication, and standalone
-link transactions. Stage 1 links both source files; an L1-built compiler links only common support alongside the
-runtime. `compiler_filesystem.l0` is the single compiler-facing wrapper for the filesystem primitives; none of them
-extends the public runtime or standard library.
+link transactions. `preparation_support.c` supplies native cache storage, hashing, supported toolchain observation and
+preparation subprocess primitives through private `preparation/` helpers. Stage 1 links all three source files; a future
+L1-built compiler needs common compiler and preparation support alongside the runtime. `compiler_filesystem.l0` wraps
+the general filesystem primitives; `preparation.l0` wraps preparation-specific services. Neither extends the public
+runtime or standard library.
 
 ## 6. Host and Toolchain Assumptions
 
@@ -445,5 +468,5 @@ extends the public runtime or standard library.
   [docs/specs/language/source-text-and-language-vocabulary.md](../../../docs/specs/language/source-text-and-language-vocabulary.md).
 - L1 source modules use the `.l1` extension.
 - The bootstrap compiler implementation remains `.l0` source code.
-- `--compile`, `--link`, `--build`, and `--run` require a host C99 toolchain.
+- `--compile`, `--link`, `--build`, `--run`, and `--prepare-stdlib` require a host C99 toolchain.
 - Local bootstrap builds use `../l0/build/dea/bin/l0c-stage2` by default unless overridden with `L1_BOOTSTRAP_L0C`.

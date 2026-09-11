@@ -8,6 +8,7 @@ module driver.resolve;
 import std.fs;
 import std.hashmap;
 import std.hashset;
+import std.path;
 import std.text;
 import std.vector;
 import util.diag;
@@ -273,24 +274,40 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
             }
 
             let interface_path_opt = sp_resolve_interface(ctx.interface_roots, module_name);
+            let managed_selected = false;
+            if (interface_path_opt == null && sp_managed_eligible(ctx.search_paths, module_name)) {
+                if (ctx.search_paths.managed_interfaces != null) {
+                    interface_path_opt = join(ctx.search_paths.managed_interfaces as string,
+                        sp_module_interface_relpath(module_name) as string);
+                    managed_selected = true;
+                }
+            }
             if (interface_path_opt != null) {
                 let interface_path = interface_path_opt as string;
                 if (!std.fs::is_file(interface_path)) {
                     dr_emit_error(state.diags, "DRV-0075",
-                        "selected module interface is not a readable regular file: " + interface_path,
-                        interface_path);
+                        "selected module interface is not a readable regular file: " + interface_path, interface_path);
+                    if (managed_selected) {
+                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
+                    }
                     return dr_fail_without_node(state, module_name);
                 }
                 let interface_text_opt = read_file(interface_path);
                 if (interface_text_opt == null) {
                     dr_emit_error(state.diags, "DRV-0075",
                         "cannot read selected module interface: " + interface_path, interface_path);
+                    if (managed_selected) {
+                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
+                    }
                     return dr_fail_without_node(state, module_name);
                 }
                 let interface_raw = interface_text_opt as string;
                 if (!us_is_valid_utf8(interface_raw)) {
                     dr_emit_error(state.diags, "DRV-0076",
                         "selected module interface is not valid UTF-8", interface_path);
+                    if (managed_selected) {
+                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
+                    }
                     return dr_fail_without_node(state, module_name);
                 }
                 let interface_text = us_strip_utf8_bom(interface_raw);
@@ -301,6 +318,9 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                 dr_copy_interface_diags(state.diags, parsed);
                 if (ipr_has_errors(parsed) || parsed.interface == null) {
                     ipr_free(parsed);
+                    if (managed_selected) {
+                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
+                    }
                     return dr_fail_without_node(state, module_name);
                 }
 
@@ -312,21 +332,31 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                     dr_emit_error(state.diags, "DRV-0020",
                         msg + "' but was loaded as '" + module_name + "'", interface_path);
                     mi_free(raw2);
+                    if (managed_selected) {
+                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
+                    }
                     return dr_fail_without_node(state, module_name);
                 }
 
                 if (!ifp_verify(raw2, state.diags, interface_path)) {
                     mi_free(raw2);
+                    if (managed_selected) {
+                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
+                    }
                     return dr_fail_without_node(state, module_name);
                 }
 
                 let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
                 if (artifacts == null) {
                     mi_free(raw2);
+                    if (managed_selected) {
+                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
+                    }
                     return dr_fail_without_node(state, module_name);
                 }
                 let node2 = mg_node_from_interface(module_name, interface_path,
                     artifacts as ModuleArtifactPaths*);
+                node2.managed = managed_selected;
                 node2.state = MNS_RESOLVING;
                 if (!dr_add_graph_node(state, node2)) {
                     mi_free(raw2);
@@ -334,7 +364,11 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                 }
 
                 dr_register_graph_interface(state, raw2);
-                return dr_resolve_interface_dependencies(ctx, node2, raw2, next_stack);
+                let resolved = dr_resolve_interface_dependencies(ctx, node2, raw2, next_stack);
+                if (!resolved && managed_selected) {
+                    dr_emit_error(state.diags, "L1C-2158", "invalid bundled interface dependency graph; rerun make build-stage1 or repair installation", interface_path);
+                }
+                return resolved;
             }
 
             if (ord(ctx.policy) == ord(MRP_REQUIRE_INTERFACE)) {

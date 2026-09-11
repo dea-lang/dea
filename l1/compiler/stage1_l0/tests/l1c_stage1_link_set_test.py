@@ -335,6 +335,7 @@ def run_link(
     foreign_equals: bool = False,
     c_options: str | None = None,
     runtime_include: Path | None = None,
+    runtime_lib: Path | None = None,
     trace_arc: bool = False,
     short_aliases: bool = False,
 ) -> subprocess.CompletedProcess[str]:
@@ -352,6 +353,7 @@ def run_link(
             foreign object.
         c_options: Optional wrapper-compilation options.
         runtime_include: Optional directory containing a test-owned `dea_rt.h`.
+        runtime_lib: Explicit runtime for compiler probes that implement only compile/link.
         trace_arc: Select the traced runtime and preserve ARC source locations.
         short_aliases: Use the public short spellings for link-specific options.
 
@@ -374,6 +376,8 @@ def run_link(
         args.extend(["--c-options", c_options])
     if runtime_include is not None:
         args.extend(["--runtime-include", str(runtime_include)])
+    if runtime_lib is not None:
+        args.extend(["--runtime-lib", str(runtime_lib)])
     args.extend(["--c-compiler", c_compiler, "--output", str(output)])
     return run_compiler(compiler, cwd, *args)
 
@@ -1091,6 +1095,8 @@ def test_opaque_inputs_use_original_final_paths(
         str(objects["linkset.leaf"]),
         "--c-compiler",
         str(compiler_probe),
+        "--runtime-lib",
+        str(compiler.parent.parent / "lib"),
         "--output",
         str(output),
     )
@@ -1452,6 +1458,7 @@ def test_typed_operand_failures(
         [objects["linkset.foreign_entry"]],
         smuggled_output,
         c_options=str(foreign_answer),
+        runtime_lib=compiler.parent.parent / "lib",
     )
     require_link_failure(
         smuggled,
@@ -1540,6 +1547,7 @@ def test_wrapper_embedded_linker_control_reaches_final_host(
         inputs,
         output,
         c_options="-Xclang --dependent-lib=Security",
+        runtime_lib=compiler.parent.parent / "lib",
     )
     require_link_failure(
         completed,
@@ -1867,6 +1875,9 @@ def test_runtime_header_alias_rejection(
     include_dir.mkdir(parents=True)
     runtime_header = include_dir / "dea_rt.h"
     shutil.copy2(RUNTIME_HEADER, runtime_header)
+    # Native preparation compiles every bundled module, including sys.real.
+    real_header = include_dir / "l1_real.h"
+    shutil.copy2(RUNTIME_HEADER.with_name("l1_real.h"), real_header)
 
     inputs = [
         objects["linkset.main"],
@@ -1875,6 +1886,7 @@ def test_runtime_header_alias_rejection(
     ]
     before = capture_link_input_bytes(inputs)
     before[runtime_header] = runtime_header.read_bytes()
+    before[real_header] = real_header.read_bytes()
 
     exact = run_link(
         compiler,

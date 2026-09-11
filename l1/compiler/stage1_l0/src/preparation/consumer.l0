@@ -1,0 +1,116 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module preparation.consumer;
+
+import std.path;
+import std.string;
+import std.system;
+import std.vector;
+import analysis;
+import cli_args.model;
+import compiler_filesystem;
+import driver;
+import driver.state;
+import module_graph;
+import preparation;
+import sem_context;
+import source_paths;
+import util.diag;
+import util.log;
+
+/** Own native support until this invocation's last consumer has finished. */
+struct ManagedPreparation {
+    context: void*;
+    options: CliOptions*;
+    config: LogConfig*;
+    native: bool;
+    semantic_root: string;
+    native_root: string?;
+}
+
+/** Establish lazy toolchain paths without native probes or persistent writes. */
+func mp_create(opts: CliOptions*, cfg: LogConfig*, native: bool) -> ManagedPreparation* {
+    let context = pr_create(opts, native);
+    return new ManagedPreparation(context, opts, cfg, native, pr_get(context, "semantic_root"), null);
+}
+
+/** Drop command-private native support only after the final consumer. */
+func mp_free(self: ManagedPreparation*) {
+    pr_log_context(self.context, self.options);
+    l1c_prep_free(self.context);
+    drop self;
+}
+
+/** Resolve one native context for the entire command. Semantic selection has no preparation step. */
+func mp_ensure(self: ManagedPreparation*, native: bool, diags: DiagCollector*) -> bool {
+    if (!native) { return true; }
+    if (self.native_root == null) {
+        if (!pr_prepare(self.context, false, self.options, self.config, diags)) {
+            pr_report_error(self.context, diags);
+            return false;
+        }
+        self.native_root = pr_get(self.context, "selected");
+        self.options.managed_runtime_family = pr_get(self.context, "family");
+    }
+    self.options.managed_profile = self.native_root;
+    return true;
+}
+
+/** Preserve final-link runtime overrides; headers are independent bootstrap inputs. */
+func mp_runtime(self: ManagedPreparation*, link: bool, diags: DiagCollector*) -> bool {
+    let runtime_override = env_get("L1_RUNTIME_LIB");
+    if (link && self.options.runtime_lib == null && runtime_override == null) {
+        return mp_ensure(self, true, diags);
+    }
+    return true;
+}
+
+/** Replace exactly the compiler-owned bundled source position, respecting system overrides. */
+func mp_source_paths(self: ManagedPreparation*, paths: SourceSearchPaths*) {
+    if (sv_size(self.options.sys_roots) > 0) { return; }
+    paths.managed_source_root = join(pr_get(self.context, "home"), "shared/l1/stdlib");
+    paths.managed_interfaces = self.semantic_root;
+    if (self.native_root != null) {
+        paths.managed_interfaces = join(self.native_root as string, "modules");
+    }
+}
+
+/** Analyze through toolchain interfaces before materializing exact native sibling pairs. */
+func mp_analyze(self: ManagedPreparation*, paths: SourceSearchPaths*, entry: string,
+    policy: ModuleResolutionPolicy, artifact_root: string?) -> AnalysisResult* {
+    mp_source_paths(self, paths);
+    let result = analysis_analyze_entry_with_resolution(paths, entry, self.options.interface_paths,
+        policy, artifact_root, self.config);
+    if (!self.native || analysis_has_errors(result)) { return result; }
+    let needs_native = false;
+    with (let names = mg_node_names_sorted(driver_graph(result.driver_state)) => sv_free(names)) {
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let node = mg_find_node(driver_graph(result.driver_state), sv_get(names, i)) as ModuleGraphNode*;
+            if (node.managed) { needs_native = true; }
+            else if (ord(node.origin.kind) == ord(MOK_INTERFACE) && node.artifacts != null &&
+                cfs_path_kind_follow((node.artifacts as ModuleArtifactPaths*).object_path) != CFS_PATH_REGULAR) {
+                cli_emit_error(result.diags, "L1C-2097", "explicit provider object is missing or is not a regular file: " +
+                    (node.artifacts as ModuleArtifactPaths*).object_path);
+            }
+        }
+    }
+    if (needs_native && !analysis_has_errors(result) && mp_ensure(self, true, result.diags)) {
+        analysis_result_free(result);
+        mp_source_paths(self, paths);
+        result = analysis_analyze_entry_with_resolution(paths, entry, self.options.interface_paths,
+            policy, artifact_root, self.config);
+    }
+    return result;
+}
+
+/** Standalone managed discovery is limited to compiler-owned std/sys modules, with no source fallback. */
+func mp_bundled_provider(self: ManagedPreparation*, module_name: string) -> bool {
+    if (!starts_with_s(module_name, "std.") && !starts_with_s(module_name, "sys.")) { return false; }
+    let relative = sp_module_source_relpath(module_name);
+    if (relative == null) { return false; }
+    let source = join(join(pr_get(self.context, "home"), "shared/l1/stdlib"), relative as string);
+    return cfs_path_kind_follow(source) == CFS_PATH_REGULAR;
+}

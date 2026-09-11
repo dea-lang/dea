@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-09-07
+Version: 2026-09-11
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -32,8 +32,8 @@ The current stack is intentionally layered:
 
 1. L1 language and compiler
 2. L1 stdlib modules under `compiler/shared/l1/stdlib/`
-3. C runtime boundary through the public `compiler/shared/runtime/include/dea_rt.h` surface and the delivered runtime
-   archives under `build/dea/lib/`
+3. C runtime boundary through the public `compiler/shared/runtime/include/dea_rt.h` surface and derived native support
+   from a matching managed profile or an explicit runtime-library override
 
 This keeps platform-specific behavior concentrated at the runtime boundary instead of leaking into core language
 semantics.
@@ -41,8 +41,8 @@ semantics.
 Standalone `--link` preserves this boundary rather than asking the host linker to discover a runtime by library name.
 For normal compiler families the driver selects the runtime variant and passes its archive by exact path. The ADR-0027
 TinyCC compatibility carve-out instead permits the complete variant-matched raw runtime object set when TinyCC's object
-format is incompatible with the platform archive; when that set is unavailable, exact archive selection remains the
-fallback. This exception does not make raw runtime objects the general public link contract.
+format is incompatible with the platform archive. Explicit runtime-library overrides take priority and select the
+requested exact archive. This exception does not make raw runtime objects the general public link contract.
 
 ## 3. Portability Policy
 
@@ -189,10 +189,19 @@ AddressSanitizer builds poison quarantined user payloads until eviction. Generat
 metadata needed for Dea diagnostics, while direct stale C accesses remain sanitizer-visible; eviction unpoisons the
 range before returning it to the C allocator.
 
-The L1 runtime archives and tcc object variants use content-sensitive configuration stamps. Compiler selection, runtime
-flags, mode defines, and baked quarantine settings therefore trigger the necessary rebuilds, while repeating an
-identical configuration remains a no-op. Runtime allocation benchmarks use monotonic wall time and observable pointer
-escapes so optimized unchecked loops retain their measured work.
+The separate `make runtime` developer archives and tcc object variants use content-sensitive configuration stamps.
+Compiler selection, runtime flags, mode defines, and baked quarantine settings therefore trigger the necessary rebuilds,
+while repeating an identical configuration remains a no-op. Runtime allocation benchmarks use monotonic wall time and
+observable pointer escapes so optimized unchecked loops retain their measured work.
+
+Bundled semantic interfaces and rebuild inputs belong to the toolchain; native stdlib/runtime profiles are derived.
+Managed preparation uses compiler-input identity `D` and native identity `N`, separate generated-C/runtime settings,
+bounded compiler adapters and machine-local integrity memos. Unsupported reuse arrangements can still compile through
+fresh command-private preparation. Semantic-only use neither consults native cache state nor rehashes bundled sources.
+These boundaries are recorded in
+[l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md](../decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md),
+[l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md](../decisions/0039-native-preparation-identity-and-reuse-boundary.md)
+and [l1/docs/reference/stdlib-preparation.md](stdlib-preparation.md).
 
 The native L1 Stage 1 compiler is itself an L0 program. Its default compiler-build runtime uses basic pointer validation
 and a 256-record quarantine limit, retaining core checked-runtime diagnostics without the full interior-pointer index.

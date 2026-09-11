@@ -53,6 +53,7 @@ func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "usage: l1c [-h] [-V] [-v] [-Vl] [-Rp PROJECT_ROOT] [-Rs SYS_ROOT] [--run | --build |");
     cli_print_line(to_stderr, "           -c | --compile | -k | -Gi | --gen | --check | --tok | --ast | --sym | --type]");
     cli_print_line(to_stderr, "           [-I INTERFACE_PATH]");
+    cli_print_line(to_stderr, "           [--stdlib-cache DIR] [--no-auto-prepare]");
     cli_print_line(to_stderr, "           [--output OUTPUT]");
     cli_print_line(to_stderr, "           [-Cf C_OBJECT] [-l LIBRARY] [-L LIBRARY_PATH]");
     cli_print_line(to_stderr, "           [-Rr RPATH] [-Cl LINK_ARG] [-e MODULE]");
@@ -62,8 +63,9 @@ func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "           [-Gk]");
     cli_print_line(to_stderr, "           [--all-modules] [--include-eof]");
     cli_print_line(to_stderr, "           targets [targets ...]");
+    cli_print_line(to_stderr, "       l1c --prepare-stdlib [--force] [--stdlib-cache DIR]");
     cli_print_line(to_stderr, "       l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L LIBRARY_PATH]...");
-    cli_print_line(to_stderr, "           [-Rr RPATH]... [-Cl LINK_ARG]... [-e MODULE] -o OUTPUT");
+    cli_print_line(to_stderr, "           [-Rr RPATH]... [-Cl LINK_ARG]... [-I INTERFACE_PATH]... [-e MODULE] -o OUTPUT");
 }
 
 /**
@@ -79,6 +81,14 @@ func cli_print_help() {
     cli_print_line(false, "                        Dea object paths with '--link'");
     cli_print_blank_line(false);
     cli_print_line(false, "options:");
+    cli_print_line(false, "  --prepare-stdlib      Prepare reusable bundled native modules and matching runtime");
+    cli_print_line(false, "                        (primary mode; accepts no source target)");
+    cli_print_line(false, "  --force               Reobserve and rebuild one reusable profile; valid only");
+    cli_print_line(false, "                        with '--prepare-stdlib'; serialize against consumers");
+    cli_print_line(false, "  --stdlib-cache DIR    Select one local cache (overrides $L1_STDLIB_CACHE;");
+    cli_print_line(false, "                        valid in: '--build', '--link', '--prepare-stdlib', '--run')");
+    cli_print_line(false, "  --no-auto-prepare     Reuse managed support and fail on a miss with guidance");
+    cli_print_line(false, "                        (valid in: '--build', '--link', '--run')");
     cli_print_line(false, "  -h, --help            show this help message and exit");
     cli_print_line(false, "  -V, --version         show compiler version and exit");
     cli_print_line(false, "  -v, --verbose         Increase verbosity: -v=INFO, -vvv=DEBUG");
@@ -123,32 +133,32 @@ func cli_print_help() {
     cli_print_line(false, "                        (at most once; valid in: '--link')");
     cli_print_line(false, "  --c-compiler, -Cc C_COMPILER");
     cli_print_line(false, "                        C compiler to use (valid in: '--build', '--compile',");
-    cli_print_line(false, "                        '--link', '--run'; default: $L1_CC has highest");
-    cli_print_line(false, "                        precedence if set; then tcc, gcc, clang, cc from PATH,");
+    cli_print_line(false, "                        '--link', '--prepare-stdlib', '--run'; explicit option,");
+    cli_print_line(false, "                        then $L1_CC, then tcc, gcc, clang, cc from PATH,");
     cli_print_line(false, "                        or $CC, in that order)");
     cli_print_line(false, "  --c-options, -Co C_OPTIONS");
     cli_print_line(false, "                        Extra options to pass to the C compiler (valid in:");
-    cli_print_line(false, "                        '--build', '--compile', '--link', '--run'; default");
-    cli_print_line(false, "                        prepends $L1_CFLAGS; options from --c-options are");
+    cli_print_line(false, "                        '--build', '--compile', '--link', '--prepare-stdlib',");
+    cli_print_line(false, "                        '--run'; prepends $L1_CFLAGS; options from --c-options are");
     cli_print_line(false, "                        appended after env options; e.g. -Co=\"-Og -DDEBUG\")");
     cli_print_line(false, "  -I, --interface-path INTERFACE_PATH");
     cli_print_line(false, "                        Add an interface search path (repeatable; valid in:");
-    cli_print_line(false, "                        '--build', '--compile', '--gen', '--run'; searched in");
-    cli_print_line(false, "                        declaration order)");
+    cli_print_line(false, "                        '--build', '--compile', '--gen', '--link', '--run';");
+    cli_print_line(false, "                        searched in declaration order)");
     cli_print_line(false, "  --runtime-include, -Ri RUNTIME_INCLUDE");
     cli_print_line(false, "                        Path to Dea runtime headers such as `dea_rt.h`");
-    cli_print_line(false, "                        (default: $L1_RUNTIME_INCLUDE or");
-    cli_print_line(false, "                        $L1_BUILD_DIR/include; valid in: '--build',");
-    cli_print_line(false, "                        '--compile', '--link', '--run')");
+    cli_print_line(false, "                        (default: $L1_RUNTIME_INCLUDE or toolchain include;");
+    cli_print_line(false, "                        valid in: '--build', '--compile', '--link',");
+    cli_print_line(false, "                        '--prepare-stdlib', '--run')");
     cli_print_line(false, "  --runtime-lib, -Rl RUNTIME_LIB");
     cli_print_line(false, "                        Path to Dea runtime library search directory");
     cli_print_line(false, "                        (default: $L1_RUNTIME_LIB or");
-    cli_print_line(false, "                        $L1_BUILD_DIR/lib; valid in: '--build', '--link', '--run')");
+    cli_print_line(false, "                        managed native support; valid in: '--build', '--link', '--run')");
     cli_print_line(false, "  -g                    Reserved debug-information option (not supported yet)");
     cli_print_line(false, "  -S                    Reserved assembly-output option (not supported yet)");
     cli_print_line(false, "  --no-line-directives, -NLD");
     cli_print_line(false, "                        Disable #line directives in generated C code (valid");
-    cli_print_line(false, "                        in: '--build', '--compile', '--gen', '--run')");
+    cli_print_line(false, "                        in: '--build', '--compile', '--gen', '--prepare-stdlib', '--run')");
     cli_print_line(false, "  -Va, --trace-arc      Use the traced runtime archive for ARC diagnostics;");
     cli_print_line(false, "                        with '--gen', generated C calls traced runtime");
     cli_print_line(false, "                        entrypoints directly (link libdea_rt_traced.a)");

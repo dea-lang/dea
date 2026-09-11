@@ -10,6 +10,7 @@ import std.vector;
 import util.diag;
 import util.log;
 import build_driver;
+import preparation.consumer;
 import cli_args.model;
 import compiler_filesystem;
 import diag_print;
@@ -21,14 +22,24 @@ import link_driver.workspace;
 
 /** Execute public `l1c --link` mode. */
 func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
-    with (let diags = diag_create() => diag_free(diags)) {
-        let plan = ld_prepare_cli_inputs(
-            opts.link_operands, opts.entry_module, diags);
+    with (let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, true) => mp_free(managed)) {
+        if (!ld_validate_cli_before_preparation(opts, opts.output as string, true, diags)) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let plan = ld_prepare_cli_inputs_managed(
+            opts.link_operands, opts.interface_paths, opts.entry_module, managed, diags);
         if (plan == null) {
             dp_print_collector(diags);
             return 1;
         }
         let verified = plan as LinkPlan*;
+        if (!mp_runtime(managed, true, diags)) {
+            dp_print_collector(diags);
+            ld_plan_free(verified);
+            return 1;
+        }
         let output_path = opts.output as string;
 
         let valid_output = ld_validate_output(output_path, diags);

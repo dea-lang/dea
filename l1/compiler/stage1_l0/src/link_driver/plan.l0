@@ -345,6 +345,7 @@ func ld_compute_lifecycle_order(plan: LinkPlan*, diags: DiagCollector*) -> bool 
         for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
             let input = ld_plan_input_get(plan, i);
             if (ord(input.kind) == ord(LOK_DEA_OBJECT) &&
+                !input.discovered &&
                 input.visit_state == 0 &&
                 !ld_visit_module(plan, input, stack, diags)) {
                 return false;
@@ -354,16 +355,15 @@ func ld_compute_lifecycle_order(plan: LinkPlan*, diags: DiagCollector*) -> bool 
     return true;
 }
 
-/** Complete planning from a set whose interfaces are already verified. */
-func ld_prepare_verified_plan(
+/** Complete planning after verified provider identities have been registered. */
+func ld_prepare_registered_plan(
     plan: LinkPlan*,
     explicit_entry: string?,
     diags: DiagCollector*
 ) -> LinkPlan*? {
     _ld_assert_verified_input_invariants(plan);
 
-    if (!ld_register_modules(plan, diags) ||
-        !ld_validate_dependencies(plan, diags)) {
+    if (!ld_validate_dependencies(plan, diags)) {
         ld_plan_free(plan);
         return null;
     }
@@ -384,6 +384,20 @@ func ld_prepare_verified_plan(
         return null;
     }
     return plan;
+}
+
+/** Register a complete verified set and finish semantic planning. */
+func ld_prepare_verified_plan(
+    plan: LinkPlan*,
+    explicit_entry: string?,
+    diags: DiagCollector*
+) -> LinkPlan*? {
+    _ld_assert_verified_input_invariants(plan);
+    if (!ld_register_modules(plan, diags)) {
+        ld_plan_free(plan);
+        return null;
+    }
+    return ld_prepare_registered_plan(plan, explicit_entry, diags);
 }
 
 /**

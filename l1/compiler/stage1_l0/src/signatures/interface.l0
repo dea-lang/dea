@@ -39,6 +39,7 @@ func sig_check_materialized_interface_shapes(nr: NameResolution*, driver_state: 
             continue;
         }
         let env = env_opt as ModuleEnv*;
+        let previous_diags = diag_count(diags);
         for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
             let info3 = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
             for (let field_i3 = 0; field_i3 < vec_size(info3.fields); field_i3 = field_i3 + 1) {
@@ -68,6 +69,11 @@ func sig_check_materialized_interface_shapes(nr: NameResolution*, driver_state: 
             let entry2 = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
             sig_reject_slice_escape(entry2.ty, "TYP-0812", "slice type may not be used in a top-level let", diags,
                 env.module_ptr.filename, env.module_ptr.span);
+        }
+        let graph_node = mg_find_node(driver_graph(driver_state), mi.module_name);
+        if (diag_count(diags) > previous_diags && graph_node != null && (graph_node as ModuleGraphNode*).managed) {
+            diag_error(diags, "l1c", "L1C-2158", "invalid bundled interface type shape; rerun make build-stage1 or repair installation",
+                env.module_ptr.filename, 0, 0, 0, 0);
         }
     }
 }
@@ -262,6 +268,7 @@ func sig_check_interface_semantic_closures(driver_state: DriverState*, diags: Di
             if (node.origin.path != null) {
                 filename = node.origin.path as string;
             }
+            let previous_diags = diag_count(diags);
             with (let closure = mg_semantic_closure(graph, node.module_name) => ss_free(closure),
                   let reported = ss_create() => ss_free(reported)) {
                 sig_check_interface_closure_surface(raw, closure, reported, diags, filename, Span(0, 0, 0, 0));
@@ -270,6 +277,10 @@ func sig_check_interface_semantic_closures(driver_state: DriverState*, diags: Di
                     sig_check_interface_closure_surface(semantic_opt as ModuleInterface*, closure, reported, diags,
                         filename, Span(0, 0, 0, 0));
                 }
+            }
+            if (node.managed && diag_count(diags) > previous_diags) {
+                diag_error(diags, "l1c", "L1C-2158", "invalid bundled interface semantic closure; rerun make build-stage1 or repair installation",
+                    filename, 0, 0, 0, 0);
             }
         }
     }

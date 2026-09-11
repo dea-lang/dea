@@ -23,6 +23,7 @@ enum CliMode {
     CM_AST;
     CM_SYM;
     CM_TYPE;
+    CM_PREPARE_STDLIB;
 }
 
 /**
@@ -65,6 +66,8 @@ struct CliOptions {
     c_options: string?;
     runtime_include: string?;
     runtime_lib: string?;
+    stdlib_cache: string?;
+    force: bool;
 
     no_line_directives: bool;
     trace_arc: bool;
@@ -81,6 +84,9 @@ struct CliOptions {
     entry_target: string?;
     extra_target_count: int;
     program_args: StringVector*;
+    no_auto_prepare: bool;
+    managed_profile: string?; /* Validated native provider/runtime root. */
+    managed_runtime_family: string?; /* Native identity's probed compiler family. */
 }
 
 /**
@@ -169,6 +175,8 @@ func cli_options_create() -> CliOptions* {
         null,
         null,
         null,
+        null,
+        false,
         false,
         false,
         false,
@@ -180,7 +188,10 @@ func cli_options_create() -> CliOptions* {
         null,
         null,
         0,
-        sv_create(4)
+        sv_create(4),
+        false,
+        null,
+        null
     );
 }
 
@@ -306,6 +317,7 @@ func cli_mode_flag(mode: CliMode) -> string {
         CM_AST => { return "--ast"; }
         CM_SYM => { return "--sym"; }
         CM_TYPE => { return "--type"; }
+        CM_PREPARE_STDLIB => { return "--prepare-stdlib"; }
     }
 }
 
@@ -328,5 +340,6 @@ func cli_mode_name(mode: CliMode) -> string {
         CM_AST => { return "ast"; }
         CM_SYM => { return "sym"; }
         CM_TYPE => { return "type"; }
+        CM_PREPARE_STDLIB => { return "prepare-stdlib"; }
     }
 }

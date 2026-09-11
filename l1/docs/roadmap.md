@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-10
+Version: 2026-09-11
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -13,7 +13,7 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 - `compiler/stage1_l0/` is the only implemented L1 compiler today.
 - `compiler/stage2_l1/` is a placeholder for a future self-hosted L1 compiler.
-- Stage 1 uses 116 phase/ownership modules with explicit canonical state imports. The settled layout and its two
+- Stage 1 uses 120 phase/ownership modules with explicit canonical state imports. The settled layout and its two
   recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
 - `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` compile
@@ -28,14 +28,19 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   Standalone `--link` derives and verifies one sibling `.l1m` per positional `.o`, uses interface
   entry/import/dependency manifests for graph, lifecycle, and provenance checks, emits a deterministic wrapper, and
   passes original opaque Dea and caller-asserted foreign native paths through a bounded output-local transaction without
-  snapshots. Normal compiler families receive an exact regular runtime archive path; TinyCC retains the ADR-0027
-  variant-matched raw-object compatibility carve-out when that set is available, with archive fallback otherwise.
-  Multi-CU build/run selects the source target entry, mixes source and authoritative interface/object providers, accepts
-  foreign objects, retains exact mirrored generated-C trees, and launches run executables directly. Module C is
-  byte-identical across generation, compile-only retention, build retention, and run retention for identical inputs and
-  settings; the legacy whole-program generator and backend-owned process wrapper are removed. Build, standalone link,
-  and run accept ordered external libraries, library search paths, supported-family rpaths, and raw host-driver words
-  while preserving typed object roles and exact driver-selected runtime inputs.
+  snapshots. Normal compiler families receive an exact regular runtime archive path; TinyCC managed profiles supply the
+  complete variant-matched raw-object set. Explicit runtime-library overrides retain exact-archive priority. Multi-CU
+  build/run selects the source target entry, mixes source and authoritative interface/object providers, accepts foreign
+  objects, retains exact mirrored generated-C trees, and launches run executables directly. Module C is byte-identical
+  across generation, compile-only retention, build retention, and run retention for identical inputs and settings; the
+  legacy whole-program generator and backend-owned process wrapper are removed. Build, standalone link, and run accept
+  ordered external libraries, library search paths, supported-family rpaths, and raw host-driver words while preserving
+  typed object roles and exact driver-selected runtime inputs.
+- Bootstrap supplies public runtime headers and the complete bundled semantic interface set independently of native
+  program-runtime construction. Source modes retain system-before-project precedence; standalone link discovers missing
+  providers through ordered `-I` roots and bundled interfaces after explicit objects. Build/run/link obtain matching
+  native stdlib/runtime support on demand using one local cache, with conservative reuse and fresh private preparation
+  when persistent reuse is unavailable. See [l1/docs/reference/stdlib-preparation.md][preparation-contract].
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 - L1 triple-bootstrap is not part of the current Stage 1 contract.
@@ -179,6 +184,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] added ordered `-l`, `-L`, `-Rr` / `--rpath`,
   and `-Cl` / `--link-arg` inputs to build, standalone link, and run while retaining typed object roles and exact
   runtime selection.
+- Feature [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][stdlib-preparation]
+  added bootstrap-owned semantic interfaces, standalone-link provider discovery, and locally cached native
+  stdlib/runtime preparation with conservative reuse and command-private recovery.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -254,9 +262,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   print-helper surface, using typed L1 variadics with shared string and writer formatting.
 - Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Priority 2 audit that records
   portable systems capability and C99-family coverage without promising literal C99 API parity.
-- Feature [2026-09-07-stdlib-runtime-preparation-and-cache-noref][stdlib-preparation] is the phased plan for
-  standalone-link interface discovery, stdlib/runtime preparation and caching, scoped maintenance, managed-provider
-  integration, and bootstrap prewarming, with one integrated acceptance gate.
 
 ## Backlog
 
@@ -385,6 +390,7 @@ update to be promoted to an initiative or plan:
 [per-module-generated-c]: ../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
+[preparation-contract]: reference/stdlib-preparation.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-pointer-validation]: ../work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md
@@ -399,7 +405,7 @@ update to be promoted to an initiative or plan:
 [stage1-source-decomposition]: ../work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
 [stage2-self-hosting]: ../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [stdlib-coverage]: ../work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md
-[stdlib-preparation]: ../work/plans/features/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
+[stdlib-preparation]: ../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md
 [string-equality]: ../work/plans/features/closed/2026-04-18-string-equality-operators-noref.md
 [string-relational]: ../work/plans/features/closed/2026-04-18-string-relational-operators-noref.md

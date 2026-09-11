@@ -757,6 +757,10 @@ func bd_runtime_include_dir(opts: CliOptions*) -> string? {
         return from_env as string;
     }
 
+    let toolchain_home = env_get("L1_HOME");
+    if (toolchain_home != null && !bd_is_dir(join(toolchain_home as string, "stage1_l0/src"))) {
+        return join(toolchain_home as string, "include");
+    }
     let build_dir = env_get("L1_BUILD_DIR");
     if (build_dir != null) {
         return join(build_dir as string, "include");
@@ -786,6 +790,9 @@ func bd_runtime_lib_dir(opts: CliOptions*) -> string? {
     let from_env = env_get("L1_RUNTIME_LIB");
     if (from_env != null) {
         return from_env as string;
+    }
+    if (opts.managed_profile != null) {
+        return join(opts.managed_profile as string, "lib");
     }
 
     let build_dir = env_get("L1_BUILD_DIR");
@@ -877,6 +884,19 @@ func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?
  * @return Runtime object paths, or `null` when no repo-local build dir is known.
  */
 func bd_runtime_object_paths(opts: CliOptions*) -> StringVector*? {
+    let runtime_override = env_get("L1_RUNTIME_LIB");
+    if (opts.runtime_lib != null || runtime_override != null) { return null; }
+    if (opts.managed_profile != null) {
+        let paths = bd_runtime_object_paths_for_build_dir(opts, opts.managed_profile);
+        if (paths == null) { return null; }
+        with (let original = paths as StringVector* => sv_free(original)) {
+            let adapted = sv_create(sv_size(original));
+            for (let i = 0; i < sv_size(original); i = i + 1) {
+                sv_push(adapted, replace_s(sv_get(original, i), "/runtime/tcc/", "/lib/tcc/"));
+            }
+            return adapted;
+        }
+    }
     return bd_runtime_object_paths_for_build_dir(opts, env_get("L1_BUILD_DIR"));
 }
 

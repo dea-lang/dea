@@ -50,11 +50,11 @@ def stage1_compiler() -> Path:
 
 
 def real_c_compiler() -> str:
-    """Return one real host C compiler for the delegating fake."""
+    """Return the compiler compatible with the explicit developer runtime archive."""
 
     for configured in (
+        os.environ.get("L1_RUNTIME_CC", "").strip(),
         os.environ.get("L1_CC", "").strip(),
-        os.environ.get("CC", "").strip(),
     ):
         if configured:
             resolved = shutil.which(configured)
@@ -64,7 +64,9 @@ def real_c_compiler() -> str:
                 )
             return resolved
 
-    for candidate in ("tcc", "gcc", "clang", "cc"):
+    for candidate in ("clang", "gcc", "cc", os.environ.get("CC", "").strip()):
+        if not candidate:
+            continue
         resolved = shutil.which(candidate)
         if resolved is not None:
             return resolved
@@ -171,6 +173,8 @@ def compiler_env(
     env.pop("TMP", None)
     env["L1_WORKSPACE_FAKE_LOG"] = str(log_path)
     env["L1_WORKSPACE_FAKE_MODE"] = mode
+    # The instrumented compiler tests application workspace ownership, not native preparation.
+    env["L1_RUNTIME_LIB"] = str(stage1_compiler().parent.parent / "lib")
     env["L1_WORKSPACE_REAL_CC"] = real_c_compiler()
     env["L1_WORKSPACE_FAKE_CC"] = str(fake_compiler)
     return env

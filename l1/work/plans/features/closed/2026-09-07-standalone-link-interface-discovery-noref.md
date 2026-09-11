@@ -4,31 +4,32 @@
 
 - Date: 2026-09-10
 - Originally planned: 2026-09-07
-- Last edited: 2026-09-10
+- Last edited: 2026-09-11
 - Status: Closed (superseded / merged into L1 standalone-link discovery and stdlib/runtime preparation and caching).
 - Title: Add default managed stdlib discovery and explicit interface search roots to L1 standalone linking
 - Kind: Feature
 - Severity: Medium
 - Stage: L1
 - Subsystem: Compiler CLI / standalone linking / module graph / interface discovery
-- Superseded by: [l1/work/plans/features/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][combined-plan]
+- Superseded by: [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][combined-plan]
 
 ## Supersession Record
 
 Closed on 2026-09-10 by consolidation into **L1 standalone-link discovery and stdlib/runtime preparation and caching**.
-This is an administrative planning closure, not completed implementation. The authoritative plan remains Draft and owns
-all implementation, integrated acceptance, documentation, and architectural follow-through.
+This was an administrative planning closure. The authoritative combined plan owns implementation, integrated acceptance,
+documentation, and architectural follow-through; its current status records that work.
 
 Transferred scope includes interface-assisted transitive provider discovery; explicit-object and ordered `-I`
 precedence; interface authority, opaque native inputs, dependency and operand ordering; managed stdlib/runtime
-selection; shared preparation context and performance requirements; cache ownership, integrity, and scoped maintenance;
-CLI and diagnostic planning; and all discovery and integrated acceptance criteria. The surviving plan also owns the
-planned amendment to the authoritative-module-interface ADR and preserves external-input ownership and ordering.
+selection; shared preparation context and performance requirements; local cache ownership and integrity; CLI and
+diagnostic planning; and all discovery and integrated acceptance criteria. The surviving plan also owns the planned
+amendment to the authoritative-module-interface ADR and preserves external-input ownership and ordering.
 
-The implementation sequence is interface discovery with caller-prepared fixtures, preparation/cache foundations and
-explicit preparation, cleanup/scrub, managed-provider integration and bootstrap prewarming, then integrated acceptance
-and closure. Installed-root fixtures keep the feature independent of installer implementation. No feature is represented
-as shipped by this supersession, and publication authorization boundaries are unchanged.
+The revised combined plan supplies bootstrap-owned semantic interfaces, one local derived native cache, conservative
+reuse, a reduced preparation CLI and integrated contract alignment. It excludes cleanup/scrub, system caches and
+installed native profiles. Read-only installed fixtures keep native preparation independent of installer implementation.
+This supersession record alone does not represent implementation, and publication authorization boundaries are
+unchanged.
 
 ## ADR Impact
 
@@ -37,11 +38,11 @@ as shipped by this supersession, and publication authorization boundaries are un
   - Disposition: ADR not warranted
   - ADR: None
   - Rationale: This closure changes planning ownership only; it implements or accepts no architectural change. All
-    durable discovery contracts and future ADR amendment obligations are transferred to the active combined plan, where
-    they remain subject to integrated acceptance and implementation closure.
+    durable discovery contracts and future ADR amendment obligations are transferred to the combined plan, whose
+    implementation closure records the resulting architectural decisions.
 
 ## References
 
-[l1/work/plans/features/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][combined-plan]
+[l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][combined-plan]
 
-[combined-plan]: ../2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
+[combined-plan]: 2026-09-07-stdlib-runtime-preparation-and-cache-noref.md

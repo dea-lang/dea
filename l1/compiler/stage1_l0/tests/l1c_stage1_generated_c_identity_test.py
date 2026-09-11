@@ -548,6 +548,8 @@ def main() -> int:
         temp_parent = root / "temp"
         temp_parent.mkdir(mode=0o700)
         base_env = os.environ.copy()
+        # Keep recorder invocations focused on the source/mixed module generation contract.
+        base_env["L1_RUNTIME_LIB"] = str(compiler.parent.parent / "lib")
         base_env["TMPDIR"] = str(temp_parent)
         base_env.pop("TEMP", None)
         base_env.pop("TMP", None)

@@ -96,6 +96,7 @@ struct ModuleGraphNode {
     dependencies: VectorBase*; // ModuleDependency*
     direct_imports: StringVector*; // exact source declaration order
     interface_imports: StringVector*; // canonical parsed `.l1m` lifecycle order
+    managed: bool; // selected from a validated managed native/semantic profile
 }
 
 /**
@@ -346,7 +347,8 @@ func _mg_node_create(
         MNS_UNRESOLVED,
         _mg_ptr_vec_create(2),
         sv_create(2),
-        sv_create(2)
+        sv_create(2),
+        false
     );
 }
 
