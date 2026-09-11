@@ -496,7 +496,12 @@ class Lowering:
         # break/continue here therefore targets an outer loop, when present.
         self.state._loop_label_stack.pop()
         if stmt.update:
+            # Update temporaries live inside the current while-body C block.
+            update_scope = self.state._push_scope()
             self._emit_stmt(stmt.update, module_name)
+            if not self.state._next_stmt_unreachable:
+                self.lifetime._emit_cleanup_at_scope_exit(update_scope)
+            self.state._pop_scope()
 
         self.state.emitter.statements.emit_block_end()
 
@@ -786,7 +791,7 @@ class Lowering:
         self.state.emitter.statements.emit_block_start()
         outer_scope = self.state._push_scope()
         self.state.emitter.statements.emit_match_scrutinee_decl(c_scrutinee_type, c_scrutinee_expr)
-        if self.lifetime._is_unwrap_cast_from_place(stmt.expr) and self.state.analysis.has_arc_data(scrutinee_expr_type):
+        if self.lifetime._is_borrowed_extraction(stmt.expr) and self.state.analysis.has_arc_data(scrutinee_expr_type):
             self.lifetime._emit_retain_for_copied_value("_scrutinee", scrutinee_expr_type)
 
         # Track _scrutinee for cleanup only for rvalue expressions with owned types
@@ -874,7 +879,7 @@ class Lowering:
         self.state.emitter.statements.emit_block_start()
         outer_scope = self.state._push_scope()
         self.state.emitter.statements.emit_match_scrutinee_decl(c_scrutinee_type, c_scrutinee_expr)
-        if self.lifetime._is_unwrap_cast_from_place(stmt.expr) and self.state.analysis.has_arc_data(scrutinee_expr_type):
+        if self.lifetime._is_borrowed_extraction(stmt.expr) and self.state.analysis.has_arc_data(scrutinee_expr_type):
             self.lifetime._emit_retain_for_copied_value("_scrutinee", scrutinee_expr_type)
 
         # Track _scrutinee for cleanup only for rvalue expressions with owned types
@@ -1463,7 +1468,7 @@ class Lowering:
             return self._emit_expr_with_expected_type(e, expected)
 
         c_expr = self._emit_expr(e)
-        place_like = self.state._is_place_expr(e) or self.lifetime._is_unwrap_cast_from_place(e)
+        place_like = self.state._is_place_expr(e) or self.lifetime._is_borrowed_extraction(e)
 
         if natural_ty is None or not place_like:
             return self.convert._convert_expr_with_expected_type(c_expr, natural_ty, expected)
@@ -1647,6 +1652,8 @@ class Lowering:
             c_obj = self._emit_expr(expr.obj)
             # Determine if we need . or ->
             obj_type = self.state.analysis.expr_types.get(id(expr.obj))
+            if obj_type is not None and self.lifetime._should_materialize_arc_temp(expr.obj, obj_type):
+                c_obj = self.lifetime._materialize_arc_temp(c_obj, obj_type)
             obj_ptr_ty = self.state._pointer_type_or_none(obj_type)
             is_pointer = obj_ptr_ty is not None
             if obj_ptr_ty is not None:
@@ -1687,7 +1694,10 @@ class Lowering:
                 # value-optional: construct wrapper
                 if isinstance(expr.expr, NullLiteral):
                     return self.state.emitter.types.emit_null_literal(dst_ty)
-                if self.state._is_place_expr(expr.expr) and self.state.analysis.has_arc_data(dst_ty.inner):
+                if (
+                    self.state.analysis.has_arc_data(dst_ty.inner)
+                    and (self.state._is_place_expr(expr.expr) or self.lifetime._is_borrowed_extraction(expr.expr))
+                ):
                     retained = self.lifetime._emit_copy_expr_with_retains(c_inner, dst_ty.inner)
                     return self.state.emitter.types.emit_some_value_for_nullable(dst_ty, retained)
                 return self.state.emitter.types.emit_some_value_for_nullable(dst_ty, c_inner)
@@ -1779,6 +1789,8 @@ class Lowering:
             other = expr_right if isinstance(expr_left, NullLiteral) else expr_left
             other_ty = self.state.analysis.expr_types.get(id(other))
             c_other = self._emit_expr(other)
+            if other_ty is not None and self.lifetime._should_materialize_arc_temp(other, other_ty):
+                c_other = self.lifetime._materialize_arc_temp(c_other, other_ty)
 
             if isinstance(other_ty, NullableType) and not self.state.emitter.types.is_niche_nullable(other_ty):
                 # value-optional: (opt == null) <=> !opt.has_value

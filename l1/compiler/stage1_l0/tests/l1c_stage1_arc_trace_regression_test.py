@@ -2561,6 +2561,16 @@ def test_branch_liveness_revival_paths(artifact_dir: Path) -> None:
     )
 
 
+def test_comparison_temporary_cleanup(artifact_dir: Path) -> None:
+    """Comparison operands must preserve semantics and free every owned payload."""
+    fixture = Path(__file__).parent / "fixtures/arc_comparisons/main.l1"
+    stdout, stderr, _report, _arc = run_case(
+        "comparison_temporary_cleanup", read_text(fixture), artifact_dir
+    )
+    assert_equal(stdout, "arc comparisons ok\n", "comparison semantics", artifact_dir)
+    assert_true("op=alloc_string " in stderr, "comparison fixture must allocate", artifact_dir)
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -2568,6 +2578,7 @@ def main() -> int:
     keep_artifacts = os.environ.get("KEEP_ARTIFACTS", "0") == "1"
 
     checks = [
+        test_comparison_temporary_cleanup,
         test_static_string_noop,
         test_heap_string_lifecycle,
         test_string_copy_retain_and_release,

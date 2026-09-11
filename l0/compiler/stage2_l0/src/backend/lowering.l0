@@ -101,7 +101,7 @@ func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expe
 
     with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
         let c_expr = be_emit_expr(self, expr_id);
-        let place_like = be_is_place_expr(self, expr_id) || be_is_unwrap_cast_from_place(self, expr_id);
+        let place_like = be_is_place_expr(self, expr_id) || be_is_borrowed_extraction(self, expr_id);
         if (natural_ty == null || !place_like) {
             return be_convert_expr_with_expected_type(c_expr, natural_ty, expected);
         }
@@ -264,6 +264,9 @@ func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
 
         with (let other_ty = be_expr_type(self, other_id) => type_free_opt(other_ty)) {
             let c_other = be_emit_expr(self, other_id);
+            if (other_ty != null && be_should_materialize_arc_temp(self, other_id, other_ty as Type*)) {
+                c_other = be_materialize_arc_temp(self, c_other, other_ty as Type*);
+            }
             if (other_ty != null && ord((other_ty as Type*).kind) == ord(TY_NULLABLE) &&
                 !cem_is_niche_nullable(other_ty as Type*)) {
                 if (expr.text_value == "==") {
@@ -353,6 +356,9 @@ func be_emit_condition_expr(self: Backend*, expr_id: ExprId) -> string {
 
         with (let other_ty = be_expr_type(self, other_id) => type_free_opt(other_ty)) {
             let c_other = be_emit_expr(self, other_id);
+            if (other_ty != null && be_should_materialize_arc_temp(self, other_id, other_ty as Type*)) {
+                c_other = be_materialize_arc_temp(self, c_other, other_ty as Type*);
+            }
             if (other_ty != null && ord((other_ty as Type*).kind) == ord(TY_NULLABLE) &&
                 !cem_is_niche_nullable(other_ty as Type*)) {
                 if (expr.text_value == "==") {
@@ -387,6 +393,12 @@ func be_emit_condition_expr(self: Backend*, expr_id: ExprId) -> string {
                  expr.text_value == ">" || expr.text_value == ">=") &&
                 left_ty != null && right_ty != null &&
                 type_is_builtin(left_ty as Type*, "string") && type_is_builtin(right_ty as Type*, "string")) {
+                if (be_should_materialize_arc_temp(self, expr.expr_a, left_ty as Type*)) {
+                    c_left = be_materialize_arc_temp(self, c_left, left_ty as Type*);
+                }
+                if (be_should_materialize_arc_temp(self, expr.expr_b, right_ty as Type*)) {
+                    c_right = be_materialize_arc_temp(self, c_right, right_ty as Type*);
+                }
                 return cem_emit_condition_string_compare_call(expr.text_value, c_left, c_right);
             }
         }
@@ -747,6 +759,9 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
         EX_FIELD => {
             with (let obj_ty = be_expr_type(self, expr.expr_a) => type_free_opt(obj_ty)) {
                 let c_obj = be_emit_expr(self, expr.expr_a);
+                if (obj_ty != null && be_should_materialize_arc_temp(self, expr.expr_a, obj_ty as Type*)) {
+                    c_obj = be_materialize_arc_temp(self, c_obj, obj_ty as Type*);
+                }
                 let obj_ptr_ty = be_pointer_type_or_null(obj_ty);
                 if (obj_ptr_ty != null) {
                     c_obj = be_emit_checked_pointer_expr(self, c_obj, obj_ptr_ty as Type*, "_RT_ACCESS_READ");
@@ -781,7 +796,7 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                         if (cem_is_niche_nullable(dst_ty as Type*)) {
                             return cem_emit_cast(c_dst, c_inner);
                         }
-                        if (be_is_place_expr(self, expr.expr_a) &&
+                        if ((be_is_place_expr(self, expr.expr_a) || be_is_borrowed_extraction(self, expr.expr_a)) &&
                             analysis_has_arc_data(self.result, (dst_ty as Type*).inner as Type*)) {
                             c_inner = be_emit_copy_expr_with_retains(
                                 self, c_inner, (dst_ty as Type*).inner as Type*);
@@ -1076,7 +1091,7 @@ func be_emit_match_stmt(self: Backend*, stmt: StmtNode*) {
         let outer_scope = be_push_scope(self);
         let c_scrutinee_expr = be_emit_expr(self, stmt.expr_a);
         cem_emit_match_scrutinee_decl(self.emitter, cem_emit_type(scrutinee_ty as Type*), c_scrutinee_expr);
-        if (be_is_unwrap_cast_from_place(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
+        if (be_is_borrowed_extraction(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
             be_emit_retain_for_copied_value(self, "_scrutinee", scrutinee_ty as Type*);
         }
         if (!be_is_place_expr(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
@@ -1141,7 +1156,7 @@ func be_emit_case_stmt(self: Backend*, stmt: StmtNode*) {
         let outer_scope = be_push_scope(self);
         let c_scrutinee_expr = be_emit_expr(self, stmt.expr_a);
         cem_emit_match_scrutinee_decl(self.emitter, cem_emit_type(scrutinee_ty as Type*), c_scrutinee_expr);
-        if (be_is_unwrap_cast_from_place(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
+        if (be_is_borrowed_extraction(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
             be_emit_retain_for_copied_value(self, "_scrutinee", scrutinee_ty as Type*);
         }
         if (!be_is_place_expr(self, stmt.expr_a) && analysis_has_arc_data(self.result, scrutinee_ty as Type*)) {
@@ -1631,7 +1646,13 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
             cem_emit_label(self.emitter, continue_label2);
             be_pop_loop_labels(self);
             if (stmt.stmt_b >= 0) {
+                /* Update temporaries live inside the current while-body C block. */
+                let update_scope = be_push_scope(self);
                 be_emit_stmt(self, stmt.stmt_b);
+                if (!self.next_stmt_unreachable) {
+                    be_emit_cleanup_at_scope_exit(self, update_scope);
+                }
+                be_pop_scope(self);
             }
             cem_emit_block_end(self.emitter);
             self.next_stmt_unreachable = false;

@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-09-07
+Version: 2026-09-11
 
 This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
 
@@ -289,6 +289,15 @@ The backend is responsible for scheduling cleanup; the emitter materializes the 
 Key rules:
 
 - ARC-managed `string` values use runtime retain/release helpers
+- comparisons register owned ARC operands before consuming them, including optional null checks and string comparisons;
+  condition-leaf scopes clean them on both outgoing paths, while boolean values use surrounding-scope cleanup
+- optional-to-optional equality snapshots each operand exactly once before the inline presence/payload comparison;
+  borrowed ARC snapshots retain before lowering the next operand and register for cleanup on normal and early exits
+- borrowed extraction classification follows identity casts, unwraps, and `?` back to the source; an ARC optional wrap
+  creates a new owner and retains a borrowed payload once
+- field and index projections register fresh ARC-bearing aggregate bases; array bases are registered before index
+  evaluation so early index exits clean them, while raw nested rows preserve the enclosing array's ownership
+- `for` updates clean temporary owners inside each iteration's emitted C block
 - returning an owned local may be lowered as a move
 - scope exit cleanup runs in reverse declaration order
 - early exits run pending `with` cleanup before normal owned-value cleanup

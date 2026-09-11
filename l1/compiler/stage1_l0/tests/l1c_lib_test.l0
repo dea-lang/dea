@@ -944,8 +944,10 @@ func test_run_nullable_identity_build_and_keep_c() {
 
     let c_text = read_file(c_path);
     assert(c_text != null, "nullable_identity_main kept C file should exist");
-    assert(contains_s(c_text as string, "rt_string_equals(s1.value, s1_copy.value)"),
-        "nullable_identity_main string? equality lowering mismatch");
+    assert(contains_s(c_text as string, "rt_string_equals(dea_arc_"),
+        "nullable_identity_main string? equality should compare captured payloads");
+    assert(contains_s(c_text as string, "rt_string_retain((dea_copy_"),
+        "nullable_identity_main string? equality should retain borrowed snapshots");
 
     rt_delete_file(out_path);
     cleanup_retained_c_test_tree(c_path);

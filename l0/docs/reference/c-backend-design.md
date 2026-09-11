@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-09-07
+Version: 2026-09-11
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -180,6 +180,12 @@ The backend schedules cleanup, while emitter produces concrete cleanup code.
 Key points:
 
 - ARC types (notably `string`) use runtime `rt_string_retain`/`rt_string_release`.
+- Comparisons register owned ARC operands as cleanup temporaries before consuming them. This includes optional presence
+  tests and string equality/ordering in both value and condition contexts. Condition-leaf scopes release their
+  temporaries on both outgoing edges; ordinary boolean expressions use surrounding-scope cleanup.
+- Borrowed extraction classification follows identity casts, unwraps, and `?` through to their source; an ARC optional
+  wrap establishes a new owner. Field projections register fresh ARC-bearing aggregate bases, and `for` updates clean
+  their temporaries inside the update's emitted C block.
 - Copying from place expressions at ownership-creating sites performs retain-on-copy.
 - `return expr;` is an ownership-creating site. Returning a place expression retains before scope cleanup runs.
 - Direct `return local_var;` for owned locals is lowered as a move: cleanup skips that binding instead of retaining.

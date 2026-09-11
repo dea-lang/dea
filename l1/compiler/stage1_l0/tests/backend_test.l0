@@ -2706,13 +2706,22 @@ func test_backend_nullable_identity() {
 
         let generated = bt_generate_entry(result, opts, cfg);
 
-        // int? lowering
-        assert(contains_s(generated, "((!a.has_value && !a.has_value) || (a.has_value && a.has_value && (a.value == a.value)))"), "int? equality lowering mismatch");
-        assert(contains_s(generated, "((a.has_value != b.has_value) || (a.has_value && b.has_value && (a.value != b.value)))"), "int? inequality lowering mismatch");
+        /* Scalar optionals compare snapshots instead of repeatedly reading their sources. */
+        assert(bt_count_substring(generated, "dea_opt_int dea_cmp_") == 4,
+            "int? equality should capture each operand once");
+        assert(!contains_s(generated, "a.has_value") && !contains_s(generated, "b.has_value"),
+            "int? comparisons should read captured presence flags");
+        assert(contains_s(generated, ".value == dea_cmp_") && contains_s(generated, ".value != dea_cmp_"),
+            "int? equality and inequality should compare captured payloads");
 
-        // string? lowering
-        assert(contains_s(generated, "((!s1.has_value && !s1.has_value) || (s1.has_value && s1.has_value && rt_string_equals(s1.value, s1.value)))"), "string? equality lowering mismatch");
-        assert(contains_s(generated, "((s1.has_value != s2.has_value) || (s1.has_value && s2.has_value && (!rt_string_equals(s1.value, s2.value))))"), "string? inequality lowering mismatch");
+        /* Borrowed string optionals need retained snapshots for the runtime comparison. */
+        assert(bt_count_substring(generated, "dea_opt_string dea_copy_") == 4,
+            "string? equality should copy each borrowed operand once");
+        assert(bt_count_substring(generated, "rt_string_retain((dea_copy_") == 4,
+            "string? snapshots should retain each borrowed payload");
+        assert(contains_s(generated, "rt_string_equals(dea_arc_") &&
+            contains_s(generated, "(!rt_string_equals(dea_arc_"),
+            "string? equality and inequality should compare scope-owned payloads");
 
         // T*? lowering (niche, raw C)
         assert(contains_s(generated, "(p1 == p1)"), "T*? equality lowering mismatch");
