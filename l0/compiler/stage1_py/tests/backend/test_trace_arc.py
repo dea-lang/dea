@@ -13,8 +13,11 @@ Trace line format (from l0_runtime.h):
               rc_before=<int> rc_after=<int> action=<noop|retain|keep|free|...>
 """
 
-import re
 from collections import defaultdict
+from pathlib import Path
+import re
+import subprocess
+import sys
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,6 +65,35 @@ def _compile_with_trace_arc(analyze_single, compile_and_run, tmp_path, src):
     ok, stdout, stderr = compile_and_run(c_code, tmp_path)
     arc_lines = parse_arc_lines(stderr)
     return ok, stdout, stderr, arc_lines
+
+
+def test_trace_arc_comparison_temporary_cleanup(analyze_single, compile_and_run, tmp_path):
+    """Comparison operands must preserve semantics and free every owned payload."""
+    compiler_dir = Path(__file__).resolve().parents[3]
+    fixture = compiler_dir / "stage2_l0/tests/fixtures/arc_comparisons/main.l0"
+    result = analyze_single("main", fixture.read_text(encoding="utf-8"))
+    assert not result.has_errors(), result.diagnostics
+    result.context.trace_arc = True
+    result.context.trace_memory = True
+
+    from l0_backend import Backend
+
+    ok, stdout, stderr = compile_and_run(Backend(result).generate(), tmp_path)
+    assert ok, stderr
+    assert stdout == "arc comparisons ok\n"
+    assert "op=alloc_string " in stderr, "the regression must allocate heap strings"
+    trace_file = tmp_path / "comparisons.stderr.log"
+    trace_file.write_text(stderr, encoding="utf-8")
+    checker = compiler_dir / "stage2_l0/scripts/check_trace_log.py"
+    report = subprocess.run(
+        [sys.executable, str(checker), str(trace_file), "--triage"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert report.returncode == 0, report.stdout + report.stderr
+    assert "leaked_string_ptrs=0" in report.stdout
+    assert "leaked_object_ptrs=0" in report.stdout
 
 
 # ---------------------------------------------------------------------------

@@ -24,19 +24,23 @@ import backend.state;
 import backend.convert;
 
 /**
- * Report whether an expression is a borrowed cast from a place.
+ * Report whether casts or optional extraction borrow from an existing place.
  *
- * Outer parentheses are ignored; owner-producing ARC value-optional wraps are excluded.
+ * Parentheses and non-owner-producing cast chains are transparent. An ARC
+ * value-optional wrap stops the borrowed chain because it produces an owner.
  *
  * @param self Backend state to inspect.
  * @param expr_id Expression to classify.
- * @return `true` for a non-owner-producing cast whose source is a place expression.
+ * @return `true` for non-owner-producing cast or try chains rooted in a place.
  */
-func be_is_unwrap_cast_from_place(self: Backend*, expr_id: ExprId) -> bool {
+func be_is_borrowed_extraction(self: Backend*, expr_id: ExprId) -> bool {
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
     while (ord(expr.kind) == ord(EX_PAREN)) {
         expr_id = expr.expr_a;
         expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    }
+    if (ord(expr.kind) == ord(EX_TRY)) {
+        return be_is_place_expr(self, expr.expr_a) || be_is_borrowed_extraction(self, expr.expr_a);
     }
     if (ord(expr.kind) != ord(EX_CAST)) {
         return false;
@@ -51,7 +55,7 @@ func be_is_unwrap_cast_from_place(self: Backend*, expr_id: ExprId) -> bool {
             return false;
         }
     }
-    return be_is_place_expr(self, expr.expr_a);
+    return be_is_place_expr(self, expr.expr_a) || be_is_borrowed_extraction(self, expr.expr_a);
 }
 
 /**
@@ -77,7 +81,7 @@ func be_needs_arc_temp(self: Backend*, expr_id: ExprId) -> bool {
 func be_should_materialize_arc_temp(self: Backend*, expr_id: ExprId, expr_type: Type*) -> bool {
     return analysis_has_arc_data(self.result, expr_type) &&
            !be_is_place_expr(self, expr_id) &&
-           !be_is_unwrap_cast_from_place(self, expr_id) &&
+           !be_is_borrowed_extraction(self, expr_id) &&
            be_needs_arc_temp(self, expr_id);
 }
 

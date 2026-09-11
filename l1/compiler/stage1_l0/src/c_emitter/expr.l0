@@ -839,6 +839,9 @@ func cem_emit_string_concat_call(lhs: string, rhs: string) -> string {
 /**
  * Emits the inline equality check for a nullable non-pointer value.
  *
+ * Callers must stabilize each operand first: this expression reads each operand
+ * more than once and can skip payload reads based on the presence flags.
+ *
  * @param op The equality operator ("==" or "!=").
  * @param lhs The C expression for the left-hand side.
  * @param rhs The C expression for the right-hand side.

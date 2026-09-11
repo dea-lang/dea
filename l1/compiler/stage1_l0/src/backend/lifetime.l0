@@ -73,7 +73,7 @@ func be_needs_arc_temp(self: Backend*, expr_id: ExprId) -> bool {
 func be_should_materialize_arc_temp(self: Backend*, expr_id: ExprId, expr_type: Type*) -> bool {
     return analysis_has_arc_data(self.result, expr_type) &&
            !be_is_place_expr(self, expr_id) &&
-           !be_is_unwrap_cast_from_place(self, expr_id) &&
+           !be_is_borrowed_extraction(self, expr_id) &&
            be_needs_arc_temp(self, expr_id);
 }
 
@@ -118,7 +118,7 @@ func be_materialize_slice_array_temp(
         if (self.current_scope == null) {
             be_ice("[ICE-1312] slice backing array cleanup requires an active scope");
         }
-        if (be_is_place_expr(self, expr_id) || be_is_unwrap_cast_from_place(self, expr_id)) {
+        if (be_is_place_expr(self, expr_id) || be_is_borrowed_extraction(self, expr_id)) {
             be_emit_retain_for_copied_value(self, temp, array_ty);
         }
         sc_add_owned(self.current_scope as ScopeContext*, temp, array_ty);

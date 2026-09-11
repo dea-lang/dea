@@ -1,0 +1,222 @@
+/**
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ *
+ * Exercise comparison ownership under both compiler stages and trace families.
+ */
+module main;
+
+import std.assert;
+import std.io;
+import std.string;
+
+struct Box { text: string; }
+struct Holder { text: string?; }
+struct Pair { text: string?; other: string; }
+enum Choice { Text(text: string); Empty; }
+
+let calls: int = 0;
+
+/** Return a fresh heap string and record each evaluation. */
+func fresh() -> string {
+    calls = calls + 1;
+    return concat_s("heap", "value");
+}
+
+/** Return either an owned optional payload or an empty optional. */
+func optional(present: bool) -> string? {
+    calls = calls + 1;
+    if (!present) { return null; }
+    return concat_s("heap", "value");
+}
+
+/** Return an optional aggregate whose payload requires recursive cleanup. */
+func boxed(present: bool) -> Box? {
+    if (!present) { return null; }
+    return Box(fresh());
+}
+
+/** Return an optional enum whose active payload owns a string. */
+func choice() -> Choice? { return Text(fresh()); }
+
+/** Return an owned aggregate with both selected and unselected ARC fields. */
+func pair() -> Pair { return Pair(optional(true), fresh()); }
+
+/** Copy a projected optional into a returned owner before releasing its base. */
+func returned_field() -> string? { return pair().text; }
+
+/** Evaluate a null comparison through the boolean return path. */
+func returned(present: bool) -> bool { return optional(present) != null; }
+
+/** Return an owned local from inside a with body after a temporary comparison. */
+func selected() -> string {
+    with (let candidate = fresh()) {
+        if (optional(true) != null) { return candidate; }
+    } cleanup {
+        assert(candidate == "heapvalue", "cleanup sees live candidate");
+    }
+    return "missing";
+}
+
+/** Check both null operators, operand orders, parentheses, and branch outcomes. */
+func null_conditions() {
+    let before = calls;
+    if (optional(true) != null) {} else { assert(false, "present != null"); }
+    if (optional(true) == null) { assert(false, "present == null"); }
+    if (null != optional(true)) {} else { assert(false, "null != present"); }
+    if (null == optional(true)) { assert(false, "null == present"); }
+    if (((optional(false))) != null) { assert(false, "empty != null"); }
+    if (optional(false) == null) {} else { assert(false, "empty == null"); }
+    if (null != optional(false)) { assert(false, "null != empty"); }
+    if (null == optional(false)) {} else { assert(false, "null == empty"); }
+    assert(calls == before + 8, "each null operand must run once");
+}
+
+/** Check general-expression, assignment, return, and negated-condition paths. */
+func null_values() {
+    let before = calls;
+    let present = optional(true) != null;
+    assert(present, "boolean initializer");
+    present = null == optional(true);
+    assert(!present, "boolean assignment");
+    assert(returned(true), "boolean return present");
+    assert(!returned(false), "boolean return empty");
+    if (!(optional(true) == null)) {} else { assert(false, "negated condition"); }
+    assert(calls == before + 5, "value operands must run once");
+}
+
+/** Keep untaken logical operands unevaluated in both expression contexts. */
+func logical_conditions() {
+    let before = calls;
+    if (false && optional(true) != null) { assert(false, "skipped and"); }
+    if (true || optional(true) == null) {} else { assert(false, "skipped or"); }
+    let skipped_and = false && optional(true) != null;
+    let skipped_or = true || optional(true) == null;
+    assert(!skipped_and && skipped_or && calls == before, "skipped operands must not run");
+    if (true && optional(true) != null) {} else { assert(false, "taken and"); }
+    if (false || optional(true) != null) {} else { assert(false, "taken or"); }
+    let taken_and = true && optional(true) != null;
+    let taken_or = false || optional(true) != null;
+    assert(taken_and && taken_or && calls == before + 4, "taken operands must run once");
+}
+
+/** Repeat temporary conditions through fallthrough, continue, and break paths. */
+func loop_conditions() {
+    let before = calls;
+    let i = 0;
+    while (i < 4 && optional(true) != null) {
+        i = i + 1;
+        if (i == 2) { continue; }
+    }
+    assert(i == 4 && calls == before + 4, "while condition count");
+    for (let j = 0; optional(true) != null; j = j + 1) {
+        if (j == 1) { continue; }
+        if (j == 3) { break; }
+    }
+    assert(calls == before + 8, "for condition count");
+    while (optional(true) == null) { assert(false, "false allocating condition"); }
+    while (optional(false) != null) { assert(false, "empty loop condition"); }
+    assert(calls == before + 10, "false loop conditions run once");
+    let seen = false;
+    for (let j = 0; j < 3; seen = optional(true) != null) {
+        j = j + 1;
+        continue;
+    }
+    assert(seen && calls == before + 13, "owned update operands run once per iteration");
+    for (let j = 0; j < 1; seen = optional(false) != null) { j = j + 1; }
+    assert(!seen && calls == before + 14, "empty update operand has a valid cleanup scope");
+}
+
+/** Clean recursive owners and optional wraps while preserving borrowed places. */
+func aggregate_and_borrowed() {
+    if (boxed(true) != null) {} else { assert(false, "optional struct"); }
+    if (boxed(false) == null) {} else { assert(false, "empty optional struct"); }
+    if (choice() != null) {} else { assert(false, "optional enum"); }
+    let value = optional(true);
+    let holder = Holder(optional(true));
+    if (value == null || holder.text == null) { assert(false, "borrowed optionals"); }
+    assert((value as string) == "heapvalue", "local stays alive");
+    assert((holder.text as string) == "heapvalue", "field stays alive");
+    let text = fresh();
+    if ((text as string?) != null) {} else { assert(false, "owned optional wrap"); }
+    if ((text as string?) == null) { assert(false, "false owned optional wrap"); }
+    assert(text == "heapvalue", "wrapped source stays alive");
+    assert(selected() == "heapvalue", "with early return preserves selected value");
+    if (pair().text != null) {} else { assert(false, "field of fresh aggregate"); }
+    let field = pair().text;
+    assert((field as string) == "heapvalue", "projected field copy stays alive");
+    let returned_copy = returned_field();
+    assert((returned_copy as string) == "heapvalue", "returned field copy stays alive");
+    let pointer = new Box(fresh());
+    let nullable_pointer: Box*? = pointer;
+    if (nullable_pointer == null) { assert(false, "pointer optional"); }
+    assert(pointer.text == "heapvalue", "pointer comparison must not drop pointee");
+    drop pointer;
+}
+
+/** Preserve borrowing through cast chains and retain newly wrapped borrowed data. */
+func cast_chains() {
+    let value = optional(true);
+    let holder = Holder(optional(true));
+    if (((value as string?) as string?) != null) {} else { assert(false, "identity chain"); }
+    if (((value as string) as string?) != null) {} else { assert(false, "borrowed rewrap"); }
+    if (((holder.text as string) as string?) == null) { assert(false, "field rewrap"); }
+    let present = ((value as string?) as string?) != null;
+    assert(present, "borrowed identity value");
+    let absent = ((value as string) as string?) == null;
+    assert(!absent, "borrowed rewrap value");
+    assert((value as string) == "heapvalue", "cast chain source stays alive");
+    assert((holder.text as string) == "heapvalue", "cast chain field stays alive");
+    if (((optional(true) as string?) as string?) != null) {} else { assert(false, "owned identity chain"); }
+    if (((optional(true) as string) as string?) == null) { assert(false, "owned rewrap"); }
+    if ((((value as string) as string?) as string?) == null) { assert(false, "identity after owned wrap"); }
+    assert((value as string) == "heapvalue", "wrapped identity source stays alive");
+}
+
+/** Preserve borrowing through successful try extraction and clean early failure. */
+func try_chains(present: bool) -> int? {
+    let value = optional(present);
+    if (((value?) as string?) != null) {} else { assert(false, "borrowed try rewrap"); }
+    let found = ((value?) as string?) != null;
+    assert(found && (value as string) == "heapvalue", "try rewrap keeps source alive");
+    if (((optional(true)?) as string?) == null) { assert(false, "owned try rewrap"); }
+    return 1;
+}
+
+/** Exercise all ordering operators, both operand positions, and false branches. */
+func string_ordering() {
+    let before = calls;
+    if (fresh() < "z") {} else { assert(false, "less"); }
+    if ("a" <= fresh()) {} else { assert(false, "less equal"); }
+    if (fresh() > "a") {} else { assert(false, "greater"); }
+    if ("z" >= fresh()) {} else { assert(false, "greater equal"); }
+    if (fresh() >= "z") { assert(false, "false greater equal"); }
+    if (fresh() > "z") { assert(false, "false greater"); }
+    if (fresh() <= "a") { assert(false, "false less equal"); }
+    if (fresh() < "a") { assert(false, "false less"); }
+    if (fresh() <= fresh()) {} else { assert(false, "two owned operands"); }
+    let equal = fresh() >= fresh();
+    assert(equal, "ordering boolean value");
+    if (false && fresh() < "z") { assert(false, "skipped string operand"); }
+    while (fresh() > "z") { assert(false, "false string loop condition"); }
+    assert(calls == before + 13, "ordering operands run exactly once");
+    let borrowed = fresh();
+    if (borrowed < "z") {} else { assert(false, "borrowed string ordering"); }
+    assert(borrowed == "heapvalue", "borrowed ordering source stays alive");
+}
+
+/** Run the semantic checks; host trace tests verify every allocation is freed. */
+func main() -> int {
+    null_conditions();
+    null_values();
+    logical_conditions();
+    loop_conditions();
+    aggregate_and_borrowed();
+    cast_chains();
+    let tried = try_chains(true);
+    assert(tried != null && (tried as int) == 1, "successful try extraction");
+    assert(try_chains(false) == null, "try failure returns null");
+    string_ordering();
+    printl_s("arc comparisons ok");
+    return 0;
+}

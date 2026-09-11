@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-09-07
+Version: 2026-09-11
 
 This document describes how ownership works in L0 today, covering:
 
@@ -181,8 +181,10 @@ The same applies to:
 - Returning an unwrapped `string?` from a function.
 - Passing an unwrapped `string?` into a container (e.g. `sv_push`).
 
-Parentheses around a place or its unwrap cast preserve the same borrowed-place classification. A non-niche ARC `T -> T?`
-wrap remains an ownership-producing boundary and retains its payload exactly once.
+Parentheses and chains of identity casts, unwrap casts, or `?` extraction preserve the source's borrowed-place
+classification. A non-niche ARC `T -> T?` wrap remains an ownership-producing boundary and retains a borrowed payload
+exactly once, including when its source is itself an unwrap or identity-cast chain. Further casts of that new owner
+preserve its temporary ownership.
 
 **When would you need a manual retain?** Only if you are moving the unwrapped value across a **raw, non-assignment
 boundary**, for example storing it via `rt_memcpy` into a manually managed buffer. In normal L0 code, you should not
@@ -240,6 +242,18 @@ Value ownership:
 2. You use ARC-aware stdlib helpers that already handle ownership (`sv_*`, `sslm_*`, `islm_*`, map/set key APIs).
 
 ## 8. Control Flow and ARC Cleanup
+
+Comparisons borrow their operands for evaluation. An owned temporary consumed by a comparison is registered for normal
+ARC cleanup, including a `string?` or ARC-bearing aggregate compared with `null` and a temporary string used in equality
+or ordering. Binding a function result to a local first is not required for cleanup. Comparing an existing local or
+field does not consume that binding, and pointer comparisons do not take ownership of the pointee.
+
+Condition temporaries are released on either outgoing path before entering the selected branch or loop body. Each loop
+evaluation creates and cleans its own temporaries; skipped `&&` and `||` operands are neither evaluated nor cleaned.
+Comparisons used as ordinary boolean values register their owned operands in the surrounding scope for normal cleanup.
+An ARC-bearing temporary aggregate used as a field-access base is also registered, so selecting one field does not lose
+ownership of the other fields. A `for` update has its own temporary cleanup scope inside each loop iteration, while
+header `break` and `continue` retain their enclosing-loop targets.
 
 The compiler ensures that ARC-managed locals are only cleaned up if they were actually initialized on the current path.
 

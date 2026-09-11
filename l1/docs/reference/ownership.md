@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-09-07
+Version: 2026-09-11
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -170,8 +170,10 @@ When you unwrap `string?` with `opt as string`, the resulting `string` is owners
 
 In ordinary L1 code, you should not need to add a compensating manual retain after `opt as string`.
 
-Parentheses around a place or its unwrap cast preserve the same borrowed-place classification. A non-niche ARC `T -> T?`
-wrap remains an ownership-producing boundary and retains its payload exactly once.
+Parentheses and chains of identity casts, unwrap casts, or `?` extraction preserve the source's borrowed-place
+classification. A non-niche ARC `T -> T?` wrap remains an ownership-producing boundary and retains a borrowed payload
+exactly once, including when its source is itself an unwrap or identity-cast chain. Further casts of that new owner
+preserve its temporary ownership.
 
 ## 6. Container Ownership Contracts
 
@@ -213,6 +215,25 @@ It is usually wrong when you:
 2. use stdlib helpers that already own the ARC transitions for you
 
 ## 8. Control Flow and Cleanup
+
+Comparisons borrow their operands for evaluation. An owned temporary consumed by a comparison is registered for normal
+ARC cleanup, including a `string?` or ARC-bearing aggregate compared with `null` and a temporary string used in equality
+or ordering. Binding a function result to a local first is not required for cleanup. Comparing an existing local or
+field does not consume that binding, and pointer comparisons do not take ownership of the pointee.
+
+Condition temporaries are released on either outgoing path before entering the selected branch or loop body. Each loop
+evaluation creates and cleans its own temporaries; skipped `&&` and `||` operands are neither evaluated nor cleaned.
+Comparisons used as ordinary boolean values register their owned operands in the surrounding scope for normal cleanup.
+An ARC-bearing temporary aggregate used as a field or index base is also registered, so selecting one field or element
+does not lose ownership of the others. A fresh array base is registered before evaluating its index, so an early `?`
+exit from the index also cleans the array. Nested rows keep the enclosing array's ownership, and indexing a borrowed
+array preserves its storage. A `for` update has its own temporary cleanup scope inside each loop iteration, while header
+`break` and `continue` retain their enclosing-loop targets.
+
+Optional-to-optional equality evaluates each operand exactly once. The backend captures the left operand before lowering
+the right, retaining a borrowed ARC payload so right-hand evaluation cannot invalidate the captured value. Both operand
+snapshots receive normal scope cleanup, including when the right operand returns early through `?`. Scalar optional
+operands also use snapshots because the generated equality expression reads presence and payload separately.
 
 Current compiler behavior:
 

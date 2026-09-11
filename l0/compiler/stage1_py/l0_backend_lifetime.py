@@ -2,7 +2,7 @@
 # Copyright (c) 2025-2026 gwz
 
 from dataclasses import dataclass, field
-from l0_ast import DropStmt, Expr, StringLiteral, ParenExpr, CastExpr
+from l0_ast import DropStmt, Expr, StringLiteral, ParenExpr, CastExpr, TryExpr
 from l0_scope_context import ScopeContext
 from l0_types import Type, StructType, EnumType, NullableType, format_type
 from l0_backend_convert import OwnershipConversion
@@ -16,21 +16,23 @@ class ValueLifetime:
     convert: OwnershipConversion
     state: BackendState
 
-    def _is_unwrap_cast_from_place(self, expr: Expr) -> bool:
-        """Check if a cast expression still borrows from an existing owner.
+    def _is_borrowed_extraction(self, expr: Expr) -> bool:
+        """Check whether casts or optional extraction borrow from an existing owner.
 
-        Outer parentheses are ownership-transparent. Owner-producing ARC
-        value-optional wraps are excluded.
+        Parentheses and non-owner-producing cast chains are ownership-transparent.
+        Owner-producing ARC value-optional wraps stop the borrowed chain.
 
         Args:
             expr: The expression to check.
 
         Returns:
-            True for non-owner-producing casts whose source is a place.
+            True for non-owner-producing cast or try chains rooted in a place.
         """
         while isinstance(expr, ParenExpr):
             expr = expr.inner
-        if not isinstance(expr, CastExpr) or not self.state._is_place_expr(expr.expr):
+        if isinstance(expr, TryExpr):
+            return self.state._is_place_expr(expr.expr) or self._is_borrowed_extraction(expr.expr)
+        if not isinstance(expr, CastExpr):
             return False
 
         src_ty = self.state.analysis.expr_types.get(id(expr.expr))
@@ -42,7 +44,7 @@ class ValueLifetime:
             and self.state.analysis.has_arc_data(dst_ty.inner)
         ):
             return False
-        return True
+        return self.state._is_place_expr(expr.expr) or self._is_borrowed_extraction(expr.expr)
 
     def _needs_arc_temp(self, expr: Expr) -> bool:
         """Check if a non-place rvalue with ARC data needs temp materialization.
@@ -72,7 +74,7 @@ class ValueLifetime:
         return (
             self.state.analysis.has_arc_data(expr_type)
             and not self.state._is_place_expr(expr)
-            and not self._is_unwrap_cast_from_place(expr)
+            and not self._is_borrowed_extraction(expr)
             and self._needs_arc_temp(expr)
         )
 
