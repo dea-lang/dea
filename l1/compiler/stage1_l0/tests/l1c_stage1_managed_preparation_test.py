@@ -17,7 +17,18 @@ import re
 import subprocess
 import tempfile
 
-from l1c_stage1_compile_only_test import L1_ROOT, stage1_compiler, resolve_deterministic_host_c_compiler
+from compiler_filesystem_support_test import resolve_c_compiler
+from l1c_stage1_compile_only_test import L1_ROOT, stage1_compiler, classify_debug_compiler, resolve_deterministic_host_c_compiler
+
+
+def preparation_c_compiler() -> str | None:
+    """Honor configured GCC/Clang while retaining these fixtures' runtime archive requirement.
+
+    Returns:
+        A recognized GCC/Clang driver, or no available archive-producing fixture compiler.
+    """
+    compiler = resolve_c_compiler()
+    return compiler if classify_debug_compiler(compiler) is not None else resolve_deterministic_host_c_compiler()
 
 
 def invoke(root: Path, env: dict[str, str], *args: str, expected: int = 0,
@@ -46,9 +57,22 @@ def toolchain_fixture(root: Path, env: dict[str, str]) -> Path:
     return native
 
 
+def analysis_count(result: subprocess.CompletedProcess[str], module: str) -> int:
+    """Count real frontend entry points in verbose output without timing the compiler.
+
+    Args:
+        result: Captured verbose compiler invocation.
+        module: Exact entry module whose analysis boundaries to count.
+
+    Returns:
+        Number of driver analysis starts for that entry module.
+    """
+    return result.stderr.count(f"Starting analysis for entry module '{module}'")
+
+
 def main() -> int:
     """Exercise real native preparation and optional scratch independence."""
-    cc = resolve_deterministic_host_c_compiler()
+    cc = preparation_c_compiler()
     assert cc
     env = dict(os.environ)
     for name in ("L1_CC", "L1_CFLAGS", "L1_SYSTEM", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB", "L1_STDLIB_CACHE"):
@@ -85,8 +109,9 @@ def main() -> int:
             types_interface.write_bytes(types_bytes)
         cache = root / "native cache"
         common = ("--c-compiler", cc, "--stdlib-cache", str(cache))
-        cold = call("--prepare-stdlib", *common)
+        cold = call("--prepare-stdlib", *common, "-v")
         assert "Preparing stdlib and runtime" in cold.stderr and not cold.stdout
+        assert analysis_count(cold, "_dea_preparation") == 1, cold.stderr
         entries = list((cache / "v1/native").glob("*/manifest.json"))
         assert len(entries) == 1
         entry = entries[0].parent
@@ -94,16 +119,29 @@ def main() -> int:
         assert all(record["path"].startswith(("modules/", "lib/")) for record in manifest["artifacts"])
         assert not (entry / "include").exists() and not (cache / "v1/interfaces").exists()
         assert call("--prepare-stdlib", *common).stderr == ""
+        warm_preparation = call("--prepare-stdlib", *common, "-v")
+        assert analysis_count(warm_preparation, "_dea_preparation") == 1, warm_preparation.stderr
+        assert "Preparation command" not in warm_preparation.stderr
         source = root / "app.l1"
         source.write_text('module app; import std.io; func main() { printl_s("managed-ok"); }\n')
         # A valid profile does not promise to retain any preparation C scratch.
         canonical_c = (entry / "generated/std/io.c").read_bytes()
         shutil.rmtree(entry / "generated")
         program = root / ("app.exe" if os.name == "nt" else "app")
-        kept = call("--build", *common, "--no-auto-prepare", "--keep-c", "app", "-o", str(program))
+        kept = call("--build", *common, "--no-auto-prepare", "--keep-c", "app", "-o", str(program), "-v")
         assert "Preparing " not in kept.stderr
+        assert analysis_count(kept, "app") == 2 and analysis_count(kept, "_dea_preparation") == 1, kept.stderr
         retained = Path(str(program) + ".dea-c") / "std/io.c"
         assert retained.read_bytes() == canonical_c
+        # This fixture imports exactly std.io's ten-module bundled closure.
+        expected_managed = {"std.array", "std.assert", "std.integer", "std.io", "std.string", "std.text",
+                            "std.unit", "std.vector", "sys.memory", "sys.rt"}
+        generated_managed = re.findall(r"Starting analysis for entry module '((?:std|sys)\.[^']+)'", kept.stderr)
+        assert sorted(generated_managed) == sorted(expected_managed), generated_managed
+        retained_root = Path(str(program) + ".dea-c")
+        retained_managed = {path.relative_to(retained_root).with_suffix("").as_posix().replace("/", ".")
+                            for namespace in ("std", "sys") for path in (retained_root / namespace).rglob("*.c")}
+        assert retained_managed == expected_managed
         result = subprocess.run([str(program)], cwd=root, capture_output=True, text=True, timeout=30)
         assert result.returncode == 0 and result.stdout == "managed-ok\n", result
         # Neither stale nor arbitrary debug scratch can affect retained output.

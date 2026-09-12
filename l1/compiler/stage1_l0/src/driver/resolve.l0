@@ -56,6 +56,16 @@ func dr_fail_without_node(state: DriverState*, module_name: string) -> bool {
     return false;
 }
 
+/** Cache an interface failure and add repair guidance for compiler-owned semantic inputs. */
+func dr_fail_interface(state: DriverState*, module_name: string, path: string, managed: bool) -> bool {
+    if (managed) {
+        dr_emit_error(state.diags, "L1C-2158",
+            "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation",
+            path);
+    }
+    return dr_fail_without_node(state, module_name);
+}
+
 /**
  * Validate every configured interface root before resolving the entry.
  *
@@ -287,28 +297,19 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                 if (!std.fs::is_file(interface_path)) {
                     dr_emit_error(state.diags, "DRV-0075",
                         "selected module interface is not a readable regular file: " + interface_path, interface_path);
-                    if (managed_selected) {
-                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
-                    }
-                    return dr_fail_without_node(state, module_name);
+                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
                 }
                 let interface_text_opt = read_file(interface_path);
                 if (interface_text_opt == null) {
                     dr_emit_error(state.diags, "DRV-0075",
                         "cannot read selected module interface: " + interface_path, interface_path);
-                    if (managed_selected) {
-                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
-                    }
-                    return dr_fail_without_node(state, module_name);
+                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
                 }
                 let interface_raw = interface_text_opt as string;
                 if (!us_is_valid_utf8(interface_raw)) {
                     dr_emit_error(state.diags, "DRV-0076",
                         "selected module interface is not valid UTF-8", interface_path);
-                    if (managed_selected) {
-                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
-                    }
-                    return dr_fail_without_node(state, module_name);
+                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
                 }
                 let interface_text = us_strip_utf8_bom(interface_raw);
                 sv_push(state.source_names, interface_path);
@@ -318,10 +319,7 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                 dr_copy_interface_diags(state.diags, parsed);
                 if (ipr_has_errors(parsed) || parsed.interface == null) {
                     ipr_free(parsed);
-                    if (managed_selected) {
-                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
-                    }
-                    return dr_fail_without_node(state, module_name);
+                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
                 }
 
                 let raw2 = parsed.interface as ModuleInterface*;
@@ -332,27 +330,18 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                     dr_emit_error(state.diags, "DRV-0020",
                         msg + "' but was loaded as '" + module_name + "'", interface_path);
                     mi_free(raw2);
-                    if (managed_selected) {
-                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
-                    }
-                    return dr_fail_without_node(state, module_name);
+                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
                 }
 
                 if (!ifp_verify(raw2, state.diags, interface_path)) {
                     mi_free(raw2);
-                    if (managed_selected) {
-                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
-                    }
-                    return dr_fail_without_node(state, module_name);
+                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
                 }
 
                 let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
                 if (artifacts == null) {
                     mi_free(raw2);
-                    if (managed_selected) {
-                        dr_emit_error(state.diags, "L1C-2158", "required bundled semantic interface is invalid or unavailable; rerun make build-stage1 or repair installation", interface_path);
-                    }
-                    return dr_fail_without_node(state, module_name);
+                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
                 }
                 let node2 = mg_node_from_interface(module_name, interface_path,
                     artifacts as ModuleArtifactPaths*);

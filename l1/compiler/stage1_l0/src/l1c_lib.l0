@@ -342,11 +342,6 @@ func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
             return 1;
         }
 
-        if (!mp_runtime(managed, false, diags)) {
-            dp_print_collector(diags);
-            analysis_result_free(result);
-            return 1;
-        }
         with (let cg_opts = cg_options_from_cli(opts) => cg_options_free(cg_opts)) {
             let c_code = backend_generate_module(result, entry_module, cg_opts, cfg);
             if (opts.output != null) {

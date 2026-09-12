@@ -55,7 +55,7 @@ func cd_cmd_compile(opts: CliOptions*, cfg: LogConfig*) -> int {
             mg_artifacts_free(artifacts);
             return 1;
         }
-        if (!mp_runtime(managed, false, diags) || !cd_prepare_destinations(artifacts, opts.keep_c, diags)) {
+        if (!cd_prepare_destinations(artifacts, opts.keep_c, diags)) {
             dp_print_collector(diags);
             analysis_result_free(result);
             mg_artifacts_free(artifacts);

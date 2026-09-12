@@ -26,7 +26,7 @@ static void pc_load_input_memo(PcContext *c, const char *key) {
     free(path);
     pj_free(c->old_files);
     c->old_files = pj_new(PJ_OBJECT);
-    if (!c->force && pc_memo_valid(c, memo, "identity") && pj_get(memo, "files") &&
+    if (!c->force && pc_memo_valid(memo, "identity") && pj_get(memo, "files") &&
         pj_get(memo, "files")->type == PJ_OBJECT) {
         pj_free(c->old_files);
         c->old_files = pj_clone(pj_get(memo, "files"));
@@ -38,17 +38,13 @@ static void pc_save_input_memo(PcContext *c, const char *key, const PcJson *disc
     PcJson *memo;
     if (!path)
         return;
-    memo = pc_memo_create(c, "identity");
+    memo = pc_memo_create("identity");
     pj_add(memo, "files", pj_clone(c->new_files));
     if (discovery) {
         char *digest = pc_json_digest(discovery);
         pj_add(memo, "discovery", pj_clone(discovery));
         pj_set_string(memo, "discovery_digest", digest);
         free(digest);
-    }
-    if (c->native) {
-        pj_add(memo, "native", pj_clone(c->native));
-        pj_set_string(memo, "native_key", c->native_key);
     }
     pc_write_json(path, memo);
     pj_free(memo);
@@ -761,7 +757,7 @@ static PcJson *pc_read_option_file(PcContext *c, const char *path, int configura
     const char *p;
     PcBuffer prepared = {0}, token = {0};
     PcJson *words = pj_new(PJ_ARRAY);
-    int quote = 0, line_start = 1;
+    int quote = 0, line_start = 1, token_started = 0;
     if (!raw)
         goto invalid;
     for (p = raw; *p; ++p) {
@@ -785,9 +781,11 @@ static PcJson *pc_read_option_file(PcContext *c, const char *path, int configura
         line_start = *p == '\n';
     }
     for (p = prepared.s; p && *p; ++p) {
-        if (*p == '\\' && p[1])
+        if (*p == '\\' && p[1]) {
             pc_char(&token, *++p);
-        else if (*p == '\'' || *p == '"') {
+            token_started = 1;
+        } else if (*p == '\'' || *p == '"') {
+            token_started = 1;
             if (!quote)
                 quote = *p;
             else if (quote == *p)
@@ -795,18 +793,21 @@ static PcJson *pc_read_option_file(PcContext *c, const char *path, int configura
             else
                 pc_char(&token, *p);
         } else if (!quote && strchr(" \t\r\n", *p)) {
-            if (token.n) {
-                pj_add(words, NULL, pj_string(token.s));
+            if (token_started) {
+                pj_add(words, NULL, pj_string(token.s ? token.s : ""));
                 token.n = 0;
-                token.s[0] = 0;
+                if (token.s) token.s[0] = 0;
+                token_started = 0;
             }
-        } else
+        } else {
             pc_char(&token, *p);
+            token_started = 1;
+        }
     }
     if (quote)
         goto invalid;
-    if (token.n)
-        pj_add(words, NULL, pj_string(token.s));
+    if (token_started)
+        pj_add(words, NULL, pj_string(token.s ? token.s : ""));
     if (configuration) {
         PcJson *word;
         for (word = words->child; word; word = word->next) {
@@ -836,69 +837,133 @@ invalid:
     pj_free(words);
     return NULL;
 }
-/** Track option-file contents and directory selection, preserving each inclusion base. */
-static int pc_option_file_words(PcContext *c, const PcJson *options, PcJson *paths,
-                                PcJson *dependencies, int depth, const char *config_directory) {
+/** Own parsed files once per resolution; only direct and selected-config roots are flattened. */
+typedef struct PcOptionFile {
+    char *path;
+    int configuration;
+    PcJson *parsed, *root;
+    struct PcOptionFile *next;
+} PcOptionFile;
+typedef struct {
+    PcJson *direct;
+    PcOptionFile *files;
+} PcOptionInputs;
+
+static void pc_option_inputs_free(PcOptionInputs *inputs) {
+    PcOptionFile *file = inputs->files;
+    while (file) {
+        PcOptionFile *next = file->next;
+        free(file->path); pj_free(file->parsed); pj_free(file->root); free(file);
+        file = next;
+    }
+    pj_free(inputs->direct);
+}
+
+/** Preserve lexical directories for configuration includes and <CFGDIR>, including aliases. */
+static PcOptionFile *pc_option_file(PcContext *c, PcOptionInputs *inputs,
+                                    const char *path, int configuration) {
+    char *absolute = pc_path_call(path, l1c_fs_absolute_path);
+    PcOptionFile *file;
+    PcJson *parsed;
+    if (!absolute) return pc_fail(c, 2154, "cannot resolve compiler option file", path), NULL;
+    for (file = inputs->files; file; file = file->next)
+        if (file->configuration == configuration && !strcmp(file->path, absolute)) {
+            free(absolute); return file;
+        }
+    ++c->option_file_parses;
+    parsed = pc_read_option_file(c, absolute, configuration);
+    if (!parsed) { free(absolute); return NULL; }
+    file = pc_alloc(sizeof(*file));
+    file->path = absolute; file->configuration = configuration; file->parsed = parsed;
+    file->next = inputs->files; inputs->files = file;
+    return file;
+}
+
+/** Expand every occurrence in order; cached parsed files never bypass the current nesting bound. */
+static int pc_expand_options(PcContext *c, PcOptionInputs *inputs, const PcJson *options,
+                             const char *config_directory, int depth, PcJson *expanded) {
     const PcJson *option;
     if (depth > 16)
         return pc_fail(c, 2154, "nested compiler response files exceed the supported depth", NULL);
-    pc_option_directory_dependencies(options, dependencies);
     for (option = options->child; option; option = option->next) {
-        const char *word = option->text, *path = word;
-        char *absolute, *relative = NULL;
-        if (*word == '@')
-            path = word + 1;
-        else if (*word == '-') {
-            path = strchr(word, '=');
-            if (!path || !path[1])
-                continue;
-            ++path;
+        const char *word = option->text;
+        if (*word == '@') {
+            const char *name = word + 1;
+            int drive = pc_separator('\\') && strlen(name) > 1 &&
+                isalpha((unsigned char)name[0]) && name[1] == ':';
+            char *path = config_directory && !pc_separator(*name) && !drive
+                ? pc_join(config_directory, name) : pc_string(name);
+            PcOptionFile *file = pc_option_file(c, inputs, path, config_directory != NULL);
+            char *parent = file && config_directory ? pc_parent(file->path) : NULL;
+            int ok = file && pc_expand_options(c, inputs, file->parsed, parent, depth + 1, expanded);
+            free(path); free(parent);
+            if (!ok) return 0;
+        } else {
+            pj_add(expanded, NULL, pj_clone(option));
         }
-        if (*word == '@' && config_directory && !pc_separator(*path) &&
-            !(pc_separator('\\') && isalpha((unsigned char)path[0]) && path[1] == ':' && pc_separator(path[2]))) {
-            relative = pc_join(config_directory, path);
-            path = relative;
+    }
+    return 1;
+}
+
+static const PcJson *pc_direct_options(PcContext *c, PcOptionInputs *inputs) {
+    if (!inputs->direct) {
+        PcJson *expanded = pj_new(PJ_ARRAY);
+        ++c->option_root_expansions;
+        if (!pc_expand_options(c, inputs, c->options, NULL, 0, expanded)) {
+            pj_free(expanded); return NULL;
+        }
+        inputs->direct = expanded;
+    }
+    return inputs->direct;
+}
+
+/** Selected configuration roots are shared by runtime extraction and later observation. */
+static const PcJson *pc_config_options(PcContext *c, PcOptionInputs *inputs, const char *path) {
+    PcOptionFile *file = pc_option_file(c, inputs, path, 1);
+    if (!file) return NULL;
+    if (!file->root) {
+        char *parent = pc_parent(file->path);
+        PcJson *expanded = pj_new(PJ_ARRAY);
+        int ok;
+        ++c->option_root_expansions;
+        ok = pc_expand_options(c, inputs, file->parsed, parent, 0, expanded);
+        free(parent);
+        if (!ok) { pj_free(expanded); return NULL; }
+        file->root = expanded;
+    }
+    return file->root;
+}
+
+/** Observe flat operands while retaining every source file removed by @ expansion. */
+static void pc_option_word_dependencies(const PcJson *words, PcJson *paths, PcJson *dependencies) {
+    const PcJson *word;
+    pc_option_directory_dependencies(words, dependencies);
+    for (word = words->child; word; word = word->next) {
+        const char *path = word->text;
+        char *absolute;
+        if (*path == '-') {
+            path = strchr(path, '=');
+            if (!path || !*++path) continue;
         }
         absolute = pc_path_call(path, l1c_fs_absolute_path);
-        free(relative);
         if (absolute && pc_kind(absolute, 1) == 1) {
             char *parent = pc_parent(absolute);
-            pc_add_component(paths, absolute);
-            pc_directory_dependency(dependencies, parent);
-            if (*word == '@') {
-                PcJson *expanded = pc_read_option_file(c, absolute, config_directory != NULL);
-                int valid = expanded && pc_option_file_words(c, expanded, paths, dependencies,
-                    depth + 1, config_directory ? parent : NULL);
-                pj_free(expanded);
-                if (!valid) {
-                    free(parent);
-                    free(absolute);
-                    return 0;
-                }
-            }
+            pc_add_component(paths, absolute); pc_directory_dependency(dependencies, parent);
             free(parent);
         }
         free(absolute);
     }
-    return 1;
 }
-/** Follow configuration @includes relative to each including file, never the invocation directory. */
-static int pc_clang_configuration_inputs(PcContext *c, const char *file, PcJson *paths,
-                                         PcJson *dependencies) {
-    char *absolute = pc_path_call(file, l1c_fs_absolute_path), *directory;
-    PcJson *words;
-    int ok;
-    if (!absolute)
-        return pc_fail(c, 2154, "cannot resolve selected Clang configuration", file);
-    directory = pc_parent(absolute);
-    pc_add_component(paths, absolute);
-    pc_directory_dependency(dependencies, directory);
-    words = pc_read_option_file(c, absolute, 1);
-    ok = words && pc_option_file_words(c, words, paths, dependencies, 0, directory);
-    pj_free(words);
-    free(directory);
-    free(absolute);
-    return ok;
+
+static void pc_option_inputs_dependencies(const PcOptionInputs *inputs, PcJson *paths, PcJson *dependencies) {
+    const PcOptionFile *file;
+    pc_option_word_dependencies(inputs->direct, paths, dependencies);
+    for (file = inputs->files; file; file = file->next) {
+        char *parent = pc_parent(file->path);
+        pc_add_component(paths, file->path); pc_directory_dependency(dependencies, parent);
+        free(parent);
+        if (file->root) pc_option_word_dependencies(file->root, paths, dependencies);
+    }
 }
 
 /** Capture SDK driver metadata from Clang's effective frontend arguments, including response/config selection. */
@@ -1010,7 +1075,7 @@ static int pc_stdlib_probe(PcContext *c, const char *path, int uses_real, int us
     return ok || pc_fail(c, 2154, "cannot write generated-C dependency probe", path);
 }
 
-static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection) {
+static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOptionInputs *options) {
     PcJson *discovery = pj_new(PJ_OBJECT), *paths = pj_new(PJ_OBJECT),
            *dependencies = pj_new(PJ_OBJECT), *toolchain = pj_new(PJ_OBJECT), *words,
            *include_roots = pj_new(PJ_OBJECT);
@@ -1028,8 +1093,6 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection) {
     if (pj_field(selection, "apple_compiler"))
         pc_add_component(paths, pj_field(selection, "apple_compiler"));
     pc_selection_dependencies(c, dependencies);
-    if (!pc_option_file_words(c, c->options, paths, dependencies, 0, NULL))
-        goto fail;
     family = c->family;
     pj_set_string(discovery, "version", c->description);
     pj_set_string(toolchain, "family", family);
@@ -1172,7 +1235,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection) {
                 end = strchr(line, '\n');
                 file = pc_slice(line, end ? (size_t)(end - line) : strlen(line));
                 pc_trim(file);
-                if (!pc_clang_configuration_inputs(c, file, paths, dependencies)) {
+                if (!pc_config_options(c, options, file)) {
                     free(file);
                     pc_probe_free(&p);
                     goto fail;
@@ -1243,6 +1306,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection) {
         }
         free(deps);
     }
+    pc_option_inputs_dependencies(options, paths, dependencies);
     for (input = paths->child; input; input = input->next) {
         char *parent = pc_parent(input->key);
         pc_directory_dependency(dependencies, parent);
@@ -1269,12 +1333,11 @@ fail:
     return NULL;
 }
 static void pc_decline(PcContext *c, const char *reason);
-static void pc_option_eligibility(PcContext *c, const PcJson *options, int depth, const char *config_directory);
+static void pc_option_eligibility(PcContext *c, const PcJson *options);
 
 /** Forward target/ABI settings while keeping application flags out of runtime implementation builds. */
-static int pc_runtime_target_options(PcContext *c, const PcJson *options, int depth, const char *config_directory) {
+static int pc_runtime_target_options(PcContext *c, const PcJson *options) {
     const PcJson *o;
-    if (depth > 16) return pc_fail(c, 2154, "runtime target option nesting exceeds supported depth", NULL);
     for (o = options->child; o; o = o->next) {
         const char *s = o->text;
         int paired = !strcmp(s, "-target") || !strcmp(s, "--target") || !strcmp(s, "-isysroot") ||
@@ -1285,15 +1348,7 @@ static int pc_runtime_target_options(PcContext *c, const PcJson *options, int de
             if (o->next) o = o->next;
             continue;
         }
-        if (*s == '@') {
-            char *path = config_directory && !pc_separator(s[1]) && !(strlen(s + 1) > 1 && s[2] == ':')
-                ? pc_join(config_directory, s + 1) : pc_string(s + 1);
-            char *parent = pc_parent(path);
-            PcJson *expanded = pc_read_option_file(c, path, config_directory != NULL);
-            int ok = expanded && pc_runtime_target_options(c, expanded, depth + 1, config_directory ? parent : NULL);
-            pj_free(expanded); free(parent); free(path);
-            if (!ok) return 0;
-        } else if (paired || !strcmp(s, "--no-default-config") ||
+        if (paired || !strcmp(s, "--no-default-config") ||
             !strncmp(s, "--config-system-dir=", 20) || !strncmp(s, "--config-user-dir=", 18) || !strncmp(s, "-m", 2) || !strncmp(s, "--target=", 9) ||
             !strncmp(s, "--sysroot=", 10) || !strncmp(s, "-isysroot", 9) ||
             !strncmp(s, "--gcc-toolchain=", 16) || !strncmp(s, "-resource-dir=", 14) ||
@@ -1315,31 +1370,22 @@ static int pc_runtime_target_options(PcContext *c, const PcJson *options, int de
     return 1;
 }
 /** Fall back to directly readable explicit config files when a wrapper cannot report selection. */
-static int pc_runtime_known_configs(PcContext *c, const PcJson *options, int depth) {
+static int pc_runtime_known_configs(PcContext *c, PcOptionInputs *inputs) {
     const PcJson *option;
-    if (depth > 16) return pc_fail(c, 2154, "compiler config nesting exceeds supported depth", NULL);
-    for (option = options->child; option; option = option->next) {
+    for (option = inputs->direct->child; option; option = option->next) {
         const char *s = option->text, *file = NULL;
-        if (*s == '@') {
-            PcJson *expanded = pc_read_option_file(c, s + 1, 0);
-            int ok = expanded && pc_runtime_known_configs(c, expanded, depth + 1);
-            pj_free(expanded); if (!ok) return 0;
-        } else {
-            if (!strncmp(s, "--config=", 9)) file = s + 9;
-            else if (!strcmp(s, "--config") && option->next) { option = option->next; file = option->text; }
-            if (file) {
-                char *parent = pc_parent(file);
-                PcJson *expanded = pc_read_option_file(c, file, 1);
-                int ok = expanded && pc_runtime_target_options(c, expanded, 0, parent);
-                pj_free(expanded); free(parent); if (!ok) return 0;
-            }
+        if (!strncmp(s, "--config=", 9)) file = s + 9;
+        else if (!strcmp(s, "--config") && option->next) { option = option->next; file = option->text; }
+        if (file) {
+            const PcJson *expanded = pc_config_options(c, inputs, file);
+            if (!expanded || !pc_runtime_target_options(c, expanded)) return 0;
         }
     }
     return 1;
 }
 
 /** Observe Clang's selected configuration files before extracting target options only. */
-static int pc_runtime_explicit_configs(PcContext *c) {
+static int pc_runtime_explicit_configs(PcContext *c, PcOptionInputs *inputs) {
     PcJson *words;
     PcProbe probe;
     const char *line;
@@ -1357,20 +1403,20 @@ static int pc_runtime_explicit_configs(PcContext *c) {
     probe = pc_context_probe(c, words);
     if (!pc_probe_ok(c, &probe, "effective configuration target options")) {
         pc_decline(c, c->error); pc_clear_error(c); pc_probe_free(&probe);
-        return pc_runtime_known_configs(c, c->options, 0);
+        return pc_runtime_known_configs(c, inputs);
     }
     c->runtime_config_observed = 1;
     line = probe.err;
     while (ok && (line = strstr(line, "Configuration file: ")) != NULL) {
         const char *end;
-        char *path, *parent;
-        PcJson *expanded;
+        char *path;
+        const PcJson *expanded;
         line += strlen("Configuration file: "); end = strchr(line, '\n');
         path = pc_slice(line, end ? (size_t)(end - line) : strlen(line)); pc_trim(path);
-        parent = pc_parent(path); expanded = pc_read_option_file(c, path, 1);
-        if (expanded) pc_option_eligibility(c, expanded, 0, parent);
-        ok = expanded && pc_runtime_target_options(c, expanded, 0, parent);
-        pj_free(expanded); free(parent); free(path);
+        expanded = pc_config_options(c, inputs, path);
+        if (expanded) pc_option_eligibility(c, expanded);
+        ok = expanded && pc_runtime_target_options(c, expanded);
+        free(path);
     }
     pc_probe_free(&probe);
     if (!ok) return 0;
@@ -1378,11 +1424,12 @@ static int pc_runtime_explicit_configs(PcContext *c) {
 }
 
 /** The runtime baseline and tuning are compiler-owned, independent of legacy Make variables. */
-static int pc_runtime_configuration(PcContext *c, const char *variant) {
+static int pc_runtime_configuration(PcContext *c, const char *variant, PcOptionInputs *inputs) {
     c->runtime_options = pj_new(PJ_ARRAY);
     pj_add(c->runtime_options, NULL, pj_string("-O2"));
     pj_add(c->runtime_options, NULL, pj_string("-std=c99"));
-    if (!pc_runtime_explicit_configs(c) || !pc_runtime_target_options(c, c->options, 0, NULL)) return 0;
+    if (!pc_direct_options(c, inputs) || !pc_runtime_explicit_configs(c, inputs) ||
+        !pc_runtime_target_options(c, inputs->direct)) return 0;
     /* All effective config targets were extracted above. Do not reload arbitrary
        generated-C configuration flags while compiling the runtime implementation. */
     if (c->runtime_config_observed) pj_add(c->runtime_options, NULL, pj_string("--no-default-config"));
@@ -1402,20 +1449,11 @@ static void pc_decline(PcContext *c, const char *reason) {
     if (!c->ineligible) c->ineligible = pc_string(reason);
 }
 /** These indirections require observations outside the supported adapter boundary. */
-static void pc_option_eligibility(PcContext *c, const PcJson *options, int depth, const char *config_directory) {
+static void pc_option_eligibility(PcContext *c, const PcJson *options) {
     const PcJson *option;
-    if (depth > 16) { pc_decline(c, "opaque nested compiler option indirection"); return; }
     for (option = options->child; option; option = option->next) {
         const char *s = option->text;
-        if (*s == '@') {
-            char *path = config_directory && !pc_separator(s[1]) && !(strlen(s + 1) > 1 && s[2] == ':')
-                ? pc_join(config_directory, s + 1) : pc_string(s + 1);
-            char *parent = pc_parent(path);
-            PcJson *expanded = pc_read_option_file(c, path, config_directory != NULL);
-            if (expanded) pc_option_eligibility(c, expanded, depth + 1, config_directory ? parent : NULL);
-            else { pc_decline(c, "unobservable compiler response inputs"); pc_clear_error(c); }
-            pj_free(expanded); free(parent); free(path);
-        } else if (c->family && !strcmp(c->family, "clang") &&
+        if (c->family && !strcmp(c->family, "clang") &&
                    (!strcmp(s, "-fno-integrated-as") || !strcmp(s, "-no-integrated-as"))) {
             pc_decline(c, "Clang external assembler selection is outside persistent reuse support");
         } else if (!strncmp(s, "-fplugin", 8) || !strncmp(s, "-fpass-plugin", 13) ||
@@ -1471,19 +1509,23 @@ static int pc_compilation_toolchain(PcContext *c) {
 }
 /** Resolve D and N once. Probe failure declines reuse without disabling compilation. */
 static int pc_resolve_native(PcContext *c) {
-    PcJson *selection, *memo = NULL, *discovery = NULL, *components, *toolchain, *stdlib, *runtime;
+    PcJson *selection = NULL, *memo = NULL, *discovery = NULL, *components, *toolchain, *stdlib, *runtime;
+    PcOptionInputs options = {0};
     const PcJson *path;
-    char *memo_key, *memo_path, *cpu;
+    char *memo_key = NULL, *memo_path, *cpu;
     const char *variant = pc_config(c, "variant");
+    int ok = 0;
     if (c->native_resolved) return !c->error;
     ++c->resolutions;
-    if (!pc_roots(c) || !pc_resolve_dea(c)) return 0;
+    if (!pc_roots(c) || !pc_resolve_dea(c)) goto finish;
     c->compiler = pc_executable(pc_config(c, "compiler"));
-    if (!c->compiler) return pc_fail(c, 2154, "cannot resolve selected C compiler", pc_config(c, "compiler"));
+    if (!c->compiler) {
+        pc_fail(c, 2154, "cannot resolve selected C compiler", pc_config(c, "compiler")); goto finish;
+    }
     if (!*variant) variant = "default";
-    if (!pc_runtime_archive(variant)) return pc_fail(c, 2154, "invalid runtime variant", variant);
-    if (!pc_compilation_family(c) || !pc_runtime_configuration(c, variant)) return 0;
-    pc_option_eligibility(c, c->options, 0, NULL);
+    if (!pc_runtime_archive(variant)) { pc_fail(c, 2154, "invalid runtime variant", variant); goto finish; }
+    if (!pc_compilation_family(c) || !pc_runtime_configuration(c, variant, &options)) goto finish;
+    pc_option_eligibility(c, options.direct);
     selection = pj_new(PJ_OBJECT);
     pj_set_number(selection, "adapter", 1);
     /* A compiler implementation change can tighten observation rules. Old
@@ -1518,18 +1560,18 @@ static int pc_resolve_native(PcContext *c) {
     memo_path = pc_memo_path(c, "toolchains", memo_key, 0);
     if (memo_path && !c->force && !c->ineligible) memo = pc_read_json(memo_path);
     free(memo_path);
-    if (pc_memo_valid(c, memo, "identity") && pc_discovery_current(c, memo)) {
+    if (pc_memo_valid(memo, "identity") && pc_discovery_current(c, memo)) {
         discovery = pj_clone(pj_get(memo, "discovery"));
         pj_free(c->old_files); c->old_files = pj_clone(pj_get(memo, "files"));
         if (strcmp(c->family, "tcc")) c->archiver = pc_string(pj_field(pj_get(discovery, "toolchain"), "archiver"));
         if (pc_verbosity(c) >= 3) fputs("Preparation toolchain memo: validated observation\n", stderr);
     } else {
-        if (!pc_compilation_toolchain(c)) { pj_free(memo); pj_free(selection); free(memo_key); return 0; }
+        if (!pc_compilation_toolchain(c)) goto finish;
         pc_load_input_memo(c, memo_key);
-        if (!c->ineligible) discovery = pc_discover_toolchain(c, selection);
+        if (!c->ineligible) discovery = pc_discover_toolchain(c, selection, &options);
         if (!discovery && c->error) { pc_decline(c, c->error); pc_clear_error(c); }
     }
-    pj_free(memo);
+    pj_free(memo); memo = NULL;
     components = pj_new(PJ_OBJECT);
     if (discovery) {
         for (path = pj_get(discovery, "paths")->child; path; path = path->next) {
@@ -1568,7 +1610,10 @@ static int pc_resolve_native(PcContext *c) {
     c->native_key = pc_json_digest(c->native);
     c->native_resolved = 1;
     if (discovery && !c->ineligible) pc_save_input_memo(c, memo_key, discovery);
-    pj_free(discovery); pj_free(selection); free(memo_key);
-    return 1;
+    ok = 1;
+finish:
+    pj_free(memo); pj_free(discovery); pj_free(selection); free(memo_key);
+    pc_option_inputs_free(&options);
+    return ok;
 }
 #endif

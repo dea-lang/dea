@@ -19,8 +19,8 @@ import shutil
 import subprocess
 import tempfile
 
-from l1c_stage1_managed_preparation_test import invoke, toolchain_fixture
-from l1c_stage1_compile_only_test import L1_ROOT, stage1_compiler, resolve_deterministic_host_c_compiler
+from l1c_stage1_managed_preparation_test import analysis_count, invoke, toolchain_fixture, preparation_c_compiler
+from l1c_stage1_compile_only_test import L1_ROOT, stage1_compiler
 
 
 def statistics(result: subprocess.CompletedProcess[str]) -> dict:
@@ -32,7 +32,7 @@ def statistics(result: subprocess.CompletedProcess[str]) -> dict:
 
 def main() -> int:
     """Verify consuming commands can recover without replacing completed persistent state."""
-    cc = resolve_deterministic_host_c_compiler()
+    cc = preparation_c_compiler()
     assert cc
     env = dict(os.environ)
     for name in ("L1_CC", "L1_CFLAGS", "L1_SYSTEM", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB", "L1_STDLIB_CACHE"):
@@ -51,13 +51,32 @@ def main() -> int:
         disabled = call("--run", *common, "--no-auto-prepare", "app", expected=1)
         assert "L1C-2159" in disabled.stderr and "--prepare-stdlib" in disabled.stderr
         assert not list(cache.glob("v1/native/*/manifest.json"))
+        # Invalid application and explicit-provider inputs fail before native preparation.
+        (root / "invalid_app.l1").write_text("module invalid_app; import std.io; func main() { missing_name(); }\n")
+        invalid_app = call("--build", *common, "invalid_app", "-o", str(root / "invalid-app"), "-v", expected=1)
+        assert analysis_count(invalid_app, "invalid_app") == 1 and analysis_count(invalid_app, "_dea_preparation") == 0
+        (root / "external.l1").write_text("module external; func value() -> int { return 1; }\n")
+        external_object = root / "external.o"
+        call("--compile", "--c-compiler", cc, "external", "-o", str(external_object))
+        external_object.unlink()
+        (root / "explicit_app.l1").write_text("module explicit_app; import external; import std.io; func main() {}\n")
+        invalid_provider = call("--build", *common, "-I", str(root), "explicit_app", "-o", str(root / "invalid-app"),
+                                "-v", expected=1)
+        assert "L1C-2097" in invalid_provider.stderr
+        assert analysis_count(invalid_provider, "explicit_app") == 1 and analysis_count(invalid_provider, "_dea_preparation") == 0
+        assert not list(cache.glob("v1/native/*/manifest.json"))
         cold = call("--run", *common, "app", "-vvv")
         count = len(list((L1_ROOT / "compiler/shared/l1/stdlib").rglob("*.l1")))
         assert cold.stdout == "prepared-ok\n" and statistics(cold)["module_compiles"] == count
+        assert analysis_count(cold, "app") == 2 and analysis_count(cold, "_dea_preparation") == 1, cold.stderr
         marker = next(cache.glob("v1/native/*/manifest.json"))
         entry = marker.parent
         warm = call("--run", *common, "--no-auto-prepare", "app")
         assert warm.stdout == "prepared-ok\n" and warm.stderr == ""
+        warm_counts = call("--run", *common, "--no-auto-prepare", "app", "-vvv")
+        assert statistics(warm_counts)["module_compiles"] == 0
+        assert analysis_count(warm_counts, "app") == 2 and analysis_count(warm_counts, "_dea_preparation") == 1
+        assert not re.search(r"Starting analysis for entry module '(?:std|sys)\.", warm_counts.stderr), warm_counts.stderr
         damaged = entry / "modules/std/io.o"
         data = damaged.read_bytes()
         damaged.write_bytes(b"!" + data[1:])
@@ -66,10 +85,11 @@ def main() -> int:
         noauto = call("--run", *common, "--no-auto-prepare", "app", expected=1)
         assert "L1C-2159" in noauto.stderr and "externally serialize" in noauto.stderr
         manifest_bytes = marker.read_bytes()
-        recovered = call("--run", *common, "app")
+        recovered = call("--run", *common, "app", "-v")
         assert recovered.stdout == "prepared-ok\n"
         assert "fresh command-private support" in recovered.stderr and "--force" in recovered.stderr
         assert "external serialization" in recovered.stderr
+        assert analysis_count(recovered, "app") == 2 and analysis_count(recovered, "_dea_preparation") == 1
         assert marker.read_bytes() == manifest_bytes and damaged.read_bytes() != data
         shadow = entry / "generated/std/dea_rt.h"
         shadow.write_text("#error stale preparation scratch must never supply native headers\n")
@@ -86,6 +106,7 @@ def main() -> int:
         assert list(cache.glob("v1/native/*/manifest.json")) == [marker]
         assert not shadow.exists()
         assert statistics(forced)["module_compiles"] == count and statistics(forced)["identity_content_reads"] > 0
+        assert analysis_count(forced, "_dea_preparation") == 1, forced.stderr
         assert call("--run", *common, "--no-auto-prepare", "app").stdout == "prepared-ok\n"
         # Two same-key preparations of an incomplete entry must publish just once.
         marker.unlink()
@@ -97,6 +118,7 @@ def main() -> int:
             results = [future.result() for future in runs]
         for result in results:
             assert result.returncode == 0, result.stderr
+            assert analysis_count(result, "_dea_preparation") == 1, result.stderr
         assert sum(statistics(result)["module_compiles"] for result in results) == count
         assert marker.is_file()
         # A malformed completion marker is completed corruption, never an ordinary miss.

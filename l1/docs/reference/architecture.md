@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-11
+Version: 2026-09-13
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -341,9 +341,13 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 ### 2.11 Bundled Preparation (`preparation.l0`, `preparation/` and private C support)
 
 - `preparation/frontend.l0` analyzes canonical bundled sources in dependency order and uses the shared per-module
-  generator. Bootstrap emits/verifies the semantic set; native preparation copies the selected `.l1m` bytes exactly.
+  generator. Bootstrap emits/verifies the semantic set; native preparation copies the selected `.l1m` bytes exactly. One
+  umbrella analysis yields an owned module-name order, which survives cache selection and fallback without keeping the
+  umbrella graph alive or repeating its validation.
 - `preparation/consumer.l0` preserves explicit provider requirements and semantic validation before lazily obtaining
-  managed native pairs for build/run/link. Native preparation context is resolved once per command.
+  managed native pairs for build/run/link. Native preparation context is resolved once per command. Build/run keep the
+  original application analysis and replace only managed artifact associations after successful preparation, preserving
+  semantic source provenance and the independent final sibling checks.
 - `preparation.l0` owns frontend/native orchestration, progress, repair guidance, per-key preparation and finalization.
 - `preparation_support.c` and `support/preparation/` implement one local cache, installed-payload protection,
   compiler-input identity, conservative native adapters, process locks, complete inventories and digest memoization.

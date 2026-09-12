@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-11
+Version: 2026-09-13
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -187,6 +187,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][stdlib-preparation]
   added bootstrap-owned semantic interfaces, standalone-link provider discovery, and locally cached native
   stdlib/runtime preparation with conservative reuse and command-private recovery.
+- Refactor [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][preparation-economy] removed
+  obsolete preparation state, restored identity regressions, and reused application analysis, bundled validation and
+  option parsing within each command while preserving semantic authority and persistent reuse.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -391,6 +394,7 @@ update to be promoted to an initiative or plan:
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [preparation-contract]: reference/stdlib-preparation.md
+[preparation-economy]: ../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-pointer-validation]: ../work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md

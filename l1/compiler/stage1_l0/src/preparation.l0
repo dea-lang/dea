@@ -84,17 +84,7 @@ func pr_bool(value: bool) -> string {
 /** Select the same compiler precedence as ordinary builds without shell probes. */
 func pr_compiler(opts: CliOptions*) -> string? {
     if (opts.c_compiler != null) { return opts.c_compiler; }
-    let configured = env_get("L1_CC");
-    if (configured != null) { return configured; }
-    with (let candidates = split_s("tcc,gcc,clang,cc", ",") => sv_free(candidates)) {
-        for (let i = 0; i < sv_size(candidates); i = i + 1) {
-            let candidate = sv_get(candidates, i);
-            /* Bind the optional string so the bootstrap compiler owns its cleanup. */
-            let resolved = cfs_resolve_executable(candidate);
-            if (resolved != null) { return candidate; }
-        }
-    }
-    return env_get("CC");
+    return bd_find_c_compiler();
 }
 
 /** Create a context; semantic-only callers never select or invoke a C compiler. */
@@ -199,89 +189,88 @@ func pr_report_disabled(context: void*, opts: CliOptions*, diags: DiagCollector*
 }
 
 /** Execute one selected destination through the common preparation pipeline. */
-func pr_build_selected(context: void*, opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> bool {
+func pr_build_selected(context: void*, ordered: StringVector*, opts: CliOptions*, cfg: LogConfig*,
+    diags: DiagCollector*) -> bool {
     if (l1c_prep_begin(context) != 1) { return false; }
     if (!pr_frontend_prepare(context, pr_get(context, "semantic_root"),
-        pr_get(context, "home"), pr_get(context, "modules"), opts, cfg, diags)) { return false; }
+        pr_get(context, "home"), ordered, opts, cfg, diags)) { return false; }
     return l1c_prep_complete(context) == 1;
 }
 
 /** Resolve once, recheck under a per-key lock, and share one native preparation pipeline. */
 func pr_prepare(context: void*, explicit: bool, opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> bool {
     if (l1c_prep_resolve(context) != 1) { return false; }
-    if (!pr_frontend_run(context, pr_get(context, "semantic_root"), pr_get(context, "home"),
-        pr_get(context, "modules"), opts, cfg, diags, false)) { return false; }
-    let ineligible = pr_get(context, "ineligible");
-    let writable = pr_get(context, "writable") == "1";
-    if (explicit && ineligible != "") {
-        cli_emit_error(diags, "L1C-2154", "persistent stdlib preparation is unavailable: " + ineligible +
-            "; use automatic preparation in build/run/link or select an eligible compiler; --force cannot override eligibility");
-        return false;
-    }
-    if (explicit && !writable) {
-        cli_emit_error(diags, "L1C-2150", "persistent preparation requires a usable cache destination; select --stdlib-cache PATH");
-        return false;
-    }
-    if (opts.verbosity >= 1) {
-        err_printl_s("Preparation selection: " + pr_get(context, "native_key") + "; cache " + pr_get(context, "local"));
-    }
-    let found = 0;
-    if (!opts.force) { found = l1c_prep_find(context); }
-    if (found < 0) { return false; }
-    if (found == 1) {
-        if (opts.verbosity >= 1) { err_printl_s("Reuse prepared profile: " + pr_get(context, "selected")); }
-        return true;
-    }
-    if (!explicit && opts.no_auto_prepare) { pr_report_disabled(context, opts, diags); return false; }
-    if (explicit && found == 2) {
-        cli_emit_error(diags, "L1C-2153", "completed profile is unusable; repair with " + pr_repair_command(context, opts, true) +
-            "; externally serialize forced replacement against consumers of this profile");
-        return false;
-    }
-    let private = ineligible != "" || !writable || found == 2;
-    if (!private) {
-        if (l1c_prep_lock(context) != 1) {
-            if (explicit || pr_get(context, "explicit_root") == "1") { return false; }
-            private = true;
+    let ordered_opt = pr_frontend_order(pr_get(context, "semantic_root"), pr_get(context, "home"),
+        pr_get(context, "modules"), cfg, diags);
+    if (ordered_opt == null) { return false; }
+    with (let ordered = ordered_opt as StringVector* => sv_free(ordered)) {
+        let ineligible = pr_get(context, "ineligible");
+        let writable = pr_get(context, "writable") == "1";
+        if (explicit && ineligible != "") {
+            cli_emit_error(diags, "L1C-2154", "persistent stdlib preparation is unavailable: " + ineligible +
+                "; use automatic preparation in build/run/link or select an eligible compiler; --force cannot override eligibility");
+            return false;
         }
-        if (!private && !opts.force) {
-            found = l1c_prep_find(context);
-            if (found == 1 || found < 0) { l1c_prep_unlock(context); return found == 1; }
-            if (found == 2) {
-                l1c_prep_unlock(context);
-                if (explicit) {
-                    cli_emit_error(diags, "L1C-2153", "completed profile is unusable; repair with " + pr_repair_command(context, opts, true) +
-                        "; externally serialize forced replacement against consumers of this profile");
-                    return false;
-                }
+        if (explicit && !writable) {
+            cli_emit_error(diags, "L1C-2150", "persistent preparation requires a usable cache destination; select --stdlib-cache PATH");
+            return false;
+        }
+        if (opts.verbosity >= 1) {
+            err_printl_s("Preparation selection: " + pr_get(context, "native_key") + "; cache " + pr_get(context, "local"));
+        }
+        let found = 0;
+        if (!opts.force) { found = l1c_prep_find(context); }
+        if (found < 0) { return false; }
+        if (found == 1) {
+            if (opts.verbosity >= 1) { err_printl_s("Reuse prepared profile: " + pr_get(context, "selected")); }
+            return true;
+        }
+        if (!explicit && opts.no_auto_prepare) { pr_report_disabled(context, opts, diags); return false; }
+        let private = ineligible != "" || !writable || found == 2;
+        if (!private) {
+            if (l1c_prep_lock(context) != 1) {
+                if (explicit || pr_get(context, "explicit_root") == "1") { return false; }
                 private = true;
             }
+            if (!private && !opts.force) {
+                found = l1c_prep_find(context);
+                if (found == 1 || found < 0) { l1c_prep_unlock(context); return found == 1; }
+                if (found == 2) {
+                    l1c_prep_unlock(context);
+                    private = true;
+                }
+            }
         }
-    }
-    if (found == 2) {
-        err_printl_s("Cached native profile is unusable: " + pr_get(context, "unusable"));
-        err_printl_s("Using fresh command-private support; repair with " + pr_repair_command(context, opts, true));
-        err_printl_s("Forced replacement requires external serialization against consumers of this profile.");
-    }
-    if (private) {
-        if (opts.verbosity >= 1 && ineligible != "") { err_printl_s("Fresh preparation: " + ineligible); }
-        if (l1c_prep_private(context) != 1) { return false; }
-    }
-    let label = "stdlib and runtime with " + pr_get(context, "compiler") + " for " + pr_get(context, "target");
-    err_printl_s("Preparing " + label + "...");
-    let ok = pr_build_selected(context, opts, cfg, diags);
-    let storage_error = l1c_prep_error_code(context);
-    if (!ok && !private && !explicit && pr_get(context, "explicit_root") == "0" &&
-        (storage_error == 2150 || storage_error == 2152)) {
+        if (found == 2) {
+            if (explicit) {
+                cli_emit_error(diags, "L1C-2153", "completed profile is unusable; repair with " + pr_repair_command(context, opts, true) +
+                    "; externally serialize forced replacement against consumers of this profile");
+                return false;
+            }
+            err_printl_s("Cached native profile is unusable: " + pr_get(context, "unusable"));
+            err_printl_s("Using fresh command-private support; repair with " + pr_repair_command(context, opts, true));
+            err_printl_s("Forced replacement requires external serialization against consumers of this profile.");
+        }
+        if (private) {
+            if (opts.verbosity >= 1 && ineligible != "") { err_printl_s("Fresh preparation: " + ineligible); }
+            if (l1c_prep_private(context) != 1) { return false; }
+        }
+        let label = "stdlib and runtime with " + pr_get(context, "compiler") + " for " + pr_get(context, "target");
+        err_printl_s("Preparing " + label + "...");
+        let ok = pr_build_selected(context, ordered, opts, cfg, diags);
+        let storage_error = l1c_prep_error_code(context);
+        if (!ok && !private && !explicit && pr_get(context, "explicit_root") == "0" &&
+            (storage_error == 2150 || storage_error == 2152)) {
+            l1c_prep_unlock(context);
+            err_printl_s("Default cache storage is unavailable; preparing fresh command-private support.");
+            ok = l1c_prep_private(context) == 1;
+            if (ok) { ok = pr_build_selected(context, ordered, opts, cfg, diags); }
+        }
         l1c_prep_unlock(context);
-        err_printl_s("Default cache storage is unavailable; preparing fresh command-private support.");
-        ok = l1c_prep_private(context) == 1;
-        if (ok) { ok = pr_build_selected(context, opts, cfg, diags); }
+        if (ok) { err_printl_s("Prepared " + label + "."); }
+        else { err_printl_s("Preparation failed: " + label + "."); }
+        return ok;
     }
-    l1c_prep_unlock(context);
-    if (ok) { err_printl_s("Prepared " + label + "."); }
-    else { err_printl_s("Preparation failed: " + label + "."); }
-    return ok;
 }
 
 /** Print one command's identity and validation statistics at debug verbosity. */

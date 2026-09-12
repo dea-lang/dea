@@ -353,7 +353,7 @@ func ld_build_run_in_workspace(
             analysis_result_free(result);
             return 1;
         }
-        if (!mp_runtime(managed, true, diags)) {
+        if (!mp_runtime(managed, diags)) {
             dp_print_collector(diags);
             vec_free(ordered);
             analysis_result_free(result);

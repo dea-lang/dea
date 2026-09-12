@@ -1,7 +1,7 @@
 # ADR-0039: Native Preparation Identity and Reuse Boundary
 
 - Decision date: 2026-09-11
-- Last edited: 2026-09-11
+- Last edited: 2026-09-13
 - Status: Accepted
 
 ## Context
@@ -61,6 +61,7 @@ general toolchain or project build system.
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
+- [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][preparation-economy]
 
 ## Current Docs
 
@@ -72,5 +73,6 @@ general toolchain or project build system.
 [backend]: ../reference/c-backend-design.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [preparation]: ../reference/stdlib-preparation.md
+[preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

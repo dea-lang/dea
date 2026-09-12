@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-09-11
+Version: 2026-09-13
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -134,6 +134,13 @@ dependencies cover generated checking/real/float branches, runtime translation u
 Metadata-preserving external mutation and concurrent external input changes are outside the contract. These checks do
 not prove cache portability.
 
+Within one native-resolution command, response and configuration files are parsed once per lexical absolute path and
+syntax. The direct argument root and each selected configuration root share expanded views for runtime target selection,
+eligibility and dependency observation. Repeated includes preserve argument order and multiplicity; the original native
+invocation words remain unchanged. Ordinary response includes resolve from the invocation directory, while configuration
+includes resolve from each including file's directory. These views are discarded when native resolution finishes; later
+invocations still observe changed option inputs through the normal validation rules.
+
 ## Integrity and recovery
 
 The sole completion manifest is published last, after the complete declared inventory is validated. It records `D`, `N`,
@@ -143,6 +150,12 @@ interfaces that differ from the selected semantic bytes. Native bytes are hashed
 semantically opaque; parsing, fingerprints, graph and lifecycle checks still come from `.l1m`. Preparation validates the
 complete selected interface graph, including modules not imported by other bundled sources, before reuse or miss
 decisions. Malformed toolchain inputs receive repair guidance even with `--no-auto-prepare`.
+
+The command retains only the validated bundled module names in dependency order for native construction and any private
+fallback retry. It releases the umbrella analysis and workspace before compiling modules. Build/run retain their initial
+application analysis and bind managed native artifact paths after preparation proves exact semantic copies. Semantic
+origin paths and loaded source snapshots continue to identify the original semantic inputs. Per-module source analysis
+and final native sibling/provenance checks remain separate required compilation and linking boundaries.
 
 Absent/incomplete same-key preparations serialize under a process-lifetime lock and recheck after waiting. Different
 keys can prepare independently. Lock-file existence alone is not ownership, and process exit releases the lock. No

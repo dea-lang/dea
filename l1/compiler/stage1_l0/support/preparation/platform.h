@@ -247,7 +247,7 @@ static char *pc_read_file_checked(const char *path, size_t limit, size_t *size, 
             *io_error = errno ? errno : EIO;
         return NULL;
     }
-    while ((n = fread(buffer, 1, sizeof(buffer), f)) > 0) {
+    while (!ferror(f) && !feof(f) && (n = fread(buffer, 1, sizeof(buffer), f)) > 0) {
         if (n > limit - b.n) {
             free(b.s);
             fclose(f);
@@ -366,30 +366,19 @@ static PcJson *pc_meta_file(FILE *f) {
 }
 #endif
 /** Hash a stable regular file; metadata binds the descriptor and selected path. */
-static int pc_hash_file_checked(const char *path, char digest[65], PcJson **metadata,
-                                int *io_error) {
+static int pc_hash_file(const char *path, char digest[65], PcJson **metadata) {
     FILE *f;
     PcJson *before, *after, *current;
     PcSha sha;
     char buffer[65536];
     size_t n;
     int ok, kind = pc_kind(path, 1);
-    if (io_error)
-        *io_error = 0;
-    if (kind != 1) {
-        if (kind < 0 && io_error)
-            *io_error = EIO;
-        return 0;
-    }
+    if (kind != 1) return 0;
     f = fopen(path, "rb");
-    if (!f) {
-        if (io_error && errno != ENOENT && errno != ENOTDIR)
-            *io_error = errno ? errno : EIO;
-        return 0;
-    }
+    if (!f) return 0;
     before = pc_meta_file(f);
     pc_sha_init(&sha);
-    while ((n = fread(buffer, 1, sizeof(buffer), f)) > 0)
+    while (!ferror(f) && !feof(f) && (n = fread(buffer, 1, sizeof(buffer), f)) > 0)
         pc_sha_update(&sha, buffer, n);
     ok = !ferror(f);
     after = pc_meta_file(f);
@@ -400,8 +389,6 @@ static int pc_hash_file_checked(const char *path, char digest[65], PcJson **meta
     pj_free(after);
     pj_free(current);
     if (!ok) {
-        if (io_error)
-            *io_error = EIO;
         pj_free(before);
         return 0;
     }
@@ -411,9 +398,6 @@ static int pc_hash_file_checked(const char *path, char digest[65], PcJson **meta
     else
         pj_free(before);
     return 1;
-}
-static int pc_hash_file(const char *path, char digest[65], PcJson **metadata) {
-    return pc_hash_file_checked(path, digest, metadata, NULL);
 }
 static int pc_hex_digest(const char *s) {
     size_t i;

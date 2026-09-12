@@ -1,7 +1,7 @@
 # ADR-0038: Bundled Semantic Inputs and Local Native Preparation
 
 - Decision date: 2026-09-11
-- Last edited: 2026-09-11
+- Last edited: 2026-09-13
 - Status: Accepted
 
 ## Context
@@ -58,6 +58,7 @@ explicit replacement avoids a new concurrent-reader protocol.
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
+- [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][preparation-economy]
 
 ## Current Docs
 
@@ -69,5 +70,6 @@ explicit replacement avoids a new concurrent-reader protocol.
 [backend]: ../reference/c-backend-design.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [preparation]: ../reference/stdlib-preparation.md
+[preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

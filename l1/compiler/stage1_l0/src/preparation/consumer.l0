@@ -45,8 +45,7 @@ func mp_free(self: ManagedPreparation*) {
 }
 
 /** Resolve one native context for the entire command. Semantic selection has no preparation step. */
-func mp_ensure(self: ManagedPreparation*, native: bool, diags: DiagCollector*) -> bool {
-    if (!native) { return true; }
+func mp_ensure(self: ManagedPreparation*, diags: DiagCollector*) -> bool {
     if (self.native_root == null) {
         if (!pr_prepare(self.context, false, self.options, self.config, diags)) {
             pr_report_error(self.context, diags);
@@ -60,10 +59,10 @@ func mp_ensure(self: ManagedPreparation*, native: bool, diags: DiagCollector*) -
 }
 
 /** Preserve final-link runtime overrides; headers are independent bootstrap inputs. */
-func mp_runtime(self: ManagedPreparation*, link: bool, diags: DiagCollector*) -> bool {
+func mp_runtime(self: ManagedPreparation*, diags: DiagCollector*) -> bool {
     let runtime_override = env_get("L1_RUNTIME_LIB");
-    if (link && self.options.runtime_lib == null && runtime_override == null) {
-        return mp_ensure(self, true, diags);
+    if (self.options.runtime_lib == null && runtime_override == null) {
+        return mp_ensure(self, diags);
     }
     return true;
 }
@@ -78,6 +77,26 @@ func mp_source_paths(self: ManagedPreparation*, paths: SourceSearchPaths*) {
     }
 }
 
+/**
+ * Attach validated native siblings without changing semantic origins or parsed bytes.
+ *
+ * @param nodes Borrowed sorted nodes owned by the retained analysis result.
+ * @param modules_root Validated native profile's module directory.
+ * @param diags Receives an artifact-construction failure.
+ * @return Success; on failure the caller must discard the partially rebound analysis.
+ */
+func mp_bind_native_artifacts(nodes: VectorBase*, modules_root: string, diags: DiagCollector*) -> bool {
+    for (let i = 0; i < vec_size(nodes); i = i + 1) {
+        let node = (*(vec_get(nodes, i) as void**)) as ModuleGraphNode*;
+        if (!node.managed) { continue; }
+        let replacement = mg_artifacts_for_module(modules_root, node.module_name, diags);
+        if (replacement == null) { return false; }
+        mg_artifacts_free(node.artifacts);
+        node.artifacts = replacement;
+    }
+    return true;
+}
+
 /** Analyze through toolchain interfaces before materializing exact native sibling pairs. */
 func mp_analyze(self: ManagedPreparation*, paths: SourceSearchPaths*, entry: string,
     policy: ModuleResolutionPolicy, artifact_root: string?) -> AnalysisResult* {
@@ -86,9 +105,9 @@ func mp_analyze(self: ManagedPreparation*, paths: SourceSearchPaths*, entry: str
         policy, artifact_root, self.config);
     if (!self.native || analysis_has_errors(result)) { return result; }
     let needs_native = false;
-    with (let names = mg_node_names_sorted(driver_graph(result.driver_state)) => sv_free(names)) {
-        for (let i = 0; i < sv_size(names); i = i + 1) {
-            let node = mg_find_node(driver_graph(result.driver_state), sv_get(names, i)) as ModuleGraphNode*;
+    with (let nodes = mg_nodes_sorted(driver_graph(result.driver_state)) => vec_free(nodes)) {
+        for (let i = 0; i < vec_size(nodes); i = i + 1) {
+            let node = (*(vec_get(nodes, i) as void**)) as ModuleGraphNode*;
             if (node.managed) { needs_native = true; }
             else if (ord(node.origin.kind) == ord(MOK_INTERFACE) && node.artifacts != null &&
                 cfs_path_kind_follow((node.artifacts as ModuleArtifactPaths*).object_path) != CFS_PATH_REGULAR) {
@@ -96,12 +115,12 @@ func mp_analyze(self: ManagedPreparation*, paths: SourceSearchPaths*, entry: str
                     (node.artifacts as ModuleArtifactPaths*).object_path);
             }
         }
-    }
-    if (needs_native && !analysis_has_errors(result) && mp_ensure(self, true, result.diags)) {
-        analysis_result_free(result);
-        mp_source_paths(self, paths);
-        result = analysis_analyze_entry_with_resolution(paths, entry, self.options.interface_paths,
-            policy, artifact_root, self.config);
+        if (needs_native && !analysis_has_errors(result) && mp_ensure(self, result.diags)) {
+            if (!mp_bind_native_artifacts(nodes, join(self.native_root as string, "modules"), result.diags)) {
+                return result;
+            }
+            mp_source_paths(self, paths);
+        }
     }
     return result;
 }

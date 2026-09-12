@@ -35,7 +35,7 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
             return 1;
         }
         let verified = plan as LinkPlan*;
-        if (!mp_runtime(managed, true, diags)) {
+        if (!mp_runtime(managed, diags)) {
             dp_print_collector(diags);
             ld_plan_free(verified);
             return 1;

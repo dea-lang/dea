@@ -5,15 +5,35 @@
 
 module preparation_test;
 
+import sys.memory;
 import std.assert;
 import std.system;
+import std.text;
 import std.vector;
+import analysis;
 import build_driver;
 import cli_args.model;
+import driver.state;
+import module_graph;
+import module_interface;
+import name_resolver.state;
 import preparation;
 import preparation.consumer;
+import preparation.frontend;
+import sem_context;
+import source_paths;
+import types;
 import util.diag;
 import util.log;
+
+/** Compare stored pointer bytes because L0 only supports pointer comparisons with null. */
+func same_pointer(left: void*, right: void*) -> bool {
+    with (let slots = vec_create(sizeof(void*), 2) => vec_free(slots)) {
+        vec_push_ptr(slots, left);
+        vec_push_ptr(slots, right);
+        return rt_memcmp(vec_get(slots, 0), vec_get(slots, 1), sizeof(void*)) == 0;
+    }
+}
 
 /** Exercise optional executable results and configured runtime overrides under tracing. */
 func test_optional_native_selection_ownership() {
@@ -26,22 +46,111 @@ func test_optional_native_selection_ownership() {
             let compiler = pr_compiler(opts);
             assert(compiler != null, "automatic native compiler selection failed");
         }
+        opts.c_compiler = "explicit compiler command";
+        assert(pr_compiler(opts) as string == "explicit compiler command" &&
+            opts.c_compiler as string == "explicit compiler command", "CLI compiler selection must win without consuming options");
+        opts.c_compiler = null;
         let runtime_override = env_get("L1_RUNTIME_LIB");
         if (runtime_override != null) {
             let objects = bd_runtime_object_paths(opts);
             assert(objects == null, "explicit runtime override must suppress automatic raw objects");
             bd_runtime_object_paths_free(objects);
             with (let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
-                assert(mp_runtime(managed, true, diags), "runtime override unexpectedly required preparation");
+                assert(mp_runtime(managed, diags), "runtime override unexpectedly required preparation");
                 assert(managed.native_root == null, "runtime override prepared unused native support");
             }
         }
     }
 }
 
+/** Preserve semantic ownership and provenance while replacing only managed native siblings. */
+func test_native_artifact_rebinding() {
+    with (let paths = sp_create() => sp_free(paths),
+          let interfaces = sv_create(1) => sv_free(interfaces),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        sp_add_project_root(paths, "compiler/stage1_l0/tests/fixtures/driver");
+        sv_push(interfaces, "compiler/stage1_l0/tests/fixtures/module_graph/interfaces_first");
+        with (let result = analysis_analyze_entry_with_resolution(paths, "graph_entry", interfaces,
+            MRP_REQUIRE_INTERFACE, "build/application", cfg) => analysis_result_free(result)) {
+            assert(!analysis_has_errors(result), "rebind fixture analysis failed");
+            let state = result.driver_state;
+            let graph = driver_graph(state);
+            let provider = mg_find_node(graph, "graph.provider") as ModuleGraphNode*;
+            let explicit = mg_find_node(graph, "graph.unused") as ModuleGraphNode*;
+            provider.managed = true;
+            let origin = provider.origin.path as string;
+            let explicit_artifacts = explicit.artifacts as ModuleArtifactPaths*;
+            let raw = driver_find_graph_interface(state, provider.module_name) as ModuleInterface*;
+            let semantic = driver_find_interface(state, provider.module_name) as ModuleInterface*;
+            let projection = driver_find_projection_interface(state, provider.module_name) as ModuleInterface*;
+            let fingerprint = driver_provider_fingerprint(state, provider.module_name);
+            let names = result.names as NameResolution*;
+            let signatures = result.signatures as SignatureTables*;
+            let filenames = join_s(state.source_names, "\n");
+            let sources = join_s(state.source_texts, "\n");
+            let diagnostics = diag_count(result.diags);
+            with (let nodes = mg_nodes_sorted(graph) => vec_free(nodes)) {
+                assert(mp_bind_native_artifacts(nodes, "cache/modules", result.diags), "native binding failed");
+            }
+            let artifacts = provider.artifacts as ModuleArtifactPaths*;
+            assert(artifacts.object_path == "cache/modules/graph/provider.o" &&
+                artifacts.interface_path == "cache/modules/graph/provider.l1m" &&
+                artifacts.c_path == "cache/modules/graph/provider.c", "managed native siblings were not rebound together");
+            assert(provider.origin.path as string == origin &&
+                same_pointer((explicit.artifacts as ModuleArtifactPaths*) as void*, explicit_artifacts as void*),
+                "native binding changed semantic origin or explicit artifacts");
+            assert(same_pointer((driver_find_graph_interface(state, provider.module_name) as ModuleInterface*) as void*, raw as void*) &&
+                same_pointer((driver_find_interface(state, provider.module_name) as ModuleInterface*) as void*, semantic as void*) &&
+                same_pointer((driver_find_projection_interface(state, provider.module_name) as ModuleInterface*) as void*, projection as void*) &&
+                driver_provider_fingerprint(state, provider.module_name) == fingerprint,
+                "native binding replaced selected semantic interfaces");
+            assert(same_pointer((result.names as NameResolution*) as void*, names as void*) &&
+                same_pointer((result.signatures as SignatureTables*) as void*, signatures as void*) &&
+                diag_count(result.diags) == diagnostics &&
+                join_s(state.source_names, "\n") == filenames && join_s(state.source_texts, "\n") == sources,
+                "native binding changed analysis tables, diagnostics, or source snapshots");
+            /* Construction failure keeps every earlier replacement owned by the original graph. */
+            with (let invalid = mg_node_virtual("invalid/name") => mg_node_free(invalid),
+                  let partial = vec_create(sizeof(void*), 2) => vec_free(partial)) {
+                invalid.managed = true;
+                vec_push_ptr(partial, provider as void*);
+                vec_push_ptr(partial, invalid as void*);
+                assert(!mp_bind_native_artifacts(partial, "private/modules", result.diags) && analysis_has_errors(result),
+                    "invalid native artifact association must fail before consumption");
+                assert((provider.artifacts as ModuleArtifactPaths*).object_path == "private/modules/graph/provider.o" &&
+                    provider.origin.path as string == origin && invalid.artifacts == null,
+                    "partial binding must remain safely owned without mutating semantic origins");
+            }
+        }
+    }
+}
+
+/** Returned module names outlive their validation graph; failed validation owns no result. */
+func test_preparation_order_ownership() {
+    with (let opts = cli_options_create() => cli_options_free(opts),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
+        let semantic_root = pr_get(managed.context, "semantic_root");
+        let home = pr_get(managed.context, "home");
+        for (let i = 0; i < 2; i = i + 1) {
+            let ordered_opt = pr_frontend_order(semantic_root, home, "std.io\nstd.types\n", cfg, diags);
+            assert(ordered_opt != null, "bundled semantic order validation failed");
+            with (let ordered = ordered_opt as StringVector* => sv_free(ordered)) {
+                assert(sv_size(ordered) == 2 && sv_get(ordered, 0) == "std.io" && sv_get(ordered, 1) == "std.types",
+                    "returned dependency-order names did not survive validation cleanup");
+            }
+        }
+        let failed = pr_frontend_order(semantic_root, home, "std.not_bundled\n", cfg, diags);
+        assert(failed == null && diag_has_errors(diags), "invalid semantic input must not return an owned order");
+    }
+}
+
 /** Windows repair guidance preserves literal characters that cmd.exe would expand. */
 func main() {
     test_optional_native_selection_ownership();
+    test_native_artifact_rebinding();
+    test_preparation_order_ownership();
     with (let words = sv_create(4) => sv_free(words)) {
         sv_push(words, "l1c");
         sv_push(words, "--stdlib-cache");

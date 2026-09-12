@@ -119,7 +119,7 @@ static int pc_complete_profile(PcContext *c) {
     if (ok && pc_kind(pending, 0) != 0 && remove(pending) != 0)
         ok = pc_fail(c, 2150, "cannot establish pending completion manifest", pending);
     if (ok && !pc_write_json(pending, manifest)) ok = pc_fail(c, 2150, "cannot write completion manifest", pending);
-    if (ok) ok = pc_validate_entry_manifest(c, c->selected, c->native_key, c->native, 1, ".manifest.pending") == 1;
+    if (ok) ok = pc_validate_entry_manifest(c, c->selected, 1, ".manifest.pending") == 1;
     /* Atomic publication makes a killed/in-progress writer an incomplete miss,
        and ensures readers never mistake a partial record for completed corruption. */
     if (ok && rename(pending, marker) != 0) ok = pc_fail(c, 2150, "cannot publish completion manifest", marker);
@@ -258,6 +258,8 @@ int32_t l1c_prep_get(void *context, const uint8_t *field, int32_t field_length, 
         pj_set_number(j, "native_resolutions", c->resolutions);
         pj_set_number(j, "build_commands", c->build_commands);
         pj_set_number(j, "module_compiles", c->module_compiles);
+        pj_set_number(j, "option_file_parses", c->option_file_parses);
+        pj_set_number(j, "option_root_expansions", c->option_root_expansions);
         owned = pj_encode(j); pj_free(j);
     }
     free(key);

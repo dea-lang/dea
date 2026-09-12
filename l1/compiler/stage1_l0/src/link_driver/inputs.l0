@@ -276,7 +276,7 @@ func ld_discover_provider(
     }
     if (managed != null && mp_bundled_provider(managed as ManagedPreparation*, module_name)) {
         let selected = managed as ManagedPreparation*;
-        if (!mp_ensure(selected, true, diags)) { return null; }
+        if (!mp_ensure(selected, diags)) { return null; }
         with (let prepared_paths = sv_create(1) => sv_free(prepared_paths)) {
             sv_push(prepared_paths, join(selected.native_root as string, "modules"));
             return ld_discover_provider(module_name, prepared_paths, null, diags);

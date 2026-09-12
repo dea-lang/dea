@@ -283,6 +283,25 @@ def check_integrity(library: Path, root: Path, config: dict) -> None:
     assert not (Path(config["cache"]) / "v1/interfaces").exists()
 
 
+def can_create_file(directory: Path) -> bool:
+    """Observe actual create permission, including privileged-user chmod bypass.
+
+    Args:
+        directory: Owned fixture directory to probe with an exclusive temporary file.
+
+    Returns:
+        Whether the current process can create a file in the directory.
+
+    Raises:
+        OSError: If probing fails for a reason other than denied permission.
+    """
+    try:
+        with tempfile.NamedTemporaryFile(dir=directory, prefix=".write-capability-"):
+            return True
+    except PermissionError:
+        return False
+
+
 def check_read_only_default(library: Path, root: Path, config: dict) -> None:
     """An implicit read-only root still permits a fully validated existing profile."""
     if os.name == "nt":
@@ -293,13 +312,17 @@ def check_read_only_default(library: Path, root: Path, config: dict) -> None:
     version = default / "v1"
     version.chmod(0o555)
     try:
+        writable = can_create_file(version)
         implicit_config = {key: value for key, value in config.items() if key != "cache"}
         with Service(library, implicit_config) as readable:
             readable.require("resolve")
-            assert readable.get("writable") == "0"
+            assert readable.get("writable") == ("1" if writable else "0")
             readable.require("find")
         with Service(library, {**config, "cache": str(default)}) as explicit:
-            assert explicit.call("resolve") == 0 and explicit.call("error_code") == 2150
+            if writable:
+                explicit.require("resolve")
+            else:
+                assert explicit.call("resolve") == 0 and explicit.call("error_code") == 2150
     finally:
         version.chmod(0o755)
 

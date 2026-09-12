@@ -16,13 +16,14 @@ import subprocess
 import sys
 import tempfile
 
-from l1c_stage1_compile_only_test import L1_ROOT, stage1_compiler, resolve_deterministic_host_c_compiler
+from l1c_stage1_compile_only_test import L1_ROOT, stage1_compiler
+from l1c_stage1_managed_preparation_test import analysis_count, preparation_c_compiler
 
 
 def main() -> int:
     """Build and link through installed interfaces without installed native artifacts."""
     native = stage1_compiler().parent / "l1c-stage1.native"
-    cc = resolve_deterministic_host_c_compiler()
+    cc = preparation_c_compiler()
     assert cc
     with tempfile.TemporaryDirectory(prefix="l1-installation-fixture-") as directory:
         root = Path(directory).resolve()
@@ -68,20 +69,28 @@ def main() -> int:
             assert result.returncode == 0 and result.stdout == "installed-ok\n"
             markers = list(cache.glob("v1/native/*/manifest.json"))
             assert len(markers) == 1
-            if os.name != "nt":
-                # Existing read-only output directories fail only after begin succeeds.
-                marker = markers[0]
-                blocked = marker.parent / "modules/std"
-                marker.unlink()
-                blocked.chmod(0o500)
-                try:
-                    fallback = run("--run", "app")
-                    assert fallback.stdout == "installed-ok\n" and "fresh command-private support" in fallback.stderr
-                    assert not marker.exists()
-                    run("--prepare-stdlib", expected=1)
-                    run("--run", "--no-auto-prepare", "app", expected=1)
-                finally:
-                    blocked.chmod(0o755)
+            # A nonempty output directory fails during interface copying after begin,
+            # including for privileged users that can bypass chmod restrictions.
+            marker = markers[0]
+            blocked = marker.parent / "modules/std/io.l1m"
+            original_interface = blocked.read_bytes()
+            marker.unlink()
+            blocked.unlink()
+            blocked.mkdir()
+            sentinel = blocked / "owned-obstruction"
+            sentinel.write_text("retain this obstruction")
+            try:
+                fallback = run("--run", "app", "-v")
+                assert fallback.stdout == "installed-ok\n" and "fresh command-private support" in fallback.stderr
+                assert "Default cache storage is unavailable; preparing fresh command-private support." in fallback.stderr
+                assert analysis_count(fallback, "_dea_preparation") == 1 and analysis_count(fallback, "app") == 2
+                assert not marker.exists() and sentinel.read_text() == "retain this obstruction"
+                run("--prepare-stdlib", expected=1)
+                run("--run", "--no-auto-prepare", "app", expected=1)
+            finally:
+                if blocked.is_dir():
+                    shutil.rmtree(blocked)
+                blocked.write_bytes(original_interface)
             unrelated = cache / "caller-owned.txt"
             unrelated.write_text("retain this sibling")
             shutil.rmtree(cache / "v1")

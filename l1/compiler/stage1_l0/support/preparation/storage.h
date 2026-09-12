@@ -16,7 +16,7 @@ typedef struct {
     int error_code, force, native_resolved, begun, explicit_root, writable, installed, runtime_config_observed;
     int64_t identity_reads, artifact_reads, probes, metadata_checks, resolutions;
     int64_t build_commands, module_compiles;
-    int validation_io_error;
+    int64_t option_file_parses, option_root_expansions;
     PcLock *lock;
 } PcContext;
 
@@ -156,14 +156,12 @@ static char *pc_memo_path(PcContext *c, const char *kind, const char *key, int c
     free(directory); free(filename);
     return path;
 }
-static int pc_memo_valid(PcContext *c, const PcJson *memo, const char *kind) {
-    (void)c;
+static int pc_memo_valid(const PcJson *memo, const char *kind) {
     return memo && pj_is_number(pj_get(memo, "schema"), 1) && pj_field(memo, "kind") &&
         !strcmp(pj_field(memo, "kind"), kind);
 }
-static PcJson *pc_memo_create(PcContext *c, const char *kind) {
+static PcJson *pc_memo_create(const char *kind) {
     PcJson *m = pj_new(PJ_OBJECT);
-    (void)c;
     pj_set_number(m, "schema", 1); pj_set_string(m, "kind", kind);
     return m;
 }
@@ -295,8 +293,8 @@ static char *pc_entry_path(const char *root, const char *key) {
  * Validate one completion record. Return 1 for a hit, 0 for unavailable, -1
  * for supported completed corruption. Only successful checks populate memos.
  */
-static int pc_validate_entry_manifest(PcContext *c, const char *entry, const char *key,
-                             const PcJson *wanted, int full, const char *manifest_name) {
+static int pc_validate_entry_manifest(PcContext *c, const char *entry,
+                                      int full, const char *manifest_name) {
     char *manifest_path = pc_join(entry, manifest_name), *raw = NULL, *identity_key = NULL,
          *resolved = NULL, *memo_key = NULL, *memo_path = NULL;
     size_t raw_size;
@@ -304,11 +302,10 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry, const cha
            *seen = NULL;
     const PcJson *identity, *inventory, *item;
     char manifest_digest[65];
-    int outcome = -1;
-    c->validation_io_error = 0;
-    raw = pc_read_file_checked(manifest_path, 16 * 1024 * 1024, &raw_size, &c->validation_io_error);
+    int outcome = -1, manifest_io_error = 0;
+    raw = pc_read_file_checked(manifest_path, 16 * 1024 * 1024, &raw_size, &manifest_io_error);
     if (!raw) {
-        if (c->validation_io_error || pc_kind(manifest_path, 0) != 0) {
+        if (manifest_io_error || pc_kind(manifest_path, 0) != 0) {
             pc_fail(c, 2153, "cannot read existing completion manifest", manifest_path);
             goto finish;
         }
@@ -325,12 +322,12 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry, const cha
     if (!identity || identity->type != PJ_OBJECT || !inventory || inventory->type != PJ_ARRAY ||
         !pj_field(manifest, "kind") ||
         strcmp(pj_field(manifest, "kind"), "native") ||
-        !pj_field(manifest, "key") || strcmp(pj_field(manifest, "key"), key))
+        !pj_field(manifest, "key") || strcmp(pj_field(manifest, "key"), c->native_key))
         goto malformed;
     identity_key = pc_json_digest(identity);
-    if (strcmp(identity_key, key) || (wanted && !pj_equal(wanted, identity)))
+    if (strcmp(identity_key, c->native_key) || !pj_equal(c->native, identity))
         goto malformed;
-    expected = pc_expected_artifacts(wanted);
+    expected = pc_expected_artifacts(c->native);
     if (!expected || pj_count(expected) != pj_count(inventory))
         goto malformed;
     if (!pj_field(manifest, "D") || strcmp(pj_field(manifest, "D"), c->dea_key))
@@ -360,7 +357,7 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry, const cha
     memo_path = pc_memo_path(c, "artifacts", memo_key, 0);
     if (memo_path && !full)
         memo = pc_read_json(memo_path);
-    if (!pc_memo_valid(c, memo, "artifact-validation") || !pj_field(memo, "entry") ||
+    if (!pc_memo_valid(memo, "artifact-validation") || !pj_field(memo, "entry") ||
         !pc_path_equal(pj_field(memo, "entry"), resolved) || !pj_field(memo, "manifest") ||
         strcmp(pj_field(memo, "manifest"), manifest_digest)) {
         pj_free(memo);
@@ -370,7 +367,7 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry, const cha
         fprintf(stderr, "Preparation validation: %s (%s)\n", entry,
                 memo ? "manifest reread; per-artifact metadata with changed-file hashing"
                      : "full inventory hashing");
-    validated = pc_memo_create(c, "artifact-validation");
+    validated = pc_memo_create("artifact-validation");
     pj_set_string(validated, "entry", resolved);
     pj_set_string(validated, "manifest", manifest_digest);
     files = pj_new(PJ_OBJECT);
@@ -399,8 +396,6 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry, const cha
         path = pc_join(entry, relative);
         canonical = pc_path_call(path, l1c_fs_canonical_existing_path);
         if (!canonical || !pc_within(canonical, resolved) || pc_kind(path, 1) != 1) {
-            if (pc_kind(path, 1) < 0)
-                c->validation_io_error = EIO;
             pc_fail(c, 2153, "missing, escaped, or nonregular managed artifact", path);
             free(path);
             free(canonical);
@@ -410,8 +405,6 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry, const cha
         metadata = pc_meta(path);
         ++c->metadata_checks;
         if (!metadata || !pj_is_number(pj_get(metadata, "size"), size->number)) {
-            if (!metadata)
-                c->validation_io_error = EIO;
             pc_fail(c, 2153, "managed artifact size or metadata mismatch", path);
             pj_free(metadata);
             free(path);
@@ -425,7 +418,7 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry, const cha
             pj_free(metadata);
             metadata = NULL;
             ++c->artifact_reads;
-            if (!pc_hash_file_checked(path, actual, &metadata, &c->validation_io_error) ||
+            if (!pc_hash_file(path, actual, &metadata) ||
                 strcmp(actual, digest)) {
                 pc_fail(c, 2153, "managed artifact digest mismatch or unstable read", path);
                 pj_free(metadata);
@@ -468,9 +461,8 @@ finish:
 }
 
 /** Readers recognize only the final completion name, never a writer's pending bytes. */
-static int pc_validate_entry(PcContext *c, const char *entry, const char *key,
-                             const PcJson *wanted, int full) {
-    return pc_validate_entry_manifest(c, entry, key, wanted, full, "manifest.json");
+static int pc_validate_entry(PcContext *c, const char *entry, int full) {
+    return pc_validate_entry_manifest(c, entry, full, "manifest.json");
 }
 
 /** A detected completed failure is retained as recovery context, never consumed or repaired here. */
@@ -480,7 +472,7 @@ static int pc_find_profile(PcContext *c) {
     if (!c->native_key) return pc_fail(c, 2151, "native identity is unresolved", NULL), -1;
     if (c->ineligible || !c->local) return 0;
     entry = pc_entry_path(c->local, c->native_key);
-    result = pc_validate_entry(c, entry, c->native_key, c->native, c->force);
+    result = pc_validate_entry(c, entry, c->force);
     if (result == 1) { free(c->selected); c->selected = entry; return 1; }
     free(entry);
     if (result < 0) {

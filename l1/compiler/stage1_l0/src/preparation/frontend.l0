@@ -74,10 +74,9 @@ func pr_frontend_module(context: void*, name: string, search: SourceSearchPaths*
     return l1c_prep_compile(context, rt_string_bytes_ptr(name), len_s(name)) == 1;
 }
 
-/** Validate every selected interface, then optionally generate native modules in dependency order. */
-func pr_frontend_workspace(context: void*, semantic_root: string,
-    home: string, module_names: string, workspace: CompilerWorkspace*, opts: CliOptions*,
-    cfg: LogConfig*, diags: DiagCollector*, compile_modules: bool) -> bool {
+/** Validate every selected interface and copy the complete bundled dependency order. */
+func pr_frontend_workspace_order(semantic_root: string, home: string, module_names: string,
+    workspace: CompilerWorkspace*, cfg: LogConfig*, diags: DiagCollector*) -> StringVector*? {
     with (
         let names = split_s(module_names, "\n") => sv_free(names),
         let modules = ss_create() => ss_free(modules),
@@ -97,12 +96,11 @@ func pr_frontend_workspace(context: void*, semantic_root: string,
         let umbrella = cfs_workspace_child(workspace, "_dea_preparation.l1");
         if (write_file(umbrella, sb_to_string(source)) == null) {
             cli_emit_error(diags, "L1C-2155", "cannot write preparation source workspace");
-            return false;
+            return null;
         }
         sv_push(project_roots, workspace.root);
         sv_push(sys_roots, join(home, "shared/l1/stdlib"));
-        let interface_root = semantic_root;
-        sv_push(interfaces, interface_root);
+        sv_push(interfaces, semantic_root);
         with (
             let search = sp_build_from_roots(project_roots, sys_roots) => sp_free(search),
             let graph_result = analysis_analyze_entry_with_resolution(search, "_dea_preparation", interfaces,
@@ -111,42 +109,50 @@ func pr_frontend_workspace(context: void*, semantic_root: string,
             pr_copy_diags(diags, graph_result.diags);
             if (analysis_has_errors(graph_result)) {
                 cli_emit_error(diags, "L1C-2158", "invalid bundled semantic preparation inputs; rerun make build-stage1 or repair installation");
-                return false;
+                return null;
             }
             let ordered_opt = mg_dependency_order(driver_graph(graph_result.driver_state), "_dea_preparation", diags);
-            if (ordered_opt == null) { return false; }
+            if (ordered_opt == null) { return null; }
             with (let ordered = ordered_opt as VectorBase* => vec_free(ordered)) {
-                if (!compile_modules) { return true; }
+                let names_in_order = sv_create(ss_size(modules));
                 for (let i = 0; i < vec_size(ordered); i = i + 1) {
                     let node = (*(vec_get(ordered, i) as void**)) as ModuleGraphNode*;
-                    if (!ss_has(modules, node.module_name)) { continue; }
-                    if (opts.verbosity >= 1) { err_printl_s("Preparing module " + node.module_name); }
-                    if (!pr_frontend_module(context, node.module_name, search, interfaces,
-                        opts, cfg, diags)) { return false; }
+                    if (ss_has(modules, node.module_name)) { sv_push(names_in_order, node.module_name); }
                 }
+                return names_in_order;
             }
         }
-        return true;
     }
 }
 
-/** Keep semantic validation and native generation inside a bounded frontend workspace. */
-func pr_frontend_run(context: void*, semantic_root: string, home: string, module_names: string,
-    opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*, compile_modules: bool) -> bool {
+/** Return owned module names after releasing the validation graph and temporary workspace. */
+func pr_frontend_order(semantic_root: string, home: string, module_names: string,
+    cfg: LogConfig*, diags: DiagCollector*) -> StringVector*? {
     let workspace_opt = cfs_workspace_create("prepare", diags);
-    if (workspace_opt == null) { return false; }
+    if (workspace_opt == null) { return null; }
     with (let workspace = workspace_opt as CompilerWorkspace* => cfs_workspace_free(workspace)) {
-        let ok = pr_frontend_workspace(context, semantic_root, home, module_names,
-            workspace, opts, cfg, diags, compile_modules);
-        if (!cfs_workspace_cleanup(workspace, diags)) { ok = false; }
-        return ok;
+        let ordered = pr_frontend_workspace_order(semantic_root, home, module_names, workspace, cfg, diags);
+        if (!cfs_workspace_cleanup(workspace, diags)) {
+            if (ordered != null) { sv_free(ordered as StringVector*); }
+            return null;
+        }
+        return ordered;
     }
 }
 
 /** Generate complete profiles without re-emitting their authoritative semantic interfaces. */
-func pr_frontend_prepare(context: void*, semantic_root: string, home: string, module_names: string,
+func pr_frontend_prepare(context: void*, semantic_root: string, home: string, ordered: StringVector*,
     opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> bool {
     if (l1c_prep_copy_interfaces(context) != 1) { return false; }
-    if (!pr_frontend_run(context, semantic_root, home, module_names, opts, cfg, diags, true)) { return false; }
+    with (let search = sp_create() => sp_free(search),
+          let interfaces = sv_create(1) => sv_free(interfaces)) {
+        sp_add_system_root(search, join(home, "shared/l1/stdlib"));
+        sv_push(interfaces, semantic_root);
+        for (let i = 0; i < sv_size(ordered); i = i + 1) {
+            let name = sv_get(ordered, i);
+            if (opts.verbosity >= 1) { err_printl_s("Preparing module " + name); }
+            if (!pr_frontend_module(context, name, search, interfaces, opts, cfg, diags)) { return false; }
+        }
+    }
     return l1c_prep_runtime(context) == 1;
 }

@@ -18,6 +18,7 @@ import util.strings;
 import source_paths;
 import sem_context;
 import cli_args.model;
+import compiler_filesystem;
 
 /**
  * Prepared input bundle for build/run commands.
@@ -704,13 +705,8 @@ func bd_find_c_compiler() -> string? {
         sv_push(candidates, "cc");
         for (let i = 0; i < sv_size(candidates); i = i + 1) {
             let candidate = sv_get(candidates, i);
-            let probe = "";
-            if (bd_is_windows()) {
-                probe = "where.exe " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
-            } else {
-                probe = "command -v " + bd_shell_quote(candidate) + " >" + bd_null_device() + " 2>&1";
-            }
-            if (system(probe) == 0) {
+            let resolved = cfs_resolve_executable(candidate);
+            if (resolved != null) {
                 return candidate;
             }
         }
