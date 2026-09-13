@@ -39,6 +39,12 @@ DEFAULT_L1_BUILD_DIR = "build/dea"
 L1_BOOTSTRAP_L0C_ENV = "L1_BOOTSTRAP_L0C"
 TRACE_EXCLUDED_STAGE1_TESTS: set[str] = set()
 TRACE_SLOW_STAGE1_TESTS: set[str] = {"math_runtime_compile_test"}
+# Tests whose imported implementation modules require the preparation C ABI.
+# A new dependency must be listed here; omitting one fails at native linking.
+PREPARATION_SUPPORT_TESTS = frozenset({
+    "l1c_lib_test", "link_driver_test", "math_runtime_compile_test",
+    "mul_runtime_test", "preparation_test", "slice_trace_test",
+})
 
 
 def repo_venv_bin_dir() -> Path:
@@ -262,6 +268,19 @@ def resolve_trace_job_count() -> int:
     return resolve_job_count()
 
 
+def stage1_test_support_args(test_path: Path) -> list[str]:
+    """Return the declared native support dependencies of an implementation test.
+
+    Args:
+        test_path: Top-level implementation test selected by a runner.
+
+    Returns:
+        Structured C source arguments shared by normal and trace invocations.
+    """
+
+    return stage1_support_args(preparation=test_path.stem in PREPARATION_SUPPORT_TESTS)
+
+
 def build_normal_test_command(case: TestCase, build_dir: Path) -> list[str]:
     """Return the subprocess command for one normal L1 Stage 1 implementation test."""
 
@@ -271,7 +290,7 @@ def build_normal_test_command(case: TestCase, build_dir: Path) -> list[str]:
             "--project-root",
             "compiler/stage1_l0/src",
             "--run",
-            *stage1_support_args(),
+            *stage1_test_support_args(case.path),
             str(case.path),
         ]
     if case.kind == "python":

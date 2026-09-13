@@ -1,7 +1,7 @@
 # ADR-0027: L1 Runtime Archive and Trace-Selection Boundary
 
 - Decision date: 2026-04-24
-- Last edited: 2026-08-30
+- Last edited: 2026-09-11
 - Status: Accepted
 
 ## Context
@@ -24,9 +24,9 @@ former `l1_runtime.h` name was replaced without a compatibility shim.
 L1 provides separate normal and traced runtime archives named `libdea_rt.a` and `libdea_rt_traced.a`. The build driver,
 not a runtime toggle or user-C implementation include, selects the archive from the trace flags.
 
-Official archives use the platform compiler's object format. When TinyCC produces an incompatible object format, the
-runtime build creates a parallel raw-object set and the driver links those objects directly instead of forcing one
-archive format to serve both compiler families.
+Native runtime support is derived by the selected compiler/toolchain. Normal families produce matching archives. When
+TinyCC produces an incompatible object format, the runtime build creates a parallel raw-object set and the driver links
+those objects directly instead of forcing one archive format to serve both compiler families.
 
 The traced runtime preserves the stable `rt_*` / `_rt_*` wrapper ABI for callers that do not come through generated C.
 Generated traced C calls `_rt_*_impl` entry points with its source file and line directly so diagnostics retain the
@@ -34,7 +34,13 @@ actual caller location.
 
 Standalone link uses the same variant and compiler-family selection boundary. Normal compiler families receive the
 selected runtime archive by exact path. TinyCC receives the complete variant-matched raw-object set by exact paths when
-available, with the selected archive as the fallback.
+available, with the selected archive as the fallback. An explicit runtime-library override has priority and selects its
+exact archive instead of an automatically located raw-object set.
+
+Bootstrap provides public headers independently of native program-runtime construction. Bundled native support comes
+from a complete managed profile or an explicit runtime-library override; installed correctness requires no prebuilt
+native profile. `make runtime` remains a developer workflow. Both managed stdlib and runtime use the selected compiler,
+with distinct application/generated-C versus compiler-owned runtime options and common supported target settings.
 
 This split is L1-specific. L0 keeps its header-only runtime at the L0 1.0 boundary.
 
@@ -51,8 +57,8 @@ the platform archive, and backporting the split to L0.
 
 ## Consequences
 
-- Runtime delivery includes a public declaration header, compiled implementation artifacts, and deterministic symbol
-  validation.
+- Toolchain delivery includes public headers and runtime rebuild inputs. Native artifacts are derived on demand, with
+  deterministic symbol validation retained by runtime tests.
 - Trace and non-trace program builds select different link inputs but expose the same stable public runtime API.
 - Generated-C-only callers using trace flags must arrange the matching traced runtime link input.
 - Runtime artifacts are built per toolchain and configuration; incompatible object formats are never mixed.
@@ -60,19 +66,31 @@ the platform archive, and backporting the split to L0.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
+
 - [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
   completed separate-compilation and external-linking initiative
+
 - [l1/work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md][runtime-split]
+
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md][link-set]
+
 - [l1/work/initiatives/closed/0002-runtime-static-library.md][runtime-initiative]
+
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md][publication-plan]
 
 ## Current Docs
 
+- [l1/docs/reference/stdlib-preparation.md](../reference/stdlib-preparation.md)
+
 - [l1/docs/reference/c-backend-design.md][backend]: runtime headers, archive variants, and TinyCC object selection
+
 - [l1/docs/specs/compiler/abi.md][abi]: stable runtime-facing ABI context
+
 - [l1/docs/reference/separate-compilation.md][separate-compilation]: standalone runtime-input selection
+
 - [l1/docs/reference/design-decisions.md][l1-decisions]: L1 runtime boundary and variant behavior
+
 - [l0/docs/reference/design-decisions.md][l0-decisions]: retained L0 runtime boundary
 
 [abi]: ../specs/compiler/abi.md
@@ -80,6 +98,7 @@ the platform archive, and backporting the split to L0.
 [l0-decisions]: ../../../l0/docs/reference/design-decisions.md
 [l1-decisions]: ../reference/design-decisions.md
 [link-set]: ../../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
+[preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [publication-plan]: ../../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md
 [runtime-initiative]: ../../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-split]: ../../work/plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md

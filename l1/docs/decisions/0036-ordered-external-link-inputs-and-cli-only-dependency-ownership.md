@@ -1,7 +1,7 @@
 # ADR-0036: Ordered External Link Inputs and CLI-Only Dependency Ownership
 
 - Decision date: 2026-08-30
-- Last edited: 2026-08-30
+- Last edited: 2026-09-11
 - Status: Accepted
 
 ## Context
@@ -57,6 +57,10 @@ surface, while any hidden controls are left to host-toolchain behavior.
 - Exact runtime paths preserve the selected runtime variant independently of user search paths.
 - Explicit compiler-family rpath handling fails predictably on hosts where no supported lowering exists.
 
+Managed discovery inserts dependency-ordered Dea providers before the first explicit root that needs them while
+preserving the relative order of this caller stream. Libraries, foreign objects, rpaths and final-link-only words do not
+enter bundled native identity. Runtime-library overrides remain final-link selection; managed profiles stay complete.
+
 ## Consequences
 
 - L1 binding workflows can use legacy unmangled `extern func` declarations with explicit native dependencies today; the
@@ -70,16 +74,25 @@ surface, while any hidden controls are left to host-toolchain behavior.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
+
 - [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
   completed separate-compilation and external-linking initiative
+
 - [l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md][external-linking]
 
 ## Current Docs
 
+- [l1/docs/reference/stdlib-preparation.md](../reference/stdlib-preparation.md)
+
 - [docs/specs/compiler/cli-contract.md][cli]: shared option spellings and L1 mode scope
+
 - [l1/docs/user/linking.md][linking]: supported workflows, option forms, and platform expectations
+
 - [l1/docs/reference/separate-compilation.md][separate-compilation]: common ordered link planning
+
 - [l1/docs/reference/design-decisions.md][design-decisions]: L1 native dependency ownership policy
+
 - [l1/docs/reference/architecture.md][architecture]: Stage 1 driver and common link-executor boundaries
 
 [architecture]: ../reference/architecture.md
@@ -87,4 +100,5 @@ surface, while any hidden controls are left to host-toolchain behavior.
 [design-decisions]: ../reference/design-decisions.md
 [external-linking]: ../../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [linking]: ../user/linking.md
+[preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

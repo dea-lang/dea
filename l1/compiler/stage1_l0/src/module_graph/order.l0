@@ -1,0 +1,143 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module module_graph.order;
+
+import std.hashset;
+import std.vector;
+import util.diag;
+import module_graph;
+
+/** Visit one resolved module-graph node in dependency-first build order. */
+func mg_dependency_order_visit(
+    graph: ModuleGraph*,
+    node: ModuleGraphNode*,
+    visiting: StringSet*,
+    completed: StringSet*,
+    ordered: VectorBase*,
+    diags: DiagCollector*
+) -> bool {
+    if (ss_has(completed, node.module_name)) {
+        return true;
+    }
+    if (!ss_add(visiting, node.module_name)) {
+        diag_error(
+            diags, "l1c",
+            "L1C-2130",
+            "module ordering encountered a dependency cycle at '" +
+                node.module_name + "'",
+            "", 0, 0, 0, 0
+        );
+        return false;
+    }
+
+    let ok = true;
+    if (ord(node.origin.kind) == ord(MOK_SOURCE)) {
+        for (let import_i = 0;
+             import_i < mg_node_direct_import_count(node);
+             import_i = import_i + 1) {
+            let imported = mg_find_node(
+                graph, mg_node_direct_import_get(node, import_i));
+            if (imported != null &&
+                !mg_dependency_order_visit(
+                    graph,
+                    imported as ModuleGraphNode*,
+                    visiting,
+                    completed,
+                    ordered,
+                    diags
+                )) {
+                ok = false;
+            }
+        }
+    } else {
+        for (let interface_i = 0;
+             interface_i < mg_node_interface_import_count(node);
+             interface_i = interface_i + 1) {
+            let imported2 = mg_find_node(
+                graph,
+                mg_node_interface_import_get(node, interface_i));
+            if (imported2 != null &&
+                !mg_dependency_order_visit(
+                    graph,
+                    imported2 as ModuleGraphNode*,
+                    visiting,
+                    completed,
+                    ordered,
+                    diags
+                )) {
+                ok = false;
+            }
+        }
+        for (let dep_i = 0;
+             dep_i < mg_node_dependency_count(node);
+             dep_i = dep_i + 1) {
+            let dependency = mg_node_dependency_get(node, dep_i);
+            let provider = mg_find_node(
+                graph, dependency.provider_module);
+            if (provider != null &&
+                !mg_dependency_order_visit(
+                    graph,
+                    provider as ModuleGraphNode*,
+                    visiting,
+                    completed,
+                    ordered,
+                    diags
+                )) {
+                ok = false;
+            }
+        }
+    }
+
+    ss_remove(visiting, node.module_name);
+    if (!ok) {
+        return false;
+    }
+    ss_add(completed, node.module_name);
+    vec_push_ptr(ordered, node as void*);
+    return true;
+}
+
+/** Build the deterministic dependency-first order for one resolved graph. */
+func mg_dependency_order(
+    graph: ModuleGraph*,
+    entry_module: string,
+    diags: DiagCollector*
+) -> VectorBase*? {
+    let ordered = vec_create(sizeof(void*), mg_node_count(graph));
+    with (
+        let visiting = ss_create() => ss_free(visiting),
+        let completed = ss_create() => ss_free(completed),
+        let names = mg_node_names_sorted(graph) => sv_free(names)
+    ) {
+        let entry = mg_find_node(graph, entry_module);
+        if (entry == null || !mg_dependency_order_visit(
+                graph,
+                entry as ModuleGraphNode*,
+                visiting,
+                completed,
+                ordered,
+                diags
+            )) {
+            vec_free(ordered);
+            return null;
+        }
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let node = mg_find_node(graph, sv_get(names, i));
+            if (node != null && !mg_dependency_order_visit(
+                    graph,
+                    node as ModuleGraphNode*,
+                    visiting,
+                    completed,
+                    ordered,
+                    diags
+                )) {
+                vec_free(ordered);
+                return null;
+            }
+        }
+    }
+    return ordered;
+}

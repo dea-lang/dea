@@ -9,6 +9,7 @@ import std.assert;
 import std.vector;
 
 import l1c_lib;
+import support.driver_inputs;
 
 /**
  * Return the driver fixture directory.
@@ -23,7 +24,7 @@ func fixture_root() -> string {
  * Test traced execution of slice descriptors backed by ARC arrays.
  */
 func test_run_trace_slice_backing_arrays() {
-    with (let argv = sv_create(12) => sv_free(argv)) {
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--trace-arc");
         sv_push(argv, "--trace-memory");

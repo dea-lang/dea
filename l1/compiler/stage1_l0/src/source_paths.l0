@@ -16,6 +16,7 @@ import std.vector;
 import util.diag;
 
 import util.strings;
+import compiler_filesystem;
 
 /**
  * Represents the SourceSearchPaths structure.
@@ -23,6 +24,8 @@ import util.strings;
 struct SourceSearchPaths {
     system_roots: StringVector*;
     project_roots: StringVector*;
+    managed_source_root: string?;
+    managed_interfaces: string?;
 }
 
 /**
@@ -31,7 +34,7 @@ struct SourceSearchPaths {
  * @return New search-path set with separate system and project root vectors.
  */
 func sp_create() -> SourceSearchPaths* {
-    return new SourceSearchPaths(sv_create(2), sv_create(2));
+    return new SourceSearchPaths(sv_create(2), sv_create(2), null, null);
 }
 
 /**
@@ -287,8 +290,8 @@ func sp_module_interface_relpath(module_name: string) -> string? {
 /**
  * Resolve an interface module name against ordered interface roots.
  *
- * The first existing candidate is authoritative even when it is not a regular
- * file; interface loading reports usability diagnostics for that selected
+ * The first present candidate, including a dangling link or inaccessible path,
+ * is authoritative; interface loading reports usability diagnostics for that selected
  * path instead of falling through to later roots.
  *
  * @param interface_roots Ordered interface roots to inspect.
@@ -300,7 +303,32 @@ func sp_resolve_interface(interface_roots: StringVector*, module_name: string) -
     if (rel_opt == null) {
         return null;
     }
-    return _sp_resolve_roots(interface_roots, rel_opt as string);
+    for (let i = 0; i < sv_size(interface_roots); i = i + 1) {
+        let candidate = join(sv_get(interface_roots, i), rel_opt as string);
+        if (cfs_path_kind(candidate) != CFS_PATH_ABSENT) { return candidate; }
+    }
+    return null;
+}
+
+/** Select managed semantics only at the bundled system-root position, never a project position. */
+func sp_managed_eligible(self: SourceSearchPaths*, module_name: string) -> bool {
+    if (self.managed_source_root == null ||
+        (!starts_with_s(module_name, "std.") && !starts_with_s(module_name, "sys."))) { return false; }
+    let relative = sp_module_source_relpath(module_name);
+    if (relative == null) { return false; }
+    for (let i = 0; i < sv_size(self.system_roots); i = i + 1) {
+        let root = sv_get(self.system_roots, i);
+        if (cfs_same_file(root, self.managed_source_root as string) == 1) {
+            let known = cfs_path_kind(join(root, relative as string)) != CFS_PATH_ABSENT;
+            if (self.managed_interfaces != null) {
+                known = known || cfs_path_kind(join(self.managed_interfaces as string,
+                    sp_module_interface_relpath(module_name) as string)) != CFS_PATH_ABSENT;
+            }
+            return known;
+        }
+        if (exists(join(root, relative as string))) { return false; }
+    }
+    return false;
 }
 
 /**

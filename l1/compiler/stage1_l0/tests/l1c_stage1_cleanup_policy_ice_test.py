@@ -89,7 +89,7 @@ def run_ice_case(case_name: str, source: str, expected_ice: str, artifact_dir: P
             "--project-root",
             "compiler/stage1_l0/src",
             "--run",
-            *stage1_support_args(),
+            *stage1_support_args(preparation=False),
             str(source_path),
         ],
         cwd=L1_ROOT,

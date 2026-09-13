@@ -90,7 +90,7 @@ def run_stage1_token_source(
                 "--project-root",
                 "compiler/stage1_l0/src",
                 "--run",
-                *stage1_support_args(),
+                *stage1_support_args(preparation=False),
                 module_name,
             ],
             cwd=L1_ROOT,

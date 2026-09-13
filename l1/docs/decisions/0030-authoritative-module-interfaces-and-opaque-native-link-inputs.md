@@ -1,7 +1,7 @@
 # ADR-0030: Authoritative Module Interfaces and Opaque Native Link Inputs
 
 - Decision date: 2026-08-21
-- Last edited: 2026-08-30
+- Last edited: 2026-09-11
 - Status: Accepted
 - Supersedes: [ADR-0021][object-metadata]
 - Supersedes: [ADR-0028][verified-link-set]
@@ -24,20 +24,27 @@ For standalone `l1c --link`, every positional Dea `.o` path requires a canonical
 verifies that interface before graph registration. The interface is the sole authority for module identity, public
 fingerprint, entry presence, ordered first-occurrence lifecycle imports, and `require` / `link` expectations.
 
-The driver validates provider presence and fingerprints across the complete supplied interface set. Ordered lifecycle
-imports alone define lifecycle reachability and dependency-first initialization; `require` and `link` remain semantic
-expectations and do not create lifecycle edges. Every non-virtual provider named by either expectation tier must be
-transitively reachable through lifecycle imports.
+The driver registers explicit objects first, then discovers missing lifecycle-import providers through ordered `-I`
+roots and known bundled managed modules, without source fallback. Invalid selected providers remain errors. It validates
+presence and fingerprints across the complete resolved interface set. Ordered lifecycle imports alone define lifecycle
+reachability and dependency-first initialization; `require` and `link` remain semantic expectations and do not create
+lifecycle edges. Every non-virtual provider named by either expectation tier must be transitively reachable through
+lifecycle imports.
 
 Native inputs are opaque host-toolchain payloads. Positional Dea objects, explicit `-Cf` / `--foreign-object` operands,
-the generated wrapper object, runtime archives or objects, and optional host math linkage are not byte-inspected by Dea.
-The caller asserts that each positional object matches its verified sibling interface and that every foreign object is
-host-compatible. The final host command consumes the original caller paths rather than transaction-owned snapshots.
+the generated wrapper object, runtime archives or objects, and optional host math linkage are not interpreted for Dea
+semantics. Compiler-owned profile integrity checks may hash managed native outputs. The caller asserts that each
+positional object matches its verified sibling interface and that every foreign object is host-compatible. The final
+host command consumes the original caller paths rather than transaction-owned snapshots.
 
-`L1_CFLAGS` and `--c-options` configure wrapper compilation and are not appended as final-link command words. Because
-the wrapper object is opaque, those options may still cause the host compiler to encode toolchain-specific linker
-controls that the final linker honors. This indirect native effect is part of the caller-trusted compiler boundary, not
-part of the verified Dea link graph or typed native-operand model.
+Bundled semantic interfaces are toolchain-owned and usable without objects. Native commands obtain managed sibling pairs
+whose interfaces exactly copy the selected semantic bytes. Managed output digests validate integrity, not native
+semantics or ABI equivalence. Explicit native pairs retain their original caller-trusted contract.
+
+`L1_CFLAGS` and `--c-options` configure wrapper and managed bundled generated-C compilation and are not appended as
+final-link command words. Because the wrapper object is opaque, those options may still cause the host compiler to
+encode toolchain-specific linker controls that the final linker honors. This indirect native effect is part of the
+caller-trusted compiler boundary, not part of the verified Dea link graph or typed native-operand model.
 
 Per-module generated C retains `I4init`, `I4fini`, and conditional `I5entry`. The former `I8metadata` and `I7imports`
 records, retention reads, native-object readers, Dea/foreign byte classification, embedded-control preflight, foreign
@@ -72,16 +79,25 @@ pair. Concurrent readers and same-stem writers must serialize externally.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
+
 - [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
   completed separate-compilation and external-linking initiative
+
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][authority-plan]
 
 ## Current Docs
 
+- [l1/docs/reference/stdlib-preparation.md](../reference/stdlib-preparation.md)
+
 - [docs/specs/compiler/cli-contract.md][cli]: public standalone-link and wrapper-option trust boundary
+
 - [l1/docs/reference/separate-compilation.md][separate-compilation]: artifact, graph, lifecycle, and native-input rules
+
 - [l1/docs/specs/compiler/module-interface-format.md][interface-format]: operational interface grammar and verification
+
 - [l1/docs/specs/compiler/abi.md][abi]: retained lifecycle and entry symbols
+
 - [l1/docs/reference/c-backend-design.md][backend]: per-module and wrapper emission behavior
 
 [abi]: ../specs/compiler/abi.md
@@ -90,5 +106,6 @@ pair. Concurrent readers and same-stem writers must serialize externally.
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [interface-format]: ../specs/compiler/module-interface-format.md
 [object-metadata]: 0021-portable-object-metadata-and-inspection.md
+[preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [separate-compilation]: ../reference/separate-compilation.md
 [verified-link-set]: 0028-verified-link-set-and-foreign-object-boundary.md

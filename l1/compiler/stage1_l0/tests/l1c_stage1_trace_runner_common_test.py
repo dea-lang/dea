@@ -26,6 +26,27 @@ import test_runner_common as common
 import run_trace_tests
 
 
+def test_native_support_selection() -> str | None:
+    """Require ordinary and trace tests to share explicit support dependencies."""
+
+    for name, requires_preparation in (
+        ("array_test", False), ("preparation_test", True), ("l1c_lib_test", True),
+        ("link_driver_test", True),
+    ):
+        path = common.TESTS_DIR / f"{name}.l0"
+        args = common.stage1_test_support_args(path)
+        selected = [Path(arg).name for arg in args[1::2]]
+        if ("preparation_support.c" in selected) != requires_preparation:
+            return f"incorrect preparation support for {name}: {args}"
+        if not {"interface_fingerprint.c", "compiler_support.c"}.issubset(selected):
+            return f"missing common native support for {name}: {args}"
+        case = common.TestCase(0, name, path, "l0")
+        normal = common.build_normal_test_command(case, common.REPO_ROOT / "build/dea")
+        if normal[-len(args)-1:-1] != args:
+            return f"normal runner did not use declared support for {name}: {normal}"
+    return None
+
+
 def fail(message: str) -> int:
     """Print one failure and return the shell-style exit code."""
 
@@ -264,6 +285,7 @@ def main() -> int:
     """Program entrypoint."""
 
     checks = [
+        test_native_support_selection,
         test_resolve_trace_job_count_matches_normal_default_policy,
         test_resolve_trace_job_count_honors_trace_override_first,
         test_resolve_trace_job_count_falls_back_to_normal_override,

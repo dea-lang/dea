@@ -16,6 +16,7 @@ import sys
 import tempfile
 import textwrap
 
+from support.driver_inputs import native_driver_args
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 L1_ROOT = REPO_ROOT / "l1"
@@ -124,6 +125,7 @@ def compiler_command(
     return [
         compiler,
         mode,
+        *native_driver_args(compiler, cc),
         "--project-root",
         root,
         "--c-compiler",
@@ -831,6 +833,8 @@ def main() -> int:
                 "--run",
                 status_root,
                 "status.main",
+                "--runtime-lib",
+                compiler.parent.parent / "lib",
             ),
             cwd=root,
             env=env,

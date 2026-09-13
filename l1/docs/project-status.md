@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-09-07
+Version: 2026-09-11
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -22,6 +22,7 @@ Use this file as the status snapshot. For implementation details, use:
 - [l1/docs/reference/c-backend-design.md](reference/c-backend-design.md) for backend lowering and generated C behavior
 - [l1/docs/reference/separate-compilation.md](reference/separate-compilation.md) for compile-only artifacts and
   standalone object-link behavior
+- [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md) for bootstrap interfaces and native reuse
 - [l1/docs/reference/design-decisions.md](reference/design-decisions.md) for language and runtime rationale
 - [l1/docs/reference/grammar.md](reference/grammar.md) for accepted concrete syntax
 - [l1/docs/reference/ownership.md](reference/ownership.md) for ownership and cleanup behavior
@@ -86,9 +87,10 @@ conditional external `I5entry` for a resolved, zero-parameter, non-extern source
 process `main`, global init chain, dependency lifecycle calls, embedded Dea metadata arrays, or retention reads. The
 legacy whole-program backend, combined initialization walk, and backend-owned process wrapper have been removed.
 
-The compiler no longer carries ELF, Mach-O, or PE/COFF object readers. Standalone link performs no Dea-side reads of
-caller Dea or foreign object bytes, compiled wrapper bytes, runtime archive bytes, or TinyCC runtime-object bytes.
-Native-format, architecture, symbol, and embedded-control validation belongs to the selected host compiler/linker.
+The compiler no longer carries semantic native-object readers. Standalone link treats caller objects, compiled wrapper
+objects and runtime artifacts as opaque host-toolchain inputs. Managed profile validation hashes native outputs for
+integrity without interpreting their format, symbols or ABI. Native-format, architecture, symbol, and embedded-control
+validation belongs to the selected host compiler/linker.
 
 Generated-C and build/run resolve imports interface-first and fall back to source only when no interface is selected.
 Compile-only requires verified `.l1m` interfaces for non-virtual imports and never falls back to provider source.
@@ -97,11 +99,12 @@ The CLI implements per-module `--gen` plus `-c` / `--compile` and accepts repeat
 with either mode. `--gen` writes stdout or exactly one requested file, accepts verified imported interfaces without
 native siblings, and never invokes a host tool. Compile-only publishes the sibling per-module `.o` and `.l1m` pair
 without invoking the final linker; `--keep-c` also publishes C bytes identical to `--gen` for the same resolved inputs
-and options. Build/run retention copies those same bytes from the exact files submitted to the host compiler into the
-canonical mirrored `.dea-c` tree; `__dea_wrapper.c` remains a separate link artifact. Identity is covered for
-source-only and mixed source/interface graphs across every supported byte-affecting setting. Ordinary `-c` never
-inspects or modifies the canonical `.c` path. Output-parent creation follows trusted directory aliases, while final
-artifacts and internal publication paths use no-follow classification.
+and options. Build/run retention copies application C from the exact files submitted to the host compiler and
+regenerates managed bundled C through the same canonical generator into the mirrored `.dea-c` tree; `__dea_wrapper.c`
+remains a separate link artifact. Identity is covered for source-only and mixed source/interface graphs across every
+supported byte-affecting setting. Ordinary `-c` never inspects or modifies the canonical `.c` path. Output-parent
+creation follows trusted directory aliases, while final artifacts and internal publication paths use no-follow
+classification.
 
 The driver stages generated C, the object, and the interface beside the selected destinations under canonical
 module-relative paths. The host compiler runs from the private transaction, while its C/object operands contain only
@@ -119,27 +122,30 @@ artifacts, `-Rp` / `-Rs` for source roots, `-Cc` / `-Co` / `-Cf` for host-C cont
 prints version information. The conventional `-g` and `-S` meanings remain reserved. `-L`, `-l`, `-Rr` / `--rpath`, and
 `-Cl` / `--link-arg` are implemented for build, run, and standalone link.
 
-The CLI implements `l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT]... [-e MODULE] -o OUTPUT`, with long
-aliases `--link`, `--foreign-object`, and `--entry`. Every positional path must have the exact terminal `.o` suffix and
-a verified regular sibling `.l1m`; the interface header supplies identity, `entry;` supplies entry eligibility, and
-ordered `import module` records supply lifecycle edges. The paired `.o` remains an opaque original-path host input.
-`--foreign-object` asserts one regular host-compatible relocatable input without Dea inspecting its format, symbols,
-`main`, reserved names, or embedded controls.
+The CLI implements `l1c -k DEA_OBJECT... [-I DIR]... [-Cf C_OBJECT]... [EXTERNAL_LINK_INPUT]... [-e MODULE] -o OUTPUT`,
+with long aliases `--link`, `--foreign-object`, and `--entry`. Every positional path must have the exact terminal `.o`
+suffix and a verified regular sibling `.l1m`; the interface header supplies identity, `entry;` supplies entry
+eligibility, and ordered `import module` records supply lifecycle edges. The paired `.o` remains an opaque original-path
+host input. `--foreign-object` asserts one regular host-compatible relocatable input without Dea inspecting its format,
+symbols, `main`, reserved names, or embedded controls.
 
-The driver verifies all interfaces before identity registration, then checks unique modules, provider presence, exact
+The driver registers explicit Dea providers first, then discovers missing lifecycle-import providers through ordered
+`-I` roots and known bundled managed interfaces without source fallback. A selected invalid provider remains an error.
+It verifies all interfaces before identity registration, then checks unique modules, provider presence, exact
 provider-interface fingerprints, explicit or inferred entry, lifecycle-import cycles, and transitive lifecycle
 provenance for every non-virtual `require` / `link` provider. Semantic dependency records never create lifecycle edges
 or implicit objects.
 
 An explicit depth-first frame stack computes deterministic dependency-first lifecycle order without native recursion.
 The generated wrapper calls only the selected entry bridge and finalizes modules in exact reverse order. Normal compiler
-families receive the selected runtime archive by exact path. TinyCC may instead receive the complete variant-matched
-repo-local raw object set under the ADR-0027 compatibility carve-out when that set is available, with exact archive
-fallback otherwise. Runtime native inputs are checked as regular files but not read. Wrapper and capture artifacts live
-in an exclusive output-local `.l1c-link-...` transaction with bounded, non-recursive cleanup; caller inputs are not
-snapshotted, and the host linker receives their original safe-rendered paths and writes directly to the caller-selected
-output. Native Windows rejects expansion-, quote-, or line-break-bearing host-link words and redirection paths while the
-transport still passes through `cmd.exe`; build/run values known from the CLI are rejected before source compilation.
+families receive the selected runtime archive by exact path. TinyCC receives the complete variant-matched raw-object set
+from its managed profile. Explicit runtime-library overrides take priority and select the requested exact archive.
+Native inputs are checked as regular files; managed integrity validation does not infer ABI compatibility. Wrapper and
+capture artifacts live in an exclusive output-local `.l1c-link-...` transaction with bounded, non-recursive cleanup;
+caller inputs are not snapshotted, and the host linker receives their original safe-rendered paths and writes directly
+to the caller-selected output. Native Windows rejects expansion-, quote-, or line-break-bearing host-link words and
+redirection paths while the transport still passes through `cmd.exe`; build/run values known from the CLI are rejected
+before source compilation.
 
 The common link plan now retains one encounter-ordered stream across Dea objects, explicit foreign objects, `-l`
 libraries, `-L` search paths, rpaths, and one-word raw host-driver arguments. Build/run expands only the source target
@@ -164,12 +170,22 @@ The current L1 tree includes:
 
 - L1 stdlib modules under `compiler/shared/l1/stdlib/`
 - runtime sources under `compiler/shared/runtime/`
-- repo-local runtime deliverables under `build/dea/include/dea_rt.h`, `build/dea/include/l1_real.h`,
-  `build/dea/lib/libdea_rt.a`, `build/dea/lib/libdea_rt_traced.a`, `build/dea/lib/libdea_rt_check_basic.a`, and
-  `build/dea/lib/libdea_rt_unchecked.a`
-- content-sensitive per-variant runtime build stamps, so compiler/flag/tuning changes rebuild affected archives and tcc
-  objects while identical builds remain no-ops
+- bootstrap-owned public headers under `$L1_BUILD_DIR/include/` and 23 verified bundled `std.*` / `sys.*` semantic
+  interfaces under `$L1_BUILD_DIR/interfaces/`, generated independently of native preparation
+- one managed native cache, selected by `--stdlib-cache`, `L1_STDLIB_CACHE`, or the context default, with complete
+  per-configuration stdlib/runtime profiles and exact copies of the selected bundled interfaces
+- content-sensitive compiler-input and supported-toolchain identities, separate generated-C/runtime options, per-key
+  coordination, completion manifests, output integrity checks and machine-local memoization
+- automatic preparation on native misses, quiet reuse, command-private fallback when a configuration is compilable but
+  not reusable, and explicit `--prepare-stdlib`, `--no-auto-prepare` and preparation-only `--force` controls
+- separate `make runtime` developer artifacts with content-sensitive per-variant build stamps; ordinary managed
+  preparation does not use those archives or legacy Make settings implicitly
 - the current bootstrap test suite under `compiler/stage1_l0/tests/`
+
+Semantic-only commands do not probe a C compiler or access native cache state. Repo-local cache defaults use
+`$L1_BUILD_DIR/cache`; installed-context defaults use the platform per-user cache. Installed fixtures work from a
+read-only payload of semantic interfaces and rebuild inputs with an empty user cache. Installation/distribution tooling
+remains future productization work. See [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 
 This gives the subtree a complete bootstrap environment without claiming a self-hosted L1 compiler yet.
 

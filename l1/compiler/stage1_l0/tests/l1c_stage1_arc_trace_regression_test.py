@@ -17,6 +17,7 @@ import sys
 import tempfile
 import textwrap
 
+from support.driver_inputs import native_driver_args
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 L1_ROOT = REPO_ROOT / "l1"
@@ -212,7 +213,8 @@ def run_case(case_name: str, source: str, artifact_dir: Path) -> tuple[str, str,
     report_path = artifact_dir / f"{case_name}.trace_report.txt"
 
     run_result = subprocess.run(
-        [str(compiler), "--run", "--trace-memory", "--trace-arc", str(source_path)],
+        [str(compiler), *native_driver_args(compiler),
+         "--run", "--trace-memory", "--trace-arc", str(source_path)],
         cwd=REPO_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

@@ -19,7 +19,7 @@ from test_runner_common import (
     repo_stage1_command,
     require_repo_stage1_test_env,
     run_captured_binary_output,
-    stage1_support_args,
+    stage1_test_support_args,
 )
 
 
@@ -71,7 +71,7 @@ def main() -> int:
     completed = run_captured_binary_output(
         [
             *repo_stage1_command(),
-            *stage1_support_args(),
+            *stage1_test_support_args(test_path),
             "--trace-memory",
             "--trace-arc",
             "--project-root",

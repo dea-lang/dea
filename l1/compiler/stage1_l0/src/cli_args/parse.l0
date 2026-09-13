@@ -147,9 +147,24 @@ func cli_assign_target(opts: CliOptions*, token: string) {
  */
 func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     let mode = opts.mode;
+    let is_prepare = ord(mode) == ord(CM_PREPARE_STDLIB);
     let is_link = ord(mode) == ord(CM_LINK);
-    let is_build_run = ord(mode) == ord(CM_BUILD) ||
-        ord(mode) == ord(CM_RUN);
+    let is_build_run = ord(mode) == ord(CM_BUILD) || ord(mode) == ord(CM_RUN);
+    if (opts.no_auto_prepare && !is_build_run && !is_link) {
+        cli_emit_error(diags, "L1C-2157", "option '--no-auto-prepare' requires '--build', '--run', or '--link'");
+    }
+    if (opts.force && !is_prepare) {
+        cli_emit_error(diags, "L1C-2157", "option '--force' is valid only with '--prepare-stdlib'");
+    }
+    if (opts.stdlib_cache != null && len_s(opts.stdlib_cache as string) == 0) {
+        cli_emit_error(diags, "L1C-2157", "option '--stdlib-cache' requires a nonempty directory");
+    }
+    if (opts.stdlib_cache != null && !is_prepare && !is_build_run && !is_link) {
+        cli_emit_error(diags, "L1C-2157", "option '--stdlib-cache' requires '--build', '--run', '--link', or '--prepare-stdlib'");
+    }
+    if (is_prepare && (sv_size(opts.project_roots) > 0 || sv_size(opts.sys_roots) > 0)) {
+        cli_emit_error(diags, "L1C-2157", "stdlib preparation accepts no source roots");
+    }
 
     if (is_link && sv_size(opts.project_roots) > 0) {
         cli_emit_error(
@@ -169,9 +184,9 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
 
     if (sv_size(opts.interface_paths) > 0 &&
         ord(mode) != ord(CM_COMPILE) &&
-        ord(mode) != ord(CM_GEN) && !is_build_run) {
+        ord(mode) != ord(CM_GEN) && !is_build_run && !is_link) {
         cli_emit_error(diags, "L1C-2031",
-            "option '--interface-path' is valid only with modes: --build, --compile, --gen, --run");
+            "option '--interface-path' is valid only with modes: --build, --compile, --gen, --link, --run");
     }
 
     if (opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
@@ -185,19 +200,19 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         cli_emit_error(diags, "L1C-2011", "option '--keep-c' is valid only with modes: --build, --compile, --run");
     }
 
-    if (opts.c_compiler != null && ord(mode) != ord(CM_BUILD) &&
+    if (!is_prepare && opts.c_compiler != null && ord(mode) != ord(CM_BUILD) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2012", "option '--c-compiler' is valid only with modes: --build, --compile, --link, --run");
+        cli_emit_error(diags, "L1C-2012", "option '--c-compiler' is valid only with modes: --build, --compile, --link, --prepare-stdlib, --run");
     }
 
-    if (opts.c_options != null && ord(mode) != ord(CM_BUILD) &&
+    if (!is_prepare && opts.c_options != null && ord(mode) != ord(CM_BUILD) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2013", "option '--c-options' is valid only with modes: --build, --compile, --link, --run");
+        cli_emit_error(diags, "L1C-2013", "option '--c-options' is valid only with modes: --build, --compile, --link, --prepare-stdlib, --run");
     }
 
-    if (opts.runtime_include != null && ord(mode) != ord(CM_BUILD) &&
+    if (!is_prepare && opts.runtime_include != null && ord(mode) != ord(CM_BUILD) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) && ord(mode) != ord(CM_RUN)) {
-        cli_emit_error(diags, "L1C-2014", "option '--runtime-include' is valid only with modes: --build, --compile, --link, --run");
+        cli_emit_error(diags, "L1C-2014", "option '--runtime-include' is valid only with modes: --build, --compile, --link, --prepare-stdlib, --run");
     }
 
     if (opts.runtime_lib != null && ord(mode) != ord(CM_BUILD) &&
@@ -205,19 +220,19 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         cli_emit_error(diags, "L1C-2015", "option '--runtime-lib' is valid only with modes: --build, --link, --run");
     }
 
-    if (opts.no_line_directives && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+    if (!is_prepare && opts.no_line_directives && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN)) {
-        cli_emit_error(diags, "L1C-2016", "option '--no-line-directives' is valid only with modes: --build, --compile, --gen, --run");
+        cli_emit_error(diags, "L1C-2016", "option '--no-line-directives' is valid only with modes: --build, --compile, --gen, --prepare-stdlib, --run");
     }
 
-    if (opts.trace_arc && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+    if (!is_prepare && opts.trace_arc && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
-        cli_emit_error(diags, "L1C-2017", "option '--trace-arc' is valid only with modes: --build, --compile, --gen, --link, --run");
+        cli_emit_error(diags, "L1C-2017", "option '--trace-arc' is valid only with modes: --build, --compile, --gen, --link, --prepare-stdlib, --run");
     }
 
-    if (opts.trace_memory && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+    if (!is_prepare && opts.trace_memory && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
-        cli_emit_error(diags, "L1C-2018", "option '--trace-memory' is valid only with modes: --build, --compile, --gen, --link, --run");
+        cli_emit_error(diags, "L1C-2018", "option '--trace-memory' is valid only with modes: --build, --compile, --gen, --link, --prepare-stdlib, --run");
     }
 
     if (ord(mode) == ord(CM_GEN) && (opts.trace_arc || opts.trace_memory)) {
@@ -228,14 +243,14 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
         );
     }
 
-    if (opts.unchecked && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+    if (!is_prepare && opts.unchecked && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
-        cli_emit_error(diags, "L1C-2025", "option '--unchecked' is valid only with modes: --build, --compile, --gen, --link, --run");
+        cli_emit_error(diags, "L1C-2025", "option '--unchecked' is valid only with modes: --build, --compile, --gen, --link, --prepare-stdlib, --run");
     }
 
-    if (opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+    if (!is_prepare && opts.check_basic && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_LINK)) {
-        cli_emit_error(diags, "L1C-2027", "option '--check-basic' is valid only with modes: --build, --compile, --gen, --link, --run");
+        cli_emit_error(diags, "L1C-2027", "option '--check-basic' is valid only with modes: --build, --compile, --gen, --link, --prepare-stdlib, --run");
     }
 
     if (opts.unchecked && (opts.trace_arc || opts.trace_memory)) {

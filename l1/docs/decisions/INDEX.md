@@ -39,3 +39,5 @@
 | [0035](0035-cross-mode-generated-c-byte-identity.md)                           | Cross-Mode Generated-C Byte Identity                           | Accepted   |
 | [0036](0036-ordered-external-link-inputs-and-cli-only-dependency-ownership.md) | Ordered External Link Inputs and CLI-Only Dependency Ownership | Accepted   |
 | [0037](0037-wide-filesystem-metadata.md)                                       | Wide Filesystem Metadata                                       | Accepted   |
+| [0038](0038-bundled-semantic-inputs-and-local-native-preparation.md)           | Bundled Semantic Inputs and Local Native Preparation           | Accepted   |
+| [0039](0039-native-preparation-identity-and-reuse-boundary.md)                 | Native Preparation Identity and Reuse Boundary                 | Accepted   |

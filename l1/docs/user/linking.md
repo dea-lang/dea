@@ -1,6 +1,6 @@
 # Linking External Native Libraries
 
-Version: 2026-08-30
+Version: 2026-09-11
 
 L1 Stage 1 can combine separately compiled Dea modules, caller-asserted native objects, and external host libraries in
 `--build`, `--run`, and standalone `--link` mode. This is an explicit command-line contract: L1 does not yet have a
@@ -51,6 +51,11 @@ l1c --compile app.main -o build/main.o
 l1c --link build/main.o --foreign-object build/acme_shim.o \
     -L vendor/lib -l acme -o build/app
 ```
+
+Standalone link registers explicit Dea objects first, then discovers missing Dea providers through ordered `-I`
+interface roots and bundled managed interfaces. It never compiles caller source dependencies. Bundled native support is
+prepared on demand, while external libraries and foreign objects remain explicit inputs. See
+[l1/docs/reference/stdlib-preparation.md](../reference/stdlib-preparation.md) for preparation controls.
 
 The driver keeps one encounter-ordered stream containing Dea objects, foreign objects, libraries, search paths, rpaths,
 and raw arguments. In build/run, the source target expands into its dependency-ordered Dea object set at that position.

@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-08-30
+Version: 2026-09-11
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -252,109 +252,129 @@ diagnostic.
 
 ## Build, Code Generation, and Runtime
 
-| L0 code    | L1 code    | Level   | Meaning                                                                                                           |
-| ---------- | ---------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `L0C-0009` | `L1C-0009` | All     | No C compiler found: use '--c-compiler' or the level-specific C compiler environment variable                     |
-| `L0C-0010` | `L1C-0010` | All     | C compilation failed                                                                                              |
-| `L0C-0011` | `L1C-0011` | All     | Invalid entry module name: module components must be valid identifiers                                            |
-| `L0C-0012` | `L1C-0012` | All     | Entry module not found in analysis result or does not define a build/run `main` function                          |
-| `L0C-0013` | `L1C-0013` | All     | Entry `main` returns a non-preferred type; the generated C entry wrapper ignores the return value                 |
-| `L0C-0014` | `L1C-0014` | All     | Runtime library path does not exist or is not a directory                                                         |
-|            | `L1C-0015` | L1 only | Runtime library directory does not contain any supported runtime library                                          |
-| `L0C-0016` | `L1C-0016` | All     | Missing type information for the entry `main` function                                                            |
-| `L0C-0017` | `L1C-0017` | All     | '--output' is ignored in '--run'; L1 keep-C uses the canonical module tree while the executable remains temporary |
-|            | `L1C-0018` | L1 only | Explicit C compiler option violates the L1 floating-point backend contract                                        |
-|            | `L1C-0019` | L1 only | Trace flags under '--gen' require the caller to link or compile against the traced runtime surface                |
-|            | `L1C-0020` | L1 only | '--unchecked' under '--gen' requires the caller to link or compile against the unchecked runtime                  |
-|            | `L1C-0021` | L1 only | '--check-basic' under '--gen' requires the caller to link or compile against the basic checked runtime            |
-| `L0C-0020` |            | L0 only | Analysis or AST command failed with an exception                                                                  |
-| `L0C-0030` |            | L0 only | Entry module not found in compilation unit                                                                        |
-| `L0C-0040` | `L1C-0040` | All     | Cannot read an input source file during token dump                                                                |
-| `L0C-0041` |            | L0 only | Source file encoding error during token dump                                                                      |
-| `L0C-0042` |            | L0 only | Unexpected lexer failure during token dump when no structured lexer diagnostic is available                       |
-| `L0C-0050` |            | L0 only | Compilation-unit discovery failed during all-modules token dump                                                   |
-| `L0C-0060` |            | L0 only | Discovered module path could not be resolved during all-modules token dump                                        |
-| `L0C-0070` | `L1C-0070` | All     | Entry module path or unit could not be resolved for token dump or Stage 1 introspection commands                  |
-| `L0C-2001` | `L1C-2001` | All     | Unknown command-line option                                                                                       |
-| `L0C-2002` | `L1C-2002` | All     | Multiple conflicting mode flags were provided                                                                     |
-| `L0C-2003` | `L1C-2003` | All     | Missing value for an option that requires an argument                                                             |
-| `L0C-2010` | `L1C-2010` | All     | '--output' is valid only with build/gen/run, plus L1 compile, interface emission, and link                        |
-| `L0C-2011` | `L1C-2011` | All     | '--keep-c' is valid only with '--build' or '--run', plus L1 '--compile'                                           |
-| `L0C-2012` | `L1C-2012` | All     | '--c-compiler' is valid only with '--build' or '--run', plus L1 '--compile' and '--link'                          |
-| `L0C-2013` | `L1C-2013` | All     | '--c-options' is valid only with '--build' or '--run', plus L1 '--compile' and '--link'                           |
-| `L0C-2014` | `L1C-2014` | All     | '--runtime-include' is valid only with '--build' or '--run', plus L1 '--compile' and '--link'                     |
-| `L0C-2015` | `L1C-2015` | All     | '--runtime-lib' is valid only with '--build' or '--run', plus L1 '--link'                                         |
-| `L0C-2016` | `L1C-2016` | All     | '--no-line-directives' is valid with generated-C modes, including L1 '--compile'                                  |
-| `L0C-2017` | `L1C-2017` | All     | '--trace-arc' is valid with generated-C modes, including L1 '--compile', and with L1 '--link'                     |
-| `L0C-2018` | `L1C-2018` | All     | '--trace-memory' is valid with generated-C modes, including L1 '--compile', and with L1 '--link'                  |
-| `L0C-2019` | `L1C-2019` | All     | '--all-modules' is valid only with '--ast', '--sym', '--tok', or '--type'                                         |
-| `L0C-2020` | `L1C-2020` | All     | '--include-eof' is valid only with '--tok'                                                                        |
-| `L0C-2021` | `L1C-2021` | All     | Missing required target module or file name                                                                       |
-| `L0C-2022` | `L1C-2022` | All     | '--run' accepts exactly one target; use '--' before runtime program arguments                                     |
-| `L0C-2023` | `L1C-2023` | All     | Arguments after '--' are valid only with '--run'                                                                  |
-| `L0C-2024` | `L1C-2024` | All     | Multiple targets are not supported yet; pass exactly one target                                                   |
-| `L0C-2025` | `L1C-2025` | All     | '--unchecked' is valid with generated-C modes, including L1 '--compile', and with L1 '--link'                     |
-| `L0C-2026` | `L1C-2026` | All     | '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'                                           |
-| `L0C-2027` | `L1C-2027` | All     | '--check-basic' is valid with generated-C modes, including L1 '--compile', and with L1 '--link'                   |
-| `L0C-2028` | `L1C-2028` | All     | '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'                         |
-| `L0C-2029` |            | L0 only | '--c-source' is valid only with '--build' or '--run'                                                              |
-|            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                            |
-| `L0C-2031` | `L1C-2031` | All     | Interface search paths are invalid for the selected mode; L1 accepts them with build, run, compile, and gen       |
-| `L0C-2032` | `L1C-2032` | All     | Recognized canonical driver option is reserved but its capability is not implemented yet                          |
-|            | `L1C-2033` | L1 only | Invalid compile-only destination or destination parent                                                            |
-|            | `L1C-2034` | L1 only | Staged compile-only artifact validation failed                                                                    |
-|            | `L1C-2035` | L1 only | Compile-only artifact publication failed and the previous artifact set was restored                               |
-|            | `L1C-2036` | L1 only | Compile-only artifact rollback failed and recovery files were retained                                            |
-|            | `L1C-2070` | L1 only | External-link option is invalid for the selected non-linking mode                                                 |
-|            | `L1C-2071` | L1 only | Library/raw link input supplies a relocatable object or opaque option-file indirection                            |
-|            | `L1C-2072` | L1 only | External-link control is unsupported for the selected compiler family, value, or host platform                    |
-|            | `L1C-2090` | L1 only | Source project or system roots are not valid with standalone link mode                                            |
-|            | `L1C-2091` | L1 only | '--foreign-object' is valid only with build, run, or standalone link mode                                         |
-|            | `L1C-2092` | L1 only | '--entry' is valid only with standalone link mode                                                                 |
-|            | `L1C-2093` | L1 only | '--entry' was provided more than once                                                                             |
-|            | `L1C-2094` | L1 only | Standalone-link entry value is not a canonical dotted module name                                                 |
-|            | `L1C-2095` | L1 only | Standalone link mode has no positional Dea object                                                                 |
-|            | `L1C-2096` | L1 only | Standalone link mode does not have exactly one '-o' / '--output' path                                             |
-|            | `L1C-2097` | L1 only | A positional or foreign native path is invalid, missing, or does not resolve to a regular file                    |
-|            | `L1C-2098` | L1 only | Reserved; former link-operand metadata-classification diagnostic, no longer emitted                               |
-|            | `L1C-2099` | L1 only | Reserved; former explicit foreign-object `main` diagnostic, no longer emitted                                     |
-|            | `L1C-2100` | L1 only | Two verified sibling interfaces declare the same canonical module identity                                        |
-|            | `L1C-2101` | L1 only | A non-virtual manifest provider is absent from the explicitly supplied Dea set                                    |
-|            | `L1C-2102` | L1 only | An interface expectation differs from the supplied verified provider-interface fingerprint                        |
-|            | `L1C-2103` | L1 only | The supplied lifecycle-import graph contains a cycle                                                              |
-|            | `L1C-2104` | L1 only | Explicit, inferred, or build/run target entry selection from verified interfaces failed                           |
-|            | `L1C-2105` | L1 only | Standalone-link output, parent, or protected-input alias validation failed                                        |
-|            | `L1C-2106` | L1 only | Host compiler/runtime selection or exact Windows compile/link command preflight failed                            |
-|            | `L1C-2107` | L1 only | Standalone-link transaction setup or wrapper-source write failed                                                  |
-|            | `L1C-2108` | L1 only | Wrapper compilation failed or did not produce a no-follow regular object                                          |
-|            | `L1C-2109` | L1 only | Final host link, executable validation, or standalone-link transaction cleanup failed                             |
-|            | `L1C-2110` | L1 only | Reserved; former embedded linker-control carrier diagnostic, no longer emitted                                    |
-|            | `L1C-2111` | L1 only | A present non-virtual `require` or `link` provider is unreachable through lifecycle imports                       |
-|            | `L1C-2130` | L1 only | Build/run source graph ordering encountered a cycle                                                               |
-|            | `L1C-2131` | L1 only | A source-backed build/run module lacks its private artifact association                                           |
-|            | `L1C-2132` | L1 only | Retained build/run C-tree validation, creation, copy, or rollback failed                                          |
-|            | `L1C-2133` | L1 only | Run mode could not launch its temporary executable                                                                |
-|            | `L1C-2134` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2135` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2136` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2137` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2138` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2139` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2140` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2141` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2142` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2143` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2144` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2145` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2146` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2147` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2148` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-|            | `L1C-2149` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                       |
-| `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                               |
-| `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                                       |
-| `L0C-9512` |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                                       |
-| `L0C-9513` | `L1C-9513` | All     | Native compiler temporary-parent inspection, setup, trust validation, or exclusive reservation failed             |
-| `L0C-9514` | `L1C-9514` | All     | Native compiler temporary workspace cleanup failed and the retained workspace path was reported                   |
+| L0 code    | L1 code    | Level   | Meaning                                                                                                                       |
+| ---------- | ---------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `L0C-0009` | `L1C-0009` | All     | No C compiler found: use '--c-compiler' or the level-specific C compiler environment variable                                 |
+| `L0C-0010` | `L1C-0010` | All     | C compilation failed                                                                                                          |
+| `L0C-0011` | `L1C-0011` | All     | Invalid entry module name: module components must be valid identifiers                                                        |
+| `L0C-0012` | `L1C-0012` | All     | Entry module not found in analysis result or does not define a build/run `main` function                                      |
+| `L0C-0013` | `L1C-0013` | All     | Entry `main` returns a non-preferred type; the generated C entry wrapper ignores the return value                             |
+| `L0C-0014` | `L1C-0014` | All     | Runtime library path does not exist or is not a directory                                                                     |
+|            | `L1C-0015` | L1 only | Runtime library directory does not contain any supported runtime library                                                      |
+| `L0C-0016` | `L1C-0016` | All     | Missing type information for the entry `main` function                                                                        |
+| `L0C-0017` | `L1C-0017` | All     | '--output' is ignored in '--run'; L1 keep-C uses the canonical module tree while the executable remains temporary             |
+|            | `L1C-0018` | L1 only | Explicit C compiler option violates the L1 floating-point backend contract                                                    |
+|            | `L1C-0019` | L1 only | Trace flags under '--gen' require the caller to link or compile against the traced runtime surface                            |
+|            | `L1C-0020` | L1 only | '--unchecked' under '--gen' requires the caller to link or compile against the unchecked runtime                              |
+|            | `L1C-0021` | L1 only | '--check-basic' under '--gen' requires the caller to link or compile against the basic checked runtime                        |
+| `L0C-0020` |            | L0 only | Analysis or AST command failed with an exception                                                                              |
+| `L0C-0030` |            | L0 only | Entry module not found in compilation unit                                                                                    |
+| `L0C-0040` | `L1C-0040` | All     | Cannot read an input source file during token dump                                                                            |
+| `L0C-0041` |            | L0 only | Source file encoding error during token dump                                                                                  |
+| `L0C-0042` |            | L0 only | Unexpected lexer failure during token dump when no structured lexer diagnostic is available                                   |
+| `L0C-0050` |            | L0 only | Compilation-unit discovery failed during all-modules token dump                                                               |
+| `L0C-0060` |            | L0 only | Discovered module path could not be resolved during all-modules token dump                                                    |
+| `L0C-0070` | `L1C-0070` | All     | Entry module path or unit could not be resolved for token dump or Stage 1 introspection commands                              |
+| `L0C-2001` | `L1C-2001` | All     | Unknown command-line option                                                                                                   |
+| `L0C-2002` | `L1C-2002` | All     | Multiple conflicting mode flags were provided                                                                                 |
+| `L0C-2003` | `L1C-2003` | All     | Missing value for an option that requires an argument                                                                         |
+| `L0C-2010` | `L1C-2010` | All     | '--output' is valid only with build/gen/run, plus L1 compile, interface emission, and link                                    |
+| `L0C-2011` | `L1C-2011` | All     | '--keep-c' is valid only with '--build' or '--run', plus L1 '--compile'                                                       |
+| `L0C-2012` | `L1C-2012` | All     | '--c-compiler' is valid only with '--build' or '--run', plus L1 '--compile', '--link', and '--prepare-stdlib'                 |
+| `L0C-2013` | `L1C-2013` | All     | '--c-options' is valid only with '--build' or '--run', plus L1 '--compile', '--link', and '--prepare-stdlib'                  |
+| `L0C-2014` | `L1C-2014` | All     | '--runtime-include' is valid only with '--build' or '--run', plus L1 '--compile', '--link', and '--prepare-stdlib'            |
+| `L0C-2015` | `L1C-2015` | All     | '--runtime-lib' is valid only with '--build' or '--run', plus L1 '--link'                                                     |
+| `L0C-2016` | `L1C-2016` | All     | '--no-line-directives' is valid with generated-C modes, including L1 '--compile' and '--prepare-stdlib'                       |
+| `L0C-2017` | `L1C-2017` | All     | '--trace-arc' is valid with generated-C modes, including L1 '--compile' and '--prepare-stdlib', and with L1 '--link'          |
+| `L0C-2018` | `L1C-2018` | All     | '--trace-memory' is valid with generated-C modes, including L1 '--compile' and '--prepare-stdlib', and with L1 '--link'       |
+| `L0C-2019` | `L1C-2019` | All     | '--all-modules' is valid only with '--ast', '--sym', '--tok', or '--type'                                                     |
+| `L0C-2020` | `L1C-2020` | All     | '--include-eof' is valid only with '--tok'                                                                                    |
+| `L0C-2021` | `L1C-2021` | All     | Missing required target module or file name                                                                                   |
+| `L0C-2022` | `L1C-2022` | All     | '--run' accepts exactly one target; use '--' before runtime program arguments                                                 |
+| `L0C-2023` | `L1C-2023` | All     | Arguments after '--' are valid only with '--run'                                                                              |
+| `L0C-2024` | `L1C-2024` | All     | Multiple targets are not supported yet; pass exactly one target                                                               |
+| `L0C-2025` | `L1C-2025` | All     | '--unchecked' is valid with generated-C modes, including L1 '--compile' and '--prepare-stdlib', and with L1 '--link'          |
+| `L0C-2026` | `L1C-2026` | All     | '--unchecked' cannot be combined with '--trace-arc' or '--trace-memory'                                                       |
+| `L0C-2027` | `L1C-2027` | All     | '--check-basic' is valid with generated-C modes, including L1 '--compile' and '--prepare-stdlib', and with L1 '--link'        |
+| `L0C-2028` | `L1C-2028` | All     | '--check-basic' cannot be combined with '--unchecked', '--trace-arc', or '--trace-memory'                                     |
+| `L0C-2029` |            | L0 only | '--c-source' is valid only with '--build' or '--run'                                                                          |
+|            | `L1C-2030` | L1 only | Failed to project the entry module interface during interface emission                                                        |
+| `L0C-2031` | `L1C-2031` | All     | Interface search paths are invalid for the selected mode; L1 accepts them with build, run, compile, gen, and link             |
+| `L0C-2032` | `L1C-2032` | All     | Recognized canonical driver option is reserved but its capability is not implemented yet                                      |
+|            | `L1C-2033` | L1 only | Invalid compile-only destination or destination parent                                                                        |
+|            | `L1C-2034` | L1 only | Staged compile-only artifact validation failed                                                                                |
+|            | `L1C-2035` | L1 only | Compile-only artifact publication failed and the previous artifact set was restored                                           |
+|            | `L1C-2036` | L1 only | Compile-only artifact rollback failed and recovery files were retained                                                        |
+|            | `L1C-2070` | L1 only | External-link option is invalid for the selected non-linking mode                                                             |
+|            | `L1C-2071` | L1 only | Library/raw link input supplies a relocatable object or opaque option-file indirection                                        |
+|            | `L1C-2072` | L1 only | External-link control is unsupported for the selected compiler family, value, or host platform                                |
+|            | `L1C-2090` | L1 only | Source project or system roots are not valid with standalone link mode                                                        |
+|            | `L1C-2091` | L1 only | '--foreign-object' is valid only with build, run, or standalone link mode                                                     |
+|            | `L1C-2092` | L1 only | '--entry' is valid only with standalone link mode                                                                             |
+|            | `L1C-2093` | L1 only | '--entry' was provided more than once                                                                                         |
+|            | `L1C-2094` | L1 only | Standalone-link entry value is not a canonical dotted module name                                                             |
+|            | `L1C-2095` | L1 only | Standalone link mode has no positional Dea object                                                                             |
+|            | `L1C-2096` | L1 only | Standalone link mode does not have exactly one '-o' / '--output' path                                                         |
+|            | `L1C-2097` | L1 only | A positional or foreign native path is invalid, missing, or does not resolve to a regular file                                |
+|            | `L1C-2098` | L1 only | Reserved; former link-operand metadata-classification diagnostic, no longer emitted                                           |
+|            | `L1C-2099` | L1 only | Reserved; former explicit foreign-object `main` diagnostic, no longer emitted                                                 |
+|            | `L1C-2100` | L1 only | Two verified sibling interfaces declare the same canonical module identity                                                    |
+|            | `L1C-2101` | L1 only | A non-virtual manifest provider is absent from the resolved Dea set                                                           |
+|            | `L1C-2102` | L1 only | An interface expectation differs from the supplied verified provider-interface fingerprint                                    |
+|            | `L1C-2103` | L1 only | The supplied lifecycle-import graph contains a cycle                                                                          |
+|            | `L1C-2104` | L1 only | Explicit, inferred, or build/run target entry selection from verified interfaces failed                                       |
+|            | `L1C-2105` | L1 only | Standalone-link output, parent, or protected-input alias validation failed                                                    |
+|            | `L1C-2106` | L1 only | Host compiler/runtime selection or exact Windows compile/link command preflight failed                                        |
+|            | `L1C-2107` | L1 only | Standalone-link transaction setup or wrapper-source write failed                                                              |
+|            | `L1C-2108` | L1 only | Wrapper compilation failed or did not produce a no-follow regular object                                                      |
+|            | `L1C-2109` | L1 only | Final host link, executable validation, or standalone-link transaction cleanup failed                                         |
+|            | `L1C-2110` | L1 only | Reserved; former embedded linker-control carrier diagnostic, no longer emitted                                                |
+|            | `L1C-2111` | L1 only | A present non-virtual `require` or `link` provider is unreachable through lifecycle imports                                   |
+|            | `L1C-2130` | L1 only | Build/run source graph ordering encountered a cycle                                                                           |
+|            | `L1C-2131` | L1 only | A source-backed build/run module lacks its private artifact association                                                       |
+|            | `L1C-2132` | L1 only | Retained build/run C-tree validation, creation, copy, or rollback failed                                                      |
+|            | `L1C-2133` | L1 only | Run mode could not launch its temporary executable                                                                            |
+|            | `L1C-2134` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2135` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2136` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2137` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2138` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2139` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2140` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2141` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2142` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2143` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2144` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2145` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2146` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2147` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2148` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2149` | L1 only | Reserved for build/run multi-compilation-unit orchestration                                                                   |
+|            | `L1C-2150` | L1 only | Managed cache configuration/storage is unusable or overlaps the active installed payload                                      |
+|            | `L1C-2151` | L1 only | Compiler-owned preparation input/identity or internal output inventory is unavailable, invalid, or changed during preparation |
+|            | `L1C-2152` | L1 only | Managed preparation coordination or destination ownership could not be established                                            |
+|            | `L1C-2153` | L1 only | Completed managed profile identity, expected artifact inventory, or integrity validation failed                               |
+|            | `L1C-2154` | L1 only | Required preparation compiler/toolchain is unavailable or persistent reuse eligibility cannot be established                  |
+|            | `L1C-2155` | L1 only | Bundled frontend preparation workspace could not be written                                                                   |
+|            | `L1C-2156` | L1 only | Native stdlib/runtime preparation command failed or timed out; underlying host diagnostics are preserved                      |
+|            | `L1C-2157` | L1 only | Invalid preparation-mode/cache-control combination, target, or empty CLI cache path                                           |
+|            | `L1C-2158` | L1 only | Required bundled semantic interfaces or preparation sources need bootstrap rebuild or installation repair                     |
+|            | `L1C-2159` | L1 only | Managed support is unavailable while automatic preparation is disabled                                                        |
+|            | `L1C-2160` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2161` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2162` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2163` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2164` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2165` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2166` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2167` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2168` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2169` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |
+| `L0C-9510` | `L1C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                                           |
+| `L0C-9511` | `L1C-9511` | All     | Cannot write an output file                                                                                                   |
+| `L0C-9512` |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                                                   |
+| `L0C-9513` | `L1C-9513` | All     | Native compiler temporary-parent inspection, setup, trust validation, or exclusive reservation failed                         |
+| `L0C-9514` | `L1C-9514` | All     | Native compiler temporary workspace cleanup failed and the retained workspace path was reported                               |
 
 ## Name Resolution and Import Analysis
 

@@ -18,6 +18,7 @@ import build_driver;
 import cli_args.model;
 import compile_driver.toolchain;
 import compiler_filesystem;
+import preparation;
 import wrapper_emitter;
 import link_driver.model;
 import link_driver.transaction;
@@ -120,6 +121,9 @@ func ld_runtime_link_inputs(
     diags: DiagCollector*
 ) -> StringVector*? {
     let family = bd_compiler_flag_family(compiler);
+    if (opts.managed_runtime_family != null) {
+        family = opts.managed_runtime_family as string;
+    }
     if (family == "tcc") {
         let runtime_objects = bd_runtime_object_paths(opts);
         if (runtime_objects != null &&
@@ -263,6 +267,34 @@ func ld_host_input_path(path: string, family: string) -> string {
         return join(".", path);
     }
     return path;
+}
+
+/** Reject known unsupported host-command values before automatic native preparation. */
+func ld_validate_cli_before_preparation(opts: CliOptions*, output: string, standalone: bool,
+    diags: DiagCollector*) -> bool {
+    let compiler = pr_compiler(opts);
+    if (compiler != null && !ld_validate_external_link_operands(opts.link_operands, compiler as string, diags)) {
+        return false;
+    }
+    if (!bd_is_windows()) { return true; }
+    with (let values = bd_collect_c_option_words(opts) => sv_free(values)) {
+        if (compiler != null) { sv_push(values, compiler as string); }
+        sv_push(values, output);
+        let include = opts.runtime_include;
+        let library = opts.runtime_lib;
+        if (include == null) { include = env_get("L1_RUNTIME_INCLUDE"); }
+        if (library == null) { library = env_get("L1_RUNTIME_LIB"); }
+        if (include != null) { sv_push(values, include as string); }
+        if (library != null) { sv_push(values, library as string); }
+        for (let i = 0; i < cli_link_operands_count(opts.link_operands); i = i + 1) {
+            let operand = cli_link_operands_get(opts.link_operands, i);
+            if (standalone || ord(operand.kind) != ord(LOK_DEA_OBJECT)) {
+                sv_push(values, operand.value);
+            }
+        }
+        return bd_validate_windows_shell_words(values, "L1C-2106",
+            "host linking does not support '%', '!', double quotes, or line breaks in Windows host-command values", diags);
+    }
 }
 
 /** Return whether one word is stable through the Windows `system()` shell. */

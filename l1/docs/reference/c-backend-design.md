@@ -115,25 +115,27 @@ does not own staging, rollback, or destination-path policy.
 
 Build/run uses a publication-free adapter around the same module generator, interface projection, and object compiler.
 It stages canonical module-relative `.c`, `.o`, and `.l1m` files inside the command-owned workspace, compiling source
-nodes once in dependency-first order. Interface-backed providers keep their caller-owned `.l1m + .o` pair; their C is
-neither required nor regenerated. The common linker consumes the complete source/interface object set plus foreign
-objects and selects the requested source target's `I5entry`.
+nodes once in dependency-first order. Explicit interface-backed providers keep their caller-owned `.l1m + .o` pair;
+their C is neither required nor regenerated. Managed bundled providers receive exact copied semantic interfaces and
+native objects from a matching complete profile. The common linker consumes the complete source/interface object set
+plus foreign objects and selects the requested source target's `I5entry`.
 
 On native Windows, each compile-only and build/run source-object transaction validates the resolved compiler, exact
 option/include/input/output words, working directory, and capture names for shell expansion, quote, and line-break bytes
 before invoking `cmd.exe`. The later common-link preflight independently covers wrapper compilation and linking.
 
-With `--keep-c`, build/run copies rather than regenerates each staged module C file into the mirrored `.dea-c` tree and
-copies the exact wrapper source used for compilation as `__dea_wrapper.c`. Objects and staged interfaces remain private.
-The private wrapper compiles beneath hidden `.link/` scratch, so a valid source module named `__dea_wrapper` does not
-collide during ordinary build/run. Keep-C rejects that root module name and ASCII case variants because the public tree
-reserves the same filename and supported filesystems may compare it case-insensitively.
+With `--keep-c`, build/run copies each command-generated application C file into the mirrored `.dea-c` tree and copies
+the exact wrapper source used for compilation as `__dea_wrapper.c`. Managed bundled C is regenerated through the same
+canonical module backend and selected toolchain inputs, independently of optional profile scratch. Objects and staged
+interfaces remain private. The private wrapper compiles beneath hidden `.link/` scratch, so a valid source module named
+`__dea_wrapper` does not collide during ordinary build/run. Keep-C rejects that root module name and ASCII case variants
+because the public tree reserves the same filename and supported filesystems may compare it case-insensitively.
 
 For identical source, resolved graph, verified interfaces, fingerprints, code-generation settings, and compiler version,
 each module file is byte-identical across `--gen`, compile-only keep-C, build keep-C, and run keep-C. Output
-destinations, caller mode, and private workspace names do not affect the bytes. Interface/object providers contribute no
-C file and are never regenerated. The wrapper is excluded from module identity because it is a separate link artifact
-with no `--gen` or compile-only form.
+destinations, caller mode, and private workspace names do not affect the bytes. Explicit interface/object providers
+contribute no C file and are never regenerated. The wrapper is excluded from module identity because it is a separate
+link artifact with no `--gen` or compile-only form.
 
 Generated module C contains no `I8metadata`, `I7imports`, metadata byte arrays, replacement anchors, or volatile
 retention reads. The sibling `.l1m` carries target identity, public fingerprint, entry presence, first-occurrence
@@ -156,10 +158,11 @@ The wrapper has no foreign-object-specific declarations or lifecycle calls. It i
 object before the final host link. The final command places the wrapper object first, retains the complete user stream
 of Dea objects, foreign objects, libraries, search paths, translated rpaths, and raw host-driver words in encounter
 order, appends the selected runtime inputs by exact path, and adds `-lm` for non-MSVC compiler families because
-interface manifests do not encode `sys.real` use. `L1_CFLAGS` and `--c-options` configure wrapper compilation and are
-deliberately absent from the final-link command words. The wrapper object must be a no-follow regular file, but Dea does
-not inspect its native format or embedded controls; caller-selected compiler options may therefore encode
-toolchain-specific linker controls that the final linker honors outside the typed native-operand model.
+interface manifests do not encode `sys.real` use. `L1_CFLAGS` and `--c-options` configure wrapper compilation and
+managed bundled generated-C preparation, and are deliberately absent from the final-link command words. The wrapper
+object must be a no-follow regular file, but Dea does not inspect its native format or embedded controls;
+caller-selected compiler options may therefore encode toolchain-specific linker controls that the final linker honors
+outside the typed native-operand model.
 
 Recognized GCC and Clang driver names plus exact `cc` receive rpaths as repeated `-Xlinker` option/value words so commas
 remain intact. TinyCC receives `-Wl,-rpath=VALUE`; comma-containing values are rejected because that syntax would split
@@ -210,19 +213,24 @@ enforce that reservation on caller-supplied objects; collisions surface through 
 Generated output now includes the public runtime header `dea_rt.h`. The internal helper `dea_siphash.h` lives only in
 the compiled runtime implementation and is not part of the generated-C surface or the public L1 ABI.
 
-Runtime artifacts are produced per toolchain: the official archives (`libdea_rt.a`, `libdea_rt_traced.a`,
-`libdea_rt_check_basic.a`, and `libdea_rt_unchecked.a`) match the platform compiler's object format, while tcc
-additionally builds raw `.o` objects under `build/dea/runtime/tcc/{default,traced,check_basic,unchecked}/`. When the
-active C compiler family is tcc, the build driver links those objects directly to avoid object-format mismatches such as
-Darwin tcc ELF objects versus platform Mach-O archives. Standalone link follows the same ADR-0027 compatibility
-boundary: normal compiler families always receive the selected archive as one exact path, while TinyCC receives the
-complete variant-matched raw-object set when available and otherwise falls back to the exact archive path. The driver
-does not translate normal runtime archive paths into `-L` / `-l` search requests, so user search directories cannot
-shadow the selected runtime.
+Runtime artifacts are derived per toolchain/configuration by managed preparation. Normal compiler families use
+`libdea_rt.a`, `libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or `libdea_rt_unchecked.a`; TinyCC profiles contain the
+complete matching raw-object set. Managed stdlib C and runtime C use the same selected compiler, but runtime C uses
+compiler-owned `-O2 -std=c99`, variant defines and 16 MiB / 4096-record checked tuning rather than arbitrary application
+flags. Supported target/ABI/sysroot settings apply to both. Runtime-include overrides affect the native configuration;
+runtime-library overrides select only the final runtime input and do not make profiles partial.
 
-Each archive and tcc object variant depends on a content-sensitive build-configuration stamp recording its compiler,
-runtime flags, mode defines, and baked tuning flags. Make therefore rebuilds affected variants when configuration
-changes and preserves no-op incremental builds when the content is identical.
+Bootstrap supplies public headers and verified bundled interfaces independently of native runtime construction.
+Build/run/link obtain matching native support on demand. Final inputs remain exact paths after the encounter-ordered
+user stream, so user `-L` paths cannot shadow the selected runtime. An explicit runtime-library override selects its
+exact archive and takes priority over automatic TinyCC raw-object selection. See
+[l1/docs/reference/stdlib-preparation.md](stdlib-preparation.md) for ownership, identity and conservative reuse.
+
+`make runtime` remains a separate developer workflow producing archives under `$L1_BUILD_DIR/lib` and TinyCC objects
+under `$L1_BUILD_DIR/runtime/tcc/{default,traced,check_basic,unchecked}/`. Its content-sensitive configuration stamps
+track `L1_RUNTIME_CC`, runtime flags, mode defines and baked tuning, preserving incremental rebuilds. Those Make
+controls and products do not implicitly configure or supply managed native profiles. The test targets explicitly build
+these artifacts for the standalone runtime harnesses; `build-stage1` does not.
 
 ### Floating-point backend contract
 

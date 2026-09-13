@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-08-30
+Version: 2026-09-11
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -18,7 +18,7 @@ Canonical level-specific detail:
 - Modes are selected with flags. At most one primary mode may be selected.
 - `--build` is the default when no primary mode is given.
 - Exactly one source target is required, except that `--help` and `--version` short-circuit target validation and L1
-  `--link` consumes one or more positional Dea object paths instead.
+  `--link` consumes one or more positional Dea object paths and L1 `--prepare-stdlib` accepts no target.
 - Runtime arguments for `--run` follow a `--` separator. The separator is invalid in other modes.
 - CLI argument errors exit with status 2; analysis, compilation, or standalone-link failures exit with status 1;
   successful operations exit with status 0. `--run` forwards the child program's exit status.
@@ -42,7 +42,7 @@ The dump modes are developer-facing; their text formats are not stable interface
 `--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. L1 Stage 1
 implements the endpoint-rollback compile-only artifact set in section 7 and additionally implements `--emit-interface` /
 `-Gi`, which emits the target module's textual `.l1m` interface. L1 Stage 1 also implements the standalone `--link` /
-`-k` mode in section 8.
+`-k` mode in section 8 and target-free `--prepare-stdlib` in section 9.
 
 ### L1 generated-C mode
 
@@ -60,8 +60,9 @@ invokes the host compiler or linker. `--keep-c` and host-tool-only controls rema
 For identical source, resolved graph, verified interfaces, fingerprints, compiler version, and byte-affecting settings,
 the selected module C is byte-identical across `--gen`, `--compile --keep-c`, `--build --keep-c`, and `--run --keep-c`.
 Output paths, caller mode, and invocation-private workspace names do not enter those bytes. Build/run retention copies
-the exact module bytes submitted to the host compiler; it does not regenerate or rewrite them. The separately compiled
-`__dea_wrapper.c` is link-orchestration output and has no generated-C or compile-only counterpart.
+the exact command-generated module bytes. For managed bundled modules it regenerates canonical C from the same toolchain
+inputs, independently of optional cached scratch. The separately compiled `__dea_wrapper.c` is link-orchestration output
+and has no generated-C or compile-only counterpart.
 
 ### L1 multi-compilation-unit build and run
 
@@ -69,7 +70,9 @@ L1 `--build` and `--run` resolve the requested source target through the canonic
 imports and source fallback only when no interface is selected. Each source-backed node is generated and compiled once
 as its own module translation unit in deterministic dependency-first order. An interface-backed provider contributes its
 verified `.l1m` plus the original opaque sibling `.o`; the pair must remain stable from selection through final-link
-submission, and callers must serialize externally against same-stem publication or replacement.
+submission, and callers must serialize externally against same-stem publication or replacement. Bundled managed
+providers may first resolve through toolchain-owned semantic interfaces, then materialize an exact copied `.l1m` and
+matching `.o` pair from native preparation before linking. The requested source target stays source-backed.
 
 The requested source target is always the entry selection, so `--entry` remains standalone-link-only. The target must
 itself carry an eligible `I5entry`; another linked module's entry cannot substitute. Repeatable `--foreign-object` /
@@ -97,16 +100,18 @@ The current shared option surface is:
 - repeatable project and system roots through `--project-root` / `-Rp` and `--sys-root` / `-Rs`; L1 `--link` rejects
   both because it consumes objects without resolving source
 - repeatable compile/generated-C interface paths through `--interface-path` / `-I`; L1 consumes them in declaration
-  order for build, run, compile-only, and generated-C modes, while L0 retains the syntax for its reserved compile mode
+  order for build, run, compile-only, generated-C, and standalone-link modes, while L0 retains the syntax for its
+  reserved compile mode
 - `--output` / `-o` for artifact-producing modes; L1 also accepts it with `--compile`, `--emit-interface`, and `--link`
 - `--c-compiler` / `-Cc`, `--c-options` / `-Co`, and `--runtime-include` / `-Ri` for build/run, L1 compile-only, and L1
-  standalone linking; in standalone link mode, C options apply only while compiling the generated wrapper and are not
-  forwarded to the final host-link command. `--runtime-lib` / `-Rl` is valid for build/run and L1 standalone linking
+  standalone linking and preparation; in standalone link mode, C options configure the wrapper and managed bundled
+  generated C, and are not forwarded as final host-link words. Runtime implementation C has separate compiler-owned
+  flags. `--runtime-lib` / `-Rl` is valid for build/run and L1 standalone linking
 - repeatable L0 `--c-source PATH` / `--c-source=PATH` / `-Cs PATH` / `-Cs=PATH` for build/run; every value remains one
   intact host-compiler argument, and the generated C source precedes additional sources in occurrence order
 - `--no-line-directives` / `-NLD`, `--trace-arc` / `-Va`, `--trace-memory` / `-Vm`, `--unchecked` / `-Su`, and
   `--check-basic` / `-Sb` for generated-C modes, including L1 compile-only; L1 standalone linking additionally accepts
-  the trace and checking controls to select its runtime link inputs
+  the trace and checking controls to select its runtime link inputs. L1 preparation accepts these generated-C controls
 - `--keep-c` / `-Gk` for build/run and L1 compile-only
 - `--all-modules` / `-a` for token, AST, symbol, and type dumps
 - `--include-eof` for token dumps
@@ -117,7 +122,7 @@ The current shared option surface is:
   `--link-arg ARGUMENT` / `--link-arg=ARGUMENT` / `-Cl ARGUMENT` / `-Cl=ARGUMENT`
 
 Using a mode-scoped option with an incompatible mode is a CLI argument error. In L1, interface paths are valid with
-`--build`, `--run`, `--compile`, and `--gen`; in L0 they remain valid only with the reserved `--compile` mode.
+`--build`, `--run`, `--compile`, `--gen`, and `--link`; in L0 they remain valid only with the reserved `--compile` mode.
 Incompatible interface-path uses produce `L0C-2031` or `L1C-2031`; L1 external-link controls outside `--build`, `--run`,
 and `--link` produce `L1C-2070`.
 
@@ -157,10 +162,11 @@ Each compiler uses its level prefix for environment-backed defaults:
 | C compiler options   | `L0_CFLAGS`          | `L1_CFLAGS`          |
 | Runtime include path | `L0_RUNTIME_INCLUDE` | `L1_RUNTIME_INCLUDE` |
 | Runtime library path | `L0_RUNTIME_LIB`     | `L1_RUNTIME_LIB`     |
+| Managed native cache |                      | `L1_STDLIB_CACHE`    |
 
-The level-specific C compiler variable has highest precedence. Automatic detection then tries `tcc`, `gcc`, `clang`, and
-`cc` from `PATH`, followed by `$CC`. C options from the level-specific environment variable are placed before options
-supplied through `--c-options`.
+An explicit `--c-compiler` has highest precedence, followed by the level-specific C compiler variable. Automatic
+detection then tries `tcc`, `gcc`, `clang`, and `cc` from `PATH`, followed by `$CC`. C options from the level-specific
+environment variable are placed before options supplied through `--c-options`.
 
 ## 5. Target and Source-Path Rules
 
@@ -169,6 +175,11 @@ supplied through `--c-options`.
 - Dotted module names map to source-tree path components and search system roots before project roots.
 - A plain filename or module name resolves using the active level's source extension (`.l0` or `.l1`).
 - Repeated system or project roots preserve declaration order within their root group.
+
+L1's bootstrap-owned bundled semantic set occupies exactly the compiler-owned bundled system-root position, after
+explicit interfaces in modes that accept them and before lower-priority project roots. Explicit `--sys-root` suppresses
+the default bundled position; `L1_SYSTEM` retains its existing selection meaning. Caller-owned source selected by
+ordinary resolution remains source-backed. These rules do not add a stdlib override tier through project roots.
 
 ## 6. Native Build/Run Temporary Workspace
 
@@ -208,7 +219,9 @@ another build/run workspace.
 
 This workspace contract does not apply to the Python L0 Stage 1 compiler. L1 compile-only keeps the output-local
 transaction described in section 7, and L1 standalone linking keeps the output-local transaction described in section 8;
-neither operation is routed through the native build/run workspace.
+neither operation is routed through the native build/run workspace. L1 managed native preparation separately owns its
+profile outputs or fresh private support, retained for the consuming command's lifetime. This does not change ownership
+of application compilation/link workspaces.
 
 ## 7. L1 Compile-Only Artifact Set
 
@@ -219,7 +232,8 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 ```
 
 - `MODULE` resolves to one source implementation. Non-virtual imports must resolve from verified `.l1m` interfaces;
-  compile-only does not fall back to provider source.
+  compile-only does not fall back to provider source. Bundled providers use the toolchain semantic set without native
+  preparation or sibling-object requirements.
 - Without `--output`, the current directory is the artifact root and the canonical dotted module path supplies the stem.
   With `--output`, the value must be non-empty, must not end in `/` or `\`, and must name an `.o` file; replacing only
   that final suffix selects its `.c` and `.l1m` companions. Empty values, trailing separators, directories,
@@ -277,7 +291,7 @@ The implemented L1 Stage 1 form is:
 
 ```text
 l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L DIRECTORY]...
-    [-Rr RPATH]... [-Cl LINK_ARG]... [-e MODULE] -o OUTPUT
+    [-Rr RPATH]... [-Cl LINK_ARG]... [-I ROOT]... [-e MODULE] -o OUTPUT
 ```
 
 - At least one positional Dea object and exactly one non-empty output path are required. Positional Dea objects,
@@ -304,10 +318,13 @@ l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L DIRECTORY]...
 - `--entry` / `-e` may appear at most once and requires a canonical dotted module name. Without it, exactly one verified
   interface must carry `entry;`. With it, the named supplied module's verified interface must carry `entry;`.
 - Module identities must be unique. Every non-virtual provider named by `import module`, `require`, or `link` must be in
-  the explicit supplied Dea set with the exact expected public fingerprint. Ordered `import module` records alone form
-  lifecycle edges and must be acyclic. Each non-virtual `require` / `link` provider must additionally be transitively
-  reachable from its consumer through one or more lifecycle-import edges; those semantic records never add objects or
-  lifecycle edges.
+  the resolved Dea set with the exact expected public fingerprint. Register explicit objects first, then discover
+  missing lifecycle-import providers through ordered `-I` roots and finally known bundled managed modules; there is no
+  source fallback. Invalid selected providers fail without falling through. Insert discovered objects dependency-first
+  immediately before the first explicit root requiring them, preserving explicit operand order. Ordered `import module`
+  records alone form lifecycle edges and must be acyclic. Each non-virtual `require` / `link` provider must additionally
+  be transitively reachable from its consumer through one or more lifecycle-import edges; those semantic records never
+  add objects or lifecycle edges.
 - The generated wrapper owns process `main`, initializes runtime arguments, calls every Dea initializer in deterministic
   dependency-first order, calls the selected entry bridge, and calls every finalizer in the exact reverse order. Foreign
   objects receive no generated lifecycle or entry calls.
@@ -319,19 +336,74 @@ l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L DIRECTORY]...
   not transactional.
 - Normal compiler families receive the selected regular runtime archive as an exact path. Under the compatibility
   exception defined for TinyCC, L1 uses the complete variant-matched regular runtime object set when available;
-  otherwise it attempts the same exact archive selection. These native inputs are not byte-inspected. `L1_CFLAGS` and
-  `--c-options` configure wrapper compilation and are not appended as final-link command words. Because the resulting
-  wrapper object is opaque, compiler options may still cause the host compiler to encode toolchain-specific linker
-  controls that the final linker honors; those effects are caller-trusted. The final command places the wrapper first,
-  then the encounter-ordered user link stream, then the selected runtime native inputs by exact path, followed by the
-  ordinary non-MSVC math-library and output arguments. A user `-L` therefore cannot shadow the selected runtime.
+  otherwise explicit runtime selection attempts the same exact archive path. Managed support is prepared with the
+  selected native configuration, including TinyCC raw objects. Native semantics are not inspected; managed integrity
+  uses artifact digests. `L1_CFLAGS` and `--c-options` configure wrapper and managed bundled generated-C compilation and
+  are not appended as final-link command words. Because the resulting wrapper object is opaque, compiler options may
+  still cause the host compiler to encode toolchain-specific linker controls that the final linker honors; those effects
+  are caller-trusted. The final command places the wrapper first, then the encounter-ordered user link stream, then the
+  selected runtime native inputs by exact path, followed by the ordinary non-MSVC math-library and output arguments. A
+  user `-L` therefore cannot shadow the selected runtime.
 - Until native Windows process spawning replaces `cmd.exe`, exact standalone-link command words and redirection paths
   containing `%`, `!`, `"`, carriage return, or line feed are rejected before scratch allocation.
 
 The detailed artifact, validation, ordering, transaction, and portability contracts live in
 [l1/docs/reference/separate-compilation.md](../../../l1/docs/reference/separate-compilation.md).
 
-## 9. Compatibility Rule
+## 9. L1 Bundled Support Preparation
+
+`make build-stage1` in `l1/` provides public headers under `$L1_BUILD_DIR/include/` and generates/verifies the complete
+bundled semantic interface set under `$L1_BUILD_DIR/interfaces/` with the new frontend and canonical bundled sources. It
+does not require native L1 program-runtime construction. Semantic-only commands do not probe native reuse or hash
+bundled source trees. Rebuild bootstrap after editing interface-generating toolchain inputs; missing/invalid bundled
+interfaces report `L1C-2158` with rebuild/repair guidance alongside normal semantic diagnostics.
+
+`l1c --prepare-stdlib` is an L1 primary mode without a target. It produces a persistently reusable complete native
+stdlib/runtime profile. Build/run/link ordinarily prepare matching support on demand and reuse valid profiles quietly.
+The new controls are scoped as follows:
+
+| Control                                       | Valid modes                                      |
+| --------------------------------------------- | ------------------------------------------------ |
+| `--stdlib-cache PATH` / `--stdlib-cache=PATH` | `--build`, `--run`, `--link`, `--prepare-stdlib` |
+| `--no-auto-prepare`                           | `--build`, `--run`, `--link`                     |
+| `--force`                                     | `--prepare-stdlib` only                          |
+
+Preparation also accepts native compiler/generated-C settings, checking/trace controls, `--no-line-directives`, and the
+runtime include override. It rejects source/project/interface roots, output/keep-C, runtime-library or external-link
+inputs, positional targets, and program arguments. `--prepare-stdlib --no-auto-prepare` is invalid. Invalid new mode
+combinations report `L1C-2157` or the existing option-specific CLI error and exit 2.
+
+One cache root is selected: CLI, then `L1_STDLIB_CACHE`, then `$L1_BUILD_DIR/cache` in the repository or a platform
+per-user installed default (Linux XDG/`~/.cache/dea/l1`, macOS `~/Library/Caches/dea/l1`, Windows Local AppData /
+`Dea/L1/Cache`). Relative explicit roots resolve from the invocation directory. Only `<CACHE_ROOT>/v1/` is Dea-owned;
+manual disposal must preserve unrelated root contents and serialize against consumers. Installed payload overlap is
+rejected, including aliases. There are no system-cache, cleaner/scrub, migration, or cache-disable options.
+
+An unusable explicit CLI/environment root is an error without redirection. An unavailable implicit default allows a
+valid readable hit or, for automatic consuming commands, fresh private support. Explicit preparation requires a usable
+persistent destination. `--no-auto-prepare` requires reusable support and otherwise reports `L1C-2159` with guidance.
+`--force` recomputes toolchain observation, identity and outputs without overriding adapter eligibility. A supported
+compiler can remain invocable for fresh support when persistent reuse cannot be established.
+
+Native identity combines content-sensitive Dea inputs (`D`), supported toolchain observations and separate
+stdlib/runtime configurations. Bundled generated C uses `L1_CFLAGS` then `--c-options`; runtime C uses compiler-owned
+`-O2 -std=c99`, variant defines and default tuning. Both use the selected compiler and supported target/ABI/sysroot
+settings. Legacy Make runtime controls do not configure managed preparation. Runtime include overrides affect native
+identity; runtime-library overrides and final-only link operands do not. Profiles remain complete despite final runtime
+overrides.
+
+Profiles contain exact selected semantic bytes, matching objects, runtime support and a completion manifest published
+last. Native integrity validation does not replace interface/graph validation or inspect native semantics. Same-key
+incomplete preparations serialize and recheck; completed corrupt profiles are never consumed or automatically replaced.
+Automatic commands use fresh support and print an eligible `--prepare-stdlib --force` repair command with external
+serialization guidance. Windows reports literal argv to avoid cmd.exe variable expansion. Actual work and recovery go to
+stderr; verbosity exposes profile selection, compiler commands, identities and validation. Host errors remain visible.
+
+The detailed ownership, adapter and memo contract is
+[l1/docs/reference/stdlib-preparation.md](../../../l1/docs/reference/stdlib-preparation.md). No installed native
+profile, project cache, ABI compatibility inference, host-ID binding or cross-host reuse guarantee is introduced.
+
+## 10. Compatibility Rule
 
 Equivalent behavior keeps the same flag names, aliases, option ordering, exit-code meanings, and diagnostic meanings
 across stages and levels. A level may recognize a shared spelling while reporting that its capability is unavailable,

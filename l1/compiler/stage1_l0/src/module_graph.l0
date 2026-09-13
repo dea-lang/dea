@@ -54,6 +54,7 @@ enum ModuleNodeState {
 
 /**
  * Canonical sibling artifacts associated with one real module.
+ * Managed native binding may replace these paths while retaining the semantic load origin.
  */
 struct ModuleArtifactPaths {
     c_path: string;
@@ -96,6 +97,7 @@ struct ModuleGraphNode {
     dependencies: VectorBase*; // ModuleDependency*
     direct_imports: StringVector*; // exact source declaration order
     interface_imports: StringVector*; // canonical parsed `.l1m` lifecycle order
+    managed: bool; // selected bundled semantics, with native artifacts attached after preparation
 }
 
 /**
@@ -346,7 +348,8 @@ func _mg_node_create(
         MNS_UNRESOLVED,
         _mg_ptr_vec_create(2),
         sv_create(2),
-        sv_create(2)
+        sv_create(2),
+        false
     );
 }
 

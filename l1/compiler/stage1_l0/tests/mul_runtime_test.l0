@@ -11,6 +11,7 @@ import std.text;
 import std.vector;
 
 import l1c_lib;
+import support.driver_inputs;
 
 /**
  * Return the fixture root used for overflow child modules.
@@ -43,7 +44,7 @@ func mrt_expect_eq(label: string, actual: int, expected: int) {
  * @param label Human-readable case label.
  */
 func mrt_expect_overflow(module_name: string, label: string) {
-    with (let argv = sv_create(8) => sv_free(argv)) {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
         sv_push(argv, "--run");
         sv_push(argv, "--project-root");
         sv_push(argv, mrt_overflow_fixture_root());

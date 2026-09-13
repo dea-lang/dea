@@ -167,7 +167,7 @@ def require_build_env_cases() -> None:
 
 
 def require_support_source_composition() -> None:
-    """Require compiler and test builds to link both support units exactly once."""
+    """Require full compiler support and explicit preparation-free test support."""
 
     support_sources = [str(path) for path in STAGE1_SUPPORT_SOURCES]
     source = {"L0_CFLAGS": "-O2"}
@@ -184,6 +184,10 @@ def require_support_source_composition() -> None:
     expected_args = [arg for path in support_sources for arg in ("--c-source", path)]
     if stage1_support_args() != expected_args:
         raise AssertionError("support sources were not represented as structured compiler arguments")
+    minimal_sources = [path for path in support_sources if not path.endswith("preparation_support.c")]
+    expected_minimal = [arg for path in minimal_sources for arg in ("--c-source", path)]
+    if stage1_support_args(preparation=False) != expected_minimal:
+        raise AssertionError("preparation-free builds must retain the other support units")
 
 
 def require_make_help_parity() -> None:

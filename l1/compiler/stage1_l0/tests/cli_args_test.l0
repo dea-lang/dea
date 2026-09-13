@@ -942,7 +942,7 @@ func test_link_mode_option_matrix() {
 
         let parsed2 = cli_parse(unsupported);
         assert(cli_result_has_code(parsed2, "L1C-2090"), "link mode should reject source roots");
-        assert(cli_result_has_code(parsed2, "L1C-2031"), "link mode should reject interface paths");
+        assert(!cli_result_has_code(parsed2, "L1C-2031"), "link mode should accept interface paths");
         assert(cli_result_has_code(parsed2, "L1C-2011"), "link mode should reject --keep-c");
         assert(cli_result_has_code(parsed2, "L1C-2016"), "link mode should reject line-directive controls");
         assert(cli_result_has_code(parsed2, "L1C-2019"), "link mode should reject --all-modules");

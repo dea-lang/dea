@@ -17,6 +17,7 @@ import sys
 import tempfile
 import textwrap
 
+from support.driver_inputs import native_driver_args
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 L1_ROOT = REPO_ROOT / "l1"
@@ -106,7 +107,8 @@ def run_compiler(
     stderr_path = artifact_dir / f"{case_name}.stderr.log"
 
     run_result = subprocess.run(
-        [str(compiler), *args, str(source_path)],
+        [str(compiler), *(native_driver_args(compiler) if "--run" in args else []),
+         *args, str(source_path)],
         cwd=REPO_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -154,7 +156,8 @@ def run_trace_ok(case_name: str, expected_rc: int, source: str, artifact_dir: Pa
     compiler = stage1_compiler()
 
     run_result = subprocess.run(
-        [str(compiler), "--run", "--trace-memory", "--trace-arc", str(source_path)],
+        [str(compiler), *native_driver_args(compiler),
+         "--run", "--trace-memory", "--trace-arc", str(source_path)],
         cwd=REPO_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
