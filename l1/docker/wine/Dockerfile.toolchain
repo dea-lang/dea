@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1.7
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+# Upstream supplies the MSYS2-specific Wine patches. See README.md for limitations.
+FROM ghcr.io/msys2/msys2-docker-experimental@sha256:127da4b502598d0e0913b761f9e18584f0423f39dae9f3c9d653f24ccf8690f9 AS msys-tools
+RUN msys2 -c 'set -e; pacman -S --noconfirm --needed make diffutils'
+
+# Keep expensive transactions separate so a later failure retains earlier layers.
+FROM msys-tools AS compiler
+RUN msys2 -c 'set -e; pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-gcc'
+
+FROM compiler AS python
+# OpenSSL manuals alone take many minutes to unpack through Wine. Keep all runtime
+# data, headers, libraries and Python modules, but omit docs from later packages.
+RUN msys2 -c 'set -e; sed -i "/^\[options\]/a NoExtract = ucrt64/share/man/* ucrt64/share/doc/*" /etc/pacman.conf'
+RUN --mount=type=cache,id=dea-l1-wine-packages,target=/root/.wine/drive_c/msys64/var/cache/pacman/pkg,sharing=locked \
+    msys2 -c 'set -e; pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-pip'
+
+FROM python AS toolchain
+RUN --mount=type=cache,id=dea-l1-wine-packages,target=/root/.wine/drive_c/msys64/var/cache/pacman/pkg,sharing=locked \
+    msys2 -c 'set -e; pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-uv; pacman -Q > /etc/dea-wine-packages.txt; make --version; gcc --version; python -VV; uv --version'

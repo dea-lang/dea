@@ -14,6 +14,7 @@ Useful local documents:
 - [l1/docs/roadmap.md][roadmap] for the live L1 direction document
 - [l1/docs/user/linking.md][linking] for external native-library and foreign-object linking
 - [l1/docs/reference/stdlib-preparation.md][preparation] for bundled interfaces and on-demand native support
+- [l1/docker/wine/README.md][docker-wine] for the experimental cached Windows toolchain runner
 - [l1/AGENTS.md][agents] for repo-local AI guidance
 
 At the moment the Dea/L1 source surface is `.l1`, including the copied L1 stdlib under `compiler/shared/l1/stdlib/` and
@@ -50,6 +51,7 @@ To use an explicit upstream L0 compiler instead of the repo-local default, set `
 running `make build-stage1`.
 
 [agents]: AGENTS.md
+[docker-wine]: docker/wine/README.md
 [docs]: docs/
 [examples]: examples/
 [linking]: docs/user/linking.md

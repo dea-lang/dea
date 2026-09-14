@@ -61,7 +61,7 @@ RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-env check-examples bench-runtime bench-link-provenance test-all test-docker print-l1-build-dir clean docker FORCE
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-env check-examples bench-runtime bench-link-provenance test-all test-docker print-l1-build-dir clean docker docker-wine docker-wine-toolchain docker-wine-image test-docker-wine-runner FORCE
 
 help:
 	@printf '%s\n' \
@@ -93,6 +93,10 @@ help:
 		'' \
 		'Docker:' \
 		'  docker             Explicitly run a target in the repo-owned Linux Docker container (CMD=<target>).' \
+		'  docker-wine        Run CMD=<targets> in experimental Wine/MSYS2; reuse cached images.' \
+		'  docker-wine-toolchain  Prepare only the cached Windows toolchain image.' \
+		'  docker-wine-image   Prepare the cached toolchain and Windows Python environment.' \
+		'  test-docker-wine-runner  Run fast runner regressions without Docker.' \
 		'' \
 		'Compiler construction variables:' \
 		'  L1_BUILD_DIR=build/dea' \
@@ -139,10 +143,12 @@ help:
 		'                     Optional trace artifact directory. Local trace runs write artifacts there; `make docker` bind-mounts the host directory and preserves artifacts across `docker run --rm`.' \
 		'' \
 		'Docker variables:' \
+		'  DOCKER_WINE_IMAGE_PREFIX=dea-l1-wine' \
+		'                     Local namespace for content-addressed Wine toolchain and environment images.' \
 		'  DOCKER_IMAGE=l1-test' \
 		'                     Docker image tag used by `make docker`.' \
 		'  DOCKER_CC=gcc' \
-		'                     C compiler passed to all three L1 compiler roles in Docker (`gcc` or `clang`).' \
+		'                     C compiler passed to all three L1 compiler roles in Linux Docker (`gcc` or `clang`).' \
 		'  DOCKER_L0_CC=<compiler>' \
 		'                     Legacy compatibility selector used when the canonical Docker compiler selector is unset.' \
 		'' \
@@ -393,7 +399,7 @@ test-env: venv
 check-examples: build-stage1
 	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L1_BUILD_DIR)/bin/l1c-stage1" --examples-dir examples --extension .l1 --label "L1 Stage 1"
 
-test: test-stage1 test-env check-examples
+test: test-stage1 test-env check-examples test-docker-wine-runner
 
 test-all: test test-stage1-trace
 
@@ -429,3 +435,23 @@ docker:
 			$(if $(strip $(L1_TRACE_ARTIFACT_DIR)),-v "$(abspath $(L1_TRACE_ARTIFACT_DIR)):/trace-artifacts" -e "L1_TRACE_ARTIFACT_DIR=/trace-artifacts") \
 			"$(DOCKER_IMAGE)" make $(CMD); \
 	fi
+
+# Export values rather than interpolating CMD into another shell command.
+docker-wine docker-wine-toolchain docker-wine-image: export CMD := $(CMD)
+docker-wine docker-wine-toolchain docker-wine-image: export DOCKER_WINE_IMAGE_PREFIX := $(DOCKER_WINE_IMAGE_PREFIX)
+docker-wine: export TESTS := $(TESTS)
+docker-wine: export L1_TEST_JOBS := $(L1_TEST_JOBS)
+docker-wine: export L1_TRACE_TEST_JOBS := $(L1_TRACE_TEST_JOBS)
+docker-wine: export L1_TRACE_ARTIFACT_DIR := $(L1_TRACE_ARTIFACT_DIR)
+
+docker-wine:
+	$(HOST_PYTHON) scripts/docker_wine.py run
+
+docker-wine-toolchain:
+	$(HOST_PYTHON) scripts/docker_wine.py toolchain
+
+docker-wine-image:
+	$(HOST_PYTHON) scripts/docker_wine.py image
+
+test-docker-wine-runner:
+	$(HOST_PYTHON) tests/test_docker_wine.py

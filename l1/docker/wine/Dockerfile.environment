@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1.7
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+ARG TOOLCHAIN_IMAGE
+FROM ${TOOLCHAIN_IMAGE}
+# uv currently rejects this MSYS2 Python platform. Keep it available for diagnosis
+# under another name, and let the root Makefile use its supported pip fallback.
+RUN mv /root/.wine/drive_c/msys64/ucrt64/bin/uv.exe /root/.wine/drive_c/msys64/ucrt64/bin/uv-disabled.exe
+WORKDIR /root/.wine/drive_c/dea
+COPY Makefile pyproject.toml uv.lock ./
+COPY l0/pyproject.toml l0/pyproject.toml
+COPY l1/pyproject.toml l1/pyproject.toml
+ENV MSYSTEM=UCRT64 L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc
+RUN msys2 -c 'set -e; cd /c/dea; make venv; if test -x .venv/bin/python; then p=.venv/bin/python; else p=.venv/Scripts/python.exe; fi; "$p" -c "import os; assert os.name == \"nt\""'
+COPY run.sh /usr/local/bin/dea-wine-run
+ENTRYPOINT ["bash", "/usr/local/bin/dea-wine-run"]
