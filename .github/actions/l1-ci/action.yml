@@ -87,6 +87,49 @@ runs:
         PYTHON: python
       run: make -C l1 ${{ inputs.make_target }}
 
+    - name: Report L1 preparation reuse
+      if: always() && runner.os != 'Windows'
+      shell: bash
+      env:
+        L1_CC: ${{ inputs.c_compiler }}
+      run: python3 l1/scripts/check_preparation_reuse.py --c-compiler "$L1_CC" --expect available
+
+    - name: Report L1 preparation reuse (Windows)
+      if: always() && runner.os == 'Windows'
+      shell: msys2 {0}
+      env:
+        L1_CC: ${{ inputs.c_compiler }}
+      run: python l1/scripts/check_preparation_reuse.py --c-compiler "$L1_CC" --expect available
+
+    - name: Publish L1 preparation summary
+      if: always() && runner.os != 'Windows'
+      shell: bash
+      run: |
+        report=l1/build/ci/preparation-reuse
+        if [ ! -s "$report/report.json" ] || [ ! -s "$report/summary.md" ]; then
+          mkdir -p "$report"
+          printf '%s\n' '{"capability":"error","result":"FAIL","reason":"preparation reporter did not produce a complete report"}' > "$report/report.json"
+          printf '%s\n' '## L1 native preparation' '' 'FAIL: preparation reporter did not produce a complete report; inspect the reporting step.' > "$report/summary.md"
+          cat "$report/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
+        cat "$report/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Publish L1 preparation summary (Windows)
+      if: always() && runner.os == 'Windows'
+      shell: msys2 {0}
+      run: |
+        report=l1/build/ci/preparation-reuse
+        summary="$(cygpath -u "$GITHUB_STEP_SUMMARY")"
+        if [ ! -s "$report/report.json" ] || [ ! -s "$report/summary.md" ]; then
+          mkdir -p "$report"
+          printf '%s\n' '{"capability":"error","result":"FAIL","reason":"preparation reporter did not produce a complete report"}' > "$report/report.json"
+          printf '%s\n' '## L1 native preparation' '' 'FAIL: preparation reporter did not produce a complete report; inspect the reporting step.' > "$report/summary.md"
+          cat "$report/summary.md" >> "$summary"
+          exit 1
+        fi
+        cat "$report/summary.md" >> "$summary"
+
     - name: Upload L1 workdir artifact
       if: always()
       uses: actions/upload-artifact@v6

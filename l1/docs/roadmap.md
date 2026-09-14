@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-13
+Version: 2026-09-14
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -193,6 +193,13 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Tool [l1/work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md][preparation-test-cost] isolated unrelated
   tests from automatic preparation, retained dedicated integration coverage and avoided unnecessary preparation support
   compilation. Trace measurements did not justify retaining a driver-harness split.
+- Tool [l1/work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md][reuse-report] added explicit CI
+  capability reports with exact compiler attribution, cold/warm counters, guarded reuse, header invalidation and
+  retained failure evidence.
+- Bug Fix
+  [l1/work/plans/bug-fixes/closed/2026-09-13-native-preparation-ci-portability-noref.md][preparation-portability]
+  repaired dependency decoding, compiler probes, Windows import observation and fixture ownership; the repaired
+  implementation passed hosted validation on Linux, Windows and both macOS architectures.
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
@@ -256,9 +263,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
-- Bug Fix [l1/work/plans/bug-fixes/2026-09-13-native-preparation-ci-portability-noref.md][preparation-portability]
-  repairs native dependency decoding, compiler-inspection warnings, Windows import observation and fixture ownership,
-  with hosted CI verification required before closure.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
@@ -404,9 +408,10 @@ update to be promoted to an initiative or plan:
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [preparation-contract]: reference/stdlib-preparation.md
 [preparation-economy]: ../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
-[preparation-portability]: ../work/plans/bug-fixes/2026-09-13-native-preparation-ci-portability-noref.md
+[preparation-portability]: ../work/plans/bug-fixes/closed/2026-09-13-native-preparation-ci-portability-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
+[reuse-report]: ../work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-pointer-validation]: ../work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md
 [runtime-resplit]: ../work/plans/refactors/closed/2026-04-27-runtime-cu-resplit-noref.md

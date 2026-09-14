@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-09-13
+Version: 2026-09-14
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -59,6 +59,46 @@ Preparation accepts the selected C compiler, generated-C options, runtime includ
 foreign/external link operands, or program arguments. Cache controls are errors in semantic-only modes;
 `--prepare-stdlib --no-auto-prepare` is invalid. Force cannot override reuse eligibility. The shared mode contract is in
 [docs/specs/compiler/cli-contract.md][cli].
+
+## CI capability reporting
+
+From `l1/`, run the focused reporter with an exact compiler name or path:
+
+```sh
+python3 scripts/check_preparation_reuse.py --c-compiler clang --expect available
+```
+
+The reporter resolves that executable directly without the integration fixtures' filename-based compiler fallback. It
+records the requested and resolved paths, version, target and preparation's compiler identity. A copied toolchain and
+initially empty writable cache isolate the probe from installed inputs and existing prepared profiles. No runtime
+library override or retained-C mode is used.
+
+Separate processes run a tiny `std.io` consumer cold, warm with automatic preparation, and warm with
+`--no-auto-prepare`. Available reuse requires correct program output, one native resolution and bundled validation per
+command, cold compilations matching the current bundled inventory, and the same persistent entry with zero managed
+compilations and preparation build commands in both warm runs. A size-changing edit to a copied runtime header must then
+cause guarded rejection and ordinary preparation of a new persistent key. All other counters are recorded without
+platform-independent discovery-probe or timing thresholds.
+
+Results are `available`, `private`, `unsupported`, `error`, or `not-run`. Private capability requires two successful
+ordinary consumers that rebuild managed support, a repeatable recognized ineligibility reason, no publication, and
+guarded refusal. Unsupported capability currently recognizes the Clang runtime-archiver boundary only when a separate
+probe confirms rejection of `--no-default-config`. Other resolution failures remain errors until their boundary is
+explicitly supported by the reporter. Neither `L1C-2154` nor zero compilations alone establishes a capability outcome.
+Input-stability failures, failed compiler observations, invalid fixtures, timeouts and crashes remain errors. Missing
+bootstrap artifacts produce `not-run`; both categories fail even with `--expect observe`.
+
+`--expect available` is the CI requirement for the existing full-suite configurations. `--expect private`,
+`--expect unsupported`, and `--expect observe` are explicit local probe modes; observation accepts only completed
+capability measurements. They do not weaken or skip the strict preparation integrations. Compiler matrix expansion is
+separate work.
+
+The shared L1 CI action runs the reporter after its Make target, including after test failure when the bootstrap is
+complete. It always publishes the Markdown summary and uploads the existing L1 workdir artifact. The default
+`l1/build/ci/preparation-reuse/` directory retains `report.json`, `summary.md`, invocation argv, stdout/stderr, and
+observed persistent manifests. Failed expectations and partial measurements are retained; unexecuted measurements are
+null. `--output-dir`, `--build-dir`, and the per-process `--timeout` can be overridden for local diagnostics. A missing
+report is a CI error and does not mask an earlier Make failure.
 
 ## Ownership and storage
 

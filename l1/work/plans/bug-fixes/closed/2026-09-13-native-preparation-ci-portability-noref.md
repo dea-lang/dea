@@ -2,8 +2,8 @@
 
 ## Fix native preparation portability and CI failures
 
-- Date: 2026-09-13
-- Status: In Progress
+- Date: 2026-09-14
+- Status: Completed
 - Title: Fix native preparation portability and CI failures
 - Kind: Bug Fix
 - Severity: High
@@ -24,14 +24,14 @@
   - [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][economy]
   - [l1/docs/reference/stdlib-preparation.md][preparation]
 - Repro: Hosted Unified CI normal-test failures on Linux and Windows.
-- Current Windows repro: The hosted Windows normal-test matrix reports compiler-family and archive-tool observation
+- Original Windows repro: The hosted Windows normal-test matrix reported compiler-family and archive-tool observation
   failures under the MSYS2 UCRT toolchain.
 
 ## Summary
 
-Repair the diagnosed Linux and Windows failures on the current refactor branch, preserving both original comparison
-branches. Keep the CLI, native ABI, cache layout, semantic authority and reuse policy unchanged. No new diagnostic codes
-or cache migration are planned. Hosted verification is required before closing this work.
+Repaired Linux and Windows native preparation failures while preserving the CLI, native ABI, cache layout, semantic
+authority and reuse policy. No diagnostic codes or cache migration were added. Hosted verification completed before the
+plan was closed.
 
 ## ADR Impact
 
@@ -166,7 +166,7 @@ Windows import-reader repair has its own validation record because its native an
 - On the current macOS x86_64 host, strict Clang and GCC builds of the dependency harness pass; the sanitized Clang
   harness reports no AddressSanitizer or UndefinedBehaviorSanitizer diagnostics. The full support, identity, managed
   preparation and normal preparation fixtures pass, as does the changed Python syntax check. Hosted Windows cold and
-  warm preparation verification remains pending; CI was not run locally.
+  warm preparation verification was pending at this local checkpoint and subsequently passed as recorded below.
 
 ## Hosted Follow-up
 
@@ -213,27 +213,36 @@ are no Windows DLL cleanup permission errors in the completed log.
 - The native Windows forwarder compiles with strict MinGW flags and runs under Wine. Tests cover spaces, embedded
   quotes, repeated and trailing backslashes, inherited stdin, child exit-code propagation and replacement of the
   imported DLL without relinking the driver. Changing the imported function's behavior is observed on the next run.
-- Wine provides local WinAPI and PE/DLL execution coverage, not the hosted MSYS2 compiler environment. Full Windows
-  identity invalidation, cold preparation and warm `--no-auto-prepare` consumption remain required in a new authorized
-  hosted run. The plan stays active until that matrix passes.
+- Wine provides local WinAPI and PE/DLL execution coverage, not the hosted MSYS2 compiler environment. The subsequent
+  hosted validation below supplies the required Windows identity invalidation, cold preparation and warm
+  `--no-auto-prepare` consumption coverage.
 
-## Delivery and Hosted Validation Gate
+## Final Hosted Validation and Closure
 
-Commit locally validated fixes with this plan still active and hosted verification explicitly pending. Run staged
-whitespace, ADR Impact and root pre-commit checks before committing.
+The final hosted Unified CI run passed on the repaired implementation across Linux x86_64 with GCC, macOS Intel and
+ARM64 with Clang, and Windows x86_64 with MSYS2 UCRT64 GCC. Both language-level delegates and the ADR and documentation
+gates succeeded. The tested implementation matches the source used for this closure.
 
-The manual publication gate targets `https://github.com/dea-lang/dea.git`, branch `ci-probe`, through the user's
-existing publication workflow. A push there triggers Unified CI and test-artifact uploads. No release tag, release
-publication or deployment is part of this cycle. Before any remote write, present the exact action and pending commits
-and obtain fresh user confirmation. Do not change upstreams or use an ad hoc refspec to bypass repository push rules.
-Workflow dispatches or reruns also require their own applicable approval.
+The selected compiler logs record:
 
-After the authorized publication and hosted matrix succeed, record the results, close this plan, update the roadmap and
-make a documentation commit with the required staged checks. Documentation-only closure does not invalidate code tests
-when the validated implementation remains identical.
+- Linux x86_64: `/usr/bin/gcc`, GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1).
+- macOS Intel: `/usr/bin/clang`, Apple Clang 17.0.0 (clang-1700.0.13.5).
+- macOS ARM64: `/usr/bin/clang`, Apple Clang 21.0.0 (clang-2100.1.1.101).
+- Windows x86_64: `/ucrt64/bin/gcc`, GCC 16.1.0 (MSYS2 Rev5).
+
+Windows selected GCC 16.1.0 (MSYS2 Rev5) and passed all 81 normal tests and all 46 default traces. This includes
+preparation identity, native support and ownership tests, all three cold/warm preparation integrations, and the
+bootstrap-interface and stdin-forwarding regressions. The hosted matrix satisfies the outstanding closure gate.
+
+The native reuse capability reporter is added separately alongside this documentation closure. It was absent from the
+successful hosted run; its own hosted capability summaries still require a subsequent run. That does not invalidate the
+completed portability regression coverage.
+
+Documentation-only closure reuses these passing implementation results. Staged whitespace, ADR Impact and root
+pre-commit checks remain the local commit gates. Further remote writes require their own authorization.
 
 [clang-deps]: https://raw.githubusercontent.com/llvm/llvm-project/main/clang/lib/Basic/MakeSupport.cpp
-[economy]: ../refactors/closed/2026-09-12-native-preparation-economy-noref.md
+[economy]: ../../refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [gcc-deps]: https://raw.githubusercontent.com/gcc-mirror/gcc/master/libcpp/mkdeps.cc
 [msys-gcc]: https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-16.1.0-5-any.pkg.tar.zst
-[preparation]: ../../../docs/reference/stdlib-preparation.md
+[preparation]: ../../../../docs/reference/stdlib-preparation.md

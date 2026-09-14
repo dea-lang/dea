@@ -10,6 +10,7 @@ on:
       - ci-probe
     paths:
       - .agents/skills/**
+      - .github/actions/**
       - .github/workflows/**
       - .pre-commit-config.yaml
       - AGENTS.md
@@ -30,6 +31,7 @@ on:
   pull_request:
     paths:
       - .agents/skills/**
+      - .github/actions/**
       - .github/workflows/**
       - .pre-commit-config.yaml
       - AGENTS.md
@@ -208,7 +210,7 @@ jobs:
               changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
               shared=false
 
-              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|\.github/workflows/(ci|l0-ci|l1-ci)\.yml$|Makefile$)'; then
+              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|\.github/actions/|\.github/workflows/(ci|l0-ci|l1-ci)\.yml$|Makefile$)'; then
                 shared=true
               fi
               if printf '%s\n' "$changed_files" | grep -Eq '^l0/'; then
