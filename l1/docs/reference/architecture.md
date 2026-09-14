@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-13
+Version: 2026-09-14
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -289,8 +289,10 @@ All current implementation modules live under `compiler/stage1_l0/src/`.
 - Collects one vector of borrowed declaration references and stable-sorts it by kind and name with an iterative
   bottom-up merge sort. Text emission and fingerprinting consume that same `O(N log N)` ordering, while freeing the
   wrappers never changes declaration ownership.
-- Validates and measures recursive type payloads once into a checked preorder size plan, then streams the second pass
-  directly using cached child sizes. Size overflow reports `SIG-0283`; no arbitrary type-depth limit is introduced.
+- Validates and measures recursive type payloads once into a checked preorder size plan using an explicit heap-backed
+  traversal stack, then streams that plan iteratively using cached child sizes. Owned `Type` cleanup likewise uses
+  explicit pending-node storage, so fingerprint planning, emission, and cleanup consume no native stack proportional to
+  type depth. Size overflow reports `SIG-0283`; no arbitrary type-depth limit is introduced.
 - Classifies resolved cross-module symbol uses into public-surface `require` and implementation-tier `link` records.
 - Derives `has_entry` and a stable first-occurrence, virtual-filtered ordered `module_imports` view from shared source
   semantics without changing exact source-import storage.

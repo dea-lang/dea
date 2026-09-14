@@ -676,16 +676,28 @@ func type_format(self: Type*) -> string {
  * @param self Type to free.
  */
 func type_free(self: Type*) {
-    if (self.inner != null) {
-        type_free(self.inner as Type*);
+    let pending = ptr_vec_create(8);
+    ptr_vec_push(pending, self as void*);
+    while (vec_size(pending) > 0) {
+        let node_index = vec_size(pending) - 1;
+        let node = ptr_vec_get(pending, node_index) as Type*;
+        pending.length = node_index;
+        if (node.inner != null) {
+            ptr_vec_push(pending, node.inner as void*);
+        }
+        if (node.params != null) {
+            let params = node.params as VectorBase*;
+            for (let i = 0; i < vec_size(params); i = i + 1) {
+                ptr_vec_push(pending, ptr_vec_get(params, i));
+            }
+            vec_free(params);
+        }
+        if (node.result != null) {
+            ptr_vec_push(pending, node.result as void*);
+        }
+        drop node;
     }
-    if (self.params != null) {
-        type_param_vec_free(self.params);
-    }
-    if (self.result != null) {
-        type_free(self.result as Type*);
-    }
-    drop self;
+    vec_free(pending);
 }
 
 /**

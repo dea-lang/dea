@@ -3,7 +3,7 @@
 ## Make Stage 1 interface fingerprint traversal stack-safe
 
 - Date: 2026-09-14
-- Status: Draft
+- Status: In Progress
 - Title: Make Stage 1 interface fingerprint traversal stack-safe
 - Kind: Bug Fix
 - Severity: High
@@ -161,6 +161,36 @@ user-facing failure rather than an internal traversal invariant.
 6. A hosted Windows UCRT64/Clang run using the repaired source revision passes `interface_fingerprint_test`, the
    complete L1 delegate, and its default trace sweep. A local non-Windows Clang result cannot replace this platform
    gate.
+
+## Implementation Results
+
+- `ifp_measure_type` now uses inline `IfpTypeMeasureFrame` entries in a heap-backed `VectorBase`. Each frame stores its
+  borrowed type, preorder plan index, next child and partial payload size. Child completion adds checked framed sizes to
+  the parent before the frame is popped.
+- `ifp_emit_planned_type` now streams the measured preorder plan in one loop. Every non-root plan node receives its
+  cached length prefix before its scalar atoms, preserving the existing child order and canonical byte stream without
+  recursive calls.
+- `type_free` now drains a pointer-vector worklist. It schedules owned wrapper, parameter and result children, frees
+  each parameter container once and drops each type node without recursive descent.
+- The original 768-wrapper fixture and pinned `sip13:63bccbd5e89c6e28` digest remain unchanged. Added coverage exercises
+  256-deep function parameter and result branches around a sibling array parameter with pinned digest
+  `sip13:2dc990ecce241a62`, plus a malformed leaf reached through 768 slice wrappers.
+- The architecture reference records the explicit traversal and cleanup storage and retains the unbounded-depth
+  contract. No diagnostic codes or canonical framing rules changed.
+
+## Local Validation Record
+
+- The final focused normal test passes with Clang and GCC through
+  `compiler/stage1_l0/scripts/run_tests.py interface_fingerprint_test` while `L0_CC`, `L1_CC` and `L1_RUNTIME_CC` select
+  the corresponding compiler family.
+- The focused Clang trace run through `compiler/stage1_l0/scripts/run_trace_tests.py interface_fingerprint_test` passes
+  with zero leaked object pointers and zero leaked string pointers across successful, malformed and cleanup paths.
+- `KEEP_C=1 make clean test-all` passes all 82 normal tests, environment stackability, all four examples and all 46
+  default trace tests. Every trace reports zero leaked object and string pointers.
+- Inspection of the retained `build/dea/bin/l1c-stage1.c` function bodies finds no calls from `ifp_measure_type`,
+  `ifp_emit_planned_type` or `type_free` to themselves.
+- Hosted Windows UCRT64/Clang verification remains pending. The plan stays active until that separate remote gate is
+  authorized and passes, or the user explicitly defers it.
 
 ## Remote Verification Gate
 

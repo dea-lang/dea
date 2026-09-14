@@ -290,6 +290,54 @@ func test_interface_fingerprint_deep_type_streaming() {
     ipr_free(parsed);
 }
 
+/** Test deep function children retain preorder framing without native recursion. */
+func test_interface_fingerprint_deep_function_type_streaming() {
+    let parsed = ifpt_parse("module interface deep_func;\nfingerprint \"\";\n", "<deep-function-type>");
+    let mi = parsed.interface as ModuleInterface*;
+    let param_ty = type_builtin_int();
+    let result_ty = type_builtin_bool();
+    for (let i = 0; i < 256; i = i + 1) {
+        param_ty = type_new_pointer(param_ty);
+        result_ty = type_new_nullable(result_ty);
+    }
+    let params = ptr_vec_create(2);
+    ptr_vec_push(params, param_ty as void*);
+    let second_param = type_new_array(type_builtin_byte(), 4);
+    ptr_vec_push(params, second_param as void*);
+    let function_ty = type_new_func(params, result_ty, false);
+    ptr_vec_push(mi.alias_entries, new InterfaceAliasEntry("DeepFunc", function_ty) as void*);
+
+    let diags = diag_create();
+    let canonical = ifp_canonicalize(mi, diags, "<deep-function-type>");
+    assert(canonical != null, "deep function type should canonicalize");
+    let computed = ifp_compute(mi, diags, "<deep-function-type>");
+    assert(ifpt_optional_equals(computed, "sip13:2dc990ecce241a62"),
+        "deep function children must preserve their pinned preorder digest");
+    assert(!diag_has_errors(diags), "deep function type should not diagnose");
+    diag_free(diags);
+    ipr_free(parsed);
+}
+
+/** Test deep invalid leaves diagnose after stack-safe partial-plan traversal. */
+func test_interface_fingerprint_deep_invalid_type() {
+    let parsed = ifpt_parse("module interface deep_bad;\nfingerprint \"\";\n", "<deep-invalid-type>");
+    let mi = parsed.interface as ModuleInterface*;
+    let invalid_leaf = type_builtin_int();
+    let ty = invalid_leaf;
+    for (let i = 0; i < 768; i = i + 1) {
+        ty = type_new_slice(ty);
+    }
+    invalid_leaf.array_len = 1;
+    ptr_vec_push(mi.alias_entries, new InterfaceAliasEntry("DeepBad", ty) as void*);
+
+    let diags = diag_create();
+    assert(ifp_canonicalize(mi, diags, "<deep-invalid-type>") == null,
+        "deep inconsistent type should fail canonicalization");
+    ifpt_assert_first_code(diags, "SIG-0283", "deep inconsistent type");
+    diag_free(diags);
+    ipr_free(parsed);
+}
+
 /** Test measured type-size overflow reports the compatibility diagnostic. */
 func test_interface_fingerprint_type_size_overflow() {
     let diags = diag_create();
@@ -854,6 +902,8 @@ func main() {
     test_interface_fingerprint_order_and_exclusions();
     test_interface_fingerprint_shared_declaration_order();
     test_interface_fingerprint_deep_type_streaming();
+    test_interface_fingerprint_deep_function_type_streaming();
+    test_interface_fingerprint_deep_invalid_type();
     test_interface_fingerprint_type_size_overflow();
     test_interface_fingerprint_nominal_kind_independence();
     test_interface_fingerprint_surface_mutations();
