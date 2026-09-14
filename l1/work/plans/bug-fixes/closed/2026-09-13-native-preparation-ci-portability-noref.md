@@ -234,9 +234,11 @@ Windows selected GCC 16.1.0 (MSYS2 Rev5) and passed all 81 normal tests and all 
 preparation identity, native support and ownership tests, all three cold/warm preparation integrations, and the
 bootstrap-interface and stdin-forwarding regressions. The hosted matrix satisfies the outstanding closure gate.
 
-The native reuse capability reporter is added separately alongside this documentation closure. It was absent from the
-successful hosted run; its own hosted capability summaries still require a subsequent run. That does not invalidate the
-completed portability regression coverage.
+The native reuse capability reporter was added separately alongside this documentation closure and was absent from the
+earlier successful hosted run. A subsequent Unified CI run passed all four platform jobs and independently reported
+persistent reuse as `available` on each. Cold preparation, ordinary and guarded warm reuse, and header invalidation with
+rebuild all passed. The reporter's verified compiler configurations and measurements are recorded in
+[l1/work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md][reuse-report].
 
 Documentation-only closure reuses these passing implementation results. Staged whitespace, ADR Impact and root
 pre-commit checks remain the local commit gates. Further remote writes require their own authorization.
@@ -246,3 +248,4 @@ pre-commit checks remain the local commit gates. Further remote writes require t
 [gcc-deps]: https://raw.githubusercontent.com/gcc-mirror/gcc/master/libcpp/mkdeps.cc
 [msys-gcc]: https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-16.1.0-5-any.pkg.tar.zst
 [preparation]: ../../../../docs/reference/stdlib-preparation.md
+[reuse-report]: ../../tools/closed/2026-09-13-native-reuse-capability-report-noref.md

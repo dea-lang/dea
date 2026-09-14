@@ -68,7 +68,7 @@ not change production preparation semantics.
   mode.
 - `actionlint .github/workflows/ci.yml` passed. Temporary workflow probes checked composite shell syntax, summary
   publication with present/missing reports in both shell scripts, and action-only push/PR routing. Windows path
-  conversion was simulated locally; native hosted Windows execution remains unverified.
+  conversion was simulated locally; native hosted Windows execution subsequently passed as recorded below.
 - A new complete reporter sequence using `--c-compiler /opt/local/bin/gcc-mp-15 --expect observe` passed as `private`
   with MacPorts GCC 15.2. Both ordinary processes successfully compiled 23 modules in 33 build commands, published no
   manifest, and reported `opaque subordinate compiler-tool wrapper cannot authorize persistent reuse`. Guarded reuse
@@ -110,6 +110,24 @@ not change production preparation semantics.
 - Workflow lint, action-only routing, shell syntax, and present/missing summary publication checks passed. Windows path
   conversion was simulated locally. All 88 local links in the edited documentation resolve.
 
-The successful hosted portability run did not contain this reporter. Its platform test results close the portability bug
-fix, not the reporter's hosted verification. The next hosted run must independently report `available` on all four
-existing platforms; ordinary test-suite success or successful private preparation is not a substitute.
+The earlier successful hosted portability run did not contain this reporter. A subsequent Unified CI run included it and
+passed all four platform jobs. Each reporter independently passed `--expect available` with the selected compiler:
+
+| Platform              | Selected compiler                           | Persistent reuse |
+| --------------------- | ------------------------------------------- | ---------------- |
+| Linux x86_64          | GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1) | Available        |
+| Windows UCRT64 x86_64 | GCC 16.1.0 (MSYS2 Rev5)                     | Available        |
+| macOS Intel           | Apple Clang 17.0.0 (clang-1700.0.13.5)      | Available        |
+| macOS ARM64           | Apple Clang 21.0.0 (clang-2100.1.1.101)     | Available        |
+
+Both macOS reporters resolved `/usr/bin/clang`; Linux resolved `/usr/bin/gcc`, and Windows resolved
+`D:/a/_temp/msys64/ucrt64/bin/gcc.EXE`. All four reported the same preparation results:
+
+- Cold preparation compiled 23 modules with 33 build commands.
+- Ordinary and guarded warm runs reused the same persistent entry with zero module compilations and build commands.
+- A header edit caused guarded rejection, followed by ordinary preparation of 23 modules under a new persistent key.
+- Every invocation performed one bundled validation and one native resolution.
+
+Hosted summary publication succeeded on every platform. This verifies persistent reuse separately from overall suite
+success; no private fallback was accepted. The results cover these tested configurations, not arbitrary compiler
+versions or an expanded support matrix.
