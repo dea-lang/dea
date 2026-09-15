@@ -2,8 +2,8 @@
 
 ## Make Stage 1 interface fingerprint traversal stack-safe
 
-- Date: 2026-09-14
-- Status: In Progress
+- Date: 2026-09-15
+- Status: Completed
 - Title: Make Stage 1 interface fingerprint traversal stack-safe
 - Kind: Bug Fix
 - Severity: High
@@ -189,24 +189,19 @@ user-facing failure rather than an internal traversal invariant.
   default trace tests. Every trace reports zero leaked object and string pointers.
 - Inspection of the retained `build/dea/bin/l1c-stage1.c` function bodies finds no calls from `ifp_measure_type`,
   `ifp_emit_planned_type` or `type_free` to themselves.
-- Hosted Windows UCRT64/Clang verification remains pending. The plan stays active until that separate remote gate is
-  authorized and passes, or the user explicitly defers it.
+- Hosted Windows UCRT64/Clang verification passed on 2026-09-15. The Unified CI workflow's
+  `unified (windows-latest, windows, x86_64, clang, windows-ucrt64)` job reported green against the repaired source
+  alongside the ADR impact, route-levels, select-matrix, and docs-validation jobs, satisfying verification criterion 6
+  on the platform where the defect originally reproduced.
 
 ## Remote Verification Gate
 
-Hosted confirmation is a separate authorization boundary. Before pushing or dispatching verification, obtain fresh user
-confirmation and show:
+Hosted confirmation was a separate authorization boundary and is now satisfied. The user authorized and ran the hosted
+Unified CI dispatch selecting Windows UCRT64, x86-64, and Clang against the repaired source, and the
+`unified (windows-latest, windows, x86_64, clang, windows-ucrt64)` job passed on 2026-09-15. This closes verification
+criterion 6, the only outstanding gate, so the plan is complete. No tag, release, deployment, or other publication
+action was part of this gate.
 
-- the pending commit range;
-- the exact push command to the public repository `https://github.com/dea-lang/dea.git` and its tracked `ci-probe`
-  branch;
-- the exact Unified CI workflow dispatch selecting Windows UCRT64, x86-64, and Clang; and
-- the known effects: public branch mutation, CI execution, check results, logs, and short-lived diagnostic artifacts.
-
-Do not create or alter an upstream, bypass the tracked branch with an ad hoc refspec, or treat sandbox approval as
-publication authorization. Keep this plan active until hosted Windows/Clang verification passes or the user explicitly
-defers that gate.
-
-[cross-platform]: closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
-[fingerprint-adr]: ../../../docs/decisions/0019-whole-module-interface-fingerprints.md
-[fingerprints]: ../features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
+[cross-platform]: 2026-07-26-stage1-cross-platform-ci-regressions-noref.md
+[fingerprint-adr]: ../../../../docs/decisions/0019-whole-module-interface-fingerprints.md
+[fingerprints]: ../../features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md

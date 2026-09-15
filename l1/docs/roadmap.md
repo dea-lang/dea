@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-14
+Version: 2026-09-15
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -232,6 +232,11 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   self-hosting fixed point remain pending in the self-hosting plan.
 - Bug Fix [2026-09-07-fingerprint-adapter-gcc-array-parameter-noref][fingerprint-gcc] aligns the fingerprint adapter
   output declaration with generated C to repair strict GCC compilation on Linux and Windows.
+- Bug Fix
+  [l1/work/plans/bug-fixes/closed/2026-09-14-stage1-interface-fingerprint-stack-overflow-noref.md][fingerprint-stack]
+  replaced recursive interface fingerprint measurement, planned emission, and owned `Type` cleanup with explicit
+  heap-backed traversal so the documented unbounded-depth contract is portable. The 768-wrapper regression and pinned
+  digests are unchanged, and hosted Windows UCRT64/Clang verification passed.
 
 </details>
 
@@ -263,9 +268,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
-- Bug Fix [2026-09-14-stage1-interface-fingerprint-stack-overflow-noref][fingerprint-stack] replaces recursive
-  fingerprint type planning, emission, and cleanup with stack-safe traversal while preserving canonical bytes and
-  diagnostics.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
@@ -385,7 +387,7 @@ update to be promoted to an initiative or plan:
 [filesystem-io]: ../work/initiatives/0005-filesystem-and-stream-io.md
 [fingerprint-blocker]: ../work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
 [fingerprint-gcc]: ../work/plans/bug-fixes/closed/2026-09-07-fingerprint-adapter-gcc-array-parameter-noref.md
-[fingerprint-stack]: ../work/plans/bug-fixes/2026-09-14-stage1-interface-fingerprint-stack-overflow-noref.md
+[fingerprint-stack]: ../work/plans/bug-fixes/closed/2026-09-14-stage1-interface-fingerprint-stack-overflow-noref.md
 [float-backend]: ../work/plans/features/closed/2026-04-13-l1-float-backend-contract-followup-noref.md
 [float-literals]: ../work/plans/features/closed/2026-04-04-l1-float-double-literals-noref.md
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
