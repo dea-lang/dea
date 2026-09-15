@@ -3,7 +3,7 @@
 ## Investigate reuse of bundled semantic validation on warm native preparation
 
 - Date: 2026-09-13
-- Status: Draft
+- Status: Completed
 - Title: Determine whether warm L1 native preparation can reuse complete bundled semantic validation
 - Kind: Feature
 - Severity: Medium
@@ -56,21 +56,18 @@ This draft records later design work; it does not authorize implementation of a 
 - Decision: What evidence may replace complete bundled semantic graph analysis on a warm native preparation hit?
   - Scope: L1
   - Disposition: New ADR
-  - ADR: l1/docs/decisions/
-  - Rationale: The investigation settled the answer in Phase 4. A valid completion manifest with complete identity
-    equality and `D` equality is the reusable success evidence: the warm-hit profile validation certifies that the
-    current validator already performed the complete bundled validation over the current inputs. Full-pass retention was
-    the only alternative, and the pre-registered bar selected reuse.
+  - ADR: l1/docs/decisions/0040-warm-preparation-semantic-validation-reuse.md
+  - Rationale: ADR-0040 records the settled answer: a valid completion manifest with complete identity equality and `D`
+    equality is the reusable success evidence on a warm hit, and the pre-registered bar selected reuse over full-pass
+    retention.
 - Decision: How would reusable validation evidence be invalidated, published and recovered without changing cache
   ownership or diagnostic guarantees?
   - Scope: L1
   - Disposition: New ADR
-  - ADR: l1/docs/decisions/
-  - Rationale: Reuse introduces no new persistent state or memo authority; invalidation rides the existing `D`-keyed
-    identity so any input change re-enables the complete pass. Publication stays the proven pending-and-rename protocol,
-    and recovery keeps the existing `L1C-2153`/`L1C-2159` classification with the complete pass as the universal
-    fallback. One L1 ADR records both the representation and its lifecycle, numbered and indexed in the same change that
-    closes this plan; implementation remains later authorized work.
+  - ADR: l1/docs/decisions/0040-warm-preparation-semantic-validation-reuse.md
+  - Rationale: ADR-0040 records the lifecycle: no new persistent state or memo authority, `D`-keyed invalidation so any
+    input change re-enables the complete pass, the existing pending-and-rename publication protocol, and the existing
+    `L1C-2153`/`L1C-2159` classification with the complete pass as the universal fallback.
 
 ## Current State
 
@@ -448,8 +445,10 @@ evidence record beyond the manifest (its structural checks would follow the P4 t
   reassigned.
 - Recorded prototype-only deviations: double manifest validation on unusable profiles (fixed by the must-fix above) and
   trace budgets, which remain implementation-time CI evidence.
-- This plan stays open until the implementing change closes it, at which point the single L1 ADR is numbered and added
-  to the `decisions/INDEX.md`, both `New ADR` records link to it, and the closed plan carries the backlinks.
+- Closure: the implementing change dated 2026-09-15 landed the skip, updated preparation and managed-provider assertions
+  plus the capability reporter, and refreshed [l1/docs/reference/stdlib-preparation.md][preparation]. ADR-0040 is
+  numbered and indexed, both `New ADR` records above link to it, and the roadmap lists this plan under completed
+  milestones.
 
 ## Verification Criteria For A Later Implementation
 
@@ -478,16 +477,16 @@ evidence record beyond the manifest (its structural checks would follow the P4 t
 - Adding release, distribution, publication, remote-write or workflow-dispatch steps.
 - Diagnosing failures on platforms owned by other concurrent work.
 
-[diagnostics]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[fingerprint-verify]: ../../../compiler/stage1_l0/src/interface_fingerprint.l0
-[graph-order]: ../../../compiler/stage1_l0/src/module_graph/order.l0
-[identity-adr]: ../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
-[preparation]: ../../../docs/reference/stdlib-preparation.md
-[preparation-economy]: ../refactors/closed/2026-09-12-native-preparation-economy-noref.md
-[preparation-frontend]: ../../../compiler/stage1_l0/src/preparation/frontend.l0
-[preparation-identity]: ../../../compiler/stage1_l0/support/preparation/identity.h
-[preparation-plan]: closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
-[preparation-storage]: ../../../compiler/stage1_l0/support/preparation/storage.h
-[resolve-driver]: ../../../compiler/stage1_l0/src/driver/resolve.l0
-[semantic-adr]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
-[test-cost]: ../tools/closed/2026-09-13-preparation-test-cost-noref.md
+[diagnostics]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[fingerprint-verify]: ../../../../compiler/stage1_l0/src/interface_fingerprint.l0
+[graph-order]: ../../../../compiler/stage1_l0/src/module_graph/order.l0
+[identity-adr]: ../../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
+[preparation]: ../../../../docs/reference/stdlib-preparation.md
+[preparation-economy]: ../../refactors/closed/2026-09-12-native-preparation-economy-noref.md
+[preparation-frontend]: ../../../../compiler/stage1_l0/src/preparation/frontend.l0
+[preparation-identity]: ../../../../compiler/stage1_l0/support/preparation/identity.h
+[preparation-plan]: 2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
+[preparation-storage]: ../../../../compiler/stage1_l0/support/preparation/storage.h
+[resolve-driver]: ../../../../compiler/stage1_l0/src/driver/resolve.l0
+[semantic-adr]: ../../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
+[test-cost]: ../../tools/closed/2026-09-13-preparation-test-cost-noref.md

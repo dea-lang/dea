@@ -41,3 +41,4 @@
 | [0037](0037-wide-filesystem-metadata.md)                                       | Wide Filesystem Metadata                                       | Accepted   |
 | [0038](0038-bundled-semantic-inputs-and-local-native-preparation.md)           | Bundled Semantic Inputs and Local Native Preparation           | Accepted   |
 | [0039](0039-native-preparation-identity-and-reuse-boundary.md)                 | Native Preparation Identity and Reuse Boundary                 | Accepted   |
+| [0040](0040-warm-preparation-semantic-validation-reuse.md)                     | Warm Preparation Reuses Completed-Profile Semantic Validation  | Accepted   |
