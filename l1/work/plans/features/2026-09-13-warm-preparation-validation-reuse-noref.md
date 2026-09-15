@@ -55,23 +55,22 @@ This draft records later design work; it does not authorize implementation of a 
 
 - Decision: What evidence may replace complete bundled semantic graph analysis on a warm native preparation hit?
   - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: The current semantic authority is established by ADR-0038 and ADR-0039. The investigation must determine
-    whether unchanged validated inputs suffice, whether new evidence is required, or whether the full pass remains
-    necessary. A resulting amendment or new L1 ADR has not been selected.
+  - Disposition: New ADR
+  - ADR: l1/docs/decisions/
+  - Rationale: The investigation settled the answer in Phase 4. A valid completion manifest with complete identity
+    equality and `D` equality is the reusable success evidence: the warm-hit profile validation certifies that the
+    current validator already performed the complete bundled validation over the current inputs. Full-pass retention was
+    the only alternative, and the pre-registered bar selected reuse.
 - Decision: How would reusable validation evidence be invalidated, published and recovered without changing cache
   ownership or diagnostic guarantees?
   - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: A persistent validation result could extend today's non-authoritative memo role or bootstrap contract.
-    Its identity, compatibility and failure behavior require an explicit decision before implementation. Sequencing: the
-    provisional design decision (representation and invalidation rules) is made at the end of Phase 3, before Phase 4
-    prototyping, which must embody exactly one candidate. If Phase 3 rejects the candidates or Phase 4 fails the
-    pre-registered bar, the outcome retains the full pass: both records resolve as `ADR not warranted` with substantive
-    rationale, and ADR-0038/ADR-0039 remain authoritative. Otherwise the accepted design becomes a new L1 ADR, numbered
-    and indexed in the same change that closes this plan, and both Pending records must be resolved in that change.
+  - Disposition: New ADR
+  - ADR: l1/docs/decisions/
+  - Rationale: Reuse introduces no new persistent state or memo authority; invalidation rides the existing `D`-keyed
+    identity so any input change re-enables the complete pass. Publication stays the proven pending-and-rename protocol,
+    and recovery keeps the existing `L1C-2153`/`L1C-2159` classification with the complete pass as the universal
+    fallback. One L1 ADR records both the representation and its lifecycle, numbered and indexed in the same change that
+    closes this plan; implementation remains later authorized work.
 
 ## Current State
 
@@ -426,6 +425,31 @@ evidence record beyond the manifest (its structural checks would follow the P4 t
   is confirmed: manifest interpretation with `D` equality is the settled evidence representation. Phase 5 proceeds to
   resolve both ADR records, specify compatibility and regression coverage, and update this draft from investigation to
   settled design; any production change remains later authorized work.
+
+## Phase 5 Settled Design
+
+- Outcome: adopt. The pre-registered bar was met in Phase 4 (`C'` of 0.269 s below the 0.36 s target, 71 percent removal
+  with non-overlapping ranges over seven interleaved pairs), so the per-command complete bundled pass is replaced by
+  manifest interpretation on warm native profile hits.
+- Evidence representation: the completed completion manifest is the reusable success record. A warm hit through the
+  existing profile validation (complete identity equality, `D` equality, artifact inventory, semantic-copy and
+  containment checks) certifies that the current validator already performed the complete bundled validation over the
+  current inputs. No new persistent state, memo role or store is introduced, and the observable diagnostics and failure
+  family are preserved because any input change alters `D` and re-enables the complete pass.
+- Skip scope: only the `find == 1` warm-hit return in `pr_prepare`, honoring `--force`. Cold, miss, unusable, no-auto,
+  private-fallback and interrupted paths run the complete pass exactly as today; explicit mode keeps its corruption and
+  classification semantics.
+- Implementation must-fixes: reuse the single early find result so unusable-profile paths do not validate the manifest
+  twice; keep the verbosity-conditional reuse message.
+- Regression coverage the implementing change must land: preparation and managed-provider tests asserting one
+  `_dea_preparation` umbrella analysis on warm hits become zero-analysis assertions on warm hits only;
+  `check_preparation_reuse.py` warm-stage counters update; [l1/docs/reference/stdlib-preparation.md][preparation]
+  documents the warm contract change; the diagnostic catalog remains untouched as no codes were introduced or
+  reassigned.
+- Recorded prototype-only deviations: double manifest validation on unusable profiles (fixed by the must-fix above) and
+  trace budgets, which remain implementation-time CI evidence.
+- This plan stays open until the implementing change closes it, at which point the single L1 ADR is numbered and added
+  to the `decisions/INDEX.md`, both `New ADR` records link to it, and the closed plan carries the backlinks.
 
 ## Verification Criteria For A Later Implementation
 
