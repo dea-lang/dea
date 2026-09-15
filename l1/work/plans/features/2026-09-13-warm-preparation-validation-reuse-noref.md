@@ -120,7 +120,10 @@ reduced test repetition is not counted again as a production speedup.
    records and old formats. A manifest's existence or self-consistent hashes alone are not a semantic proof.
 4. Should evidence be local to one native profile, shared across native configurations with the same Dea inputs, or
    produced by bootstrap? Determine whether any option would introduce a second semantic store or an installed-payload
-   requirement that contradicts the current architecture.
+   requirement that contradicts the current architecture. Bootstrap-produced evidence must additionally bind the
+   generating bootstrap compiler identity (`L1_BOOTSTRAP_L0C`) with the same development source sensitivity as `D`:
+   rebuilding under a different upstream compiler or changing validated development inputs must invalidate the record,
+   and one bootstrap compiler's evidence must never certify another compiler's semantic results.
 5. When evidence is missing, stale, unavailable or malformed, can the command safely fall back to the current complete
    validation before deciding miss, disabled preparation or recovery? Distinguish disposable evidence failure from
    corruption of a completed native profile.
@@ -182,17 +185,30 @@ live catalog before implementation; any number may have been used in the meantim
 
 1. Reproduce the current warm/cold behavior after test isolation. Record compiler configuration, host, worker count,
    cache and memo state, interface inventory, umbrella/per-module analysis counts and native compilation counts.
+   Attribute the complete bundled validation in isolation: time a warm `--no-auto-prepare` hit against a trivial
+   no-import consumer and subtract the same consumer's explicit-input cost, so the isolated median pass cost `C` is
+   separated from application compilation and native resolution.
 2. Audit validation dependencies and observable diagnostics. Trace the preparation state transitions and compare the
    existing manifest, identity and memo schemas with the evidence each candidate would require.
 3. Build isolated falsification probes for the candidates' safety claims. Keep production semantics unchanged during the
-   investigation and document counterexamples as reasons to reject or narrow a candidate.
+   investigation and document counterexamples as reasons to reject or narrow a candidate. Cover at minimum: replacing
+   the validator or its compiler-owned inputs under an unchanged evidence key; removed, edited and restored bundled
+   interfaces, including modules outside the application closure; malformed, truncated, stale, version-mismatched and
+   digest-consistent structurally invalid evidence; interruption between validation, evidence publication and manifest
+   publication; and warm reuse, same-key wait/recheck and no-auto failure classification after each failure mode. Map
+   each probe to the matching Required Safety Argument bullet when recording its outcome.
 4. Measure viable prototypes with repeated interleaved runs on Intel Mac when available. Separate native resolution,
    bundled analysis, manifest/artifact validation and application compilation. Report medians and spread, plus trace
    execution and analysis time, event count, trace bytes and peak memory. Keep raw logs temporary; retain a concise
    evidence report if needed.
 5. Select the justified outcome: retain the present contract, preserve it with proven validation reuse, or propose an
    explicit contract amendment. Resolve both ADR questions and specify compatibility, documentation and regression
-   coverage. Any implementation proceeds as later authorized work, with this draft updated to the settled design.
+   coverage. Pre-register the acceptance thresholds from the Phase 1 isolated cost `C` before Phase 4 prototyping;
+   starting defaults are to retain the full pass when `C` is below a 500 ms median, and otherwise to proceed only when
+   the best prototype removes at least 60 percent of `C` without measurably regressing cold/miss, manifest-validation or
+   trace-analysis budgets (non-overlapping medians across at least five interleaved runs each). Record `C` and the
+   confirmed thresholds in this plan before any prototype runs. Any implementation proceeds as later authorized work,
+   with this draft updated to the settled design.
 
 ## Verification Criteria For A Later Implementation
 
