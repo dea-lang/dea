@@ -332,6 +332,32 @@ that certifies that `D`.
   check; private fallback never persists evidence; an unwritable cache yields absent evidence and hence the full pass,
   with no behavioral change.
 
+### Record versioning inventory
+
+Each persistent schema carries its own evolution knob, in two families: explicit `schema`/`adapter` numbers, or the
+validator's own image digest. See [preparation identity][preparation-identity] and
+[preparation storage][preparation-storage].
+
+| Record                     | Versioning                                                                                           | On mismatch                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Cache root layout          | `v1/` path generation                                                                                | Old generation is unreachable; a future generation bump orphans it                       |
+| Completion manifest        | `schema` field checked at read                                                                       | Classified as completed corruption, `L1C-2153` with force-repair guidance                |
+| Native identity JSON       | `schema` and `adapter` numbers hashed into `N`                                                       | Old manifest identity fails equality, so an ordinary miss reprepares under the new rules |
+| `D` input document         | `schema` number hashed into `D`                                                                      | Cascade to `N`; full revalidation and reprepare                                          |
+| Toolchain observation memo | `adapter` number in the memo key; `discovery.schema` check plus sealed digest and per-file snapshots | Old memo unused; one fresh observation round                                             |
+| Artifact-validation memo   | `validation_schema` in the memo key; `schema` plus `kind` checked at read                            | Old memo unused; one full rehash                                                         |
+| `dea-inputs` memo          | `schema` check; compiler image digest is part of the memo key                                        | Binary evolution changes the key itself; fresh computation                               |
+| Bundled `.l1m` interfaces  | no dedicated format field; content digests in `D` plus fingerprint recomputation at load             | Old bytes fail the current validator, `L1C-2158`                                         |
+
+Two deliberate asymmetries follow. Memos and identities decay gracefully: a version bump only makes old records
+irrelevant, costing one re-observation or revalidation. The manifest alone rejects loudly, because a completed profile
+is durable state whose artifacts must never be silently reinterpreted; in practice evolution trips the identity check
+first, so the corruption path rarely fires from a version bump. The semantic-validation method itself carries no version
+number: it is the running binary's digest inside `D`, so any change to the validator's meaning, format rules or
+fingerprint logic forces full revalidation. The remaining gap is the one already recorded above: the manifest stores no
+explicit validation outcome or method version, so provenance currently rests on the digest-mediated construction
+invariant rather than an inspectable record.
+
 The audit answers Question 1 for the observed side: `D` covers every input the complete pass reads, with
 over-approximation only. The remaining ADR decision is which evidence representation the accepted candidate uses.
 
@@ -371,6 +397,7 @@ over-approximation only. The remaining ADR decision is which evidence representa
 [preparation-frontend]: ../../../compiler/stage1_l0/src/preparation/frontend.l0
 [preparation-identity]: ../../../compiler/stage1_l0/support/preparation/identity.h
 [preparation-plan]: closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
+[preparation-storage]: ../../../compiler/stage1_l0/support/preparation/storage.h
 [resolve-driver]: ../../../compiler/stage1_l0/src/driver/resolve.l0
 [semantic-adr]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
 [test-cost]: ../tools/closed/2026-09-13-preparation-test-cost-noref.md
