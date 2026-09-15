@@ -120,7 +120,7 @@ def main() -> int:
         assert not (entry / "include").exists() and not (cache / "v1/interfaces").exists()
         assert call("--prepare-stdlib", *common).stderr == ""
         warm_preparation = call("--prepare-stdlib", *common, "-v")
-        assert analysis_count(warm_preparation, "_dea_preparation") == 1, warm_preparation.stderr
+        assert analysis_count(warm_preparation, "_dea_preparation") == 0, warm_preparation.stderr
         assert "Preparation command" not in warm_preparation.stderr
         source = root / "app.l1"
         source.write_text('module app; import std.io; func main() { printl_s("managed-ok"); }\n')
@@ -130,7 +130,7 @@ def main() -> int:
         program = root / ("app.exe" if os.name == "nt" else "app")
         kept = call("--build", *common, "--no-auto-prepare", "--keep-c", "app", "-o", str(program), "-v")
         assert "Preparing " not in kept.stderr
-        assert analysis_count(kept, "app") == 2 and analysis_count(kept, "_dea_preparation") == 1, kept.stderr
+        assert analysis_count(kept, "app") == 2 and analysis_count(kept, "_dea_preparation") == 0, kept.stderr
         retained = Path(str(program) + ".dea-c") / "std/io.c"
         assert retained.read_bytes() == canonical_c
         # This fixture imports exactly std.io's ten-module bundled closure.

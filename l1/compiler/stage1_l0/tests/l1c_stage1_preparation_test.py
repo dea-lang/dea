@@ -75,7 +75,7 @@ def main() -> int:
         assert warm.stdout == "prepared-ok\n" and warm.stderr == ""
         warm_counts = call("--run", *common, "--no-auto-prepare", "app", "-vvv")
         assert statistics(warm_counts)["module_compiles"] == 0
-        assert analysis_count(warm_counts, "app") == 2 and analysis_count(warm_counts, "_dea_preparation") == 1
+        assert analysis_count(warm_counts, "app") == 2 and analysis_count(warm_counts, "_dea_preparation") == 0
         assert not re.search(r"Starting analysis for entry module '(?:std|sys)\.", warm_counts.stderr), warm_counts.stderr
         # An application without bundled imports still needs automatic runtime
         # selection. Keep this integration path outside ordinary runtime tests.
@@ -84,7 +84,7 @@ def main() -> int:
         runtime_stats = statistics(runtime_only)
         assert runtime_only.stdout == "" and runtime_stats["native_resolutions"] == 1
         assert runtime_stats["module_compiles"] == 0 and runtime_stats["build_commands"] == 0
-        assert analysis_count(runtime_only, "_dea_preparation") == 1
+        assert analysis_count(runtime_only, "_dea_preparation") == 0
         assert "Reuse prepared profile: " in runtime_only.stderr
         damaged = entry / "modules/std/io.o"
         data = damaged.read_bytes()

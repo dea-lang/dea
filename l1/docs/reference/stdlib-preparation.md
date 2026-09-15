@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-09-14
+Version: 2026-09-15
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -74,11 +74,12 @@ initially empty writable cache isolate the probe from installed inputs and exist
 library override or retained-C mode is used.
 
 Separate processes run a tiny `std.io` consumer cold, warm with automatic preparation, and warm with
-`--no-auto-prepare`. Available reuse requires correct program output, one native resolution and bundled validation per
-command, cold compilations matching the current bundled inventory, and the same persistent entry with zero managed
-compilations and preparation build commands in both warm runs. A size-changing edit to a copied runtime header must then
-cause guarded rejection and ordinary preparation of a new persistent key. All other counters are recorded without
-platform-independent discovery-probe or timing thresholds.
+`--no-auto-prepare`. Available reuse requires correct program output, one native resolution per command, one complete
+bundled validation on the cold consumer and zero bundled re-analysis on both warm runs, cold compilations matching the
+current bundled inventory, and the same persistent entry with zero managed compilations and preparation build commands
+in both warm runs. A size-changing edit to a copied runtime header must then cause guarded rejection and ordinary
+preparation of a new persistent key. All other counters are recorded without platform-independent discovery-probe or
+timing thresholds.
 
 Results are `available`, `private`, `unsupported`, `error`, or `not-run`. Private capability requires two successful
 ordinary consumers that rebuild managed support, a repeatable recognized ineligibility reason, no publication, and
@@ -201,8 +202,11 @@ effective configurations, toolchain description/observation, artifact roles, rel
 Validation rejects malformed/shortened records, traversal/escape, absent artifacts, digest failures, and profile
 interfaces that differ from the selected semantic bytes. Native bytes are hashed for managed integrity but remain
 semantically opaque; parsing, fingerprints, graph and lifecycle checks still come from `.l1m`. Preparation validates the
-complete selected interface graph, including modules not imported by other bundled sources, before reuse or miss
-decisions. Malformed toolchain inputs receive repair guidance even with `--no-auto-prepare`.
+complete selected interface graph, including modules not imported by other bundled sources, before any native
+construction or miss decision. A valid warm hit reuses the completed manifest: its identity and `D` equality certify
+that the current validator already completed the full bundled validation over the current selected inputs, so the
+umbrella analysis is not repeated, and any input change alters `D` and re-enables the complete pass. Malformed toolchain
+inputs receive repair guidance even with `--no-auto-prepare`.
 
 The command retains only the validated bundled module names in dependency order for native construction and any private
 fallback retry. It releases the umbrella analysis and workspace before compiling modules. Build/run retain their initial

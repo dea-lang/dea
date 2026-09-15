@@ -83,7 +83,10 @@ class ReporterTest(unittest.TestCase):
                 counts = dict.fromkeys(reporter.COUNTERS, 0)
                 counts.update(module_compiles=compiles, build_commands=3 if compiles else 0, native_resolutions=1)
                 identity = {"toolchain": {"invocation": selected_cc, "target": "test-target"}}
-                lines = ["Starting analysis for entry module '_dea_preparation'"]
+                guard_miss = guard and not (entry / "manifest.json").exists()
+                lines = []
+                if compiles or guard_miss:
+                    lines.append("Starting analysis for entry module '_dea_preparation'")
                 if compiles:
                     lines.append("Starting analysis for entry module 'std.io'")
                 stdout, code = reporter.EXPECTED_OUTPUT, 0
