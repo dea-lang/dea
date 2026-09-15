@@ -361,6 +361,40 @@ invariant rather than an inspectable record.
 The audit answers Question 1 for the observed side: `D` covers every input the complete pass reads, with
 over-approximation only. The remaining ADR decision is which evidence representation the accepted candidate uses.
 
+## Phase 3 Probe Results
+
+Probes dated 2026-09-15 run against an isolated toolchain copy (compiler sources, support, bundled interfaces and the
+Stage 1 executable copied into a scratch root; one mutation at a time with exact byte restoration). Production sources,
+build outputs and caches were never modified. The harness and raw logs are temporary, outside the repository.
+
+| Probe | Attack                                                                               | Observed behavior                                                                                                                             | Safety Argument bullet                                                                        |
+| ----- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| P1a   | Remove `std.types.l1m`, a module outside the application closure                     | Prepare and no-auto consumer both fail with `L1C-2158` repair guidance; never `L1C-2159` or reuse                                             | metadata-changing edits, additions, removals and restorations; no-auto failure classification |
+| P1b   | Restore the exact removed bytes                                                      | Original completed profile hits again; no stale poison, no reprepare                                                                          | removals and restorations of any bundled interface                                            |
+| P1c   | Append one byte to a valid interface                                                 | Automatic path either fails with frontend diagnostics plus `L1C-2158` or freshly reprepares under a new key; old key is never silently reused | changed semantic inputs receive complete validation; unimported modules remain covered        |
+| P3    | Append to a development Stage 1 support source with the compiled validator unchanged | Development identity flips; no-auto consumer classifies `L1C-2159` miss instead of reuse; exact restoration re-enables the original profile   | compiler-owned source replacement and development source changes                              |
+| P4a   | Truncate the completion manifest                                                     | Consumer: `L1C-2159` with force and external-serialization guidance, no reuse                                                                 | malformed or truncated evidence                                                               |
+| P4b   | Bump the manifest `schema` to 2                                                      | Same as P4a                                                                                                                                   | version-mismatched evidence                                                                   |
+| P4c   | Rename the manifest `kind`                                                           | Same as P4a                                                                                                                                   | malformed structural evidence                                                                 |
+| P4d   | Swap two interface artifact digests (well-formed, file-inconsistent)                 | Same as P4a                                                                                                                                   | digest-consistent structurally invalid evidence                                               |
+| P4e   | Rewrite an interface artifact role                                                   | Same as P4a                                                                                                                                   | semantic copies differing from selected inputs                                                |
+| P4f   | Plant a torn `.manifest.pending` record                                              | Reader ignores it; warm hit succeeds                                                                                                          | interruption between validation, publication and manifest publication                         |
+| P4g   | Truncated manifest under explicit `--prepare-stdlib`                                 | Classified completed corruption, `L1C-2153` with repair guidance                                                                              | corruption distinct from disposable evidence failure                                          |
+| P5    | Kill a preparation mid-build before manifest publication                             | No manifest published; no-auto consumer sees `L1C-2159`; clean re-preparation publishes exactly one profile; no pending record survives       | interruption between validation, publication and manifest publication                         |
+| P6    | Concurrent same-key preparations; no-auto consumer on a valid missing profile        | Two writers publish once with 23 total module compiles; missing profile classifies `L1C-2159` with ordinary prepare guidance                  | same-key wait/recheck; no-auto and explicit-preparation failure classification                |
+
+Effects on the candidates: every baseline invalidation and classification requirement passed without a counterexample.
+The completion manifest survives structural attacks as the standing evidence record, and the final-name-only publication
+protocol (`<pending>` then rename) is exactly the pattern any explicit evidence record must copy. The probes narrow
+candidate "reuse a prior successful validation tied to exact identity" to **manifest interpretation**: a valid
+completion manifest with identity plus `D` equality is the reusable success record, and validation-reuse eligibility
+inherits the existing keyed invalidation, force revalidation and classification semantics. No production behavior change
+is authorized by this recording.
+
+Not probed here, deferred to implementation-time verification: replacing the validator *image* itself (P3 covered the
+development-source half; the image digest membership in `D` remains the structural guarantee) and a dedicated explicit
+evidence record beyond the manifest (its structural checks would follow the P4 table above).
+
 ## Verification Criteria For A Later Implementation
 
 - Cold preparation, stale/missing evidence and every changed semantic input receive complete validation before a
