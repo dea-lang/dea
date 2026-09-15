@@ -66,7 +66,12 @@ This draft records later design work; it does not authorize implementation of a 
   - Disposition: Pending
   - ADR: None
   - Rationale: A persistent validation result could extend today's non-authoritative memo role or bootstrap contract.
-    Its identity, compatibility and failure behavior require an explicit decision before implementation.
+    Its identity, compatibility and failure behavior require an explicit decision before implementation. Sequencing: the
+    provisional design decision (representation and invalidation rules) is made at the end of Phase 3, before Phase 4
+    prototyping, which must embody exactly one candidate. If Phase 3 rejects the candidates or Phase 4 fails the
+    pre-registered bar, the outcome retains the full pass: both records resolve as `ADR not warranted` with substantive
+    rationale, and ADR-0038/ADR-0039 remain authoritative. Otherwise the accepted design becomes a new L1 ADR, numbered
+    and indexed in the same change that closes this plan, and both Pending records must be resolved in that change.
 
 ## Current State
 
@@ -257,6 +262,79 @@ To reassess when Phase 4 measures the cost of environment pinning:
   preserve reuse, while a newly shadowing file must still force re-observation.
 - No identity change is authorized by this note; it records the reassessment obligation only.
 
+## Phase 2 Validation-Dependency Audit
+
+Static audit dated 2026-09-15, tracing `pr_frontend_order` through [preparation frontend][preparation-frontend] and
+[driver resolution][resolve-driver].
+
+### Inputs that determine the complete pass outcome
+
+| Input governing the pass                                                         | Where read                                                                                                            | In `D`?                       |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| Validator binary: all semantic, format, fingerprint and repair-guidance behavior | running executable digest                                                                                             | yes, `compiler`               |
+| Selected interface bytes (every bundled `.l1m`)                                  | interface roots are exactly `semantic_root`; each load runs `ifp_verify` fingerprint checks                           | yes, `interfaces`             |
+| Bundled module inventory (member set and names)                                  | derived from the `shared/l1/stdlib` source tree into the umbrella imports                                             | yes, `modules` plus `sources` |
+| Umbrella source program                                                          | regenerated deterministically from the inventory; only its own text is read from source                               | implied by inventory          |
+| `L1_BUILD_DIR` layout                                                            | content sensitivity only: interface digests cover the bytes; the path string itself is never hashed or compared       | yes, by content               |
+| `L1_HOME` layout                                                                 | feeds only the sys-root string; under `MRP_REQUIRE_INTERFACE` imports never consult source roots                      | yes, by content               |
+| Environment variables (`L1_SYSTEM` etc.)                                         | not consulted: `sp_build_from_roots` copies explicit roots without env lookups, and no analysis/driver path reads env | no influence                  |
+| CLI analysis and codegen options                                                 | only `LogConfig` (verbosity, rich log) reaches the pass; trace, check and codegen flags do not                        | no influence                  |
+| C compiler selection and observations                                            | never consulted by the semantic pass                                                                                  | excluded by design            |
+
+Coverage direction: `D` over-approximates the pass inputs. Shared runtime sources and development Stage 1 sources are
+hashed into `D` but never read by this pass, so such changes only cause conservative invalidation, never stale
+acceptance. No under-approximation was found: every read input maps into `D`, and validator format knowledge is bound
+through the binary digest rather than a separate version field.
+
+### Observable diagnostics of the complete pass
+
+On valid inputs the pass is observationally silent: the recording runs emitted zero warning lines, and the existing
+dedicated test asserts an empty stderr on a warm hit. Warning machinery exists (`RES-0020`/`RES-0021`/`RES-0022` import
+shadowing, `TYP-0021`/`TYP-0022`/`TYP-0024` shadowing, `TYP-0030`/`TYP-0031` unreachable code), but it cannot fire for
+the generated umbrella: qualified module imports only, an empty body, and no symbol imports. Any bundled edit that could
+induce such warnings also changes interface bytes and therefore `D`, forcing revalidation anyway.
+
+Failure family recorded for the reuse contract:
+
+- `L1C-2155` preparation workspace cannot be written.
+- `L1C-2158` repair guidance at four sites: compile-stage invalid inputs, frontend umbrella failure, invalid bundled
+  interface dependency graph, and ordinary managed interface failure.
+- `DRV-0074` required module interface not found, `DRV-0020` module name mismatch, and interface parse/format errors.
+- `SIG-0282` interface fingerprint mismatch via [fingerprint verification][fingerprint-verify].
+- `L1C-2130` dependency cycle via [graph ordering][graph-order].
+- Ordinary frontend diagnostics copied from the graph analysis collector.
+
+A success-only reuse path must therefore guarantee: exceptions listed above still surface identically whenever the
+current inputs are invalid, and any future diagnostic emitted by the pass for a given `D` must be tied to the record
+that certifies that `D`.
+
+### Schemas compared with candidate evidence requirements
+
+- `manifest.json`: `schema`, `kind` `native`, `key` (`N`), `identity` (must equal the complete native identity JSON),
+  `D`, `artifacts[]` with `path`, `sha256`, `size`, `role` per entry; interface artifacts must equal the current
+  selected semantic digests. A valid manifest with equal identity and `D` implies the exact validator and inputs
+  previously completed the pipeline after the unconditional full pass, so the completed profile is strong evidence for
+  Question 3. Residual gap: the validation fact is a construction protocol invariant, not a record. No field
+  distinguishes validated from merely constructed, and no outcome or method version is stored, so a future change that
+  wants explicit provenance would need a new record rather than manifest reuse.
+- `dea-inputs` memo, toolchain observation memo and `artifact-validation` memo are explicitly non-authoritative
+  accelerants. Any candidate that stores authoritative validation success in these schemas would weaken their
+  disposable-failure guarantees, so an adopted reuse design needs either the manifest interpretation above or a new
+  explicitly authoritative record.
+- Profile-local evidence (manifest interpretation) needs no new store and dies with `--force` replacement.
+- Shared-by-`D` evidence would be a second semantic store and conflicts with the disposition to prefer no additional
+  persistent state. Bootstrap-produced evidence would need build-record shipping in installed payloads and
+  development-rebuild sensitivity as recorded in Question 4.
+- Evidence fallback (Question 5): missing, stale, unparseable or structurally invalid evidence triggers the complete
+  pass before any miss or disabled classification; a malformed semantic input must surface frontend diagnostics plus
+  `L1C-2158`, never a later `L1C-2159`. Evidence failure stays distinct from completed-profile corruption (`L1C-2153`).
+  Evidence publication must sit under the existing per-key lock while the warm-hit read remains a lock-free read-only
+  check; private fallback never persists evidence; an unwritable cache yields absent evidence and hence the full pass,
+  with no behavioral change.
+
+The audit answers Question 1 for the observed side: `D` covers every input the complete pass reads, with
+over-approximation only. The remaining ADR decision is which evidence representation the accepted candidate uses.
+
 ## Verification Criteria For A Later Implementation
 
 - Cold preparation, stale/missing evidence and every changed semantic input receive complete validation before a
@@ -285,10 +363,14 @@ To reassess when Phase 4 measures the cost of environment pinning:
 - Diagnosing failures on platforms owned by other concurrent work.
 
 [diagnostics]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[fingerprint-verify]: ../../../compiler/stage1_l0/src/interface_fingerprint.l0
+[graph-order]: ../../../compiler/stage1_l0/src/module_graph/order.l0
 [identity-adr]: ../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
 [preparation]: ../../../docs/reference/stdlib-preparation.md
 [preparation-economy]: ../refactors/closed/2026-09-12-native-preparation-economy-noref.md
+[preparation-frontend]: ../../../compiler/stage1_l0/src/preparation/frontend.l0
 [preparation-identity]: ../../../compiler/stage1_l0/support/preparation/identity.h
 [preparation-plan]: closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
+[resolve-driver]: ../../../compiler/stage1_l0/src/driver/resolve.l0
 [semantic-adr]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
 [test-cost]: ../tools/closed/2026-09-13-preparation-test-cost-noref.md
