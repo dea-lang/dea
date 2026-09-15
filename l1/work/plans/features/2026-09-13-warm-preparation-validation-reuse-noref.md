@@ -210,6 +210,53 @@ live catalog before implementation; any number may have been used in the meantim
    confirmed thresholds in this plan before any prototype runs. Any implementation proceeds as later authorized work,
    with this draft updated to the settled design.
 
+## Phase 1 Measurement Checkpoint
+
+- Date: 2026-09-15. Host: Intel macOS 15.7.9 (x86_64, MacBookPro16,1), 12 CPU cores; l1c analysis is single-process.
+  Compiler: Apple clang 17.0.0 (clang-1700.6.4.2), x86_64-apple-darwin24.6.0.
+- Interface inventory: 23 verified bundled interfaces under `$L1_BUILD_DIR/interfaces` after `make build-stage1`.
+- Cold `--prepare-stdlib --c-compiler clang -vvv` into a fresh cache: 22.30 s wall; one `_dea_preparation` umbrella
+  analysis, 23 per-module frontend analyses, and 23 managed module compilations. Statistics: 27 probes, 33 build
+  commands, 377 identity content reads, 47 artifact content reads, 47 metadata checks, 0 option file parses, 1 option
+  root expansion.
+- Warm `--prepare-stdlib --c-compiler clang -vvv` against the completed profile: 0.78 s wall; one complete umbrella
+  analysis, zero per-module analyses, zero managed compiles and build commands; 4 probes, 0 identity content reads, 47
+  artifact content reads, 47 metadata checks. This confirms the current contract: every warm hit still performs the
+  complete bundled validation while skipping all native work.
+- Isolated warm pass cost `C`: a trivial no-import consumer ran via `--run --no-auto-prepare` against the warm profile,
+  interleaved with the same consumer using explicit sys-root/runtime inputs, seven pairs each under a pinned
+  environment. Managed warm median 1.724 s (spread 0.075 s), explicit median 0.811 s (spread 0.044 s), giving `C` of
+  0.913 s. Timings are local desktop measurements under ordinary contention, not CI predictions.
+- Environment sensitivity: the native identity binds `toolchain.environment.PATH`; an invocation environment whose
+  `PATH` differs from the profile's reports an identical warm request as a miss (`L1C-2159` under `--no-auto-prepare`).
+  Phase 1 measured with `PATH` pinned to the cold-run value. Phase 4 measurement series must each pin one environment.
+- Attribution caveat: `C` combines identity resolution, toolchain observation, the umbrella analysis and manifest
+  validation, minus the explicit-input path costs, so it is an upper bound on the semantic-pass share. Separating that
+  share is Phase 2/4 work. Operationalizing the Phase 5 pre-registered bar with this `C`: the reuse prototype must
+  reduce `C` to at most 40 percent of 0.913 s (about 0.36 s) with non-overlapping medians over at least five interleaved
+  pairs, while cold/miss, manifest-validation and trace-analysis budgets must not regress; a prototype that fails this
+  bar retains the full pass, and the 500 ms floor remains the boundary below which persist-new-state complexity is not
+  justified.
+
+## Native Identity Re-evaluation Note
+
+Phase 1 exposed that the native identity binds the raw `toolchain.environment.PATH` text (see
+[preparation identity][preparation-identity]), so an identical warm request becomes a miss (`L1C-2159`) whenever the
+invocation `PATH` differs, even when every resolved path, image digest and toolchain observation is unchanged. The
+existing staleness machinery already re-validates directory snapshots and per-file digests on every command
+(`pc_discovery_current`), so the environment text is defense in depth, not the primary correctness mechanism.
+
+To reassess when Phase 4 measures the cost of environment pinning:
+
+- Determine whether environment-induced misses recur in realistic development and CI invocation environments.
+- Consider dropping `toolchain.environment` from the native key while retaining it in the observation-memo key (the
+  `cwd` field already follows this memo-only pattern), or extending the explicit decline list for untracked behavioral
+  variables (the existing `LD_PRELOAD` pattern).
+- Any change here belongs to native identity (ADR-0039 territory), not to the semantic-validation evidence question this
+  plan investigates. It requires its own falsification probes: a `PATH` reorder with unchanged observations must
+  preserve reuse, while a newly shadowing file must still force re-observation.
+- No identity change is authorized by this note; it records the reassessment obligation only.
+
 ## Verification Criteria For A Later Implementation
 
 - Cold preparation, stale/missing evidence and every changed semantic input receive complete validation before a
@@ -241,6 +288,7 @@ live catalog before implementation; any number may have been used in the meantim
 [identity-adr]: ../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
 [preparation]: ../../../docs/reference/stdlib-preparation.md
 [preparation-economy]: ../refactors/closed/2026-09-12-native-preparation-economy-noref.md
+[preparation-identity]: ../../../compiler/stage1_l0/support/preparation/identity.h
 [preparation-plan]: closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [semantic-adr]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
 [test-cost]: ../tools/closed/2026-09-13-preparation-test-cost-noref.md
