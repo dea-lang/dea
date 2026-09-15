@@ -395,6 +395,38 @@ Not probed here, deferred to implementation-time verification: replacing the val
 development-source half; the image digest membership in `D` remains the structural guarantee) and a dedicated explicit
 evidence record beyond the manifest (its structural checks would follow the P4 table above).
 
+## Phase 4 Measurement Checkpoint
+
+- Date: 2026-09-15, same Intel Mac host and pinned environment as Phase 1. Scratch binaries: the pristine snapshot for
+  the baseline series and the warm-skip prototype; repository sources were restored and rebuilt after the prototype
+  snapshot, so production remains unchanged. Raw logs and binaries stay temporary in the scratch area.
+- Prototype mechanics: in `pr_prepare`, an early profile lookup honoring `--force` returns on a warm hit before
+  `pr_frontend_order`; every non-hit path runs the existing code unchanged. Per-run invariants verified at `-vvv`:
+  baseline warm hits keep one complete `_dea_preparation` analysis, prototype warm hits perform zero, and both series
+  keep zero module compilations with stable keys and exits.
+- Interleaved series, seven rounds of baseline warm, prototype warm, and explicit-input floor:
+
+| Series                  | Median (s) | Min to max (s) |
+| ----------------------- | ---------- | -------------- |
+| Baseline warm consumer  | 1.787      | 1.547 to 1.941 |
+| Prototype warm consumer | 1.123      | 0.976 to 1.160 |
+| Explicit-input floor    | 0.854      | 0.750 to 0.874 |
+
+- Isolated costs: baseline `C` 0.933 s (consistent with the Phase 1 value), prototype `C'` 0.269 s. The prototype
+  removes 71 percent of `C`, and the baseline and prototype value ranges do not overlap across the seven interleaved
+  pairs.
+- Pre-registered bar evaluation: `C'` 0.269 s is below the 0.36 s target; removal exceeds the 60 percent threshold;
+  medians are non-overlapping over at least five interleaved pairs. Cold preparation walls 27.07 s and 28.60 s show no
+  regression within local contention. Warm-hit manifest validation is unchanged by construction.
+- Deviations and exclusions: unusable-profile paths validate the manifest twice in this minimal prototype (the early
+  probe plus the existing lookup); the settled design reuses the single early result. Trace execution budgets were not
+  measured locally and remain implementation-time CI evidence, consistent with the recorded local timing variance.
+- Verdict: Gate 2 passes under the pre-registered rule. The remaining `C'` of 0.269 s is the managed bookkeeping no
+  semantic reuse can remove (identity reconstruction, toolchain observation, manifest validation), so the adopt outcome
+  is confirmed: manifest interpretation with `D` equality is the settled evidence representation. Phase 5 proceeds to
+  resolve both ADR records, specify compatibility and regression coverage, and update this draft from investigation to
+  settled design; any production change remains later authorized work.
+
 ## Verification Criteria For A Later Implementation
 
 - Cold preparation, stale/missing evidence and every changed semantic input receive complete validation before a
