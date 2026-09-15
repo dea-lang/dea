@@ -18,6 +18,19 @@ import textwrap
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.asan_test_support import (
+    ASAN_BUILD_TIMEOUT_SECONDS,
+    ASAN_COMPILE_TIMEOUT_SECONDS,
+    ASAN_RUN_TIMEOUT_SECONDS,
+    AsanToolchain,
+    detect_asan_toolchain,
+    run_asan_command,
+)
+
+
 L1_ROOT = REPO_ROOT / "l1"
 RUNTIME_ROOT = L1_ROOT / "compiler" / "shared" / "runtime"
 RUNTIME_SOURCES = (
@@ -257,70 +270,20 @@ def require_overlap_failure(module_name: str, source: str, mode_flags: list[str]
         raise AssertionError(f"{module_name} did not report {OVERLAP_FAILURE!r}")
 
 
-def asan_compilers() -> list[str]:
-    """Return distinct GNU-compatible compiler candidates for ASan probes."""
+def find_asan_toolchain(work_dir: Path) -> AsanToolchain | None:
+    """Return a bounded same-compiler ASan configuration when available."""
 
-    candidates = [
-        os.environ.get("L1_ASAN_CC", "").strip(),
-        os.environ.get("L1_RUNTIME_CC", "").strip(),
-        os.environ.get("L1_CC", "").strip(),
-        "clang",
-        "gcc",
-        "cc",
-    ]
-    resolved: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        if not candidate:
-            continue
-        path = shutil.which(candidate)
-        if path is None:
-            continue
-        name = Path(path).name.lower().removesuffix(".exe")
-        if "gcc" not in name and "clang" not in name and name != "cc":
-            continue
-        key = str(Path(path).resolve())
-        if key not in seen:
-            seen.add(key)
-            resolved.append(path)
-    return resolved
-
-
-def find_asan_compiler(work_dir: Path) -> str | None:
-    """Return the first compiler whose ASan runtime compiles and runs."""
-
-    source = work_dir / "asan_support.c"
-    executable = work_dir / ("asan_support.exe" if os.name == "nt" else "asan_support")
-    source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
-    unsupported: list[str] = []
-    for compiler in asan_compilers():
-        compiled = subprocess.run(
-            [compiler, "-fsanitize=address", str(source), "-o", str(executable)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if compiled.returncode != 0:
-            unsupported.append(f"{compiler}: {compiled.stderr.strip()}")
-            continue
-        env = os.environ.copy()
-        env["ASAN_OPTIONS"] = "detect_leaks=0"
-        try:
-            executed = subprocess.run(
-                [str(executable)], capture_output=True, text=True, env=env, check=False
-            )
-        except OSError as error:
-            unsupported.append(f"{compiler}: ASan runtime did not launch: {error}")
-            continue
-        if executed.returncode == 0:
-            return compiler
-        detail = executed.stderr.strip() or executed.stdout.strip()
-        unsupported.append(
-            f"{compiler}: ASan runtime exited {executed.returncode}: {detail}"
-        )
-    detail = " | ".join(unsupported) if unsupported else "no compatible compiler found"
-    print(f"vector_aliasing_test: SKIP ASan: {detail}")
-    return None
+    return detect_asan_toolchain(
+        explicit_compiler=os.environ.get("L1_ASAN_CC", ""),
+        configured_compilers=(
+            os.environ.get("L1_RUNTIME_CC", ""),
+            os.environ.get("L1_CC", ""),
+        ),
+        fallback_compilers=("clang", "gcc", "cc"),
+        work_dir=work_dir,
+        label="L1 vector aliasing ASan",
+        cwd=L1_ROOT,
+    )
 
 
 def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
@@ -328,8 +291,8 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
 
     with tempfile.TemporaryDirectory(prefix=f"l1_vector_aliasing_asan_{mode_name}.") as tmp:
         work_dir = Path(tmp)
-        compiler = find_asan_compiler(work_dir)
-        if compiler is None:
+        toolchain = find_asan_toolchain(work_dir)
+        if toolchain is None:
             return
         archiver = shutil.which(os.environ.get("AR", "ar"))
         if archiver is None:
@@ -348,7 +311,7 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
             "-std=c99",
             "-O0",
             "-g",
-            "-fsanitize=address",
+            *toolchain.compile_flags,
             "-fno-omit-frame-pointer",
         ]
         if mode_name == "unchecked":
@@ -356,9 +319,9 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
         for source_name in RUNTIME_SOURCES:
             source_path = RUNTIME_ROOT / "src" / source_name
             object_path = work_dir / f"{Path(source_name).stem}.o"
-            compiled_runtime = subprocess.run(
+            compiled_runtime = run_asan_command(
                 [
-                    compiler,
+                    toolchain.compiler,
                     *runtime_flags,
                     f"-I{RUNTIME_ROOT / 'include'}",
                     f"-I{RUNTIME_ROOT / 'internal'}",
@@ -367,10 +330,9 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
                     "-o",
                     str(object_path),
                 ],
+                phase=f"L1 vector aliasing ASan runtime compile ({source_name})",
+                timeout_seconds=ASAN_COMPILE_TIMEOUT_SECONDS,
                 cwd=L1_ROOT,
-                capture_output=True,
-                text=True,
-                check=False,
             )
             if compiled_runtime.returncode != 0:
                 sys.stderr.write(compiled_runtime.stdout)
@@ -396,14 +358,14 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
 
         build_env = os.environ.copy()
         build_env["L1_CFLAGS"] = " ".join(runtime_flags)
-        built = subprocess.run(
+        built = run_asan_command(
             [
                 str(compiler_path()),
                 "--build",
                 *mode_flags,
                 "--c-compiler",
-                compiler,
-                "--link-arg=-fsanitize=address",
+                toolchain.compiler,
+                *(f"--link-arg={flag}" for flag in toolchain.link_flags),
                 "--runtime-include",
                 str(RUNTIME_ROOT / "include"),
                 "--runtime-lib",
@@ -414,11 +376,10 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
                 str(executable),
                 module_name,
             ],
+            phase=f"L1 vector aliasing ASan {mode_name} build",
+            timeout_seconds=ASAN_BUILD_TIMEOUT_SECONDS,
             cwd=L1_ROOT,
-            capture_output=True,
-            text=True,
             env=build_env,
-            check=False,
         )
         if built.returncode != 0:
             sys.stderr.write(built.stdout)
@@ -429,13 +390,12 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
         env["ASAN_OPTIONS"] = "abort_on_error=1:detect_leaks=0:halt_on_error=1"
         if mode_name == "checked":
             env["DEA_RT_QUARANTINE_MAX_COUNT"] = "4096"
-        executed = subprocess.run(
+        executed = run_asan_command(
             [str(executable)],
+            phase=f"L1 vector aliasing ASan {mode_name} execution ({toolchain.mode})",
+            timeout_seconds=ASAN_RUN_TIMEOUT_SECONDS,
             cwd=L1_ROOT,
-            capture_output=True,
-            text=True,
             env=env,
-            check=False,
         )
         if executed.returncode != 0:
             sys.stderr.write(executed.stdout)

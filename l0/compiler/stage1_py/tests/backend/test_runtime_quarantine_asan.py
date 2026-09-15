@@ -7,38 +7,23 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import shutil
-import subprocess
+import sys
 
 import pytest
 
+MONOREPO_ROOT = Path(__file__).resolve().parents[5]
+if str(MONOREPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(MONOREPO_ROOT))
 
-def _asan_compilers() -> list[str]:
-    """Return distinct GNU-compatible compiler candidates for ASan probes."""
-
-    candidates = [
-        os.environ.get("L0_ASAN_CC", "").strip(),
-        os.environ.get("L0_CC", "").strip(),
-        "clang",
-        "gcc",
-        "cc",
-    ]
-    resolved: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        if not candidate:
-            continue
-        path = shutil.which(candidate)
-        if path is None:
-            continue
-        name = Path(path).name.lower().removesuffix(".exe")
-        if "gcc" not in name and "clang" not in name and name != "cc":
-            continue
-        key = str(Path(path).resolve())
-        if key not in seen:
-            seen.add(key)
-            resolved.append(path)
-    return resolved
+from scripts.asan_test_support import (
+    ASAN_COMPILE_TIMEOUT_SECONDS,
+    ASAN_RUN_TIMEOUT_SECONDS,
+    AsanTimeoutError,
+    AsanToolchain,
+    AsanUnavailableError,
+    detect_asan_toolchain,
+    run_asan_command,
+)
 
 
 def _compile_asan_probe(
@@ -46,72 +31,51 @@ def _compile_asan_probe(
     runtime_dir: Path,
     work_dir: Path,
     quarantine_count: int,
-) -> tuple[Path, str] | None:
+) -> tuple[Path, AsanToolchain] | None:
     """Compile one generated probe with the first ASan-capable compiler."""
 
     executable_suffix = ".exe" if os.name == "nt" else ""
     source = work_dir / f"quarantine-{quarantine_count}.c"
     executable = work_dir / f"quarantine-{quarantine_count}{executable_suffix}"
-    support_source = work_dir / "asan-support.c"
-    support_executable = work_dir / f"asan-support{executable_suffix}"
     source.write_text(c_code, encoding="utf-8")
-    support_source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
-    unsupported: list[str] = []
-    failures: list[str] = []
-
-    for compiler in _asan_compilers():
-        support = subprocess.run(
-            [compiler, "-fsanitize=address", str(support_source), "-o", str(support_executable)],
-            capture_output=True,
-            text=True,
-            check=False,
+    try:
+        toolchain = detect_asan_toolchain(
+            explicit_compiler=os.environ.get("L0_ASAN_CC", ""),
+            configured_compilers=(os.environ.get("L0_CC", ""),),
+            fallback_compilers=("clang", "gcc", "cc"),
+            work_dir=work_dir,
+            label="L0 quarantine ASan",
         )
-        if support.returncode != 0:
-            unsupported.append(f"{compiler}: {support.stderr.strip()}")
-            continue
-        support_env = os.environ.copy()
-        support_env["ASAN_OPTIONS"] = "detect_leaks=0"
-        try:
-            support_run = subprocess.run(
-                [str(support_executable)],
-                capture_output=True,
-                text=True,
-                env=support_env,
-                check=False,
-            )
-        except OSError as error:
-            unsupported.append(f"{compiler}: ASan runtime did not launch: {error}")
-            continue
-        if support_run.returncode != 0:
-            detail = support_run.stderr.strip() or support_run.stdout.strip()
-            unsupported.append(
-                f"{compiler}: ASan runtime exited {support_run.returncode}: {detail}"
-            )
-            continue
-        command = [
-            compiler,
-            "-std=c99",
-            "-O0",
-            "-g",
-            "-fsanitize=address",
-            "-fno-omit-frame-pointer",
-            f"-D_RT_QUARANTINE_MAX_COUNT={quarantine_count}",
-            "-I",
-            str(runtime_dir),
-            str(source),
-            "-o",
-            str(executable),
-        ]
-        completed = subprocess.run(command, capture_output=True, text=True, check=False)
-        if completed.returncode == 0:
-            return executable, compiler
-        failures.append(f"{compiler}: {completed.stderr.strip()}")
+    except AsanUnavailableError as error:
+        pytest.fail(str(error))
+    if toolchain is None:
+        pytest.skip("selected C compiler has no working ASan capability")
 
-    if failures:
-        pytest.fail("ASan quarantine probe did not compile: " + " | ".join(failures))
-    if unsupported:
-        pytest.skip("no ASan-capable C compiler: " + " | ".join(unsupported))
-    pytest.skip("no GNU-compatible C compiler is available for the ASan probe")
+    command = [
+        toolchain.compiler,
+        "-std=c99",
+        "-O0",
+        "-g",
+        *toolchain.link_flags,
+        "-fno-omit-frame-pointer",
+        f"-D_RT_QUARANTINE_MAX_COUNT={quarantine_count}",
+        "-I",
+        str(runtime_dir),
+        str(source),
+        "-o",
+        str(executable),
+    ]
+    try:
+        completed = run_asan_command(
+            command,
+            phase="L0 quarantine ASan fixture compile",
+            timeout_seconds=ASAN_COMPILE_TIMEOUT_SECONDS,
+        )
+    except AsanTimeoutError as error:
+        pytest.fail(str(error))
+    if completed.returncode != 0:
+        pytest.fail(f"ASan quarantine probe did not compile: {completed.stderr.strip()}")
+    return executable, toolchain
 
 
 @pytest.mark.parametrize(
@@ -151,16 +115,18 @@ def test_checked_quarantine_preserves_asan_lifetime_observability(
 
     compiled = _compile_asan_probe(c_code, runtime_dir, tmp_path, quarantine_count)
     assert compiled is not None
-    executable, _compiler = compiled
+    executable, toolchain = compiled
     run_env = os.environ.copy()
     run_env["ASAN_OPTIONS"] = "abort_on_error=1:detect_leaks=0:halt_on_error=1"
-    completed = subprocess.run(
-        [str(executable)],
-        capture_output=True,
-        text=True,
-        env=run_env,
-        check=False,
-    )
+    try:
+        completed = run_asan_command(
+            [str(executable)],
+            phase=f"L0 quarantine ASan fixture execution ({toolchain.mode})",
+            timeout_seconds=ASAN_RUN_TIMEOUT_SECONDS,
+            env=run_env,
+        )
+    except AsanTimeoutError as error:
+        pytest.fail(str(error))
 
     assert completed.returncode != 0
     assert expected_error in completed.stderr

@@ -10,20 +10,29 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
 import textwrap
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from scripts.asan_test_support import (
+    ASAN_COMPILE_TIMEOUT_SECONDS,
+    ASAN_RUN_TIMEOUT_SECONDS,
+    AsanToolchain,
+    detect_asan_toolchain,
+    run_asan_command,
+)
 from test_runner_common import source_tree_l0c_command
 
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
 L0_ROOT = REPO_ROOT / "l0"
 RUNTIME_DIR = L0_ROOT / "compiler" / "shared" / "runtime"
 RANGE_FAILURE = "Source range out of bounds in vec_push_bytes"
@@ -220,69 +229,16 @@ def require_overlap_failure(module_name: str, source: str, mode_flags: list[str]
         raise AssertionError(f"{module_name} did not report {OVERLAP_FAILURE!r}")
 
 
-def asan_compilers() -> list[str]:
-    """Return distinct GNU-compatible compiler candidates for ASan probes."""
+def find_asan_toolchain(work_dir: Path) -> AsanToolchain | None:
+    """Return a bounded same-compiler ASan configuration when available."""
 
-    candidates = [
-        os.environ.get("L0_ASAN_CC", "").strip(),
-        os.environ.get("L0_CC", "").strip(),
-        "clang",
-        "gcc",
-        "cc",
-    ]
-    resolved: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        if not candidate:
-            continue
-        path = shutil.which(candidate)
-        if path is None:
-            continue
-        name = Path(path).name.lower().removesuffix(".exe")
-        if "gcc" not in name and "clang" not in name and name != "cc":
-            continue
-        key = str(Path(path).resolve())
-        if key not in seen:
-            seen.add(key)
-            resolved.append(path)
-    return resolved
-
-
-def find_asan_compiler(work_dir: Path) -> str | None:
-    """Return the first compiler whose ASan runtime compiles and runs."""
-
-    source = work_dir / "asan_support.c"
-    executable = work_dir / ("asan_support.exe" if os.name == "nt" else "asan_support")
-    source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
-    unsupported: list[str] = []
-    for compiler in asan_compilers():
-        compiled = subprocess.run(
-            [compiler, "-fsanitize=address", str(source), "-o", str(executable)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if compiled.returncode != 0:
-            unsupported.append(f"{compiler}: {compiled.stderr.strip()}")
-            continue
-        env = os.environ.copy()
-        env["ASAN_OPTIONS"] = "detect_leaks=0"
-        try:
-            executed = subprocess.run(
-                [str(executable)], capture_output=True, text=True, env=env, check=False
-            )
-        except OSError as error:
-            unsupported.append(f"{compiler}: ASan runtime did not launch: {error}")
-            continue
-        if executed.returncode == 0:
-            return compiler
-        detail = executed.stderr.strip() or executed.stdout.strip()
-        unsupported.append(
-            f"{compiler}: ASan runtime exited {executed.returncode}: {detail}"
-        )
-    detail = " | ".join(unsupported) if unsupported else "no compatible compiler found"
-    print(f"vector_aliasing_test: SKIP ASan: {detail}")
-    return None
+    return detect_asan_toolchain(
+        explicit_compiler=os.environ.get("L0_ASAN_CC", ""),
+        configured_compilers=(os.environ.get("L0_CC", ""),),
+        fallback_compilers=("clang", "gcc", "cc"),
+        work_dir=work_dir,
+        label="L0 vector aliasing ASan",
+    )
 
 
 def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
@@ -290,8 +246,8 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
 
     with tempfile.TemporaryDirectory(prefix=f"l0_vector_aliasing_asan_{mode_name}.") as tmp:
         work_dir = Path(tmp)
-        compiler = find_asan_compiler(work_dir)
-        if compiler is None:
+        toolchain = find_asan_toolchain(work_dir)
+        if toolchain is None:
             return
         module_name = f"vector_aliasing_asan_{mode_name}"
         (work_dir / f"{module_name}.l0").write_text(
@@ -323,11 +279,11 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
             raise AssertionError(f"{module_name} generation failed")
 
         command = [
-            compiler,
+            toolchain.compiler,
             "-std=c99",
             "-O0",
             "-g",
-            "-fsanitize=address",
+            *toolchain.link_flags,
             "-fno-omit-frame-pointer",
         ]
         if mode_name == "checked":
@@ -335,7 +291,11 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
         command.extend(
             ["-I", str(RUNTIME_DIR), str(generated), "-o", str(executable)]
         )
-        compiled = subprocess.run(command, capture_output=True, text=True, check=False)
+        compiled = run_asan_command(
+            command,
+            phase=f"L0 vector aliasing ASan {mode_name} compile",
+            timeout_seconds=ASAN_COMPILE_TIMEOUT_SECONDS,
+        )
         if compiled.returncode != 0:
             sys.stderr.write(compiled.stdout)
             sys.stderr.write(compiled.stderr)
@@ -343,8 +303,11 @@ def require_asan_success(mode_name: str, mode_flags: list[str]) -> None:
 
         env = os.environ.copy()
         env["ASAN_OPTIONS"] = "abort_on_error=1:detect_leaks=0:halt_on_error=1"
-        executed = subprocess.run(
-            [str(executable)], capture_output=True, text=True, env=env, check=False
+        executed = run_asan_command(
+            [str(executable)],
+            phase=f"L0 vector aliasing ASan {mode_name} execution ({toolchain.mode})",
+            timeout_seconds=ASAN_RUN_TIMEOUT_SECONDS,
+            env=env,
         )
         if executed.returncode != 0:
             sys.stderr.write(executed.stdout)
