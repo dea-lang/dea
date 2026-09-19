@@ -120,7 +120,7 @@ def main() -> int:
         assert not (entry / "include").exists() and not (cache / "v1/interfaces").exists()
         assert call("--prepare-stdlib", *common).stderr == ""
         warm_preparation = call("--prepare-stdlib", *common, "-v")
-        assert analysis_count(warm_preparation, "_dea_preparation") == 1, warm_preparation.stderr
+        assert analysis_count(warm_preparation, "_dea_preparation") == 0, warm_preparation.stderr
         assert "Preparation command" not in warm_preparation.stderr
         source = root / "app.l1"
         source.write_text('module app; import std.io; func main() { printl_s("managed-ok"); }\n')
@@ -130,7 +130,7 @@ def main() -> int:
         program = root / ("app.exe" if os.name == "nt" else "app")
         kept = call("--build", *common, "--no-auto-prepare", "--keep-c", "app", "-o", str(program), "-v")
         assert "Preparing " not in kept.stderr
-        assert analysis_count(kept, "app") == 2 and analysis_count(kept, "_dea_preparation") == 1, kept.stderr
+        assert analysis_count(kept, "app") == 2 and analysis_count(kept, "_dea_preparation") == 0, kept.stderr
         retained = Path(str(program) + ".dea-c") / "std/io.c"
         assert retained.read_bytes() == canonical_c
         # This fixture imports exactly std.io's ten-module bundled closure.
@@ -210,6 +210,27 @@ def main() -> int:
         del env["L1_CFLAGS"]
         switched_back = call("--run", *common, "--no-auto-prepare", "app")
         assert switched_back.stdout == "managed-ok\n" and switched_back.stderr == ""
+        # Editing a bundled interface outside the application closure changes D, so the next
+        # automatic consumer must perform one complete bundled validation and prepare a new key
+        # instead of reusing the completed profile. Restoring the exact bytes re-enables it.
+        bundled = len(list((L1_ROOT / "compiler/shared/l1/stdlib").rglob("*.l1")))
+        types_interface.write_bytes(types_bytes + b"\n")
+        edited = call("--run", *common, "app", "-vvv")
+        assert edited.stdout == "managed-ok\n" and "Preparing stdlib and runtime" in edited.stderr
+        assert analysis_count(edited, "_dea_preparation") == 1, edited.stderr
+        assert re.search(r'"module_compiles":(\d+)', edited.stderr).group(1) == str(bundled), edited.stderr
+        edited_records = list(cache.glob("v1/native/*/manifest.json"))
+        assert len(edited_records) == 3
+        edited_entry = next(path for path in edited_records
+                            if path not in (entries[0], configured_marker)).parent
+        types_interface.write_bytes(types_bytes)
+        restored_hit = call("--run", *common, "--no-auto-prepare", "app", "-vvv")
+        assert restored_hit.stdout == "managed-ok\n"
+        assert analysis_count(restored_hit, "_dea_preparation") == 0, restored_hit.stderr
+        assert re.search(r'"module_compiles":(\d+)', restored_hit.stderr).group(1) == "0", restored_hit.stderr
+        restored_line = next(line for line in restored_hit.stderr.splitlines()
+                             if line.startswith("Reuse prepared profile: "))
+        assert Path(restored_line[len("Reuse prepared profile: "):]) == entries[0].parent, restored_hit.stderr
     print("managed semantic/native providers and retained C: PASS")
     return 0
 

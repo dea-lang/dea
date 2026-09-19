@@ -197,9 +197,31 @@ func pr_build_selected(context: void*, ordered: StringVector*, opts: CliOptions*
     return l1c_prep_complete(context) == 1;
 }
 
+/** Print the selected identity and cache root at user verbosity. */
+func pr_print_selection(context: void*, opts: CliOptions*) {
+    if (opts.verbosity >= 1) {
+        err_printl_s("Preparation selection: " + pr_get(context, "native_key") + "; cache " + pr_get(context, "local"));
+    }
+}
+
 /** Resolve once, recheck under a per-key lock, and share one native preparation pipeline. */
 func pr_prepare(context: void*, explicit: bool, opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> bool {
     if (l1c_prep_resolve(context) != 1) { return false; }
+    /* A valid warm hit reuses the completed manifest as the certified result of the complete
+       bundled validation: identity and D equality prove the current validator already accepted
+       the current inputs. This return precedes the explicit eligibility checks below; that is
+       sound because profile lookup declines hits for ineligible configurations and resolution
+       already fails explicit unwritable roots, so an explicit hit was already eligible and
+       writable; implicit commands keep their valid readable hit on an unwritable default. */
+    let found = 0;
+    if (!opts.force) {
+        found = l1c_prep_find(context);
+        if (found == 1) {
+            pr_print_selection(context, opts);
+            if (opts.verbosity >= 1) { err_printl_s("Reuse prepared profile: " + pr_get(context, "selected")); }
+            return true;
+        }
+    }
     let ordered_opt = pr_frontend_order(pr_get(context, "semantic_root"), pr_get(context, "home"),
         pr_get(context, "modules"), cfg, diags);
     if (ordered_opt == null) { return false; }
@@ -215,16 +237,8 @@ func pr_prepare(context: void*, explicit: bool, opts: CliOptions*, cfg: LogConfi
             cli_emit_error(diags, "L1C-2150", "persistent preparation requires a usable cache destination; select --stdlib-cache PATH");
             return false;
         }
-        if (opts.verbosity >= 1) {
-            err_printl_s("Preparation selection: " + pr_get(context, "native_key") + "; cache " + pr_get(context, "local"));
-        }
-        let found = 0;
-        if (!opts.force) { found = l1c_prep_find(context); }
+        pr_print_selection(context, opts);
         if (found < 0) { return false; }
-        if (found == 1) {
-            if (opts.verbosity >= 1) { err_printl_s("Reuse prepared profile: " + pr_get(context, "selected")); }
-            return true;
-        }
         if (!explicit && opts.no_auto_prepare) { pr_report_disabled(context, opts, diags); return false; }
         let private = ineligible != "" || !writable || found == 2;
         if (!private) {
@@ -234,7 +248,12 @@ func pr_prepare(context: void*, explicit: bool, opts: CliOptions*, cfg: LogConfi
             }
             if (!private && !opts.force) {
                 found = l1c_prep_find(context);
-                if (found == 1 || found < 0) { l1c_prep_unlock(context); return found == 1; }
+                if (found == 1) {
+                    l1c_prep_unlock(context);
+                    if (opts.verbosity >= 1) { err_printl_s("Reuse prepared profile: " + pr_get(context, "selected")); }
+                    return true;
+                }
+                if (found < 0) { l1c_prep_unlock(context); return false; }
                 if (found == 2) {
                     l1c_prep_unlock(context);
                     private = true;

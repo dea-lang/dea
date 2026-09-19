@@ -29,7 +29,7 @@
   - `l1/compiler/stage1_l0/tests/support/driver_inputs.l0`
   - `l1/compiler/stage1_l0/tests/support/driver_inputs.py`
 - Related:
-  - [l1/work/plans/features/2026-09-13-warm-preparation-validation-reuse-noref.md][warm-validation]
+  - [l1/work/plans/features/closed/2026-09-13-warm-preparation-validation-reuse-noref.md][warm-validation]
 - Repro: `make test-stage1-trace TESTS="l1c_lib_test mul_runtime_test slice_trace_test"`
 
 ## Summary
@@ -159,8 +159,8 @@ during finalization.
 - Investigating failures on other CI platforms.
 - Dispatching workflows or pushing commits.
 
-The separate [l1/work/plans/features/2026-09-13-warm-preparation-validation-reuse-noref.md][warm-validation] tracks the
-future production design question (point 6).
+The separate [l1/work/plans/features/closed/2026-09-13-warm-preparation-validation-reuse-noref.md][warm-validation]
+tracks the future production design question (point 6).
 
 ## Verification Criteria
 

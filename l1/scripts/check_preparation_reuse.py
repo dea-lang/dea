@@ -221,8 +221,9 @@ class Probe:
         """
         require(record["exit_code"] == 0 and record["output_ok"] and not record["diagnostics"],
                 "consumer failed or produced incorrect output; see invocation logs")
-        require(record["stdlib_validations"] == 1 and (compiles > 0 or record["managed_analyses"] == 0),
-                "expected one bundled validation and no warm per-module analysis")
+        require(record["stdlib_validations"] == (1 if compiles > 0 else 0)
+                and (compiles > 0 or record["managed_analyses"] == 0),
+                "expected one bundled validation when preparing and none on warm reuse")
         require(record["statistics"]["module_compiles"] == compiles, "unexpected managed module compilation count")
         require(bool(re.fullmatch(r"[0-9a-f]{64}", record["native_key"])), "missing native key")
         toolchain = record["toolchain"]

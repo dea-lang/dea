@@ -193,6 +193,11 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Tool [l1/work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md][preparation-test-cost] isolated unrelated
   tests from automatic preparation, retained dedicated integration coverage and avoided unnecessary preparation support
   compilation. Trace measurements did not justify retaining a driver-harness split.
+- Feature
+  [l1/work/plans/features/closed/2026-09-13-warm-preparation-validation-reuse-noref.md][warm-preparation-validation]
+  adopted completion-manifest interpretation as the settled evidence representation, so valid warm native profile hits
+  skip the repeated complete bundled validation while any input change re-enables the full pass; probes, thresholds and
+  implementation are recorded in ADR-0040.
 - Tool [l1/work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md][reuse-report] added explicit CI
   capability reports with exact compiler attribution, cold/warm counters, guarded reuse, header invalidation and
   retained failure evidence.
@@ -280,9 +285,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   print-helper surface, using typed L1 variadics with shared string and writer formatting.
 - Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Priority 2 audit that records
   portable systems capability and C99-family coverage without promising literal C99 API parity.
-- Feature [l1/work/plans/features/2026-09-13-warm-preparation-validation-reuse-noref.md][warm-preparation-validation]
-  investigates whether warm native profiles can reuse complete bundled semantic validation while preserving correctness,
-  diagnostics and cache invalidation; the current validation contract remains unchanged.
 
 ## Backlog
 
@@ -442,6 +444,6 @@ update to be promoted to an initiative or plan:
 [unified-lbi-mangling]: ../work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md
 [variadic-functions]: ../work/plans/features/closed/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md
-[warm-preparation-validation]: ../work/plans/features/2026-09-13-warm-preparation-validation-reuse-noref.md
+[warm-preparation-validation]: ../work/plans/features/closed/2026-09-13-warm-preparation-validation-reuse-noref.md
 [wide-int]: ../work/plans/features/closed/2026-04-13-l1-uint-long-ulong-bigint-builtins-noref.md
 [wide-math]: ../work/plans/features/closed/2026-04-14-l1-std-math-wide-integer-followup-noref.md
