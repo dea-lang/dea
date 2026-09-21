@@ -36,6 +36,71 @@ def identity(library: Path, config: dict, *, eligible: bool = True) -> tuple[str
         return service.get("dea_key"), service.get("native_key"), json.loads(value), service.stats()
 
 
+def identity_in_environment(library: Path, config: dict, environment: dict[str, str],
+                            *, eligible: bool = True) -> tuple[str, str, dict, dict]:
+    """Resolve an identity in a process started with an exact environment update.
+
+    Args:
+        library: Compiled preparation service.
+        config: Configuration passed to the service.
+        environment: Variables to set in the child process at startup.
+        eligible: Whether persistent reuse must remain eligible.
+
+    Returns:
+        The identity tuple returned by the child process.
+    """
+    with tempfile.TemporaryDirectory(prefix="l1-native-identity-request-") as directory:
+        root = Path(directory)
+        request_path, response_path = root / "request.json", root / "response.json"
+        request_path.write_text(json.dumps({"library": str(library), "config": config, "eligible": eligible,
+                                            "response": str(response_path)}))
+        child_environment = dict(os.environ)
+        if os.name == "nt":
+            updated_names = {name.casefold() for name in environment}
+            child_environment = {
+                name: value for name, value in child_environment.items()
+                if name.casefold() not in updated_names
+            }
+        child_environment.update(environment)
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--identity-request", str(request_path)],
+            env=child_environment, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"identity child failed ({result.returncode})\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+        value = json.loads(response_path.read_text())
+        return value[0], value[1], value[2], value[3]
+
+
+def serve_identity_request(request_path: Path) -> int:
+    """Serve one subprocess-isolated identity request.
+
+    Args:
+        request_path: JSON request containing the library, configuration, expectation and response path.
+
+    Returns:
+        Zero after writing the identity response.
+    """
+    request = json.loads(request_path.read_text())
+    value = identity(Path(request["library"]), request["config"], eligible=request["eligible"])
+    Path(request["response"]).write_text(json.dumps(value))
+    return 0
+
+
+def has_component(value: dict, path: Path) -> bool:
+    """Return whether native identity components contain a path."""
+    components = value["toolchain"]["components"]
+    names = components.keys() if isinstance(components, dict) else components
+    return path in map(Path, names)
+
+
+def component_digest(value: dict, path: Path) -> str:
+    """Return one path-normalized native component digest."""
+    for name, digest in value["toolchain"]["components"].items():
+        if Path(name) == path:
+            return digest
+    raise AssertionError(f"missing native component: {path}")
+
+
 
 def build_compiler_launcher(compiler: Path, destination: Path) -> None:
     """Build a native PATH fixture without relocating the installed toolchain.
@@ -100,7 +165,7 @@ int main(int argc, char **argv) {
 
 
 def check_environment_identity(library: Path, root: Path, config: dict) -> None:
-    """Separate selection changes from effective inputs and revalidate older memos.
+    """Separate POSIX selection changes from effective inputs and revalidate older memos.
 
     Args:
         library: Compiled preparation service.
@@ -154,7 +219,7 @@ def check_environment_identity(library: Path, root: Path, config: dict) -> None:
             shadowed = identity(library, named)
             assert shadowed[0] == unshadowed[0] and shadowed[1] != unshadowed[1]
             assert Path(shadowed[2]["toolchain"]["invocation"]) == shadow_tool
-            assert str(shadow_tool) in shadowed[2]["toolchain"]["components"]
+            assert has_component(shadowed[2], shadow_tool)
         finally:
             shadow_tool.unlink()
     # Application defines cannot hide an environment-selected runtime deployment target.
@@ -180,7 +245,7 @@ def check_environment_identity(library: Path, root: Path, config: dict) -> None:
             shadow.write_text("#include_next <float.h>\n#define ENVIRONMENT_PROBE 1\n")
             observed = identity(library, selected)
             assert observed[0] == empty[0] and observed[1] != empty[1]
-            assert str(shadow) in observed[2]["toolchain"]["components"]
+            assert has_component(observed[2], shadow)
         shadow.write_text("#include_next <float.h>\n#define ENVIRONMENT_PROBE 2\n")
         with patch.dict(os.environ, {variable: str(headers)}):
             assert identity(library, selected)[1] != observed[1], "returning environment must reject stale memo"
@@ -211,7 +276,7 @@ def check_header_dependencies(library: Path, root: Path, config: dict) -> None:
         header.write_text(f'#if {expression}\n#include "{child.name}"\n#endif\n' + original)
         selected = {**config, "runtime_include": str(headers), "codegen": codegen}
         before = identity(library, selected)
-        assert str(child) in before[2]["toolchain"]["components"]
+        assert has_component(before[2], child)
         child.write_text("#define IDENTITY_BRANCH_VALUE 2\n")
         assert identity(library, selected)[1] != before[1]
     # The generated float prelude selects <float.h>, independently of runtime C.
@@ -219,7 +284,7 @@ def check_header_dependencies(library: Path, root: Path, config: dict) -> None:
     float_header.write_text("#include_next <float.h>\n")
     selected = {**config, "options": ["-std=c99", "-I" + str(headers)]}
     before = identity(library, selected)
-    assert str(float_header) in before[2]["toolchain"]["components"]
+    assert has_component(before[2], float_header)
     float_header.write_text("#include_next <float.h>\n#define EXTRA_FLOAT_HEADER 1\n")
     assert identity(library, selected)[1] != before[1]
     # An absent earlier candidate is a dependency too, even if the directory existed.
@@ -229,7 +294,7 @@ def check_header_dependencies(library: Path, root: Path, config: dict) -> None:
     before = identity(library, selected)
     (earlier / "float.h").write_text("#include_next <float.h>\n#define SHADOW_FLOAT_HEADER 1\n")
     after = identity(library, selected)
-    assert before[1] != after[1] and str(earlier / "float.h") in after[2]["toolchain"]["components"]
+    assert before[1] != after[1] and has_component(after[2], earlier / "float.h")
 
 
 def check_dependency_spellings(library: Path, root: Path, config: dict, *, literal_backslashes: bool) -> None:
@@ -291,7 +356,7 @@ def check_executable_dependencies(library: Path, root: Path, config: dict) -> No
     compile_driver(native_cc, compiler, 1, True)
     selected = {**config, "compiler": str(native_cc)}
     before = identity(library, selected)
-    assert str(native_ar) in before[2]["toolchain"]["components"]
+    assert has_component(before[2], native_ar)
     compile_driver(native_cc, compiler, 2, True)
     after = identity(library, selected)
     assert before[0] == after[0] and before[1] != after[1]
@@ -453,7 +518,7 @@ def check_implementation_library(library: Path, root: Path, config: dict) -> Non
                     "-o", str(driver)], check=True, capture_output=True)
     selected = {**config, "compiler": str(driver)}
     before = identity(library, selected)
-    assert str(implementation) in before[2]["toolchain"]["components"]
+    assert has_component(before[2], implementation)
     driver_bytes = driver.read_bytes()
     warm = identity(library, selected)
     assert warm[:2] == before[:2] and warm[3]["identity_content_reads"] == 0
@@ -552,7 +617,7 @@ def check_clang_configuration_inputs(library: Path, root: Path, config: dict, co
         selected = {**config, "compiler": compiler, "options": options}
         before = identity(library, selected)
         for path in (parent, child, definitions):
-            assert before[2]["toolchain"]["components"][str(path)] == hashlib.sha256(path.read_bytes()).hexdigest()
+            assert component_digest(before[2], path) == hashlib.sha256(path.read_bytes()).hexdigest()
         definitions.write_text("-DDEA_CONFIG_CHILD=2 -fPIC\n")
         actual = subprocess.run([compiler, *options, "-dM", "-E", "-x", "c", "-"], input="",
                                 check=True, capture_output=True, text=True)
@@ -567,7 +632,7 @@ def check_clang_configuration_inputs(library: Path, root: Path, config: dict, co
     direct = root / "encoded-direct.rsp"
     direct.write_bytes(b"\xef\xbb\xbf" + ("@" + shlex.quote(definitions.as_posix()) + "\n").encode())
     selected = {**config, "compiler": compiler, "options": ["@" + str(direct)]}
-    assert str(definitions) in identity(library, selected)[2]["toolchain"]["components"]
+    assert has_component(identity(library, selected)[2], definitions)
 
 
 def check_implicit_clang_configuration(library: Path, root: Path, config: dict, compiler: str) -> None:
@@ -589,7 +654,7 @@ def check_implicit_clang_configuration(library: Path, root: Path, config: dict, 
     configuration.write_text("-DDEA_IMPLICIT_CONFIG=1 -fPIC\n")
     created = identity(library, selected)
     assert created[0] == before[0] and created[1] != before[1]
-    assert str(configuration) in created[2]["toolchain"]["components"]
+    assert has_component(created[2], configuration)
     configuration.write_text("-DDEA_IMPLICIT_CONFIG=2 -fPIC\n")
     changed = identity(library, selected)
     assert changed[1] != created[1] and "-fPIC" in changed[2]["runtime"]["options"]
@@ -631,7 +696,7 @@ def check_sdk_configuration(library: Path, root: Path, config: dict) -> None:
             metadata.write_bytes(changed_bytes)
             changed = identity(library, selected)
             assert changed[0] == before[0] and changed[1] != before[1]
-            assert changed[2]["toolchain"]["components"][str(metadata)] == hashlib.sha256(changed_bytes).hexdigest()
+            assert component_digest(changed[2], metadata) == hashlib.sha256(changed_bytes).hexdigest()
             metadata.unlink()
             assert identity(library, selected)[1] != changed[1]
             metadata.write_bytes(changed_bytes)
@@ -760,7 +825,7 @@ def check_option_file_spelling(library: Path, root: Path, config: dict, compiler
         configuration.write_text("@x:child.rsp\n")
         selected["options"] = ["--config=" + str(configuration)]
         observed = identity(library, selected)
-        assert str(child) in observed[2]["toolchain"]["components"]
+        assert has_component(observed[2], child)
         assert "-fPIC" in observed[2]["runtime"]["options"]
 
 
@@ -805,8 +870,8 @@ def check_option_expansion_boundaries(library: Path, root: Path, config: dict, c
     selected = {**config, "compiler": compiler, "options": ["@" + str(direct)]}
     with chdir(invocation):
         observed = identity(library, selected)
-        assert str(direct_child) in observed[2]["toolchain"]["components"]
-        assert str(config_child) not in observed[2]["toolchain"]["components"]
+        assert has_component(observed[2], direct_child)
+        assert not has_component(observed[2], config_child)
     if not configuration_files:
         return
     selected["options"].append("--config=" + str(configuration))
@@ -867,6 +932,8 @@ def check_clang_configuration_support(library: Path, root: Path, config: dict, c
 
 def main() -> int:
     """Exercise effective input/option invalidation without rebuilding native fixtures."""
+    if len(sys.argv) == 3 and sys.argv[1] == "--identity-request":
+        return serve_identity_request(Path(sys.argv[2]))
     with tempfile.TemporaryDirectory(prefix="l1-native-identity-") as directory:
         root = Path(directory).resolve()
         library = build_library(root)
@@ -890,7 +957,8 @@ def main() -> int:
             warm = identity(library, config)
             assert warm[:2] == plain[:2] and warm[3]["identity_content_reads"] == 0
             assert warm[3]["probes"] <= 4
-            check_environment_identity(library, root / "environment-primary", config)
+            if os.name != "nt":
+                check_environment_identity(library, root / "environment-primary", config)
             environment_families = {plain[2]["toolchain"]["family"]}
             forced = identity(library, {**config, "force": 1})
             assert forced[:2] == plain[:2] and forced[3]["identity_content_reads"] > 0
@@ -954,7 +1022,9 @@ def main() -> int:
                 assert observed[2]["toolchain"]["family"] in ("gcc", "clang", "tcc")
                 family = observed[2]["toolchain"]["family"]
                 if family not in environment_families:
-                    check_environment_identity(library, root / f"environment-{index}", {**config, "compiler": compiler})
+                    if os.name != "nt":
+                        check_environment_identity(
+                            library, root / f"environment-{index}", {**config, "compiler": compiler})
                     environment_families.add(family)
                 if observed[2]["toolchain"]["family"] in ("gcc", "clang"):
                     # Clang depfile output can normalize POSIX backslashes;
