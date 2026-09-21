@@ -462,7 +462,8 @@ static int pc_discovery_current(PcContext *c, const PcJson *memo) {
         !pj_field(discovery, "version") || !tc || tc->type != PJ_OBJECT ||
         !pj_field(tc, "family") || !pj_field(tc, "invocation") || !pj_field(tc, "target") ||
         (strcmp(pj_field(tc, "family"), "tcc") && !pj_field(tc, "archiver")) ||
-        !pc_hex_digest(pj_field(tc, "target_macros")) || !memo_files ||
+        !pc_hex_digest(pj_field(tc, "target_macros")) ||
+        !pc_hex_digest(pj_field(tc, "runtime_target_macros")) || !memo_files ||
         memo_files->type != PJ_OBJECT)
         return 0;
     digest = pc_json_digest(discovery);
@@ -1230,6 +1231,31 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
         pj_set_string(toolchain, "target_macros", hex);
     }
     pc_probe_free(&p);
+    /* Application defines can mask environment-selected target macros. Observe
+       the independently configured runtime too before allowing equal identities. */
+    words = pc_runtime_words(c);
+    pj_add(words, NULL, pj_string("-I"));
+    {
+        char *public = pc_join(c->home, "shared/runtime/include");
+        pj_add(words, NULL, pj_string(public));
+        free(public);
+    }
+    pj_add(words, NULL, pj_string("-dM"));
+    pj_add(words, NULL, pj_string("-E"));
+    pj_add(words, NULL, pj_string("-x"));
+    pj_add(words, NULL, pj_string("c"));
+    pj_add(words, NULL, pj_string(source));
+    p = pc_context_probe(c, words);
+    if (!pc_probe_ok(c, &p, "effective runtime target macros")) {
+        pc_probe_free(&p);
+        goto fail;
+    }
+    {
+        char hex[65];
+        pc_target_macro_digest(p.out, hex);
+        pj_set_string(toolchain, "runtime_target_macros", hex);
+    }
+    pc_probe_free(&p);
     if (strcmp(family, "tcc")) {
         words = pc_words(c, 1);
         pj_add(words, NULL, pj_string("-I"));
@@ -1627,7 +1653,12 @@ static int pc_resolve_native(PcContext *c) {
     if (c->archiver && !pj_get(toolchain, "archiver"))
         pj_set_string(toolchain, "archiver", c->archiver);
     pj_add(toolchain, "components", components);
-    pj_add(toolchain, "environment", pj_clone(pj_get(selection, "environment")));
+    /* Raw environment text selects observations, not artifacts. The OS build
+       remains native evidence for Apple libraries held in the dyld shared cache. */
+    {
+        const char *build = pj_field(pj_get(selection, "environment"), "darwin_os_build");
+        if (build) pj_set_string(toolchain, "darwin_os_build", build);
+    }
     if (pj_field(selection, "apple_sdk")) pj_set_string(toolchain, "apple_sdk", pj_field(selection, "apple_sdk"));
     pj_set_string(toolchain, "native_cpu", pj_field(selection, "native_cpu"));
     c->native = pj_new(PJ_OBJECT);

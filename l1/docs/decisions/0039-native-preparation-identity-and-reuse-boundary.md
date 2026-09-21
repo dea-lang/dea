@@ -1,7 +1,7 @@
 # ADR-0039: Native Preparation Identity and Reuse Boundary
 
 - Decision date: 2026-09-11
-- Last edited: 2026-09-13
+- Last edited: 2026-09-21
 - Status: Accepted
 
 ## Context
@@ -17,6 +17,13 @@ vector to runtime implementation sources would also change the runtime's establi
 supported toolchain observations, and separate effective stdlib and runtime native configurations. Different keys imply
 no ABI compatibility, and there is no cross-`D` per-module native reuse. Application sources/graphs, project roots,
 output paths, and final-only link operands do not enter the native key.
+
+Raw environment text remains part of observation-memo selection, but does not enter `N`. A selection change requires
+fresh toolchain observation; equal effective inputs can reuse the same native profile. Live directory dependencies still
+detect new shadowing candidates. Generated-C and runtime target macros are observed independently, because application
+defines can mask an environment-selected runtime target. The macOS build identifier remains explicit native evidence for
+system implementation libraries held in the dyld shared cache. Existing loader/driver environment refusals apply before
+memo lookup and are not relaxed by identity equality.
 
 Bundled generated C uses the selected compiler, `L1_CFLAGS` followed by `--c-options`, and normal generated-C defaults.
 Runtime C uses the same compiler with compiler-owned `-O2 -std=c99`, checking/trace defines and default tuning.
@@ -52,6 +59,9 @@ general toolchain or project build system.
 
 - A configuration may work automatically but be unavailable for persistent prewarming.
 - Default cache hits remain quiet; verbosity explains observations, configuration and validation.
+- A first invocation under changed environment text pays for fresh observations even when it retains a profile hit.
+- Old discovery memos missing runtime target evidence are reobserved; compiler-content identity changes keep old
+  profiles separate without migration.
 - Working compiler/stdlib/runtime edits conservatively select a new native profile.
 - Header selection changes, including generated checking/real/float branches and earlier shadow candidates, invalidate
   reuse when detected by the adapter.
@@ -60,7 +70,10 @@ general toolchain or project build system.
 
 ## Related Plans
 
+- [l1/work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md][environment-identity]
+
 - [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
+
 - [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][preparation-economy]
 
 ## Current Docs
@@ -72,6 +85,7 @@ general toolchain or project build system.
 
 [backend]: ../reference/c-backend-design.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[environment-identity]: ../../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
 [preparation]: ../reference/stdlib-preparation.md
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md

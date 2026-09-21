@@ -124,6 +124,19 @@ def main() -> int:
         assert "Preparation command" not in warm_preparation.stderr
         source = root / "app.l1"
         source.write_text('module app; import std.io; func main() { printl_s("managed-ok"); }\n')
+        # A different shell selection must reobserve, then reuse the completed profile.
+        original_path = env.get("PATH", "")
+        alternate = root / "unrelated-bin"
+        alternate.mkdir()
+        env["PATH"] = str(alternate) + os.pathsep + original_path
+        try:
+            reused = call("--run", *common, "--no-auto-prepare", "app", "-vvv")
+            assert reused.stdout == "managed-ok\n", reused.stdout
+            assert analysis_count(reused, "_dea_preparation") == 0, reused.stderr
+            assert "Preparing stdlib and runtime" not in reused.stderr
+            assert list((cache / "v1/native").glob("*/manifest.json")) == entries
+        finally:
+            env["PATH"] = original_path
         # A valid profile does not promise to retain any preparation C scratch.
         canonical_c = (entry / "generated/std/io.c").read_bytes()
         shutil.rmtree(entry / "generated")

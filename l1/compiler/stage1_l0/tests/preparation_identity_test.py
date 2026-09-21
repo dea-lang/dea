@@ -37,6 +37,164 @@ def identity(library: Path, config: dict, *, eligible: bool = True) -> tuple[str
 
 
 
+def build_compiler_launcher(compiler: Path, destination: Path) -> None:
+    """Build a native PATH fixture without relocating the installed toolchain.
+
+    Args:
+        compiler: Absolute path to the installed compiler to invoke.
+        destination: Path of the native forwarding executable.
+    """
+    source = destination.parent.parent / "compiler-launcher.c"
+    source.write_text(r'''
+#ifdef _WIN32
+#include <windows.h>
+#include <wchar.h>
+#include <stdlib.h>
+/** Forward the untouched argument tail, preserving Windows quoting and handles. */
+int main(void) {
+    const wchar_t *compiler = LCOMPILER_PATH;
+    const wchar_t *tail = GetCommandLineW();
+    int quoted = 0;
+    while (*tail) {
+        if (*tail == L'"') quoted = !quoted;
+        else if (!quoted && (*tail == L' ' || *tail == L'\t')) break;
+        ++tail;
+    }
+    size_t length = wcslen(compiler);
+    wchar_t *command = malloc((length + wcslen(tail) + 3) * sizeof(wchar_t));
+    if (!command) return 127;
+    command[0] = L'"';
+    wcscpy(command + 1, compiler);
+    command[length + 1] = L'"';
+    wcscpy(command + length + 2, tail);
+    STARTUPINFOW startup = {0};
+    PROCESS_INFORMATION process = {0};
+    DWORD result = 127;
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    startup.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    if (CreateProcessW(compiler, command, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &process)) {
+        if (WaitForSingleObject(process.hProcess, INFINITE) == WAIT_OBJECT_0)
+            GetExitCodeProcess(process.hProcess, &result);
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+    }
+    free(command);
+    return (int)result;
+}
+#else
+#include <unistd.h>
+/** Preserve the installed driver's executable location and argument boundaries. */
+int main(int argc, char **argv) {
+    (void)argc;
+    argv[0] = COMPILER_PATH;
+    execv(argv[0], argv);
+    return 127;
+}
+#endif
+'''.replace("COMPILER_PATH", json.dumps(str(compiler))))
+    subprocess.run([str(compiler), "-std=c99", str(source), "-o", str(destination)],
+                   check=True, capture_output=True)
+
+
+def check_environment_identity(library: Path, root: Path, config: dict) -> None:
+    """Separate selection changes from effective inputs and revalidate older memos.
+
+    Args:
+        library: Compiled preparation service.
+        root: Owned directory for this adapter's fixtures.
+        config: Configuration selecting a supported real compiler.
+    """
+    root.mkdir(parents=True)
+    first, second = root / "first", root / "second"
+    first.mkdir()
+    second.mkdir()
+    paths = [os.pathsep.join((str(a), str(b), os.environ.get("PATH", "")))
+             for a, b in ((first, second), (second, first))]
+    selected = {**config, "cache": str(root / "cache")}
+    with patch.dict(os.environ, {"PATH": paths[0]}):
+        before = identity(library, selected)
+        warm = identity(library, selected)
+    with patch.dict(os.environ, {"PATH": paths[1]}):
+        changed = identity(library, selected)
+        assert changed[:3] == before[:3], "irrelevant PATH spelling must not change native identity"
+        assert changed[3]["probes"] > warm[3]["probes"], "new environment must reobserve"
+        assert identity(library, selected)[:3] == before[:3]
+    # A directory mutation invalidates old discovery, but an irrelevant file cannot change N.
+    (first / "unrelated.txt").write_text("new directory entry")
+    with patch.dict(os.environ, {"PATH": paths[0]}):
+        rediscovered = identity(library, selected)
+        assert rediscovered[:3] == before[:3]
+        assert rediscovered[3]["probes"] > warm[3]["probes"]
+    assert "environment" not in before[2]["toolchain"]
+    if sys.platform == "darwin":
+        assert before[2]["toolchain"]["darwin_os_build"] == subprocess.check_output(
+            ["/usr/sbin/sysctl", "-n", "kern.osversion"], text=True).strip()
+    # Introduce a native launcher earlier in an unchanged PATH without moving the toolchain.
+    compiler = Path(config["compiler"])
+    family = before[2]["toolchain"]["family"]
+    named = {**selected, "compiler": compiler.name}
+    with patch.dict(os.environ, {"PATH": os.pathsep.join((paths[0], str(compiler.parent)))}):
+        unshadowed = identity(library, named)
+        shadow_tool = first / compiler.name
+        build_compiler_launcher(compiler, shadow_tool)
+        try:
+            # Exercise header/library discovery and argument paths containing spaces.
+            probe = root / "launcher probe.c"
+            # TinyCC's macOS codesign command does not quote output paths with spaces.
+            binary = root / ("launcher-probe.exe" if os.name == "nt" else "launcher-probe")
+            probe.write_text("#include <stdint.h>\nint main(void) { return (int)(uint32_t)7; }\n")
+            subprocess.run([str(shadow_tool), str(probe), "-o", str(binary)],
+                           check=True, capture_output=True)
+            assert subprocess.run([str(binary)], check=False).returncode == 7
+            assert subprocess.run([str(shadow_tool), "-dea-invalid-fixture-option"],
+                                  capture_output=True, check=False).returncode != 0
+            shadowed = identity(library, named)
+            assert shadowed[0] == unshadowed[0] and shadowed[1] != unshadowed[1]
+            assert Path(shadowed[2]["toolchain"]["invocation"]) == shadow_tool
+            assert str(shadow_tool) in shadowed[2]["toolchain"]["components"]
+        finally:
+            shadow_tool.unlink()
+    # Application defines cannot hide an environment-selected runtime deployment target.
+    if sys.platform == "darwin" and family == "clang":
+        masked = {**selected, "options": [*config["options"],
+                  "-D__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__=110000",
+                  "-D__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__=110000"]}
+        observations = []
+        for version in ("11.0", "12.0"):
+            with patch.dict(os.environ, {"MACOSX_DEPLOYMENT_TARGET": version}):
+                observations.append(identity(library, masked))
+        a, b = observations
+        assert a[0] == b[0] and a[1] != b[1]
+        assert a[2]["toolchain"]["target_macros"] == b[2]["toolchain"]["target_macros"]
+        assert a[2]["toolchain"]["runtime_target_macros"] != b[2]["toolchain"]["runtime_target_macros"]
+    # Both C header environment variables must observe a new shadow and later content changes.
+    for variable in ("CPATH", "C_INCLUDE_PATH"):
+        headers = root / variable
+        headers.mkdir()
+        with patch.dict(os.environ, {variable: str(headers)}):
+            empty = identity(library, selected)
+            shadow = headers / "float.h"
+            shadow.write_text("#include_next <float.h>\n#define ENVIRONMENT_PROBE 1\n")
+            observed = identity(library, selected)
+            assert observed[0] == empty[0] and observed[1] != empty[1]
+            assert str(shadow) in observed[2]["toolchain"]["components"]
+        shadow.write_text("#include_next <float.h>\n#define ENVIRONMENT_PROBE 2\n")
+        with patch.dict(os.environ, {variable: str(headers)}):
+            assert identity(library, selected)[1] != observed[1], "returning environment must reject stale memo"
+    # These loader/driver indirections must refuse even after a memo was warmed.
+    for variable in ("LD_PRELOAD", "LD_AUDIT", "CCC_OVERRIDE_OPTIONS"):
+        with patch.dict(os.environ, {variable: ""}):
+            identity(library, selected)
+        with patch.dict(os.environ, {variable: str(root / "missing-indirection")}):
+            identity(library, selected, eligible=False)
+    if sys.platform == "darwin":
+        with patch.dict(os.environ, {"DYLD_AUDIT_TEST": "1"}):
+            identity(library, selected, eligible=False)
+
+
 def check_header_dependencies(library: Path, root: Path, config: dict) -> None:
     """Invalidate generated-C header branches and insertion ahead of a selected header."""
     headers = root / "conditional-headers"
@@ -732,6 +890,8 @@ def main() -> int:
             warm = identity(library, config)
             assert warm[:2] == plain[:2] and warm[3]["identity_content_reads"] == 0
             assert warm[3]["probes"] <= 4
+            check_environment_identity(library, root / "environment-primary", config)
+            environment_families = {plain[2]["toolchain"]["family"]}
             forced = identity(library, {**config, "force": 1})
             assert forced[:2] == plain[:2] and forced[3]["identity_content_reads"] > 0
             for path in (executable, implementation, home / "shared/l1/stdlib/std/io.l1",
@@ -792,6 +952,10 @@ def main() -> int:
                     continue  # The unavailable adapter's exact failure was asserted above.
                 observed = identity(library, {**config, "compiler": compiler})
                 assert observed[2]["toolchain"]["family"] in ("gcc", "clang", "tcc")
+                family = observed[2]["toolchain"]["family"]
+                if family not in environment_families:
+                    check_environment_identity(library, root / f"environment-{index}", {**config, "compiler": compiler})
+                    environment_families.add(family)
                 if observed[2]["toolchain"]["family"] in ("gcc", "clang"):
                     # Clang depfile output can normalize POSIX backslashes;
                     # exercise exact filename-byte preservation with GCC.

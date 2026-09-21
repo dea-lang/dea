@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-09-15
+Version: 2026-09-20
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -143,6 +143,15 @@ it; semantic-only commands do not use it as a bootstrap freshness check.
 `N` combines `D`, the supported toolchain observation, and separate effective stdlib and runtime configurations. A
 change selects a different complete profile; there is no cross-`D` per-module reuse or ABI inference between keys.
 Application paths, project roots, dependency graphs, output paths, and final-link-only operands do not enter `N`.
+
+Raw environment text selects the toolchain observation memo but does not enter `N`. A changed `PATH` or other recorded
+selection variable causes fresh observation; unchanged effective toolchain inputs can then reuse the same completed
+profile. Search-directory mutations still invalidate discovery, including newly shadowing candidates. Both generated-C
+and runtime target macros are observed independently so application defines cannot hide an environment-selected runtime
+target change. On macOS, the OS build remains explicit native identity evidence for system libraries in the dyld shared
+cache. Existing nonempty `LD_PRELOAD`, `LD_AUDIT`, `CCC_OVERRIDE_OPTIONS` and Apple `DYLD_*` configurations still
+decline persistent reuse before any memo can authorize it. The first command in a different environment may therefore
+cost more than subsequent warm commands even when the profile is reused.
 
 Both native compilation classes use the selected L1 C compiler. Bundled generated C uses `L1_CFLAGS` followed by
 `--c-options` and the normal generated-C defaults. Standalone link applies these options to managed module preparation

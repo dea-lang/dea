@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-15
+Version: 2026-09-21
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -190,6 +190,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Refactor [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][preparation-economy] removed
   obsolete preparation state, restored identity regressions, and reused application analysis, bundled validation and
   option parsing within each command while preserving semantic authority and persistent reuse.
+- Refactor
+  [l1/work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md][env-text-reassessment]
+  moved raw environment text from native identity to observation-memo selection while preserving effective toolchain,
+  runtime-target and macOS platform evidence. Local, Docker and Windows GCC/Clang validation passed.
 - Tool [l1/work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md][preparation-test-cost] isolated unrelated
   tests from automatic preparation, retained dedicated integration coverage and avoided unnecessary preparation support
   compilation. Trace measurements did not justify retaining a driver-harness split.
@@ -385,6 +389,7 @@ update to be promoted to an initiative or plan:
 [data-formats]: ../work/initiatives/0008-data-format-modules.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
+[env-text-reassessment]: ../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [filesystem-io]: ../work/initiatives/0005-filesystem-and-stream-io.md
 [fingerprint-blocker]: ../work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
