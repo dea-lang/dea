@@ -1,8 +1,8 @@
 # L0 Project Status
 
-Version: 2026-09-10
+Version: 2026-09-23
 
-This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.1.0`.
+This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.1.1`.
 
 L0 now lives as one language subtree inside the Dea monorepo; monorepo release tags use the `l0-vX.Y.Z` namespace while
 historical pre-monorepo tags remain legacy references. The monorepo also contains the active Dea/L1 bootstrap subtree
@@ -14,7 +14,7 @@ Use this file as a status snapshot. For implementation details, use:
 
 - [docs/project-status.md](../../docs/project-status.md) for the Dea-wide monorepo status snapshot.
 - [l0/docs/releases/2.0.0.md](releases/2.0.0.md) for the previous major release and migration guidance.
-- [l0/docs/releases/2.1.0.md](releases/2.1.0.md) for the current release body and compatibility guidance.
+- [l0/docs/releases/2.1.1.md](releases/2.1.1.md) for the current release body and compatibility guidance.
 - [l0/docs/reference/architecture.md](reference/architecture.md) for pass structure and data flow.
 - [l0/docs/specs/compiler/stage1-contract.md](specs/compiler/stage1-contract.md) for external interfaces and guarantees.
 - [l0/docs/reference/c-backend-design.md](reference/c-backend-design.md) for backend lowering and generated C behavior.
@@ -25,6 +25,14 @@ Use this file as a status snapshot. For implementation details, use:
 - [l0/docs/specs/compiler/stage2-contract.md](specs/compiler/stage2-contract.md) for Stage 2 contract and provenance.
 
 ## Current Status
+
+### L0 2.1.1
+
+- Both compiler stages clean up owned `string` and optional comparison operands, including those reached through casts
+  and optional extraction. Field access on temporary aggregates and `for` update expressions also preserve ARC cleanup.
+- AddressSanitizer test probes use bounded deadlines, preserve the configured compiler, and can retry with non-PIE flags
+  on affected host toolchains.
+- L0 syntax, CLI options, public C interfaces, standard-library APIs, and diagnostic codes are unchanged from 2.1.0.
 
 ### L0 2.1.0
 
@@ -133,7 +141,7 @@ The current development support baseline remains:
 
 ## Known Limitations and Constraints
 
-These remain true in the current `2.1.0` release:
+These remain true in the current `2.1.1` release:
 
 1. Backend output is one C translation unit (no multi-object/header split pipeline yet).
 2. Arrays/slices are not implemented, and pointer indexing is not part of the current L0 language surface; indexing

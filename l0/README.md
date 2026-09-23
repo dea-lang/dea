@@ -5,8 +5,8 @@
 **L0 (Level Zero)** is a small systems language that compiles to C99. It is the first level of the
 [Dea language family](../README.md) and the compiler base used to build Dea/L1.
 
-**Level 0 is self-hosted.** The latest release is `2.1.0`, tagged `l0-v2.1.0` in the monorepo's level-prefixed release
-namespace. See [l0/docs/releases/2.1.0.md](docs/releases/2.1.0.md) for its complete changes and migration guidance.
+**Level 0 is self-hosted.** The latest release is `2.1.1`, tagged `l0-v2.1.1` in the monorepo's level-prefixed release
+namespace. See [l0/docs/releases/2.1.1.md](docs/releases/2.1.1.md) for its complete changes and compatibility guidance.
 
 Run all L0 build, test, docs, and compiler commands described here from this directory.
 
@@ -35,12 +35,12 @@ the semantics are enforced by L0 itself.
 
 ## Project status and directions
 
-L0 `2.1.0` is the current stable release.
+L0 `2.1.1` is the current stable release.
 
-The `2.1.0` release adds declaration-only `dea_rt.h` for additional C translation units, safe byte-vector self-appends,
-semantic optional hashes, and AddressSanitizer-visible quarantine lifetimes. Both compiler stages now use cohesive
-implementation modules. Stage 1 retains the Python 3.14 minimum, with Python 3.15.0rc2 compatibility also validated
-locally. The language and CLI surface remain unchanged from 2.0.0.
+The `2.1.1` release fixes ARC cleanup for comparison temporaries in both compiler stages and improves AddressSanitizer
+test validation. It preserves the language, CLI, public C, and standard-library surfaces of 2.1.0. That release added
+the declaration-only `dea_rt.h` header, safe byte-vector self-appends, semantic optional hashes, and
+AddressSanitizer-visible quarantine lifetimes.
 
 - Stage 1: complete and remains the reference implementation for language behavior.
 
@@ -129,7 +129,7 @@ The `$CC` environment variable will be checked as a last resort if none of the a
 
 If you need a specific compiler, set `$L0_CC` to its executable name or path.
 
-For the current `2.1.0` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2 `MINGW64`
+For the current `2.1.1` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2 `MINGW64`
 is supported as an alternate environment.
 
 MSVC-family builds are still unsupported and are not part of the validated release matrix.
