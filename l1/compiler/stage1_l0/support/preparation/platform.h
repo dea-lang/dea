@@ -304,8 +304,8 @@ static char *pc_read_file_checked(const char *path, size_t limit, size_t *size, 
     /* In particular, never block opening a FIFO masquerading as a memo or
        completion record. Concurrent hostile substitution is outside the contract. */
     if (kind != 1) {
-        if (kind < 0 && io_error)
-            *io_error = EIO;
+        if (io_error && kind != 0)
+            *io_error = kind < 0 ? EIO : EINVAL;
         return NULL;
     }
     f = fopen(path, "rb");
@@ -316,6 +316,7 @@ static char *pc_read_file_checked(const char *path, size_t limit, size_t *size, 
     }
     while (!ferror(f) && !feof(f) && (n = fread(buffer, 1, sizeof(buffer), f)) > 0) {
         if (n > limit - b.n) {
+            if (io_error) *io_error = EFBIG;
             free(b.s);
             fclose(f);
             return NULL;
@@ -351,14 +352,26 @@ static int pc_write_file(const char *path, const char *s, size_t n) {
         ok = 0;
     return ok;
 }
-static PcJson *pc_read_json(const char *path) {
+enum { PC_JSON_OK, PC_JSON_ABSENT, PC_JSON_UNREADABLE, PC_JSON_MALFORMED };
+/** Read JSON once while preserving the reason an optional record was unavailable. */
+static PcJson *pc_read_json_status(const char *path, int *status) {
     size_t n;
-    char *s = pc_read_file(path, 16 * 1024 * 1024, &n);
+    int io_error = 0;
+    char *s;
     PcJson *j;
-    if (!s)
+    if (!path) {
+        if (status) *status = PC_JSON_ABSENT;
         return NULL;
+    }
+    s = pc_read_file_checked(path, 16 * 1024 * 1024, &n, &io_error);
+    if (!s) {
+        if (status) *status = io_error == EINVAL || io_error == EFBIG ? PC_JSON_MALFORMED :
+                              io_error ? PC_JSON_UNREADABLE : PC_JSON_ABSENT;
+        return NULL;
+    }
     j = pj_parse(s, n);
     free(s);
+    if (status) *status = j ? PC_JSON_OK : PC_JSON_MALFORMED;
     return j;
 }
 static int pc_write_json(const char *path, const PcJson *j) {
@@ -432,21 +445,35 @@ static PcJson *pc_meta_file(FILE *f) {
     return pc_meta_stat(&s);
 }
 #endif
+static double pc_milliseconds(void);
 /** Hash a stable regular file; metadata binds the descriptor and selected path. */
-static int pc_hash_file(const char *path, char digest[65], PcJson **metadata) {
+static int pc_hash_file_measured(const char *path, char digest[65], PcJson **metadata,
+                                 int64_t *bytes_read, double *elapsed_ms) {
     FILE *f;
     PcJson *before, *after, *current;
     PcSha sha;
     char buffer[65536];
     size_t n;
+    int64_t bytes = 0;
+    double started = elapsed_ms ? pc_milliseconds() : 0;
     int ok, kind = pc_kind(path, 1);
-    if (kind != 1) return 0;
+    if (kind != 1) {
+        if (bytes_read) *bytes_read = 0;
+        if (elapsed_ms) *elapsed_ms = pc_milliseconds() - started;
+        return 0;
+    }
     f = fopen(path, "rb");
-    if (!f) return 0;
+    if (!f) {
+        if (bytes_read) *bytes_read = 0;
+        if (elapsed_ms) *elapsed_ms = pc_milliseconds() - started;
+        return 0;
+    }
     before = pc_meta_file(f);
     pc_sha_init(&sha);
-    while (!ferror(f) && !feof(f) && (n = fread(buffer, 1, sizeof(buffer), f)) > 0)
+    while (!ferror(f) && !feof(f) && (n = fread(buffer, 1, sizeof(buffer), f)) > 0) {
         pc_sha_update(&sha, buffer, n);
+        if (bytes_read) bytes += (int64_t)n;
+    }
     ok = !ferror(f);
     after = pc_meta_file(f);
     if (fclose(f) != 0)
@@ -457,6 +484,8 @@ static int pc_hash_file(const char *path, char digest[65], PcJson **metadata) {
     pj_free(current);
     if (!ok) {
         pj_free(before);
+        if (bytes_read) *bytes_read = bytes;
+        if (elapsed_ms) *elapsed_ms = pc_milliseconds() - started;
         return 0;
     }
     pc_sha_finish(&sha, digest);
@@ -464,6 +493,8 @@ static int pc_hash_file(const char *path, char digest[65], PcJson **metadata) {
         *metadata = before;
     else
         pj_free(before);
+    if (bytes_read) *bytes_read = bytes;
+    if (elapsed_ms) *elapsed_ms = pc_milliseconds() - started;
     return 1;
 }
 static int pc_hex_digest(const char *s) {

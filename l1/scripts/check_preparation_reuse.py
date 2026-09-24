@@ -17,9 +17,14 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 
 L1_ROOT = Path(__file__).resolve().parents[1]
 STAGES = ("cold", "warm-auto", "warm-guard", "invalidated-guard", "invalidated-auto")
+OBSERVABILITY_STAGES = ("observe-warm-1", "observe-warm-2", "observe-cwd-1", "observe-cwd-2",
+                        "observe-copy-1", "observe-copy-2", "observe-copy-no-memos-1",
+                        "observe-copy-no-memos-2", "observe-explicit-sys-root-1",
+                        "observe-explicit-sys-root-2")
 COUNTERS = ("module_compiles", "build_commands", "native_resolutions", "identity_content_reads",
             "artifact_content_reads", "metadata_checks", "probes", "option_file_parses", "option_root_expansions")
 PRIVATE_REASONS = {
@@ -66,6 +71,52 @@ def fields(stderr: str, label: str) -> list[str]:
     return re.findall(r"^" + re.escape(label) + r": (.*)$", stderr, re.MULTILINE)
 
 
+def observation_measurements(stderr: str, partial: bool = False) -> dict:
+    """Parse debug records independently of end-of-command identity statistics.
+
+    Args:
+        stderr: Complete or interrupted compiler output.
+        partial: Retain valid records and record malformed lines instead of raising.
+
+    Returns:
+        Observations, categorized accounting and any partial parsing errors.
+
+    Raises:
+        ProbeError: If a complete record violates the observation schema.
+        ValueError: If complete output contains invalid JSON.
+    """
+    observations, errors = [], []
+    for raw in fields(stderr, "Preparation observation"):
+        try:
+            observation = json.loads(raw)
+            require(isinstance(observation, dict) and type(observation.get("schema")) is int and
+                    observation["schema"] == 1 and isinstance(observation.get("event"), str),
+                    "invalid preparation observation")
+            if observation["event"] in ("hash", "probe", "span"):
+                require(type(observation.get("elapsed_us")) is int and observation["elapsed_us"] >= 0,
+                        "invalid observation duration")
+            if observation["event"] == "hash":
+                require(isinstance(observation.get("category"), str) and
+                        type(observation.get("bytes")) is int and observation["bytes"] >= 0,
+                        "invalid hash accounting")
+            observations.append(observation)
+        except (ValueError, ProbeError) as exc:
+            if not partial:
+                raise
+            errors.append(str(exc))
+    hashes: dict[str, dict[str, int]] = {}
+    for observation in observations:
+        if observation["event"] == "hash":
+            totals = hashes.setdefault(observation["category"], {"count": 0, "bytes": 0, "elapsed_us": 0})
+            totals["count"] += 1
+            totals["bytes"] += observation["bytes"]
+            totals["elapsed_us"] += observation["elapsed_us"]
+    return {"observations": observations, "observation_errors": errors, "hashing": hashes,
+            "spans": [item for item in observations if item["event"] == "span"],
+            "probes": [item for item in observations if item["event"] == "probe"],
+            "providers": [item for item in observations if item["event"] == "provider"]}
+
+
 def measurements(stderr: str) -> dict:
     """Parse one native context, including failed commands.
 
@@ -85,6 +136,7 @@ def measurements(stderr: str) -> dict:
     require(isinstance(counts, dict) and all(type(counts.get(key)) is int and counts[key] >= 0
                                            for key in COUNTERS), "invalid preparation counters")
     result = {"statistics": counts,
+              **observation_measurements(stderr),
               "stdlib_validations": stderr.count("Starting analysis for entry module '_dea_preparation'"),
               "managed_analyses": len(re.findall(r"Starting analysis for entry module '(?:std|sys)\.", stderr)),
               "diagnostics": re.findall(r"^.*error: \[([^]]+)\] (.*)$", stderr, re.MULTILINE),
@@ -120,13 +172,15 @@ class Probe:
         self.cache.mkdir()
         self.cc = ""
 
-    def run(self, label: str, argv: list[str], record: dict) -> subprocess.CompletedProcess[str]:
+    def run(self, label: str, argv: list[str], record: dict,
+            cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
         """Run a bounded command and retain output before interpreting it.
 
         Args:
             label: Unique log basename and failure stage.
             argv: Literal executable and arguments, without shell interpolation.
             record: Destination for invocation metadata.
+            cwd: Optional invocation directory; defaults to the fixture root.
 
         Returns:
             Captured subprocess result, including nonzero exits.
@@ -136,12 +190,14 @@ class Probe:
             subprocess.TimeoutExpired: If the process exceeds the deadline.
         """
         self.report["stage"] = label
+        invocation_cwd = cwd or self.root
         record.update(argv=argv, exit_code=None, stdout_log=f"{label}.stdout.log", stderr_log=f"{label}.stderr.log")
         (self.args.output_dir / f"{label}.command.json").write_text(
-            json.dumps({"argv": argv, "cwd": str(self.root)}, indent=2) + "\n", encoding="utf-8")
+            json.dumps({"argv": argv, "cwd": str(invocation_cwd)}, indent=2) + "\n", encoding="utf-8")
         stdout, stderr = "", ""
+        started = time.monotonic()
         try:
-            result = subprocess.run(argv, cwd=self.root, env=self.env, stdin=subprocess.DEVNULL,
+            result = subprocess.run(argv, cwd=invocation_cwd, env=self.env, stdin=subprocess.DEVNULL,
                                     capture_output=True, text=True, encoding="utf-8", errors="replace",
                                     timeout=self.args.timeout)
             stdout, stderr = result.stdout, result.stderr
@@ -155,6 +211,10 @@ class Probe:
             stderr = str(exc)
             raise
         finally:
+            record["elapsed_ms"] = (time.monotonic() - started) * 1000.0
+            if "--run" in argv:
+                text = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else stderr
+                record.update(observation_measurements(text, partial=True))
             for suffix, value in (("stdout", stdout), ("stderr", stderr)):
                 if isinstance(value, bytes):
                     value = value.decode("utf-8", errors="replace")
@@ -187,34 +247,47 @@ class Probe:
         (self.root / "app.l1").write_text(
             'module app; import std.io; func main() { printl_s("preparation-probe-ok"); }\n', encoding="utf-8")
 
-    def consume(self, stage: str, guarded: bool = False) -> dict:
+    def consume(self, stage: str, guarded: bool = False, cache: Path | None = None,
+                cwd: Path | None = None, absolute_target: bool = False,
+                explicit_sys_root: bool = False) -> dict:
         """Run one real consumer and capture its preparation measurements.
 
         Args:
             stage: Invocation label from STAGES.
             guarded: Disable automatic preparation when true.
+            cache: Optional isolated cache root.
+            cwd: Optional invocation directory.
+            absolute_target: Pass absolute target and project-root paths.
+            explicit_sys_root: Select the copied bundled source root explicitly.
 
         Returns:
             Recorded invocation evidence.
         """
         record = self.report["invocations"][stage] = {"stage": stage}
-        argv = [str(self.native), "--run", "--c-compiler", self.cc, "--stdlib-cache", str(self.cache), "-vvv"]
+        selected_cache = cache or self.cache
+        argv = [str(self.native), "--run", "--c-compiler", self.cc, "--stdlib-cache", str(selected_cache), "-vvv"]
+        if absolute_target:
+            argv.extend(["--project-root", str(self.root)])
+        if explicit_sys_root:
+            argv.extend(["--sys-root", str(self.root / "toolchain/compiler/shared/l1/stdlib")])
         if guarded:
             argv.append("--no-auto-prepare")
-        result = self.run(stage, [*argv, "app"], record)
+        target = str(self.root / "app.l1") if absolute_target else "app"
+        result = self.run(stage, [*argv, target], record, cwd=cwd)
         record["output_ok"] = result.stdout == EXPECTED_OUTPUT
         record["output_empty"] = not result.stdout
-        record["manifests"] = [str(path) for path in sorted(self.cache.glob("v1/native/*/manifest.json"))]
+        record["manifests"] = [str(path) for path in sorted(selected_cache.glob("v1/native/*/manifest.json"))]
         record.update(measurements(result.stderr))
         require(record["statistics"]["native_resolutions"] == 1, "expected one native resolution")
         return record
 
-    def successful(self, record: dict, compiles: int) -> None:
+    def successful(self, record: dict, compiles: int, allow_source_analyses: bool = False) -> None:
         """Check successful output, validation economy and exact compiler attribution.
 
         Args:
             record: Invocation evidence.
             compiles: Expected managed module compilation count.
+            allow_source_analyses: Whether an explicit provider may analyze std/sys sources.
 
         Raises:
             ProbeError: If any success or identity requirement fails.
@@ -222,7 +295,7 @@ class Probe:
         require(record["exit_code"] == 0 and record["output_ok"] and not record["diagnostics"],
                 "consumer failed or produced incorrect output; see invocation logs")
         require(record["stdlib_validations"] == (1 if compiles > 0 else 0)
-                and (compiles > 0 or record["managed_analyses"] == 0),
+                and (compiles > 0 or allow_source_analyses or record["managed_analyses"] == 0),
                 "expected one bundled validation when preparing and none on warm reuse")
         require(record["statistics"]["module_compiles"] == compiles, "unexpected managed module compilation count")
         require(bool(re.fullmatch(r"[0-9a-f]{64}", record["native_key"])), "missing native key")
@@ -266,6 +339,73 @@ class Probe:
         require(record["statistics"]["module_compiles"] == record["statistics"]["build_commands"] == 0 and
                 record["stdlib_validations"] == 1 and record["managed_analyses"] == 0 and
                 not record["selected"] and record["output_empty"], "guard unexpectedly prepared or consumed support")
+
+    def observability_scenarios(self, baseline: dict) -> None:
+        """Run opt-in pairs that expose validation and provider decisions.
+
+        Args:
+            baseline: Valid warm persistent invocation used for identity comparison.
+        """
+        scenarios = self.report["observability"]
+
+        def selection_keys(record: dict) -> list[str]:
+            return [item["selection_key"] for item in record["observations"]
+                    if item["event"] == "observation-selection"]
+
+        def pair(name: str, allow_source_analyses: bool = False, **kwargs: object) -> tuple[dict, dict]:
+            scenario = scenarios[name]
+            scenario.update(status="running", reason=None)
+            first = self.consume(f"observe-{name}-1", guarded=True, **kwargs)
+            second = self.consume(f"observe-{name}-2", guarded=True, **kwargs)
+            for record in (first, second):
+                self.successful(record, 0, allow_source_analyses=allow_source_analyses)
+                require(record["statistics"]["build_commands"] == 0, "scenario unexpectedly built native support")
+                if allow_source_analyses:
+                    require(any(item.get("decision") == "suppressed" and item.get("reason") == "explicit-system-root"
+                                for item in record["observations"]),
+                            "explicit system root did not report managed-provider suppression")
+                    require(any(item.get("module") == "std.io" and item.get("origin") == "source" and
+                                not item.get("managed") for item in record["providers"]),
+                            "explicit system root did not select the bundled source provider")
+            require(first["native_key"] == second["native_key"], f"{name} pair changed native key")
+            scenario.update({
+                "status": "completed",
+                "native_key_matches_baseline": first["native_key"] == baseline["native_key"],
+                "selection_keys": [selection_keys(record) for record in (first, second)],
+                "selection_key_matches_baseline": (selection_keys(first) == selection_keys(baseline)
+                                                   if selection_keys(first) and selection_keys(baseline) else None),
+                "stable_selection_key": (selection_keys(first) == selection_keys(second)
+                                         if selection_keys(first) and selection_keys(second) else None),
+                "providers": [record["providers"] for record in (first, second)],
+                "providers_match_baseline": first["providers"] == baseline["providers"],
+                "stable_providers": first["providers"] == second["providers"],
+                "statistics": [record["statistics"] for record in (first, second)],
+                "spans": [record["spans"] for record in (first, second)],
+                "hashing": [record["hashing"] for record in (first, second)],
+                "elapsed_ms": [first["elapsed_ms"], second["elapsed_ms"]],
+            })
+            return first, second
+
+        pair("warm")
+        other_cwd = self.root / "alternate-cwd"
+        other_cwd.mkdir()
+        pair("cwd", cwd=other_cwd, absolute_target=True)
+
+        for name, remove_memos in (("copy", False), ("copy-no-memos", True)):
+            copied = self.root / (name + "-cache")
+            started = time.monotonic()
+            try:
+                shutil.copytree(self.cache, copied)
+            finally:
+                scenarios[name]["copy_elapsed_ms"] = (time.monotonic() - started) * 1000.0
+                scenarios[name]["copied_cache_portability"] = "experimental-observation-only"
+            if remove_memos:
+                memo_root = copied / "v1/memo"
+                if memo_root.exists():
+                    shutil.rmtree(memo_root)
+            pair(name, cache=copied, absolute_target=True)
+
+        pair("explicit-sys-root", allow_source_analyses=True, absolute_target=True, explicit_sys_root=True)
 
     def execute(self) -> str:
         """Measure the complete available/private sequence or a confirmed resolution boundary.
@@ -333,6 +473,8 @@ class Probe:
                     record["manifests"] == cold["manifests"] and not record["private_reasons"],
                     "warm consumption did not reuse the same persistent entry with zero preparation work")
         self.report["same_persistent_entry"] = True
+        if getattr(self.args, "observability_scenarios", False):
+            self.observability_scenarios(warm)
         with self.header.open("a", encoding="utf-8") as handle:
             handle.write("\n/* CI preparation invalidation probe. */\n")
         rejected = self.consume("invalidated-guard", guarded=True)
@@ -370,14 +512,64 @@ def render_summary(report: dict) -> str:
              f"Native preparation: {report['native_preparation']}; persistent reuse: {report['persistent_reuse']}.", "",
              f"Stage: {report['stage']}; reason: {cell(report['reason'])}.", "",
              f"Same persistent entry: {report['same_persistent_entry']}; invalidation: {report['invalidation']}.", "",
-             "| Invocation | Exit | Validations | Resolutions | Module compiles | Build commands |",
-             "| --- | --- | --- | --- | --- | --- |"]
+             "| Invocation | Exit | Elapsed ms | Validations | Probes | Input bytes | Artifact bytes | Module compiles |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for stage, record in report["invocations"].items():
         record = record or {}
         counts = record.get("statistics", {})
-        values = [stage, record.get("exit_code"), record.get("stdlib_validations"),
-                  *(counts.get(key) for key in ("native_resolutions", "module_compiles", "build_commands"))]
+        hashing = record.get("hashing", {})
+        input_bytes = (sum(hashing.get(name, {}).get("bytes", 0) for name in ("dea-input", "toolchain-input"))
+                       if "hashing" in record else None)
+        artifact_bytes = (sum(hashing.get(name, {}).get("bytes", 0)
+                              for name in ("artifact-validation", "publication")) if "hashing" in record else None)
+        elapsed = record.get("elapsed_ms")
+        values = [stage, record.get("exit_code"), f"{elapsed:.3f}" if elapsed is not None else None,
+                  record.get("stdlib_validations"), counts.get("probes"), input_bytes, artifact_bytes,
+                  counts.get("module_compiles")]
         lines.append("| " + " | ".join(cell(value) for value in values) + " |")
+    if report.get("observability"):
+        lines.extend(["", "### Observability scenarios", "",
+                      "| Scenario | Status | Native key matches baseline | Selection key matches baseline | Stable selection key | Providers match baseline | Stable providers | Copy ms |",
+                      "| --- | --- | --- | --- | --- | --- | --- | --- |"])
+        for name, scenario in report["observability"].items():
+            values = [name, scenario["status"], scenario.get("native_key_matches_baseline"),
+                      scenario.get("selection_key_matches_baseline"), scenario.get("stable_selection_key"),
+                      scenario.get("providers_match_baseline"), scenario.get("stable_providers"),
+                      f"{scenario['copy_elapsed_ms']:.3f}" if "copy_elapsed_ms" in scenario else None]
+            lines.append("| " + " | ".join(cell(value) for value in values) + " |")
+            if scenario.get("reason"):
+                lines.extend(["", f"{name}: {cell(scenario['reason'])}", ""])
+    lines.extend(["", "Preparation spans are inclusive. Probe and hash time is nested within spans; "
+                  "do not add them together. Command time includes work outside preparation."])
+    for stage, record in report["invocations"].items():
+        if not record or not record.get("observations"):
+            continue
+        lines.extend(["", f"### {stage} observations", "",
+                      "| Event | Scope / purpose | Decision / reason | Detail |",
+                      "| --- | --- | --- | --- |"])
+        for item in record["observations"]:
+            event = item["event"]
+            if event == "hash":
+                continue  # Per-file evidence remains in JSON and the raw log.
+            detail = item.get("path", "")
+            if event == "metadata-mismatch":
+                detail = f"{detail}: {item.get('kind')} {item.get('field')} " + \
+                         f"{item.get('previous')} -> {item.get('current')}"
+            elif event == "observation-selection":
+                detail = f"key={item.get('selection_key')}; cwd={item.get('cwd')}"
+            elif event in ("span", "probe"):
+                detail = f"{item['elapsed_us']} us; " + (f"status={item.get('status')}; timeout={item.get('timed_out')}"
+                         if event == "probe" else f"inclusive; success={item.get('success')}")
+            elif event == "provider":
+                detail = f"{item.get('origin')}; managed={item.get('managed')}; {detail}"
+            values = [event, item.get("scope", item.get("purpose", item.get("name", item.get("module", "")))),
+                      "/".join(str(item[key]) for key in ("decision", "reason") if key in item), detail]
+            lines.append("| " + " | ".join(cell(value) for value in values) + " |")
+        lines.extend(["", "| Hash category | Attempts | Bytes read | Elapsed us |",
+                      "| --- | --- | --- | --- |"])
+        for category, totals in record.get("hashing", {}).items():
+            lines.append("| " + " | ".join(cell(value) for value in
+                         (category, totals["count"], totals["bytes"], totals["elapsed_us"])) + " |")
     lines.extend(["", "Full counters, identities, commands and raw logs are in the L1 preparation-reuse artifact.", ""])
     return "\n".join(lines)
 
@@ -397,12 +589,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-dir", type=Path, default=Path(os.environ.get("L1_BUILD_DIR", "build/dea")))
     parser.add_argument("--output-dir", type=Path, default=L1_ROOT / "build/ci/preparation-reuse")
     parser.add_argument("--timeout", type=int, default=600, help="Maximum seconds for each subprocess")
+    parser.add_argument("--observability-scenarios", action="store_true",
+                        help="Measure paired warm, cwd, copied-cache, memo-free and explicit-sys-root cases")
     args = parser.parse_args(argv)
     args.build_dir = (L1_ROOT / args.build_dir).resolve()
     args.output_dir = args.output_dir.resolve()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     # Repeated local runs must not publish stale measurements from an earlier run.
-    for label in (*STAGES, "compiler-version", "compiler-target", "runtime-archiver-boundary"):
+    for label in (*STAGES, *OBSERVABILITY_STAGES, "compiler-version", "compiler-target", "runtime-archiver-boundary"):
         for suffix in ("command.json", "stdout.log", "stderr.log", "manifest.json"):
             (args.output_dir / f"{label}.{suffix}").unlink(missing_ok=True)
     for name in ("report.json", "summary.md"):
@@ -412,7 +606,10 @@ def main(argv: list[str] | None = None) -> int:
               "expectation": args.expect, "capability": "error", "result": "FAIL", "stage": "bootstrap",
               "reason": None, "native_preparation": "unknown", "persistent_reuse": "unknown",
               "same_persistent_entry": None, "invalidation": None,
-              "invocations": dict.fromkeys(STAGES)}
+              "observability": {name: {"status": "not-run", "reason": None} for name in
+                                ("warm", "cwd", "copy", "copy-no-memos", "explicit-sys-root")}
+                               if args.observability_scenarios else None,
+              "invocations": dict.fromkeys((*STAGES, *(OBSERVABILITY_STAGES if args.observability_scenarios else ())))}
     try:
         require(args.timeout > 0, "timeout must be positive")
         inventory = list((L1_ROOT / "compiler/shared/l1/stdlib").rglob("*.l1"))
@@ -437,6 +634,15 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         report.update(capability="error", reason=f"{type(exc).__name__}: {exc}")
     finally:
+        for scenario in (report.get("observability") or {}).values():
+            if scenario["status"] != "completed":
+                if scenario["status"] == "running":
+                    scenario["status"] = "failed"
+                elif report["capability"] in ("private", "unsupported"):
+                    scenario["status"] = "unavailable"
+                scenario["reason"] = (f"persistent reuse unavailable ({report['capability']})"
+                                      if report["capability"] in ("private", "unsupported") else
+                                      f"stopped at {report['stage']}: {report['reason']}")
         (args.output_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         summary = render_summary(report)
         (args.output_dir / "summary.md").write_text(summary, encoding="utf-8")

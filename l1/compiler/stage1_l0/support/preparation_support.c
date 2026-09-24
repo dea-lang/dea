@@ -103,7 +103,8 @@ static int pc_complete_profile(PcContext *c) {
         char *canonical = pc_path_call(path, l1c_fs_canonical_existing_path);
         char digest[65];
         PcJson *metadata = NULL, *record;
-        if (!canonical || !pc_within(canonical, c->selected) || !pc_hash_file(path, digest, &metadata))
+        if (!canonical || !pc_within(canonical, c->selected) ||
+            !pc_hash_observed(c, path, digest, &metadata, "publication", "completion-inventory"))
             ok = pc_fail(c, 2153, "cannot validate prepared artifact", path);
         else {
             record = pj_new(PJ_OBJECT);
@@ -170,16 +171,27 @@ void l1c_prep_free(void *context) {
 }
 int32_t l1c_prep_resolve(void *context) {
     PcContext *c = context;
-    return c && !c->error ? pc_resolve_native(c) : 0;
+    double started = pc_observation_start(c);
+    int result = c && !c->error ? pc_resolve_native(c) : 0;
+    if (c && c->force)
+        pc_observe_decision(c, "native-profile", "miss", "force", NULL);
+    if (c) pc_observe_span(c, "native-identity-resolution", started, result);
+    return result;
 }
 /** Return a validated hit (1), ordinary miss (0), unusable completion (2), or error (-1). */
 int32_t l1c_prep_find(void *context) {
     PcContext *c = context;
-    return c && !c->error ? pc_find_profile(c) : -1;
+    double started = pc_observation_start(c);
+    int result = c && !c->error ? pc_find_profile(c) : -1;
+    if (c) pc_observe_span(c, "profile-validation", started, result >= 0);
+    return result;
 }
 int32_t l1c_prep_lock(void *context) {
     PcContext *c = context;
-    return c && !c->error ? pc_acquire_profile(c) : 0;
+    double started = pc_observation_start(c);
+    int result = c && !c->error ? pc_acquire_profile(c) : 0;
+    if (c) pc_observe_span(c, "profile-lock-wait", started, result);
+    return result;
 }
 void l1c_prep_unlock(void *context) {
     PcContext *c = context;
@@ -209,7 +221,10 @@ int32_t l1c_prep_begin(void *context) {
 }
 int32_t l1c_prep_complete(void *context) {
     PcContext *c = context;
-    return c && !c->error ? pc_complete_profile(c) : 0;
+    double started = pc_observation_start(c);
+    int result = c && !c->error ? pc_complete_profile(c) : 0;
+    if (c) pc_observe_span(c, "native-publication", started, result);
+    return result;
 }
 int32_t l1c_prep_error_code(void *context) {
     PcContext *c = context;

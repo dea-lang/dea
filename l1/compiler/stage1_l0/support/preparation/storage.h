@@ -20,6 +20,108 @@ typedef struct {
     PcLock *lock;
 } PcContext;
 
+static int pc_verbosity(PcContext *c);
+/** Avoid observation clock calls outside debug verbosity. */
+static double pc_observation_start(PcContext *c) {
+    return c && pc_verbosity(c) >= 3 ? pc_milliseconds() : 0;
+}
+/** Emit one machine-readable debug observation without retaining persistent state. */
+static void pc_observe(PcContext *c, PcJson *record) {
+    if (pc_verbosity(c) >= 3) {
+        char *encoded;
+        pj_set_number(record, "schema", 1);
+        encoded = pj_encode(record);
+        fprintf(stderr, "Preparation observation: %s\n", encoded);
+        free(encoded);
+    }
+    pj_free(record);
+}
+static PcJson *pc_observation(const char *event) {
+    PcJson *record = pj_new(PJ_OBJECT);
+    pj_set_string(record, "event", event);
+    return record;
+}
+static void pc_observe_span(PcContext *c, const char *name, double started, int success) {
+    if (pc_verbosity(c) < 3) return;
+    PcJson *record = pc_observation("span");
+    pj_set_string(record, "name", name);
+    pj_set_number(record, "inclusive", 1);
+    pj_set_number(record, "elapsed_us", (int64_t)((pc_milliseconds() - started) * 1000.0));
+    pj_set_number(record, "success", success ? 1 : 0);
+    pc_observe(c, record);
+}
+static void pc_observe_decision(PcContext *c, const char *scope, const char *decision,
+                                const char *reason, const char *path) {
+    if (pc_verbosity(c) < 3) return;
+    PcJson *record = pc_observation("decision");
+    pj_set_string(record, "scope", scope);
+    pj_set_string(record, "decision", decision);
+    pj_set_string(record, "reason", reason);
+    if (path) pj_set_string(record, "path", path);
+    pc_observe(c, record);
+}
+static const char *pc_metadata_kind(const PcJson *metadata) {
+    const PcJson *mode = pj_get(metadata, "mode");
+    if (!mode || mode->type != PJ_NUMBER) return "unknown";
+#if defined(_WIN32)
+    return (mode->number & FILE_ATTRIBUTE_DIRECTORY) ? "directory" : "file";
+#else
+    return S_ISDIR((mode_t)mode->number) ? "directory" : "file";
+#endif
+}
+static void pc_add_optional_value(PcJson *record, const char *key, const PcJson *value) {
+    pj_add(record, key, value ? pj_clone(value) : pj_new(PJ_NULL));
+}
+/** Report the first metadata difference in a fixed field order. */
+static void pc_observe_metadata_mismatch(PcContext *c, const char *scope, const char *path,
+                                         const PcJson *previous, const PcJson *current) {
+    static const char *const fields[] = {"device", "inode", "size", "mode", "mtime", "mtime_ns",
+                                         "ctime", "ctime_ns", "reliable", NULL};
+    const char *field = "entry";
+    int i;
+    if (pc_verbosity(c) < 3) return;
+    if (previous && current) {
+        for (i = 0; fields[i]; ++i) {
+            if (!pj_equal(pj_get(previous, fields[i]), pj_get(current, fields[i]))) {
+                field = fields[i];
+                break;
+            }
+        }
+    }
+    {
+        PcJson *record = pc_observation("metadata-mismatch");
+        pj_set_string(record, "scope", scope);
+        pj_set_string(record, "path", path);
+        pj_set_string(record, "kind", pc_metadata_kind(current ? current : previous));
+        pj_set_string(record, "field", field);
+        if (!strcmp(field, "entry")) {
+            pc_add_optional_value(record, "previous", previous);
+            pc_add_optional_value(record, "current", current);
+        } else {
+            pc_add_optional_value(record, "previous", previous ? pj_get(previous, field) : NULL);
+            pc_add_optional_value(record, "current", current ? pj_get(current, field) : NULL);
+        }
+        pc_observe(c, record);
+    }
+}
+static int pc_hash_observed(PcContext *c, const char *path, char digest[65], PcJson **metadata,
+                            const char *category, const char *reason) {
+    if (pc_verbosity(c) < 3)
+        return pc_hash_file_measured(path, digest, metadata, NULL, NULL);
+    int64_t bytes = 0;
+    double elapsed = 0;
+    int ok = pc_hash_file_measured(path, digest, metadata, &bytes, &elapsed);
+    PcJson *record = pc_observation("hash");
+    pj_set_string(record, "category", category);
+    pj_set_string(record, "path", path);
+    pj_set_string(record, "reason", reason);
+    pj_set_number(record, "bytes", bytes);
+    pj_set_number(record, "elapsed_us", (int64_t)(elapsed * 1000.0));
+    pj_set_number(record, "success", ok ? 1 : 0);
+    pc_observe(c, record);
+    return ok;
+}
+
 /** Retain the first actionable error; cleanup must not hide its cause. */
 static int pc_fail(PcContext *c, int code, const char *reason, const char *path) {
     PcBuffer b = {0};
@@ -166,21 +268,26 @@ static PcJson *pc_memo_create(const char *kind) {
     return m;
 }
 /** Metadata is local evidence only; missing or invalid records always rehash. */
-static char *pc_input_digest(PcContext *c, const char *path) {
+static char *pc_input_digest(PcContext *c, const char *path, const char *category) {
     PcJson *now = pc_meta(path), *old = pj_get(c->old_files, path), *record;
     const char *digest = pj_field(old, "sha256");
     char hex[65];
     char *result;
     if (!now)
         return pc_fail(c, 2151, "cannot stat preparation input", path), NULL;
+    const char *reason = c->force ? "force" : !old ? "memo-entry-absent" :
+        !pc_hex_digest(digest) ? "memo-digest-invalid" :
+        !pj_is_number(pj_get(now, "reliable"), 1) ? "metadata-unreliable" : "metadata-changed";
     if (!c->force && pc_hex_digest(digest) && pj_is_number(pj_get(now, "reliable"), 1) &&
         pj_equal(now, pj_get(old, "metadata")))
         result = pc_string(digest);
     else {
+        if (pc_verbosity(c) >= 3 && old && !pj_equal(now, pj_get(old, "metadata")))
+            pc_observe_metadata_mismatch(c, category, path, pj_get(old, "metadata"), now);
         pj_free(now);
         now = NULL;
         ++c->identity_reads;
-        if (!pc_hash_file(path, hex, &now))
+        if (!pc_hash_observed(c, path, hex, &now, category, reason))
             return pc_fail(c, 2151, "cannot obtain stable preparation input digest", path), NULL;
         result = pc_string(hex);
     }
@@ -302,7 +409,7 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry,
            *seen = NULL;
     const PcJson *identity, *inventory, *item;
     char manifest_digest[65];
-    int outcome = -1, manifest_io_error = 0;
+    int outcome = -1, manifest_io_error = 0, memo_status = PC_JSON_ABSENT;
     raw = pc_read_file_checked(manifest_path, 16 * 1024 * 1024, &raw_size, &manifest_io_error);
     if (!raw) {
         if (manifest_io_error || pc_kind(manifest_path, 0) != 0) {
@@ -356,13 +463,18 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry,
     }
     memo_path = pc_memo_path(c, "artifacts", memo_key, 0);
     if (memo_path && !full)
-        memo = pc_read_json(memo_path);
+        memo = pc_read_json_status(memo_path, &memo_status);
     if (!pc_memo_valid(memo, "artifact-validation") || !pj_field(memo, "entry") ||
         !pc_path_equal(pj_field(memo, "entry"), resolved) || !pj_field(memo, "manifest") ||
         strcmp(pj_field(memo, "manifest"), manifest_digest)) {
         pj_free(memo);
         memo = NULL;
     }
+    pc_observe_decision(c, "artifact-validation-memo", memo ? "hit" : "miss",
+                        full ? "full-validation" : memo_status == PC_JSON_ABSENT ? "no-matching-memo" :
+                        memo_status == PC_JSON_UNREADABLE ? "unreadable-memo" :
+                        memo_status == PC_JSON_MALFORMED ? "malformed-memo" :
+                        memo ? "validated-memo" : "memo-identity-mismatch", memo_path);
     if (pc_verbosity(c) >= 3)
         fprintf(stderr, "Preparation validation: %s (%s)\n", entry,
                 memo ? "manifest reread; per-artifact metadata with changed-file hashing"
@@ -415,10 +527,17 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry,
               !strcmp(pj_field(old, "sha256"), digest) &&
               pj_equal(metadata, pj_get(old, "metadata"));
         if (!hit) {
+            const char *reason = full ? "full-validation" : !old ? "memo-entry-absent" :
+                !pc_hex_digest(pj_field(old, "sha256")) ? "memo-digest-invalid" :
+                strcmp(pj_field(old, "sha256"), digest) ? "memo-digest-mismatch" :
+                !pj_is_number(pj_get(metadata, "reliable"), 1) ? "metadata-unreliable" : "metadata-changed";
+            if (pc_verbosity(c) >= 3 && old && !pj_equal(metadata, pj_get(old, "metadata")))
+                pc_observe_metadata_mismatch(c, "artifact", path, pj_get(old, "metadata"), metadata);
             pj_free(metadata);
             metadata = NULL;
             ++c->artifact_reads;
-            if (!pc_hash_file(path, actual, &metadata) ||
+            if (!pc_hash_observed(c, path, actual, &metadata,
+                                  full ? "publication" : "artifact-validation", reason) ||
                 strcmp(actual, digest)) {
                 pc_fail(c, 2153, "managed artifact digest mismatch or unstable read", path);
                 pj_free(metadata);
@@ -470,17 +589,26 @@ static int pc_find_profile(PcContext *c) {
     char *entry;
     int result;
     if (!c->native_key) return pc_fail(c, 2151, "native identity is unresolved", NULL), -1;
-    if (c->ineligible || !c->local) return 0;
+    if (c->ineligible || !c->local) {
+        pc_observe_decision(c, "native-profile", "miss", c->ineligible ? "ineligible" : "no-cache-root", NULL);
+        return 0;
+    }
     entry = pc_entry_path(c->local, c->native_key);
     result = pc_validate_entry(c, entry, c->force);
-    if (result == 1) { free(c->selected); c->selected = entry; return 1; }
-    free(entry);
+    if (result == 1) {
+        pc_observe_decision(c, "native-profile", "hit", "validated-profile", entry);
+        free(c->selected); c->selected = entry; return 1;
+    }
     if (result < 0) {
+        pc_observe_decision(c, "native-profile", "unusable", "invalid-completed-profile", entry);
+        free(entry);
         free(c->unusable);
         c->unusable = pc_string(c->error ? c->error : "invalid completed native profile");
         pc_clear_error(c);
         return 2;
     }
+    pc_observe_decision(c, "native-profile", "miss", "profile-absent", entry);
+    free(entry);
     return 0;
 }
 /** Serialize absent/incomplete preparations by native key; OS ownership follows process lifetime. */

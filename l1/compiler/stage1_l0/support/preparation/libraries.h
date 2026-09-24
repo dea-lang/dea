@@ -68,7 +68,7 @@ static int pc_elf_searches(PcContext *c, const char *image, PcJson *dependencies
     pj_add(words, NULL, pj_string(reader));
     pj_add(words, NULL, pj_string("-d"));
     pj_add(words, NULL, pj_string(image));
-    probe = pc_context_probe(c, words);
+    probe = pc_context_probe(c, words, "ELF dynamic entries");
     if (!pc_probe_ok(c, &probe, "ELF loader search paths"))
         ok = 0;
     for (line = probe.out; *line && ok; line = *end ? end + 1 : end) {
@@ -194,7 +194,7 @@ static int pc_implementation_libraries(PcContext *c, PcJson *paths, PcJson *depe
         pj_add(words, NULL, pj_string("-L"));
 #endif
         pj_add(words, NULL, pj_string(image->key));
-        probe = pc_context_probe(c, words);
+        probe = pc_context_probe(c, words, "compiler implementation libraries");
 #if !defined(__APPLE__) && !defined(_WIN32)
         /* ldd reports static executables with a nonzero status. */
         if (probe.status != 0 && !probe.timed_out &&
@@ -242,7 +242,7 @@ static int pc_implementation_libraries(PcContext *c, PcJson *paths, PcJson *depe
                     pj_add(rwords, NULL, pj_string(inspector));
                     pj_add(rwords, NULL, pj_string("-l"));
                     pj_add(rwords, NULL, pj_string(image->key));
-                    rprobe = pc_context_probe(c, rwords);
+                    rprobe = pc_context_probe(c, rwords, "compiler library rpaths");
                     if (!pc_probe_ok(c, &rprobe, "compiler library rpaths"))
                         ok = 0;
                     rline = rprobe.out;

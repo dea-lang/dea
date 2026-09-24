@@ -5,6 +5,7 @@
 
 module preparation.consumer;
 
+import std.io;
 import std.path;
 import std.string;
 import std.system;
@@ -69,12 +70,37 @@ func mp_runtime(self: ManagedPreparation*, diags: DiagCollector*) -> bool {
 
 /** Replace exactly the compiler-owned bundled source position, respecting system overrides. */
 func mp_source_paths(self: ManagedPreparation*, paths: SourceSearchPaths*) {
-    if (sv_size(self.options.sys_roots) > 0) { return; }
+    if (sv_size(self.options.sys_roots) > 0) {
+        if (self.options.verbosity >= 3) {
+            err_printl_s("Preparation observation: {\"event\":\"provider-selection\",\"scope\":\"managed-providers\"," +
+                "\"decision\":\"suppressed\",\"reason\":\"explicit-system-root\",\"schema\":1}");
+            if (self.options.no_auto_prepare) {
+                err_printl_s("Preparation observation: {\"event\":\"provider-selection\"," +
+                    "\"scope\":\"no-auto-prepare\",\"decision\":\"source-compilation-allowed\"," +
+                    "\"reason\":\"option-only-disables-managed-preparation\",\"schema\":1}");
+            }
+        }
+        return;
+    }
     paths.managed_source_root = join(pr_get(self.context, "home"), "shared/l1/stdlib");
     paths.managed_interfaces = self.semantic_root;
     if (self.native_root != null) {
         paths.managed_interfaces = join(self.native_root as string, "modules");
     }
+}
+
+/** Report one selected bundled provider after graph resolution. */
+func mp_log_provider(self: ManagedPreparation*, node: ModuleGraphNode*) {
+    if (self.options.verbosity < 3 ||
+        (!starts_with_s(node.module_name, "std.") && !starts_with_s(node.module_name, "sys."))) { return; }
+    let origin = "virtual";
+    if (ord(node.origin.kind) == ord(MOK_SOURCE)) { origin = "source"; }
+    else if (ord(node.origin.kind) == ord(MOK_INTERFACE)) { origin = "interface"; }
+    else if (ord(node.origin.kind) == ord(MOK_REGISTRY)) { origin = "registry"; }
+    let record = "{\"event\":\"provider\",\"module\":" + pr_json_string(node.module_name) +
+        ",\"origin\":" + pr_json_string(origin) + ",\"managed\":" + pr_bool(node.managed);
+    if (node.origin.path != null) { record = record + ",\"path\":" + pr_json_string(node.origin.path as string); }
+    err_printl_s("Preparation observation: " + record + ",\"schema\":1}");
 }
 
 /**
@@ -103,6 +129,13 @@ func mp_analyze(self: ManagedPreparation*, paths: SourceSearchPaths*, entry: str
     mp_source_paths(self, paths);
     let result = analysis_analyze_entry_with_resolution(paths, entry, self.options.interface_paths,
         policy, artifact_root, self.config);
+    if (self.options.verbosity >= 3) {
+        with (let nodes = mg_nodes_sorted(driver_graph(result.driver_state)) => vec_free(nodes)) {
+            for (let i = 0; i < vec_size(nodes); i = i + 1) {
+                mp_log_provider(self, (*(vec_get(nodes, i) as void**)) as ModuleGraphNode*);
+            }
+        }
+    }
     if (!self.native || analysis_has_errors(result)) { return result; }
     let needs_native = false;
     with (let nodes = mg_nodes_sorted(driver_graph(result.driver_state)) => vec_free(nodes)) {

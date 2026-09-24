@@ -20,14 +20,20 @@ static void pc_trim(char *s) {
     if (first)
         memmove(s, s + first, n - first + 1);
 }
-static void pc_load_input_memo(PcContext *c, const char *key) {
+static void pc_load_input_memo(PcContext *c, const char *key, const char *scope) {
     char *path = pc_memo_path(c, "toolchains", key, 0);
-    PcJson *memo = path ? pc_read_json(path) : NULL;
+    int status = PC_JSON_ABSENT;
+    PcJson *memo = pc_read_json_status(path, &status);
+    int valid = !c->force && pc_memo_valid(memo, "identity") && pj_get(memo, "files") &&
+                pj_get(memo, "files")->type == PJ_OBJECT;
+    const char *reason = c->force ? "force" : status == PC_JSON_ABSENT ? "no-matching-memo" :
+        status == PC_JSON_UNREADABLE ? "unreadable-memo" :
+        status == PC_JSON_MALFORMED || !valid ? "malformed-memo" : "validated-memo";
+    pc_observe_decision(c, scope, valid ? "hit" : "miss", reason, path);
     free(path);
     pj_free(c->old_files);
     c->old_files = pj_new(PJ_OBJECT);
-    if (!c->force && pc_memo_valid(memo, "identity") && pj_get(memo, "files") &&
-        pj_get(memo, "files")->type == PJ_OBJECT) {
+    if (valid) {
         pj_free(c->old_files);
         c->old_files = pj_clone(pj_get(memo, "files"));
     }
@@ -71,7 +77,7 @@ static int pc_source_tree(PcContext *c, const char *root, const char *relative, 
             ok = pc_source_tree(c, root, rel, sources, modules, depth + 1);
         else if (kind == 1 &&
                  (pc_ends(path, ".l1") || pc_ends(path, ".l0") || pc_ends(path, ".c") || pc_ends(path, ".h"))) {
-            char *digest = pc_input_digest(c, path);
+            char *digest = pc_input_digest(c, path, "dea-input");
             if (!digest)
                 ok = 0;
             else {
@@ -107,7 +113,7 @@ static int pc_source_tree(PcContext *c, const char *root, const char *relative, 
     pj_free(names);
     return ok;
 }
-static int pc_resolve_dea(PcContext *c) {
+static int pc_resolve_dea_impl(PcContext *c) {
     PcJson *selection, *sources;
     char *memo_key, *digest;
     if (c->dea)
@@ -124,8 +130,8 @@ static int pc_resolve_dea(PcContext *c) {
     pj_set_string(selection, "compiler", c->self);
     memo_key = pc_json_digest(selection);
     pj_free(selection);
-    pc_load_input_memo(c, memo_key);
-    digest = pc_input_digest(c, c->self);
+    pc_load_input_memo(c, memo_key, "dea-input-memo");
+    digest = pc_input_digest(c, c->self, "dea-input");
     if (!digest) {
         free(memo_key);
         return 0;
@@ -154,7 +160,7 @@ static int pc_resolve_dea(PcContext *c) {
         for (module = c->modules->child; module; module = module->next) {
             char *relative = pc_module_artifact(module->key, ".l1m", "modules");
             char *path = pc_join(c->semantic_root, relative + strlen("modules/"));
-            char *interface_digest = pc_input_digest(c, path);
+            char *interface_digest = pc_input_digest(c, path, "dea-input");
             if (!interface_digest) {
                 pc_clear_error(c);
                 pc_fail(c, 2158, "required bundled semantic interface is unavailable; rerun make build-stage1 or repair installation", path);
@@ -172,6 +178,12 @@ static int pc_resolve_dea(PcContext *c) {
     pc_save_input_memo(c, memo_key, NULL);
     free(memo_key);
     return 1;
+}
+static int pc_resolve_dea(PcContext *c) {
+    double started = pc_observation_start(c);
+    int result = pc_resolve_dea_impl(c);
+    pc_observe_span(c, "dea-identity-resolution", started, result);
+    return result;
 }
 
 /** Keep process selection inputs separate from native artifact roots. */
@@ -329,8 +341,9 @@ static PcJson *pc_search_words(PcContext *c, const char *family) {
     }
     return words;
 }
-static PcProbe pc_context_probe(PcContext *c, PcJson *words) {
+static PcProbe pc_context_probe(PcContext *c, PcJson *words, const char *purpose) {
     PcProbe p;
+    double started = pc_observation_start(c);
     const PcJson *timeout = pj_get(c->config, "probe_timeout_ms");
     int ms =
         timeout && timeout->type == PJ_NUMBER && timeout->number > 0 && timeout->number <= 60000
@@ -339,6 +352,14 @@ static PcProbe pc_context_probe(PcContext *c, PcJson *words) {
     ++c->probes;
     p = pc_probe(words, ms);
     pj_free(words);
+    if (pc_verbosity(c) >= 3) {
+        PcJson *record = pc_observation("probe");
+        pj_set_string(record, "purpose", purpose);
+        pj_set_number(record, "elapsed_us", (int64_t)((pc_milliseconds() - started) * 1000.0));
+        pj_set_number(record, "status", p.status);
+        pj_set_number(record, "timed_out", p.timed_out ? 1 : 0);
+        pc_observe(c, record);
+    }
     return p;
 }
 static int pc_probe_ok(PcContext *c, const PcProbe *p, const char *purpose) {
@@ -465,31 +486,51 @@ static int pc_discovery_current(PcContext *c, const PcJson *memo) {
         !pc_hex_digest(pj_field(tc, "target_macros")) ||
         !pc_hex_digest(pj_field(tc, "runtime_target_macros")) || !memo_files ||
         memo_files->type != PJ_OBJECT)
-        return 0;
+        return pc_observe_decision(c, "toolchain-observation-memo", "miss",
+                                   c->force ? "force" : "malformed-memo", NULL), 0;
     digest = pc_json_digest(discovery);
     sealed =
         pj_field(memo, "discovery_digest") && !strcmp(digest, pj_field(memo, "discovery_digest"));
     free(digest);
     if (!sealed)
-        return 0;
+        return pc_observe_decision(c, "toolchain-observation-memo", "miss",
+                                   "discovery-digest-mismatch", NULL), 0;
     for (p = deps->child; p; p = p->next) {
         PcJson *now = pc_meta(p->key);
         int same = p->type == PJ_NULL
                        ? !now
                        : (now && pj_is_number(pj_get(now, "reliable"), 1) && pj_equal(p, now));
-        pj_free(now);
-        if (!same)
+        if (!same) {
+            if (pc_verbosity(c) >= 3 && !pj_equal(p->type == PJ_NULL ? NULL : p, now))
+                pc_observe_metadata_mismatch(c, "toolchain-dependency", p->key,
+                                             p->type == PJ_NULL ? NULL : p, now);
+            pc_observe_decision(c, "toolchain-observation-memo", "miss",
+                                now && !pj_is_number(pj_get(now, "reliable"), 1) ?
+                                "metadata-unreliable" : "metadata-changed", p->key);
+            pj_free(now);
             return 0;
+        }
+        pj_free(now);
     }
     for (p = paths->child; p; p = p->next) {
         PcJson *old = pj_get(memo_files, p->key), *now = pc_meta(p->key);
         int same = now && pc_hex_digest(pj_field(old, "sha256")) &&
                    pj_is_number(pj_get(now, "reliable"), 1) &&
                    pj_equal(now, pj_get(old, "metadata"));
-        pj_free(now);
-        if (!same)
+        if (!same) {
+            const char *reason = !now ? "metadata-unavailable" : !old ? "memo-entry-absent" :
+                !pc_hex_digest(pj_field(old, "sha256")) ? "memo-digest-invalid" :
+                !pj_is_number(pj_get(now, "reliable"), 1) ? "metadata-unreliable" : "metadata-changed";
+            if (pc_verbosity(c) >= 3 && !pj_equal(old ? pj_get(old, "metadata") : NULL, now))
+                pc_observe_metadata_mismatch(c, "toolchain-input", p->key,
+                                             old ? pj_get(old, "metadata") : NULL, now);
+            pc_observe_decision(c, "toolchain-observation-memo", "miss", reason, p->key);
+            pj_free(now);
             return 0;
+        }
+        pj_free(now);
     }
+    pc_observe_decision(c, "toolchain-observation-memo", "hit", "validated-memo", NULL);
     return 1;
 }
 /** A tiny scratch source is used only for bounded toolchain queries. */
@@ -647,7 +688,7 @@ static int pc_apple_selection(PcContext *c, PcJson *selection) {
         pj_add(words, NULL, pj_string("/usr/bin/xcrun"));
         pj_add(words, NULL, pj_string("--find"));
         pj_add(words, NULL, pj_string("clang"));
-        p = pc_context_probe(c, words);
+        p = pc_context_probe(c, words, "active Apple compiler");
         if (!pc_probe_ok(c, &p, "active Apple compiler")) {
             pc_probe_free(&p);
             return 0;
@@ -658,7 +699,7 @@ static int pc_apple_selection(PcContext *c, PcJson *selection) {
         words = pj_new(PJ_ARRAY);
         pj_add(words, NULL, pj_string("/usr/bin/xcrun"));
         pj_add(words, NULL, pj_string("--show-sdk-path"));
-        p = pc_context_probe(c, words);
+        p = pc_context_probe(c, words, "active Apple SDK");
         if (!pc_probe_ok(c, &p, "active Apple SDK")) {
             pc_probe_free(&p);
             return 0;
@@ -1127,7 +1168,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
     pj_set_string(toolchain, "invocation", c->compiler);
     words = pc_words(c, 1);
     pj_add(words, NULL, pj_string("-dumpmachine"));
-    p = pc_context_probe(c, words);
+    p = pc_context_probe(c, words, "effective target");
     if (!pc_probe_ok(c, &p, "effective target")) {
         pc_probe_free(&p);
         goto fail;
@@ -1141,7 +1182,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
     pc_probe_free(&p);
     words = pc_search_words(c, family);
     pj_add(words, NULL, pj_string("-print-search-dirs"));
-    p = pc_context_probe(c, words);
+    p = pc_context_probe(c, words, "toolchain search directories");
     if (!pc_probe_ok(c, &p, "toolchain search directories")) {
         pc_probe_free(&p);
         goto fail;
@@ -1164,7 +1205,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
             words = pc_words(c, 1);
             pj_add(words, NULL, pj_string(arg.s));
             free(arg.s);
-            p = pc_context_probe(c, words);
+            p = pc_context_probe(c, words, programs[i]);
             if (!pc_probe_ok(c, &p, "subordinate compiler tool")) {
                 pc_probe_free(&p);
                 goto fail;
@@ -1182,7 +1223,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
     } else {
         words = pc_search_words(c, family);
         pj_add(words, NULL, pj_string("-print-search-dirs"));
-        p = pc_context_probe(c, words);
+        p = pc_context_probe(c, words, "TinyCC support library");
         if (!pc_probe_ok(c, &p, "TinyCC support library")) {
             pc_probe_free(&p);
             goto fail;
@@ -1220,7 +1261,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
     pj_add(words, NULL, pj_string("-x"));
     pj_add(words, NULL, pj_string("c"));
     pj_add(words, NULL, pj_string(source));
-    p = pc_context_probe(c, words);
+    p = pc_context_probe(c, words, "effective target macros");
     if (!pc_probe_ok(c, &p, "effective target macros")) {
         pc_probe_free(&p);
         goto fail;
@@ -1245,7 +1286,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
     pj_add(words, NULL, pj_string("-x"));
     pj_add(words, NULL, pj_string("c"));
     pj_add(words, NULL, pj_string(source));
-    p = pc_context_probe(c, words);
+    p = pc_context_probe(c, words, "effective runtime target macros");
     if (!pc_probe_ok(c, &p, "effective runtime target macros")) {
         pc_probe_free(&p);
         goto fail;
@@ -1269,7 +1310,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
 #else
         pj_add(words, NULL, pj_string("/dev/null"));
 #endif
-        p = pc_context_probe(c, words);
+        p = pc_context_probe(c, words, "effective header search roots");
         if (!pc_probe_ok(c, &p, "effective header search roots")) {
             pc_probe_free(&p);
             goto fail;
@@ -1306,7 +1347,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
                 words = pc_words(c, 1);
                 pj_add(words, NULL, pj_string(flag.s));
                 free(flag.s);
-                p = pc_context_probe(c, words);
+                p = pc_context_probe(c, words, "compiler support component: specs");
                 if (!pc_probe_ok(c, &p, "compiler support component")) {
                     pc_probe_free(&p);
                     goto fail;
@@ -1343,7 +1384,18 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
         pj_add(words, NULL, pj_string("-MF"));
         pj_add(words, NULL, pj_string(depfile));
         pj_add(words, NULL, pj_string(runtime_source ? runtime_source : source));
-        p = pc_context_probe(c, words);
+        {
+            char purpose[160] = "";
+            if (pc_verbosity(c) >= 3) {
+                if (i < 0)
+                    snprintf(purpose, sizeof(purpose), "generated-C dependencies: real=%d,float=%d",
+                             (i + 4) & 1, ((i + 4) >> 1) & 1);
+                else
+                    snprintf(purpose, sizeof(purpose), "runtime dependencies: %s",
+                             i == 9 ? "dea_rt_trace" : pc_runtime_sources[i]);
+            }
+            p = pc_context_probe(c, words, purpose);
+        }
         free(runtime_source);
         if (!pc_probe_ok(c, &p, "SDK and runtime header dependencies")) {
             pc_probe_free(&p);
@@ -1453,7 +1505,7 @@ static int pc_runtime_explicit_configs(PcContext *c, PcOptionInputs *inputs) {
 #else
     pj_add(words, NULL, pj_string("/dev/null"));
 #endif
-    probe = pc_context_probe(c, words);
+    probe = pc_context_probe(c, words, "effective configuration target options");
     if (!pc_probe_ok(c, &probe, "effective configuration target options")) {
         pc_decline(c, c->error); pc_clear_error(c); pc_probe_free(&probe);
         return pc_runtime_known_configs(c, inputs);
@@ -1536,7 +1588,7 @@ static int pc_compilation_family(PcContext *c) {
     else if (magic_size >= 2 && magic[0] == '#' && magic[1] == '!')
         pc_decline(c, "opaque compiler wrapper is invocable but cannot authorize persistent reuse");
     pj_add(words, NULL, pj_string("--version"));
-    p = pc_context_probe(c, words);
+    p = pc_context_probe(c, words, "compiler family and version");
     if (p.status == 0 && !p.timed_out) {
         if (strstr(p.out, "clang") || strstr(p.err, "clang")) family = "clang";
         else if (strstr(p.out, "tcc") || strstr(p.out, "Tiny C")) family = "tcc";
@@ -1561,7 +1613,7 @@ static int pc_compilation_toolchain(PcContext *c) {
     if (!strcmp(c->family, "tcc")) return 1;
     words = pc_runtime_words(c);
     pj_add(words, NULL, pj_string("-print-prog-name=ar"));
-    p = pc_context_probe(c, words);
+    p = pc_context_probe(c, words, "runtime archiver");
     if (p.status == 0 && !p.timed_out) {
         pc_trim(p.out);
         c->archiver = pc_reported_executable(p.out, c->compiler);
@@ -1576,7 +1628,8 @@ static int pc_resolve_native(PcContext *c) {
     PcJson *selection = NULL, *memo = NULL, *discovery = NULL, *components, *toolchain, *stdlib, *runtime;
     PcOptionInputs options = {0};
     const PcJson *path;
-    char *memo_key = NULL, *memo_path, *cpu;
+    char *memo_key = NULL, *memo_path, *cpu, *selection_cwd = NULL;
+    int memo_status = PC_JSON_ABSENT;
     const char *variant = pc_config(c, "variant");
     int ok = 0;
     if (c->native_resolved) return !c->error;
@@ -1599,8 +1652,8 @@ static int pc_resolve_native(PcContext *c) {
     pj_set_string(selection, "include", c->include);
     pj_set_string(selection, "source_home", c->home);
     {
-        char *cwd = pc_path_call(".", l1c_fs_absolute_path);
-        if (cwd) { pj_set_string(selection, "cwd", cwd); free(cwd); }
+        selection_cwd = pc_path_call(".", l1c_fs_absolute_path);
+        if (selection_cwd) pj_set_string(selection, "cwd", selection_cwd);
     }
     pj_add(selection, "options", pj_clone(c->options));
     pj_add(selection, "runtime_options", pj_clone(c->runtime_options));
@@ -1621,8 +1674,16 @@ static int pc_resolve_native(PcContext *c) {
     }
 #endif
     memo_key = pc_json_digest(selection);
+    if (pc_verbosity(c) >= 3) {
+        PcJson *record = pc_observation("observation-selection");
+        pj_set_string(record, "scope", "toolchain-observation-memo");
+        pj_set_string(record, "selection_key", memo_key);
+        if (selection_cwd) pj_set_string(record, "cwd", selection_cwd);
+        pc_observe(c, record);
+    }
     memo_path = pc_memo_path(c, "toolchains", memo_key, 0);
-    if (memo_path && !c->force && !c->ineligible) memo = pc_read_json(memo_path);
+    if (memo_path && !c->force && !c->ineligible)
+        memo = pc_read_json_status(memo_path, &memo_status);
     free(memo_path);
     if (pc_memo_valid(memo, "identity") && pc_discovery_current(c, memo)) {
         discovery = pj_clone(pj_get(memo, "discovery"));
@@ -1630,8 +1691,21 @@ static int pc_resolve_native(PcContext *c) {
         if (strcmp(c->family, "tcc")) c->archiver = pc_string(pj_field(pj_get(discovery, "toolchain"), "archiver"));
         if (pc_verbosity(c) >= 3) fputs("Preparation toolchain memo: validated observation\n", stderr);
     } else {
+        if (pc_verbosity(c) >= 3 &&
+            (c->force || c->ineligible || memo_status != PC_JSON_OK || !pc_memo_valid(memo, "identity"))) {
+            PcJson *record = pc_observation("decision");
+            const char *reason = c->force ? "force" : c->ineligible ? "ineligible" :
+                memo_status == PC_JSON_ABSENT ? "no-matching-memo" :
+                memo_status == PC_JSON_UNREADABLE ? "unreadable-memo" : "malformed-memo";
+            pj_set_string(record, "scope", "toolchain-observation-memo");
+            pj_set_string(record, "decision", "miss");
+            pj_set_string(record, "reason", reason);
+            pj_set_string(record, "selection_key", memo_key);
+            if (selection_cwd) pj_set_string(record, "cwd", selection_cwd);
+            pc_observe(c, record);
+        }
         if (!pc_compilation_toolchain(c)) goto finish;
-        pc_load_input_memo(c, memo_key);
+        pc_load_input_memo(c, memo_key, "toolchain-input-memo");
         if (!c->ineligible) discovery = pc_discover_toolchain(c, selection, &options);
         if (!discovery && c->error) { pc_decline(c, c->error); pc_clear_error(c); }
     }
@@ -1639,7 +1713,7 @@ static int pc_resolve_native(PcContext *c) {
     components = pj_new(PJ_OBJECT);
     if (discovery) {
         for (path = pj_get(discovery, "paths")->child; path; path = path->next) {
-            char *digest = pc_input_digest(c, path->key);
+            char *digest = pc_input_digest(c, path->key, "toolchain-input");
             if (!digest) { pc_decline(c, c->error); pc_clear_error(c); break; }
             pj_set_string(components, path->key, digest); free(digest);
         }
@@ -1681,7 +1755,7 @@ static int pc_resolve_native(PcContext *c) {
     if (discovery && !c->ineligible) pc_save_input_memo(c, memo_key, discovery);
     ok = 1;
 finish:
-    pj_free(memo); pj_free(discovery); pj_free(selection); free(memo_key);
+    pj_free(memo); pj_free(discovery); pj_free(selection); free(memo_key); free(selection_cwd);
     pc_option_inputs_free(&options);
     return ok;
 }

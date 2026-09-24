@@ -91,6 +91,32 @@ def check_native_reader(root: Path, name: str) -> Path:
     return executable
 
 
+def check_observability(root: Path) -> None:
+    """Validate production observations with a controlled native clock.
+
+    Args:
+        root: Owned directory for fixture compilation and input files.
+    """
+    executable = root / ("observability.exe" if os.name == "nt" else "observability")
+    compile_native(executable, [Path(__file__).with_name("preparation_observability_test.c"),
+                                SUPPORT / "compiler_support.c"])
+    fixtures = root / "observation-files"
+    fixtures.mkdir()
+    result = subprocess.run([str(executable), str(fixtures)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    records = [json.loads(line.removeprefix("Preparation observation: ")) for line in result.stderr.splitlines()]
+    hashes = [record for record in records if record["event"] == "hash"]
+    assert [(item["bytes"], item["elapsed_us"], item["success"]) for item in hashes] == [(3, 1000, 1), (0, 1000, 0)]
+    mismatches = [record for record in records if record["event"] == "metadata-mismatch"]
+    assert len(mismatches) == 1 and mismatches[0]["field"] == "inode", mismatches
+    assert mismatches[0]["path"] == 'quote"slash\\line\n'
+    decisions = [record for record in records if record["event"] == "decision"]
+    assert [item["reason"] for item in decisions] == ["memo-digest-invalid", "memo-digest-invalid"], decisions
+    probes = [record for record in records if record["event"] == "probe"]
+    assert probes[0]["status"] == 23 and probes[0]["timed_out"] == 0
+    assert probes[1]["timed_out"] == 1
+
+
 class Service:
     """Small test adapter for the compiler-private, caller-owned byte-span ABI."""
 
@@ -531,6 +557,7 @@ def main() -> int:
         shutil.copy2(dependency_reader, spaced_reader)
         run_native_reader(spaced_reader, root / "spaced-reader-files", "spaced-path")
         check_native_reader(root, "libraries")
+        check_observability(root)
         library = build_library(root)
         check_service_lifetime(library, root)
         home = root / "compiler"

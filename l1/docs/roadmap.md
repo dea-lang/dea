@@ -204,6 +204,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   adopted completion-manifest interpretation as the settled evidence representation, so valid warm native profile hits
   skip the repeated complete bundled validation while any input change re-enables the full pass; probes, thresholds and
   implementation are recorded in ADR-0040.
+- Feature [2026-09-24-preparation-observability-noref][preparation-observability] added schema-versioned `-vvv`
+  decisions, timings, probe labels, hash accounting and provider selection, plus paired local reuse scenarios for cwd
+  changes, copied caches, removed memos and explicit system roots.
 - Tool [l1/work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md][reuse-report] added explicit CI
   capability reports with exact compiler attribution, cold/warm counters, guarded reuse, header invalidation and
   retained failure evidence.
@@ -421,6 +424,7 @@ update to be promoted to an initiative or plan:
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [preparation-contract]: reference/stdlib-preparation.md
 [preparation-economy]: ../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
+[preparation-observability]: ../work/plans/features/closed/2026-09-24-preparation-observability-noref.md
 [preparation-portability]: ../work/plans/bug-fixes/closed/2026-09-13-native-preparation-ci-portability-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md

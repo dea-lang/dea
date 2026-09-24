@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-09-20
+Version: 2026-09-24
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -60,12 +60,47 @@ foreign/external link operands, or program arguments. Cache controls are errors 
 `--prepare-stdlib --no-auto-prepare` is invalid. Force cannot override reuse eligibility. The shared mode contract is in
 [docs/specs/compiler/cli-contract.md][cli].
 
+## Debug observability
+
+At `-vvv`, preparation writes one-line JSON records after the `Preparation observation: ` prefix. Every record has
+`schema: 1` and a stable `event` name. The records are diagnostic output only: collecting them performs no additional
+probe, hash, validation or persistent write. Commands that fail retain the records emitted before the failure.
+
+Path fields retain the spelling used by the observed operation, which can mix `/` and `\` separators on Windows.
+Consumers comparing these fields with local paths should use host filesystem path semantics rather than raw strings.
+
+Decision events distinguish Dea input memos, toolchain observation memos, artifact-validation memos and native-profile
+selection. Miss reasons include absent, unreadable and malformed evidence, force, ineligibility, changed metadata and
+invalid completed profiles. Toolchain observation selection reports its exact key and invocation directory. A metadata
+miss reports the first differing field in the fixed `device`, `inode`, `size`, `mode`, modification-time, change-time
+and reliability order, together with the previous and current values. An absent observation key remains a
+`no-matching-memo` result; the compiler does not scan other memo files to speculate about which selection input changed.
+Missing or invalid memo digests and unreliable metadata have separate reasons; equal metadata never produces a
+metadata-difference record. Existing nonregular or oversized memo evidence is malformed, not absent.
+
+`span` events report inclusive `elapsed_us` for Dea identity resolution, native identity/observation resolution, profile
+validation, lock waiting and native publication. `probe` events report each purpose, elapsed time, status and timeout;
+runtime dependency probes name the individual translation unit and generated-C dependency probes name their real/float
+configuration. Nested probe and hash time is already included in its enclosing span and must not be added to that span.
+
+`hash` events report the reason, success, elapsed time and bytes actually read into SHA-256 under `dea-input`,
+`toolchain-input`, `artifact-validation` or `publication`. These byte counts include failed stable-read attempts but do
+not claim total filesystem I/O: JSON, directory enumeration, metadata operations, compiler subprocesses and application
+compilation are outside them. Existing `Preparation statistics` counters remain unchanged and are emitted separately.
+
+Provider events report the module, source/interface origin, path and managed status for selected `std.*` and `sys.*`
+providers, including `--gen`, compile-only commands and selections available before an analysis failure. An explicit
+`--sys-root` reports that it suppresses managed-provider selection. When combined with `--no-auto-prepare`, the debug
+output also states that the option disables managed preparation only; ordinary sources selected through explicit roots
+may still be compiled.
+
 ## CI capability reporting
 
 From `l1/`, run the focused reporter with an exact compiler name or path:
 
 ```sh
 python3 scripts/check_preparation_reuse.py --c-compiler clang --expect available
+python3 scripts/check_preparation_reuse.py --c-compiler clang --expect observe --observability-scenarios
 ```
 
 The reporter resolves that executable directly without the integration fixtures' filename-based compiler fallback. It
@@ -93,6 +128,17 @@ bootstrap artifacts produce `not-run`; both categories fail even with `--expect 
 `--expect unsupported`, and `--expect observe` are explicit local probe modes; observation accepts only completed
 capability measurements. They do not weaken or skip the strict preparation integrations. Compiler matrix expansion is
 separate work.
+
+`--observability-scenarios` is an opt-in local extension for persistently reusable configurations. Before the normal
+header invalidation, it runs identical pairs for an unchanged warm cache, another cwd with absolute target/project
+paths, a copied cache, a copied cache with validation memos removed and the bundled stdlib selected through explicit
+`--sys-root`. Cache variants are isolated, copy time is separate from compiler time and every command retains raw logs.
+Copied-cache results are experimental observations only; they do not establish cache portability. Reports compare
+selection/native keys, providers, counters, spans and hash totals without wall-time pass/fail thresholds. The Markdown
+summary includes memo decisions, metadata differences, inclusive spans, individual probe timings and hash totals.
+Scenario comparisons show selection and provider changes against the warm baseline as well as within each pair.
+Unavailable scenarios carry explicit reasons, and absent measurements remain unknown. Timed-out commands preserve
+complete observation records even when final statistics or the last JSON line are missing.
 
 The shared L1 CI action runs the reporter after its Make target, including after test failure when the bootstrap is
 complete. It always publishes the Markdown summary and uploads the existing L1 workdir artifact. The default
