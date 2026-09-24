@@ -311,13 +311,13 @@ def build_semantic_interfaces(layout: L1BuildLayout, native_bin: Path) -> None:
         for module in modules:
             output = interfaces / (module.replace(".", "/") + ".l1m")
             output.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.run([str(native_bin), "--emit-interface", "--sys-root", str(source_root),
+            subprocess.run([str(native_bin), "--emit-interface", "--no-managed-stdlib", "--sys-root", str(source_root),
                             "--project-root", str(workspace), module, "-o", str(output)],
                            cwd=REPO_ROOT, env=env, check=True)
         umbrella = workspace / "_dea_semantic_bootstrap.l1"
         umbrella.write_text("module _dea_semantic_bootstrap;\n" +
                             "".join(f"import {module};\n" for module in modules), encoding="utf-8")
-        subprocess.run([str(native_bin), "--gen", "--sys-root", str(source_root), "--project-root", str(workspace),
+        subprocess.run([str(native_bin), "--gen", "--no-managed-stdlib", "--sys-root", str(source_root), "--project-root", str(workspace),
                         "-I", str(interfaces), "_dea_semantic_bootstrap", "-o", str(workspace / "verify.c")],
                        cwd=REPO_ROOT, env=env, check=True)
         destination = layout.build_dir / "interfaces"

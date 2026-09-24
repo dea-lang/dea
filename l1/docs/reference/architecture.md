@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-14
+Version: 2026-09-24
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -109,8 +109,10 @@ Internal analysis entry points can build a deterministic `ModuleGraph` from an e
 resolution policy, and an optional artifact root. The entry stays source-backed. Imported modules prefer the first
 matching `.l1m`; `MRP_REQUIRE_INTERFACE` rejects a missing interface, while `MRP_ALLOW_SOURCE_FALLBACK` retains the
 existing source-root precedence when no interface exists. Bundled semantic interfaces occupy only the canonical
-compiler-owned system-root position; explicit system-root configuration can suppress that position, while project roots
-retain lower precedence. Programmatic interface registries use the same graph model.
+compiler-owned directory's ordered system-root position, recognized through filesystem identity even when selected
+explicitly. Earlier custom roots retain priority; copies and unavailable identity cannot authorize managed selection.
+`--no-managed-stdlib` disables automatic bundled providers independently of native preparation; project roots retain
+lower precedence. Programmatic interface registries use the same graph model.
 
 The driver closes over both interface dependency tiers. `require` providers are activated for semantic replay, while
 `link` providers remain graph obligations without entering the consumer's semantic environment. Source nodes retain

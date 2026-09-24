@@ -20,6 +20,7 @@ def native_driver_args(
 ) -> list[str]:
     """Select repo sources and the Make-built runtime for a native consumer.
 
+    The explicit provider opt-out preserves source imports.
     TinyCC retains automatic selection of its compatible raw runtime objects.
     Preparation integration tests deliberately do not use this helper.
 
@@ -39,6 +40,7 @@ def native_driver_args(
     args = ["--runtime-lib", str(build_dir / "lib"), "--no-auto-prepare"]
     if source:
         args.extend([
+            "--no-managed-stdlib",
             "--sys-root", str(L1_ROOT / "compiler/shared/l1/stdlib"),
             "--runtime-include", str(build_dir / "include"),
         ])

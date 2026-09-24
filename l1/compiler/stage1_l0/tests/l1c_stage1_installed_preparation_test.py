@@ -62,6 +62,11 @@ def main() -> int:
             assert "L1C-2159" in missing.stderr
             cold = run("--run", "app")
             assert cold.stdout == "installed-ok\n" and "Preparing stdlib and runtime" in cold.stderr
+            explicit = run("--run", "--sys-root", str(home / "shared/l1/stdlib"),
+                           "--no-auto-prepare", "-vvv", "app")
+            assert explicit.stdout == "installed-ok\n"
+            assert analysis_count(explicit, "std.io") == 0, explicit.stderr
+            assert "Preparing stdlib and runtime" not in explicit.stderr, explicit.stderr
             executable = root / ("linked.exe" if os.name == "nt" else "linked")
             warm = run("--link", "--no-auto-prepare", str(root / "app.o"), "-o", str(executable))
             assert "Preparing " not in warm.stderr

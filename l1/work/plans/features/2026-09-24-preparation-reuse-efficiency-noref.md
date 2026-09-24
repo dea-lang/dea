@@ -3,13 +3,18 @@
 ## Improve preparation reuse efficiency
 
 - Date: 2026-09-24
-- Status: Draft
+- Status: In progress
 - Title: Improve L1 preparation reuse efficiency using attributed validation costs
 - Kind: Feature
 - Severity: Medium
 - Stage: 1
 - Subsystem: Managed providers / native preparation / validation memos / performance measurement
 - Modules:
+  - `l1/compiler/stage1_l0/src/cli_args.l0`
+  - `l1/compiler/stage1_l0/src/cli_args/model.l0`
+  - `l1/compiler/stage1_l0/src/cli_args/parse.l0`
+  - `l1/compiler/stage1_l0/src/cli_args/help.l0`
+  - `l1/scripts/build_stage1_l1c.py`
   - `l1/compiler/stage1_l0/src/preparation/consumer.l0`
   - `l1/compiler/stage1_l0/src/source_paths.l0`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
@@ -19,6 +24,10 @@
   - `l1/compiler/stage1_l0/support/preparation/sha256.h`
   - `l1/scripts/check_preparation_reuse.py`
 - Test modules:
+  - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
+  - `l1/compiler/stage1_l0/tests/source_paths_test.l0`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_bootstrap_interfaces_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
   - `l1/compiler/stage1_l0/tests/preparation_identity_test.py`
   - `l1/compiler/stage1_l0/tests/preparation_support_test.py`
   - `l1/compiler/stage1_l0/tests/preparation_ownership_test.py`
@@ -42,9 +51,10 @@ observations distinguish a reusable native profile from reusable evidence about 
 investigation confirms that the native identity can remain unchanged while metadata rejection, a changed discovery
 selection, or explicit system-root selection incurs substantial work.
 
-This standalone plan organizes five implementation phases within one work item. This draft and its attachments preserve
-evidence and describe future work; they do not change compiler behavior, accepted ADRs, cache formats, or CLI semantics.
-Unresolved designs remain subject to explicit evidence and compatibility gates.
+This standalone plan organizes five implementation phases within one work item. Phase 1 implements equivalent bundled
+root recognition with an explicit source opt-out. Phases 2 through 5 remain future work, subject to their evidence and
+compatibility gates. The original investigation attachments remain immutable historical evidence; Phase 1 measurements
+and validation are recorded separately.
 
 ## ADR Impact
 
@@ -53,8 +63,9 @@ Unresolved designs remain subject to explicit evidence and compatibility gates.
   - Scope: L1
   - Disposition: Amend ADR
   - ADR: `l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md`
-  - Rationale: ADR-0038 deliberately preserves explicit system-root suppression. The intended bundled-root change must
-    amend that provider-selection contract after the Phase 1 compatibility gate; this draft does not amend it yet.
+  - Rationale: Phase 1 replaces unconditional explicit-root suppression with filesystem-identity recognition and the
+    `--no-managed-stdlib` opt-out. ADR-0038 records that compatibility decision; ADR-0033 delegates its
+    provider-selection wording to that contract. Later phases remain independent and unresolved.
 - Decision: Share digest evidence across discovery selections and define any safe cwd-independent observation reuse.
   - Scope: L1
   - Disposition: Pending
@@ -80,7 +91,7 @@ Unresolved designs remain subject to explicit evidence and compatibility gates.
     evidence. The backend choice and final ADR disposition remain open; see
     [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md][reuse-boundary].
 
-## Evidence and Current State
+## Original Evidence (Before Phase 1)
 
 - [l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/investigation.md][investigation]: complete
   methodology, findings, limitations, scenario tables, and reproducible command descriptions.
@@ -98,7 +109,7 @@ preparation build commands. Median Clang fresh/warm times are 3.434/0.682 second
 warm invocation takes 1.455/0.607 seconds. In this environment:
 
 - Explicitly naming the same bundled root selects eleven source providers on every invocation despite native-profile
-  reuse. This is current deliberate behavior under ADR-0038, so changing it requires a compatibility decision.
+  reuse. This was deliberate baseline behavior under ADR-0038; Phase 1 records its compatibility change below.
 - A different cwd changes discovery and input-memo selection without changing the native key. The first such Clang
   invocation hashes 240,347,792 toolchain bytes; the next becomes warm.
 - Fresh containers reject image-baked directory and file inode evidence. Revalidation retains the native key.
@@ -135,6 +146,11 @@ resolve it. Resolve all ADR Impact records before eventual plan closure.
 
 ## Phase 1: Recognize Explicitly Selected Bundled Roots
 
+**Status.** Completed on 2026-09-24 for the validated macOS/Linux configurations. Native Windows validation remains
+unavailable in this session. Full L1 normal and trace validation passed; 40 Docker containers verified 280 compiler
+invocations and program outputs. Explicit-root median times fell by approximately 82-85% across GCC/Clang debug and
+quiet controls while native preparation build counters stayed zero. See the Phase 1 decision and evidence below.
+
 **Hypothesis.** An explicit root that identifies the bundled directory can safely retain managed providers, avoiding
 repeated imported source compilation. The current suppression depends on how the root was supplied, not different
 compiler or stdlib contents.
@@ -161,6 +177,24 @@ remain valid under the chosen CLI contract. Test aliases and unavailable filesys
 **Completion criteria.** The CLI decision is recorded; equivalent bundled selections retain expected provider origins
 and paths and avoid imported source compilation; intentional source use remains expressible if required; negative and
 precedence tests pass. Record the measured benefit independently of native preparation counters.
+
+### Phase 1 implementation decision (2026-09-24)
+
+Selected automatic filesystem-identity recognition plus `--no-managed-stdlib`. Retaining suppression with a managed
+opt-in would preserve existing commands but would leave equivalent explicit roots on the slow path by default. Automatic
+recognition without an opt-out would break intentional source workflows. Inspection found concrete callers: semantic
+bootstrap needs source imports before interfaces exist, and native test helpers intentionally combine source imports
+with a separately supplied runtime and `--no-auto-prepare`. These callers now use the opt-out.
+
+The opt-out is accepted in source-resolving modes and rejected in standalone link and explicit preparation with the
+existing `L1C-2157`. Explicit interfaces keep authority, compile-only keeps its imported-interface requirement, and
+requested targets remain source-backed. The option does not disable native runtime preparation. Ordered custom roots,
+`L1_SYSTEM`, project-root behavior, identity failures, and invalid managed-provider handling retain their contracts. No
+cache format, identity coverage, concurrency protocol, or dependency changes were needed.
+
+Implementation and correctness checks are recorded in
+[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md][phase-one]. The parent
+plan stays active for Phases 2 through 5; their ADR records remain pending.
 
 ## Phase 2: Separate Digest Reuse from Discovery Selection
 
@@ -310,6 +344,7 @@ identifiers, resolve all repository links, and run active-plan ADR, Markdown, an
 [logging-control]: attachments/2026-09-24-preparation-reuse-efficiency/logging-control-report.json
 [measurements]: attachments/2026-09-24-preparation-reuse-efficiency/report.json
 [observability]: closed/2026-09-24-preparation-observability-noref.md
+[phase-one]: attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md
 [preparation]: ../../../docs/reference/stdlib-preparation.md
 [reuse-boundary]: ../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
 [semantic-authority]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md

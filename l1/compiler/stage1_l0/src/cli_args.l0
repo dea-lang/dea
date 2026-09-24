@@ -75,6 +75,11 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
         while (i < cli_end) {
             let token = sv_get(argv, i);
 
+            if (token == "--no-managed-stdlib") {
+                (opts as CliOptions*).no_managed_stdlib = true;
+                i = i + 1;
+                continue;
+            }
             if (token == "--no-auto-prepare") {
                 (opts as CliOptions*).no_auto_prepare = true;
                 i = i + 1;

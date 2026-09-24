@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -39,6 +40,20 @@ def run(compiler: Path, root: Path, env: dict[str, str], *args: str, expected: i
     result = subprocess.run([str(compiler), *args], cwd=root, env=env, capture_output=True, text=True)
     assert result.returncode == expected, (args, result.returncode, result.stdout, result.stderr)
     return result
+
+
+def providers(result: subprocess.CompletedProcess[str]) -> dict[str, dict]:
+    """Read selected provider events from a debug invocation.
+
+    Args:
+        result: Captured compiler output.
+
+    Returns:
+        Provider records keyed by canonical module name.
+    """
+    records = [json.loads(line.removeprefix("Preparation observation: "))
+               for line in result.stderr.splitlines() if line.startswith("Preparation observation: ")]
+    return {record["module"]: record for record in records if record["event"] == "provider"}
 
 
 def main() -> int:
@@ -85,6 +100,58 @@ def main() -> int:
             source_inspected = run(native, root, env, mode, "--all-modules", "--sys-root",
                                    env["L1_HOME"] + "/shared/l1/stdlib", "main")
             assert inspected.stdout == source_inspected.stdout, mode
+        # Equivalent system positions select the same managed interfaces, including aliases.
+        bundled = L1_ROOT / "compiler/shared/l1/stdlib"
+        baseline = providers(run(native, root, env, "--gen", "-vvv", "main"))
+        assert baseline and all(item["managed"] and item["origin"] == "interface" for item in baseline.values())
+        spellings = [str(bundled), os.path.relpath(bundled, root), str(bundled / ".." / "stdlib")]
+        alias = root / "bundled-alias"
+        try:
+            alias.symlink_to(bundled, target_is_directory=True)
+        except OSError as exc:
+            print(f"bundled directory symlink unavailable: {exc}")
+        else:
+            spellings.append(str(alias))
+        if os.name == "nt":
+            junction = root / "bundled-junction"
+            made = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(bundled)], capture_output=True)
+            if made.returncode == 0:
+                spellings.append(str(junction))
+            else:
+                print(f"bundled directory junction unavailable: {made.stderr!r}")
+        for spelling in spellings:
+            selected = run(native, root, env, "--gen", "-vvv", "--sys-root", spelling, "main")
+            assert providers(selected) == baseline
+            assert "explicit-system-root" not in selected.stderr
+        assert providers(run(native, root, {**env, "L1_SYSTEM": str(bundled)}, "--gen", "-vvv", "main")) == baseline
+        run(native, root, env, "--compile", "--sys-root", str(bundled), "--c-compiler", cc,
+            "main", "-o", str(root / "explicit.o"))
+        # The explicit opt-out also works without an explicit root and without any semantic bootstrap.
+        unbuilt_env = {**env, "L1_BUILD_DIR": str(root / "unbuilt")}
+        for roots in ([], ["--sys-root", str(bundled)]):
+            selected = run(native, root, unbuilt_env, "--gen", "-vvv", "--no-managed-stdlib", *roots, "main")
+            assert providers(selected) and all(not item["managed"] and item["origin"] == "source"
+                                               for item in providers(selected).values())
+            assert '"reason":"no-managed-stdlib"' in selected.stderr
+        run(native, root, env, "--compile", "--no-managed-stdlib", "--c-compiler", cc,
+            "main", "-o", str(root / "source.o"), expected=1)
+        # Copies remain ordinary sources, even when their contents match exactly.
+        copied = root / "copied-stdlib"
+        shutil.copytree(bundled, copied)
+        selected = run(native, root, unbuilt_env, "--gen", "-vvv", "--sys-root", str(copied), "main")
+        assert providers(selected) and all(not item["managed"] for item in providers(selected).values())
+        # A prior custom provider wins; a later custom provider cannot shadow the bundled position.
+        run(native, root, env, "--gen", "--sys-root", str(poison), "--sys-root", str(bundled), "main", expected=1)
+        assert providers(run(native, root, env, "--gen", "-vvv", "--sys-root", str(bundled),
+                             "--sys-root", str(poison), "main")) == baseline
+        empty = root / "empty-system"
+        empty.mkdir()
+        assert providers(run(native, root, env, "--gen", "-vvv", "--sys-root", str(empty),
+                             "--sys-root", str(bundled), "main")) == baseline
+        # An explicitly requested bundled module remains a source target.
+        target = run(native, root, env, "--gen", "-vvv", "--sys-root", str(bundled), "std.io")
+        assert providers(target)["std.io"]["origin"] == "source"
+        assert not providers(target)["std.io"]["managed"]
         # Caller-selected system roots suppress the managed bundled position.
         for altered_env, extra in ((env, ["--sys-root", str(poison)]), ({**env, "L1_SYSTEM": str(poison)}, [])):
             run(native, root, altered_env, "--gen", *extra, "main", expected=1)
@@ -100,15 +167,27 @@ def main() -> int:
         missing.unlink()
         absent = run(native, root, env, "--gen", "main", expected=1)
         assert "L1C-2158" in absent.stderr and "build-stage1" in absent.stderr
+        explicit_absent = run(native, root, env, "--gen", "--sys-root", str(bundled), "main", expected=1)
+        assert "L1C-2158" in explicit_absent.stderr
+        run(native, root, env, "--gen", "--no-managed-stdlib", "main")
         missing.write_bytes(b"invalid bundled interface")
         corrupt = run(native, root, env, "--gen", "main", expected=1)
         assert "L1C-2158" in corrupt.stderr and "build-stage1" in corrupt.stderr
+        explicit_corrupt = run(native, root, env, "--gen", "--sys-root", str(bundled), "main", expected=1)
+        assert "L1C-2158" in explicit_corrupt.stderr
         missing.write_bytes(saved)
         # A selected explicit interface remains authoritative even if malformed.
         explicit = root / "explicit/std"
         explicit.mkdir(parents=True)
         (explicit / "io.l1m").write_text("invalid interface", encoding="utf-8")
-        run(native, root, env, "--gen", "-I", str(explicit.parent), "main", expected=1)
+        for extra in ([], ["--sys-root", str(bundled)], ["--no-managed-stdlib"]):
+            invalid = run(native, root, env, "--gen", *extra, "-I", str(explicit.parent), "main", expected=1)
+            assert "L1C-2158" not in invalid.stderr
+        # A valid explicit interface still wins when automatic managed discovery is disabled.
+        explicit_selected = providers(run(native, root, env, "--gen", "-vvv", "--no-managed-stdlib",
+                                         "-I", str(build / "interfaces"), "main"))
+        assert explicit_selected and all(item["origin"] == "interface" and not item["managed"]
+                                         for item in explicit_selected.values())
         run(native, root, env, "--link", str(root / "main.o"), "-I", str(explicit.parent), "-o", str(root / "app"), expected=1)
         for mode in ("--compile", "--gen", "--check", "--emit-interface", "--tok", "--ast", "--sym", "--type"):
             for control in ("--stdlib-cache=cache", "--no-auto-prepare", "--force"):
@@ -123,6 +202,10 @@ def main() -> int:
                      ("--prepare-stdlib", "--keep-c"), ("--prepare-stdlib", "--", "unused"),
                      ("--prepare-stdlib", "--stdlib-cache="), ("--prepare-stdlib", "--force", "--run", "main")):
             run(native, root, env, *args, expected=2)
+        for mode, operands in (("--link", [str(root / "main.o"), "-o", str(root / "app")]),
+                               ("--prepare-stdlib", [])):
+            rejected = run(native, root, env, mode, "--no-managed-stdlib", *operands, expected=2)
+            assert "L1C-2157" in rejected.stderr
         for removed in ("--no-stdlib-cache", "--system-stdlib-cache", "--cache-scope", "--clean-cache", "--scrub"):
             run(native, root, env, removed, "main", expected=2)
     print("bootstrap semantic interfaces, provider precedence, and preparation CLI scope: PASS")

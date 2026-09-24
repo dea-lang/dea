@@ -150,6 +150,9 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     let is_prepare = ord(mode) == ord(CM_PREPARE_STDLIB);
     let is_link = ord(mode) == ord(CM_LINK);
     let is_build_run = ord(mode) == ord(CM_BUILD) || ord(mode) == ord(CM_RUN);
+    if (opts.no_managed_stdlib && (is_link || is_prepare)) {
+        cli_emit_error(diags, "L1C-2157", "option '--no-managed-stdlib' requires a source-resolving mode");
+    }
     if (opts.no_auto_prepare && !is_build_run && !is_link) {
         cli_emit_error(diags, "L1C-2157", "option '--no-auto-prepare' requires '--build', '--run', or '--link'");
     }

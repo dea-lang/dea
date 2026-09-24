@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-09-11
+Version: 2026-09-24
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
@@ -177,9 +177,17 @@ environment variable are placed before options supplied through `--c-options`.
 - Repeated system or project roots preserve declaration order within their root group.
 
 L1's bootstrap-owned bundled semantic set occupies exactly the compiler-owned bundled system-root position, after
-explicit interfaces in modes that accept them and before lower-priority project roots. Explicit `--sys-root` suppresses
-the default bundled position; `L1_SYSTEM` retains its existing selection meaning. Caller-owned source selected by
-ordinary resolution remains source-backed. These rules do not add a stdlib override tier through project roots.
+explicit interfaces in modes that accept them and before lower-priority project roots. Explicit `--sys-root` replaces
+the default root list; any selected system root proven to identify the bundled directory retains managed providers at
+that ordered position, including supported filesystem aliases. Copied trees and unavailable identity do not establish
+bundled authority. `L1_SYSTEM` retains its existing selection meaning. Caller-owned source selected by ordinary
+resolution remains source-backed. These rules do not add a stdlib override tier through project roots.
+
+L1 `--no-managed-stdlib` disables automatic bundled `std.*` and `sys.*` interface selection in source-resolving modes.
+Explicit `-I` providers retain authority, the requested target remains source-backed, and compile-only still requires
+interfaces for non-virtual imports. The option is invalid with `--link` and `--prepare-stdlib` (`L1C-2157`). It has no
+short alias or environment setting and does not disable native runtime preparation. `--no-auto-prepare` independently
+controls native preparation; it does not select source providers.
 
 ## 6. Native Build/Run Temporary Workspace
 

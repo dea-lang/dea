@@ -70,8 +70,37 @@ def analysis_count(result: subprocess.CompletedProcess[str], module: str) -> int
     return result.stderr.count(f"Starting analysis for entry module '{module}'")
 
 
+def test_cold_source_opt_out() -> None:
+    """Require native cache refusal even when bundled imports use sources."""
+    cc = preparation_c_compiler()
+    assert cc
+    env = dict(os.environ)
+    for name in ("L1_CC", "L1_CFLAGS", "L1_SYSTEM", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB", "L1_STDLIB_CACHE"):
+        env.pop(name, None)
+    with tempfile.TemporaryDirectory(prefix="l1-cold-source-opt-out-") as directory:
+        root = Path(directory).resolve()
+        compiler = toolchain_fixture(root, env)
+        (root / "app.l1").write_text(
+            'module app; import std.io; func main() { printl_s("must-not-run"); }\n', encoding="utf-8")
+        cache = root / "empty-cache"
+        result = invoke(root, env, "--run", "--c-compiler", cc, "--stdlib-cache", str(cache),
+                        "--no-auto-prepare", "--no-managed-stdlib", "--sys-root",
+                        str(Path(env["L1_HOME"]) / "shared/l1/stdlib"), "app", "-vvv",
+                        expected=1, compiler=compiler)
+        assert "L1C-2159" in result.stderr, result.stderr
+        source = Path(env["L1_HOME"]) / "shared/l1/stdlib/std/io.l1"
+        parsed = re.search(r"^Parsed module 'std\.io' from (.+)$", result.stderr, re.MULTILINE)
+        assert parsed, result.stderr
+        assert Path(parsed.group(1)).samefile(source), (parsed.group(1), source)
+        assert '"reason":"no-managed-stdlib"' in result.stderr, result.stderr
+        assert "Preparing stdlib and runtime" not in result.stderr, result.stderr
+        assert not result.stdout, result.stdout
+        assert not list(cache.glob("v1/native/*/manifest.json"))
+
+
 def main() -> int:
     """Exercise real native preparation and optional scratch independence."""
+    test_cold_source_opt_out()
     cc = preparation_c_compiler()
     assert cc
     env = dict(os.environ)
@@ -124,6 +153,24 @@ def main() -> int:
         assert "Preparation command" not in warm_preparation.stderr
         source = root / "app.l1"
         source.write_text('module app; import std.io; func main() { printl_s("managed-ok"); }\n')
+        # Explicit bundled identity reuses interfaces; the opt-out deliberately recompiles sources.
+        bundled = str(Path(env["L1_HOME"]) / "shared/l1/stdlib")
+        implicit = call("--run", *common, "--no-auto-prepare", "app", "-vvv")
+        explicit = call("--run", *common, "--no-auto-prepare", "--sys-root", bundled, "app", "-vvv")
+        opted_out = call("--run", *common, "--no-auto-prepare", "--sys-root", bundled,
+                         "--no-managed-stdlib", "app", "-vvv")
+        for result in (implicit, explicit, opted_out):
+            assert result.stdout == "managed-ok\n"
+            assert "Preparation native key: " + entry.name in result.stderr
+            assert "Preparing stdlib and runtime" not in result.stderr
+        assert analysis_count(explicit, "std.io") == analysis_count(implicit, "std.io") == 0
+        assert analysis_count(opted_out, "std.io") > 0
+        assert '"reason":"no-managed-stdlib"' in opted_out.stderr
+        assert '"reason":"option-only-disables-managed-preparation"' in opted_out.stderr
+        no_cache = root / "explicit-cold"
+        miss = call("--run", "--c-compiler", cc, "--stdlib-cache", str(no_cache), "--no-auto-prepare",
+                    "--sys-root", bundled, "app", expected=1)
+        assert "L1C-2159" in miss.stderr and not list(no_cache.glob("v1/native/*/manifest.json"))
         # A different shell selection must reobserve, then reuse the completed profile.
         original_path = env.get("PATH", "")
         alternate = root / "unrelated-bin"

@@ -1596,11 +1596,42 @@ func test_no_legacy_command_rewrite() {
     }
 }
 
+/** Verify the source-provider opt-out is independent of native preparation controls. */
+func test_no_managed_stdlib_scope() {
+    with (let defaults = cli_options_create() => cli_options_free(defaults)) {
+        assert(!defaults.no_managed_stdlib, "managed stdlib must be enabled by default");
+    }
+    with (let modes = sv_create(12) => sv_free(modes)) {
+        sv_push(modes, "--build"); sv_push(modes, "--run"); sv_push(modes, "--compile");
+        sv_push(modes, "--emit-interface"); sv_push(modes, "--gen"); sv_push(modes, "--check");
+        sv_push(modes, "--tok"); sv_push(modes, "--ast"); sv_push(modes, "--sym"); sv_push(modes, "--type");
+        sv_push(modes, "--link"); sv_push(modes, "--prepare-stdlib");
+        for (let i = 0; i < sv_size(modes); i = i + 1) {
+            with (let argv = sv_create(6) => sv_free(argv)) {
+                sv_push(argv, sv_get(modes, i));
+                sv_push(argv, "--no-managed-stdlib");
+                if (i != 11) { sv_push(argv, "main"); }
+                if (i == 10) { sv_push(argv, "-o"); sv_push(argv, "app"); }
+                let parsed = cli_parse(argv);
+                if (i < 10) {
+                    assert(!diag_has_errors(parsed.diags), "source modes accept provider opt-out");
+                    assert((parsed.options as CliOptions*).no_managed_stdlib, "opt-out must be recorded");
+                    assert(!(parsed.options as CliOptions*).no_auto_prepare, "opt-out must not disable preparation");
+                } else {
+                    assert(cli_result_has_code(parsed, "L1C-2157"), "non-source modes reject provider opt-out");
+                }
+                cli_parse_result_free(parsed);
+            }
+        }
+    }
+}
+
 /**
  * Main entry point for the module.
  */
 func main() {
     test_default_mode_build();
+    test_no_managed_stdlib_scope();
     test_run_accepts_program_args_after_separator();
     test_non_run_rejects_separator();
     test_mode_scoped_flag_validation();

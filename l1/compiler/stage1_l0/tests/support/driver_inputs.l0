@@ -14,7 +14,7 @@ import build_driver;
 /**
  * Create build/run arguments for tests of existing compiler and runtime behavior.
  *
- * Explicit source roots and the Make-built runtime avoid implicit native
+ * The managed-stdlib opt-out, explicit source roots, and Make-built runtime avoid implicit native
  * preparation. Dedicated preparation tests use the ordinary driver defaults.
  * TinyCC retains automatic selection of its distinct raw-object runtime; the
  * platform-toolchain archives cannot replace those objects on Darwin.
@@ -23,7 +23,7 @@ import build_driver;
  * @return Owned argument vector, released by the caller with `sv_free`.
  */
 func dti_native_argv(capacity: int) -> StringVector* {
-    let argv = sv_create(capacity + 7);
+    let argv = sv_create(capacity + 8);
     let compiler = bd_find_c_compiler();
     if (compiler != null && bd_compiler_flag_family(compiler as string) == "tcc") {
         return argv;
@@ -31,6 +31,7 @@ func dti_native_argv(capacity: int) -> StringVector* {
     let home = env_get("L1_HOME");
     let build_dir = env_get("L1_BUILD_DIR");
     assert(home != null && build_dir != null, "driver tests require the repo-local L1 test environment");
+    sv_push(argv, "--no-managed-stdlib");
     sv_push(argv, "--sys-root");
     sv_push(argv, join(home as string, "shared/l1/stdlib"));
     sv_push(argv, "--runtime-include");

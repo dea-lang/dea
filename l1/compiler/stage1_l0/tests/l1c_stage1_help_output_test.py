@@ -89,6 +89,7 @@ def main() -> int:
         "  --stdlib-cache DIR    Select one local cache (overrides $L1_STDLIB_CACHE;",
         "with '--prepare-stdlib'; serialize against consumers",
         "  --no-auto-prepare     Reuse managed support and fail on a miss with guidance",
+        "  --no-managed-stdlib   Disable automatic bundled std/sys interfaces; explicit -I",
         "  --runtime-include, -Ri RUNTIME_INCLUDE",
         "  --runtime-lib, -Rl RUNTIME_LIB",
         "  -Cf, --foreign-object C_OBJECT",

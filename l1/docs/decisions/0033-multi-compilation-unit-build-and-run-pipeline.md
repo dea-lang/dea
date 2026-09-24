@@ -1,7 +1,7 @@
 # ADR-0033: Multi-Compilation-Unit Build and Run Pipeline
 
 - Decision date: 2026-08-23
-- Last edited: 2026-09-11
+- Last edited: 2026-09-24
 - Status: Accepted
 
 ## Context
@@ -17,8 +17,9 @@ L1 `--build` and `--run` use one source-rooted multi-compilation-unit pipeline:
 - The requested target resolves from source and expands through the canonical graph under `MRP_ALLOW_SOURCE_FALLBACK`.
   The first selected interface is authoritative; source fallback occurs only when no interface is selected.
 - Managed bundled providers occupy the canonical bundled system-root position after explicit interfaces, preserving
-  system-before-project order and explicit system-root suppression. They resolve semantically first and obtain exact
-  copied `.l1m` plus native objects from preparation before linking.
+  system-before-project order. Bundled directory identity and the source opt-out follow
+  [l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md](0038-bundled-semantic-inputs-and-local-native-preparation.md).
+  They resolve semantically first and obtain exact copied `.l1m` plus native objects from preparation before linking.
 - Every source-backed node is generated, fingerprinted, and compiled exactly once under canonical module-relative paths
   in the command-owned private workspace. Deterministic dependency-first order follows each node's ordered direct
   imports.

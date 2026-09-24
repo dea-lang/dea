@@ -6,9 +6,11 @@
 module source_paths_test;
 
 import std.assert;
+import std.fs;
 import std.io;
 import std.path;
 import std.string;
+import std.system;
 import std.vector;
 import util.diag;
 
@@ -197,11 +199,27 @@ func test_interface_nonregular_candidate_is_authoritative() {
     }
 }
 
+/** Missing directory identity must never authorize managed interfaces. */
+func test_managed_identity_unavailable() {
+    let build_dir = env_get("L1_BUILD_DIR");
+    assert(build_dir != null, "resolver tests require the repo-local build directory");
+    with (let paths = sp_create() => sp_free(paths)) {
+        paths.managed_source_root = "compiler/stage1_l0/tests/fixtures/source_paths/absent-bundle";
+        paths.managed_interfaces = join(build_dir as string, "interfaces");
+        assert(is_file(join(paths.managed_interfaces as string, "std/io.l1m")),
+            "known managed interface must exist so unavailable root identity alone rejects selection");
+        sp_add_system_root(paths, paths.managed_source_root as string);
+        assert(!sp_managed_eligible(paths, "std.io"), "equal path text cannot replace filesystem identity");
+        assert(!sp_managed_eligible(paths, "graph.provider"), "ordinary modules cannot become managed");
+    }
+}
+
 /**
  * Main entry point for the module.
  */
 func main() {
     test_default_sys_roots_no_env_values();
+    test_managed_identity_unavailable();
     test_default_sys_roots_l0_system_precedence();
     test_default_sys_roots_l0_home_fallback();
     test_explicit_sys_root_suppresses_defaults();

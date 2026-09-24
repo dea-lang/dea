@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-09-11
+Version: 2026-09-24
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -357,7 +357,7 @@ diagnostic.
 |            | `L1C-2154` | L1 only | Required preparation compiler/toolchain is unavailable or persistent reuse eligibility cannot be established                  |
 |            | `L1C-2155` | L1 only | Bundled frontend preparation workspace could not be written                                                                   |
 |            | `L1C-2156` | L1 only | Native stdlib/runtime preparation command failed or timed out; underlying host diagnostics are preserved                      |
-|            | `L1C-2157` | L1 only | Invalid preparation-mode/cache-control combination, target, or empty CLI cache path                                           |
+|            | `L1C-2157` | L1 only | Invalid preparation, cache, or provider-control combination, target, or empty CLI cache path                                  |
 |            | `L1C-2158` | L1 only | Required bundled semantic interfaces or preparation sources need bootstrap rebuild or installation repair                     |
 |            | `L1C-2159` | L1 only | Managed support is unavailable while automatic preparation is disabled                                                        |
 |            | `L1C-2160` | L1 only | Reserved for compiler-owned bundled support preparation                                                                       |

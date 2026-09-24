@@ -1,7 +1,7 @@
 # ADR-0038: Bundled Semantic Inputs and Local Native Preparation
 
 - Decision date: 2026-09-11
-- Last edited: 2026-09-13
+- Last edited: 2026-09-24
 - Status: Accepted
 
 ## Context
@@ -18,9 +18,17 @@ Repository `build-stage1` supplies public headers and generates those interfaces
 native L1 program-runtime construction. Ordinary semantic commands do not hash sources to prove bootstrap freshness;
 developers rebuild bootstrap after editing interface-generating inputs.
 
-Managed interfaces occupy exactly the canonical bundled system-root position, preserving explicit interface authority,
-system-before-project source order, `L1_SYSTEM`, and explicit system-root suppression. Standalone link resolves explicit
-objects, ordered `-I` roots, then known bundled managed providers, with no source fallback or project discovery.
+Managed interfaces occupy exactly the bundled directory's ordered system-root position, preserving explicit interface
+authority, system-before-project source order, and `L1_SYSTEM`. Explicit system roots replace the default root list but
+do not disable managed providers when filesystem identity proves that a selected root is the bundled directory.
+Supported aliases qualify; copied contents or unavailable identity do not. Earlier custom providers retain priority.
+
+`--no-managed-stdlib` disables automatic bundled `std.*` and `sys.*` interfaces in source-resolving modes. Explicit
+interfaces remain authoritative, requested targets stay source-backed, and compile-only still requires imported
+interfaces. Source bootstrap and intentional source consumers use this opt-out. It is invalid in standalone link and
+explicit preparation modes and is independent of native runtime preparation and `--no-auto-prepare`. Standalone link
+resolves explicit objects, ordered `-I` roots, then known bundled managed providers, with no source fallback or project
+discovery.
 
 Native support is derived on demand into one selected local cache: CLI, then `L1_STDLIB_CACHE`, then a build-local or
 installed platform per-user default. Only its `v1/` subtree is Dea-owned. Profiles contain exact selected semantic
@@ -38,6 +46,10 @@ replacement and manual disposal require external serialization. The service has 
 pinning, cleaner/scrubber, migration, shared/system store, or application cache.
 
 ## Rationale
+
+Directory identity gives equivalent root selections the same provider behavior without promoting copied trees to
+toolchain authority. An explicit opt-out preserves intentional source workflows without overloading root selection or
+native preparation controls. Existing source callers must migrate to the opt-out when naming the bundled directory.
 
 Semantic interfaces describe the shipped language contract independently of native compiler choice. One disposable
 native store keeps ownership narrow while ordinary misses remain normal compiler work. Exact semantic copies preserve
@@ -57,7 +69,11 @@ explicit replacement avoids a new concurrent-reader protocol.
 
 ## Related Plans
 
+- [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency] (Phase 1; later phases
+  active)
+
 - [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
+
 - [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][preparation-economy]
 
 ## Current Docs
@@ -72,4 +88,5 @@ explicit replacement avoids a new concurrent-reader protocol.
 [preparation]: ../reference/stdlib-preparation.md
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
+[reuse-efficiency]: ../../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

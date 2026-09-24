@@ -292,9 +292,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   print-helper surface, using typed L1 variadics with shared string and writer formatting.
 - Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Priority 2 audit that records
   portable systems capability and C99-family coverage without promising literal C99 API parity.
-- Feature [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][preparation-reuse-efficiency] drafts
-  five phases for equivalent bundled-root selection, digest and runtime evidence reuse, cheaper validation, and
-  warm-build attribution, with Docker investigation attachments and explicit implementation decision gates.
+- Feature [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][preparation-reuse-efficiency]
+  implements Phase 1 of five phases: equivalent bundled roots now retain managed providers, with `--no-managed-stdlib`
+  for intentional source imports. Digest/runtime evidence reuse, cheaper validation, and warm-build attribution remain
+  gated future work.
 
 ## Backlog
 

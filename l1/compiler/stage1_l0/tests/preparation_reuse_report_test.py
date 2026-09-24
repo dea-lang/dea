@@ -154,10 +154,11 @@ class ReporterTest(unittest.TestCase):
                 lines.append("Preparation observation: " + json.dumps(
                     {"event": "span", "name": "profile-validation", "inclusive": 1,
                      "elapsed_us": 100, "success": 1, "schema": 1}))
-                if "--sys-root" in argv:
+                if "--no-managed-stdlib" in argv:
+                    lines.append("Starting analysis for entry module 'std.io'")
                     lines.append("Preparation observation: " + json.dumps(
                         {"event": "provider-selection", "scope": "managed-providers", "decision": "suppressed",
-                         "reason": "explicit-system-root", "schema": 1}))
+                         "reason": "no-managed-stdlib", "schema": 1}))
                     lines.append("Preparation observation: " + json.dumps(
                         {"event": "provider", "module": "std.io", "origin": "source", "managed": 0,
                          "path": str(root / "toolchain/compiler/shared/l1/stdlib/std/io.l1"), "schema": 1}))
@@ -165,6 +166,15 @@ class ReporterTest(unittest.TestCase):
                     lines.append("Preparation observation: " + json.dumps(
                         {"event": "provider", "module": "std.io", "origin": "interface", "managed": 1,
                          "path": str(fixture_root / "toolchain/build/interfaces/std/io.l1m"), "schema": 1}))
+                if "--sys-root" in argv and "--no-managed-stdlib" not in argv:
+                    if scenario == "explicit-key":
+                        key = "d" * 64
+                    elif scenario == "explicit-source":
+                        lines.append("Starting analysis for entry module 'std.io'")
+                    elif scenario == "explicit-no-providers":
+                        lines = [line for line in lines if '"event": "provider"' not in line]
+                if "--no-managed-stdlib" in argv and scenario == "opt-out-no-analysis":
+                    lines = [line for line in lines if "Starting analysis for entry module 'std.io'" not in line]
                 memo = cache / "v1/memo/fixture.json"
                 memo.parent.mkdir(parents=True, exist_ok=True)
                 memo.write_text("{}")
@@ -211,20 +221,29 @@ class ReporterTest(unittest.TestCase):
         """Keep optional scenario caches separate and retain pair comparisons."""
         result, report, files = self.exercise(observability=True)
         self.assertEqual(result, 0)
-        self.assertEqual(len(report["invocations"]), 15)
+        self.assertEqual(len(report["invocations"]), 17)
         self.assertEqual(set(report["observability"]),
-                         {"warm", "cwd", "copy", "copy-no-memos", "explicit-sys-root"})
+                         {"warm", "cwd", "copy", "copy-no-memos", "explicit-sys-root", "source-opt-out"})
         self.assertEqual(report["observability"]["copy"]["copied_cache_portability"],
                          "experimental-observation-only")
         self.assertIn("observe-explicit-sys-root-2.command.json", files)
         cwd = report["observability"]["cwd"]
         self.assertFalse(cwd["selection_key_matches_baseline"])
         self.assertTrue(cwd["stable_selection_key"])
-        self.assertFalse(report["observability"]["explicit-sys-root"]["providers_match_baseline"])
+        self.assertTrue(report["observability"]["explicit-sys-root"]["providers_match_baseline"])
+        self.assertFalse(report["observability"]["source-opt-out"]["providers_match_baseline"])
         commands = [json.loads(files[f"observe-{name}-1.command.json"]) for name in ("warm", "copy", "copy-no-memos")]
         self.assertEqual(len({item["argv"][item["argv"].index("--stdlib-cache") + 1] for item in commands}), 3)
         self.assertIn("profile-validation", files["summary.md"])
         self.assertIn("inclusive; success=1", files["summary.md"])
+
+    def test_provider_contract_regressions_fail(self):
+        """Reject changed identity, source work, missing providers, and an ineffective opt-out."""
+        for scenario in ("explicit-key", "explicit-source", "explicit-no-providers", "opt-out-no-analysis"):
+            with self.subTest(scenario=scenario):
+                result, report, _ = self.exercise(scenario, observability=True)
+                self.assertEqual(result, 1)
+                self.assertEqual(report["result"], "FAIL")
 
     def test_unavailable_scenarios_are_explicit(self):
         """Retain capability results and explain why requested scenarios cannot run."""

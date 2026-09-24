@@ -22,10 +22,14 @@ outside the supported development workflow. Missing or invalid bundled interface
 bootstrap/installation repair guidance alongside any normal semantic diagnostics.
 
 In source-resolving modes, explicit interfaces retain their existing authority. Managed interfaces occupy exactly the
-canonical bundled system-root position. System roots still precede project roots; explicit `--sys-root` suppresses the
-default bundled position, and `L1_SYSTEM` retains its existing root-selection meaning. Bundled sources selected through
-a project root remain source-backed. The requested target always resolves from source. Compile-only never falls back to
-imported non-virtual provider source. Source inspection with `--all-modules` retains the full source view.
+ordered system-root position whose filesystem identity matches the bundled directory. Explicit `--sys-root` replaces the
+default root list, but selecting the bundled directory (including a supported alias) retains managed providers. Earlier
+custom providers keep priority; copied directories and unavailable identity never establish bundled authority. System
+roots still precede project roots, and `L1_SYSTEM` retains its root-selection meaning. Bundled sources selected through
+a project root remain source-backed. `--no-managed-stdlib` disables automatic bundled interfaces for intentional source
+use, including semantic bootstrap, while explicit `-I` providers retain authority. The requested target always resolves
+from source. Compile-only never falls back to imported non-virtual provider source. Source inspection with
+`--all-modules` retains the full source view.
 
 Standalone link searches explicit Dea objects, ordered `-I` roots, then known bundled managed providers. It never falls
 back to source. The first selected explicit provider remains authoritative even when invalid. Discovered objects follow
@@ -46,13 +50,14 @@ Build/run/link automatically reuse or prepare matching support. Cache hits are q
 recovery go to stderr; increasing `-v` exposes selection, commands, identity observations, memo decisions, and artifact
 validation. Native compiler errors remain visible.
 
-| Control               | Scope and meaning                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------ |
-| `--prepare-stdlib`    | Primary mode with no target: produce a persistently reusable complete native profile.                  |
-| `--stdlib-cache PATH` | Build, run, link, preparation: select the one cache root.                                              |
-| `L1_STDLIB_CACHE`     | Environment cache selection, overridden by the CLI option; both selections are explicit.               |
-| `--no-auto-prepare`   | Build, run, link: require valid reusable support and fail on a miss.                                   |
-| `--force`             | Preparation only: recompute observations and identity, then rebuild and validate the selected profile. |
+| Control               | Scope and meaning                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `--prepare-stdlib`    | Primary mode with no target: produce a persistently reusable complete native profile.                               |
+| `--stdlib-cache PATH` | Build, run, link, preparation: select the one cache root.                                                           |
+| `L1_STDLIB_CACHE`     | Environment cache selection, overridden by the CLI option; both selections are explicit.                            |
+| `--no-managed-stdlib` | Source-resolving modes: disable automatic bundled interfaces; preserve explicit interfaces and runtime preparation. |
+| `--no-auto-prepare`   | Build, run, link: require valid reusable support and fail on a miss.                                                |
+| `--force`             | Preparation only: recompute observations and identity, then rebuild and validate the selected profile.              |
 
 Preparation accepts the selected C compiler, generated-C options, runtime include override, checking/trace controls, and
 `--no-line-directives`. It accepts no source/project/interface roots, runtime-library override, output, retained C,
@@ -89,10 +94,10 @@ not claim total filesystem I/O: JSON, directory enumeration, metadata operations
 compilation are outside them. Existing `Preparation statistics` counters remain unchanged and are emitted separately.
 
 Provider events report the module, source/interface origin, path and managed status for selected `std.*` and `sys.*`
-providers, including `--gen`, compile-only commands and selections available before an analysis failure. An explicit
-`--sys-root` reports that it suppresses managed-provider selection. When combined with `--no-auto-prepare`, the debug
-output also states that the option disables managed preparation only; ordinary sources selected through explicit roots
-may still be compiled.
+providers, including `--gen`, compile-only commands and selections available before an analysis failure. The source
+opt-out reports managed-provider suppression with reason `no-managed-stdlib`; explicit bundled roots alone do not
+suppress it. When the opt-out is combined with `--no-auto-prepare`, debug output also states that the latter option
+disables managed preparation only; ordinary source providers may still be compiled.
 
 ## CI capability reporting
 
@@ -131,8 +136,10 @@ separate work.
 
 `--observability-scenarios` is an opt-in local extension for persistently reusable configurations. Before the normal
 header invalidation, it runs identical pairs for an unchanged warm cache, another cwd with absolute target/project
-paths, a copied cache, a copied cache with validation memos removed and the bundled stdlib selected through explicit
-`--sys-root`. Cache variants are isolated, copy time is separate from compiler time and every command retains raw logs.
+paths, a copied cache, a copied cache with validation memos removed, the bundled stdlib selected through explicit
+`--sys-root`, and that explicit selection with `--no-managed-stdlib`. Equivalent bundled selections must preserve
+managed providers and the native key with zero imported-source analyses; the opt-out must select and analyze source
+providers. Cache variants are isolated, copy time is separate from compiler time and every command retains raw logs.
 Copied-cache results are experimental observations only; they do not establish cache portability. Reports compare
 selection/native keys, providers, counters, spans and hash totals without wall-time pass/fail thresholds. The Markdown
 summary includes memo decisions, metadata differences, inclusive spans, individual probe timings and hash totals.

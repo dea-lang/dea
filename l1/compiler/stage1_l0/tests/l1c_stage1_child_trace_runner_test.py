@@ -61,21 +61,6 @@ def test_selection_and_commands(root: Path) -> None:
             "POSIX executable name changed")
     require(runner.child_executable_path(root, "sample", windows=True) == root / "sample.exe",
             "Windows executable suffix missing")
-    original_resolver = driver_inputs.resolve_host_c_compiler
-    try:
-        driver_inputs.resolve_host_c_compiler = lambda: "clang"
-        clang_args = runner.child_build_command(fixtures[0], build_dir, root / "child output")
-        require("--runtime-lib" in clang_args, "archive runtime selection missing")
-        require(clang_args[clang_args.index("--runtime-lib") + 1] == str(build_dir / "lib"),
-                "custom runtime library path changed")
-        require("--no-auto-prepare" in clang_args, "archive input enabled automatic preparation")
-        driver_inputs.resolve_host_c_compiler = lambda: "tcc"
-        tcc_args = runner.child_build_command(fixtures[0], build_dir, root / "child output")
-        require("--runtime-lib" not in tcc_args and "--no-auto-prepare" not in tcc_args,
-                "TinyCC did not retain automatic native input selection")
-    finally:
-        driver_inputs.resolve_host_c_compiler = original_resolver
-
     original_windows = bootstrap.is_windows_host
     try:
         bootstrap.is_windows_host = lambda: True
@@ -95,6 +80,36 @@ def test_selection_and_commands(root: Path) -> None:
         cwd=root, capture_output=True, text=True, check=False,
     )
     require(rejected.returncode == 2, "incompatible CLI modes were accepted")
+
+
+def test_native_driver_commands(root: Path) -> None:
+    """Check source opt-out and runtime controls in native helper commands.
+
+    Args:
+        root: Temporary directory for command paths; no compilation is performed.
+    """
+    fixtures = runner.select_child_fixtures([])
+    build_dir = root / "custom build with spaces"
+    compiler = build_dir / "bin" / "l1c-stage1"
+    original_resolver = driver_inputs.resolve_host_c_compiler
+    try:
+        driver_inputs.resolve_host_c_compiler = lambda: "clang"
+        clang_args = runner.child_build_command(fixtures[0], build_dir, root / "child output")
+        require("--runtime-lib" in clang_args, "archive runtime selection missing")
+        require(clang_args[clang_args.index("--runtime-lib") + 1] == str(build_dir / "lib"),
+                "custom runtime library path changed")
+        require("--no-auto-prepare" in clang_args, "archive input enabled automatic preparation")
+        require("--no-managed-stdlib" in clang_args, "source imports did not disable managed providers")
+        link_args = driver_inputs.native_driver_args(compiler, source=False)
+        require("--no-managed-stdlib" not in link_args and "--sys-root" not in link_args,
+                "standalone link received source provider controls")
+        driver_inputs.resolve_host_c_compiler = lambda: "tcc"
+        tcc_args = runner.child_build_command(fixtures[0], build_dir, root / "child output")
+        require("--no-managed-stdlib" not in tcc_args, "TinyCC source provider policy changed")
+        require("--runtime-lib" not in tcc_args and "--no-auto-prepare" not in tcc_args,
+                "TinyCC did not retain automatic native input selection")
+    finally:
+        driver_inputs.resolve_host_c_compiler = original_resolver
 
 
 def test_child_phases(root: Path) -> None:
@@ -273,6 +288,7 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="l1_child_trace_runner.") as directory:
             root = Path(directory)
             test_selection_and_commands(root)
+            test_native_driver_commands(root)
             test_child_phases(root)
             test_main_status_and_failure_retention(root)
     except (AssertionError, OSError) as exc:

@@ -85,6 +85,7 @@ struct CliOptions {
     extra_target_count: int;
     program_args: StringVector*;
     no_auto_prepare: bool;
+    no_managed_stdlib: bool;
     managed_profile: string?; /* Validated native provider/runtime root. */
     managed_runtime_family: string?; /* Native identity's probed compiler family. */
 }
@@ -189,6 +190,7 @@ func cli_options_create() -> CliOptions* {
         null,
         0,
         sv_create(4),
+        false,
         false,
         null,
         null

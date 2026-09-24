@@ -1,6 +1,6 @@
 # L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-09-11
+Version: 2026-09-24
 
 This document describes the implemented Dea/L1 Stage 1 path from per-module generated C and one-module compilation to an
 interface-authoritative executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
@@ -28,8 +28,11 @@ l1c --gen MODULE [-I INTERFACE_ROOT]... [-o EXACT_C_PATH]
 The target itself must resolve from source. A selected valid imported `.l1m` is sufficient without native siblings.
 Generation writes only stdout or the exact requested file, creates no companions, and never invokes a host compiler or
 linker. Bundled providers use the bootstrap-owned semantic set under `$L1_BUILD_DIR/interfaces/`, at the canonical
-bundled system-root position. Explicit interfaces retain priority; system roots precede project roots and explicit
-`--sys-root` suppresses managed discovery there. `L1_SYSTEM` retains its source-root selection behavior.
+bundled directory's ordered system-root position, including explicitly selected filesystem aliases. Explicit interfaces
+retain priority and system roots precede project roots. `--sys-root` replaces the default root list without suppressing
+managed discovery for an equivalent bundled directory. `--no-managed-stdlib` disables automatic bundled interfaces for
+intentional source imports while preserving explicit `-I` authority and compile-only interface requirements. `L1_SYSTEM`
+retains its source-root selection behavior.
 
 Compile each source-backed module against verified textual interfaces:
 

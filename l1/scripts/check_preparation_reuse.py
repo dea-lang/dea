@@ -24,7 +24,7 @@ STAGES = ("cold", "warm-auto", "warm-guard", "invalidated-guard", "invalidated-a
 OBSERVABILITY_STAGES = ("observe-warm-1", "observe-warm-2", "observe-cwd-1", "observe-cwd-2",
                         "observe-copy-1", "observe-copy-2", "observe-copy-no-memos-1",
                         "observe-copy-no-memos-2", "observe-explicit-sys-root-1",
-                        "observe-explicit-sys-root-2")
+                        "observe-explicit-sys-root-2", "observe-source-opt-out-1", "observe-source-opt-out-2")
 COUNTERS = ("module_compiles", "build_commands", "native_resolutions", "identity_content_reads",
             "artifact_content_reads", "metadata_checks", "probes", "option_file_parses", "option_root_expansions")
 PRIVATE_REASONS = {
@@ -249,7 +249,7 @@ class Probe:
 
     def consume(self, stage: str, guarded: bool = False, cache: Path | None = None,
                 cwd: Path | None = None, absolute_target: bool = False,
-                explicit_sys_root: bool = False) -> dict:
+                explicit_sys_root: bool = False, no_managed_stdlib: bool = False) -> dict:
         """Run one real consumer and capture its preparation measurements.
 
         Args:
@@ -259,6 +259,7 @@ class Probe:
             cwd: Optional invocation directory.
             absolute_target: Pass absolute target and project-root paths.
             explicit_sys_root: Select the copied bundled source root explicitly.
+            no_managed_stdlib: Disable automatic bundled interface selection.
 
         Returns:
             Recorded invocation evidence.
@@ -270,6 +271,8 @@ class Probe:
             argv.extend(["--project-root", str(self.root)])
         if explicit_sys_root:
             argv.extend(["--sys-root", str(self.root / "toolchain/compiler/shared/l1/stdlib")])
+        if no_managed_stdlib:
+            argv.append("--no-managed-stdlib")
         if guarded:
             argv.append("--no-auto-prepare")
         target = str(self.root / "app.l1") if absolute_target else "app"
@@ -361,12 +364,21 @@ class Probe:
                 self.successful(record, 0, allow_source_analyses=allow_source_analyses)
                 require(record["statistics"]["build_commands"] == 0, "scenario unexpectedly built native support")
                 if allow_source_analyses:
-                    require(any(item.get("decision") == "suppressed" and item.get("reason") == "explicit-system-root"
+                    require(any(item.get("decision") == "suppressed" and item.get("reason") == "no-managed-stdlib"
                                 for item in record["observations"]),
-                            "explicit system root did not report managed-provider suppression")
+                            "source opt-out did not report managed-provider suppression")
                     require(any(item.get("module") == "std.io" and item.get("origin") == "source" and
                                 not item.get("managed") for item in record["providers"]),
-                            "explicit system root did not select the bundled source provider")
+                            "source opt-out did not select the bundled source provider")
+                if name == "explicit-sys-root":
+                    require(record["providers"] == baseline["providers"] and bool(record["providers"])
+                            and all(item.get("managed") and item.get("origin") == "interface"
+                                    for item in record["providers"]),
+                            "equivalent bundled root changed managed providers")
+                    require(record["native_key"] == baseline["native_key"],
+                            "equivalent bundled root changed native identity")
+                if allow_source_analyses:
+                    require(record["managed_analyses"] > 0, "source opt-out did not analyze imported sources")
             require(first["native_key"] == second["native_key"], f"{name} pair changed native key")
             scenario.update({
                 "status": "completed",
@@ -405,7 +417,9 @@ class Probe:
                     shutil.rmtree(memo_root)
             pair(name, cache=copied, absolute_target=True)
 
-        pair("explicit-sys-root", allow_source_analyses=True, absolute_target=True, explicit_sys_root=True)
+        pair("explicit-sys-root", absolute_target=True, explicit_sys_root=True)
+        pair("source-opt-out", allow_source_analyses=True, absolute_target=True, explicit_sys_root=True,
+             no_managed_stdlib=True)
 
     def execute(self) -> str:
         """Measure the complete available/private sequence or a confirmed resolution boundary.
@@ -590,7 +604,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", type=Path, default=L1_ROOT / "build/ci/preparation-reuse")
     parser.add_argument("--timeout", type=int, default=600, help="Maximum seconds for each subprocess")
     parser.add_argument("--observability-scenarios", action="store_true",
-                        help="Measure paired warm, cwd, copied-cache, memo-free and explicit-sys-root cases")
+                        help="Measure paired warm, cwd, copied-cache, memo-free, explicit-root and source-opt-out cases")
     args = parser.parse_args(argv)
     args.build_dir = (L1_ROOT / args.build_dir).resolve()
     args.output_dir = args.output_dir.resolve()
@@ -607,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
               "reason": None, "native_preparation": "unknown", "persistent_reuse": "unknown",
               "same_persistent_entry": None, "invalidation": None,
               "observability": {name: {"status": "not-run", "reason": None} for name in
-                                ("warm", "cwd", "copy", "copy-no-memos", "explicit-sys-root")}
+                                ("warm", "cwd", "copy", "copy-no-memos", "explicit-sys-root", "source-opt-out")}
                                if args.observability_scenarios else None,
               "invocations": dict.fromkeys((*STAGES, *(OBSERVABILITY_STAGES if args.observability_scenarios else ())))}
     try:

@@ -68,12 +68,14 @@ func mp_runtime(self: ManagedPreparation*, diags: DiagCollector*) -> bool {
     return true;
 }
 
-/** Replace exactly the compiler-owned bundled source position, respecting system overrides. */
+/** Replace the bundled directory's ordered system position unless explicitly disabled. */
 func mp_source_paths(self: ManagedPreparation*, paths: SourceSearchPaths*) {
-    if (sv_size(self.options.sys_roots) > 0) {
+    if (self.options.no_managed_stdlib) {
+        paths.managed_source_root = null;
+        paths.managed_interfaces = null;
         if (self.options.verbosity >= 3) {
             err_printl_s("Preparation observation: {\"event\":\"provider-selection\",\"scope\":\"managed-providers\"," +
-                "\"decision\":\"suppressed\",\"reason\":\"explicit-system-root\",\"schema\":1}");
+                "\"decision\":\"suppressed\",\"reason\":\"no-managed-stdlib\",\"schema\":1}");
             if (self.options.no_auto_prepare) {
                 err_printl_s("Preparation observation: {\"event\":\"provider-selection\"," +
                     "\"scope\":\"no-auto-prepare\",\"decision\":\"source-compilation-allowed\"," +

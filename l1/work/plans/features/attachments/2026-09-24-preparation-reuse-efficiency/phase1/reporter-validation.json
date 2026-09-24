@@ -1,0 +1,158 @@
+[
+  {
+    "environment": "Linux GCC 12.2",
+    "result": "PASS",
+    "capability": "available",
+    "reason": null,
+    "invalidation": "rejected-old-profile-and-rebuilt",
+    "same_persistent_entry": true,
+    "scenarios": {
+      "warm": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "cwd": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "copy": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "copy-no-memos": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "explicit-sys-root": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "source-opt-out": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": false,
+        "stable_providers": true
+      }
+    }
+  },
+  {
+    "environment": "Darwin Apple Clang 17",
+    "result": "PASS",
+    "capability": "available",
+    "reason": null,
+    "invalidation": "rejected-old-profile-and-rebuilt",
+    "same_persistent_entry": true,
+    "scenarios": {
+      "warm": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "cwd": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "copy": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "copy-no-memos": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "explicit-sys-root": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": true,
+        "stable_providers": true
+      },
+      "source-opt-out": {
+        "status": "completed",
+        "reason": null,
+        "native_key_matches_baseline": true,
+        "providers_match_baseline": false,
+        "stable_providers": true
+      }
+    }
+  },
+  {
+    "environment": "Linux Clang 14",
+    "result": "FAIL",
+    "capability": "unsupported",
+    "reason": "expected available, observed unsupported; selected compiler must locate a usable runtime archiver with -print-prog-name=ar: /usr/bin/clang",
+    "invalidation": null,
+    "same_persistent_entry": null,
+    "scenarios": {
+      "warm": {
+        "status": "unavailable",
+        "reason": "persistent reuse unavailable (unsupported)",
+        "native_key_matches_baseline": null,
+        "providers_match_baseline": null,
+        "stable_providers": null
+      },
+      "cwd": {
+        "status": "unavailable",
+        "reason": "persistent reuse unavailable (unsupported)",
+        "native_key_matches_baseline": null,
+        "providers_match_baseline": null,
+        "stable_providers": null
+      },
+      "copy": {
+        "status": "unavailable",
+        "reason": "persistent reuse unavailable (unsupported)",
+        "native_key_matches_baseline": null,
+        "providers_match_baseline": null,
+        "stable_providers": null
+      },
+      "copy-no-memos": {
+        "status": "unavailable",
+        "reason": "persistent reuse unavailable (unsupported)",
+        "native_key_matches_baseline": null,
+        "providers_match_baseline": null,
+        "stable_providers": null
+      },
+      "explicit-sys-root": {
+        "status": "unavailable",
+        "reason": "persistent reuse unavailable (unsupported)",
+        "native_key_matches_baseline": null,
+        "providers_match_baseline": null,
+        "stable_providers": null
+      },
+      "source-opt-out": {
+        "status": "unavailable",
+        "reason": "persistent reuse unavailable (unsupported)",
+        "native_key_matches_baseline": null,
+        "providers_match_baseline": null,
+        "stable_providers": null
+      }
+    }
+  }
+]
