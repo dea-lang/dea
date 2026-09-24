@@ -37,6 +37,11 @@ Normal and trace runners share the `PREPARATION_SUPPORT_TESTS` dependency declar
 requires the native preparation ABI. Other implementation tests omit `preparation_support.c`; all retain the common
 filesystem and fingerprint support. Compiler builds continue including every support unit with their existing flags.
 
+`make test-stage1-trace-children` runs the declared L1 math runtime fixtures as separate traced executables. It uses the
+same native-input selection as Python driver tests and analyzes only each child executable's stderr. Pass
+`TESTS="math_int_trace_main"` to select a fixture. `make test-all` always includes both declared child fixtures,
+independently of parent `TESTS` selectors.
+
 Production sources are organized into phase and ownership families. Coarse pass/command entrypoints remain at the root;
 shared state and helpers are imported directly from their canonical child modules. The 120-module layout and the two
 retained recursive kernels are documented in [`l1/docs/reference/architecture.md`][architecture].

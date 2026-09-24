@@ -7,6 +7,7 @@ module wide_math_main;
 
 import std.assert;
 import std.integer;
+import std.text;
 
 func expect_bool(label: string, actual: bool, expected: bool) {
     assert(actual == expected, label);
@@ -173,5 +174,7 @@ func main() -> int {
     test_uint_math();
     test_long_math();
     test_ulong_math();
+    let rendered_max = ulong_to_string(ulong_max());
+    assert(rendered_max == "18446744073709551615", "ulong_max text");
     return 0;
 }

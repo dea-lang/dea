@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-09-11
+Version: 2026-09-24
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -252,6 +252,7 @@ make test
 make test-stage1-trace
 make test-stage1-trace-smoke
 make test-stage1-trace-all
+make test-stage1-trace-children
 make test-all
 make test-ci
 ```
@@ -268,12 +269,18 @@ intentionally slow trace cases such as `math_runtime_compile_test`; pass the tes
 `make test-stage1-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
 latest-stage `--check` coverage for `examples/*.l1`. `make test` combines the implementation tests,
 environment-stackability checks, and example checks without the dedicated broad trace sweep; `make test-all` adds the
-default ARC/memory trace checks. Linux portability is exercised via `make test-docker`, which runs `test-all` inside the
-repo-owned Docker image with GCC selected for `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`. Set `DOCKER_CC=clang` to switch all
-three roles together. `make test-stage1-trace-smoke` retains a focused ARC/memory subset for quick developer
-diagnostics. `make test-ci` delegates to `make test-all` on every supported host, so Windows, Linux, and macOS all run
-the full normal suite plus the default dedicated trace sweep. The legacy `DOCKER_L0_CC` selector remains a compatibility
-fallback when `DOCKER_CC` is unset. Run the Docker lane after runtime, Makefile, or build-driver changes.
+default ARC/memory trace checks and both declared child trace fixtures. Linux portability is exercised via
+`make test-docker`, which runs `test-all` inside the repo-owned Docker image with GCC selected for `L0_CC`, `L1_CC`, and
+`L1_RUNTIME_CC`. Set `DOCKER_CC=clang` to switch all three roles together. `make test-stage1-trace-smoke` retains a
+focused ARC/memory subset for quick developer diagnostics. `make test-ci` delegates to `make test-all` on every
+supported host, so Windows, Linux, and macOS all run the full normal suite, default dedicated trace sweep, and child
+trace fixtures. The legacy `DOCKER_L0_CC` selector remains a compatibility fallback when `DOCKER_CC` is unset. Run the
+Docker lane after runtime, Makefile, or build-driver changes.
+
+`make test-stage1-trace-children` builds the declared successful math runtime fixtures with ARC and memory tracing, runs
+each executable directly, and analyzes each child stderr file independently. `TESTS="wide_math_main"` selects one
+fixture. `make test-all` always runs both children, independently of parent `TESTS` selectors. The child suite retains
+its build, output, trace, and report files when a fixture fails.
 
 Validation is currently centered on:
 
@@ -291,6 +298,9 @@ Validation is currently centered on:
 
 - `make test-stage1-trace-all` for opt-in slow trace coverage, including nested-compiler cases such as
   `math_runtime_compile_test`
+
+- `make test-stage1-trace-children` for focused, isolated trace checks of successful L1 runtime fixtures, also included
+  in `test-all`
 
 - `make check-examples` for warning-free latest-stage `--check` coverage across `examples/*.l1`
 

@@ -37,21 +37,26 @@ make test
 make test-stage1-trace
 make test-stage1-trace-smoke
 make test-stage1-trace-all
+make test-stage1-trace-children
 make test-all
 make test-ci
 ```
 
 `make test` combines the normal Stage 1, environment-stackability, and example validation without the dedicated broad
 ARC/memory trace sweep. Use it for confidently trace-independent work. `make test-all` adds the default dedicated trace
-sweep and remains the full local/Docker backstop.
+sweep and both declared child trace fixtures, and remains the full local/Docker backstop.
 
 `make test-stage1-trace` is the default ARC/memory trace suite and skips intentionally slow trace cases such as
 `math_runtime_compile_test`. Use `make test-stage1-trace-all` to include those slow trace checks, or pass a slow test
 explicitly with `TESTS="math_runtime_compile_test"` when investigating it.
 
+`make test-stage1-trace-children` is the focused suite for successful L1 math runtime fixtures. It builds traced child
+executables and analyzes each child's stderr separately; `TESTS="wide_math_main"` selects one fixture. `make test-all`
+always runs both declared children, independently of parent `TESTS` selectors.
+
 `make test-stage1-trace-smoke` retains the focused ARC/memory trace subset for quick developer diagnostics. The
 `make test-ci` target delegates to `make test-all` on every supported host, so hosted Windows, Linux, and macOS
-validation all run the full normal suite plus the default dedicated trace sweep.
+validation all run the full normal suite, default dedicated trace sweep, and child trace fixtures.
 
 ## Current Scope
 

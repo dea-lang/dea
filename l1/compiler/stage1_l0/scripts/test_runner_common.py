@@ -39,6 +39,7 @@ DEFAULT_L1_BUILD_DIR = "build/dea"
 L1_BOOTSTRAP_L0C_ENV = "L1_BOOTSTRAP_L0C"
 TRACE_EXCLUDED_STAGE1_TESTS: set[str] = set()
 TRACE_SLOW_STAGE1_TESTS: set[str] = {"math_runtime_compile_test"}
+MATH_RUNTIME_FIXTURE_DIR = TESTS_DIR / "fixtures" / "math_runtime"
 # Tests whose imported implementation modules require the preparation C ABI.
 # A new dependency must be listed here; omitting one fails at native linking.
 PREPARATION_SUPPORT_TESTS = frozenset({
@@ -85,6 +86,29 @@ class TestCase:
     name: str
     path: Path
     kind: str
+
+
+@dataclass(frozen=True)
+class ChildTraceFixture:
+    """One opt-in child executable with required trace event families."""
+
+    index: int
+    name: str
+    path: Path
+    parent_test: str
+    required_families: frozenset[str]
+
+
+CHILD_TRACE_FIXTURES = (
+    ChildTraceFixture(
+        0, "math_int_trace_main", MATH_RUNTIME_FIXTURE_DIR / "math_int_trace_main.l1",
+        "math_runtime_compile_test", frozenset({"mem", "arc"}),
+    ),
+    ChildTraceFixture(
+        1, "wide_math_main", MATH_RUNTIME_FIXTURE_DIR / "wide_math_main.l1",
+        "math_runtime_compile_test", frozenset({"arc"}),
+    ),
+)
 
 
 @dataclass(frozen=True)

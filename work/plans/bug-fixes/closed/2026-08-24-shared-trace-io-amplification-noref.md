@@ -56,7 +56,7 @@
   - `l0/work/plans/bug-fixes/closed/2026-04-01-stage2-windows-trace-runner-pipe-capture-noref.md`
   - `l0/docs/decisions/0025-runtime-trace-source-provenance.md`
   - `l1/docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md`
-  - `l1/work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md`
+  - `l1/work/plans/tools/closed/2026-04-17-l1-child-process-trace-support-noref.md`
   - `l1/docs/project-status.md`
 - Repro: On hosted Windows with four workers, run `make -C l1 test-stage1-trace TESTS="l1c_lib_test"`; the traced
   integration test takes roughly 74 minutes in the observed CI run, versus roughly 4 minutes on hosted Linux.
@@ -245,7 +245,7 @@ durable event policy and may produce a runner warning; they must not alter gener
 3. Treating lower worker counts, smaller test selection, Defender exclusions, or runner-local filesystem tuning as the
    durable fix.
 4. Splitting nested child executable traces into independent analyzer inputs; that remains owned by
-   `l1/work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md`.
+   `l1/work/plans/tools/closed/2026-04-17-l1-child-process-trace-support-noref.md`.
 5. Changing normal runtime buffering or stderr behavior when trace instrumentation is disabled.
 6. Removing the Windows trace smoke target after full coverage is restored.
 

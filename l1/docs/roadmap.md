@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-21
+Version: 2026-09-24
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -16,6 +16,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Stage 1 uses 120 phase/ownership modules with explicit canonical state imports. The settled layout and its two
   recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
+- The Stage 1 child fixture trace runner analyzes successful math runtime executables independently as part of
+  `test-all` under Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace].
 - `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` compile
   one translation unit per source-backed graph node and reuse the verified common linker.
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
@@ -281,8 +283,6 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
   install/dist/product workflow.
-- Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace] adds child-process trace capture support for Stage
-  1 runtime fixtures.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial
@@ -377,7 +377,7 @@ update to be promoted to an initiative or plan:
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md
 [case-else-recovery]: ../work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md
 [cheap-string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md
-[child-trace]: ../work/plans/tools/2026-04-17-l1-child-process-trace-support-noref.md
+[child-trace]: ../work/plans/tools/closed/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-foundation]: ../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [compile-only]: ../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [compiler-architecture]: reference/architecture.md

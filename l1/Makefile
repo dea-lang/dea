@@ -61,7 +61,7 @@ RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-env check-examples bench-runtime bench-link-provenance test-all test-docker print-l1-build-dir clean docker docker-wine docker-wine-toolchain docker-wine-image test-docker-wine-runner FORCE
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-stage1-trace-children test-env check-examples bench-runtime bench-link-provenance test-all test-docker print-l1-build-dir clean docker docker-wine docker-wine-toolchain docker-wine-image test-docker-wine-runner FORCE
 
 help:
 	@printf '%s\n' \
@@ -74,7 +74,7 @@ help:
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  test               Run the default L1 validation suite without the dedicated trace sweep.' \
 		'  test-ci            Run hosted-CI validation with the full normal and default trace checks.' \
-		'  test-all           Run the full L1 validation suite, including the default trace checks.' \
+		'  test-all           Run the full L1 validation suite, including parent and child trace checks.' \
 		'  test-docker        Run the full L1 validation suite under the repo-owned Linux container (POSIX reference path).' \
 		'  test-stage1        Run the L1 Stage 1 `.l0` implementation tests with the built repo-local compiler.' \
 		'  test-stage1-trace  Run default L1 Stage 1 ARC/memory trace checks; skips intentionally slow trace tests.' \
@@ -82,6 +82,8 @@ help:
 		'                     Run the focused ARC/memory trace smoke set for developer diagnostics.' \
 		'  test-stage1-trace-all' \
 		'                     Run L1 Stage 1 ARC/memory trace checks including intentionally slow trace tests.' \
+		'  test-stage1-trace-children' \
+		'                     Build, run, and analyze L1 child runtime fixtures independently; TESTS selects fixture names.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
 		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 1 compiler; fail on warnings or errors.' \
 		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-all`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
@@ -393,6 +395,9 @@ test-stage1-trace-smoke: venv build-stage1 runtime _print-test-compiler-env
 test-stage1-trace-all: venv build-stage1 runtime _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --include-slow $(TESTS)
 
+test-stage1-trace-children: venv build-stage1 runtime _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --children $(TESTS)
+
 test-env: venv
 	"$(VENV_PYTHON)" ./tests/test_env_stackability.py
 
@@ -402,6 +407,8 @@ check-examples: build-stage1
 test: test-stage1 test-env check-examples test-docker-wine-runner
 
 test-all: test test-stage1-trace
+	# Parent TESTS selectors do not filter the independently declared child fixtures.
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --children
 
 # Hosted CI uses the full default trace sweep on every supported platform.
 test-ci: test-all
