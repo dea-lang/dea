@@ -53,11 +53,12 @@ observations distinguish a reusable native profile from reusable evidence about 
 investigation confirms that the native identity can remain unchanged while metadata rejection, a changed discovery
 selection, or explicit system-root selection incurs substantial work.
 
-This standalone plan organizes five implementation phases within one work item. Phase 1 implements equivalent bundled
-root recognition with an explicit source opt-out. Phase 2 implements disposable digest-seed hints while retaining
-cwd-sensitive discovery. Phases 3 through 5 remain future work, subject to their evidence and compatibility gates. The
-original investigation attachments remain immutable historical evidence; Phase 1 and Phase 2 measurements and validation
-are recorded separately.
+This standalone plan organizes five phases within one work item. Phase 1 implements equivalent bundled root recognition
+with an explicit source opt-out. Phase 2 implements disposable digest-seed hints while retaining cwd-sensitive
+discovery. Phase 3 investigates preparation reuse practices for containerized compiler services and comparable isolated
+deployments, with playgrounds as one use case. Phases 3 through 5 remain future work, subject to their evidence and
+compatibility gates. The original investigation attachments remain immutable historical evidence; Phase 1 and Phase 2
+measurements and validation are recorded separately.
 
 ## ADR Impact
 
@@ -77,13 +78,14 @@ are recorded separately.
   - Rationale: Phase 2 adds a best-effort locator for existing machine-local evidence. Donor records retain the same
     metadata checks, force behavior and live search dependencies; discovery is never copied. ADR-0039 records the
     bounded lookup and failure policy without a new authority or cwd-independence proof.
-- Decision: Define the authority and isolation boundary for evidence distributed across Docker requests.
+- Decision: Define the authority and isolation boundary for preparation reuse in containerized compiler services.
   - Scope: L1
   - Disposition: Pending
   - ADR: None
-  - Rationale: Phase 3 must establish whether runtime memo distribution fits ADR-0039's local-evidence constraints or
-    needs a separately enforced immutable-toolchain contract. Copied/shared portability is currently unsupported, and
-    untrusted requests cannot establish authority; see
+  - Rationale: Phase 3 must compare deployment practices and establish whether the recommended approach fits ADR-0039's
+    local-evidence constraints or requires an ADR amendment or new architectural contract. Image preparation, worker
+    warmup, runtime evidence distribution and shared storage remain candidates. Copied/shared portability is currently
+    unsupported, and untrusted requests cannot establish authority; see
     [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md][reuse-boundary].
 - Decision: Choose a portable SHA-256 backend and any platform-acceleration/dependency policy.
   - Scope: L1
@@ -123,11 +125,11 @@ warm invocation takes 1.455/0.607 seconds. In this environment:
 
 ## Goals and Boundaries
 
-Recognize equivalent bundled-root selections, reuse valid content evidence across discovery selections, test runtime
-evidence distribution, reduce measured discovery/hash costs, and attribute substantial remaining warm time. Preserve
-content identity, completed-profile validation, explicit interface authority, source ordering, eligibility refusal,
-stable-read checks, corruption detection, and force behavior unless an explicit design decision changes a documented
-contract.
+Recognize equivalent bundled-root selections, reuse valid content evidence across discovery selections, investigate
+preparation reuse for containerized compiler service images and comparable isolated deployments, reduce measured
+discovery/hash costs, and attribute substantial remaining warm time. Preserve content identity, completed-profile
+validation, explicit interface authority, source ordering, eligibility refusal, stable-read checks, corruption
+detection, and force behavior unless an explicit design decision changes a documented contract.
 
 No new diagnostic codes are planned. Existing debug records and ordinary failure diagnostics remain the starting point.
 Do not weaken validation by ignoring metadata differences, dropping large implementation libraries, or trusting a cache
@@ -243,35 +245,52 @@ and relevant trace coverage. Record individual timing distributions, storage ove
 separate evidence; preserve all historical attachments. No new diagnostic codes or portability guarantees are
 introduced.
 
-## Phase 3: Reuse Runtime-Validated Evidence Across Docker Requests
+## Phase 3: Investigate Preparation Reuse for Containerized Compiler Services
 
-**Hypothesis.** Runtime-validated evidence may be reusable by subsequent isolated containers when their observed
-filesystem identity is stable, avoiding repeated rejection of image-build metadata.
+**Objective.** Discover established practices for packaging and operating a containerized compiler service image or
+comparable isolated compiler deployment, then assess their applicability to Dea. Playgrounds are one use case, not a
+required service architecture. Distinguish reuse of compiled stdlib/runtime artifacts from reuse of validation records:
+avoiding recompilation can be valuable even when discovery or hashing must repeat.
 
-**Preferred experiment.** In a controlled trusted setup, validate the installed toolchain once in the runtime filesystem
-and distribute the resulting evidence read-only to fresh request containers. Each consumer performs normal metadata
-checks and falls back to ordinary validation when evidence does not match. Keep request outputs and writable state
-separate from the evidence supplied to later requests.
+**Discovery and alternatives.** Use primary documentation and implementation sources from established compiler services
+and container tooling to compare:
 
-**Alternatives and gate.** Retain per-container validation if filesystem identity is unstable or distribution costs
-outweigh the benefit. Alternatively, design an immutable-toolchain authority supplied by a trusted deployment system in
-a separate explicit architecture decision. Such a contract needs independently enforced identity and mutation controls;
-successful memo copying or faster timings cannot establish it. Decide whether any supported distribution mechanism fits
-the local-cache contract or needs an ADR amendment/new ADR before implementing it.
+- Pre-warmed build images feeding service images through image inheritance or copying the toolchain and prepared cache.
+- Workers warmed at startup and serving isolated requests over their lifetime.
+- Trusted runtime evidence distributed to fresh request containers with private writable state.
+- Shared read-only toolchain storage and prepared support, with request outputs kept separate.
 
-**Experiment.** Compare multiple fresh containers against an ordinary per-container baseline, runtime restarts, changed
-images, changed mounts, altered inputs, stale evidence, and read-only consumers. Record first metadata differences,
-selection/native keys, probe counts, hash bytes, copy/distribution costs, and total durations. Include evidence
-validation and distribution setup separately so their cost is not hidden.
+Examine worker lifetime, request isolation, cache ownership, toolchain updates and failure recovery for each candidate.
+Separate documented practices from hypotheses about Dea reuse; a packaging mechanism alone does not establish metadata
+stability or a trust boundary. Ordinary per-container validation remains the baseline and a valid selected outcome.
 
-**Correctness requirements.** Memos remain accelerators under ADR-0039, never self-authenticating authority. Untrusted
-executed programs must not publish or modify evidence consumed by subsequent requests. Enforce that boundary through
-ownership and mount/process isolation, including staging/publication paths. Read-only consumers must handle unavailable
-memo writes without treating stale evidence as valid; changed inputs still invalidate or fail under existing policy.
+**Experiments and gate.** Select bounded prototypes based on the source-backed comparison and record why other
+alternatives are deferred. Measure image preparation, service/worker startup, first and subsequent request durations,
+copy/distribution overhead, native preparation build commands, discovery probes and bytes hashed. Report individual
+measurements and distributions, keeping one-time setup costs separate and showing how worker lifetime affects their
+amortization. Record selection/native keys, first metadata differences and artifact versus validation-record reuse at
+each tested lifecycle boundary.
 
-**Completion criteria.** Record whether runtime identity survives each tested lifecycle boundary and quantify actual
-reductions in probes/hashing. Select a correct mechanism with an explicit authority decision, or retain per-container
-validation with documented negative evidence. Do not describe an experiment as a general cache-portability guarantee.
+Exercise fresh containers, worker/runtime restarts, changed images and mounts, toolchain updates, altered inputs, stale
+or unavailable evidence and read-only consumers as applicable to each prototype. Verify compilation and program output
+separately from timing. Preserve the original evidence and place reproducible commands, configuration, source references
+and results in a new attachment. Decide whether a recommended mechanism fits ADR-0039 or needs an ADR amendment/new ADR
+before adopting it. An immutable-toolchain authority remains a separate explicit architecture decision requiring
+independently enforced identity and mutation controls; successful cache copying or faster timings cannot establish it.
+
+**Correctness requirements.** Preserve normal validation and fallback behavior. Memos remain accelerators under
+ADR-0039, never self-authenticating authority. Untrusted requests and executed programs must not publish or modify
+prepared support or evidence trusted by later requests. Enforce ownership and mount/process isolation, including
+staging/publication paths, and verify that worker reuse does not carry request-written state into trusted preparation.
+Read-only consumers must handle unavailable memo writes without treating stale evidence as valid; changed inputs still
+invalidate or fail under existing policy. Any required compiler interface or validation-contract change must be
+identified and decided explicitly rather than assumed by the deployment recipe.
+
+**Completion criteria.** Produce a source-backed comparison, reproducible evidence for selected prototypes and a
+recommended deployment recipe or explicit deferral with rationale and remaining questions. Report achievable artifact
+and validation reuse, latency, setup/storage costs, operational complexity, isolation requirements and unavailable
+configurations. Resolve the authority decision for the selected or deferred outcome. Building a production service or
+prototyping every alternative is not required. Do not describe an experiment as a general cache-portability guarantee.
 
 ## Phase 4: Reduce Discovery and Unavoidable Hashing Costs
 
