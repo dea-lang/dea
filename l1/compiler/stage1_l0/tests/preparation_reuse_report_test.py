@@ -282,6 +282,12 @@ class ReporterTest(unittest.TestCase):
              "bytes": 5, "elapsed_us": 13, "success": 0, "schema": 1},
             {"event": "span", "name": "profile-validation", "inclusive": 1,
              "elapsed_us": 17, "success": 1, "schema": 1},
+            {"event": "decision", "scope": "digest-seed-hint", "decision": "hit",
+             "reason": "candidate-memo", "path": "/cache/hint.json", "schema": 1},
+            {"event": "decision", "scope": "input-digest", "decision": "hit",
+             "reason": "validated-donor-record", "path": "/toolchain/library", "schema": 1},
+            {"event": "decision", "scope": "input-digest", "decision": "fallback",
+             "reason": "metadata-changed", "path": "/toolchain/replaced", "schema": 1},
         ]
         stderr = "\n".join([*("Preparation observation: " + json.dumps(item) for item in records),
                              "Preparation native key: " + "a" * 64,
@@ -292,6 +298,13 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(measured["hashing"]["dea-input"], {"count": 2, "bytes": 12, "elapsed_us": 24})
         self.assertEqual(measured["observations"][0]["path"], 'quoted \\" path')
         self.assertEqual(measured["spans"][0]["name"], "profile-validation")
+        self.assertEqual(measured["observations"], records)
+        _, report, _ = self.exercise()
+        report["invocations"] = {"warm-guarded": measured}
+        summary = reporter.render_summary(report)
+        self.assertIn("hit/validated-donor-record", summary)
+        self.assertIn("fallback/metadata-changed", summary)
+        self.assertIn("/toolchain/library", summary)
 
     def test_command_elapsed_time_uses_monotonic_clock(self):
         """Account for command duration with a controlled monotonic clock."""

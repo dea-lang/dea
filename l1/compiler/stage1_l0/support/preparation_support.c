@@ -164,7 +164,8 @@ void l1c_prep_free(void *context) {
     pc_unlock(c->lock);
     if (c->private_root) pc_remove_owned_tree(c->private_root);
     pj_free(c->config); pj_free(c->options); pj_free(c->runtime_options); pj_free(c->dea); pj_free(c->native);
-    pj_free(c->old_files); pj_free(c->new_files);
+    pj_free(c->old_files); pj_free(c->new_files); pj_free(c->digest_donor);
+    free(c->digest_seed_key);
     free(c->local); free(c->home); free(c->compiler); free(c->self); free(c->semantic_root); free(c->include);
     free(c->dea_key); free(c->native_key); free(c->selected); free(c->error); free(c->description);
     free(c->family); free(c->archiver); free(c->private_root); free(c->ineligible); free(c->unusable); free(c);

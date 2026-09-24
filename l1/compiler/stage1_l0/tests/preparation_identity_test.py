@@ -930,6 +930,55 @@ def check_clang_configuration_support(library: Path, root: Path, config: dict, c
     return False
 
 
+def check_cwd_digest_seeds(library: Path, root: Path, config: dict) -> None:
+    """Keep cwd discovery distinct while copying valid file evidence into each memo.
+
+    Args:
+        library: Compiled preparation service.
+        root: Owned fixture directory.
+        config: Supported native preparation configuration.
+    """
+    root.mkdir()
+    first_cwd, second_cwd = root / "first", root / "second"
+    first_cwd.mkdir()
+    second_cwd.mkdir()
+    selected = {**config, "cache": str(root / "cache")}
+    with chdir(first_cwd):
+        first = identity(library, selected)
+        warm = identity(library, selected)
+    seeds = list((root / "cache/v1/memo/digest-seeds").glob("*.json"))
+    assert len(seeds) == 1, seeds
+    hint = json.loads(seeds[0].read_text())
+    donor = root / "cache/v1/memo/toolchains" / (hint["memo_key"] + ".json")
+    with chdir(second_cwd):
+        second = identity(library, selected)
+    assert second[:2] == first[:2] == warm[:2]
+    assert second[3]["identity_content_reads"] == 0, second[3]
+    assert second[3]["probes"] > warm[3]["probes"], "changed cwd must still discover"
+    current_hint = json.loads(seeds[0].read_text())
+    assert current_hint["memo_key"] != hint["memo_key"], "cwd remains in discovery selection"
+    assert len(list(seeds[0].parent.glob("*.json"))) == 1, "cwd must not create additional hints"
+    donor.unlink()
+    seeds[0].unlink()
+    with chdir(second_cwd):
+        independent = identity(library, selected)
+    assert independent[:2] == second[:2] and independent[3]["identity_content_reads"] == 0
+    # Identical relative option text in different cwds selects different actual headers.
+    for cwd, value in ((first_cwd, 1), (second_cwd, 2)):
+        (cwd / "headers").mkdir()
+        (cwd / "headers/choice.h").write_text(f"#define CHOICE {value}\n")
+        (cwd / "nested.rsp").write_text("-Iheaders -include choice.h")
+        (cwd / "flags.rsp").write_text("@nested.rsp")
+    relative = {**selected, "options": ["-std=c99", "@flags.rsp"]}
+    with chdir(first_cwd):
+        left = identity(library, relative)
+    with chdir(second_cwd):
+        right = identity(library, relative)
+    assert left[0] == right[0] and left[1] != right[1], "relative selections must not share discovery"
+    assert has_component(left[2], first_cwd / "headers/choice.h")
+    assert has_component(right[2], second_cwd / "headers/choice.h")
+
+
 def main() -> int:
     """Exercise effective input/option invalidation without rebuilding native fixtures."""
     if len(sys.argv) == 3 and sys.argv[1] == "--identity-request":
@@ -957,6 +1006,7 @@ def main() -> int:
             warm = identity(library, config)
             assert warm[:2] == plain[:2] and warm[3]["identity_content_reads"] == 0
             assert warm[3]["probes"] <= 4
+            check_cwd_digest_seeds(library, root / "cwd-seeds", config)
             if os.name != "nt":
                 check_environment_identity(library, root / "environment-primary", config)
             environment_families = {plain[2]["toolchain"]["family"]}

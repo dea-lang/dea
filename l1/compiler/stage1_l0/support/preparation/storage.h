@@ -9,7 +9,9 @@
 
 typedef struct {
     PcJson *config, *options, *runtime_options, *dea, *native, *modules, *interfaces;
-    PcJson *old_files, *new_files;
+    PcJson *old_files, *new_files, *digest_donor;
+    char *digest_seed_key;
+    int digest_seed_loaded;
     char *local, *home, *compiler, *self, *semantic_root, *include;
     char *dea_key, *native_key, *selected, *error, *description, *family, *archiver;
     char *private_root, *ineligible, *unusable;
@@ -267,21 +269,71 @@ static PcJson *pc_memo_create(const char *kind) {
     pj_set_number(m, "schema", 1); pj_set_string(m, "kind", kind);
     return m;
 }
+/** Read at most one optional donor; its discovery is never consulted. */
+static const PcJson *pc_digest_seed_files(PcContext *c) {
+    char *path;
+    PcJson *hint;
+    const char *key;
+    int status;
+    if (!c->digest_seed_key || c->force || c->ineligible || c->private_root) return NULL;
+    if (c->digest_seed_loaded) return pj_get(c->digest_donor, "files");
+    c->digest_seed_loaded = 1;
+    path = pc_memo_path(c, "digest-seeds", c->digest_seed_key, 0);
+    hint = pc_read_json_status(path, &status);
+    key = pj_field(hint, "memo_key");
+    if (!pc_memo_valid(hint, "input-digest-seed") || !pc_hex_digest(key)) {
+        pc_observe_decision(c, "digest-seed-hint", "miss",
+                            status == PC_JSON_ABSENT ? "no-matching-memo" :
+                            status == PC_JSON_UNREADABLE ? "unreadable-memo" : "malformed-memo", path);
+        free(path); pj_free(hint); return NULL;
+    }
+    pc_observe_decision(c, "digest-seed-hint", "hit", "candidate-memo", path);
+    free(path);
+    path = pc_memo_path(c, "toolchains", key, 0);
+    c->digest_donor = pc_read_json_status(path, &status);
+    pj_free(hint);
+    if (!pc_memo_valid(c->digest_donor, "identity") || !pj_get(c->digest_donor, "files") ||
+        pj_get(c->digest_donor, "files")->type != PJ_OBJECT) {
+        pc_observe_decision(c, "digest-seed-donor", "miss",
+                            status == PC_JSON_ABSENT ? "no-matching-memo" :
+                            status == PC_JSON_UNREADABLE ? "unreadable-memo" : "malformed-memo", path);
+        pj_free(c->digest_donor); c->digest_donor = NULL;
+    } else
+        pc_observe_decision(c, "digest-seed-donor", "hit", "candidate-files", path);
+    free(path);
+    return pj_get(c->digest_donor, "files");
+}
+
+/** An optional record is usable only against current reliable file metadata. */
+static const char *pc_digest_rejection(const PcJson *old, const PcJson *now) {
+    if (!old) return "memo-entry-absent";
+    if (!pc_hex_digest(pj_field(old, "sha256"))) return "memo-digest-invalid";
+    if (!pj_is_number(pj_get(now, "reliable"), 1)) return "metadata-unreliable";
+    if (!pj_equal(now, pj_get(old, "metadata"))) return "metadata-changed";
+    return NULL;
+}
+
 /** Metadata is local evidence only; missing or invalid records always rehash. */
 static char *pc_input_digest(PcContext *c, const char *path, const char *category) {
     PcJson *now = pc_meta(path), *old = pj_get(c->old_files, path), *record;
-    const char *digest = pj_field(old, "sha256");
+    const char *reason;
     char hex[65];
     char *result;
     if (!now)
         return pc_fail(c, 2151, "cannot stat preparation input", path), NULL;
-    const char *reason = c->force ? "force" : !old ? "memo-entry-absent" :
-        !pc_hex_digest(digest) ? "memo-digest-invalid" :
-        !pj_is_number(pj_get(now, "reliable"), 1) ? "metadata-unreliable" : "metadata-changed";
-    if (!c->force && pc_hex_digest(digest) && pj_is_number(pj_get(now, "reliable"), 1) &&
-        pj_equal(now, pj_get(old, "metadata")))
-        result = pc_string(digest);
+    reason = c->force ? "force" : pc_digest_rejection(old, now);
+    if (reason && !c->force && c->digest_seed_key && !c->ineligible && !c->private_root) {
+        PcJson *donor = pj_get(pc_digest_seed_files(c), path);
+        const char *rejection = pc_digest_rejection(donor, now);
+        pc_observe_decision(c, "input-digest", rejection ? "miss" : "hit",
+                            rejection ? rejection : "validated-donor-record", path);
+        if (!rejection) { old = donor; reason = NULL; }
+    } else if (!reason)
+        pc_observe_decision(c, "input-digest", "hit", "validated-current-record", path);
+    if (!reason)
+        result = pc_string(pj_field(old, "sha256"));
     else {
+        pc_observe_decision(c, "input-digest", "fallback", reason, path);
         if (pc_verbosity(c) >= 3 && old && !pj_equal(now, pj_get(old, "metadata")))
             pc_observe_metadata_mismatch(c, category, path, pj_get(old, "metadata"), now);
         pj_free(now);

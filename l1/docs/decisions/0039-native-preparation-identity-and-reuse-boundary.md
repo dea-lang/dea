@@ -1,7 +1,7 @@
 # ADR-0039: Native Preparation Identity and Reuse Boundary
 
 - Decision date: 2026-09-11
-- Last edited: 2026-09-21
+- Last edited: 2026-09-24
 - Status: Accepted
 
 ## Context
@@ -43,6 +43,18 @@ content checks; absent, malformed or stale memo records cause fresh validation. 
 so implementation changes cannot inherit old observation rules. There is no host identifier, cross-host portability
 promise, metadata-preserving-mutation guarantee or whole-host installation fingerprint.
 
+Discovery remains cwd-sensitive. A disposable digest-seed hint, keyed by the same selection with only cwd omitted, may
+name one prior toolchain memo as candidate file evidence. The current memo's valid records take precedence; donor
+records require the same reliable metadata and digest checks and are copied into the new self-contained memo. Donor
+discovery never authorizes observation reuse. Force bypasses both evidence sources. Missing or unusable optional records
+fall back to stable hashing; actual input failures retain existing diagnostics.
+
+Hints use schema 1, kind `input-digest-seed`, and a validated hexadecimal memo key under the local toolchain-memo
+directory. Each invocation loads at most one donor, without scanning. Successful eligible memo writes may update a hint
+using ordinary best-effort writes; failed writes or lost updates only reduce reuse. There are no added locks, merge
+protocol, history or pruning service. Existing cache accumulation, manual deletion and allocation-failure policy remain
+unchanged. No cwd-independence classifier or observation-sharing proof is required.
+
 Managed artifact validation checks the complete manifest inventory, relative containment, sizes/digests and exact
 selected semantic bytes. Native contents remain semantically opaque; `.l1m` parsing, fingerprints, graph and lifecycle
 validation remain authoritative.
@@ -60,6 +72,7 @@ general toolchain or project build system.
 - A configuration may work automatically but be unavailable for persistent prewarming.
 - Default cache hits remain quiet; verbosity explains observations, configuration and validation.
 - A first invocation under changed environment text pays for fresh observations even when it retains a profile hit.
+- A first invocation in a new cwd still observes selection but can avoid hashing unchanged files through a donor memo.
 - Old discovery memos missing runtime target evidence are reobserved; compiler-content identity changes keep old
   profiles separate without migration.
 - Working compiler/stdlib/runtime edits conservatively select a new native profile.
@@ -69,6 +82,9 @@ general toolchain or project build system.
 - Native integrity checks do not authenticate caller-owned object/interface pairs or infer compatible ABIs.
 
 ## Related Plans
+
+- [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency] (Phase 2 completed; parent
+  plan remains active).
 
 - [l1/work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md][environment-identity]
 
@@ -89,4 +105,5 @@ general toolchain or project build system.
 [preparation]: ../reference/stdlib-preparation.md
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
+[reuse-efficiency]: ../../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

@@ -83,6 +83,12 @@ and reliability order, together with the previous and current values. An absent 
 Missing or invalid memo digests and unreliable metadata have separate reasons; equal metadata never produces a
 metadata-difference record. Existing nonregular or oversized memo evidence is malformed, not absent.
 
+Digest sharing uses the existing `decision` event. `digest-seed-hint` and `digest-seed-donor` scopes report candidate
+lookup hits or rejection reasons; a candidate hit alone does not establish digest reuse. The `input-digest` scope
+reports `hit` with `validated-current-record` or `validated-donor-record` only after checking the selected file's
+metadata, or `fallback` before ordinary hashing. Each file decision names its path. Hint publication reports `saved`
+with `memo-saved`, or a nonfatal `miss` with `write-unavailable`. These observations leave counter meanings unchanged.
+
 `span` events report inclusive `elapsed_us` for Dea identity resolution, native identity/observation resolution, profile
 validation, lock waiting and native publication. `probe` events report each purpose, elapsed time, status and timeout;
 runtime dependency probes name the individual translation unit and generated-C dependency probes name their real/float
@@ -167,9 +173,10 @@ resolve from the invocation directory.
 | Installed Windows | Local AppData / `Dea/L1/Cache`                        |
 
 Only `<CACHE_ROOT>/v1/` is Dea-owned. The root itself can contain unrelated files. Internal storage contains
-`native/<N>/`, per-key `locks/native-<N>.lock`, and disposable `memo/toolchains/` and `memo/artifacts/` records. There
-is no semantic-interface cache, installed native store, system/shared cache, host identifier, project database, cleaner,
-scrubber, migration, or automatic pruning. Cross-host copying/sharing has no reuse guarantee.
+`native/<N>/`, per-key `locks/native-<N>.lock`, and disposable `memo/toolchains/`, `memo/digest-seeds/`, and
+`memo/artifacts/` records. There is no semantic-interface cache, installed native store, system/shared cache, host
+identifier, project database, cleaner, scrubber, migration, or automatic pruning. Cross-host copying/sharing has no
+reuse guarantee.
 
 A reusable profile contains exact byte copies of the selected toolchain `.l1m` files, sibling native objects, matching
 runtime support, and a completion manifest. Public headers remain toolchain inputs. Generated C and runtime-build
@@ -205,6 +212,25 @@ target change. On macOS, the OS build remains explicit native identity evidence 
 cache. Existing nonempty `LD_PRELOAD`, `LD_AUDIT`, `CCC_OVERRIDE_OPTIONS` and Apple `DYLD_*` configurations still
 decline persistent reuse before any memo can authorize it. The first command in a different environment may therefore
 cost more than subsequent warm commands even when the profile is reused.
+
+A cwd change still selects a different observation memo and requires discovery. To avoid rehashing unchanged selected
+files, `memo/digest-seeds/<seed-key>.json` points to one previously saved toolchain memo. Its key hashes the complete
+discovery selection with only `cwd` omitted, retaining `D`, environment, compiler and options. Its JSON fields are
+`schema: 1`, `kind: "input-digest-seed"`, and a 64-hex-character `memo_key` naming a file under `memo/toolchains/`. This
+key only locates evidence; it never authorizes discovery reuse.
+
+The current memo's valid file record wins. Otherwise preparation reads at most one donor per invocation and checks the
+selected absolute path, digest format and current reliable metadata before copying its digest into the new memo. Donor
+discovery is ignored. The saved memo is self-contained and remains usable if its donor is deleted. Missing, unreadable,
+malformed, incompatible or stale optional evidence falls back to existing validation and stable-read hashing. Actual
+input failures retain their diagnostics, and force bypasses all digest reuse. General allocation-failure handling is
+unchanged; JSON record copying has no recoverable failure return.
+
+Hints are updated only after successful eligible toolchain-memo writes. Hint writes are best-effort, with no new locks,
+merging, recovery or writer coordination. A lost update can lose an optimization. There is one hint per configuration
+excluding cwd, with no history or directory scanning; existing memo accumulation and manual cache deletion remain
+unchanged. A hint can miss opportunities when different cwds select different files. No cwd-independence classifier,
+cache-portability promise or new authority is introduced.
 
 Both native compilation classes use the selected L1 C compiler. Bundled generated C uses `L1_CFLAGS` followed by
 `--c-options` and the normal generated-C defaults. Standalone link applies these options to managed module preparation

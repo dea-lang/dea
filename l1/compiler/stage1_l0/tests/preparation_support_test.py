@@ -117,6 +117,34 @@ def check_observability(root: Path) -> None:
     assert probes[1]["timed_out"] == 1
 
 
+def check_digest_seeds(root: Path) -> None:
+    """Exercise optional donor failures and their production debug observations.
+
+    Args:
+        root: Owned directory for fixture compilation and input files.
+    """
+    executable = root / ("digest-seeds.exe" if os.name == "nt" else "digest-seeds")
+    compile_native(executable, [Path(__file__).with_name("preparation_digest_seed_test.c"),
+                                SUPPORT / "compiler_support.c"])
+    fixtures = root / "digest-seed-files"
+    fixtures.mkdir()
+    result = subprocess.run([str(executable), str(fixtures)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert not result.stdout
+    records = [json.loads(line.removeprefix("Preparation observation: ")) for line in result.stderr.splitlines()]
+    decisions = [item for item in records if item["event"] == "decision"]
+    reasons = [item["reason"] for item in decisions]
+    # The three quiet iterations must not contribute debug records.
+    assert reasons.count("validated-donor-record") == 2, reasons
+    assert reasons.count("validated-current-record") == 1, reasons
+    for scope in ("digest-seed-hint", "digest-seed-donor"):
+        assert any(item["scope"] == scope and item["decision"] == "hit" for item in decisions)
+        assert any(item["scope"] == scope and item["decision"] == "miss" for item in decisions)
+    assert "write-unavailable" in reasons and "malformed-memo" in reasons
+    assert any(item["scope"] == "input-digest" and item["decision"] == "fallback" and
+               item["reason"] == "force" and Path(item["path"]) == fixtures / "input" for item in decisions)
+
+
 class Service:
     """Small test adapter for the compiler-private, caller-owned byte-span ABI."""
 
@@ -558,6 +586,7 @@ def main() -> int:
         run_native_reader(spaced_reader, root / "spaced-reader-files", "spaced-path")
         check_native_reader(root, "libraries")
         check_observability(root)
+        check_digest_seeds(root)
         library = build_library(root)
         check_service_lifetime(library, root)
         home = root / "compiler"

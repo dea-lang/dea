@@ -52,7 +52,16 @@ static void pc_save_input_memo(PcContext *c, const char *key, const PcJson *disc
         pj_set_string(memo, "discovery_digest", digest);
         free(digest);
     }
-    pc_write_json(path, memo);
+    if (pc_write_json(path, memo) && discovery && c->digest_seed_key && !c->ineligible) {
+        char *hint_path = pc_memo_path(c, "digest-seeds", c->digest_seed_key, 1);
+        PcJson *hint = pc_memo_create("input-digest-seed");
+        int saved;
+        pj_set_string(hint, "memo_key", key);
+        saved = hint_path && pc_write_json(hint_path, hint);
+        pc_observe_decision(c, "digest-seed-hint", saved ? "saved" : "miss",
+                            saved ? "memo-saved" : "write-unavailable", hint_path);
+        pj_free(hint); free(hint_path);
+    }
     pj_free(memo);
     free(path);
 }
@@ -1673,6 +1682,15 @@ static int pc_resolve_native(PcContext *c) {
         }
     }
 #endif
+    /* This key only locates candidate file evidence. Discovery keeps cwd. */
+    {
+        PcJson *seed_selection = pj_new(PJ_OBJECT);
+        const PcJson *field;
+        for (field = selection->child; field; field = field->next)
+            if (strcmp(field->key, "cwd")) pj_add(seed_selection, field->key, pj_clone(field));
+        c->digest_seed_key = pc_json_digest(seed_selection);
+        pj_free(seed_selection);
+    }
     memo_key = pc_json_digest(selection);
     if (pc_verbosity(c) >= 3) {
         PcJson *record = pc_observation("observation-selection");

@@ -18,6 +18,7 @@
   - `l1/compiler/stage1_l0/src/preparation/consumer.l0`
   - `l1/compiler/stage1_l0/src/source_paths.l0`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
+  - `l1/compiler/stage1_l0/support/preparation_support.c`
   - `l1/compiler/stage1_l0/support/preparation/identity.h`
   - `l1/compiler/stage1_l0/support/preparation/storage.h`
   - `l1/compiler/stage1_l0/support/preparation/platform.h`
@@ -33,6 +34,7 @@
   - `l1/compiler/stage1_l0/tests/preparation_ownership_test.py`
   - `l1/compiler/stage1_l0/tests/preparation_identity_windows_environment_test.py`
   - `l1/compiler/stage1_l0/tests/preparation_observability_test.c`
+  - `l1/compiler/stage1_l0/tests/preparation_digest_seed_test.c`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_managed_preparation_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_preparation_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_installed_preparation_test.py`
@@ -52,9 +54,10 @@ investigation confirms that the native identity can remain unchanged while metad
 selection, or explicit system-root selection incurs substantial work.
 
 This standalone plan organizes five implementation phases within one work item. Phase 1 implements equivalent bundled
-root recognition with an explicit source opt-out. Phases 2 through 5 remain future work, subject to their evidence and
-compatibility gates. The original investigation attachments remain immutable historical evidence; Phase 1 measurements
-and validation are recorded separately.
+root recognition with an explicit source opt-out. Phase 2 implements disposable digest-seed hints while retaining
+cwd-sensitive discovery. Phases 3 through 5 remain future work, subject to their evidence and compatibility gates. The
+original investigation attachments remain immutable historical evidence; Phase 1 and Phase 2 measurements and validation
+are recorded separately.
 
 ## ADR Impact
 
@@ -65,15 +68,15 @@ and validation are recorded separately.
   - ADR: `l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md`
   - Rationale: Phase 1 replaces unconditional explicit-root suppression with filesystem-identity recognition and the
     `--no-managed-stdlib` opt-out. ADR-0038 records that compatibility decision; ADR-0033 delegates its
-    provider-selection wording to that contract. Later phases remain independent and unresolved.
-- Decision: Share digest evidence across discovery selections and define any safe cwd-independent observation reuse.
+    provider-selection wording to that contract. Phases 3 through 5 remain independent and unresolved.
+- Decision: Share validated file digest records across cwd selections through a disposable donor hint, retaining
+  cwd-sensitive discovery.
   - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: Phase 2 must choose an evidence index and discovery boundary while preserving ADR-0039's machine-local
-    accelerators, reliable metadata/stable reads, force behavior, and live search dependencies. Its final architecture
-    and ADR disposition remain unresolved; see
-    [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md][reuse-boundary].
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md`
+  - Rationale: Phase 2 adds a best-effort locator for existing machine-local evidence. Donor records retain the same
+    metadata checks, force behavior and live search dependencies; discovery is never copied. ADR-0039 records the
+    bounded lookup and failure policy without a new authority or cwd-independence proof.
 - Decision: Define the authority and isolation boundary for evidence distributed across Docker requests.
   - Scope: L1
   - Disposition: Pending
@@ -194,42 +197,51 @@ cache format, identity coverage, concurrency protocol, or dependency changes wer
 
 Implementation and correctness checks are recorded in
 [l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md][phase-one]. The parent
-plan stays active for Phases 2 through 5; their ADR records remain pending.
+plan remained active for Phases 2 through 5 at that point. Phase 2 is recorded below; Phases 3 through 5 remain pending.
 
 ## Phase 2: Separate Digest Reuse from Discovery Selection
 
-**Hypothesis.** A discovery-selection change need not discard previously validated file digests. With absolute inputs, a
-cwd change can require discovery while still reusing reliable machine-local content evidence.
+**Status.** Completed on 2026-09-24 for the validated macOS/Linux configurations. Native Windows execution was
+unavailable. Validation and measurement results are recorded in the
+[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase2/results.md][phase-two]. The parent
+plan remains active for Phases 3 through 5.
 
-**Preferred approach.** Introduce versioned machine-local digest evidence reusable across discovery selections. Reuse
-requires the existing reliable metadata and stable-read checks. Preserve force revalidation, malformed-evidence
-fallback, file replacement detection, eligibility refusals, and all input coverage. Digest reuse must never authorize
-skipping a search decision that needs reobservation.
+**Selected approach.** Retain the complete cwd-sensitive discovery selection and existing toolchain memo format. Add one
+`v1/memo/digest-seeds/<seed-key>.json` hint per configuration, keyed by the same selection with only `cwd` omitted. Its
+schema is 1, kind is `input-digest-seed`, and `memo_key` is a validated 64-hex-character key naming one existing local
+toolchain memo. No selection or native identity fields are removed.
 
-**Alternatives and gate.** Compare a separately indexed digest store with a bounded secondary index over existing memo
-evidence. Measure lookup cost, storage growth and reclamation needs, concurrent writers, atomic publication/recovery,
-schema/version compatibility, and maintenance complexity. Do not scan unrelated memos on the ordinary path. Select a
-representation only after these measurements and a correctness review of the identity boundary in ADR-0039.
+When the current memo cannot supply a valid file digest, lazily load at most one hinted donor per invocation. Discovery
+still selects all inputs. Reuse only a selected file's valid digest with matching current reliable metadata, copying it
+into the current memo through the existing record path. Never consult donor discovery. The saved current memo has no
+remaining dependency on the donor. Force bypasses both evidence sources, and eligibility refusals remain unchanged.
 
-Then separately investigate cwd-independent observation reuse for supported configurations whose effective inputs are
-demonstrably unchanged. An unchanged native key after reobservation is evidence for that experiment, not permission to
-skip discovery. Retain cwd sensitivity where relative options, response files, environment search paths, implicit
-configuration, or unresolved indirection affect selection. Conservative reobservation remains the fallback.
+**Failure and storage policy.** Missing, deleted, unreadable, malformed, incompatible or stale optional evidence falls
+back to ordinary validation and stable-read hashing. Actual input failures retain their diagnostics. JSON copying has no
+recoverable error return; general allocation-failure behavior remains unchanged. Update a hint only after successfully
+saving an eligible native toolchain memo. Writes are best-effort; failed writes and lost updates only reduce reuse.
+There are no new locks, writer coordination, merges, history, directory scans or automatic reclamation. Storage adds one
+small hint per configuration excluding cwd; existing memo accumulation and manual cache deletion remain unchanged.
 
-**Experiment.** Repeat the changed-cwd pair with absolute source/project paths. First measure digest sharing while
-retaining discovery; then compare any justified observation-sharing design. Track keys, per-file reasons, hash bytes,
-probe purposes, storage, and total time separately. Include relative response-file contents and nested paths,
-environment search roots, newly shadowing candidates, replaced compiler binaries/libraries, malformed evidence, force,
-and concurrent writers.
+**Alternatives and scope decision.** The accepted implementation plan supersedes the earlier requirement to prototype
+and benchmark both a standalone digest store and a bounded secondary index. A single donor hint reuses existing evidence
+and copying behavior without a new digest store. Multiple donors or a separate store might improve hit rates across
+changing file sets but are deferred until a measured workload justifies them. This phase does not investigate
+cwd-independent discovery, build a configuration classifier or attempt to prove cwd independence. Conservative
+reobservation is the chosen behavior, not an unresolved completion gate.
 
-**Correctness requirements.** Reuse must preserve effective native identity and all live search-dependency checks.
-Metadata failures and unstable reads cannot silently authorize a cached digest. Changed relative inputs and newly
-introduced candidates must reselect/revalidate correctly; unsupported configurations remain ineligible. No cross-host or
-metadata-preserving-mutation guarantee is introduced by a new evidence index.
+**Observability.** Existing `-vvv` decision records distinguish hint lookup, donor acceptance/rejection, validated
+current/donor record reuse, hashing fallback and best-effort hint publication. Per-file decisions name the selected
+path. Candidate lookup is not reported as validated digest reuse. Normal output, counters and timing meanings remain
+unchanged; the existing reporter retains and renders these records.
 
-**Completion criteria.** Absolute-input cwd changes retain the native identity and avoid unnecessary hashing while all
-invalidation tests pass. Decide separately whether observation reuse is justified, deferred, or restricted to a proven
-subset. Document evidence versioning, concurrency, and bounded storage behavior, together with measured costs.
+**Validation and completion.** Compare repeated changed-cwd pairs with absolute targets/projects, unchanged native
+identity, required discovery probes, fewer hash bytes and correct executable output. Include relative nested response
+files and search paths, new shadow candidates, replaced inputs, force, deleted/malformed evidence, publication failures
+and donor-independent saved memos. Run focused support, identity, ownership and reporter coverage, L1 normal validation
+and relevant trace coverage. Record individual timing distributions, storage overhead and unavailable platforms in
+separate evidence; preserve all historical attachments. No new diagnostic codes or portability guarantees are
+introduced.
 
 ## Phase 3: Reuse Runtime-Validated Evidence Across Docker Requests
 
@@ -345,6 +357,7 @@ identifiers, resolve all repository links, and run active-plan ADR, Markdown, an
 [measurements]: attachments/2026-09-24-preparation-reuse-efficiency/report.json
 [observability]: closed/2026-09-24-preparation-observability-noref.md
 [phase-one]: attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md
+[phase-two]: attachments/2026-09-24-preparation-reuse-efficiency/phase2/results.md
 [preparation]: ../../../docs/reference/stdlib-preparation.md
 [reuse-boundary]: ../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
 [semantic-authority]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
