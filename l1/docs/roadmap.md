@@ -292,6 +292,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   print-helper surface, using typed L1 variadics with shared string and writer formatting.
 - Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Priority 2 audit that records
   portable systems capability and C99-family coverage without promising literal C99 API parity.
+- Feature [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][preparation-reuse-efficiency] drafts
+  five phases for equivalent bundled-root selection, digest and runtime evidence reuse, cheaper validation, and
+  warm-build attribution, with Docker investigation attachments and explicit implementation decision gates.
 
 ## Backlog
 
@@ -426,6 +429,7 @@ update to be promoted to an initiative or plan:
 [preparation-economy]: ../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-observability]: ../work/plans/features/closed/2026-09-24-preparation-observability-noref.md
 [preparation-portability]: ../work/plans/bug-fixes/closed/2026-09-13-native-preparation-ci-portability-noref.md
+[preparation-reuse-efficiency]: ../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [reuse-report]: ../work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md
