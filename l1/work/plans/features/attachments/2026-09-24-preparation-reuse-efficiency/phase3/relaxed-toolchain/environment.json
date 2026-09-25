@@ -1,0 +1,13 @@
+{
+  "ServerVersion": "29.7.2",
+  "Driver": "overlayfs",
+  "KernelVersion": "6.8.0-64-generic",
+  "OperatingSystem": "Ubuntu 24.04.2 LTS",
+  "Architecture": "x86_64",
+  "NCPU": 4,
+  "MemTotal": 8325083136,
+  "base_images": {
+    "l1-test:latest": "sha256:14ed6d8d195e721ff6a50167d738e16d40a0597683bc6a08ef97a6a4823277a7",
+    "dea-preparation-investigation-clang:latest": "sha256:adb4f708244090afbf15505657a918d0f43bf36ca7863cda773a8580a5da8cf8"
+  }
+}

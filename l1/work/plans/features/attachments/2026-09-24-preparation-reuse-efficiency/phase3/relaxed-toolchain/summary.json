@@ -1,0 +1,1202 @@
+[
+  {
+    "policy": "baseline",
+    "variant": "prepared",
+    "compiler": "gcc",
+    "invocation": 1,
+    "samples_ms": [
+      1250.966891,
+      1109.155051,
+      1545.661523,
+      1457.773641,
+      1505.748257
+    ],
+    "median_ms": 1457.773641,
+    "min_ms": 1109.155051,
+    "max_ms": 1545.661523,
+    "hash_bytes": [
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      }
+    ],
+    "probe_counts": [
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "prepared",
+    "compiler": "gcc",
+    "invocation": 2,
+    "samples_ms": [
+      425.257928,
+      448.430932,
+      544.869394,
+      533.964429,
+      539.463756
+    ],
+    "median_ms": 533.964429,
+    "min_ms": 425.257928,
+    "max_ms": 544.869394,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "prepared",
+    "compiler": "gcc",
+    "invocation": 1,
+    "samples_ms": [
+      932.791568,
+      847.219295,
+      1164.275064,
+      1195.037086,
+      1168.483904
+    ],
+    "median_ms": 1164.275064,
+    "min_ms": 847.219295,
+    "max_ms": 1195.037086,
+    "hash_bytes": [
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      }
+    ],
+    "probe_counts": [
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "prepared",
+    "compiler": "gcc",
+    "invocation": 2,
+    "samples_ms": [
+      444.958055,
+      394.652811,
+      527.155815,
+      596.312316,
+      572.282102
+    ],
+    "median_ms": 527.155815,
+    "min_ms": 394.652811,
+    "max_ms": 596.312316,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "prepared",
+    "compiler": "clang",
+    "invocation": 1,
+    "samples_ms": [
+      3289.030943,
+      2769.642123,
+      3320.495987,
+      3480.84327,
+      3495.603729
+    ],
+    "median_ms": 3320.495987,
+    "min_ms": 2769.642123,
+    "max_ms": 3495.603729,
+    "hash_bytes": [
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      }
+    ],
+    "probe_counts": [
+      46,
+      46,
+      46,
+      46,
+      46
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "prepared",
+    "compiler": "clang",
+    "invocation": 2,
+    "samples_ms": [
+      611.582466,
+      593.351165,
+      717.469182,
+      633.226328,
+      654.101681
+    ],
+    "median_ms": 633.226328,
+    "min_ms": 593.351165,
+    "max_ms": 717.469182,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      2,
+      2,
+      2,
+      2,
+      2
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "prepared",
+    "compiler": "clang",
+    "invocation": 1,
+    "samples_ms": [
+      1551.742222,
+      1425.540299,
+      1761.55134,
+      1681.429389,
+      1666.82304
+    ],
+    "median_ms": 1666.82304,
+    "min_ms": 1425.540299,
+    "max_ms": 1761.55134,
+    "hash_bytes": [
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      }
+    ],
+    "probe_counts": [
+      46,
+      46,
+      46,
+      46,
+      46
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "prepared",
+    "compiler": "clang",
+    "invocation": 2,
+    "samples_ms": [
+      565.425633,
+      514.734431,
+      735.683306,
+      649.546591,
+      732.91371
+    ],
+    "median_ms": 649.546591,
+    "min_ms": 514.734431,
+    "max_ms": 735.683306,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      2,
+      2,
+      2,
+      2,
+      2
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "inherited",
+    "compiler": "gcc",
+    "invocation": 1,
+    "samples_ms": [
+      1251.325263,
+      1135.700136,
+      1490.009151,
+      1405.736727,
+      1461.408128
+    ],
+    "median_ms": 1405.736727,
+    "min_ms": 1135.700136,
+    "max_ms": 1490.009151,
+    "hash_bytes": [
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      }
+    ],
+    "probe_counts": [
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "inherited",
+    "compiler": "gcc",
+    "invocation": 2,
+    "samples_ms": [
+      468.244923,
+      447.242186,
+      571.335745,
+      527.620628,
+      543.510199
+    ],
+    "median_ms": 527.620628,
+    "min_ms": 447.242186,
+    "max_ms": 571.335745,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "inherited",
+    "compiler": "gcc",
+    "invocation": 1,
+    "samples_ms": [
+      1061.549564,
+      934.250301,
+      1215.782534,
+      1125.780576,
+      1144.37123
+    ],
+    "median_ms": 1125.780576,
+    "min_ms": 934.250301,
+    "max_ms": 1215.782534,
+    "hash_bytes": [
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      }
+    ],
+    "probe_counts": [
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "inherited",
+    "compiler": "gcc",
+    "invocation": 2,
+    "samples_ms": [
+      533.578693,
+      412.729346,
+      572.184441,
+      557.035177,
+      536.906367
+    ],
+    "median_ms": 536.906367,
+    "min_ms": 412.729346,
+    "max_ms": 572.184441,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "inherited",
+    "compiler": "clang",
+    "invocation": 1,
+    "samples_ms": [
+      2994.839469,
+      3036.15491,
+      3473.186786,
+      3397.712266,
+      3417.712949
+    ],
+    "median_ms": 3397.712266,
+    "min_ms": 2994.839469,
+    "max_ms": 3473.186786,
+    "hash_bytes": [
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      }
+    ],
+    "probe_counts": [
+      46,
+      46,
+      46,
+      46,
+      46
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "inherited",
+    "compiler": "clang",
+    "invocation": 2,
+    "samples_ms": [
+      590.066787,
+      588.175127,
+      746.738976,
+      665.824823,
+      680.214371
+    ],
+    "median_ms": 665.824823,
+    "min_ms": 588.175127,
+    "max_ms": 746.738976,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      2,
+      2,
+      2,
+      2,
+      2
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "inherited",
+    "compiler": "clang",
+    "invocation": 1,
+    "samples_ms": [
+      1611.676637,
+      1529.995964,
+      1801.282128,
+      1649.954123,
+      2354.49186
+    ],
+    "median_ms": 1649.954123,
+    "min_ms": 1529.995964,
+    "max_ms": 2354.49186,
+    "hash_bytes": [
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      }
+    ],
+    "probe_counts": [
+      46,
+      46,
+      46,
+      46,
+      46
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "inherited",
+    "compiler": "clang",
+    "invocation": 2,
+    "samples_ms": [
+      732.550454,
+      588.852378,
+      743.693087,
+      629.84767,
+      812.31993
+    ],
+    "median_ms": 732.550454,
+    "min_ms": 588.852378,
+    "max_ms": 812.31993,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      2,
+      2,
+      2,
+      2,
+      2
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "copied",
+    "compiler": "gcc",
+    "invocation": 1,
+    "samples_ms": [
+      1358.698194,
+      1301.752423,
+      1481.434228,
+      1472.159776,
+      1679.569594
+    ],
+    "median_ms": 1472.159776,
+    "min_ms": 1301.752423,
+    "max_ms": 1679.569594,
+    "hash_bytes": [
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 41398161,
+        "artifact-validation": 482858
+      }
+    ],
+    "probe_counts": [
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "copied",
+    "compiler": "gcc",
+    "invocation": 2,
+    "samples_ms": [
+      518.09916,
+      497.672552,
+      548.715622,
+      542.918694,
+      646.323115
+    ],
+    "median_ms": 542.918694,
+    "min_ms": 497.672552,
+    "max_ms": 646.323115,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "copied",
+    "compiler": "gcc",
+    "invocation": 1,
+    "samples_ms": [
+      1140.471069,
+      1032.450609,
+      1253.955098,
+      1159.418762,
+      1406.198496
+    ],
+    "median_ms": 1159.418762,
+    "min_ms": 1032.450609,
+    "max_ms": 1406.198496,
+    "hash_bytes": [
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 482858
+      }
+    ],
+    "probe_counts": [
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "copied",
+    "compiler": "gcc",
+    "invocation": 2,
+    "samples_ms": [
+      492.714438,
+      577.003155,
+      580.201286,
+      590.3625,
+      670.455385
+    ],
+    "median_ms": 580.201286,
+    "min_ms": 492.714438,
+    "max_ms": 670.455385,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "copied",
+    "compiler": "clang",
+    "invocation": 1,
+    "samples_ms": [
+      3113.140462,
+      3209.831174,
+      3558.214011,
+      3397.33964,
+      4650.255754
+    ],
+    "median_ms": 3397.33964,
+    "min_ms": 3113.140462,
+    "max_ms": 4650.255754,
+    "hash_bytes": [
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5075908,
+        "toolchain-input": 232954784,
+        "artifact-validation": 521434
+      }
+    ],
+    "probe_counts": [
+      46,
+      46,
+      46,
+      46,
+      46
+    ]
+  },
+  {
+    "policy": "baseline",
+    "variant": "copied",
+    "compiler": "clang",
+    "invocation": 2,
+    "samples_ms": [
+      647.294848,
+      722.075504,
+      682.316785,
+      702.401326,
+      943.556197
+    ],
+    "median_ms": 702.401326,
+    "min_ms": 647.294848,
+    "max_ms": 943.556197,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      2,
+      2,
+      2,
+      2,
+      2
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "copied",
+    "compiler": "clang",
+    "invocation": 1,
+    "samples_ms": [
+      1663.96397,
+      1695.811586,
+      1737.04898,
+      1653.471928,
+      2528.140371
+    ],
+    "median_ms": 1695.811586,
+    "min_ms": 1653.471928,
+    "max_ms": 2528.140371,
+    "hash_bytes": [
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      },
+      {
+        "dea-input": 5080020,
+        "toolchain-input": 6591,
+        "artifact-validation": 521434
+      }
+    ],
+    "probe_counts": [
+      46,
+      46,
+      46,
+      46,
+      46
+    ]
+  },
+  {
+    "policy": "candidate",
+    "variant": "copied",
+    "compiler": "clang",
+    "invocation": 2,
+    "samples_ms": [
+      697.075082,
+      615.795843,
+      766.321514,
+      641.518594,
+      1009.520027
+    ],
+    "median_ms": 697.075082,
+    "min_ms": 615.795843,
+    "max_ms": 1009.520027,
+    "hash_bytes": [
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      },
+      {
+        "dea-input": 0,
+        "toolchain-input": 0,
+        "artifact-validation": 0
+      }
+    ],
+    "probe_counts": [
+      2,
+      2,
+      2,
+      2,
+      2
+    ]
+  }
+]

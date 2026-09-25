@@ -1,0 +1,103 @@
+--- a/l1/compiler/stage1_l0/support/preparation/storage.h
++++ b/l1/compiler/stage1_l0/support/preparation/storage.h
+@@ -332,23 +332,75 @@
+     return NULL;
+ }
+ 
++/** Compare all represented fields except the four experimental identity/change stamps. */
++static int pc_experimental_metadata_equal(const PcJson *previous, const PcJson *current) {
++    const PcJson *field;
++    if (!previous || !current || previous->type != PJ_OBJECT || current->type != PJ_OBJECT)
++        return 0;
++    for (field = previous->child; field; field = field->next) {
++        if (!strcmp(field->key, "device") || !strcmp(field->key, "inode") ||
++            !strcmp(field->key, "ctime") || !strcmp(field->key, "ctime_ns")) continue;
++        if (!pj_equal(field, pj_get(current, field->key))) return 0;
++    }
++    for (field = current->child; field; field = field->next) {
++        if (!strcmp(field->key, "device") || !strcmp(field->key, "inode") ||
++            !strcmp(field->key, "ctime") || !strcmp(field->key, "ctime_ns")) continue;
++        if (!pj_equal(pj_get(previous, field->key), field)) return 0;
++    }
++    return 1;
++}
++
++/** Limit the experiment to selected regular toolchain inputs and valid digest evidence. */
++static const char *pc_experimental_digest_rejection(const PcJson *old, const PcJson *now,
++                                                   int selected_toolchain_file) {
++    const char *reason = pc_digest_rejection(old, now);
++    if (selected_toolchain_file && reason && !strcmp(reason, "metadata-changed") &&
++        pc_experimental_metadata_equal(pj_get(old, "metadata"), now)) {
++        const PcJson *metadata = pj_get(old, "metadata"), *field;
++        const char *required[] = {"device", "inode", "ctime"};
++        size_t i;
++        for (i = 0; i < sizeof(required) / sizeof(*required); ++i) {
++            field = pj_get(metadata, required[i]);
++            if (!field || field->type != PJ_NUMBER) return reason;
++        }
++        field = pj_get(metadata, "ctime_ns");
++        if (field && field->type != PJ_NUMBER) return reason;
++        return NULL;
++    }
++    return reason;
++}
++
+ /** Metadata is local evidence only; missing or invalid records always rehash. */
+ static char *pc_input_digest(PcContext *c, const char *path, const char *category) {
+     PcJson *now = pc_meta(path), *old = pj_get(c->old_files, path), *record;
+     const char *reason;
+     char hex[65];
+     char *result;
++    int selected_toolchain_file = !strcmp(category, "toolchain-input") && pc_kind(path, 1) == 1;
++    int donor_used = 0;
+     if (!now)
+         return pc_fail(c, 2151, "cannot stat preparation input", path), NULL;
+-    reason = c->force ? "force" : pc_digest_rejection(old, now);
++    reason = c->force ? "force" : pc_experimental_digest_rejection(old, now, selected_toolchain_file);
+     if (reason && !c->force && c->digest_seed_key && !c->ineligible && !c->private_root) {
+         PcJson *donor = pj_get(pc_digest_seed_files(c), path);
+-        const char *rejection = pc_digest_rejection(donor, now);
++        const char *rejection = pc_experimental_digest_rejection(donor, now, selected_toolchain_file);
+         pc_observe_decision(c, "input-digest", rejection ? "miss" : "hit",
+-                            rejection ? rejection : "validated-donor-record", path);
+-        if (!rejection) { old = donor; reason = NULL; }
++                            rejection ? rejection : pj_equal(now, pj_get(donor, "metadata")) ?
++                            "validated-donor-record" : "validated-relaxed-donor-record", path);
++        if (!rejection) { old = donor; reason = NULL; donor_used = 1; }
+     } else if (!reason)
+-        pc_observe_decision(c, "input-digest", "hit", "validated-current-record", path);
++        pc_observe_decision(c, "input-digest", "hit",
++                            pj_equal(now, pj_get(old, "metadata")) ?
++                            "validated-current-record" : "validated-relaxed-current-record", path);
++    if (!reason && pc_verbosity(c) >= 3 && !pj_equal(now, pj_get(old, "metadata"))) {
++        PcJson *event = pc_observation("digest-reuse-basis");
++        pj_set_string(event, "scope", category);
++        pj_set_string(event, "path", path);
++        pj_set_string(event, "basis", "experimental-relaxed-metadata");
++        pj_set_string(event, "source", donor_used ? "donor" : "current");
++        pc_observe(c, event);
++        pc_observe_metadata_mismatch(c, category, path, pj_get(old, "metadata"), now);
++    }
+     if (!reason)
+         result = pc_string(pj_field(old, "sha256"));
+     else {
+--- a/l1/compiler/stage1_l0/tests/preparation_digest_seed_test.c
++++ b/l1/compiler/stage1_l0/tests/preparation_digest_seed_test.c
+@@ -123,7 +123,7 @@
+         if (i == 6) pj_get(pj_get(record, "metadata"), "reliable")->number = 0;
+         if (i >= 2) check(pc_write_json(donor_path, changed), "invalid donor write");
+         c = context(argv[1], 3);
+-        digest(c, path, expected, 1);
++        digest(c, path, expected, i == 5 ? 0 : 1);
+         l1c_prep_free(c); pj_free(changed);
+         check(pc_write_json(donor_path, donor), "restore valid donor");
+     }
+@@ -141,7 +141,7 @@
+     /* A stale current record may fall back to a valid donor. */
+     c = context(argv[1], 3);
+     record = pj_clone(pj_get(pj_get(donor, "files"), path));
+-    ++pj_get(pj_get(record, "metadata"), "inode")->number;
++    ++pj_get(pj_get(record, "metadata"), "mtime")->number;
+     pj_add(c->old_files, path, record);
+     digest(c, path, expected, 0);
+     l1c_prep_free(c);

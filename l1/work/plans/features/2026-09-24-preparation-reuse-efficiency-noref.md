@@ -55,10 +55,14 @@ selection, or explicit system-root selection incurs substantial work.
 
 This standalone plan organizes five phases within one work item. Phase 1 implements equivalent bundled root recognition
 with an explicit source opt-out. Phase 2 implements disposable digest-seed hints while retaining cwd-sensitive
-discovery. Phase 3 investigates preparation reuse practices for containerized compiler services and comparable isolated
-deployments, with playgrounds as one use case. Phases 3 through 5 remain future work, subject to their evidence and
-compatibility gates. The original investigation attachments remain immutable historical evidence; Phase 1 and Phase 2
-measurements and validation are recorded separately.
+discovery. Phase 3 completed a successful experimental investigation of preparation reuse for containerized compiler
+services and comparable isolated deployments, with playgrounds as one use case. No decision was made to adopt or reject
+metadata-policy relaxation or select a deployment architecture. Phases 4 and 5 remain future work, so the overall plan
+stays active. The original investigation and all phase attachments remain immutable historical evidence; implementation
+and experiment measurements are recorded separately.
+
+The Phase 1 and Phase 2 ADR records retain their implementation-time rationale. The Phase 3 closure below supersedes
+their earlier description of Phase 3 as unresolved work.
 
 ## ADR Impact
 
@@ -78,15 +82,6 @@ measurements and validation are recorded separately.
   - Rationale: Phase 2 adds a best-effort locator for existing machine-local evidence. Donor records retain the same
     metadata checks, force behavior and live search dependencies; discovery is never copied. ADR-0039 records the
     bounded lookup and failure policy without a new authority or cwd-independence proof.
-- Decision: Define the authority and isolation boundary for preparation reuse in containerized compiler services.
-  - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: Phase 3 must compare deployment practices and establish whether the recommended approach fits ADR-0039's
-    local-evidence constraints or requires an ADR amendment or new architectural contract. Image preparation, worker
-    warmup, runtime evidence distribution and shared storage remain candidates. Copied/shared portability is currently
-    unsupported, and untrusted requests cannot establish authority; see
-    [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md][reuse-boundary].
 - Decision: Choose a portable SHA-256 backend and any platform-acceleration/dependency policy.
   - Scope: L1
   - Disposition: Pending
@@ -247,50 +242,78 @@ introduced.
 
 ## Phase 3: Investigate Preparation Reuse for Containerized Compiler Services
 
-**Objective.** Discover established practices for packaging and operating a containerized compiler service image or
-comparable isolated compiler deployment, then assess their applicability to Dea. Playgrounds are one use case, not a
-required service architecture. Distinguish reuse of compiled stdlib/runtime artifacts from reuse of validation records:
-avoiding recompilation can be valuable even when discovery or hashing must repeat.
+**Status.** Completed on 2026-09-25 as a successful investigation, accepting the experimental results and their stated
+limits. The relaxed candidate demonstrated the intended toolchain-digest reuse mechanism and measured first-request
+benefits while preserving the tested discovery and artifact-validation boundaries. The same-size, preserved-mtime
+content-change detection gap and unresolved warm-performance findings remain part of the evidence, not blockers to
+closing this investigation. No decision was made to adopt or reject metadata-policy relaxation. The candidate remains an
+isolated experimental patch; unchanged production behavior does not constitute a policy decision.
 
-**Discovery and alternatives.** Use primary documentation and implementation sources from established compiler services
-and container tooling to compare:
+**ADR disposition: ADR not warranted.** This completed investigation introduced no architectural contract or policy
+decision. No decision was made to adopt or reject metadata-policy relaxation, establish a new authority boundary or
+select a deployment architecture. Any future adoption requires a separate decision and ADR assessment. The former
+pending Phase 3 record is therefore removed from ADR Impact; the other phases retain their existing records.
 
-- Pre-warmed build images feeding service images through image inheritance or copying the toolchain and prepared cache.
-- Workers warmed at startup and serving isolated requests over their lifetime.
-- Trusted runtime evidence distributed to fresh request containers with private writable state.
-- Shared read-only toolchain storage and prepared support, with request outputs kept separate.
+**Closure scope.** Deployment selection, untested alternatives and any adoption decision are deferred beyond this
+completed phase. Historical attachments remain unchanged, including their then-current references to Phase 3 or its ADR
+decision as pending. This completion record supersedes those lifecycle statements without changing their findings.
 
-Examine worker lifetime, request isolation, cache ownership, toolchain updates and failure recovery for each candidate.
-Separate documented practices from hypotheses about Dea reuse; a packaging mechanism alone does not establish metadata
-stability or a trust boundary. Ordinary per-container validation remains the baseline and a valid selected outcome.
+**Investigation results (2026-09-25).** A bounded Linux Docker comparison built one prepared compiler image, then
+derived representative service images through inheritance and selective copying. Both retained completed GCC/Clang
+native profiles and the same native keys; each fresh container repeated discovery and substantial hashing before a
+second request reused refreshed memos. The original wrapper moved the prepared cache to a different path and found no
+artifact memo at runtime. Subsequent inspection found that preparation alone had created no artifact memo in that image,
+so the original miss cannot be assigned solely to the path move. Preserve the [first image results][phase-three-image]
+as evidence of that copy scenario.
 
-**Experiments and gate.** Select bounded prototypes based on the source-backed comparison and record why other
-alternatives are deferred. Measure image preparation, service/worker startup, first and subsequent request durations,
-copy/distribution overhead, native preparation build commands, discovery probes and bytes hashed. Report individual
-measurements and distributions, keeping one-time setup costs separate and showing how worker lifetime affects their
-amortization. Record selection/native keys, all metadata differences and artifact versus validation-record reuse at each
-tested lifecycle boundary.
+A [same-path rerun][phase-three-same-path] held the cache at `/opt/dea/l1/cache-template` and created GCC/Clang artifact
+memos through build-time validation. All three images contained and selected those memos in fresh containers, but
+per-artifact inode mismatches still forced hashing; a `/bin` inode mismatch also invalidated build-time toolchain
+observation evidence. Completed profiles were reused, second requests hashed zero bytes in the measured categories, and
+malformed optional evidence fell back to validation. Operation counts matched across packaging variants, while the
+small, changed-condition timing sample cannot rank them. Worker lifetime, runtime evidence distribution, shared storage
+and deployment authority were not settled by those experiments; they are deferred beyond this completed investigation.
 
-Exercise fresh containers, worker/runtime restarts, changed images and mounts, toolchain updates, altered inputs, stale
-or unavailable evidence and read-only consumers as applicable to each prototype. Verify compilation and program output
-separately from timing. Preserve the original evidence and place reproducible commands, configuration, source references
-and results in a new attachment. Decide whether a recommended mechanism fits ADR-0039 or needs an ADR amendment/new ADR
-before adopting it. An immutable-toolchain authority remains a separate explicit architecture decision requiring
-independently enforced identity and mutation controls; successful cache copying or faster timings cannot establish it.
+A [complete-metadata subset][phase-three-metadata] rebuilt those same three image variants with multi-field observations
+and ran one fresh GCC and Clang container per variant. In every first request, all 47 prepared-artifact mismatches
+included `inode`, `ctime`, `ctime_ns` and `mtime_ns`; the latter changed from a nonzero build-time value to zero at
+runtime. Dea inputs, toolchain inputs and the `/bin` dependency also changed `inode` and both change-time fields, with
+`mtime_ns` changing for some paths. No mismatch reported a changed `device`, size, mode, whole-second `mtime` or
+reliability flag. Each second compilation reused refreshed evidence without metadata mismatches or hashing. This
+identifies the simultaneous metadata changes, but does not isolate which Docker/filesystem transition caused them or
+make an architecture or policy decision.
 
-**Correctness requirements.** Preserve normal validation and fallback behavior. Memos remain accelerators under
-ADR-0039, never self-authenticating authority. Untrusted requests and executed programs must not publish or modify
-prepared support or evidence trusted by later requests. Enforce ownership and mount/process isolation, including
-staging/publication paths, and verify that worker reuse does not carry request-written state into trusted preparation.
-Read-only consumers must handle unavailable memo writes without treating stale evidence as valid; changed inputs still
-invalidate or fail under existing policy. Any required compiler interface or validation-contract change must be
-identified and decided explicitly rather than assumed by the deployment recipe.
+An isolated experiment, recorded in
+[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase3/relaxed-toolchain/results.md][phase-three-relaxed],
+compared the strict baseline with a candidate that ignores device, inode and change time only for selected regular
+toolchain-file digests. Across five interleaved repetitions of all three images and both compilers, all 60 containers
+and 120 requests passed. Candidate first requests hashed only 6,591 toolchain bytes from `/etc/ld.so.cache`, while
+strict discovery still rejected `/bin` evidence and performed the same probes. Dea-input and prepared-artifact
+validation remained strict, and each request reused its own image-time profile. Median paired first-request time
+improved by 16.3-23.6% for GCC and 47.2-51.7% for Clang. Warm-time results did not establish absence of a regression.
+Focused tests demonstrated both the scope boundaries and the accepted same-size, preserved-mtime content-change
+detection gap. The patch remains experimental; the report recommends a separate best-effort policy discussion rather
+than changing the strict default. That recommendation remains historical experimental analysis; phase closure does not
+adopt or reject it. Production behavior is unchanged, and this investigation made no policy decision.
 
-**Completion criteria.** Produce a source-backed comparison, reproducible evidence for selected prototypes and a
-recommended deployment recipe or explicit deferral with rationale and remaining questions. Report achievable artifact
-and validation reuse, latency, setup/storage costs, operational complexity, isolation requirements and unavailable
-configurations. Resolve the authority decision for the selected or deferred outcome. Building a production service or
-prototyping every alternative is not required. Do not describe an experiment as a general cache-portability guarantee.
+**Scope examined.** The selected experiments compared image inheritance and selective copying, corrected cache-path and
+memo-presence confounds, exposed complete metadata differences, and tested a scoped relaxation of toolchain-file digest
+reuse. They distinguish reuse of compiled artifacts from reuse of validation evidence and retain reproducible commands,
+source references, individual measurements, distributions, correctness checks and limitations. The results establish the
+tested mechanism and costs, not a general cache-portability guarantee or a production deployment recipe.
+
+**Deferred alternatives and decisions.** Startup-warmed workers, runtime evidence distribution and shared read-only
+storage were not prototyped. A broader deployment comparison is deferred because the accepted experiments complete this
+bounded investigation without selecting an architecture. Future work on those alternatives would need to measure worker
+lifetime, restart/update behavior and evidence distribution, and establish request isolation, cache ownership and
+failure recovery. The private writable container layer used here is an experimental control, not an adopted service
+setting.
+
+Any future metadata-policy adoption discussion must separately assess the demonstrated content-change detection gap,
+warm-request performance and deployment trust assumptions. These questions remain undecided; they do not reopen Phase 3
+or become implicit requirements for Phases 4 and 5. Existing production contracts remain in effect without being newly
+selected or reaffirmed by this experiment. No production service, compiler interface, validation policy or architectural
+contract was introduced by closing the phase.
 
 ## Phase 4: Reduce Discovery and Unavoidable Hashing Costs
 
@@ -376,6 +399,10 @@ identifiers, resolve all repository links, and run active-plan ADR, Markdown, an
 [measurements]: attachments/2026-09-24-preparation-reuse-efficiency/report.json
 [observability]: closed/2026-09-24-preparation-observability-noref.md
 [phase-one]: attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md
+[phase-three-image]: attachments/2026-09-24-preparation-reuse-efficiency/phase3/results.md
+[phase-three-metadata]: attachments/2026-09-24-preparation-reuse-efficiency/phase3/metadata-details/results.md
+[phase-three-relaxed]: attachments/2026-09-24-preparation-reuse-efficiency/phase3/relaxed-toolchain/results.md
+[phase-three-same-path]: attachments/2026-09-24-preparation-reuse-efficiency/phase3/same-path/results.md
 [phase-two]: attachments/2026-09-24-preparation-reuse-efficiency/phase2/results.md
 [preparation]: ../../../docs/reference/stdlib-preparation.md
 [reuse-boundary]: ../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
