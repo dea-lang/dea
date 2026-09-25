@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-09-24
+Version: 2026-09-25
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -76,12 +76,17 @@ Consumers comparing these fields with local paths should use host filesystem pat
 
 Decision events distinguish Dea input memos, toolchain observation memos, artifact-validation memos and native-profile
 selection. Miss reasons include absent, unreadable and malformed evidence, force, ineligibility, changed metadata and
-invalid completed profiles. Toolchain observation selection reports its exact key and invocation directory. A metadata
-miss reports the first differing field in the fixed `device`, `inode`, `size`, `mode`, modification-time, change-time
-and reliability order, together with the previous and current values. An absent observation key remains a
+invalid completed profiles. Toolchain observation selection reports its exact key and invocation directory. A
+`metadata-mismatch` record names the scope, path and file kind. Its `differences` object maps every unequal metadata
+field to its previous and current JSON values; when a field is absent on one side, that side's key is omitted rather
+than represented as JSON `null`. The singular `field`, `previous` and `current` members retain the first difference in
+the fixed `device`, `inode`, `size`, `mode`, modification-time, change-time and reliability order for existing
+consumers. If either whole metadata record is absent or not an object, `field` is `entry`, `previous` and `current`
+contain the whole records (or `null` for absence), and `differences` is omitted. An absent observation key remains a
 `no-matching-memo` result; the compiler does not scan other memo files to speculate about which selection input changed.
-Missing or invalid memo digests and unreliable metadata have separate reasons; equal metadata never produces a
-metadata-difference record. Existing nonregular or oversized memo evidence is malformed, not absent.
+An unrecognized metadata key can also leave the compatibility `field` as `entry`, while `differences` identifies the
+actual field. Missing or invalid memo digests and unreliable metadata have separate reasons; equal metadata never
+produces a metadata-difference record. Existing nonregular or oversized memo evidence is malformed, not absent.
 
 Digest sharing uses the existing `decision` event. `digest-seed-hint` and `digest-seed-donor` scopes report candidate
 lookup hits or rejection reasons; a candidate hit alone does not establish digest reuse. The `input-digest` scope

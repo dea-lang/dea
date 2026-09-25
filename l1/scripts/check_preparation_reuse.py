@@ -567,8 +567,17 @@ def render_summary(report: dict) -> str:
                 continue  # Per-file evidence remains in JSON and the raw log.
             detail = item.get("path", "")
             if event == "metadata-mismatch":
-                detail = f"{detail}: {item.get('kind')} {item.get('field')} " + \
-                         f"{item.get('previous')} -> {item.get('current')}"
+                differences = item.get("differences")
+                if differences:
+                    changes = []
+                    for field, values in sorted(differences.items()):
+                        previous = json.dumps(values["previous"]) if "previous" in values else "<absent>"
+                        current = json.dumps(values["current"]) if "current" in values else "<absent>"
+                        changes.append(f"{field} {previous} -> {current}")
+                    detail = f"{detail}: {item.get('kind')}; " + "; ".join(changes)
+                else:
+                    detail = f"{detail}: {item.get('kind')} {item.get('field')} " + \
+                             f"{item.get('previous')} -> {item.get('current')}"
             elif event == "observation-selection":
                 detail = f"key={item.get('selection_key')}; cwd={item.get('cwd')}"
             elif event in ("span", "probe"):

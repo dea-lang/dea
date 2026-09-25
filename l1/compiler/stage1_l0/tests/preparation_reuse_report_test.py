@@ -288,6 +288,13 @@ class ReporterTest(unittest.TestCase):
              "reason": "validated-donor-record", "path": "/toolchain/library", "schema": 1},
             {"event": "decision", "scope": "input-digest", "decision": "fallback",
              "reason": "metadata-changed", "path": "/toolchain/replaced", "schema": 1},
+            {"event": "metadata-mismatch", "scope": "artifact", "path": "/cache/file", "kind": "file",
+             "field": "device", "previous": 1, "current": 2,
+             "differences": {"device": {"previous": 1, "current": 2},
+                             "inode": {"previous": 100, "current": 200},
+                             "mtime_ns": {"previous": None}}, "schema": 1},
+            {"event": "metadata-mismatch", "scope": "dea-input", "path": "/old/path", "kind": "file",
+             "field": "size", "previous": 3, "current": 4, "schema": 1},
         ]
         stderr = "\n".join([*("Preparation observation: " + json.dumps(item) for item in records),
                              "Preparation native key: " + "a" * 64,
@@ -305,6 +312,10 @@ class ReporterTest(unittest.TestCase):
         self.assertIn("hit/validated-donor-record", summary)
         self.assertIn("fallback/metadata-changed", summary)
         self.assertIn("/toolchain/library", summary)
+        self.assertIn("device 1 -> 2", summary)
+        self.assertIn("inode 100 -> 200", summary)
+        self.assertIn("mtime_ns null -> <absent>", summary)
+        self.assertIn("/old/path: file size 3 -> 4", summary)
 
     def test_command_elapsed_time_uses_monotonic_clock(self):
         """Account for command duration with a controlled monotonic clock."""

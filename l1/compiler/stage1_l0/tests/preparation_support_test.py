@@ -108,8 +108,23 @@ def check_observability(root: Path) -> None:
     hashes = [record for record in records if record["event"] == "hash"]
     assert [(item["bytes"], item["elapsed_us"], item["success"]) for item in hashes] == [(3, 1000, 1), (0, 1000, 0)]
     mismatches = [record for record in records if record["event"] == "metadata-mismatch"]
-    assert len(mismatches) == 1 and mismatches[0]["field"] == "inode", mismatches
-    assert mismatches[0]["path"] == 'quote"slash\\line\n'
+    assert [item["scope"] for item in mismatches] == ["single", "multi", "absent-both", "presence", "whole"]
+    single, multi, absent_both, presence, whole = mismatches
+    assert single["field"] == "inode" and set(single["differences"]) == {"inode"}, single
+    assert single["previous"] == single["current"] + 1
+    assert multi["field"] == "device" and multi["path"] == 'quote"slash\\line\n', multi
+    assert multi["kind"] == "file" and set(multi["differences"]) == {
+        "device", "inode", "size", "mtime", "ctime"}, multi
+    for field in multi["differences"]:
+        assert multi["differences"][field]["previous"] != multi["differences"][field]["current"]
+    assert set(absent_both["differences"]) == {"inode"}, absent_both
+    assert "mtime_ns" not in absent_both["differences"] and "ctime_ns" not in absent_both["differences"]
+    assert set(presence["differences"]) == {"inode", "mtime_ns", "ctime_ns", "future_field"}, presence
+    assert presence["differences"]["mtime_ns"] == {"previous": None}
+    assert presence["differences"]["ctime_ns"] == {"current": 7}
+    assert presence["differences"]["future_field"] == {"previous": 1, "current": 2}
+    assert whole["field"] == "entry" and whole["previous"] is None and isinstance(whole["current"], dict)
+    assert "differences" not in whole
     decisions = [record for record in records if record["event"] == "decision"]
     assert [item["reason"] for item in decisions] == ["memo-digest-invalid", "memo-digest-invalid"], decisions
     probes = [record for record in records if record["event"] == "probe"]

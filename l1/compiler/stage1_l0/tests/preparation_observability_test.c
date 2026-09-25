@@ -74,7 +74,7 @@ static PcJson *discovery_memo(const char *path, int with_digest) {
 
 int main(int argc, char **argv) {
     PcContext c = {0};
-    PcJson *metadata = NULL, *previous, *memo, *words;
+    PcJson *metadata = NULL, *previous, *single, *sparse_previous, *sparse_current, *memo, *words;
     PcProbe probe;
     char digest[65], quiet_digest[65], *path, *absent, *oversized;
     FILE *file;
@@ -110,11 +110,32 @@ int main(int argc, char **argv) {
     check(pc_hash_observed(&c, path, digest, &metadata, "dea-input", "test"), "debug hash");
     check(clock_calls == 2 && !strcmp(digest, quiet_digest), "hash accounting and digest identity");
     check(!pc_hash_observed(&c, absent, digest, NULL, "dea-input", "test"), "failed hash");
+    single = pj_clone(metadata);
+    ++pj_get(single, "inode")->number;
+    pc_observe_metadata_mismatch(&c, "single", path, single, metadata);
+    pj_free(single);
     previous = pj_clone(metadata);
+    ++pj_get(previous, "device")->number;
     ++pj_get(previous, "inode")->number;
     pj_get(previous, "size")->number = 99;
-    pc_observe_metadata_mismatch(&c, "test", "quote\"slash\\line\n", previous, metadata);
-    pj_free(previous); pj_free(metadata);
+    ++pj_get(previous, "mtime")->number;
+    ++pj_get(previous, "ctime")->number;
+    pc_observe_metadata_mismatch(&c, "multi", "quote\"slash\\line\n", previous, metadata);
+    pj_free(previous);
+    sparse_previous = pj_new(PJ_OBJECT);
+    sparse_current = pj_new(PJ_OBJECT);
+    pj_set_number(sparse_previous, "mode", 0); pj_set_number(sparse_current, "mode", 0);
+    pj_set_number(sparse_previous, "inode", 10); pj_set_number(sparse_current, "inode", 11);
+    pj_set_number(sparse_previous, "size", 3); pj_set_number(sparse_current, "size", 3);
+    pc_observe_metadata_mismatch(&c, "absent-both", path, sparse_previous, sparse_current);
+    pj_add(sparse_previous, "mtime_ns", pj_new(PJ_NULL));
+    pj_set_number(sparse_current, "ctime_ns", 7);
+    pj_set_number(sparse_previous, "future_field", 1);
+    pj_set_number(sparse_current, "future_field", 2);
+    pc_observe_metadata_mismatch(&c, "presence", path, sparse_previous, sparse_current);
+    pj_free(sparse_previous); pj_free(sparse_current);
+    pc_observe_metadata_mismatch(&c, "whole", path, NULL, metadata);
+    pj_free(metadata);
     memo = discovery_memo(path, 1);
     check(!pc_discovery_current(&c, memo), "invalid digest rejected");
     pj_free(memo);

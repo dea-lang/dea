@@ -121,8 +121,8 @@ def main() -> int:
                    item["reason"] == "memo-digest-mismatch" for item in observations(memo_recovery)), memo_recovery.stderr
         assert not any(item["event"] == "metadata-mismatch" and Path(item["path"]) == artifact_path
                        for item in observations(memo_recovery)), memo_recovery.stderr
-        # The first changed metadata field is deterministic and does not weaken
-        # content observation or guarded miss classification.
+        # The compatibility field and complete differences retain the size change
+        # without weakening content observation or guarded miss classification.
         public_header = headers / "dea_rt.h"
         public_bytes = public_header.read_bytes()
         public_header.write_bytes(public_bytes + b"\n/* preparation observability metadata change */\n")
@@ -131,6 +131,7 @@ def main() -> int:
         mismatch = next(item for item in changed_observations
                         if item["event"] == "metadata-mismatch" and Path(item["path"]) == public_header)
         assert mismatch["kind"] == "file" and mismatch["field"] == "size", mismatch
+        assert mismatch["differences"]["size"]["current"] > mismatch["differences"]["size"]["previous"]
         assert any(item["event"] == "decision" and item.get("reason") == "metadata-changed"
                    for item in changed_observations)
         public_header.write_bytes(public_bytes)

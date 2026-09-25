@@ -74,21 +74,39 @@ static const char *pc_metadata_kind(const PcJson *metadata) {
 static void pc_add_optional_value(PcJson *record, const char *key, const PcJson *value) {
     pj_add(record, key, value ? pj_clone(value) : pj_new(PJ_NULL));
 }
-/** Report the first metadata difference in a fixed field order. */
+/** Allocate the complete difference map only after finding an unequal field. */
+static void pc_add_metadata_difference(PcJson **differences, const char *field,
+                                       const PcJson *previous, const PcJson *current) {
+    PcJson *values;
+    if (pj_equal(previous, current)) return;
+    if (!*differences) *differences = pj_new(PJ_OBJECT);
+    values = pj_new(PJ_OBJECT);
+    if (previous) pj_add(values, "previous", pj_clone(previous));
+    if (current) pj_add(values, "current", pj_clone(current));
+    pj_add(*differences, field, values);
+}
+/** Report every field difference while retaining the first-field compatibility view. */
 static void pc_observe_metadata_mismatch(PcContext *c, const char *scope, const char *path,
                                          const PcJson *previous, const PcJson *current) {
     static const char *const fields[] = {"device", "inode", "size", "mode", "mtime", "mtime_ns",
                                          "ctime", "ctime_ns", "reliable", NULL};
+    const PcJson *item;
+    PcJson *differences = NULL;
     const char *field = "entry";
     int i;
     if (pc_verbosity(c) < 3) return;
-    if (previous && current) {
+    if (previous && previous->type == PJ_OBJECT && current && current->type == PJ_OBJECT) {
         for (i = 0; fields[i]; ++i) {
             if (!pj_equal(pj_get(previous, fields[i]), pj_get(current, fields[i]))) {
                 field = fields[i];
                 break;
             }
         }
+        for (item = previous->child; item; item = item->next)
+            pc_add_metadata_difference(&differences, item->key, item, pj_get(current, item->key));
+        for (item = current->child; item; item = item->next)
+            if (!pj_get(previous, item->key))
+                pc_add_metadata_difference(&differences, item->key, NULL, item);
     }
     {
         PcJson *record = pc_observation("metadata-mismatch");
@@ -103,6 +121,7 @@ static void pc_observe_metadata_mismatch(PcContext *c, const char *scope, const 
             pc_add_optional_value(record, "previous", previous ? pj_get(previous, field) : NULL);
             pc_add_optional_value(record, "current", current ? pj_get(current, field) : NULL);
         }
+        if (differences) pj_add(record, "differences", differences);
         pc_observe(c, record);
     }
 }

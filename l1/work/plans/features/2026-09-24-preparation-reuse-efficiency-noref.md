@@ -268,8 +268,8 @@ stability or a trust boundary. Ordinary per-container validation remains the bas
 alternatives are deferred. Measure image preparation, service/worker startup, first and subsequent request durations,
 copy/distribution overhead, native preparation build commands, discovery probes and bytes hashed. Report individual
 measurements and distributions, keeping one-time setup costs separate and showing how worker lifetime affects their
-amortization. Record selection/native keys, first metadata differences and artifact versus validation-record reuse at
-each tested lifecycle boundary.
+amortization. Record selection/native keys, all metadata differences and artifact versus validation-record reuse at each
+tested lifecycle boundary.
 
 Exercise fresh containers, worker/runtime restarts, changed images and mounts, toolchain updates, altered inputs, stale
 or unavailable evidence and read-only consumers as applicable to each prototype. Verify compilation and program output
